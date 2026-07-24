@@ -566,10 +566,13 @@ def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():
     dockerfile = (
         Path(__file__).resolve().parents[1] / ".github" / "audio-runner" / "Dockerfile"
     ).read_text()
-    assert "python:3.12-slim-bookworm@sha256:" in dockerfile
+    # Ubuntu noble, not the official python:3.12-slim (Debian bookworm) image -- must match the
+    # ubuntu-latest (also noble) host build_ffmpeg_static.sh runs on, since the vendored binary's
+    # dynamically-linked codec libs (libvpx9/libdav1d7 below) are SONAME-specific to that distro.
+    assert "FROM ubuntu:24.04" in dockerfile
     # Runtime (non -dev) packages for build_ffmpeg_static.sh's dynamically-linked codec/TLS
     # libs -- not apt-get-installed ffmpeg itself.
-    assert "libgnutls30 libopus0 libvpx7 libdav1d6 libmp3lame0" in dockerfile
+    assert "libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0" in dockerfile
     assert "apt-get install -y ffmpeg" not in dockerfile
 
 

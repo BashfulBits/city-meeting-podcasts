@@ -103,15 +103,29 @@ Phase R (Research-Tool Surface)._
   `dep-bump-smoke.yml`, `duration-normalize.yml`, and `granicus-probe.yml`, each building
   `FFMPEG_URL` from the `B2_PUBLIC_BASE_URL` secret at the step that needs it (CR-GH-07/23/25 —
   secrets scoped to the consuming step, not the whole job) rather than hardcoding the CDN domain
-  the secret happens to hold. `.github/audio-runner/Dockerfile` gained a runtime-package install
-  (`libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0` for the Ubuntu-noble build host; the
-  Debian-bookworm base image the Dockerfile itself runs on needs `libvpx7 libdav1d6` instead of
-  `libvpx9 libdav1d7` — SONAME versions differ by distro — pending confirmation from a real
-  `audio-runner-image.yml` dispatch since Docker Hub pulls aren't reachable from this sandbox to
-  verify ahead of time). `.github/renovate.json5`'s ffmpeg-specific custom regex manager was
-  removed (a URL-pattern version bump doesn't apply to a self-built, vendored pin — bumping now
-  means dispatching `build-ffmpeg.yml` and manually updating the seven workflows' `FFMPEG_SHA256`
-  and `FFMPEG_URL` version segment, still smoke-gated per `review/22`).
+  the secret happens to hold. This dynamic-linking switch is a **permanent deployment contract**,
+  not a one-off fixup: every place this ffmpeg binary runs must have the matching runtime
+  (non-`-dev`) packages installed, forever, not just at the moment of this pin's introduction.
+  `.github/audio-runner/Dockerfile`'s base image was switched from the official
+  `python:3.12-slim-bookworm` to `ubuntu:24.04` for exactly this reason: CodeRabbit caught (PR
+  #1003 review) that the bookworm image's `libvpx7`/`libdav1d6` packages ship different SONAMEs
+  (`libvpx.so.7`/`libdav1d.so.6`) than what the binary is actually linked against
+  (`libvpx.so.9`/`libdav1d.so.7`, from Ubuntu noble — the `ubuntu-latest` distro
+  `build-ffmpeg.yml` builds on) — the binary would fail to load in the container, not just warn.
+  Matching the base image to the build host, rather than publishing a second Debian-targeted
+  archive, keeps this to one ffmpeg build/pin shared by every consumer (GH Actions host-fallback
+  paths already run on noble). Not independently confirmed by a real `audio-runner-image.yml`
+  dispatch yet (Docker Hub pulls aren't reachable from the sandbox this was authored in); the
+  base image is temporarily unpinned by digest pending that run's log output (`review/22`'s
+  base-image-immutability convention still applies — a follow-up will pin it once resolved).
+  Not an `AUDIO_PIPELINE_VERSION` bump: same ffmpeg version, same build flags/codecs as already
+  shipped: only *how* its external libraries are linked (and therefore which container they run
+  in) changed, not what bytes a correctly-running binary produces — CI's `dep-bump-smoke` table
+  is expected to show no diffs, which is itself part of what closes this out.
+  `.github/renovate.json5`'s ffmpeg-specific custom regex manager was removed (a URL-pattern
+  version bump doesn't apply to a self-built, vendored pin — bumping now means dispatching
+  `build-ffmpeg.yml` and manually updating the seven workflows' `FFMPEG_SHA256` and `FFMPEG_URL`
+  version segment, still smoke-gated per `review/22`).
 
 - **`litellm` bumped to `1.95.0.dev1` (pre-release), and `instructor`'s `[litellm]` extra dropped, to
   unblock `gemini-3.5-flash-lite`.** A real manually-triggered `tag.yml` run showed the second Gemini
