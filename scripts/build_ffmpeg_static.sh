@@ -26,6 +26,15 @@
 # to ENABLED_EXTERNAL_LIBS below, which is a normal, reviewable diff in this file -- that's the
 # "register the dependency" contract for this build.
 #
+# NOT fully static: FFmpeg's own libraries (libavcodec etc.) are statically linked into
+# ffmpeg/ffprobe (--enable-static --disable-shared), but the external libraries above link
+# dynamically. A first attempt at fully static linking (--pkg-config-flags="--static") failed
+# configure on gnutls specifically -- `pkg-config --exists gnutls` succeeds, but
+# `pkg-config --static --exists gnutls` doesn't, because gnutls's static dependency chain
+# (nettle/hogweed/gmp/p11-kit/tasn1/idn2/unistring) isn't fully resolvable via Ubuntu's apt
+# packages. Wherever this binary is installed needs the matching runtime packages present:
+#   apt-get install libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+#
 # Usage:
 #   scripts/build_ffmpeg_static.sh <version e.g. 7.1.5> <output tar.xz path>
 #
@@ -69,7 +78,6 @@ pkg-config --exists gnutls && echo "gnutls: found ($(pkg-config --modversion gnu
 }
 
 CONFIGURE_ARGS=(
-  --pkg-config-flags="--static"
   --enable-static
   --disable-shared
   --disable-doc
