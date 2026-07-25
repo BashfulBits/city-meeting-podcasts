@@ -40,6 +40,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **ASR claim admission now respects the scheduled handoff while draining admitted work (GH#1017).**
+  Internal workers use the existing runtime estimator against the earlier of the 5-hour handoff
+  (with a 10-minute upload/commit reserve) and the hard backstop, so work that cannot finish in the
+  current window is not downloaded or started. A queued successor now stops admission only; it no
+  longer terminates healthy native inference already in progress. Lease renewal and hard/explicit
+  termination behavior remain intact. No ASR pipeline version or artifact backfill changed.
+
 - **The daily deferred-LLM sweep now reuses one registry snapshot per run (GH#1020).** Selection,
   expiry pruning, and the final pending count share one ordered B2 listing and one decode per
   record instead of independently traversing the registry three times. Completed records and
