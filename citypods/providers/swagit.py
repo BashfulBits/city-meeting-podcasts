@@ -149,7 +149,7 @@ def _get_download_redirect(
     redirect (issue #120), or an already-direct file — before branching on it differently.
     """
     try:
-        resp = session.get(episode.video_url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
+        resp = get_with_worker_fallback(session, episode.video_url, timeout=DEFAULT_TIMEOUT)
     except requests.RequestException as exc:
         raise ProviderError(f"GET {episode.video_url} failed: {exc}") from exc
     loc = resp.headers.get("Location")
@@ -320,10 +320,10 @@ class SwagitProvider:
         url = episode.links["canonical_video"]
         with make_session() as session:
             try:
-                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                resp = get_with_worker_fallback(session, url, timeout=DEFAULT_TIMEOUT)
             except requests.RequestException as exc:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
-        if resp.status_code >= 400:
+        if not 200 <= resp.status_code < 300:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         chapters = parse_chapters(resp.content)
         transcript_path = f"/videos/{episode.guid}/transcript"
@@ -415,10 +415,10 @@ class SwagitProvider:
         """Fetch the ``/videos/{id}`` page and return its inline ``(dfile, title)`` pairs."""
         url = episode.links["canonical_video"]
         try:
-            resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+            resp = get_with_worker_fallback(session, url, timeout=DEFAULT_TIMEOUT)
         except requests.RequestException as exc:
             raise ProviderError(f"GET {url} failed: {exc}") from exc
-        if resp.status_code >= 400:
+        if not 200 <= resp.status_code < 300:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         segments = parse_segment_objects(resp.content)
         # dfile URLs are scraped from page HTML, not implicitly trusted; validate each before

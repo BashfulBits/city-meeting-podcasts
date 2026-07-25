@@ -29,6 +29,12 @@ SAMPLE = b"""
 """
 
 
+@pytest.fixture(autouse=True)
+def _bypass_proxy_transport_ssrf(monkeypatch):
+    """Provider tests use fake sessions; proxy URL/SSRF behavior has its own focused suite."""
+    monkeypatch.setattr("citypods.swagit_proxy.validate_source_url", lambda *a, **kw: None)
+
+
 def test_parse_sets_body_and_media():
     eps = parse_list(SAMPLE, ORIGIN)
     assert [e.guid for e in eps] == ["100", "101", "102"]  # all bodies returned
@@ -408,7 +414,7 @@ def test_fetch_chapters_returns_chapters_and_transcript(monkeypatch):
         def __exit__(self, *a):
             return False
 
-        def get(self, url, timeout=None):
+        def get(self, url, timeout=None, **kwargs):
             assert url == f"{ORIGIN}/videos/100"
             return FakeResp()
 
@@ -436,13 +442,38 @@ def test_fetch_chapters_no_transcript_link(monkeypatch):
         def __exit__(self, *a):
             return False
 
-        def get(self, url, timeout=None):
+        def get(self, url, timeout=None, **kwargs):
             return FakeResp()
 
     monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
     ep = parse_list(SAMPLE, ORIGIN)[0]
     chapters, transcript = SwagitProvider().fetch_chapters(ep, {"list_url": f"{ORIGIN}/x"})
     assert chapters and transcript is None
+
+
+def test_fetch_chapters_rejects_redirect_response(monkeypatch):
+    """get_with_worker_fallback disables auto-redirects, so a 3xx must be rejected, not parsed."""
+    import citypods.providers.swagit as sw
+
+    class FakeResp:
+        status_code = 302
+        content = b""
+        text = ""
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, timeout=None, **kwargs):
+            return FakeResp()
+
+    monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
+    ep = parse_list(SAMPLE, ORIGIN)[0]
+    with pytest.raises(ProviderError):
+        SwagitProvider().fetch_chapters(ep, {"list_url": f"{ORIGIN}/x"})
 
 
 # --- fetch_segment_objects (SwagitConcatPlanner entry point) ----------------------------------
@@ -499,6 +530,27 @@ def test_fetch_segment_objects_rejects_blocked_dfile_url(monkeypatch):
     monkeypatch.setattr("citypods.providers.swagit.validate_source_url", _reject)
     eps = parse_list(SAMPLE, ORIGIN)
     with pytest.raises(SecurityError):
+        SwagitProvider().fetch_segment_objects(eps[0], {"list_url": f"{ORIGIN}/x"})
+
+
+def test_fetch_segment_objects_rejects_video_page_redirect(monkeypatch):
+    """A keyless /download redirect followed by a 3xx video page must be rejected, not parsed."""
+
+    class _RedirectPageSession:
+        def get(self, url, timeout=None, allow_redirects=True):
+            if url.endswith("/download"):
+                return _Resp(302, KEYLESS)
+            return _Resp(302, f"{ORIGIN}/videos/100/")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("citypods.providers.swagit.make_session", lambda: _RedirectPageSession())
+    eps = parse_list(SAMPLE, ORIGIN)
+    with pytest.raises(ProviderError):
         SwagitProvider().fetch_segment_objects(eps[0], {"list_url": f"{ORIGIN}/x"})
 
 

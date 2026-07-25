@@ -1,9 +1,8 @@
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-// Swagit archive list/view pages, e.g. /views/117/city-council-meetings, /views/5,
-// /views/default/city-council -- one or two path segments after "views".
-const PATH_RE = /^views\/[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)?$/;
+// Archive list pages plus the numeric video page and download endpoint used by enrichment.
+const PATH_RE = /^(?:views\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?|videos\/[1-9][0-9]*(?:\/download)?)$/;
 const PAGE_RE = /^[1-9][0-9]{0,3}$/; // bounded 1..9999, mirrors swagit.py's MAX_ARCHIVE_PAGES
 const FORWARDED_RESPONSE_HEADERS = ["content-length", "content-type"];
 
@@ -47,7 +46,7 @@ function parseSwagitRequest(requestUrl, env) {
     return null;
   }
   const page = url.searchParams.get("page");
-  if (page !== null && !PAGE_RE.test(page)) {
+  if (page !== null && (!path.startsWith("views/") || !PAGE_RE.test(page))) {
     return null;
   }
   return { host, path, page };
@@ -125,14 +124,20 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
     return plain(502, "upstream fetch failed");
   }
 
-  if (upstream.status >= 300 && upstream.status < 400) {
+  if (upstream.status >= 300 && upstream.status < 400 && !parsed.path.endsWith("/download")) {
     return plain(502, "upstream redirect refused");
   }
 
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
-    headers: clientResponseHeaders(upstream),
+    headers: (() => {
+      const headers = clientResponseHeaders(upstream);
+      if (parsed.path.endsWith("/download") && upstream.headers.get("location")) {
+        headers.set("location", upstream.headers.get("location"));
+      }
+      return headers;
+    })(),
   });
 }
 

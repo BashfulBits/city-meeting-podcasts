@@ -33,17 +33,25 @@ def test_from_env_returns_none_when_unset(monkeypatch):
     assert SwagitWorkerFallback.from_env() is None
 
 
-def test_proxy_url_accepts_only_view_list_pages(monkeypatch):
+def test_proxy_url_accepts_only_supported_tenant_pages(monkeypatch):
     fallback = _fallback(monkeypatch)
     assert fallback.proxy_url(LIST_URL) == WORKER_URL
     assert fallback.proxy_url(LIST_URL_PAGED) == f"{WORKER_URL}?page=3"
-    # Not a views/ list page (a video/download URL).
-    assert fallback.proxy_url("https://austintx.new.swagit.com/videos/12345/download") is None
+    assert fallback.proxy_url("https://austintx.new.swagit.com/videos/12345") == (
+        "https://worker.example/v1/swagit/austintx.new.swagit.com/videos/12345"
+    )
+    assert fallback.proxy_url("https://austintx.new.swagit.com/videos/12345/download") == (
+        "https://worker.example/v1/swagit/austintx.new.swagit.com/videos/12345/download"
+    )
+    assert fallback.proxy_url("https://austintx.new.swagit.com/videos/0") is None
+    assert fallback.proxy_url("https://austintx.new.swagit.com/videos/12345/agenda") is None
+    assert fallback.proxy_url("https://austintx.new.swagit.com/play/12345/10") is None
     # An unexpected extra query param -- not a shape production ever produces.
     assert fallback.proxy_url(f"{LIST_URL}?page=1&token=secret") is None
     # Out-of-range page.
     assert fallback.proxy_url(f"{LIST_URL}?page=0") is None
     assert fallback.proxy_url(f"{LIST_URL}?page=99999") is None
+    assert fallback.proxy_url("https://austintx.new.swagit.com/videos/12345?page=1") is None
 
 
 def test_headers_carry_the_bearer_token(monkeypatch):

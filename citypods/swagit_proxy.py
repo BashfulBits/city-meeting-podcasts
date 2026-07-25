@@ -1,4 +1,4 @@
-"""Authenticated Cloudflare fallback transport for Swagit archive list-page fetches.
+"""Authenticated Cloudflare fallback transport for Swagit tenant-page fetches.
 
 Diagnosed in PR #1011: paired local/GitHub-Actions probes plus production Audio #257-#259 showed
 GitHub Actions egress gets a consistent HTTP 403 (``server: awselb/2.0`` -- an AWS load balancer,
@@ -10,8 +10,8 @@ host class (``<tenant>.new.swagit.com`` list pages) than the existing Granicus W
 :mod:`citypods.granicus_proxy`, not a replacement for it.
 
 The official episode metadata parsing remains untouched. This module only maps a strict
-``<tenant-host>/views/...`` list-page GET to the closed Worker relay after the direct
-GitHub-runner request has already returned HTTP 403.
+``<tenant-host>/views/...`` or ``/videos/{id}[/download]`` GET to the closed Worker relay after
+the direct GitHub-runner request has already returned HTTP 403.
 """
 
 from __future__ import annotations
@@ -26,7 +26,9 @@ from citypods.http import DEFAULT_TIMEOUT
 from citypods.security import validate_source_url
 
 _WORKER_PATH_PREFIX = "/v1/swagit/"
-_PATH_RE = re.compile(r"^views/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)?$")
+_PATH_RE = re.compile(
+    r"^(?:views/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)?|videos/[1-9][0-9]*(?:/download)?)$"
+)
 _PAGE_RE = re.compile(r"^[1-9][0-9]{0,3}$")  # bounded 1..9999, mirrors MAX_ARCHIVE_PAGES
 
 
@@ -74,8 +76,7 @@ class SwagitWorkerFallback:
         return cls(base_url=origin, token=token)
 
     def proxy_url(self, list_url: str) -> str | None:
-        """The Worker URL for ``list_url``, or ``None`` if it isn't a bare Swagit list-page shape
-        (a ``views/...`` path with at most a ``page`` query param) the Worker accepts."""
+        """Return the Worker URL for an accepted, tightly bounded Swagit tenant-page URL."""
         parts = urlsplit(list_url)
         if (
             parts.scheme != "https"
@@ -88,11 +89,14 @@ class SwagitWorkerFallback:
         path = parts.path.lstrip("/")
         if not _PATH_RE.match(path):
             return None
-        query = dict(parse_qsl(parts.query, keep_blank_values=True))
+        query_pairs = parse_qsl(parts.query, keep_blank_values=True)
+        if len(query_pairs) > 1:
+            return None
+        query = dict(query_pairs)
         page = query.pop("page", None)
         if query:  # any param besides page -> not a shape the Worker accepts
             return None
-        if page is not None and not _PAGE_RE.match(page):
+        if page is not None and (not path.startswith("views/") or not _PAGE_RE.match(page)):
             return None
         proxy = (
             f"{self.base_url}{_WORKER_PATH_PREFIX}"
@@ -119,8 +123,9 @@ def get_with_worker_fallback(
     # A redirect target -- or a Worker origin validated only once at construction -- is not
     # implicitly trusted just because an earlier point in the call chain checked it (same
     # reasoning as SwagitProvider.resolve_media_url's explicit validate_source_url on a redirect
-    # Location, CR-CP-35). Refuse redirects outright on both requests rather than silently
-    # following one to a host the config-time allowlist never saw.
+    # Location, CR-CP-35). Refuse automatic redirects on both requests rather than silently
+    # following one to a host the config-time allowlist never saw; callers explicitly validate
+    # the Location returned by the /download endpoint.
     validate_source_url(url, resolve=True)
     response = session.get(url, timeout=timeout, allow_redirects=False)
     if response.status_code != 403:
