@@ -1054,7 +1054,14 @@ def _patch_transcribe_item(monkeypatch, worker, *, exists):
     push_calls: list[dict] = []
 
     def _fake_push(
-        storage, state_dir, sources, *, protected_blocks, owned_uids, raise_on_transient=False
+        storage,
+        state_dir,
+        sources,
+        *,
+        protected_blocks,
+        lane=None,
+        owned_uids,
+        raise_on_transient=False,
     ):
         push_calls.append({"sources": sources, "owned_uids": owned_uids})
         return 1

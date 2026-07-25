@@ -2134,7 +2134,14 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     captured = {}
 
     def _push_merged(
-        _storage, _state_dir, source_keys, *, protected_blocks, owned_uids=None, log=None
+        _storage,
+        _state_dir,
+        source_keys,
+        *,
+        protected_blocks,
+        lane=None,
+        owned_uids=None,
+        log=None,
     ):
         captured["owned"] = sorted(set(source_keys))
         captured["protected"] = protected_blocks
@@ -2185,7 +2192,14 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
     captured = {}
 
     def _push_merged(
-        _storage, _state_dir, source_keys, *, protected_blocks, owned_uids=None, log=None
+        _storage,
+        _state_dir,
+        source_keys,
+        *,
+        protected_blocks,
+        lane=None,
+        owned_uids=None,
+        log=None,
     ):
         captured["protected"] = protected_blocks
         captured["owned_uids"] = owned_uids

@@ -966,6 +966,7 @@ def _compute_reclaim_transcript(args) -> int:
         state_dir,
         [args.source_key],
         protected_blocks=protected_blocks_for_lane("transcribe"),
+        lane="transcribe",
         owned_uids={args.source_key: frozenset({args.episode_uid})},
     )
     if pushed != 1:

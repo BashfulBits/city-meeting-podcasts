@@ -40,6 +40,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Unchanged episodes now use durable dirty-stage completion markers (GH#1013).** Each episode
+  records a versioned input fingerprint and terminal state for enrichment stages, including
+  complete-empty and identity results. Legacy records are classified lazily from their existing
+  artifacts, and subsequent runs omit clean episodes from stage invocation; relevant URL/hash,
+  repair, or pipeline-version changes invalidate only the affected stage. This is metadata-only
+  scheduling state: no output-affecting pipeline version was bumped and no artifact backfill is
+  required.
 - **ASR claim admission now respects the scheduled handoff while draining admitted work (GH#1017).**
   Internal workers use the existing runtime estimator against the earlier of the 5-hour handoff
   (with a 10-minute upload/commit reserve) and the hard backstop, so work that cannot finish in the

@@ -133,6 +133,11 @@ class Episode:
     # instead of proving nothing changed by re-reading and re-hashing its text every run.
     tags_input_fingerprint: str | None = None
 
+    # Durable per-stage completion envelope.  Missing entries are lazily inferred from legacy
+    # artifact fields by the scheduler; once written, they let unchanged episodes bypass the
+    # stage entirely (including legitimate empty/identity results).
+    stage_completion: dict[str, dict] = field(default_factory=dict)
+
     # --- content-addressed transcript artifact (INFRA-8, #149) ---------------------
     # Active podcast transcript artifact.  ASR / provider-aligned served-time transcripts live
     # here and drive <podcast:transcript>.  Provider-supplied source documents are retained

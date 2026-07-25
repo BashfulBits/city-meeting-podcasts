@@ -2130,6 +2130,7 @@ def _build_impl(
                             state_dir,
                             owned,
                             protected_blocks=protected_blocks_for_lane(lane),
+                            lane=lane,
                             owned_uids=shard_owned_uids,
                             log=lambda msg: print(msg, flush=True),
                         )
@@ -2538,6 +2539,7 @@ def _build_impl(
                     state_dir,
                     owned,
                     protected_blocks=protected_blocks_for_lane(lane),
+                    lane=lane,
                     owned_uids=shard_owned_uids,
                     log=lambda msg: print(msg, flush=True),
                 )

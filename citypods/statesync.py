@@ -264,6 +264,7 @@ def push_records_merged(
     source_keys,
     *,
     protected_blocks,
+    lane: str | None = None,
     owned_uids: dict[str, frozenset[str]] | None = None,
     log=None,
     raise_on_transient: bool = False,
@@ -322,6 +323,7 @@ def push_records_merged(
             remote,
             local,
             protected,
+            lane=lane,
             owned_uids=owned_uids.get(sk) if owned_uids is not None else None,
         )
         save_records(state_dir, sk, merged)

@@ -1099,6 +1099,7 @@ def episode_to_record(ep: Episode) -> dict:
         "tags_llm_recipe_hash": ep.tags_llm_recipe_hash,
         "tags_spec_hash": ep.tags_spec_hash,
         "tags_input_fingerprint": ep.tags_input_fingerprint,
+        "stage_completion": ep.stage_completion or None,
         "agenda_text": {
             "url": ep.agenda_text_url,
             "attempts": ep.agenda_text_attempts,
@@ -1371,6 +1372,9 @@ def record_to_episode(rec: dict) -> Episode:
         tags_llm_recipe_hash=rec.get("tags_llm_recipe_hash"),
         tags_spec_hash=rec.get("tags_spec_hash"),
         tags_input_fingerprint=rec.get("tags_input_fingerprint"),
+        stage_completion=(
+            rec.get("stage_completion") if isinstance(rec.get("stage_completion"), dict) else {}
+        ),
         # v2 transcript block (INFRA-8); v1 records with old transcript_url silently dropped.
         **_transcript_fields_from_rec(rec),
         **_speakers_fields_from_rec(rec),
@@ -1498,6 +1502,16 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     ),
 }
 
+_LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
+    "audio": frozenset(
+        {"chapters", "timeline", "remap", "audio", "links", "agenda_text", "minutes_text"}
+    ),
+    "transcribe": frozenset({"transcript"}),
+    "align": frozenset({"transcript"}),
+    "diarize": frozenset({"diarize"}),
+    "tag": frozenset({"tags"}),
+}
+
 
 def protected_blocks_for_lane(lane: str | None) -> frozenset[str]:
     """Artifact blocks a scoped ``lane`` run must PRESERVE from the freshest remote because it does
@@ -1597,6 +1611,7 @@ def merge_preserving_foreign(
     protected: frozenset[str],
     *,
     owned_uids: frozenset[str] | None = None,
+    lane: str | None = None,
 ) -> dict:
     """Merge a scoped lane run's ``local`` records to push against the freshest ``remote`` snapshot,
     preserving the ``protected`` artifact blocks (the ones this lane does not own) from ``remote``.
@@ -1635,6 +1650,19 @@ def merge_preserving_foreign(
         rec = dict(local_rec)
         remote_rec = remote.get(uid)
         if remote_rec:
+            local_status = local_rec.get("stage_completion")
+            remote_status = remote_rec.get("stage_completion")
+            if isinstance(local_status, dict) or isinstance(remote_status, dict):
+                merged_status = dict(remote_status) if isinstance(remote_status, dict) else {}
+                owned_status = (
+                    frozenset(local_status or {})
+                    if not protected
+                    else _LANE_OWNED_STAGE_STATUS.get(lane or "", frozenset())
+                )
+                for stage_name, status in (local_status or {}).items():
+                    if stage_name in owned_status or stage_name not in merged_status:
+                        merged_status[stage_name] = status
+                rec["stage_completion"] = merged_status
             for block in protected:
                 if remote_rec.get(block):
                     rec[block] = remote_rec[block]
@@ -1766,6 +1794,9 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.tags_llm_recipe_hash = rec.get("tags_llm_recipe_hash", ep.tags_llm_recipe_hash)
         ep.tags_spec_hash = rec.get("tags_spec_hash", ep.tags_spec_hash)
         ep.tags_input_fingerprint = rec.get("tags_input_fingerprint", ep.tags_input_fingerprint)
+        persisted_completion = rec.get("stage_completion")
+        if isinstance(persisted_completion, dict):
+            ep.stage_completion = dict(persisted_completion)
         persisted_source = record_source_duration_seconds(rec)
         if persisted_source is not None and episode_source_duration_seconds(ep) is None:
             set_source_duration_seconds(ep, persisted_source)

@@ -158,6 +158,17 @@ artifact that the same run would immediately discard. Normal repair flags do not
 raising the source cap is the explicit way to make an excluded row eligible again. No audio, ASR, or
 other output recipe changed, so this boundary creates no artifact backfill.
 
+Unchanged-episode scheduling is a second, independent boundary (GH#1013). Each `Episode` persists a
+`stage_completion` map keyed by stage name. Every terminal marker contains the stage version,
+deterministic relevant-input fingerprint, completion state (`complete`, `complete-empty`,
+`deferred`, or `failed`), and—where a stage produces a durable artifact—the current output pointer.
+`run_stages()` lazily infers markers for legacy records from existing fields, then passes only dirty
+episodes to each stage. A changed provider input, repair request, stage version, or missing/mismatched
+output pointer invalidates the affected stage without invalidating unrelated audio or feed work.
+Aggregate stage errors/deferrals leave markers untouched until per-episode attribution is available,
+so a transient batch outcome cannot poison successful siblings. Scoped lane merges carry completion
+metadata by the explicit lane owner, preserving sibling-lane markers during concurrent writes.
+
 ## Module map (`citypods/`)
 
 | Area | Modules |
