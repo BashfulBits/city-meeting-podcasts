@@ -40,6 +40,8 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Conditional source refresh and dirty episode planning now form the S1 efficiency foundation (GH#1014).** `SourcePipeline` invokes each adapter's `detect_change()` probe, persists validator/content-digest state in `state/source_refresh.json`, and compares a canonical normalized input fingerprint per stable episode UID. Unchanged validator-backed sources skip full list parsing; validator-less adapters use the safe fetch-and-digest path (with configurable TTL/full-refresh bounds), and only new/materially edited UIDs enter heavy-stage planning. Append-only archives, stable provider-migration UIDs, SSRF validation, and all content-addressed artifact hashes remain unchanged; no pipeline-version bump or automatic artifact backfill is required.
+
 - **ASR claim admission now respects the scheduled handoff while draining admitted work (GH#1017).**
   Internal workers use the existing runtime estimator against the earlier of the 5-hour handoff
   (with a 10-minute upload/commit reserve) and the hard backstop, so work that cannot finish in the

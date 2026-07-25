@@ -419,6 +419,15 @@ Do not implement adaptive optimization until the baseline can reliably say:
 
 ## 4. Phase 1: Stop unnecessary provider contact
 
+**Implementation note (GH#1014, 2026-07-25):** the first S1 slice is shipped in
+`citypods/discovery/refresh.py` and `SourcePipeline.fetch_merge`. Adapter `detect_change()` probes
+now gate full listing fetches when a persisted validator is unchanged; validator-less adapters use
+normalized content digests, and `state/source_refresh.json` records the token, last full refresh,
+bounded poll metadata, per-UID input fingerprints, and dirty reasons. The heavy queue receives only
+new/materially changed or incomplete UIDs. The larger topology split (one scheduled refresh producer;
+records-only Audio/ASR/render consumers) remains follow-up scope under GH#1023/S2 and is not implied
+by this implementation note.
+
 **Activation:** before roughly 50 cities, or immediately when telemetry shows redundant provider-list
 calls across lanes. This is the first architectural optimization because it reduces provider pressure
 and lets every later worker operate from durable state.

@@ -115,6 +115,12 @@ backlog_priority:
 # city_order: [denton-tx, dallas-tx]       # explicit city ranking (unset today)
 
 defaults:
+  # Conditional source discovery (GH#1014). A zero TTL preserves the safe legacy behavior for
+  # validator-less adapters (fetch + normalized digest comparison every run); validator-backed
+  # sources still skip their full listing when the token is unchanged. The full-refresh ceiling is
+  # an independent stale-catalog backstop.
+  source_refresh_ttl_hours: 0
+  source_refresh_full_refresh_days: 7
   search: true                           # static browser search; false removes its public output
   # Search-sidecar reads are restartable. Keep the render-only deployment bounded; a stopped build
   # retains the last complete manifest and tries again on the next render (0 = no time cap).
