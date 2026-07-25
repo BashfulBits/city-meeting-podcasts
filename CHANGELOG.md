@@ -40,6 +40,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The daily deferred-LLM sweep now reuses one registry snapshot per run (GH#1020).** Selection,
+  expiry pruning, and the final pending count share one ordered B2 listing and one decode per
+  record instead of independently traversing the registry three times. Completed records and
+  pruned entries are applied to the in-memory view, while the existing public one-off helpers keep
+  their behavior. No schema, model-output, pipeline-version, or artifact backfill change is
+  required.
+
 - **The LLM scheduler now spreads load across equally-eligible free routes instead of always
   favoring whichever sorts first alphabetically, and the deferred sweep's ledger accounting and
   ordering got a further round of fixes.** `select_route` picks among tied free/equal-cost/

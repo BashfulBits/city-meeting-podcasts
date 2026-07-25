@@ -25,11 +25,11 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from citypods.compute.base import JobHandle
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 from citypods.compute.llm_deferred import (
-    iter_pending_deferred,
-    list_pending_deferred,
-    prune_expired_deferred,
+    load_deferred_snapshot,
+    prune_expired_deferred_snapshot,
 )
 from citypods.compute.llm_policy import ROUTES, DeferredLLMRequest
 from citypods.config import load_site_config
@@ -164,8 +164,9 @@ def main(argv: list[str] | None = None) -> int:
     # could drift out of sync with the registry itself.
     skipped_by_pool: dict[tuple, int] = {}
 
+    snapshot = load_deferred_snapshot(storage)
     if datetime.now(UTC) < deadline_at:
-        for handle in iter_pending_deferred(storage):
+        for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
             signature = _capacity_signature(handle)
@@ -185,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
                     exhausted_capacity.add(signature)
             else:
                 completed += 1
+                snapshot.mark_completed(handle.recipe_hash, result)
             if stop_state.requested:
                 break
 
@@ -193,8 +195,12 @@ def main(argv: list[str] | None = None) -> int:
     # immediate pass would only re-poll/re-log the same remaining handles; the next scheduled run
     # gets a fresh registry snapshot.
 
-    pruned = prune_expired_deferred(storage)
-    remaining = len(list_pending_deferred(storage))
+    pruned = prune_expired_deferred_snapshot(storage, snapshot)
+    remaining = sum(
+        1
+        for entry in snapshot.entries
+        if not entry.deleted and isinstance(entry.decoded, JobHandle)
+    )
     print(
         f"llm-deferred-sweep: {len(seen_pending)} pending seen, {completed} completed, "
         f"{still_pending} still pending observations, {failed} failed, {pruned} pruned, "

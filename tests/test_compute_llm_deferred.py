@@ -7,8 +7,10 @@ from citypods.compute.llm_deferred import (
     deferred_key,
     iter_pending_deferred,
     list_pending_deferred,
+    load_deferred_snapshot,
     look_up_deferred,
     prune_expired_deferred,
+    prune_expired_deferred_snapshot,
     write_deferred,
 )
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
@@ -131,6 +133,58 @@ def test_iter_pending_deferred_yields_oldest_last_modified_first():
 
     ordered = [handle.recipe_hash for handle in iter_pending_deferred(storage)]
     assert ordered == recipe_hashes_oldest_to_newest
+
+
+def test_snapshot_reads_each_registry_record_once_and_prune_reuses_it():
+    class _CountingStorage(MemStorage):
+        list_calls = 0
+
+        def list_objects(self, prefix=""):
+            self.list_calls += 1
+            yield from super().list_objects(prefix)
+
+    storage = _CountingStorage()
+    for recipe_hash in ("pending-1", "completed-1", "expired-1"):
+        write_deferred(storage, recipe_hash, _pending_handle(recipe_hash), now=NOW)
+    write_deferred(
+        storage,
+        "completed-1",
+        JobResult(task="tag", recipe_hash="completed-1", output={}, model="m"),
+        now=NOW,
+    )
+    storage.class_a = storage.class_b = storage.list_calls = 0
+
+    snapshot = load_deferred_snapshot(storage)
+    assert storage.list_calls == 1
+    assert storage.class_b == 3
+
+    prune_expired_deferred_snapshot(
+        storage, snapshot, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1)
+    )
+    # Pruning uses the decoded snapshot; it only rereads expiry candidates for a conflict-safe
+    # compare, never listing the registry or downloading non-expired records again.
+    assert storage.list_calls == 1
+    assert storage.class_b == 6
+
+
+def test_snapshot_prune_does_not_delete_a_record_changed_after_snapshot():
+    storage = MemStorage()
+    write_deferred(storage, "recipe-1", _pending_handle("recipe-1"), now=NOW)
+    snapshot = load_deferred_snapshot(storage)
+
+    # A later completion wins over the stale pending snapshot.
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={"done": True}, model="m"),
+        now=NOW + timedelta(days=1),
+    )
+
+    deleted = prune_expired_deferred_snapshot(
+        storage, snapshot, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1)
+    )
+    assert deleted == 0
+    assert isinstance(look_up_deferred(storage, "recipe-1"), JobResult)
 
 
 def test_list_pending_deferred_returns_only_pending_records():
