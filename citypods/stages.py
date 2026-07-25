@@ -490,6 +490,17 @@ _STAGE_EMPTY_OK = frozenset(
 )
 
 
+def stage_output_pointer(name: str, ep: Episode) -> str | None:
+    """Return the durable output identity used to self-heal cached completion markers."""
+    if name == "audio":
+        return ep.audio_key or ep.hosted_audio_url
+    if name == "transcript":
+        return ep.transcript_key or ep.transcript_hosted_url
+    if name == "diarize":
+        return ep.speakers_key or ep.speakers_url or ep.speakers_error
+    return None
+
+
 def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: City) -> str:
     """Hash only the inputs that can invalidate one stage.
 
@@ -599,29 +610,29 @@ def stage_is_dirty(stage: EnrichmentStage, ep: Episode, city: City) -> bool:
             "state": "complete-empty" if stage.name in _STAGE_EMPTY_OK else "complete",
             "version": stage.version,
             "input_fingerprint": fingerprint,
+            "output": stage_output_pointer(stage.name, ep),
         }
         return False
     return not (
         marker.get("state") in {"complete", "complete-empty"}
         and marker.get("version") == stage.version
         and marker.get("input_fingerprint") == fingerprint
+        and marker.get("output") == stage_output_pointer(stage.name, ep)
     )
 
 
 def _mark_stage_complete(
     stage: EnrichmentStage, episodes: list[Episode], city: City, stat: StageStats
 ) -> None:
-    if stat.errors:
-        state = "failed"
-    elif stat.skipped:
-        state = "deferred"
-    else:
-        state = "complete-empty" if stage.name in _STAGE_EMPTY_OK else "complete"
+    if stat.errors or stat.skipped:
+        return
+    state = "complete-empty" if stage.name in _STAGE_EMPTY_OK else "complete"
     for ep in episodes:
         ep.stage_completion[stage.name] = {
             "state": state,
             "version": stage.version,
             "input_fingerprint": stage_input_fingerprint(stage, ep, city),
+            "output": stage_output_pointer(stage.name, ep),
             "completed_at": datetime.now(UTC).isoformat(),
         }
 

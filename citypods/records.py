@@ -1611,6 +1611,7 @@ def merge_preserving_foreign(
     protected: frozenset[str],
     *,
     owned_uids: frozenset[str] | None = None,
+    lane: str | None = None,
 ) -> dict:
     """Merge a scoped lane run's ``local`` records to push against the freshest ``remote`` snapshot,
     preserving the ``protected`` artifact blocks (the ones this lane does not own) from ``remote``.
@@ -1654,22 +1655,10 @@ def merge_preserving_foreign(
             if isinstance(local_status, dict) or isinstance(remote_status, dict):
                 merged_status = dict(remote_status) if isinstance(remote_status, dict) else {}
                 owned_status = (
-                    _LANE_OWNED_STAGE_STATUS.get("__full__", frozenset())
+                    frozenset(local_status or {})
                     if not protected
-                    else _LANE_OWNED_STAGE_STATUS.get(
-                        next(
-                            (
-                                lane
-                                for lane, blocks in _LANE_OWNED_BLOCKS.items()
-                                if blocks == ARTIFACT_BLOCKS - protected
-                            ),
-                            "",
-                        ),
-                        frozenset(),
-                    )
+                    else _LANE_OWNED_STAGE_STATUS.get(lane or "", frozenset())
                 )
-                if not protected:
-                    owned_status = frozenset(local_status or {})
                 for stage_name, status in (local_status or {}).items():
                     if stage_name in owned_status or stage_name not in merged_status:
                         merged_status[stage_name] = status
@@ -1807,7 +1796,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.tags_input_fingerprint = rec.get("tags_input_fingerprint", ep.tags_input_fingerprint)
         persisted_completion = rec.get("stage_completion")
         if isinstance(persisted_completion, dict):
-            ep.stage_completion = persisted_completion
+            ep.stage_completion = dict(persisted_completion)
         persisted_source = record_source_duration_seconds(rec)
         if persisted_source is not None and episode_source_duration_seconds(ep) is None:
             set_source_duration_seconds(ep, persisted_source)

@@ -40,6 +40,14 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Unchanged episodes now use durable dirty-stage completion markers (GH#1013).** Each episode
+  records a versioned input fingerprint and terminal state for enrichment stages, including
+  complete-empty and identity results. Legacy records are classified lazily from their existing
+  artifacts, and subsequent runs omit clean episodes from stage invocation; relevant URL/hash,
+  repair, or pipeline-version changes invalidate only the affected stage. This is metadata-only
+  scheduling state: no output-affecting pipeline version was bumped and no artifact backfill is
+  required.
+
 - **The daily deferred-LLM sweep now reuses one registry snapshot per run (GH#1020).** Selection,
   expiry pruning, and the final pending count share one ordered B2 listing and one decode per
   record instead of independently traversing the registry three times. Completed records and
@@ -66,14 +74,6 @@ Phase R (Research-Tool Surface)._
   breakdown of how many records were skipped once a pool proved exhausted.
 
 ### Fixed
-
-- **Unchanged episodes now use durable dirty-stage completion markers (GH#1013).** Each episode
-  records a versioned input fingerprint and terminal state for enrichment stages, including
-  complete-empty and identity results. Legacy records are classified lazily from their existing
-  artifacts, and subsequent runs omit clean episodes from stage invocation; relevant URL/hash,
-  repair, or pipeline-version changes invalidate only the affected stage. This is metadata-only
-  scheduling state: no output-affecting pipeline version was bumped and no artifact backfill is
-  required.
 
 - **Scoped lanes now upload only the run-event file created by the current run (GH#1016).** The
   append-only `run_events/` push uses an exact relative path returned by the run-history writer,
