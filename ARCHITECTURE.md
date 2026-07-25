@@ -412,6 +412,22 @@ Hard-won facts that bite anyone adding/debugging providers:
   throttling), and aggregate load is already bound by the provider-lease ceiling and per-episode
   materialize backoff. Rollback to direct-only stays config-only (unset the two `GRANICUS_PROXY_*`
   secrets).
+- **Swagit *list-page* fetches get the same Worker-fallback treatment as Granicus media, on a
+  different host class.** `SwagitProvider.fetch_episodes`'s `<tenant>.new.swagit.com/views/...`
+  GETs are a different fetch path than the Granicus-owned Swagit *media* host above — one that the
+  Granicus Worker's fixed `archive-video.granicus.com` origin and MP4-only path validation can't
+  cover. Diagnosed via paired local/GitHub-Actions probes (review/11 "Swagit list-page Worker
+  fallback"): GitHub Actions egress returns a consistent `403` (`server: awselb/2.0`, an AWS load
+  balancer) from every known Swagit tenant's list page while the same requests succeed from a
+  residential network under heavier load. `workers/swagit-list-proxy` is a narrowly-scoped sibling
+  Worker (bearer auth, tenant-hostname allowlist, one bounded `page` query param, no redirects);
+  `citypods/swagit_proxy.py`'s `get_with_worker_fallback` wraps the list-page GET with the same
+  direct-first, single-Worker-attempt-on-403 shape, re-validating both the direct and Worker-proxied
+  URL through the SSRF gate immediately before each request (a redirect target — or a Worker origin
+  validated only once at construction — is not implicitly trusted just because an earlier point in
+  the call chain checked it). Unset `SWAGIT_PROXY_BASE_URL`/`SWAGIT_PROXY_TOKEN` is a no-op. No
+  per-tenant transport telemetry yet (`SwagitProvider` methods don't take `ctx`, unlike Granicus's
+  ffmpeg call sites).
 - **Planner throttles are the materialization attempt; Audio does not immediately repeat them.**
   `TimelineStage` can fetch provider media through `SilencePlanner`/`SourceCache` before `AudioStage`.
   A typed 403/429 there records one episode materialization attempt/backoff and halts that episode's
