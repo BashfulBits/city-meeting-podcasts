@@ -144,11 +144,16 @@ defaults:
   # run_time_budget_minutes == the cron interval and let budget_safety reserve the tail.
   run_time_budget_minutes: 240           # == schedule_cron interval (4h); 0 = no time cap (yield only)
   budget_safety: 0.85                    # window = 204m; leaves ~36m of the 240m cron tick for the tail
-  # ASR runs every 5h. Stop starting new local ASR at 285m, then let any in-flight transcript
-  # continue until the 350m backstop. TranscriptStage estimates fit from the rolling
+  # ASR runs every 5h. Admit work whose conservative
+  # runtime estimate fits before the 300m scheduled handoff (leaving a 10m upload/commit reserve).
+  # Once admitted, a claim drains through the 350m hard backstop even when the successor is queued.
+  # The older start-cutoff value is retained as a fallback if handoff scheduling is disabled.
+  # TranscriptStage estimates fit from the rolling
   # state/asr_runtime_log.json ratio log (falling back to the conservative timeout formula
   # until real samples exist).
   asr_start_cutoff_minutes: 285
+  asr_handoff_minutes: 300
+  asr_handoff_reserve_minutes: 10
   asr_backstop_minutes: 350
   # The `tag` lane (tag.yml) runs daily with its own 25-minute *job* timeout, not the 4h-scale
   # cron `run_time_budget_minutes` is sized for -- reusing that default left `stop()` never

@@ -147,6 +147,10 @@ class InternalJobTiming:
     timeout_per_audio_hour_seconds: float
     timeout_safety_margin: float
     timeout_budget_reserve_seconds: float
+    # The next scheduled handoff is an admission boundary, not a cancellation boundary.  Once a
+    # claim starts, the hard backstop remains the only normal time-based termination trigger.
+    handoff_deadline: float | None = None
+    handoff_reserve_seconds: float = 0.0
 
     def remaining_backstop_seconds(self) -> float | None:
         if self.backstop_deadline is None:
@@ -156,10 +160,28 @@ class InternalJobTiming:
     def estimated_fits_backstop(
         self, estimated_runtime_seconds: float
     ) -> tuple[bool, float | None]:
-        remaining = self.remaining_backstop_seconds()
+        remaining = self.remaining_admission_seconds()
         if remaining is None:
             return True, None
         return remaining > 0 and estimated_runtime_seconds <= remaining, remaining
+
+    def remaining_admission_seconds(self) -> float | None:
+        """Return the earliest remaining safe admission window.
+
+        A scheduled successor gets first claim on the queue at ``handoff_deadline``; the hard
+        backstop is still retained as a second safety boundary.  Existing callers that do not
+        provide a handoff deadline keep the prior backstop-only behavior.
+        """
+        boundaries = []
+        if self.backstop_deadline is not None:
+            boundaries.append(self.backstop_deadline - time.monotonic())
+        if self.handoff_deadline is not None:
+            boundaries.append(
+                self.handoff_deadline - time.monotonic() - self.handoff_reserve_seconds
+            )
+        if not boundaries:
+            return None
+        return min(boundaries) - self.timeout_budget_reserve_seconds
 
     def per_item_timeout_seconds(self, duration_hours: float) -> float | None:
         configured = self.timeout_base_seconds + max(0.0, duration_hours) * (
@@ -1630,11 +1652,31 @@ def run_internal_worker(
     )
     start_cutoff_min = float(defaults.get("asr_start_cutoff_minutes", 285))
     backstop_min = float(defaults.get("asr_backstop_minutes", 350))
+    handoff_min = float(defaults.get("asr_handoff_minutes", 300))
+    handoff_reserve_min = float(defaults.get("asr_handoff_reserve_minutes", 10))
     now = time.monotonic()
     start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
     backstop_deadline = now + backstop_min * 60 if backstop_min > 0 else None
-    start_stop = StopSignal(deadline=start_deadline, superseded=_newer_run_queued)
-    claim_stop = StopSignal(deadline=None, superseded=_newer_run_queued)
+    handoff_deadline = now + handoff_min * 60 if handoff_min > 0 else None
+    safe_handoff_deadline = (
+        handoff_deadline - 60 * max(0.0, handoff_reserve_min)
+        if handoff_deadline is not None
+        else None
+    )
+    # The reserve-adjusted handoff is the normal admission boundary.  Keep the legacy start
+    # cutoff as a fallback for deployments that disable handoff scheduling, and the hard backstop
+    # as the final fallback when both configured windows are unbounded.
+    admission_deadline = safe_handoff_deadline or start_deadline or backstop_deadline
+    admission_minutes = (
+        handoff_min - max(0.0, handoff_reserve_min)
+        if handoff_deadline is not None
+        else start_cutoff_min
+    )
+    start_stop = StopSignal(deadline=admission_deadline, superseded=_newer_run_queued)
+    # A queued successor closes admission through ``start_stop`` but must not terminate a healthy
+    # claim already in native inference.  Only the explicit interrupt or the hard backstop may
+    # stop active work; lease renewal continues while that claim drains.
+    active_stop = StopSignal(deadline=backstop_deadline)
     worker = InternalTranscribeWorker(
         config=cfg,
         site_config=site_config,
@@ -1650,12 +1692,15 @@ def run_internal_worker(
             timeout_safety_margin=float(defaults.get("asr_timeout_safety_margin", 1.2)),
             timeout_budget_reserve_seconds=60
             * float(defaults.get("asr_timeout_budget_reserve_minutes", 1)),
+            handoff_deadline=handoff_deadline,
+            handoff_reserve_seconds=60 * max(0.0, handoff_reserve_min),
         ),
         local_backend=ProcessLocalBackend(),
-        stop_requested=lambda: interrupt_requested() or claim_stop(),
+        stop_requested=lambda: interrupt_requested() or active_stop(),
     )
     print(
-        f"budget: transcribe start cutoff {start_cutoff_min:.0f}m, "
+        f"budget: transcribe admission {admission_minutes:.0f}m, "
+        f"handoff {handoff_min:.0f}m (reserve {handoff_reserve_min:.0f}m), "
         f"claim backstop {backstop_min:.0f}m, hard local duration cap "
         f"{float(defaults.get('asr_local_max_duration_hours', 4)):.1f}h",
         flush=True,
