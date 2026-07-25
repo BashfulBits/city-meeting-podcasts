@@ -114,6 +114,34 @@ def test_push_state_only_prefixes_scopes_to_owned_sources(tmp_path):
     assert bucket.exists(f"{STATE_PREFIX}/sources/theirs/episodes.json")
 
 
+def test_push_state_only_paths_uploads_exact_files(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    events = state_dir / "run_events"
+    events.mkdir(parents=True)
+    (events / "current.json").write_text("{}")
+    (events / "historical.json").write_text("{}")
+
+    assert push_state(bucket, state_dir, only_paths=["run_events/current.json"]) == 1
+    assert bucket.exists(f"{STATE_PREFIX}/run_events/current.json")
+    assert not bucket.exists(f"{STATE_PREFIX}/run_events/historical.json")
+
+    with pytest.raises(ValueError):
+        push_state(
+            bucket,
+            state_dir,
+            only_prefixes=["run_events/"],
+            only_paths=["run_events/current.json"],
+        )
+    with pytest.raises(ValueError):
+        push_state(bucket, state_dir, only_paths=["../outside.json"])
+
+    # Interior dot segments must canonicalize before the CAS guard and upload key are selected.
+    (state_dir / "llm_budget.json").write_text("{}")
+    assert push_state(bucket, state_dir, only_paths=["run_events/../llm_budget.json"]) == 1
+    assert bucket.exists(f"{STATE_PREFIX}/llm_budget.json")
+
+
 def test_scoped_run_event_push_does_not_delete_prior_events(tmp_path):
     """Scoped shard pushes are upload-only, so later ASR events do not erase audio events."""
     bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")

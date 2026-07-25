@@ -2452,6 +2452,7 @@ def _build_impl(
         save_etag_cache(state_dir, cache)
         # Run history calibrates the cost projection from real encode time, so record it only for
         # the phase that does that work (enrich/all) — a near-zero-cost render run would dilute it.
+        run_event_path = None
         if time_bounded:
             _elapsed = time.monotonic() - build_start
             _history_window_min = float(defaults.get("run_time_budget_minutes", 0))
@@ -2461,7 +2462,7 @@ def _build_impl(
                 _history_safety = 1.0
             _window = _history_window_min * 60 * _history_safety
             print("finalize: recording run history", flush=True)
-            _record_run_history(
+            run_event_path = _record_run_history(
                 state_dir,
                 results,
                 pipeline.stage_totals,
@@ -2549,7 +2550,7 @@ def _build_impl(
                 pushed += push_state(
                     storage,
                     state_dir,
-                    only_prefixes=[f"{RUN_EVENTS_DIR_NAME}/"],
+                    only_paths=[run_event_path] if run_event_path else [],
                     log=lambda msg: print(msg, flush=True),
                 )
                 pushed += push_asr_runtime_log_merged(
@@ -2815,7 +2816,7 @@ def _record_run_history(
     h16_availability: dict | None = None,
     scope: dict | None = None,
     interrupted: bool = False,
-) -> None:
+) -> str | None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
     (latest only). This is the data spine for the resource projection: it lets the model use a
     *measured* seconds/episode and per-stage backlog instead of defaults. Lives in the durable
@@ -2932,9 +2933,10 @@ def _record_run_history(
         run_token = "".join(
             ch if ch.isalnum() or ch in "._-" else "_" for ch in str(github_run_id or "local")
         )
-        (event_dir / f"{ts_token}-{run_token}-{scope_token}.json").write_text(
-            json.dumps(summary, indent=2) + "\n"
-        )
+        event_path = event_dir / f"{ts_token}-{run_token}-{scope_token}.json"
+        event_path.write_text(json.dumps(summary, indent=2) + "\n")
+        return event_path.relative_to(state_dir).as_posix()
+    return None
 
 
 # Process-wide interrupt latch (GH#377). Set by the SIGTERM handler installed at the CLI entry

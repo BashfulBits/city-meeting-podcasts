@@ -2141,8 +2141,9 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
         captured["owned_uids"] = owned_uids
         return len(captured["owned"])
 
-    def _push(_storage, _state_dir, *, only_prefixes=None, log=None):
-        captured["only_prefixes"] = only_prefixes  # the run_events-only push
+    def _push(_storage, _state_dir, *, only_prefixes=None, only_paths=None, log=None):
+        captured["only_prefixes"] = only_prefixes
+        captured["only_paths"] = only_paths  # the exact current run event
         return 0
 
     def _push_asr_log(_storage, _state_dir, *, rel_path, log=None):
@@ -2166,7 +2167,9 @@ def test_enrich_shard_scopes_state_push_and_skips_reconcile(tmp_path, fake_provi
     owned = sorted({source_key(c) for c in cfg if assignment[source_key(c)] == 0})
     assert captured["owned"] == owned  # records pushed only for owned sources
     assert captured["owned_uids"] is None  # audio is source-atomic → own every uid (review/18 §2.3)
-    assert captured["only_prefixes"] == ["run_events/"]  # append-only events pushed separately
+    assert captured["only_prefixes"] is None
+    assert len(captured["only_paths"]) == 1
+    assert captured["only_paths"][0].startswith("run_events/")
     assert captured["asr_runtime_log"] == "asr_runtime_log.json"
     events = list((tmp_path / "state" / "run_events").glob("*.json"))
     assert len(events) == 1
