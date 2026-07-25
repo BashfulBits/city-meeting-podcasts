@@ -346,7 +346,7 @@ defaults:
         estimated_dollars_per_runtime_second: 0.000222
         unit_label: dollar
       dispatch:
-        max_inflight: 8
+        max_inflight: 100
         min_claims_per_run: 1
         max_claims_per_run: 24
         preferred_days: even
@@ -368,7 +368,7 @@ defaults:
         estimated_dollars_per_runtime_second: 0.000192
         unit_label: dollar
       dispatch:
-        max_inflight: 8
+        max_inflight: 100
         min_claims_per_run: 1
         max_claims_per_run: 32
         preferred_days: odd
