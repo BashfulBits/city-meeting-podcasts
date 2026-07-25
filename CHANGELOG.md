@@ -92,6 +92,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Audio state restore no longer aborts on recognized transient download failures.** The shared
+  storage-error classifier now checks its lazy connectivity-exception contract before importing
+  the optional S3 SDK, so a retryable per-object failure remains fail-soft during the parallel
+  durable-state restore instead of reddening every Audio shard. This changes no pipeline version
+  and triggers no artifact backfill; successful state objects are still read once, while only the
+  failed object's existing local/cache copy is retained until a later run self-heals it.
+
 - **Scoped lanes now upload only the run-event file created by the current run (GH#1016).** The
   append-only `run_events/` push uses an exact relative path returned by the run-history writer,
   so retained historical events are not rescanned and re-uploaded on every Audio/ASR shard. The
