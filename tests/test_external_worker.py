@@ -835,6 +835,49 @@ def test_internal_worker_declines_claim_that_cannot_finish_before_backstop(tmp_p
     assert "insufficient-backstop" in str(reason)
 
 
+def test_internal_worker_admission_uses_scheduled_handoff_before_backstop(tmp_path, monkeypatch):
+    worker = _internal_worker(tmp_path)
+    monkeypatch.setattr(ew.time, "monotonic", lambda: 100.0)
+    worker.timing = InternalJobTiming(
+        start_deadline=250.0,
+        handoff_deadline=200.0,
+        handoff_reserve_seconds=10.0,
+        backstop_deadline=400.0,
+        timeout_base_seconds=0.0,
+        timeout_per_audio_hour_seconds=0.0,
+        timeout_safety_margin=1.0,
+        timeout_budget_reserve_seconds=0.0,
+    )
+
+    admitted, reason = worker._admit_claim(
+        _queued("a"),
+        metadata={"duration_hours": 1.0},
+        estimated_runtime_seconds=91.0,
+    )
+    assert admitted is False
+    assert "insufficient-backstop" in str(reason)
+
+    admitted, reason = worker._admit_claim(
+        _queued("a"),
+        metadata={"duration_hours": 1.0},
+        estimated_runtime_seconds=90.0,
+    )
+    assert (admitted, reason) == (True, None)
+
+
+def test_internal_timing_without_handoff_keeps_backstop_only(monkeypatch):
+    monkeypatch.setattr(ew.time, "monotonic", lambda: 100.0)
+    timing = InternalJobTiming(
+        start_deadline=None,
+        backstop_deadline=200.0,
+        timeout_base_seconds=0.0,
+        timeout_per_audio_hour_seconds=0.0,
+        timeout_safety_margin=1.0,
+        timeout_budget_reserve_seconds=0.0,
+    )
+    assert timing.estimated_fits_backstop(100.0) == (True, 100.0)
+
+
 def test_internal_worker_timeout_records_backoff_and_defers(tmp_path, monkeypatch):
     terminated = {"value": False}
     timeout_markers: list[str] = []
