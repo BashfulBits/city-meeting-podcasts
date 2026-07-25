@@ -68,6 +68,7 @@ the most valuable expensive stages earliest.
 from __future__ import annotations
 
 import collections
+import dataclasses
 import hashlib
 import json
 import re
@@ -482,6 +483,147 @@ class EnrichmentStage(Protocol):
     ) -> StageStats:
         """Enrich the ``_materialize_set`` of ``episodes`` in place, within budget."""
         ...
+
+
+_STAGE_EMPTY_OK = frozenset(
+    {"chapters", "timeline", "remap", "links", "agenda_text", "minutes_text", "tags"}
+)
+
+
+def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: City) -> str:
+    """Hash only the inputs that can invalidate one stage.
+
+    This intentionally excludes derived output pointers: a new provider row with the same media
+    and metadata therefore keeps its prior completion marker, while a changed URL/chapter/timeline
+    or recipe version invalidates only the affected stage.
+    """
+    name = stage if isinstance(stage, str) else stage.name
+    common = {"uid": ep.uid or ep.guid, "provider": city.provider, "stage": name}
+    if name in {"links", "agenda_text", "minutes_text"}:
+        payload = {**common, "links": ep.links or {}, "video": ep.video_url}
+    elif name == "chapters":
+        payload = {
+            **common,
+            "video": ep.video_url,
+            "duration": ep.source_duration_seconds,
+            "kind": ep.media_kind,
+        }
+    elif name == "timeline":
+        payload = {
+            **common,
+            "video": ep.video_url,
+            "duration": ep.source_duration_seconds,
+            "chapters": ep.source_chapters or ep.chapters,
+        }
+    elif name == "remap":
+        payload = {
+            **common,
+            "timeline": dataclasses.asdict(ep.timeline) if ep.timeline else None,
+            "chapters": ep.source_chapters or ep.chapters,
+        }
+    elif name == "audio":
+        payload = {
+            **common,
+            "video": ep.video_url,
+            "duration": ep.source_duration_seconds,
+            "chapters": ep.chapters,
+            "timeline": dataclasses.asdict(ep.timeline) if ep.timeline else None,
+            "audio_rebuild": ep.audio_rebuild,
+            "audio_recipe": AUDIO_PIPELINE_VERSION,
+        }
+    elif name == "transcript":
+        payload = {
+            **common,
+            "audio": ep.audio_key or ep.hosted_audio_url,
+            "audio_spec": ep.audio_spec_hash,
+            "timeline": timeline_digest(ep.timeline, ep.sources) if ep.timeline else "",
+            "recipe": TRANSCRIPT_PIPELINE_VERSION,
+        }
+    elif name == "diarize":
+        payload = {
+            **common,
+            "transcript": ep.transcript_key or ep.transcript_hosted_url,
+            "recipe": PROVIDER_DIARIZE_PIPELINE_VERSION,
+        }
+    elif name == "tags":
+        payload = {
+            **common,
+            "input": ep.tags_input_fingerprint,
+            "transcript": ep.transcript_key,
+            "agenda": ep.agenda_text_url,
+            "chapters": ep.chapters,
+        }
+    else:
+        payload = {
+            **common,
+            "video": ep.video_url,
+            "title": ep.title,
+            "published": ep.published.isoformat(),
+            "description": ep.description,
+        }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _legacy_stage_complete(name: str, ep: Episode) -> bool:
+    """Infer terminal completion for pre-1013 records without forcing a backfill."""
+    if name == "audio":
+        return bool(ep.hosted_audio_url or (ep.media_kind == "direct" and ep.audio_spec_hash))
+    if name == "timeline":
+        return ep.timeline is not None
+    if name == "remap":
+        return not ep.chapters or ep.chapters_basis.startswith("served") or ep.timeline is None
+    if name == "chapters":
+        return bool(ep.source_chapters or ep.chapters)
+    if name == "links":
+        return bool(ep.links)
+    if name == "agenda_text":
+        return not (ep.links or {}).get("agenda") and not (ep.links or {}).get("agenda_portal")
+    if name == "minutes_text":
+        return not (ep.links or {}).get("minutes")
+    if name == "transcript":
+        return bool(ep.transcript_key or ep.transcript_hosted_url)
+    if name == "diarize":
+        return bool(ep.speakers_key or ep.speakers_url or ep.speakers_error)
+    if name == "tags":
+        return ep.tags_input_fingerprint is not None or bool(ep.tags or ep.chapter_tags)
+    return False
+
+
+def stage_is_dirty(stage: EnrichmentStage, ep: Episode, city: City) -> bool:
+    marker = ep.stage_completion.get(stage.name) if isinstance(ep.stage_completion, dict) else None
+    fingerprint = stage_input_fingerprint(stage, ep, city)
+    if not isinstance(marker, dict):
+        if not _legacy_stage_complete(stage.name, ep):
+            return True
+        ep.stage_completion[stage.name] = {
+            "state": "complete-empty" if stage.name in _STAGE_EMPTY_OK else "complete",
+            "version": stage.version,
+            "input_fingerprint": fingerprint,
+        }
+        return False
+    return not (
+        marker.get("state") in {"complete", "complete-empty"}
+        and marker.get("version") == stage.version
+        and marker.get("input_fingerprint") == fingerprint
+    )
+
+
+def _mark_stage_complete(
+    stage: EnrichmentStage, episodes: list[Episode], city: City, stat: StageStats
+) -> None:
+    if stat.errors:
+        state = "failed"
+    elif stat.skipped:
+        state = "deferred"
+    else:
+        state = "complete-empty" if stage.name in _STAGE_EMPTY_OK else "complete"
+    for ep in episodes:
+        ep.stage_completion[stage.name] = {
+            "state": state,
+            "version": stage.version,
+            "input_fingerprint": stage_input_fingerprint(stage, ep, city),
+            "completed_at": datetime.now(UTC).isoformat(),
+        }
 
 
 class TagsStage:
@@ -4057,15 +4199,29 @@ def run_stages(
     for stage in stages:
         if allowed is not None and stage.name not in allowed:
             continue
+        dirty = [ep for ep in episodes if stage_is_dirty(stage, ep, city)]
+        clean = len(episodes) - len(dirty)
+        if not dirty:
+            stat = StageStats(stage.name, reused=clean)
+            out.append(stat)
+            if not quiet:
+                print(
+                    f"[enrich] stage skip slug={city.slug} provider={city.provider} "
+                    f"stage={stage.name} episodes={len(episodes)} reason=completion-cache",
+                    flush=True,
+                )
+            continue
         if not quiet:
             print(
                 f"[enrich] stage start slug={city.slug} provider={city.provider} "
-                f"stage={stage.name} episodes={len(episodes)}",
+                f"stage={stage.name} episodes={len(dirty)} clean={clean}",
                 flush=True,
             )
         t0 = time.perf_counter()
-        stat = stage.process(provider, city, episodes, ctx)
+        stat = stage.process(provider, city, dirty, ctx)
         stat.seconds = time.perf_counter() - t0
+        stat.reused += clean
+        _mark_stage_complete(stage, dirty, city, stat)
         if not quiet:
             print(
                 f"[enrich] stage done slug={city.slug} provider={city.provider} stage={stage.name} "

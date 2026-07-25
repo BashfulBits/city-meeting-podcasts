@@ -152,6 +152,28 @@ def test_run_stages_returns_stats_per_stage(tmp_path):
     assert eps[0].links.get("canonical_video")
 
 
+def test_completion_cache_skips_unchanged_episode_and_invalidates_on_input_change(tmp_path):
+    calls = []
+
+    class MarkerStage:
+        name = "marker"
+        version = "1"
+
+        def process(self, provider, city, episodes, ctx):
+            calls.append([ep.uid for ep in episodes])
+            return StageStats(self.name, ran=len(episodes))
+
+    episode = _ep("g1")
+    stage = MarkerStage()
+    run_stages(FakeProvider(), _city(), [episode], [stage], _ctx(tmp_path))
+    run_stages(FakeProvider(), _city(), [episode], [stage], _ctx(tmp_path))
+    assert calls == [["uid-g1"]]
+
+    episode.video_url = "https://src/new.m3u8"
+    run_stages(FakeProvider(), _city(), [episode], [stage], _ctx(tmp_path))
+    assert calls == [["uid-g1"], ["uid-g1"]]
+
+
 def test_run_stages_halts_after_provider_throttle(tmp_path):
     calls: list[str] = []
 
