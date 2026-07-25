@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "citypods-swagit-list-proxy",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-20",
+  "workers_dev": true,
+  "vars": {
+    "ALLOWED_HOSTS": "austintx.new.swagit.com,dallastx.new.swagit.com,dentontx.new.swagit.com,addisontx.new.swagit.com,wacotx.new.swagit.com"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1
+  }
+}
