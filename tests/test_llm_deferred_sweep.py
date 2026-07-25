@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.llm_deferred import DeferredSnapshot, DeferredSnapshotEntry
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
 from scripts import llm_deferred_sweep
 
@@ -11,6 +12,20 @@ from scripts import llm_deferred_sweep
 def _handle(recipe_hash: str) -> JobHandle:
     return JobHandle(
         task="tag", recipe_hash=recipe_hash, backend="litellm", ref="deferred:" + recipe_hash
+    )
+
+
+def _snapshot(handles):
+    return DeferredSnapshot(
+        [
+            DeferredSnapshotEntry(
+                key=f"state/llm_deferred/{handle.recipe_hash}.json",
+                last_modified=None,
+                data={"status": "pending", "created_at": "2026-01-01T00:00:00+00:00"},
+                decoded=handle,
+            )
+            for handle in handles
+        ]
     )
 
 
@@ -41,9 +56,14 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
 
     handles = [_handle("recipe-1"), _handle("recipe-2"), _handle("recipe-3")]
-    monkeypatch.setattr(llm_deferred_sweep, "iter_pending_deferred", lambda _storage: iter(handles))
-    monkeypatch.setattr(llm_deferred_sweep, "list_pending_deferred", lambda _storage: handles)
-    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_deferred", lambda _storage: 2)
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot: 2,
+    )
 
     results = {
         "recipe-1": JobResult(task="tag", recipe_hash="recipe-1", output={}, model="m"),
@@ -75,8 +95,11 @@ def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     fake_storage = SimpleNamespace(cas_capable=True)
     monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
-    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_deferred", lambda _storage: 0)
-    monkeypatch.setattr(llm_deferred_sweep, "list_pending_deferred", lambda _storage: [])
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot: 0,
+    )
 
     policy = LLMRequestPolicy(
         allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="topic-tags"
@@ -94,7 +117,9 @@ def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
         )
         for idx in range(3)
     ]
-    monkeypatch.setattr(llm_deferred_sweep, "iter_pending_deferred", lambda _storage: iter(handles))
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+    )
 
     reconciled = []
 
@@ -123,8 +148,11 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     fake_storage = SimpleNamespace(cas_capable=True)
     monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
-    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_deferred", lambda _storage: 0)
-    monkeypatch.setattr(llm_deferred_sweep, "list_pending_deferred", lambda _storage: [])
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot: 0,
+    )
 
     shared_models = ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")
 
@@ -150,7 +178,9 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
             purpose="civic-platforms",
         ),
     ]
-    monkeypatch.setattr(llm_deferred_sweep, "iter_pending_deferred", lambda _storage: iter(handles))
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+    )
 
     reconciled = []
 

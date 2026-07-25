@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import tempfile
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,42 @@ DEFERRED_PREFIX = "state/llm_deferred/"
 # hit right after a rollover) plus slack for the sweep's own daily cadence. `prune_expired_deferred`
 # never deletes a record before this *or* the caller's own `deadline_at`, whichever is later.
 DEFAULT_TTL_DAYS = 38
+
+
+@dataclass
+class DeferredSnapshotEntry:
+    """One decoded registry object retained by a sweep snapshot."""
+
+    key: str
+    last_modified: Any
+    data: Mapping[str, Any] | None
+    decoded: JobResult | JobHandle | None
+    deleted: bool = False
+
+
+@dataclass
+class DeferredSnapshot:
+    """A single LIST plus body reads of the deferred registry.
+
+    The sweep mutates ``decoded`` as reconciliation completes, so its final pending count does
+    not require downloading the registry again.  ``data`` remains the original body for TTL and
+    reservation-cleanup decisions.
+    """
+
+    entries: list[DeferredSnapshotEntry]
+
+    def pending(self):
+        for entry in self.entries:
+            if not entry.deleted and isinstance(entry.decoded, JobHandle):
+                yield entry.decoded
+
+    def mark_completed(self, recipe_hash: str, result: JobResult) -> None:
+        for entry in self.entries:
+            if isinstance(entry.decoded, JobHandle) and entry.decoded.recipe_hash == recipe_hash:
+                entry.decoded = result
+                if isinstance(entry.data, Mapping):
+                    entry.data = {**entry.data, "status": "completed"}
+                return
 
 
 def deferred_key(recipe_hash: str) -> str:
@@ -222,9 +259,29 @@ def iter_pending_deferred(storage):
             yield decoded
 
 
+def load_deferred_snapshot(storage) -> DeferredSnapshot:
+    """Read and decode every registry record once, ordered by last modification."""
+    listing = sorted(
+        storage.list_objects(DEFERRED_PREFIX),
+        key=lambda item: (item[1] is None, item[1]),
+    )
+    entries = []
+    for key, last_modified in listing:
+        data = _read_json(storage, key)
+        entries.append(
+            DeferredSnapshotEntry(
+                key=key,
+                last_modified=last_modified,
+                data=data if isinstance(data, Mapping) else None,
+                decoded=_decode_record(data),
+            )
+        )
+    return DeferredSnapshot(entries)
+
+
 def list_pending_deferred(storage) -> list[JobHandle]:
     """Every currently-pending record in the registry -- what the sweep processes."""
-    return list(iter_pending_deferred(storage))
+    return list(load_deferred_snapshot(storage).pending())
 
 
 def prune_expired_deferred(
@@ -239,10 +296,25 @@ def prune_expired_deferred(
     have its still-pending request silently vanish before that deadline arrives. Returns the
     number of records deleted.
     """
+    return prune_expired_deferred_snapshot(
+        storage, load_deferred_snapshot(storage), now=now, ttl_days=ttl_days
+    )
+
+
+def prune_expired_deferred_snapshot(
+    storage,
+    snapshot: DeferredSnapshot,
+    *,
+    now: datetime | None = None,
+    ttl_days: float = DEFAULT_TTL_DAYS,
+) -> int:
+    """Prune records using an already-loaded snapshot, without a second registry traversal."""
     now = now or datetime.now(UTC)
     deleted = 0
-    for key, _ in storage.list_objects(DEFERRED_PREFIX):
-        data = _read_json(storage, key)
+    for entry in snapshot.entries:
+        if entry.deleted:
+            continue
+        key, data = entry.key, entry.data
         if not isinstance(data, Mapping):
             continue
         created_raw = data.get("created_at")
@@ -264,6 +336,7 @@ def prune_expired_deferred(
         if now > expires_at:
             _release_abandoned_reservation(storage, data, now=now)
             storage.delete(key)
+            entry.deleted = True
             deleted += 1
     return deleted
 
@@ -296,10 +369,14 @@ def _release_abandoned_reservation(storage, data: Mapping[str, Any], *, now: dat
 __all__ = [
     "DEFAULT_TTL_DAYS",
     "DEFERRED_PREFIX",
+    "DeferredSnapshot",
+    "DeferredSnapshotEntry",
     "deferred_key",
+    "load_deferred_snapshot",
     "list_pending_deferred",
     "look_up_deferred",
     "iter_pending_deferred",
     "prune_expired_deferred",
+    "prune_expired_deferred_snapshot",
     "write_deferred",
 ]

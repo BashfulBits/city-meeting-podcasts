@@ -298,7 +298,9 @@ Mistral's ~1–2 RPM limit, Gemini's free tier doesn't need a process that outli
 window, not a blocking constraint. A caller that gets deferred (nothing eligible yet, a real rate limit,
 or a genuine in-flight Mistral dispatch) is picked up later via a portable `JobHandle`/`reconcile()`, a
 B2-backed deferred-request registry, and a once-daily sweep workflow timed to DeepSeek's off-peak window
-(review/33 §10.7) — no caller needs its own retry cadence to eventually get a result. Provider batch
+(review/33 §10.7) — no caller needs its own retry cadence to eventually get a result. The daily sweep
+reuses one decoded registry snapshot for selection, expiry pruning, and its final pending count
+(GH#1020), avoiding repeated B2 reads without changing the registry schema. Provider batch
 capability is deferred until a real batch-capable provider is confirmed. The city-onboarding consumer
 (`citypods/discovery/classify.py`) requires a free, immediate result (`allow_paid=False`, no deadline) —
 it acts on the result synchronously and already owns its own daily retry for "not eligible now"; the
