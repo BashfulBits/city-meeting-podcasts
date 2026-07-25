@@ -45,8 +45,11 @@ Phase R (Research-Tool Surface)._
   were not wired into the tag workflow. The tag and Audio lanes now receive the proxy configuration;
   `/videos/{id}` chapter/legacy-segment pages and `/videos/{id}/download` resolution use the same
   direct-first fallback as lists. The Worker remains narrowly allowlisted and never follows a
-  download redirect; the Python provider validates its returned target before media use. This is a
-  transport-only correction with no pipeline-version bump or artifact backfill.
+  download redirect; the Python provider validates its returned target before media use. Because
+  redirects are disabled on these fetches, `fetch_chapters`/`_page_segment_objects` now require a
+  2xx response rather than merely rejecting `>=400`, so a bare 3xx is rejected instead of being
+  silently parsed as an empty page. This is a transport-only correction with no pipeline-version
+  bump or artifact backfill.
 
 - **Unchanged episodes now use durable dirty-stage completion markers (GH#1013).** Each episode
   records a versioned input fingerprint and terminal state for enrichment stages, including
