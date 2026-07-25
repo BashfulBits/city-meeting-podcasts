@@ -26,6 +26,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from posixpath import normpath
 
 STATE_PREFIX = "state"
 
@@ -180,9 +181,9 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None,
         path_obj = Path(raw_path)
         if path_obj.is_absolute():
             raise ValueError(f"only_paths entry must be relative: {raw_path!r}")
-        rel = path_obj.as_posix()
-        while rel.startswith("./"):
-            rel = rel[2:]
+        rel = normpath(path_obj.as_posix())
+        if rel in {".", ".."} or rel.startswith("../"):
+            raise ValueError(f"only_paths entry is not a valid relative file: {raw_path!r}")
         exact_paths.add(rel)
     exact_paths = frozenset(exact_paths)
     if only_paths is not None:

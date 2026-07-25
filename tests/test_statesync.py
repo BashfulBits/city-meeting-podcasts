@@ -136,6 +136,11 @@ def test_push_state_only_paths_uploads_exact_files(tmp_path):
     with pytest.raises(ValueError):
         push_state(bucket, state_dir, only_paths=["../outside.json"])
 
+    # Interior dot segments must canonicalize before the CAS guard and upload key are selected.
+    (state_dir / "llm_budget.json").write_text("{}")
+    assert push_state(bucket, state_dir, only_paths=["run_events/../llm_budget.json"]) == 1
+    assert bucket.exists(f"{STATE_PREFIX}/llm_budget.json")
+
 
 def test_scoped_run_event_push_does_not_delete_prior_events(tmp_path):
     """Scoped shard pushes are upload-only, so later ASR events do not erase audio events."""
