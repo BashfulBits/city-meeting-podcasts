@@ -91,13 +91,6 @@ def is_transient_storage_error(exc: BaseException) -> bool:
     """
     if isinstance(exc, AttributeError):
         return "StreamingChecksumBody" in str(exc) and "strip" in str(exc)
-    # Keep the connectivity classifier independent from the optional boto3 import below.  Besides
-    # making this helper usable by lightweight callers/tests, this preserves injected/wrapped
-    # transport exceptions even when the process that classifies them does not have the complete
-    # S3 SDK installed.  The previous ordering returned False as soon as the boto imports failed,
-    # before consulting the deliberately lazy ``transient_download_errors`` contract.
-    if isinstance(exc, transient_download_errors()):
-        return True
     try:
         from boto3.exceptions import S3UploadFailedError
         from botocore.exceptions import ClientError
