@@ -60,6 +60,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Scoped lanes now upload only the run-event file created by the current run (GH#1016).** The
+  append-only `run_events/` push uses an exact relative path returned by the run-history writer,
+  so retained historical events are not rescanned and re-uploaded on every Audio/ASR shard. The
+  general prefix-scoped state sync API remains unchanged for source ownership; no pipeline-version
+  bump or artifact backfill is required.
+
 - **Archive rows that the source retention cap will immediately prune no longer consume document,
   timeline, audio, or ASR work ([GH#1025](https://github.com/BashfulBits/city-meeting-podcasts/issues/1025)).**
   Planning and final persistence now share one deterministic prospective-retention helper

@@ -138,7 +138,7 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
         return sum(1 for got in pool.map(_restore_one, keys) if got)
 
 
-def push_state(storage, state_dir: Path, *, only_prefixes=None, log=None) -> int:
+def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None, log=None) -> int:
     """Upload state files under ``state_dir`` to the bucket's ``state/`` prefix.
     Returns the number of files pushed. No-op for backends without sync support.
 
@@ -149,6 +149,10 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, log=None) -> int
     ``only_prefixes=["sources/<key>/"]`` — or it would re-upload its now-stale copy of a sibling
     shard's record (the cross-shard clobber, review/12 §H6). ``None`` (default) pushes the whole
     snapshot, which is correct for the single-writer (unsharded enrich) case.
+
+    ``only_paths`` is an exact relative-path scope for callers that know the one file they just
+    created. It is mutually exclusive with ``only_prefixes`` and avoids rescanning/re-uploading
+    historical files under an append-only directory such as ``run_events/``.
 
     Logs a start count and one line per file (``log``, default ``print(..., flush=True)``): this
     is the run's last write before it's considered durably persisted, and it used to be a silent
@@ -168,17 +172,45 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, log=None) -> int
     state_dir = Path(state_dir)
     if not state_dir.exists():
         return 0
+    if only_prefixes is not None and only_paths is not None:
+        raise ValueError("only_prefixes and only_paths are mutually exclusive")
     prefixes = tuple(only_prefixes) if only_prefixes is not None else None
-    candidates = []
-    for path in sorted(state_dir.rglob("*")):
-        if not path.is_file() or path.suffix not in _SUFFIXES:
-            continue
-        rel = path.relative_to(state_dir).as_posix()
-        if prefixes is not None and not rel.startswith(prefixes):
-            continue
-        if _is_cas_managed(storage, f"{STATE_PREFIX}/{rel}"):  # CAS-managed on R2; never bulk-push
-            continue
-        candidates.append(rel)
+    exact_paths = set()
+    for raw_path in only_paths or ():
+        path_obj = Path(raw_path)
+        if path_obj.is_absolute():
+            raise ValueError(f"only_paths entry must be relative: {raw_path!r}")
+        rel = path_obj.as_posix()
+        while rel.startswith("./"):
+            rel = rel[2:]
+        exact_paths.add(rel)
+    exact_paths = frozenset(exact_paths)
+    if only_paths is not None:
+        # Exact-path callers already know the files they created; avoid walking the retained
+        # state tree just to rediscover one append-only event.
+        candidates = []
+        for rel in sorted(exact_paths):
+            path = state_dir / rel
+            try:
+                path.resolve().relative_to(state_dir.resolve())
+            except ValueError:
+                raise ValueError(f"only_paths entry escapes state_dir: {rel!r}") from None
+            if not path.is_file() or path.suffix not in _SUFFIXES:
+                continue
+            if _is_cas_managed(storage, f"{STATE_PREFIX}/{rel}"):
+                continue
+            candidates.append(rel)
+    else:
+        candidates = []
+        for path in sorted(state_dir.rglob("*")):
+            if not path.is_file() or path.suffix not in _SUFFIXES:
+                continue
+            rel = path.relative_to(state_dir).as_posix()
+            if prefixes is not None and not rel.startswith(prefixes):
+                continue
+            if _is_cas_managed(storage, f"{STATE_PREFIX}/{rel}"):
+                continue
+            candidates.append(rel)
     if not candidates:
         return 0
     emit(f"state: pushing {len(candidates)} file(s) to durable storage")
