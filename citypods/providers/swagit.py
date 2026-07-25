@@ -34,6 +34,7 @@ from citypods.http import DEFAULT_TIMEOUT, make_session
 from citypods.models import ChangeToken, Episode
 from citypods.providers.base import MEDIA_DEAD, MEDIA_DEFERRED, MediaUnavailable, ProviderError
 from citypods.security import validate_source_url
+from citypods.swagit_proxy import get_with_worker_fallback
 
 # Swagit list pages render one table row per recording.  Its first ``/videos/{id}``
 # anchor names the meeting; the separate Links cell may provide first-party
@@ -274,7 +275,9 @@ class SwagitProvider:
         with make_session() as session:
             for url in _list_urls(source):
                 try:
-                    first = session.get(url, timeout=DEFAULT_TIMEOUT)
+                    # Direct-first, single-Worker-attempt-on-403 (GH#353 shape, PR #1011): a
+                    # no-op pass-through to the plain direct GET when SWAGIT_PROXY_* is unset.
+                    first = get_with_worker_fallback(session, url, timeout=DEFAULT_TIMEOUT)
                 except requests.RequestException as exc:
                     raise ProviderError(f"GET {url} failed: {exc}") from exc
                 if first.status_code >= 400:
@@ -283,7 +286,9 @@ class SwagitProvider:
                 for page in range(2, _page_count(first.content) + 1):
                     page_url = _page_url(url, page)
                     try:
-                        response = session.get(page_url, timeout=DEFAULT_TIMEOUT)
+                        response = get_with_worker_fallback(
+                            session, page_url, timeout=DEFAULT_TIMEOUT
+                        )
                     except requests.RequestException as exc:
                         raise ProviderError(f"GET {page_url} failed: {exc}") from exc
                     if response.status_code >= 400:
