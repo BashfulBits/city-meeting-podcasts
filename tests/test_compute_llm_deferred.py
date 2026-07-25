@@ -161,9 +161,30 @@ def test_snapshot_reads_each_registry_record_once_and_prune_reuses_it():
     prune_expired_deferred_snapshot(
         storage, snapshot, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1)
     )
-    # Pruning uses the decoded snapshot; it does not list or download the records again.
+    # Pruning uses the decoded snapshot; it only rereads expiry candidates for a conflict-safe
+    # compare, never listing the registry or downloading non-expired records again.
     assert storage.list_calls == 1
-    assert storage.class_b == 3
+    assert storage.class_b == 6
+
+
+def test_snapshot_prune_does_not_delete_a_record_changed_after_snapshot():
+    storage = MemStorage()
+    write_deferred(storage, "recipe-1", _pending_handle("recipe-1"), now=NOW)
+    snapshot = load_deferred_snapshot(storage)
+
+    # A later completion wins over the stale pending snapshot.
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={"done": True}, model="m"),
+        now=NOW + timedelta(days=1),
+    )
+
+    deleted = prune_expired_deferred_snapshot(
+        storage, snapshot, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1)
+    )
+    assert deleted == 0
+    assert isinstance(look_up_deferred(storage, "recipe-1"), JobResult)
 
 
 def test_list_pending_deferred_returns_only_pending_records():

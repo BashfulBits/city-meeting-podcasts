@@ -334,6 +334,12 @@ def prune_expired_deferred_snapshot(
                 except (TypeError, ValueError):
                     pass
         if now > expires_at:
+            # The snapshot is intentionally reused across the sweep, but another caller may have
+            # completed or re-deferred this key since it was loaded.  Bulk storage has no
+            # conditional-delete primitive, so reread only expiry candidates and compare the
+            # complete decoded body before releasing/deleting anything.
+            if _read_json(storage, key) != data:
+                continue
             _release_abandoned_reservation(storage, data, now=now)
             storage.delete(key)
             entry.deleted = True
