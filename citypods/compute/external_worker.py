@@ -1657,7 +1657,21 @@ def run_internal_worker(
     start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
     backstop_deadline = now + backstop_min * 60 if backstop_min > 0 else None
     handoff_deadline = now + handoff_min * 60 if handoff_min > 0 else None
-    start_stop = StopSignal(deadline=start_deadline, superseded=_newer_run_queued)
+    safe_handoff_deadline = (
+        handoff_deadline - 60 * max(0.0, handoff_reserve_min)
+        if handoff_deadline is not None
+        else None
+    )
+    # The reserve-adjusted handoff is the normal admission boundary.  Keep the legacy start
+    # cutoff as a fallback for deployments that disable handoff scheduling, and the hard backstop
+    # as the final fallback when both configured windows are unbounded.
+    admission_deadline = safe_handoff_deadline or start_deadline or backstop_deadline
+    admission_minutes = (
+        handoff_min - max(0.0, handoff_reserve_min)
+        if handoff_deadline is not None
+        else start_cutoff_min
+    )
+    start_stop = StopSignal(deadline=admission_deadline, superseded=_newer_run_queued)
     # A queued successor closes admission through ``start_stop`` but must not terminate a healthy
     # claim already in native inference.  Only the explicit interrupt or the hard backstop may
     # stop active work; lease renewal continues while that claim drains.
@@ -1684,7 +1698,7 @@ def run_internal_worker(
         stop_requested=lambda: interrupt_requested() or active_stop(),
     )
     print(
-        f"budget: transcribe start cutoff {start_cutoff_min:.0f}m, "
+        f"budget: transcribe admission {admission_minutes:.0f}m, "
         f"handoff {handoff_min:.0f}m (reserve {handoff_reserve_min:.0f}m), "
         f"claim backstop {backstop_min:.0f}m, hard local duration cap "
         f"{float(defaults.get('asr_local_max_duration_hours', 4)):.1f}h",
