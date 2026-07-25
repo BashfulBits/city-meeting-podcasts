@@ -12,7 +12,7 @@ from citypods import run
 from citypods.models import AgendaRecord, CalendarIndex, City, Episode
 from citypods.providers import get_provider, register
 from citypods.providers.base import ProviderError
-from citypods.records import feed_content_hash, meeting_page_hash
+from citypods.records import episode_to_record, feed_content_hash, meeting_page_hash
 from citypods.stages import StageContext, StageStats
 from citypods.state import build_fingerprint
 from citypods.timeline import Segment, Timeline
@@ -1357,6 +1357,153 @@ def test_global_queue_runs_document_stages_once_per_complete_source(tmp_path, mo
 
     assert events[0] == "links,agenda_text,minutes_text:uid-e1,uid-e2"
     assert events[1:3] == ["audio:uid-e1", "audio:uid-e2"]
+
+
+def _retention_city(*, max_episodes=6000):
+    return City(
+        slug="retention-city",
+        provider="granicus",
+        source={"feed_url": "https://x.granicus.com/f"},
+        podcast_title="Retention",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        max_episodes=max_episodes,
+        extract_audio=True,
+    )
+
+
+def _retention_episodes(count):
+    newest = datetime(2026, 7, 24, tzinfo=UTC)
+    episodes = []
+    for index in range(count):
+        ep = _ep(f"archive-{index}")
+        ep.published = newest - timedelta(minutes=index)
+        episodes.append(ep)
+    return episodes
+
+
+def test_retention_projection_suppresses_full_granicus_overflow_before_planning(capsys):
+    """GH#1025: a 5,480-row fetch with a 5,000-row source cap must expose only the exact
+    post-persistence survivors to the global heavy-work queue, deterministically on every run."""
+    city = _retention_city()
+    episodes = _retention_episodes(5480)
+
+    class _Pipeline:
+        max_archive_items = 5000
+        max_archive_age_years = 1000
+
+    persisted = {ep.uid: episode_to_record(ep) for ep in episodes[:5000]}
+    first = run._retained_working_set(_Pipeline(), city, episodes, episodes, persisted)
+    second = run._retained_working_set(_Pipeline(), city, episodes, episodes, persisted)
+
+    assert len(first) == len(second) == 5000
+    assert [ep.uid for ep in first] == [ep.uid for ep in second]
+    assert {ep.uid for ep in first} == {ep.uid for ep in episodes[:5000]}
+    prepared = {
+        "source": {
+            "city": city,
+            "episodes": episodes,
+            "retained_episodes": first,
+        }
+    }
+    planned = run._order_global_candidates(prepared, policy=None)
+    assert len(planned) == 5000
+    assert not ({ep.uid for _, ep in planned} & {ep.uid for ep in episodes[5000:]})
+    output = capsys.readouterr().out
+    assert output.count("suppressed_rows=480") == 2
+
+
+def test_retention_projection_handles_cap_changes_repairs_and_missing_audio():
+    """Cap changes use the same deterministic policy as persistence. Repair markers outside the
+    retained archive cannot force work, while a retained row lacking its audio pointer still can."""
+    city = _retention_city(max_episodes=10)
+    episodes = _retention_episodes(6)
+    persisted = {ep.uid: episode_to_record(ep) for ep in episodes}
+    persisted[episodes[-1].uid]["integrity"] = {"repair_audio": True}
+    episodes[0].hosted_audio_url = None
+
+    class _Pipeline:
+        max_archive_items = 3
+        max_archive_age_years = 1000
+
+    retained = run._retained_working_set(_Pipeline(), city, episodes, episodes, persisted)
+    assert [ep.uid for ep in retained] == [ep.uid for ep in episodes[:3]]
+    assert retained[0].hosted_audio_url is None
+    assert episodes[-1].uid not in {ep.uid for ep in retained}
+
+    _Pipeline.max_archive_items = 5
+    raised = run._retained_working_set(_Pipeline(), city, episodes, episodes, persisted)
+    assert [ep.uid for ep in raised] == [ep.uid for ep in episodes[:5]]
+
+    _Pipeline.max_archive_items = 2
+    lowered = run._retained_working_set(_Pipeline(), city, episodes, episodes, persisted)
+    assert [ep.uid for ep in lowered] == [ep.uid for ep in episodes[:2]]
+
+
+def test_global_queue_never_runs_stages_for_rows_final_persistence_prunes(monkeypatch):
+    """The retention boundary applies to source and per-item stages on repeated runs.
+
+    Final persistence still receives every fresh observation, keeping append→prune authoritative.
+    """
+    city = _retention_city(max_episodes=10)
+    episodes = _retention_episodes(4)
+    stage_batches = []
+    persisted_batches = []
+
+    class _Stage:
+        def __init__(self, name):
+            self.name = name
+
+    class _Pipeline:
+        max_archive_items = 2
+        max_archive_age_years = 1000
+
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None
+            )
+            self.stages = [_Stage("links"), _Stage("audio")]
+
+        def fetch_merge(self, _city, _key):
+            records = {ep.uid: episode_to_record(ep) for ep in episodes[:2]}
+            return object(), episodes, records, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, batch, _persisted, *, notes):
+            persisted_batches.append([ep.uid for ep in batch])
+
+    def _run_stages(_provider, _city, batch, stages, _ctx, *, quiet):
+        stage_batches.append(([stage.name for stage in stages], [ep.uid for ep in batch]))
+        return [StageStats(stage.name, ran=len(batch)) for stage in stages]
+
+    monkeypatch.setattr(run, "run_stages", _run_stages)
+    pipeline = _Pipeline()
+    for _ in range(2):
+        run._run_enrich_global_queue(
+            pipeline,
+            [city],
+            source_cache=None,
+            max_workers=1,
+            policy=None,
+        )
+
+    retained_uids = [ep.uid for ep in episodes[:2]]
+    suppressed_uids = {ep.uid for ep in episodes[2:]}
+    assert stage_batches == [
+        (["links"], retained_uids),
+        (["audio"], [retained_uids[0]]),
+        (["audio"], [retained_uids[1]]),
+        (["links"], retained_uids),
+        (["audio"], [retained_uids[0]]),
+        (["audio"], [retained_uids[1]]),
+    ]
+    assert all(not (set(batch) & suppressed_uids) for _, batch in stage_batches)
+    # Each run checkpoints after audio and again at completion; both writes keep the full fresh
+    # observation set so the single shared persistence boundary remains authoritative.
+    assert persisted_batches == [[ep.uid for ep in episodes]] * 4
 
 
 def test_repeat_persist_source_is_idempotent(tmp_path):

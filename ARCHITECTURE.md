@@ -148,6 +148,16 @@ configured city entity are assigned to one shard. Within that process, `AudioArt
 identical `(provider, stable uid, audio recipe)` candidates: one alias encodes or reuses the artifact
 and every other source-local record adopts that single CAS pointer (GH#421).
 
+Source archive retention is also a planning boundary, not merely an end-of-run cleanup (GH#1025).
+Before any document, timeline, audio, or ASR stage is planned, `project_retained_archive()` applies the
+same deterministic `merge_records()` → `prune_archive()` operation used by `persist_source()`. Only
+fresh observations whose stable UIDs survive that projection enter enrichment; the complete provider
+observation set remains available for cheap counts and the authoritative append/prune write. This
+prevents archive-first providers from repeatedly downloading and crediting an old content-addressed
+artifact that the same run would immediately discard. Normal repair flags do not bypass retention;
+raising the source cap is the explicit way to make an excluded row eligible again. No audio, ASR, or
+other output recipe changed, so this boundary creates no artifact backfill.
+
 ## Module map (`citypods/`)
 
 | Area | Modules |

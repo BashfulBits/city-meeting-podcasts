@@ -1395,6 +1395,30 @@ def merge_records(persisted: dict, fresh: dict) -> dict:
     return {**persisted, **fresh}
 
 
+def project_retained_archive(
+    persisted: dict,
+    fresh: dict,
+    *,
+    max_items: int,
+    max_age_years: float,
+    now=None,
+) -> dict:
+    """Return the exact source archive that would survive the configured retention policy.
+
+    This is deliberately the single merge→prune boundary used both before expensive stage
+    planning and when records are finally persisted.  Archive-first providers can expose more
+    rows than the durable source cap; planning from the unbounded fresh set would otherwise
+    download/decode media for rows that this same run immediately drops, then repeat forever
+    because their derived fields can never be restored from the record store (GH#1025).
+    """
+    return prune_archive(
+        merge_records(persisted, fresh),
+        max_items=max_items,
+        max_age_years=max_age_years,
+        now=now,
+    )
+
+
 # --- cross-lane write isolation (review/12 §H6) ----------------------------------------
 #
 # The expensive, independently-owned, content-addressed derived artifacts that live as their own
@@ -1622,11 +1646,10 @@ def merge_preserving_foreign(
 
 def prune_archive(records: dict, *, max_items: int, max_age_years: float, now=None) -> dict:
     """Bound the otherwise append-only archive: keep the newest ``max_items`` records and drop
-    any older than ``max_age_years``. Defaults are set arbitrarily high (see build()), so this
-    is a no-op in normal operation — but the lever exists so retention can be ratcheted down
-    later (a pruned record's audio key falls out of ``referenced_audio_keys`` and the orphan GC
-    reclaims its audio on the usual cycle). Records with an unparseable ``published`` are kept
-    (fail safe — never drop content we can't date)."""
+    any older than ``max_age_years``. A pruned record's audio key falls out of
+    ``referenced_audio_keys`` and the orphan GC reclaims its audio on the usual cycle. Records with
+    an unparseable ``published`` are exempt from age pruning (fail safe — never age out content we
+    can't date), but still participate in the source-wide item cap."""
     now = now or datetime.now(UTC)
     cutoff = now.timestamp() - max_age_years * 365.25 * 86400
 

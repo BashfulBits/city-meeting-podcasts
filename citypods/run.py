@@ -23,6 +23,7 @@ from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import nullcontext as _nullcontext
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.artwork import render_cover
@@ -73,10 +74,9 @@ from citypods.records import (
     merge_calendar_backfill,
     merge_calendar_records,
     merge_persisted,
-    merge_records,
     migrate_legacy_manifests,
+    project_retained_archive,
     protected_blocks_for_lane,
-    prune_archive,
     reconcile_cross_feed_episodes,
     record_to_episode,
     save_calendar_records,
@@ -132,9 +132,9 @@ from citypods.statesync import (
 from citypods.storage import make_storage
 from citypods.transcript_quality import load_quality_config, load_quality_routes
 
-# Retention caps for the append-only archive (issue #109). Deliberately set arbitrarily high:
-# nothing is pruned in normal operation, but the lever exists so retention can be ratcheted down
-# later (the admin/usage report shows the storage cost of keeping old recordings around).
+# Retention caps for the append-only archive (issue #109). These bound source growth; provider
+# observations outside the resulting archive are excluded from enrichment before final persistence
+# applies the identical projection (GH#1025).
 DEFAULT_MAX_ARCHIVE_ITEMS = 5000
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
@@ -164,6 +164,9 @@ class SourcePipeline:
         self.ctx = ctx
         self.max_archive_items = max_archive_items
         self.max_archive_age_years = max_archive_age_years
+        # One cutoff instant makes prospective planning and every incremental/final persistence
+        # checkpoint use an identical age boundary, even during a long-running enrich job.
+        self.retention_now = datetime.now(UTC)
         # The render phase writes only docs/: it persists no records, so a stale render push can't
         # clobber audio/transcripts written by the separate enrich workflow (review/12 §H6/H11b).
         self.persist_records = persist_records
@@ -419,10 +422,12 @@ class SourcePipeline:
         # left the provider window keeps its record + audio. Bounded by the (high) retention
         # caps so it never grows truly unbounded.
         fresh = {ep.uid: episode_to_record(ep) for ep in episodes if ep.uid}
-        combined = prune_archive(
-            merge_records(persisted, fresh),
+        combined = project_retained_archive(
+            persisted,
+            fresh,
             max_items=self.max_archive_items,
             max_age_years=self.max_archive_age_years,
+            now=self.retention_now,
         )
         archived = len(combined) - len(fresh)
         if archived > 0:
@@ -462,21 +467,28 @@ class SourcePipeline:
                 flush=True,
             )
             provider, episodes, persisted, seeded = self.fetch_merge(city, key)
+            persist_episodes = self._aggregate_persist.pop(key, episodes)
+            work_episodes = _retained_working_set(
+                self,
+                city,
+                episodes,
+                persist_episodes,
+                persisted,
+            )
             if self.ctx.lane != "audio":
                 _normalize_episode_durations_for_dispatch(
                     key,
-                    episodes,
+                    work_episodes,
                     storage=self.ctx.storage,
                     ffmpeg_binary=getattr(self.ctx.ffmpeg, "binary", "ffmpeg"),
                     allow_probe=not self.ctx.dry_run,
                     stop=self.ctx.stop,
                 )
-            stats = run_stages(provider, city, episodes, self.stages, self.ctx)
+            stats = run_stages(provider, city, work_episodes, self.stages, self.ctx)
             notes = [s.note() for s in stats if s.note()]
             self.accumulate_stats(stats)
             if seeded:
                 notes.append(f"{seeded} legacy")
-            persist_episodes = self._aggregate_persist.pop(key, episodes)
             archive = self.persist_source(key, persist_episodes, persisted, notes=notes)
             if city.source.get("aggregate"):
                 # The durable source archive retains suppressed observations, while callers
@@ -1126,6 +1138,52 @@ class _ResourceHeartbeat:
             pass
 
 
+def _retained_working_set(
+    pipeline,
+    city: City,
+    episodes: list[Episode],
+    persist_episodes: list[Episode],
+    persisted: dict,
+) -> list[Episode]:
+    """Filter fresh observations to the UIDs that final persistence will actually retain.
+
+    Keep ``persist_episodes`` intact for the authoritative append→prune write.  Only the list
+    handed to enrichment stages is filtered.  This makes a source-wide retention cap a planning
+    boundary as well as a persistence boundary: an archive overflow row can still be observed and
+    counted cheaply, but cannot consume timeline/audio/ASR work that would be discarded at the end
+    of the same run (GH#1025).
+
+    ``getattr`` defaults keep small test/dry orchestration doubles compatible; production always
+    supplies a real :class:`SourcePipeline` with the configured values.
+    """
+    max_items = int(getattr(pipeline, "max_archive_items", DEFAULT_MAX_ARCHIVE_ITEMS))
+    max_age_years = float(getattr(pipeline, "max_archive_age_years", DEFAULT_MAX_ARCHIVE_AGE_YEARS))
+    fresh = {ep.uid: episode_to_record(ep) for ep in persist_episodes if ep.uid}
+    retained = project_retained_archive(
+        persisted,
+        fresh,
+        max_items=max_items,
+        max_age_years=max_age_years,
+        now=getattr(pipeline, "retention_now", None),
+    )
+    retained_uids = frozenset(retained)
+    working = [ep for ep in episodes if not ep.uid or ep.uid in retained_uids]
+
+    suppressed_rows = sum(1 for ep in persist_episodes if ep.uid and ep.uid not in retained_uids)
+    if suppressed_rows:
+        before = _materialize_set(episodes, city.max_episodes)
+        after_uids = {ep.uid or ep.guid for ep in _materialize_set(working, city.max_episodes)}
+        suppressed_candidates = sum(1 for ep in before if (ep.uid or ep.guid) not in after_uids)
+        print(
+            f"[enrich] retention plan slug={city.slug} provider={city.provider} "
+            f"fetched={len(persist_episodes)} retained={len(retained)} "
+            f"suppressed_rows={suppressed_rows} "
+            f"suppressed_candidates={suppressed_candidates} cap={max_items}",
+            flush=True,
+        )
+    return working
+
+
 def _order_global_candidates(prepared: dict, policy) -> list[tuple[str, Episode]]:
     """Build the global candidate queue — each prepared source's materialized set — ordered
     across sources by the backlog policy. Pure + unit-testable. ``prepared`` maps each
@@ -1136,7 +1194,10 @@ def _order_global_candidates(prepared: dict, policy) -> list[tuple[str, Episode]
     for key, st in prepared.items():
         city = st["city"]
         for ep in _materialize_set(
-            st["episodes"], city.max_episodes, policy=policy, city_slug=city.slug
+            st.get("retained_episodes", st["episodes"]),
+            city.max_episodes,
+            policy=policy,
+            city_slug=city.slug,
         ):
             candidates.append((key, ep))
     if policy is not None and policy.keys:
@@ -1278,6 +1339,16 @@ def _run_enrich_global_queue(
                 f"[enrich] cross-feed reconciled slug={state['city'].slug} duplicates={reconciled}",
                 flush=True,
             )
+    # The provider's full observation set remains available for final append→prune persistence,
+    # but only rows that will survive that exact retention policy may enter stage planning.
+    for state in prepared.values():
+        state["retained_episodes"] = _retained_working_set(
+            pipeline,
+            state["city"],
+            state["episodes"],
+            state.get("persist_episodes", state["episodes"]),
+            state["persisted"],
+        )
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
     # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). Neither
     # ProviderTranscriptDiarizeStage (works purely off an already-aligned transcript's text) nor
@@ -1295,7 +1366,7 @@ def _run_enrich_global_queue(
             key, st = item
             _normalize_episode_durations_for_dispatch(
                 key,
-                st["episodes"],
+                st["retained_episodes"],
                 storage=ctx.storage,
                 ffmpeg_binary=getattr(ctx.ffmpeg, "binary", "ffmpeg"),
                 allow_probe=not ctx.dry_run,
@@ -1344,7 +1415,12 @@ def _run_enrich_global_queue(
     if source_stages:
         for st in prepared.values():
             stats = run_stages(
-                st["provider"], st["city"], st["episodes"], source_stages, ctx, quiet=True
+                st["provider"],
+                st["city"],
+                st["retained_episodes"],
+                source_stages,
+                ctx,
+                quiet=True,
             )
             pipeline.accumulate_stats(stats)
 

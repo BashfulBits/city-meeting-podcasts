@@ -37,6 +37,18 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Archive rows that the source retention cap will immediately prune no longer consume document,
+  timeline, audio, or ASR work ([GH#1025](https://github.com/BashfulBits/city-meeting-podcasts/issues/1025)).**
+  Planning and final persistence now share one deterministic prospective-retention helper
+  (`merge_records` → `prune_archive`): the full provider observation set still reaches the
+  authoritative append/prune write, but only surviving stable UIDs enter enrichment. This breaks
+  the Granicus archive-expansion loop in which Fort Worth repeatedly downloaded/decoded old MP4s,
+  rediscovered existing content-addressed M4As as hundreds of audio “credits,” then discarded those
+  pointers under the 5,000-record cap and repeated the work next run. Bounded per-source logs report
+  fetched, retained, and suppressed counts without new B2 telemetry. Retained rows missing a real
+  pointer still use the existing credit path; repair flags do not bypass retention. There is no
+  pipeline-version bump and no artifact backfill.
+
 - **`select_route`'s pacing retry-time prediction could busy-retry a genuinely daily-exhausted
   route for hours instead of correctly waiting for the real reset, discovered live in the first
   production run of the deferred-sweep changes above.** `_next_quota_reset` offered "next minute"

@@ -27,6 +27,7 @@ from citypods.records import (
     merge_records,
     migrate_legacy_manifests,
     pending_transcribe_items,
+    project_retained_archive,
     protected_blocks_for_lane,
     prune_archive,
     reconcile_cross_feed_episodes,
@@ -1419,6 +1420,53 @@ def test_prune_archive_keeps_undated_records():
     records = {"dated": _rec("dated", 5), "undated": {"uid": "undated"}}
     kept = prune_archive(records, max_items=5000, max_age_years=1.0)
     assert "undated" in kept  # fail-safe: never drop content we can't date
+
+
+def test_project_retained_archive_matches_final_merge_then_prune_boundary():
+    now = datetime(2026, 7, 24, tzinfo=UTC)
+    persisted = {
+        "old": {"uid": "old", "published": "2026-07-01T00:00:00+00:00"},
+        "updated": {
+            "uid": "updated",
+            "published": "2026-07-20T00:00:00+00:00",
+            "title": "stale",
+        },
+    }
+    fresh = {
+        "updated": {
+            "uid": "updated",
+            "published": "2026-07-23T00:00:00+00:00",
+            "title": "fresh",
+        },
+        "new": {"uid": "new", "published": "2026-07-24T00:00:00+00:00"},
+    }
+
+    kept = project_retained_archive(
+        persisted,
+        fresh,
+        max_items=2,
+        max_age_years=1000,
+        now=now,
+    )
+
+    assert set(kept) == {"new", "updated"}
+    assert kept["updated"]["title"] == "fresh"
+
+
+def test_project_retained_archive_preserves_undated_fail_safe():
+    now = datetime(2026, 7, 24, tzinfo=UTC)
+    kept = project_retained_archive(
+        {
+            "undated": {"uid": "undated"},
+            "old": {"uid": "old", "published": "2020-01-01T00:00:00+00:00"},
+        },
+        {"new": {"uid": "new", "published": "2026-07-24T00:00:00+00:00"}},
+        max_items=5000,
+        max_age_years=1,
+        now=now,
+    )
+
+    assert set(kept) == {"new", "undated"}
 
 
 # --- cross-lane write isolation (review/12 §H6) ----------------------------------------

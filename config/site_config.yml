@@ -124,8 +124,9 @@ defaults:
   max_episodes: 500                      # how many episodes a FEED renders (display cap)
   # Append-only archive retention (issue #109). The archive keeps every meeting we've ever seen
   # — even after it drops off the provider's window — so content + audio are never silently lost.
-  # These caps bound that growth; set arbitrarily high so nothing is pruned today. Ratchet them
-  # DOWN to reclaim storage (the admin/usage report shows the $/mo cost of keeping old audio).
+  # These caps bound that growth. Provider inventory beyond the cap is still observed, but is
+  # excluded from enrichment before the same merge→prune policy is applied at persistence. Ratchet
+  # them DOWN to reclaim storage (the admin/usage report shows the $/mo cost of keeping old audio).
   max_archive_items: 5000                # max records RETAINED per source (newest kept)
   max_archive_age_years: 1000            # drop records older than this many years
   extract_audio: true                    # re-host audio for direct (Granicus) sources as M4A
