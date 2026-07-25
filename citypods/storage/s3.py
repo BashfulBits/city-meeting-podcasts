@@ -43,12 +43,15 @@ _TRANSIENT_S3_CODES = frozenset(
 _TRANSIENT_S3_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 
 
-def transient_download_errors() -> tuple[type[BaseException], ...]:
+def transient_download_errors(
+    extra_errors: tuple[type[BaseException], ...] = (),
+) -> tuple[type[BaseException], ...]:
     """Connectivity-level exceptions that a storage read can safely retry.
 
-    Returns an empty tuple if boto3 isn't installed (no S3 backend, so these can't occur) —
-    lets callers outside this module build an ``except`` tuple without a hard dependency on the
-    optional ``storage`` extra. S3 ``ClientError`` responses are handled separately by
+    ``extra_errors`` provides an SDK-independent injection path for callers that need to classify
+    a transport wrapper without importing the optional S3 dependencies. Returns those injected
+    types (and otherwise an empty tuple) if boto3 isn't installed. S3 ``ClientError`` responses
+    are handled separately by
     :func:`is_transient_storage_error`, because only selected status codes are safe to retry.
     """
     try:
@@ -65,8 +68,9 @@ def transient_download_errors() -> tuple[type[BaseException], ...]:
         )
         from s3transfer.exceptions import RetriesExceededError as TransferRetriesExceededError
     except ImportError:
-        return ()
+        return extra_errors
     return (
+        *extra_errors,
         boto3.exceptions.RetriesExceededError,
         TransferRetriesExceededError,
         ConnectTimeoutError,
@@ -80,7 +84,11 @@ def transient_download_errors() -> tuple[type[BaseException], ...]:
     )
 
 
-def is_transient_storage_error(exc: BaseException) -> bool:
+def is_transient_storage_error(
+    exc: BaseException,
+    *,
+    transient_errors: tuple[type[BaseException], ...] = (),
+) -> bool:
     """Return whether a storage read may be retried without hiding an operator error.
 
     S3-compatible services occasionally return 5xx/internal errors, throttling responses, or a
@@ -91,6 +99,13 @@ def is_transient_storage_error(exc: BaseException) -> bool:
     """
     if isinstance(exc, AttributeError):
         return "StreamingChecksumBody" in str(exc) and "strip" in str(exc)
+    sdk_errors = (
+        transient_download_errors(transient_errors)
+        if transient_errors
+        else transient_download_errors()
+    )
+    if isinstance(exc, sdk_errors):
+        return True
     try:
         from boto3.exceptions import S3UploadFailedError
         from botocore.exceptions import ClientError

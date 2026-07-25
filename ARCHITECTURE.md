@@ -235,6 +235,9 @@ total on `/admin/status`.
 - **Timeline served↔source EDL** — silence-trim/concat/intro/transcripts/clips all reduce to one
   served-vs-source time map (see [`review/08`](review/08-timeline-and-content-transforms.md)).
 - **Bucket-as-truth state** — derived artifacts survive Actions cache eviction.
+- **Fail-soft durable restore** — `pull_state()` retries recognized transient per-object download
+  failures, keeps successfully restored objects, and retains the failed object's existing local or
+  cache copy for later self-healing instead of aborting the Audio run.
 - **Wall-clock budget + graceful yield** — heavy work runs until a time window closes or a newer run
   queues; cheap idempotent bookkeeping always finishes (see `stages.py` "stop convention").
 - **Graceful SIGTERM + mid-run checkpoint** — the CLI entry installs a SIGTERM handler
