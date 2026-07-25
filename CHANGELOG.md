@@ -15,6 +15,29 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **An authenticated Cloudflare Worker fallback covers Swagit list-page `403`s from GitHub-hosted
+  runners.** Paired local/GitHub-Actions probes ([PR #1011](https://github.com/BashfulBits/city-meeting-podcasts/pull/1011)),
+  plus production Audio #257-#259 and the LLM tag-lane enrich, showed every known Swagit tenant's
+  list/view page (`SwagitProvider.fetch_episodes`) returning `403` (`server: awselb/2.0`, an AWS
+  load balancer) from GitHub Actions egress while the same requests succeeded cleanly from a
+  residential network under heavier load — the same shared-egress-reputation signature already
+  diagnosed and fixed for Granicus media (GH#300/#353), on a different host class
+  (`<tenant>.new.swagit.com` list pages, not the `archive-video.granicus.com` media CDN).
+  `workers/swagit-list-proxy` is a sibling Cloudflare Worker to `granicus-media-proxy`, narrowly
+  scoped to `/views/...` list pages: bearer authentication, tenant-hostname allowlist, a single
+  bounded `page` query parameter, no upstream redirects. `citypods/swagit_proxy.py` wraps the
+  list-page GET with the same direct-first, single-Worker-attempt-on-403 shape production already
+  uses for Granicus; unset `SWAGIT_PROXY_BASE_URL`/`SWAGIT_PROXY_TOKEN` is a no-op. Both the direct
+  and Worker-proxied requests refuse redirects outright and re-validate their target through the
+  SSRF gate immediately before the request, rather than relying on validation from an earlier point
+  in the call chain. Deployed and confirmed working end-to-end (a direct authenticated request from
+  a residential network returned `200`). Not yet covered: per-tenant transport telemetry (would
+  need a broader `SwagitProvider` interface change to thread `ctx` through) and
+  `fetch_chapters`/video-page fetches (not observed failing; the Worker doesn't accept that path
+  shape yet).
+
 ### Changed
 
 - **The LLM scheduler now spreads load across equally-eligible free routes instead of always

@@ -14,7 +14,7 @@ WORKER_URL = (
 def _fallback(monkeypatch) -> SwagitWorkerFallback:
     monkeypatch.setenv("SWAGIT_PROXY_BASE_URL", "worker.example")
     monkeypatch.setenv("SWAGIT_PROXY_TOKEN", "secret-token")
-    monkeypatch.setattr("citypods.swagit_proxy.validate_source_url", lambda _url: None)
+    monkeypatch.setattr("citypods.swagit_proxy.validate_source_url", lambda *a, **kw: None)
     fallback = SwagitWorkerFallback.from_env()
     assert fallback is not None
     return fallback
@@ -62,21 +62,26 @@ class _RecordingSession:
         self._responses = list(responses)
         self.calls: list[tuple[str, dict]] = []
 
-    def get(self, url, *, timeout, headers=None):
-        self.calls.append((url, {"timeout": timeout, "headers": headers}))
+    def get(self, url, *, timeout, headers=None, allow_redirects=True):
+        self.calls.append(
+            (url, {"timeout": timeout, "headers": headers, "allow_redirects": allow_redirects})
+        )
         return self._responses.pop(0)
 
 
-def test_get_with_worker_fallback_passes_through_on_success():
+def test_get_with_worker_fallback_passes_through_on_success(monkeypatch):
+    monkeypatch.setattr("citypods.swagit_proxy.validate_source_url", lambda *a, **kw: None)
     session = _RecordingSession([_Resp(200, b"ok")])
     result = get_with_worker_fallback(session, LIST_URL, timeout=5)
     assert result.status_code == 200
     assert len(session.calls) == 1
+    assert session.calls[0][1]["allow_redirects"] is False
 
 
 def test_get_with_worker_fallback_is_noop_without_config(monkeypatch):
     monkeypatch.delenv("SWAGIT_PROXY_BASE_URL", raising=False)
     monkeypatch.delenv("SWAGIT_PROXY_TOKEN", raising=False)
+    monkeypatch.setattr("citypods.swagit_proxy.validate_source_url", lambda *a, **kw: None)
     session = _RecordingSession([_Resp(403, b"forbidden")])
     result = get_with_worker_fallback(session, LIST_URL, timeout=5)
     assert result.status_code == 403
@@ -86,19 +91,22 @@ def test_get_with_worker_fallback_is_noop_without_config(monkeypatch):
 def test_get_with_worker_fallback_retries_once_through_worker_on_403(monkeypatch):
     monkeypatch.setenv("SWAGIT_PROXY_BASE_URL", "worker.example")
     monkeypatch.setenv("SWAGIT_PROXY_TOKEN", "secret-token")
-    monkeypatch.setattr("citypods.swagit_proxy.validate_source_url", lambda _url: None)
+    monkeypatch.setattr("citypods.swagit_proxy.validate_source_url", lambda *a, **kw: None)
     session = _RecordingSession([_Resp(403, b"forbidden"), _Resp(200, b"<html>ok</html>")])
     result = get_with_worker_fallback(session, LIST_URL, timeout=5)
     assert result.status_code == 200
     assert len(session.calls) == 2
     assert session.calls[0][0] == LIST_URL
+    assert session.calls[0][1]["allow_redirects"] is False
     assert session.calls[1][0] == WORKER_URL
     assert session.calls[1][1]["headers"] == {"Authorization": "Bearer secret-token"}
+    assert session.calls[1][1]["allow_redirects"] is False
 
 
 def test_get_with_worker_fallback_degrades_on_misconfigured_env(monkeypatch, capsys):
     monkeypatch.setenv("SWAGIT_PROXY_BASE_URL", "worker.example")
     monkeypatch.delenv("SWAGIT_PROXY_TOKEN", raising=False)
+    monkeypatch.setattr("citypods.swagit_proxy.validate_source_url", lambda *a, **kw: None)
     session = _RecordingSession([_Resp(403, b"forbidden")])
     result = get_with_worker_fallback(session, LIST_URL, timeout=5)
     assert result.status_code == 403

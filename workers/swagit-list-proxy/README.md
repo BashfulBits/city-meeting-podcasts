@@ -22,12 +22,16 @@ It is **not** a general URL proxy:
 ## 1. Prerequisites
 
 Same as `workers/granicus-media-proxy` -- a Cloudflare account with a Workers subdomain, Node.js 20+,
-Wrangler, and GitHub CLI authenticated for `BashfulBits/city-meeting-podcasts`.
+Wrangler, and GitHub CLI authenticated for `BashfulBits/city-meeting-podcasts`. Commands below pin
+an exact Wrangler release (`4.114.0`, the version this Worker was first deployed and verified with)
+rather than a floating `wrangler@4`, so a future Wrangler 4.x release can't change deploy/secret
+behavior without a repo commit -- bump it deliberately, in one PR, everywhere it appears (this file
+and `.github/workflows/swagit-worker-deploy.yml`'s `wranglerVersion`).
 
 ```bash
 cd workers/swagit-list-proxy
 npm test
-npx wrangler@4 login
+npx wrangler@4.114.0 login
 ```
 
 ## 2. Generate one shared bearer token
@@ -44,7 +48,7 @@ openssl rand -hex 32
 From `workers/swagit-list-proxy`:
 
 ```bash
-npx wrangler@4 secret put PROXY_TOKEN
+npx wrangler@4.114.0 secret put PROXY_TOKEN
 ```
 
 The non-secret `ALLOWED_HOSTS` list is committed in `wrangler.jsonc`. Update it in code review
@@ -53,7 +57,7 @@ whenever another Swagit tenant is onboarded.
 ## 4. Deploy
 
 ```bash
-npx wrangler@4 deploy
+npx wrangler@4.114.0 deploy
 ```
 
 Record the final origin, for example:
@@ -89,19 +93,24 @@ workflow logs.
 
 ## 7. Rollback
 
-Config-only: unset `SWAGIT_PROXY_BASE_URL`/`SWAGIT_PROXY_TOKEN` to revert to direct-only fetches --
-`citypods/swagit_proxy.py`'s `SwagitWorkerFallback.from_env()` returns `None` when either is unset,
-and every call site falls back to the plain direct request it already made.
+Config-only: unset **both** `SWAGIT_PROXY_BASE_URL` and `SWAGIT_PROXY_TOKEN` to cleanly revert to
+direct-only fetches -- `citypods/swagit_proxy.py`'s `SwagitWorkerFallback.from_env()` returns
+`None` only when both are unset, and `get_with_worker_fallback()` returns the plain direct
+response unchanged. Unsetting only one of the pair is **not** a supported rollback path:
+`from_env()` raises `ValueError` ("must be configured together"), which
+`get_with_worker_fallback()` catches, logs, and still degrades to the direct (already-fetched)
+response -- so it fails safe, but a half-configured pair is a misconfiguration worth cleaning up
+rather than relying on.
 
 ## 8. Rotate or remove
 
 ```bash
-npx wrangler@4 secret put PROXY_TOKEN
+npx wrangler@4.114.0 secret put PROXY_TOKEN
 gh secret set SWAGIT_PROXY_TOKEN
 ```
 
 ```bash
-npx wrangler@4 delete
+npx wrangler@4.114.0 delete
 gh secret delete SWAGIT_PROXY_BASE_URL
 gh secret delete SWAGIT_PROXY_TOKEN
 ```

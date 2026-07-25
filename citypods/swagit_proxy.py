@@ -32,11 +32,19 @@ _PAGE_RE = re.compile(r"^[1-9][0-9]{0,3}$")  # bounded 1..9999, mirrors MAX_ARCH
 
 @dataclass(frozen=True)
 class SwagitWorkerFallback:
+    """A configured Swagit list-page Worker endpoint: the validated HTTPS origin plus bearer
+    token needed to build a proxied request."""
+
     base_url: str
     token: str
 
     @classmethod
     def from_env(cls) -> SwagitWorkerFallback | None:
+        """Build from ``SWAGIT_PROXY_BASE_URL``/``SWAGIT_PROXY_TOKEN``.
+
+        ``None`` when both are unset (no-op, direct-only). Raises :class:`ValueError` when only
+        one is set (a misconfiguration, not a supported rollback state) or the base URL isn't a
+        bare HTTPS origin."""
         import os
 
         base_url = os.environ.get("SWAGIT_PROXY_BASE_URL", "").strip()
@@ -66,6 +74,8 @@ class SwagitWorkerFallback:
         return cls(base_url=origin, token=token)
 
     def proxy_url(self, list_url: str) -> str | None:
+        """The Worker URL for ``list_url``, or ``None`` if it isn't a bare Swagit list-page shape
+        (a ``views/...`` path with at most a ``page`` query param) the Worker accepts."""
         parts = urlsplit(list_url)
         if (
             parts.scheme != "https"
@@ -91,6 +101,7 @@ class SwagitWorkerFallback:
         return f"{proxy}?page={page}" if page else proxy
 
     def headers(self) -> dict[str, str]:
+        """The bearer-auth header to send with a Worker-proxied request."""
         return {"Authorization": f"Bearer {self.token}"}
 
 
@@ -105,7 +116,13 @@ def get_with_worker_fallback(
     Returns the *last* response tried, so callers keep their existing status-code handling
     unchanged whether or not a fallback happened.
     """
-    response = session.get(url, timeout=timeout)
+    # A redirect target -- or a Worker origin validated only once at construction -- is not
+    # implicitly trusted just because an earlier point in the call chain checked it (same
+    # reasoning as SwagitProvider.resolve_media_url's explicit validate_source_url on a redirect
+    # Location, CR-CP-35). Refuse redirects outright on both requests rather than silently
+    # following one to a host the config-time allowlist never saw.
+    validate_source_url(url, resolve=True)
+    response = session.get(url, timeout=timeout, allow_redirects=False)
     if response.status_code != 403:
         return response
     try:
@@ -120,4 +137,7 @@ def get_with_worker_fallback(
     proxy_url = fallback.proxy_url(url)
     if proxy_url is None:
         return response
-    return session.get(proxy_url, timeout=timeout, headers=fallback.headers())
+    validate_source_url(proxy_url, resolve=True)
+    return session.get(
+        proxy_url, timeout=timeout, headers=fallback.headers(), allow_redirects=False
+    )

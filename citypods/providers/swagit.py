@@ -280,7 +280,9 @@ class SwagitProvider:
                     first = get_with_worker_fallback(session, url, timeout=DEFAULT_TIMEOUT)
                 except requests.RequestException as exc:
                     raise ProviderError(f"GET {url} failed: {exc}") from exc
-                if first.status_code >= 400:
+                # get_with_worker_fallback refuses redirects outright (allow_redirects=False), so
+                # a 3xx is a real failure here too, not something requests already followed.
+                if not (200 <= first.status_code < 300):
                     raise ProviderError(f"GET {url} returned {first.status_code}")
                 pages = [first.content]
                 for page in range(2, _page_count(first.content) + 1):
@@ -291,7 +293,7 @@ class SwagitProvider:
                         )
                     except requests.RequestException as exc:
                         raise ProviderError(f"GET {page_url} failed: {exc}") from exc
-                    if response.status_code >= 400:
+                    if not (200 <= response.status_code < 300):
                         raise ProviderError(f"GET {page_url} returned {response.status_code}")
                     pages.append(response.content)
                 for content in pages:
