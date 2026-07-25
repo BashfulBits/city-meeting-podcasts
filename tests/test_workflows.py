@@ -44,6 +44,28 @@ def _step_index(job: dict, needle: str) -> int:
     return -1
 
 
+@pytest.mark.parametrize(
+    ("workflow", "job_name", "step_name"),
+    [
+        ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)"),
+        ("deploy.yml", "build-deploy", "Render feeds"),
+        ("tag.yml", "tag", "Produce bounded LLM topic-tag candidates"),
+        ("audit.yml", "audit", "Run audit"),
+        ("contracts.yml", "contracts", "Probe endpoints + reconcile issues"),
+        ("availability-digest.yml", "digest", "Build availability digest"),
+    ],
+)
+def test_provider_fetch_workflows_wire_both_worker_fallbacks(workflow, job_name, step_name):
+    """Every workflow that can fetch Granicus/Swagit uses the same recovery configuration."""
+    _wf, job = _job(workflow, job_name)
+    step = next(item for item in job["steps"] if item.get("name") == step_name)
+    env = step.get("env") or {}
+    for provider in ("GRANICUS", "SWAGIT"):
+        for suffix in ("PROXY_BASE_URL", "PROXY_TOKEN"):
+            secret = f"{provider}_{suffix}"
+            assert env.get(secret) == f"${{{{ secrets.{secret} }}}}"
+
+
 def test_stale_commands_are_authorized_review_prs_from_fresh_main():
     wf, job = _job("stale-commands.yml", "lifecycle-pr")
     assert set(_on(wf)) == {"issue_comment"}

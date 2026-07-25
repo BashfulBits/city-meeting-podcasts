@@ -169,6 +169,13 @@ Aggregate stage errors/deferrals leave markers untouched until per-episode attri
 so a transient batch outcome cannot poison successful siblings. Scoped lane merges carry completion
 metadata by the explicit lane owner, preserving sibling-lane markers during concurrent writes.
 
+Provider HTTP is also centralized: Granicus and Swagit adapters call `provider_request.get()` rather
+than invoking `requests` directly. The API validates the origin URL, performs the canonical direct
+request, and makes one authenticated Cloudflare Worker attempt after a denied-access response or an
+exhausted transport exception. Provider-specific proxy mappers remain strict allow-lists, and
+redirects stay manual so their `Location` is validated before use. This applies consistently across
+Audio and every other workflow that fetches these providers without adding storage reads.
+
 ## Module map (`citypods/`)
 
 | Area | Modules |

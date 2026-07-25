@@ -134,6 +134,45 @@ test("plain GET without a Range header returns the full body", async () => {
   assert.equal(await response.text(), "full-media-bytes");
 });
 
+test("proxies allow-listed Granicus metadata and preserves DownloadFile redirects", async () => {
+  const metadata =
+    "https://proxy.example/v1/granicus/arlingtontx.granicus.com/" +
+    "ViewPublisherRSS.php?view_id=2&mode=vpodcast";
+  let captured;
+  const response = await handleRequest(request(metadata), ENV, async (url) => {
+    captured = url;
+    return new Response("<rss/>", { status: 200, headers: { "content-type": "text/xml" } });
+  });
+  assert.equal(
+    captured,
+    "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast",
+  );
+  assert.equal(response.status, 200);
+
+  const download =
+    "https://proxy.example/v1/granicus/arlingtontx.granicus.com/" +
+    "DownloadFile.php?view_id=2&clip_id=3";
+  const redirected = await handleRequest(request(download), ENV, async () =>
+    new Response(null, { status: 302, headers: { location: "https://media.example/signed" } }),
+  );
+  assert.equal(redirected.status, 302);
+  assert.equal(redirected.headers.get("location"), "https://media.example/signed");
+});
+
+test("rejects arbitrary Granicus hosts, paths, and query keys", async () => {
+  const urls = [
+    "https://proxy.example/v1/granicus/evil.example/Archive.php?view_id=2",
+    "https://proxy.example/v1/granicus/arlingtontx.granicus.com/private?view_id=2",
+    "https://proxy.example/v1/granicus/arlingtontx.granicus.com/Archive.php?token=secret",
+  ];
+  for (const url of urls) {
+    const response = await handleRequest(request(url), ENV, async () => {
+      throw new Error("must not fetch");
+    });
+    assert.equal(response.status, 404);
+  }
+});
+
 test("HEAD omits the body and upstream redirects are refused", async () => {
   const head = await handleRequest(request(VALID_URL, { method: "HEAD" }), ENV, async () => {
     return new Response(null, {
