@@ -323,7 +323,7 @@ class SwagitProvider:
                 resp = get_with_worker_fallback(session, url, timeout=DEFAULT_TIMEOUT)
             except requests.RequestException as exc:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
-        if resp.status_code >= 400:
+        if not 200 <= resp.status_code < 300:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         chapters = parse_chapters(resp.content)
         transcript_path = f"/videos/{episode.guid}/transcript"
@@ -418,7 +418,7 @@ class SwagitProvider:
             resp = get_with_worker_fallback(session, url, timeout=DEFAULT_TIMEOUT)
         except requests.RequestException as exc:
             raise ProviderError(f"GET {url} failed: {exc}") from exc
-        if resp.status_code >= 400:
+        if not 200 <= resp.status_code < 300:
             raise ProviderError(f"GET {url} returned {resp.status_code}")
         segments = parse_segment_objects(resp.content)
         # dfile URLs are scraped from page HTML, not implicitly trusted; validate each before
