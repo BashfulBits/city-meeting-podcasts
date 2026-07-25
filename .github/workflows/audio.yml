@@ -161,6 +161,8 @@ jobs:
           # rollback, GH#353).
           GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
           GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+          SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
+          SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
         run: |
           # Contract marker for workflow tests: citypods enrich --lane audio --shard ${{ matrix.shard }}/4
           set +e
@@ -193,6 +195,8 @@ jobs:
               --env R2_PUBLIC_BASE_URL \
               --env GRANICUS_PROXY_BASE_URL \
               --env GRANICUS_PROXY_TOKEN \
+              --env SWAGIT_PROXY_BASE_URL \
+              --env SWAGIT_PROXY_TOKEN \
               "${AUDIO_RUNNER_IMAGE}" \
               enrich --lane audio --shard ${{ matrix.shard }}/4 2>&1 | tee "$log"
           else

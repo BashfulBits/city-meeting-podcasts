@@ -29,6 +29,12 @@ SAMPLE = b"""
 """
 
 
+@pytest.fixture(autouse=True)
+def _bypass_proxy_transport_ssrf(monkeypatch):
+    """Provider tests use fake sessions; proxy URL/SSRF behavior has its own focused suite."""
+    monkeypatch.setattr("citypods.swagit_proxy.validate_source_url", lambda *a, **kw: None)
+
+
 def test_parse_sets_body_and_media():
     eps = parse_list(SAMPLE, ORIGIN)
     assert [e.guid for e in eps] == ["100", "101", "102"]  # all bodies returned
@@ -408,7 +414,7 @@ def test_fetch_chapters_returns_chapters_and_transcript(monkeypatch):
         def __exit__(self, *a):
             return False
 
-        def get(self, url, timeout=None):
+        def get(self, url, timeout=None, **kwargs):
             assert url == f"{ORIGIN}/videos/100"
             return FakeResp()
 
@@ -436,7 +442,7 @@ def test_fetch_chapters_no_transcript_link(monkeypatch):
         def __exit__(self, *a):
             return False
 
-        def get(self, url, timeout=None):
+        def get(self, url, timeout=None, **kwargs):
             return FakeResp()
 
     monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
