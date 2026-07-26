@@ -12,6 +12,11 @@ from citypods.discovery.models import (
     DiscoveryResult,
     SearchResult,
 )
+from citypods.discovery.refresh import (
+    dirty_uids,
+    episode_input_fingerprint,
+    episode_input_fingerprints,
+)
 from citypods.discovery.search import TavilyClient, TavilySearchError
 from citypods.discovery.verify import verify_discovery
 
@@ -35,4 +40,7 @@ __all__ = [
     "TavilySearchError",
     "classify",
     "verify_discovery",
+    "dirty_uids",
+    "episode_input_fingerprint",
+    "episode_input_fingerprints",
 ]
