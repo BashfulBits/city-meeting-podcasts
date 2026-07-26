@@ -798,6 +798,11 @@ def _compute_reconcile(args) -> int:
     sweep_work_leases = bool(
         (site_config.get("defaults") or {}).get("work_lease_reaper_enabled", False)
     )
+    # GH#1018: the active-lease index sweep is the default once the reaper is on; flip to False
+    # only as a rollback if the index ever needs to be bypassed without a code change.
+    use_lease_index = bool(
+        (site_config.get("defaults") or {}).get("work_lease_index_enabled", True)
+    )
 
     if args.dry_run:
         # Predict what a real run would reap WITHOUT touching durable or real local state. A real
@@ -808,7 +813,9 @@ def _compute_reconcile(args) -> int:
         import tempfile
 
         from citypods.compute.dispatch import _asr_artifact_present
+        from citypods.ops.work_leases import integrity_partition_for
         from citypods.ops.work_leases import reap as reap_work_leases
+        from citypods.ops.work_leases import reap_indexed as reap_work_leases_indexed
 
         now = datetime.now(UTC)
         cas = storage_supports_cas(storage)
@@ -822,19 +829,30 @@ def _compute_reconcile(args) -> int:
             if cas and sweep_work_leases:
                 # Read-only preview of the Stage-2 work-lease sweep the real reconcile would do, so
                 # the dry-run output matches it (not just legacy work.json leases). Gated by the
-                # same flag, so the preview reflects whether the reaper is actually enabled.
+                # same flags, so the preview reflects whether the reaper (and which sweep) is
+                # actually enabled.
                 candidates = [
                     (wi.source_key, wi.episode_uid)
                     for wi in manifest
                     if wi.work_class == "transcript-asr" and wi.state != "done"
                 ]
-                lease_preview = reap_work_leases(
-                    storage,
-                    candidates,
-                    artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
-                    now=now,
-                    dry_run=True,
-                )
+                if use_lease_index:
+                    lease_preview = reap_work_leases_indexed(
+                        storage,
+                        artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                        now=now,
+                        dry_run=True,
+                        integrity_candidates=candidates,
+                        integrity_partition=integrity_partition_for(now),
+                    )
+                else:
+                    lease_preview = reap_work_leases(
+                        storage,
+                        candidates,
+                        artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                        now=now,
+                        dry_run=True,
+                    )
         expired = sum(1 for wi in leased if not is_leased(wi, now=now))
         reservations = sum(led.inflight_count for led in budget.backends.values())
         print(
@@ -855,7 +873,9 @@ def _compute_reconcile(args) -> int:
         state_dir,
         rebuild_manifest_from_state(cities, site_config=site_config, state_dir=state_dir),
     )
-    summary = reconcile_compute(state_dir, storage, sweep_work_leases=sweep_work_leases)
+    summary = reconcile_compute(
+        state_dir, storage, sweep_work_leases=sweep_work_leases, use_lease_index=use_lease_index
+    )
     push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])
     leases = summary.get("leases", {})
     lease_note = (

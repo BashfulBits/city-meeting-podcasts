@@ -301,6 +301,7 @@ def reconcile_compute(
     *,
     now: datetime | None = None,
     sweep_work_leases: bool = False,
+    use_lease_index: bool = True,
 ) -> dict:
     """Reap dead workers and settle completed jobs from the persisted ``work.json`` + budget ledger.
 
@@ -317,10 +318,16 @@ def reconcile_compute(
 
     ``sweep_work_leases`` gates the Stage-2 work-lease ledger sweep (review/18 §4.2). It is **off by
     default** because that ledger is *dormant* until external pull workers (H14b/H14c) claim against
-    it: with no claims, the sweep would GET one lease key per pending ``transcript-asr`` item only
-    to find every one absent — pointless Class-B reads that scale with the backlog. The reaper is
-    lossless to skip while dormant (nothing to settle/requeue), so deployments enable it
-    (``work_lease_reaper_enabled``) only once external workers exist."""
+    it: with no claims, sweeping means nothing to reap either way — the reaper is lossless to skip
+    while dormant, so deployments enable it (``work_lease_reaper_enabled``) only once external
+    workers exist.
+
+    ``use_lease_index`` picks which sweep runs once ``sweep_work_leases`` is on: the GH#1018
+    active-lease index (:func:`work_leases.reap_indexed`, default) reads a bounded number of index
+    objects instead of GETting every pending ``transcript-asr`` candidate, with a rotating one-run
+    integrity-sweep partition to recover from a crash between a claim and its index write. Set to
+    ``False`` to fall back to the original :func:`work_leases.reap` candidate-probe (``config``
+    rollback path, no code change needed)."""
     now = now or datetime.now(UTC)
     state_dir = Path(state_dir)
     items = load_manifest(state_dir)
@@ -366,15 +373,17 @@ def reconcile_compute(
     if manifest_changed:
         save_manifest(state_dir, items)
 
-    # Stage-2 work-lease ledger reaping (review/18 §4.2): reclaim expired claims and settle done
-    # ones, derived from the discovery index — never listing the R2 lease prefix. CAS-only (the
+    # Stage-2 work-lease ledger reaping (review/18 §4.2, GH#1018): reclaim expired claims and settle
+    # done ones, derived from the discovery index — never listing the R2 lease prefix. CAS-only (the
     # ledger lives on R2); a non-CAS backend has no ledger. Gated behind ``sweep_work_leases``
     # because the ledger is dormant until external pull workers exist (see the docstring).
     # Candidates are the not-yet-done transcript-asr items, so the sweep tracks backlog, not all.
-    leases = {"completed": 0, "requeued": 0, "in_flight": 0}
+    leases: dict = {"completed": 0, "requeued": 0, "in_flight": 0}
     if cas and sweep_work_leases:
         from citypods.compute.budget import release_reservation, settle_reservation
+        from citypods.ops import work_leases
         from citypods.ops.work_leases import reap as reap_work_leases
+        from citypods.ops.work_leases import reap_indexed as reap_work_leases_indexed
 
         def _backend(owner: str) -> str:
             return owner.split(":", 1)[0]
@@ -384,12 +393,33 @@ def reconcile_compute(
             for wi in items
             if wi.work_class == "transcript-asr" and wi.state != "done"
         ]
-        leases = reap_work_leases(
-            storage,
-            candidates,
-            artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
-            on_completed=lambda owner: settle_reservation(storage, owner, _backend(owner), now=now),
-            on_requeued=lambda owner: release_reservation(storage, owner, _backend(owner), now=now),
-            now=now,
-        )
+
+        def on_completed(owner: str) -> None:
+            settle_reservation(storage, owner, _backend(owner), now=now)
+
+        def on_requeued(owner: str) -> None:
+            release_reservation(storage, owner, _backend(owner), now=now)
+
+        if use_lease_index:
+            # One bounded partition of the candidate keyspace per run — rotated per minute so the
+            # full backlog is eventually re-checked (review/18 §4.2 / GH#1018 acceptance criterion
+            # 4) without ever probing more than a fixed slice in a single reconcile.
+            leases = reap_work_leases_indexed(
+                storage,
+                artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                on_completed=on_completed,
+                on_requeued=on_requeued,
+                now=now,
+                integrity_candidates=candidates,
+                integrity_partition=work_leases.integrity_partition_for(now),
+            )
+        else:
+            leases = reap_work_leases(
+                storage,
+                candidates,
+                artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                on_completed=on_completed,
+                on_requeued=on_requeued,
+                now=now,
+            )
     return {"reaped": reaped, "settled": settled, "in_flight": in_flight, "leases": leases}

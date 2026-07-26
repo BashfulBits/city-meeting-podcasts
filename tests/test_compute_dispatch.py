@@ -492,11 +492,40 @@ class TestReconcile:
         bucket = _MemBucket()
         item = _item("u1")
         save_manifest(tmp_path, [item])
-        wl.claim(bucket, "s1", "u1", owner="dead", ttl_seconds=1, now=NOW - timedelta(hours=1))
+        # A real claiming worker maintains the GH#1018 active-lease index; simulate that here so
+        # the default indexed sweep (below) actually finds this "dead worker"'s claim.
+        wl.claim(
+            bucket,
+            "s1",
+            "u1",
+            owner="dead",
+            ttl_seconds=1,
+            now=NOW - timedelta(hours=1),
+            update_index=True,
+        )
 
         summary = reconcile_compute(tmp_path, bucket, now=NOW, sweep_work_leases=True)
 
         assert summary["leases"]["requeued"] == 1  # dead worker's claim reclaimed
+        reclaimed, _etag = wl.read_lease(bucket, "s1", "u1")
+        assert reclaimed.state == "queued" and reclaimed.owner == ""
+
+    def test_work_lease_reaper_falls_back_to_candidate_probe_when_index_disabled(self, tmp_path):
+        # Rollout escape hatch (GH#1018 acceptance criterion 6): a claim that never touched the
+        # active-lease index (e.g. an older worker, or an index write that failed) is still found
+        # by the original candidate-probe sweep when ``use_lease_index=False``.
+        from citypods.ops import work_leases as wl
+
+        bucket = _MemBucket()
+        item = _item("u1")
+        save_manifest(tmp_path, [item])
+        wl.claim(bucket, "s1", "u1", owner="dead", ttl_seconds=1, now=NOW - timedelta(hours=1))
+
+        summary = reconcile_compute(
+            tmp_path, bucket, now=NOW, sweep_work_leases=True, use_lease_index=False
+        )
+
+        assert summary["leases"]["requeued"] == 1
         reclaimed, _etag = wl.read_lease(bucket, "s1", "u1")
         assert reclaimed.state == "queued" and reclaimed.owner == ""
 
@@ -524,8 +553,15 @@ class TestReconcile:
         wl.claim(bucket, "s1", "u1", owner="dead", ttl_seconds=1, now=NOW - timedelta(hours=1))
 
         site_config_path = tmp_path / "site_config.yml"
+        # This regression targets the `work_lease_reaper_enabled` config-path bug specifically, so
+        # disable the GH#1018 active-lease index (`work_lease_index_enabled`) and fall back to the
+        # candidate-probe sweep — the claim above was never indexed (a real worker would pass
+        # ``update_index=True``), so an index-driven sweep wouldn't find it without also depending
+        # on today's date hitting the right integrity-sweep partition.
         site_config_path.write_text(
-            f"state_dir: {state_dir}\ndefaults:\n  work_lease_reaper_enabled: true\n"
+            f"state_dir: {state_dir}\ndefaults:\n"
+            "  work_lease_reaper_enabled: true\n"
+            "  work_lease_index_enabled: false\n"
         )
 
         rc = cli.main(

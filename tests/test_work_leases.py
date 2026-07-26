@@ -155,6 +155,27 @@ def test_reap_dry_run_previews_without_writing():
     assert wl.read_lease(bucket, "s1", "u1")[0].state == "leased"  # unchanged
 
 
+def test_reap_dry_run_does_not_invoke_callbacks():
+    # A dry run must stay entirely read-only, including the on_completed/on_requeued callbacks —
+    # those are real CAS mutations (budget settle/release) in production.
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW - timedelta(hours=1))
+    a0 = bucket.class_a
+    calls: list[str] = []
+    summary = wl.reap(
+        bucket,
+        [("s1", "u1")],
+        artifact_present=lambda s, u: False,
+        on_completed=calls.append,
+        on_requeued=calls.append,
+        now=NOW,
+        dry_run=True,
+    )
+    assert summary["requeued"] == 1
+    assert calls == []
+    assert bucket.class_a == a0
+
+
 def test_release_rejects_non_terminal_state():
     # release must only settle to a terminal state; a "leased"/"queued" release would write a
     # non-terminal object (e.g. leased with no expiry) that can wedge the item.
@@ -349,6 +370,289 @@ def test_run_claim_loop_respects_max_claims():
         now_fn=lambda: NOW,
     )
     assert summary["claimed"] == 3
+
+
+def test_claim_with_update_index_adds_active_entry():
+    bucket = _MemCAS()
+    held = wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW, update_index=True)
+    assert held is not None
+    n = wl.index_bucket_for("s1", "u1")
+    entries, _ = wl._load_index_bucket(bucket, n)
+    assert entries[wl._entry_id("s1", "u1")]["lease_expiry"] == held.lease_expiry.isoformat()
+
+
+def test_claim_without_update_index_leaves_index_untouched():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
+    n = wl.index_bucket_for("s1", "u1")
+    entries, etag = wl._load_index_bucket(bucket, n)
+    assert entries == {} and etag is None  # no bucket object was ever written
+
+
+def test_index_write_failure_never_fails_the_claim():
+    # Acceptance criterion 7: the lease object stays claim authority precisely because the index
+    # is allowed to fail. A storage double whose put_cas always raises on index keys proves the
+    # claim still lands even though every index write attempt fails.
+    class _IndexHostile(_MemCAS):
+        def put_cas(self, key, data, content_type, **kw):
+            if key.startswith(wl.INDEX_PREFIX):
+                raise CASConflict(key)
+            return super().put_cas(key, data, content_type, **kw)
+
+    bucket = _IndexHostile()
+    # _mutate_index_bucket retries with real backoff by default; every attempt fails here, so swap
+    # in a no-op sleep for the duration of this test to keep it fast.
+    orig_sleep = wl._time.sleep
+    wl._time.sleep = lambda *a, **k: None
+    try:
+        held = wl.claim(
+            bucket,
+            "s1",
+            "u1",
+            owner="w1",
+            ttl_seconds=600,
+            now=NOW,
+            update_index=True,
+        )
+    finally:
+        wl._time.sleep = orig_sleep
+    assert held is not None  # the lease landed despite the index being unwritable
+    assert wl.read_lease(bucket, "s1", "u1")[0].state == "leased"
+    assert wl._load_index_bucket(bucket, wl.index_bucket_for("s1", "u1"))[0] == {}
+
+
+def test_renew_with_update_index_refreshes_expiry():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW, update_index=True)
+    later = NOW + timedelta(seconds=300)
+    renewed = wl.renew(
+        bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=later, update_index=True
+    )
+    n = wl.index_bucket_for("s1", "u1")
+    entries, _ = wl._load_index_bucket(bucket, n)
+    assert entries[wl._entry_id("s1", "u1")]["lease_expiry"] == renewed.lease_expiry.isoformat()
+
+
+def test_release_with_update_index_drops_entry():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW, update_index=True)
+    assert wl.release(bucket, "s1", "u1", owner="w1", state="done", now=NOW, update_index=True)
+    n = wl.index_bucket_for("s1", "u1")
+    entries, _ = wl._load_index_bucket(bucket, n)
+    assert entries == {}
+
+
+def test_abandon_with_update_index_drops_entry():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW, update_index=True)
+    assert wl.abandon(bucket, "s1", "u1", owner="w1", now=NOW, update_index=True)
+    n = wl.index_bucket_for("s1", "u1")
+    entries, _ = wl._load_index_bucket(bucket, n)
+    assert entries == {}
+
+
+def test_reap_indexed_zero_active_reads_only_bounded_bucket_objects():
+    bucket = _MemCAS()
+    summary = wl.reap_indexed(bucket, artifact_present=lambda s, u: False, now=NOW)
+    assert summary == {
+        "completed": 0,
+        "requeued": 0,
+        "in_flight": 0,
+        "indexed_buckets_read": wl.INDEX_BUCKET_COUNT,
+        "integrity_checked": 0,
+    }
+    # No candidate lease keys were ever read — only the (empty) index buckets.
+    assert bucket.class_b == wl.INDEX_BUCKET_COUNT
+    assert bucket.class_a == 0
+
+
+def test_reap_indexed_settles_completed_requeues_expired_leaves_running():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW, update_index=True)
+    wl.claim(
+        bucket,
+        "s1",
+        "u2",
+        owner="w2",
+        ttl_seconds=600,
+        now=NOW - timedelta(hours=1),
+        update_index=True,
+    )
+    wl.claim(bucket, "s1", "u3", owner="w3", ttl_seconds=600, now=NOW, update_index=True)
+    present = {("s1", "u1")}
+    summary = wl.reap_indexed(bucket, artifact_present=lambda s, u: (s, u) in present, now=NOW)
+    assert summary["completed"] == 1
+    assert summary["requeued"] == 1
+    assert summary["in_flight"] == 1
+    assert wl.read_lease(bucket, "s1", "u1")[0].state == "done"
+    assert wl.read_lease(bucket, "s1", "u2")[0].state == "queued"
+    assert wl.read_lease(bucket, "s1", "u3")[0].state == "leased"
+    # settled items are dropped from the index; the still-running one stays indexed.
+    n1, n2, n3 = (wl.index_bucket_for("s1", u) for u in ("u1", "u2", "u3"))
+    assert wl._entry_id("s1", "u1") not in wl._load_index_bucket(bucket, n1)[0]
+    assert wl._entry_id("s1", "u2") not in wl._load_index_bucket(bucket, n2)[0]
+    assert wl._entry_id("s1", "u3") in wl._load_index_bucket(bucket, n3)[0]
+
+
+def test_reap_indexed_prunes_multiple_settled_entries_in_one_bucket_write():
+    # Several settled/drifted entries landing in the same bucket must cost one index CAS write,
+    # not one per entry — the whole point of this sweep is cutting reconcile's op cost.
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
+    wl.claim(bucket, "s1", "u2", owner="w2", ttl_seconds=600, now=NOW - timedelta(hours=1))
+    # Force both into the same (only) bucket so a per-entry write would show up as 2 index writes.
+    wl._index_upsert(bucket, "s1", "u1", lease_expiry=NOW + timedelta(seconds=600), bucket_count=1)
+    wl._index_upsert(bucket, "s1", "u2", lease_expiry=NOW - timedelta(seconds=1), bucket_count=1)
+    a0 = bucket.class_a
+
+    summary = wl.reap_indexed(
+        bucket, artifact_present=lambda s, u: s == "s1" and u == "u1", bucket_count=1, now=NOW
+    )
+
+    assert summary["completed"] == 1 and summary["requeued"] == 1
+    # 2 lease-settle writes + exactly 1 index-bucket prune write (not 2).
+    assert bucket.class_a - a0 == 3
+    assert wl._load_index_bucket(bucket, 0)[0] == {}
+
+
+def test_integrity_partition_for_advances_every_minute_not_every_day():
+    t0 = datetime(2026, 6, 14, 12, 0, 0, tzinfo=UTC)
+    t1 = t0 + timedelta(minutes=1)
+    t_same_minute = t0 + timedelta(seconds=30)
+    assert wl.integrity_partition_for(t0) != wl.integrity_partition_for(t1)
+    assert wl.integrity_partition_for(t0) == wl.integrity_partition_for(t_same_minute)
+
+
+def test_reap_indexed_calls_callbacks():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "done", owner="modal:done", ttl_seconds=600, now=NOW, update_index=True)
+    wl.claim(
+        bucket,
+        "s1",
+        "dead",
+        owner="modal:dead",
+        ttl_seconds=600,
+        now=NOW - timedelta(hours=1),
+        update_index=True,
+    )
+    completed: list[str] = []
+    requeued: list[str] = []
+    summary = wl.reap_indexed(
+        bucket,
+        artifact_present=lambda _s, u: u == "done",
+        on_completed=completed.append,
+        on_requeued=requeued.append,
+        now=NOW,
+    )
+    assert summary["completed"] == 1 and summary["requeued"] == 1
+    assert completed == ["modal:done"]
+    assert requeued == ["modal:dead"]
+
+
+def test_reap_indexed_dry_run_previews_without_writing_lease_or_index():
+    bucket = _MemCAS()
+    wl.claim(
+        bucket,
+        "s1",
+        "u1",
+        owner="w1",
+        ttl_seconds=600,
+        now=NOW - timedelta(hours=1),
+        update_index=True,
+    )
+    a0 = bucket.class_a
+    summary = wl.reap_indexed(bucket, artifact_present=lambda s, u: False, now=NOW, dry_run=True)
+    assert summary["requeued"] == 1
+    assert bucket.class_a == a0  # read-only: no lease write, no index write
+    assert wl.read_lease(bucket, "s1", "u1")[0].state == "leased"  # unchanged
+    n = wl.index_bucket_for("s1", "u1")
+    assert wl._entry_id("s1", "u1") in wl._load_index_bucket(bucket, n)[0]  # still indexed
+
+
+def test_reap_indexed_dry_run_does_not_invoke_callbacks():
+    bucket = _MemCAS()
+    wl.claim(
+        bucket,
+        "s1",
+        "u1",
+        owner="w1",
+        ttl_seconds=600,
+        now=NOW - timedelta(hours=1),
+        update_index=True,
+    )
+    a0 = bucket.class_a
+    calls: list[str] = []
+    summary = wl.reap_indexed(
+        bucket,
+        artifact_present=lambda s, u: False,
+        on_completed=calls.append,
+        on_requeued=calls.append,
+        now=NOW,
+        dry_run=True,
+    )
+    assert summary["requeued"] == 1
+    assert calls == []
+    assert bucket.class_a == a0
+
+
+def test_reap_indexed_drops_drifted_entries_not_actually_leased():
+    # An entry can point at a lease that was already settled by a plain (non-indexed) release —
+    # the index must self-heal rather than re-report it forever.
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW, update_index=True)
+    wl.release(bucket, "s1", "u1", owner="w1", state="done", now=NOW)  # no update_index
+    n = wl.index_bucket_for("s1", "u1")
+    assert wl._entry_id("s1", "u1") in wl._load_index_bucket(bucket, n)[0]  # stale entry present
+    summary = wl.reap_indexed(bucket, artifact_present=lambda s, u: False, now=NOW)
+    assert summary == {
+        "completed": 0,
+        "requeued": 0,
+        "in_flight": 0,
+        "indexed_buckets_read": wl.INDEX_BUCKET_COUNT,
+        "integrity_checked": 0,
+    }
+    assert wl._entry_id("s1", "u1") not in wl._load_index_bucket(bucket, n)[0]
+
+
+def test_reap_indexed_integrity_sweep_recovers_unindexed_active_lease():
+    # Simulate a crash between the lease write and the index write: claim without update_index.
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
+    n = wl.index_bucket_for("s1", "u1")
+    assert wl._load_index_bucket(bucket, n)[0] == {}  # not indexed
+    summary = wl.reap_indexed(
+        bucket,
+        artifact_present=lambda s, u: False,
+        now=NOW,
+        integrity_candidates=[("s1", "u1")],
+        integrity_partition=n,
+    )
+    assert summary["in_flight"] == 1
+    assert summary["integrity_checked"] == 1
+    # Repaired into the index so the next sweep finds it directly.
+    assert wl._entry_id("s1", "u1") in wl._load_index_bucket(bucket, n)[0]
+
+
+def test_reap_indexed_integrity_sweep_only_checks_matching_partition():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
+    n = wl.index_bucket_for("s1", "u1")
+    other_partition = (n + 1) % wl.INDEX_BUCKET_COUNT
+    summary = wl.reap_indexed(
+        bucket,
+        artifact_present=lambda s, u: False,
+        now=NOW,
+        integrity_candidates=[("s1", "u1")],
+        integrity_partition=other_partition,
+    )
+    assert summary["integrity_checked"] == 0
+    assert wl._load_index_bucket(bucket, n)[0] == {}  # left un-repaired this run
+
+
+def test_index_bucket_for_is_stable_and_bounded():
+    n = wl.index_bucket_for("s1", "u1", bucket_count=8)
+    assert 0 <= n < 8
+    assert wl.index_bucket_for("s1", "u1", bucket_count=8) == n  # deterministic
 
 
 def test_run_claim_loop_empty_candidates_is_noop():
