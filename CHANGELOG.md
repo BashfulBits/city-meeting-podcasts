@@ -38,6 +38,22 @@ Phase R (Research-Tool Surface)._
   `fetch_chapters`/video-page fetches (not observed failing; the Worker doesn't accept that path
   shape yet).
 
+### Fixed
+
+- **Every Dallas Swagit feed (35 sources, one shared list page) failed every Audio run for days
+  with `GET https://dallastx.new.swagit.com/views/default/city-council returned 502`.** Not a new
+  GitHub-egress block: Swagit now resolves that legacy `views/default/...` alias with a same-tenant
+  `302` to its canonical numeric view (`views/113/city-council`), confirmed live. GitHub Actions
+  still gets denied direct access to the Dallas tenant (the `403` shape above), so the request
+  correctly fell through to `workers/swagit-list-proxy` -- which then blanket-refused *any*
+  non-`/download` `3xx` from upstream as a synthetic `502` (a guard against redirect-based SSRF),
+  turning Swagit's own benign alias resolution into a permanent failure with no further fallback.
+  Fixed both ends: `config/feeds/dallas-tx-*.yml` now point directly at the canonical
+  `views/113/city-council` URL, sidestepping the alias; and `workers/swagit-list-proxy` now follows
+  exactly one redirect hop when the target is still an allowed host and accepted path shape (mirrors
+  the granicus-media-proxy `304` fix, [CR-WK-04](review/19-coderabbit-findings-audit.md)) instead of
+  refusing every `3xx` outright, so the next alias/renumbering Swagit does doesn't reproduce this.
+
 ### Changed
 
 - **Deferred LLM reconciliation now uses a route-partitioned B2 pointer index (GH#1022).** Pending
