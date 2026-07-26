@@ -50,6 +50,10 @@ Phase R (Research-Tool Surface)._
   rebuilds the index. This is metadata-only: no model-output pipeline bump, retry-semantic change,
   or automatic backfill is required; rollback is to omit the repair marker and use the canonical
   full listing.
+- **Audio now skips empty matrix shards.** GH#1021 adds a canonical preflight that restores the
+  durable state once, emits a fingerprinted source-atomic plan and a dynamic matrix containing only
+  positive-load shards, then packages that snapshot for workers. A fully idle Audio cycle produces a
+  visible successful no-op; no artifact or pipeline version is invalidated.
 
 - **Granicus sustained-probe parsing is offline-safe.** Custom `--clip` arguments now perform
   syntax/allowlist validation during argparse without DNS; the probe still performs the full
