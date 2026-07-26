@@ -93,16 +93,20 @@ def test_refresh_health_summary_reports_canonical_and_oldest_source_age():
             "next_poll_at": (now - timedelta(hours=1)).isoformat(),
             "last_error": "provider unavailable",
         },
+        "legacy-naive": {
+            "last_success": (now - timedelta(hours=3)).isoformat(),
+            "next_poll_at": (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S"),
+        },
         "uninitialized": {},
     }
 
     summary = run._refresh_health_summary(state, now=now)
 
     assert summary == {
-        "sources": 3,
-        "sources_with_success": 2,
+        "sources": 4,
+        "sources_with_success": 3,
         "sources_with_errors": 1,
-        "sources_due": 1,
+        "sources_due": 2,
         "canonical_state_age_seconds": 7200.0,
         "oldest_source_refresh_age_seconds": 93600.0,
     }

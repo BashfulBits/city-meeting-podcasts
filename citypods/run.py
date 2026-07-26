@@ -3059,9 +3059,13 @@ def _refresh_health_summary(refresh_state: dict[str, dict], *, now: datetime | N
     for metadata in refresh_state.values():
         if metadata.get("last_error"):
             errors += 1
-        if metadata.get("next_poll_at"):
+        raw_next_poll = metadata.get("next_poll_at")
+        if raw_next_poll:
             try:
-                if datetime.fromisoformat(str(metadata["next_poll_at"])) <= now:
+                next_poll = datetime.fromisoformat(str(raw_next_poll))
+                if next_poll.tzinfo is None:
+                    next_poll = next_poll.replace(tzinfo=UTC)
+                if next_poll <= now:
                     due += 1
             except (TypeError, ValueError):
                 pass
