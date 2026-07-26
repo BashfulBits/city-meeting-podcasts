@@ -112,13 +112,11 @@ class SwagitWorkerFallback:
 def get_with_worker_fallback(
     session: requests.Session, url: str, *, timeout: float = DEFAULT_TIMEOUT
 ) -> requests.Response:
-    """GET ``url`` directly; on an immediate HTTP 403, retry once through the configured Swagit
-    Worker fallback (env-configured; a no-op, direct-only pass-through when unset).
+    """GET ``url`` through the shared provider-recovery policy.
 
-    Mirrors Granicus's direct-first, single-Worker-attempt shape (GH#353): production always
-    tries the canonical request first, and only an immediate 403 can trigger one Worker attempt.
-    Returns the *last* response tried, so callers keep their existing status-code handling
-    unchanged whether or not a fallback happened.
+    The direct request remains canonical; configured denied-access statuses and exhausted
+    transport failures get one authenticated Swagit Worker attempt. Redirects stay manual so
+    callers can validate any returned location before following it.
     """
     # Compatibility wrapper; all provider adapters share the policy in provider_request now.
     from citypods.provider_request import get

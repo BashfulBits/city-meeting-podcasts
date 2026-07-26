@@ -40,7 +40,7 @@ def get(
     url: str,
     *,
     timeout: float = DEFAULT_TIMEOUT,
-    allow_redirects: bool | None = None,
+    allow_redirects: bool = False,
     direct_get: Callable[..., requests.Response] | None = None,
 ) -> requests.Response:
     """GET a Granicus/Swagit URL directly, then recover through its Worker when appropriate.
@@ -56,9 +56,7 @@ def get(
     request = direct_get or session.get
     direct_error: requests.RequestException | None = None
     try:
-        kwargs = {"timeout": timeout}
-        if allow_redirects is not None:
-            kwargs["allow_redirects"] = allow_redirects
+        kwargs = {"timeout": timeout, "allow_redirects": allow_redirects}
         response = request(url, **kwargs)
         if response.status_code not in WORKER_FALLBACK_STATUSES:
             return response

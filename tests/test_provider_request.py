@@ -40,6 +40,7 @@ def test_every_denied_access_status_retries_through_worker(monkeypatch):
         assert get(session, url).status_code == 200
         assert len(session.calls) == 2
         assert "/v1/swagit/" in session.calls[1][0]
+        assert all(kwargs["allow_redirects"] is False for _, kwargs in session.calls)
 
 
 def test_exhausted_direct_transport_error_retries_through_worker(monkeypatch):
