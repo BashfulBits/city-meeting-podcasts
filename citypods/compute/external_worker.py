@@ -806,6 +806,7 @@ class ExternalTranscribeWorker:
                 owner=claim_owner,
                 ttl_seconds=self.config.lease_ttl_seconds,
                 pipeline_version=ASR_PIPELINE_VERSION,
+                update_index=True,
             )
             if held is None:
                 summary.skipped += 1
@@ -828,6 +829,7 @@ class ExternalTranscribeWorker:
                     item.source_key,
                     item.episode_uid,
                     owner=claim_owner,
+                    update_index=True,
                 )
                 summary.skipped += 1
                 if admit_reason:
@@ -865,7 +867,11 @@ class ExternalTranscribeWorker:
                     )
                 ):
                     work_leases.abandon(
-                        self.storage, item.source_key, item.episode_uid, owner=claim_owner
+                        self.storage,
+                        item.source_key,
+                        item.episode_uid,
+                        owner=claim_owner,
+                        update_index=True,
                     )
                     summary.budget_declined += 1
                     break
@@ -886,6 +892,7 @@ class ExternalTranscribeWorker:
                     item.source_key,
                     item.episode_uid,
                     owner=claim_owner,
+                    update_index=True,
                 )
                 summary.deferred += 1
                 # Not a real (successful or failed) transcription attempt — a timeout, a stop
@@ -901,6 +908,7 @@ class ExternalTranscribeWorker:
                     item.episode_uid,
                     owner=claim_owner,
                     state="failed",
+                    update_index=True,
                 )
                 summary.failed += 1
                 worked += 1
@@ -978,6 +986,7 @@ class ExternalTranscribeWorker:
                         item.episode_uid,
                         owner=owner,
                         ttl_seconds=self.config.lease_ttl_seconds,
+                        update_index=True,
                     )
                 except Exception as exc:  # noqa: BLE001
                     print(f"[external-worker] lease renew failed (will retry): {exc}", flush=True)
@@ -1843,6 +1852,7 @@ def _run_characterization(
                     owner=owner,
                     ttl_seconds=worker.config.lease_ttl_seconds,
                     pipeline_version=ASR_PIPELINE_VERSION,
+                    update_index=True,
                 )
                 if held is None:
                     summary.skipped += 1
@@ -1872,6 +1882,7 @@ def _run_characterization(
                         item.source_key,
                         item.episode_uid,
                         owner=owner,
+                        update_index=True,
                     )
                     summary.budget_declined += 1
                     break
@@ -1936,6 +1947,7 @@ def _run_characterization(
                         item.episode_uid,
                         owner=owner,
                         state="failed",
+                        update_index=True,
                     )
                 with summary_lock:
                     summary.failed += 1

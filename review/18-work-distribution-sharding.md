@@ -369,6 +369,49 @@ writes) so nothing else leaks Class A.
 > Stage 1 set out to spread. Bound batch size (adaptive to recent throughput) so a dead worker strands
 > little before the reaper recovers it.
 
+### §4.7 Active-lease index (GH#1018) — implemented
+
+§4.6 keeps *claiming* cheap, but the reaper side (`reap()`, `compute reconcile`'s Stage-2 sweep) still derives
+every candidate `(source_key, uid)` from the discovery index and GETs its lease key — cost proportional to the
+**entire backlog**, not to how much work is actually claimed. With a sparse active set (few claims outstanding)
+this is thousands of pointless Class-B reads per reconcile; live runs measured ~9–11 minutes probing 6,034
+candidate keys for zero active leases.
+
+**Design (matches the issue's preferred option): fixed/sharded CAS-managed active-set buckets**, not a second
+unbounded list. `ops/work_leases.py` adds:
+
+- `INDEX_BUCKET_COUNT` (64) fixed objects, `work-leases-index/bucket-<n>.json`, each a flat
+  `{entry_id: {source_key, uid, lease_expiry}}` map. Bucket assignment (`index_bucket_for`) is a stable sha1
+  hash of the lease key — the same hash family as `scan_offset` — so it never drifts and never needs a
+  rebalance step.
+- `claim()`/`renew()`/`release()`/`abandon()` take an opt-in `update_index: bool = False` (default off, so
+  every existing cost-invariant test and caller is unchanged): on, they mirror the claim into its bucket
+  (add/refresh on claim/renew, remove on terminal release/abandon) via a CAS read-modify-write with retry
+  (`_mutate_index_bucket`, same shape as `compute.budget.mutate_budget`) so a concurrent sibling's entry in the
+  same bucket is never dropped, just retried. Both worker classes (`external_worker.py`'s external and internal
+  loops) pass `update_index=True` at every claim/renew/release/abandon call site.
+- `reap_indexed()` reads exactly `bucket_count` bucket objects (bounded, independent of backlog size), and for
+  every entry found **re-reads the real lease object** — the index is never trusted as claim authority (the
+  lease object is; acceptance criterion 7) — before applying the identical settle/requeue/leave decision
+  `reap()` uses (both now share `_settle_leased`, so the two sweep strategies can't disagree on what "reap this
+  lease" means). Settled or drifted (indexed but no longer actually `leased`) entries are removed from the
+  index; still-running entries stay. Zero active leases ⇒ `bucket_count` Class-B reads and **zero** candidate
+  lease reads; N active leases ⇒ `O(N + bucket_count)`.
+- **Crash recovery / integrity sweep.** A crash between a successful claim and its index write would otherwise
+  hide that lease from `reap_indexed()` forever. Callers may pass `integrity_candidates` (the same
+  policy-ordered list `reap()` already derives) and `integrity_partition` (rotated per run — `reconcile_compute`
+  uses `now.toordinal() % bucket_count`); `reap_indexed()` candidate-probes only the slice of `integrity_candidates`
+  that hashes to that one partition, repairing any found-but-unindexed active lease back into the index. One
+  bounded partition per run, not a full backlog scan — full coverage recurs every `bucket_count` runs.
+- **Rollback.** `reconcile_compute(..., use_lease_index=True)` (default once `sweep_work_leases` is on) picks
+  `reap_indexed()`; `use_lease_index=False` (`work_lease_index_enabled: false` under `defaults:`) reverts to the
+  original `reap()` candidate-probe with no code change — the config-only rollback the issue asked for.
+
+Kept deliberately out of scope: this does **not** introduce a second unbounded structure (no `list_objects` on
+the lease or index prefixes, ever) and does not change the frozen `claim`/`renew`/`release`/`reap` §4.2 contract
+signatures beyond the additive `update_index` keyword — existing non-indexed callers pay exactly the same cost
+as before.
+
 ---
 
 ## §5. Tradeoffs (stated honestly)

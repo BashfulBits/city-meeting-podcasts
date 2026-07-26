@@ -17,6 +17,21 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **`compute reconcile`'s Stage-2 work-lease sweep now costs `O(active leases)`, not `O(backlog)`**
+  ([GH#1018](https://github.com/BashfulBits/city-meeting-podcasts/issues/1018), child of
+  [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)). The prior
+  candidate-probe `reap()` GETted every pending `transcript-asr` item's lease key regardless of
+  how many were claimed — live runs measured ~9–11 minutes probing 6,034 keys for zero active
+  leases. `ops/work_leases.py` adds a fixed/sharded CAS-managed active-lease index (64 buckets,
+  `work-leases-index/bucket-<n>.json`) that `claim`/`renew`/`release`/`abandon` optionally
+  maintain (`update_index=True`, on for both external and internal ASR workers); `reap_indexed()`
+  sweeps only the bounded bucket set, re-validating every entry against the real lease object
+  (still claim authority) before applying the same settle/requeue/leave decision as before. A
+  rotating one-partition-per-run integrity sweep recovers a lease whose index write raced a crash.
+  `reconcile_compute(..., use_lease_index=False)` (`work_lease_index_enabled: false` under
+  `defaults:`) reverts to the original candidate-probe sweep with no code change. Design:
+  [review/18 §4.7](review/18-work-distribution-sharding.md#47-active-lease-index-gh1018--implemented).
+
 - **An authenticated Cloudflare Worker fallback covers Swagit list-page `403`s from GitHub-hosted
   runners.** Paired local/GitHub-Actions probes ([PR #1011](https://github.com/BashfulBits/city-meeting-podcasts/pull/1011)),
   plus production Audio #257-#259 and the LLM tag-lane enrich, showed every known Swagit tenant's

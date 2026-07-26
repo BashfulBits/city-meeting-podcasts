@@ -39,7 +39,9 @@ of writing a third one.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import time as _time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -47,6 +49,15 @@ from typing import Literal, TypeVar
 
 LEASE_PREFIX = "work-leases"
 LEASE_SCHEMA_VERSION = 1
+
+# --- Active-lease index (GH#1018) ---------------------------------------------------------------
+# A fixed set of small CAS-managed "bucket" objects tracking which (source_key, uid) pairs are
+# currently claimed. Reaping via this index costs O(active leases + bucket count) instead of the
+# O(backlog) candidate-probe reap() below, which GETs every possible lease key even when almost none
+# are ever claimed. See reap_indexed()'s docstring for the full design.
+INDEX_PREFIX = "work-leases-index"
+INDEX_SCHEMA_VERSION = 1
+INDEX_BUCKET_COUNT = 64
 
 T = TypeVar("T")
 
@@ -62,6 +73,130 @@ TerminalLeaseState = Literal["done", "failed"]
 def lease_key(source_key: str, uid: str) -> str:
     """Deterministic per-item key, derived (never listed) from the discovery index."""
     return f"{LEASE_PREFIX}/{source_key}/{uid}.json"
+
+
+def _entry_id(source_key: str, uid: str) -> str:
+    """The active-index's entry key for ``(source_key, uid)`` — one string, so bucket JSON stays a
+    flat ``{entry_id: {"source_key", "uid", "lease_expiry"}}`` map instead of a nested structure."""
+    return f"{source_key}|{uid}"
+
+
+def index_bucket_for(source_key: str, uid: str, bucket_count: int = INDEX_BUCKET_COUNT) -> int:
+    """Stable bucket assignment for an item, independent of claim order (same hash family as
+    :func:`scan_offset` — sha1 of the derived key, not the raw strings, so bucket boundaries don't
+    shift if ``source_key``/``uid`` happen to share a prefix)."""
+    if bucket_count <= 0:
+        return 0
+    digest = hashlib.sha1(lease_key(source_key, uid).encode()).hexdigest()
+    return int(digest, 16) % bucket_count
+
+
+def index_bucket_key(n: int) -> str:
+    return f"{INDEX_PREFIX}/bucket-{n:04d}.json"
+
+
+def _load_index_bucket(storage, n: int) -> tuple[dict[str, dict], str | None]:
+    """Read one bucket's entries + ETag. Absent or corrupt → ``({}, etag)`` (corrupt keeps the ETag
+    so the next CAS write cleanly replaces it, same convention as :func:`read_lease`)."""
+    got = storage.get_bytes(index_bucket_key(n))
+    if got is None:
+        return {}, None
+    data, etag = got
+    try:
+        parsed = json.loads(data)
+        entries = parsed.get("entries") if isinstance(parsed, dict) else None
+        return (entries if isinstance(entries, dict) else {}), etag
+    except (AttributeError, TypeError, ValueError):
+        return {}, etag
+
+
+def _serialize_index_bucket(entries: dict[str, dict]) -> bytes:
+    body = {"schema_version": INDEX_SCHEMA_VERSION, "entries": entries}
+    return (json.dumps(body, indent=2, sort_keys=True) + "\n").encode()
+
+
+def _mutate_index_bucket(
+    storage,
+    n: int,
+    mutate: Callable[[dict[str, dict]], None],
+    *,
+    max_attempts: int = 8,
+    base_sleep: float = 0.05,
+    max_sleep: float = 1.0,
+    sleep=_time.sleep,
+) -> None:
+    """CAS read-modify-write of index bucket ``n`` (same retry shape as
+    ``compute.budget.mutate_budget``): load the freshest entries + ETag, apply ``mutate`` in place,
+    write back conditionally, and retry with backoff on a losing race so a sibling worker's
+    concurrent add/remove in the same bucket is never silently dropped. Best-effort by design (the
+    lease object, not the index, is claim authority — GH#1018 acceptance criterion 7): a caller that
+    exhausts ``max_attempts`` should log and continue rather than fail the lease operation itself.
+    """
+    from citypods.storage import CASConflict
+
+    last: CASConflict | None = None
+    for attempt in range(max_attempts):
+        entries, etag = _load_index_bucket(storage, n)
+        mutate(entries)
+        body = _serialize_index_bucket(entries)
+        try:
+            if etag is None:
+                storage.put_cas(index_bucket_key(n), body, "application/json", if_none_match="*")
+            else:
+                storage.put_cas(index_bucket_key(n), body, "application/json", if_match=etag)
+            return
+        except CASConflict as exc:
+            last = exc
+            sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + attempt % 3 / 3))
+    assert last is not None
+    raise last
+
+
+def _index_upsert(
+    storage,
+    source_key: str,
+    uid: str,
+    *,
+    lease_expiry: datetime | None,
+    bucket_count: int = INDEX_BUCKET_COUNT,
+) -> None:
+    """Add/refresh this item's active-index entry (claim/renew). Best-effort: a failure here must
+    never fail the caller's claim/renew — it only makes this item invisible to the *indexed* reap
+    until the next integrity sweep finds it (acceptance criterion 7)."""
+    n = index_bucket_for(source_key, uid, bucket_count)
+
+    def _mutate(entries: dict[str, dict]) -> None:
+        entries[_entry_id(source_key, uid)] = {
+            "source_key": source_key,
+            "uid": uid,
+            "lease_expiry": _iso(lease_expiry),
+        }
+
+    try:
+        _mutate_index_bucket(storage, n, _mutate)
+    except Exception as exc:  # noqa: BLE001 — index maintenance is best-effort
+        print(f"[work-leases] active-index upsert failed for {source_key}/{uid}: {exc}", flush=True)
+
+
+def _index_remove(
+    storage,
+    source_key: str,
+    uid: str,
+    *,
+    bucket_count: int = INDEX_BUCKET_COUNT,
+) -> None:
+    """Drop this item's active-index entry (release/abandon settled it to a non-``leased`` state).
+    Best-effort, same rationale as :func:`_index_upsert`."""
+    n = index_bucket_for(source_key, uid, bucket_count)
+    entry_id = _entry_id(source_key, uid)
+
+    def _mutate(entries: dict[str, dict]) -> None:
+        entries.pop(entry_id, None)
+
+    try:
+        _mutate_index_bucket(storage, n, _mutate)
+    except Exception as exc:  # noqa: BLE001 — index maintenance is best-effort
+        print(f"[work-leases] active-index remove failed for {source_key}/{uid}: {exc}", flush=True)
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -156,11 +291,17 @@ def claim(
     ttl_seconds: float,
     pipeline_version: str = "",
     now: datetime | None = None,
+    update_index: bool = False,
 ) -> WorkLease | None:
     """Competitively claim ``uid`` for ``owner`` via CAS. Returns the held :class:`WorkLease`, or
     ``None`` when the item is not claimable (already leased+unexpired / terminal) or another worker
     won the race (CAS 412). Read-before-claim: a non-claimable item costs only a Class-B GET, not a
-    failed Class-A write (review/18 §4.6)."""
+    failed Class-A write (review/18 §4.6).
+
+    ``update_index`` opts into maintaining the GH#1018 active-lease index alongside the claim (an
+    extra CAS write on the item's index bucket) so :func:`reap_indexed` can find it without probing
+    the whole backlog. Off by default: existing callers that don't sweep via the index keep the
+    original ≈1-Class-A-per-claim cost unchanged."""
     from citypods.storage import CASConflict
 
     now = now or datetime.now(UTC)
@@ -188,6 +329,8 @@ def claim(
             )
     except CASConflict:
         return None  # a sibling claimed it first
+    if update_index:
+        _index_upsert(storage, source_key, uid, lease_expiry=held.lease_expiry)
     return held
 
 
@@ -199,9 +342,13 @@ def renew(
     owner: str,
     ttl_seconds: float,
     now: datetime | None = None,
+    update_index: bool = False,
 ) -> WorkLease | None:
     """Extend our own held lease (long-running inference, §5). ``None`` if we no longer hold it
-    (owner changed / not leased / reaped) or the CAS write lost."""
+    (owner changed / not leased / reaped) or the CAS write lost.
+
+    ``update_index`` refreshes this item's GH#1018 active-index entry (new expiry) alongside the
+    renewal — see :func:`claim`'s docstring for the tradeoff."""
     from citypods.storage import CASConflict
 
     now = now or datetime.now(UTC)
@@ -224,6 +371,8 @@ def renew(
         )
     except CASConflict:
         return None
+    if update_index:
+        _index_upsert(storage, source_key, uid, lease_expiry=existing.lease_expiry)
     return existing
 
 
@@ -235,12 +384,16 @@ def release(
     owner: str,
     state: TerminalLeaseState = "done",
     now: datetime | None = None,
+    update_index: bool = False,
 ) -> bool:
     """Settle our held lease to a terminal state (``done``/``failed``). Returns False if we don't
     hold it or the CAS write lost. Completion can also be *inferred* (review/18 §4.6 lever 3): the
     artifact + record are the durable signal, so the loop skips the ``done`` write and lets the
     reaper settle it — ``release`` is used for ``failed`` (so a poison item isn't re-claimed and its
-    ``attempts`` are recorded) and is available when a prompt explicit ``done`` is wanted."""
+    ``attempts`` are recorded) and is available when a prompt explicit ``done`` is wanted.
+
+    ``update_index`` drops this item's GH#1018 active-index entry on a successful settle (it is no
+    longer active) — see :func:`claim`'s docstring for the tradeoff."""
     from citypods.storage import CASConflict
 
     if state not in ("done", "failed"):  # guard the type hint at runtime — never write non-terminal
@@ -267,6 +420,8 @@ def release(
         )
     except CASConflict:
         return False
+    if update_index:
+        _index_remove(storage, source_key, uid)
     return True
 
 
@@ -277,6 +432,7 @@ def abandon(
     *,
     owner: str,
     now: datetime | None = None,
+    update_index: bool = False,
 ) -> bool:
     """Return our own unexpired claim to ``queued`` before inference starts.
 
@@ -284,6 +440,9 @@ def abandon(
     "budget was available when we scanned, but the atomic reservation lost the race." It clears the
     owner/expiry so another worker can claim the item without waiting for TTL, but refuses expired
     or non-owned leases so stale workers cannot undo reaper/worker progress.
+
+    ``update_index`` drops this item's GH#1018 active-index entry (it is back to ``queued``, no
+    longer active) — see :func:`claim`'s docstring for the tradeoff.
     """
     from citypods.storage import CASConflict
 
@@ -307,7 +466,69 @@ def abandon(
         )
     except CASConflict:
         return False
+    if update_index:
+        _index_remove(storage, source_key, uid)
     return True
+
+
+def _settle_leased(
+    storage,
+    source_key: str,
+    uid: str,
+    existing: WorkLease,
+    etag: str,
+    *,
+    artifact_present: Callable[[str, str], bool],
+    now: datetime,
+    dry_run: bool,
+) -> str:
+    """Apply one already-read ``leased`` lease's reap decision. Returns ``"completed"``,
+    ``"requeued"``, ``"in_flight"`` (still running, untouched), or ``"skip"`` (a sibling won the
+    CAS race — leave it for the next sweep). Shared by :func:`reap` and :func:`reap_indexed`
+    (GH#1018) so the candidate-probe and index-driven sweeps can never disagree on what "reap this
+    lease" means — only how they choose *which* leases to look at differs."""
+    from citypods.storage import CASConflict
+
+    if artifact_present(source_key, uid):
+        existing.state, existing.lease_expiry, existing.updated_at = "done", None, now
+        outcome = "completed"
+    elif existing.is_expired(now):
+        existing.state, existing.owner, existing.lease_expiry, existing.updated_at = (
+            "queued",
+            "",
+            None,
+            now,
+        )
+        outcome = "requeued"
+    else:
+        return "in_flight"
+    if dry_run:  # read-only preview: count what would change, write nothing
+        return outcome
+    try:
+        storage.put_cas(
+            lease_key(source_key, uid), _serialize(existing), "application/json", if_match=etag
+        )
+    except CASConflict:
+        return "skip"  # a worker raced us (claimed/renewed) — leave it, re-sweep next cycle
+    return outcome
+
+
+def _invoke_reap_callback(
+    outcome: str,
+    owner: str,
+    on_completed: Callable[[str], None] | None,
+    on_requeued: Callable[[str], None] | None,
+) -> None:
+    # The lease has already been moved off "leased", so a raising callback (e.g. a budget settle
+    # that exhausts its CAS retries) must not abort the rest of the sweep — that item can't be
+    # re-swept. Log and keep going; the budget update for this one item is best-effort.
+    try:
+        if outcome == "completed" and on_completed is not None:
+            on_completed(owner)
+        elif outcome == "requeued" and on_requeued is not None:
+            on_requeued(owner)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[work-leases] reap callback ({outcome}) failed for {owner}: {exc}", flush=True)
 
 
 def reap(
@@ -326,11 +547,14 @@ def reap(
     else leave it (still running). Returns per-outcome counts. CAS-guarded, so a concurrent claim
     isn't clobbered (a lost CAS is simply counted as a skip and retried next sweep).
 
+    This is the original **candidate-probe** sweep (GH#1018's "before"): cost is O(len(candidates))
+    GETs regardless of how many are actually leased, so it does not scale as the backlog grows.
+    Kept as the documented rollout fallback for :func:`reap_indexed`, and as what a CAS backend
+    without the active-lease index still uses.
+
     ``dry_run`` previews the same counts WITHOUT writing (read-only) — what a real sweep would do —
     so ``compute reconcile --dry-run`` reports work-lease effects, not just legacy work.json leases.
     """
-    from citypods.storage import CASConflict
-
     now = now or datetime.now(UTC)
     completed = requeued = in_flight = 0
     for source_key, uid in candidates:
@@ -338,44 +562,156 @@ def reap(
         if existing is None or etag is None or existing.state != "leased":
             continue
         owner = existing.owner
-        if artifact_present(source_key, uid):
-            existing.state, existing.lease_expiry, existing.updated_at = "done", None, now
-            outcome = "completed"
-        elif existing.is_expired(now):
-            existing.state, existing.owner, existing.lease_expiry, existing.updated_at = (
-                "queued",
-                "",
-                None,
-                now,
-            )
-            outcome = "requeued"
-        else:
+        outcome = _settle_leased(
+            storage,
+            source_key,
+            uid,
+            existing,
+            etag,
+            artifact_present=artifact_present,
+            now=now,
+            dry_run=dry_run,
+        )
+        if outcome == "in_flight":
             in_flight += 1
             continue
-        if dry_run:  # read-only preview: count what would change, write nothing
-            completed += outcome == "completed"
-            requeued += outcome == "requeued"
+        if outcome == "skip":
             continue
-        try:
-            storage.put_cas(
-                lease_key(source_key, uid), _serialize(existing), "application/json", if_match=etag
-            )
-        except CASConflict:
-            continue  # a worker raced us (claimed/renewed) — leave it, re-sweep next cycle
         completed += outcome == "completed"
         requeued += outcome == "requeued"
-        # The lease has already been moved off "leased", so a raising callback (e.g. a
-        # budget settle that exhausts its CAS retries) must not abort the rest of the
-        # sweep — that item can't be re-swept. Log and keep going; the budget update for
-        # this one item is best-effort.
-        try:
-            if outcome == "completed" and on_completed is not None:
-                on_completed(owner)
-            elif outcome == "requeued" and on_requeued is not None:
-                on_requeued(owner)
-        except Exception as exc:  # noqa: BLE001
-            print(f"[work-leases] reap callback ({outcome}) failed for {owner}: {exc}", flush=True)
+        _invoke_reap_callback(outcome, owner, on_completed, on_requeued)
     return {"completed": completed, "requeued": requeued, "in_flight": in_flight}
+
+
+def reap_indexed(
+    storage,
+    *,
+    artifact_present: Callable[[str, str], bool],
+    on_completed: Callable[[str], None] | None = None,
+    on_requeued: Callable[[str], None] | None = None,
+    now: datetime | None = None,
+    dry_run: bool = False,
+    bucket_count: int = INDEX_BUCKET_COUNT,
+    integrity_candidates: Sequence[tuple[str, str]] | None = None,
+    integrity_partition: int | None = None,
+) -> dict:
+    """Sweep the GH#1018 active-lease index instead of probing every candidate.
+
+    Reads exactly ``bucket_count`` index-bucket objects (bounded, independent of backlog size) and,
+    for each indexed ``(source_key, uid)``, re-reads the **real lease object** — the index is never
+    trusted as claim authority (acceptance criterion 7) — and applies the same
+    :func:`_settle_leased` decision :func:`reap` would. With zero active leases this costs
+    ``bucket_count`` Class-B reads and zero lease reads; with N active leases it costs
+    ``O(N + bucket_count)``, not ``O(backlog)``.
+
+    Settled (``completed``/``requeued``) and drifted (indexed but no longer actually ``leased``,
+    e.g. an index-write that raced a settle elsewhere) entries are removed from the index;
+    still-running entries are left indexed. Index maintenance is best-effort CAS (see
+    :func:`_index_upsert` / :func:`_index_remove`) — a write that can't land is retried by
+    whichever sweep next scans that bucket, never by failing this one.
+
+    **Integrity sweep (crash recovery).** A crash between a successful lease claim and its index
+    write would otherwise leave that lease un-indexed forever — invisible to this sweep even
+    though it's genuinely held. Pass ``integrity_candidates`` (the same policy-ordered candidate
+    list :func:`reap`'s caller already derives from the discovery index) and
+    ``integrity_partition`` (an integer the caller rotates across runs, e.g.
+    ``now.toordinal() % bucket_count``) to additionally candidate-probe **one bounded partition**
+    of the keyspace per run — the same partition every candidate in it would hash to via
+    :func:`index_bucket_for`, so this reuses the bucket assignment rather than inventing a second
+    one. A found-but-unindexed active lease is repaired into the index (and reaped/left running
+    same as any other). One partition per run keeps this a small, fixed add-on cost
+    (``≈ backlog / bucket_count`` GETs), not a full backlog scan, while still recovering full
+    backlog coverage every ``bucket_count`` runs.
+
+    ``dry_run`` previews without writing (lease or index), same contract as :func:`reap`.
+    """
+    now = now or datetime.now(UTC)
+    completed = requeued = in_flight = 0
+    seen: set[tuple[str, str]] = set()
+
+    for n in range(max(bucket_count, 0)):
+        entries, _bucket_etag = _load_index_bucket(storage, n)
+        for meta in entries.values():
+            source_key, uid = str(meta.get("source_key", "")), str(meta.get("uid", ""))
+            if not source_key or not uid:
+                continue
+            seen.add((source_key, uid))
+            existing, etag = read_lease(storage, source_key, uid)
+            if existing is None or etag is None or existing.state != "leased":
+                if not dry_run:
+                    _index_remove(storage, source_key, uid, bucket_count=bucket_count)
+                continue  # index drift: no longer an active lease — nothing to reap
+            owner = existing.owner
+            outcome = _settle_leased(
+                storage,
+                source_key,
+                uid,
+                existing,
+                etag,
+                artifact_present=artifact_present,
+                now=now,
+                dry_run=dry_run,
+            )
+            if outcome == "in_flight":
+                in_flight += 1
+                continue  # still active — stays indexed
+            if outcome == "skip":
+                continue  # a sibling raced us — leave it indexed, re-sweep next cycle
+            completed += outcome == "completed"
+            requeued += outcome == "requeued"
+            if not dry_run:
+                _index_remove(storage, source_key, uid, bucket_count=bucket_count)
+            _invoke_reap_callback(outcome, owner, on_completed, on_requeued)
+
+    integrity_checked = 0
+    if integrity_candidates is not None and integrity_partition is not None and bucket_count > 0:
+        partition = integrity_partition % bucket_count
+        for source_key, uid in integrity_candidates:
+            if (source_key, uid) in seen:
+                continue
+            if index_bucket_for(source_key, uid, bucket_count) != partition:
+                continue
+            integrity_checked += 1
+            existing, etag = read_lease(storage, source_key, uid)
+            if existing is None or etag is None or existing.state != "leased":
+                continue  # nothing active here to repair or reap
+            owner = existing.owner
+            outcome = _settle_leased(
+                storage,
+                source_key,
+                uid,
+                existing,
+                etag,
+                artifact_present=artifact_present,
+                now=now,
+                dry_run=dry_run,
+            )
+            if outcome == "in_flight":
+                in_flight += 1
+                # Found a genuinely held lease the index missed (e.g. a crash between the lease
+                # write and the index write) — repair it in so the next sweep finds it directly.
+                if not dry_run:
+                    _index_upsert(
+                        storage,
+                        source_key,
+                        uid,
+                        lease_expiry=existing.lease_expiry,
+                        bucket_count=bucket_count,
+                    )
+                continue
+            if outcome == "skip":
+                continue
+            completed += outcome == "completed"
+            requeued += outcome == "requeued"
+            _invoke_reap_callback(outcome, owner, on_completed, on_requeued)
+
+    return {
+        "completed": completed,
+        "requeued": requeued,
+        "in_flight": in_flight,
+        "indexed_buckets_read": bucket_count,
+        "integrity_checked": integrity_checked,
+    }
 
 
 def scan_offset(owner: str, n: int) -> int:
@@ -388,8 +724,6 @@ def scan_offset(owner: str, n: int) -> int:
     primitives itself instead of calling the loop wrapper."""
     if n <= 0:
         return 0
-    import hashlib
-
     return int(hashlib.sha1(owner.encode()).hexdigest(), 16) % n
 
 
@@ -421,6 +755,7 @@ def run_claim_loop(
     max_claims: int | None = None,
     should_stop: Callable[[], bool] | None = None,
     now_fn: Callable[[], datetime] | None = None,
+    update_index: bool = False,
 ) -> dict:
     """The reference pull loop (review/18 §4.2) over the claim/release primitives this module
     owns. Walks ``candidates`` (``(source_key, uid)``, policy-ordered) from this worker's
@@ -453,6 +788,9 @@ def run_claim_loop(
     this loop as optional hooks (budget-gating stays external-only — an in-Actions runner has no
     monthly dollar cap to protect), so both worker classes finally share one real implementation
     instead of three loops slowly drifting apart. Do not write a third loop.
+
+    ``update_index`` maintains the GH#1018 active-lease index alongside every claim/release so
+    ``reap_indexed`` can sweep this worker's leases in bounded time — see :func:`claim`'s docstring.
     """
     now_fn = now_fn or (lambda: datetime.now(UTC))
     ordered = ordered_candidates(candidates, owner)
@@ -471,6 +809,7 @@ def run_claim_loop(
             ttl_seconds=ttl_seconds,
             pipeline_version=pipeline_version,
             now=now_fn(),
+            update_index=update_index,
         )
         if held is None:
             continue  # not claimable or lost the race — cheap, no Class-A spent
@@ -479,6 +818,14 @@ def run_claim_loop(
             transcribe(source_key, uid)
             completed += 1  # completion is durable in the artifact/record; reaper settles the lease
         except Exception:  # noqa: BLE001 — one bad item must not kill the loop
-            release(storage, source_key, uid, owner=owner, state="failed", now=now_fn())
+            release(
+                storage,
+                source_key,
+                uid,
+                owner=owner,
+                state="failed",
+                now=now_fn(),
+                update_index=update_index,
+            )
             failed += 1
     return {"claimed": claimed, "completed": completed, "failed": failed}
