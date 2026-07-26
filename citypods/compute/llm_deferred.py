@@ -122,21 +122,29 @@ def _index_keys(data: Mapping[str, Any], *, recipe_hash: str) -> tuple[str, ...]
     )
 
 
-def _best_effort_delete_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
-    for key in _index_keys(data, recipe_hash=recipe_hash):
+def _delete_pointer_keys(storage, keys) -> None:
+    for key in keys:
         try:
             storage.delete(key)
         except Exception:  # noqa: BLE001 -- an advisory index never blocks canonical state
             pass
 
 
-def _write_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
+def _write_pointer_keys(storage, keys, recipe_hash: str) -> None:
     body = (json.dumps({"recipe_hash": recipe_hash}) + "\n").encode()
-    for key in _index_keys(data, recipe_hash=recipe_hash):
+    for key in keys:
         try:
             _write_json(storage, key, body)
         except Exception:  # noqa: BLE001 -- canonical state is authoritative
             pass
+
+
+def _best_effort_delete_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
+    _delete_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash))
+
+
+def _write_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
+    _write_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash), recipe_hash)
 
 
 def _index_ready(storage) -> bool:
@@ -289,12 +297,21 @@ def write_deferred(
         created_at if isinstance(created_at, str) and created_at else now.isoformat()
     )
     body = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
-    if isinstance(existing_raw, Mapping):
-        _best_effort_delete_index(storage, existing_raw, recipe_hash)
-    # Canonical record first: an index pointer can never make an incomplete/newer record appear
-    # actionable because indexed readers always re-read this object.
+    old_keys = (
+        set(_index_keys(existing_raw, recipe_hash=recipe_hash))
+        if isinstance(existing_raw, Mapping)
+        else set()
+    )
+    new_keys = set(_index_keys(record, recipe_hash=recipe_hash))
+    # New pointers first, then the canonical record, then only the now-stale old pointers --
+    # never the reverse. A crash between any two of these steps leaves either a pointer with
+    # nothing (yet) behind it (harmless: a canonical GET on a missing/stale-status key is just
+    # treated as absent) or a stale extra pointer (harmless: advisory, cleaned up by the next
+    # write or `repair_deferred_index`) -- but never a valid pending canonical record reachable
+    # by zero pointers, which the old delete-old/write-canonical/write-new order could produce.
+    _write_pointer_keys(storage, new_keys - old_keys, recipe_hash)
     _write_json(storage, deferred_key(recipe_hash), body)
-    _write_index(storage, record, recipe_hash)
+    _delete_pointer_keys(storage, old_keys - new_keys)
 
 
 def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
@@ -360,16 +377,31 @@ def _indexed_listing(storage, *, now: datetime) -> list[tuple[str, Any]]:
     One LIST per eligible model (pointer count is bounded by actual pending volume, since
     completion/expiry always removes a record's pointers -- see ``write_deferred``/
     ``prune_expired_deferred_snapshot``), instead of one LIST across the whole registry.
+
+    Every other index operation in this module (write/delete/``_index_ready``) is best-effort --
+    this one wasn't, so a single transient ledger read or LIST would abort the whole sweep instead
+    of degrading gracefully (``scripts/llm_deferred_sweep.py`` has no try/except around its
+    ``load_deferred_snapshot`` call). A capacity-check failure just means "assume no known
+    capacity for this model"; a listing failure just means "no pointers found in this partition
+    this run" -- both self-heal on the next sweep, same as every other advisory-index miss.
     """
     from citypods.compute.llm_budget import load_llm_budget_cas
     from citypods.compute.llm_policy import ROUTES
 
-    budget, _ = load_llm_budget_cas(storage)
+    try:
+        budget, _ = load_llm_budget_cas(storage)
+    except Exception:  # noqa: BLE001 -- a transient ledger read must not sink the whole sweep
+        budget = None
     listing: list[tuple[str, Any]] = []
     for model, route in ROUTES.items():
-        if not budget.available(model, route=route, requests=1, tokens=0, cost=0.0, now=now):
+        if budget is not None and not budget.available(
+            model, route=route, requests=1, tokens=0, cost=0.0, now=now
+        ):
             continue
-        listing.extend(storage.list_objects(f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/"))
+        try:
+            listing.extend(storage.list_objects(f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/"))
+        except Exception:  # noqa: BLE001 -- one bad partition must not sink the whole sweep
+            continue
     return listing
 
 
@@ -389,22 +421,9 @@ def load_deferred_snapshot(storage, *, now: datetime | None = None) -> DeferredS
             storage,
             ((deferred_key(key.rsplit("/", 1)[-1][:-5]), modified) for key, modified in listing),
         )
-    listing = sorted(
-        storage.list_objects(DEFERRED_PREFIX),
-        key=lambda item: (item[1] is None, item[1]),
-    )
-    entries = []
-    for key, last_modified in listing:
-        data = _read_json(storage, key)
-        entries.append(
-            DeferredSnapshotEntry(
-                key=key,
-                last_modified=last_modified,
-                data=data if isinstance(data, Mapping) else None,
-                decoded=_decode_record(data),
-            )
-        )
-    return DeferredSnapshot(entries)
+    # Canonical keys from a full-registry listing are already unique, so the de-dup in
+    # `_load_snapshot_from_keys` is a harmless no-op here -- same helper, no duplicated loop.
+    return _load_snapshot_from_keys(storage, storage.list_objects(DEFERRED_PREFIX))
 
 
 def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
