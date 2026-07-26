@@ -30,6 +30,7 @@ from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 from citypods.compute.llm_deferred import (
     load_deferred_snapshot,
     prune_expired_deferred_snapshot,
+    repair_deferred_index,
 )
 from citypods.compute.llm_policy import ROUTES, DeferredLLMRequest
 from citypods.config import load_site_config
@@ -133,6 +134,11 @@ def main(argv: list[str] | None = None) -> int:
         default=235.0,
         help="Internal graceful wall-clock budget; Actions wraps this with a 240m timeout.",
     )
+    parser.add_argument(
+        "--repair-index",
+        action="store_true",
+        help="Rebuild the B2 pointer index from canonical records and finish dual-read migration.",
+    )
     args = parser.parse_args(argv)
 
     site_config = load_site_config(args.site_config)
@@ -151,6 +157,11 @@ def main(argv: list[str] | None = None) -> int:
     # which route originally claimed them.
     backend = LiteLLMBackend(LLMBackendConfig.from_env(), storage=storage)
     _register_known_contracts()
+
+    if args.repair_index:
+        repaired = repair_deferred_index(storage)
+        print(f"llm-deferred-sweep: repaired {repaired} canonical deferred records")
+        return 0
 
     stop_state = _install_signal_handlers()
     deadline_at = datetime.now(UTC) + timedelta(minutes=args.run_time_budget_minutes)

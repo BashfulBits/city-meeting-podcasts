@@ -3,6 +3,8 @@ from datetime import UTC, datetime, timedelta
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_deferred import (
     DEFAULT_TTL_DAYS,
+    DEFERRED_INDEX_MIGRATION_KEY,
+    DEFERRED_INDEX_PENDING_PREFIX,
     DEFERRED_PREFIX,
     deferred_key,
     iter_pending_deferred,
@@ -11,6 +13,7 @@ from citypods.compute.llm_deferred import (
     look_up_deferred,
     prune_expired_deferred,
     prune_expired_deferred_snapshot,
+    repair_deferred_index,
     write_deferred,
 )
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
@@ -50,6 +53,68 @@ def test_write_and_look_up_a_pending_handle_round_trips():
     assert found.deferred_request is not None
     assert found.deferred_request.messages == ({"role": "user", "content": "hi"},)
     assert found.deferred_request.policy == policy
+
+
+def test_pending_records_index_both_live_route_consumers_without_shared_bucket_writes():
+    storage = MemStorage()
+    models = ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")
+    for task, recipe_hash, purpose in (
+        ("tag", "tag-recipe", "topic-tags"),
+        ("classify", "classify-recipe", "classify-civic-platforms"),
+    ):
+        handle = _pending_handle(recipe_hash)
+        handle = JobHandle(
+            **{
+                **handle.__dict__,
+                "task": task,
+                "deferred_request": DeferredLLMRequest(
+                    messages=handle.deferred_request.messages,
+                    policy=LLMRequestPolicy(allowed_models=models, purpose=purpose),
+                ),
+            }
+        )
+        write_deferred(storage, recipe_hash, handle, now=NOW)
+
+    assert set(storage.keys(DEFERRED_INDEX_PENDING_PREFIX)) == {
+        f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/{recipe}.json"
+        for model in models
+        for recipe in ("tag-recipe", "classify-recipe")
+    }
+
+
+def test_completion_removes_old_route_pointers_after_canonical_write():
+    storage = MemStorage()
+    write_deferred(
+        storage,
+        "recipe-1",
+        _pending_handle("recipe-1"),
+        now=NOW,
+    )
+    assert storage.keys(DEFERRED_INDEX_PENDING_PREFIX)
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={}, model="m"),
+        now=NOW,
+    )
+    assert storage.keys(DEFERRED_INDEX_PENDING_PREFIX) == []
+
+
+def test_repair_marks_migration_and_indexed_snapshot_rechecks_canonical_records():
+    storage = MemStorage()
+    write_deferred(storage, "pending-1", _pending_handle("pending-1"), now=NOW)
+    write_deferred(
+        storage,
+        "completed-1",
+        JobResult(task="tag", recipe_hash="completed-1", output={}, model="m"),
+        now=NOW,
+    )
+
+    assert repair_deferred_index(storage, now=NOW) == 2
+    assert storage.exists(DEFERRED_INDEX_MIGRATION_KEY)
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    assert [handle.recipe_hash for handle in snapshot.pending()] == ["pending-1"]
+    assert len(snapshot.entries) == 1
 
 
 def test_write_and_look_up_a_completed_result_round_trips():
