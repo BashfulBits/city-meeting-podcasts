@@ -1,7 +1,7 @@
-# Swagit list proxy
+# Swagit tenant-page proxy
 
-This Cloudflare Worker is a narrow, authenticated fallback for Swagit archive **list/view page**
-fetches (`SwagitProvider.fetch_episodes`) that return HTTP 403 from GitHub-hosted runners.
+This Cloudflare Worker is a narrow, authenticated fallback for Swagit archive list/view, video,
+and download-page fetches that return HTTP 403 from GitHub-hosted runners.
 Diagnosed in PR #1011: paired local/GitHub-Actions probes plus production Audio #257–#259 showed
 GitHub Actions egress gets a consistent 403 (`server: awselb/2.0` -- an AWS load balancer, not a
 Cloudflare challenge) from every Swagit tenant, while the same requests succeed cleanly from a
@@ -14,9 +14,10 @@ It is **not** a general URL proxy:
 - only `GET` is accepted;
 - requests require `Authorization: Bearer <PROXY_TOKEN>`;
 - only configured Swagit tenant hostnames are accepted;
-- only `/views/...` list-page paths (one or two segments) are accepted -- not video/download pages;
-- only a single, bounded `page` query parameter is forwarded -- any other query is refused;
-- upstream redirects are refused;
+- only `/views/...`, `/videos/{numeric-id}`, and `/videos/{numeric-id}/download` are accepted;
+- only list pages accept a single, bounded `page` query parameter; every other query is refused;
+- upstream redirects are refused except download redirects, whose `Location` is returned for the
+  Python caller's existing SSRF validation rather than followed by the Worker;
 - responses stream without buffering and use `Cache-Control: no-store`.
 
 ## 1. Prerequisites

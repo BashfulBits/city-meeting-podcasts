@@ -158,6 +158,17 @@ artifact that the same run would immediately discard. Normal repair flags do not
 raising the source cap is the explicit way to make an excluded row eligible again. No audio, ASR, or
 other output recipe changed, so this boundary creates no artifact backfill.
 
+Unchanged-episode scheduling is a second, independent boundary (GH#1013). Each `Episode` persists a
+`stage_completion` map keyed by stage name. Every terminal marker contains the stage version,
+deterministic relevant-input fingerprint, completion state (`complete`, `complete-empty`,
+`deferred`, or `failed`), and—where a stage produces a durable artifact—the current output pointer.
+`run_stages()` lazily infers markers for legacy records from existing fields, then passes only dirty
+episodes to each stage. A changed provider input, repair request, stage version, or missing/mismatched
+output pointer invalidates the affected stage without invalidating unrelated audio or feed work.
+Aggregate stage errors/deferrals leave markers untouched until per-episode attribution is available,
+so a transient batch outcome cannot poison successful siblings. Scoped lane merges carry completion
+metadata by the explicit lane owner, preserving sibling-lane markers during concurrent writes.
+
 ## Module map (`citypods/`)
 
 | Area | Modules |
@@ -422,7 +433,7 @@ Hard-won facts that bite anyone adding/debugging providers:
   throttling), and aggregate load is already bound by the provider-lease ceiling and per-episode
   materialize backoff. Rollback to direct-only stays config-only (unset the two `GRANICUS_PROXY_*`
   secrets).
-- **Swagit *list-page* fetches get the same Worker-fallback treatment as Granicus media, on a
+- **Swagit tenant-page fetches get the same Worker-fallback treatment as Granicus media, on a
   different host class.** `SwagitProvider.fetch_episodes`'s `<tenant>.new.swagit.com/views/...`
   GETs are a different fetch path than the Granicus-owned Swagit *media* host above — one that the
   Granicus Worker's fixed `archive-video.granicus.com` origin and MP4-only path validation can't
@@ -430,9 +441,12 @@ Hard-won facts that bite anyone adding/debugging providers:
   fallback"): GitHub Actions egress returns a consistent `403` (`server: awselb/2.0`, an AWS load
   balancer) from every known Swagit tenant's list page while the same requests succeed from a
   residential network under heavier load. `workers/swagit-list-proxy` is a narrowly-scoped sibling
-  Worker (bearer auth, tenant-hostname allowlist, one bounded `page` query param, no redirects);
+  Worker (bearer auth, tenant-hostname allowlist, narrow list/video/download path shapes, and a
+  bounded `page` query param only for list pages). Download redirects are returned but never
+  followed inside the Worker, preserving the provider's explicit SSRF validation of `Location`;
   `citypods/swagit_proxy.py`'s `get_with_worker_fallback` wraps the list-page GET with the same
-  direct-first, single-Worker-attempt-on-403 shape, re-validating both the direct and Worker-proxied
+  direct-first, single-Worker-attempt-on-403 shape for list, chapter/video, legacy-segment, and
+  download-resolution requests, re-validating both the direct and Worker-proxied
   URL through the SSRF gate immediately before each request (a redirect target — or a Worker origin
   validated only once at construction — is not implicitly trusted just because an earlier point in
   the call chain checked it). Unset `SWAGIT_PROXY_BASE_URL`/`SWAGIT_PROXY_TOKEN` is a no-op. No

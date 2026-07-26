@@ -264,6 +264,7 @@ def push_records_merged(
     source_keys,
     *,
     protected_blocks,
+    lane: str | None = None,
     owned_uids: dict[str, frozenset[str]] | None = None,
     log=None,
     raise_on_transient: bool = False,
@@ -322,6 +323,7 @@ def push_records_merged(
             remote,
             local,
             protected,
+            lane=lane,
             owned_uids=owned_uids.get(sk) if owned_uids is not None else None,
         )
         save_records(state_dir, sk, merged)
@@ -416,6 +418,53 @@ def _fetch_remote_json(storage, rel: str) -> dict | None:
         except (OSError, ValueError):
             return None
     return data if isinstance(data, dict) else {}
+
+
+def push_refresh_state_merged(
+    storage,
+    state_dir: Path,
+    *,
+    owned_source_keys=None,
+    rel_path: str = "source_refresh.json",
+    log=None,
+) -> int:
+    """Merge-upload the per-source refresh ledger without scoped-shard clobbering.
+
+    A source/shard run owns only the refresh entries for the sources it processed. Re-read the
+    durable ledger, overlay those entries, and upload the merged snapshot. The unscoped path
+    overlays every locally loaded entry, preserving the existing full-run behavior.
+    """
+    if not _supported(storage) or not hasattr(storage, "put_file"):
+        return 0
+    state_dir = Path(state_dir)
+    local_path = state_dir / rel_path
+    if not local_path.exists():
+        return 0
+    emit = log or (lambda msg: print(msg, flush=True))
+    try:
+        local_data = json.loads(local_path.read_text())
+    except (OSError, ValueError) as exc:
+        emit(f"state: WARNING local refresh ledger unreadable: {exc}; skipping push")
+        return 0
+    if not isinstance(local_data, dict):
+        emit("state: WARNING local refresh ledger is not an object; skipping push")
+        return 0
+    try:
+        remote_data = _fetch_remote_json(storage, rel_path)
+    except Exception as exc:  # noqa: BLE001 — never clobber a durable ledger on read failure
+        emit(f"state: WARNING remote refresh ledger read failed: {exc}; skipping push")
+        return 0
+    if remote_data is None:
+        emit("state: WARNING remote refresh ledger unreadable; skipping push")
+        return 0
+    merged = dict(remote_data)
+    owned = set(owned_source_keys) if owned_source_keys is not None else set(local_data)
+    for key in owned:
+        if key in local_data:
+            merged[key] = local_data[key]
+    local_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n")
+    storage.put_file(f"{STATE_PREFIX}/{rel_path}", local_path, "application/json")
+    return 1
 
 
 def _normalize_asr_runtime_samples(samples: list[dict], *, max_samples: int) -> list[dict]:

@@ -46,7 +46,8 @@ test("rejects unknown hosts, malformed paths, extra query params, and non-GET me
   const urls = [
     VALID_URL.replace("austintx.new.swagit.com", "evil.example"),
     VALID_URL.replace("austintx.new.swagit.com", "notallowed.new.swagit.com"),
-    "https://proxy.example/v1/swagit/austintx.new.swagit.com/videos/12345",
+    "https://proxy.example/v1/swagit/austintx.new.swagit.com/videos/0",
+    "https://proxy.example/v1/swagit/austintx.new.swagit.com/videos/12345/agenda",
     "https://proxy.example/v1/swagit/austintx.new.swagit.com/views/117/a/b/c",
     `${VALID_URL}?page=1&token=secret`,
     `${VALID_URL}?redirect=https://example.com`,
@@ -60,6 +61,23 @@ test("rejects unknown hosts, malformed paths, extra query params, and non-GET me
   const post = await handleRequest(request(VALID_URL, { method: "POST" }), ENV);
   assert.equal(post.status, 405);
   assert.equal(post.headers.get("allow"), "GET");
+});
+
+test("fetches video pages and rejects query parameters on them", async () => {
+  const videoUrl = "https://proxy.example/v1/swagit/austintx.new.swagit.com/videos/12345";
+  let captured;
+  const response = await handleRequest(request(videoUrl), ENV, async (url, init) => {
+    captured = { url, init };
+    return new Response("<html>chapters</html>", { status: 200 });
+  });
+  assert.equal(captured.url, "https://austintx.new.swagit.com/videos/12345");
+  assert.equal(captured.init.redirect, "manual");
+  assert.equal(response.status, 200);
+
+  const refused = await handleRequest(request(`${videoUrl}?page=1`), ENV, async () => {
+    throw new Error("must not fetch");
+  });
+  assert.equal(refused.status, 404);
 });
 
 test("rejects a page value outside the bounded range", async () => {
@@ -121,6 +139,22 @@ test("upstream redirects are refused", async () => {
   });
   assert.equal(response.status, 502);
   assert.equal(response.headers.get("location"), null);
+});
+
+test("download redirects are returned without following and expose only Location", async () => {
+  const url = `${VALID_URL.replace("views/117/city-council-meetings", "videos/12345/download")}`;
+  const response = await handleRequest(request(url), ENV, async () => {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: "https://media.example/video.mp4?signature=secret",
+        "set-cookie": "must-not-return",
+      },
+    });
+  });
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "https://media.example/video.mp4?signature=secret");
+  assert.equal(response.headers.get("set-cookie"), null);
 });
 
 test("propagates a 403 from upstream so the caller can detect it", async () => {

@@ -30,6 +30,27 @@ def test_input_fingerprint_ignores_provider_guid_and_expiring_media_query():
     assert episode_input_fingerprint(first) == episode_input_fingerprint(second)
 
 
+def test_input_fingerprint_ignores_common_presigned_query_shapes():
+    first = _episode()
+    first.video_url = (
+        "https://cdn.example/video.mp4?X-Amz-Algorithm=one&X-Amz-Signature=old"
+        "&Policy=old&Key-Pair-Id=old&hdnea=old&keep=1"
+    )
+    second = _episode()
+    second.video_url = (
+        "https://cdn.example/video.mp4?X-Amz-Algorithm=two&X-Amz-Signature=new"
+        "&Policy=new&Key-Pair-Id=new&hdnea=new&keep=1"
+    )
+    assert episode_input_fingerprint(first) == episode_input_fingerprint(second)
+
+
+def test_input_fingerprint_normalizes_naive_published_as_utc():
+    naive = _episode()
+    naive.published = datetime(2026, 7, 24)
+    aware = _episode()
+    assert episode_input_fingerprint(naive) == episode_input_fingerprint(aware)
+
+
 def test_input_fingerprint_marks_official_metadata_edits_dirty():
     first = _episode()
     second = _episode(title="Corrected title")
@@ -81,7 +102,10 @@ def test_source_pipeline_skips_full_fetch_for_unchanged_validator(tmp_path):
 
         def fetch_episodes(self, source):
             self.fetches += 1
-            return [_episode()]
+            episode = _episode()
+            episode.description = "Official description"
+            episode.audio_url = "https://cdn.example/audio.mp3"
+            return [episode]
 
         def resolve_media_url(self, episode, source):
             return episode.video_url

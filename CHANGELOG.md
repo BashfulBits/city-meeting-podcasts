@@ -42,6 +42,24 @@ Phase R (Research-Tool Surface)._
 
 - **Conditional source refresh and dirty episode planning now form the S1 efficiency foundation (GH#1014).** `SourcePipeline` invokes each adapter's `detect_change()` probe, persists validator/content-digest state in `state/source_refresh.json`, and compares a canonical normalized input fingerprint per stable episode UID. Unchanged validator-backed sources skip full list parsing; validator-less adapters use the safe fetch-and-digest path (with configurable TTL/full-refresh bounds), and only new/materially edited UIDs enter heavy-stage planning. Append-only archives, stable provider-migration UIDs, SSRF validation, and all content-addressed artifact hashes remain unchanged; no pipeline-version bump or automatic artifact backfill is required.
 
+- **Swagit's Worker fallback now covers all tenant-page requests used by enrichment.** A recurring
+  LLM topic-tag failure showed that the initial fallback covered only archive lists and its secrets
+  were not wired into the tag workflow. The tag and Audio lanes now receive the proxy configuration;
+  `/videos/{id}` chapter/legacy-segment pages and `/videos/{id}/download` resolution use the same
+  direct-first fallback as lists. The Worker remains narrowly allowlisted and never follows a
+  download redirect; the Python provider validates its returned target before media use. Because
+  redirects are disabled on these fetches, `fetch_chapters`/`_page_segment_objects` now require a
+  2xx response rather than merely rejecting `>=400`, so a bare 3xx is rejected instead of being
+  silently parsed as an empty page. This is a transport-only correction with no pipeline-version
+  bump or artifact backfill.
+
+- **Unchanged episodes now use durable dirty-stage completion markers (GH#1013).** Each episode
+  records a versioned input fingerprint and terminal state for enrichment stages, including
+  complete-empty and identity results. Legacy records are classified lazily from their existing
+  artifacts, and subsequent runs omit clean episodes from stage invocation; relevant URL/hash,
+  repair, or pipeline-version changes invalidate only the affected stage. This is metadata-only
+  scheduling state: no output-affecting pipeline version was bumped and no artifact backfill is
+  required.
 - **ASR claim admission now respects the scheduled handoff while draining admitted work (GH#1017).**
   Internal workers use the existing runtime estimator against the earlier of the 5-hour handoff
   (with a 10-minute upload/commit reserve) and the hard backstop, so work that cannot finish in the

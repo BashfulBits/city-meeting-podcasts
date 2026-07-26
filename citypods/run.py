@@ -127,6 +127,7 @@ from citypods.stages import (
     enrich_stages,
     render_stages,
     run_stages,
+    stage_is_dirty,
 )
 from citypods.state import (
     build_fingerprint,
@@ -139,6 +140,7 @@ from citypods.statesync import (
     push_asr_runtime_log_merged,
     push_calendar_records_merged,
     push_records_merged,
+    push_refresh_state_merged,
     push_state,
     push_transcript_quality_log_merged,
     reconcile_state,
@@ -151,6 +153,7 @@ from citypods.transcript_quality import load_quality_config, load_quality_routes
 # applies the identical projection (GH#1025).
 DEFAULT_MAX_ARCHIVE_ITEMS = 5000
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
+_SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
 
 
@@ -303,37 +306,35 @@ class SourcePipeline:
     ) -> dict[str, str]:
         previous = metadata.get("episode_fingerprints")
         if not isinstance(previous, dict):
-            previous = episode_input_fingerprints(
-                [record_to_episode(rec) for rec in persisted.values()]
-            )
-        dirty = discovery_dirty_uids(previous, episode_input_fingerprints(episodes))
+            dirty = {
+                ep.uid or ep.guid: "fingerprint_baseline_missing"
+                for ep in episodes
+                if ep.uid or ep.guid
+            }
+        else:
+            # A validator-unchanged result is already the provider's assertion that its current
+            # listing is unchanged. Do not compare the durable archive (which is intentionally
+            # wider than the provider window) to the window-scoped baseline and dirty every
+            # archived episode on each run.
+            dirty = {}
         for uid, reason in self._backfill_dirty(city, episodes):
             dirty.setdefault(uid, reason)
         return dirty
 
     def _backfill_dirty(self, city: City, episodes: list[Episode]) -> list[tuple[str, str]]:
-        """Keep incomplete durable work eligible when discovery itself is unchanged."""
+        """Keep every stage with incomplete/deferred output eligible after unchanged discovery."""
         result: list[tuple[str, str]] = []
+        allowed = LANE_STAGES.get(self.ctx.lane)
+        stages = tuple(stage for stage in self.stages if allowed is None or stage.name in allowed)
         for ep in episodes:
             uid = ep.uid or ep.guid
             if not uid:
                 continue
-            if (
-                self.ctx.lane in {None, "audio"}
-                and not ep.hosted_audio_url
-                and (ep.media_kind == "hls" or city.extract_audio)
-            ):
-                result.append((uid, "audio_incomplete"))
-            if (
-                self.ctx.lane in {None, "transcribe", "align"}
-                and ep.hosted_audio_url
-                and not ep.transcript_synced
-            ):
-                result.append((uid, "transcript_incomplete"))
-            if self.ctx.lane == "tag" and not ep.tags_input_fingerprint:
-                result.append((uid, "tags_incomplete"))
             if ep.integrity:
                 result.append((uid, "repair_requested"))
+            for stage in stages:
+                if stage_is_dirty(stage, ep, city):
+                    result.append((uid, f"{stage.name}_incomplete"))
         return result
 
     def fetch_merge(self, city: City, key: str) -> tuple[object, list[Episode], dict, int]:
@@ -379,7 +380,7 @@ class SourcePipeline:
             self._refresh_meta(
                 key,
                 token=token,
-                fingerprints=episode_input_fingerprints(episodes),
+                fingerprints=None,
                 outcome="unchanged",
                 dirty=dirty,
             )
@@ -439,10 +440,14 @@ class SourcePipeline:
             flush=True,
         )
         assign_uids(city, episodes)
-        previous_episodes = [record_to_episode(rec) for rec in persisted.values()]
-        previous_fingerprints = episode_input_fingerprints(previous_episodes)
+        previous = self.refresh_state.get(key, {}).get("episode_fingerprints")
+        previous_fingerprints = previous if isinstance(previous, dict) else {}
         current_fingerprints = episode_input_fingerprints(episodes)
-        dirty = discovery_dirty_uids(previous_fingerprints, current_fingerprints)
+        dirty = (
+            discovery_dirty_uids(previous_fingerprints, current_fingerprints)
+            if previous_fingerprints
+            else {uid: "fingerprint_baseline_missing" for uid in current_fingerprints}
+        )
         for uid, reason in self._backfill_dirty(city, episodes):
             dirty.setdefault(uid, reason)
         self._dirty_uids[key] = dirty
@@ -651,6 +656,14 @@ class SourcePipeline:
             )
             provider, episodes, persisted, seeded = self.fetch_merge(city, key)
             persist_episodes = self._aggregate_persist.pop(key, episodes)
+            retained_episodes = _retained_working_set(
+                self,
+                city,
+                episodes,
+                persist_episodes,
+                persisted,
+                None,
+            )
             work_episodes = _retained_working_set(
                 self,
                 city,
@@ -668,7 +681,10 @@ class SourcePipeline:
                     allow_probe=not self.ctx.dry_run,
                     stop=self.ctx.stop,
                 )
-            stats = run_stages(provider, city, work_episodes, self.stages, self.ctx)
+            stats: list = []
+            for stage in self.stages:
+                target = retained_episodes if stage.name in _SOURCE_STAGE_NAMES else work_episodes
+                stats.extend(run_stages(provider, city, target, [stage], self.ctx))
             notes = [s.note() for s in stats if s.note()]
             self.accumulate_stats(stats)
             if seeded:
@@ -1329,6 +1345,8 @@ def _retained_working_set(
     persist_episodes: list[Episode],
     persisted: dict,
     dirty_uids: frozenset[str] | set[str] | None = None,
+    *,
+    filter_dirty: bool = True,
 ) -> list[Episode]:
     """Filter fresh observations to the UIDs that final persistence will actually retain.
 
@@ -1366,7 +1384,7 @@ def _retained_working_set(
             f"suppressed_candidates={suppressed_candidates} cap={max_items}",
             flush=True,
         )
-    if dirty_uids is not None:
+    if filter_dirty and dirty_uids is not None:
         wanted = set(dirty_uids)
         working = [ep for ep in working if (ep.uid or ep.guid) in wanted]
     return working
@@ -1382,7 +1400,7 @@ def _order_global_candidates(prepared: dict, policy) -> list[tuple[str, Episode]
     for key, st in prepared.items():
         city = st["city"]
         for ep in _materialize_set(
-            st.get("retained_episodes", st["episodes"]),
+            st.get("candidate_episodes", st.get("retained_episodes", st["episodes"])),
             city.max_episodes,
             policy=policy,
             city_slug=city.slug,
@@ -1442,7 +1460,7 @@ def _run_enrich_global_queue(
     allowed = LANE_STAGES.get(ctx.lane) if ctx.lane is not None else None
     # Document stages need a source-wide episode list: agenda-derived minutes attach to the
     # preceding same-body meeting, which a one-episode global-queue invocation cannot see.
-    source_stage_names = {"links", "agenda_text", "minutes_text"}
+    source_stage_names = _SOURCE_STAGE_NAMES
     source_stages = [
         s
         for s in pipeline.stages
@@ -1539,6 +1557,14 @@ def _run_enrich_global_queue(
             state["episodes"],
             state.get("persist_episodes", state["episodes"]),
             state["persisted"],
+            None,
+        )
+        state["candidate_episodes"] = _retained_working_set(
+            pipeline,
+            state["city"],
+            state["episodes"],
+            state.get("persist_episodes", state["episodes"]),
+            state["persisted"],
             state.get("dirty_uids"),
         )
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
@@ -1558,7 +1584,7 @@ def _run_enrich_global_queue(
             key, st = item
             _normalize_episode_durations_for_dispatch(
                 key,
-                st["retained_episodes"],
+                st.get("candidate_episodes", st["retained_episodes"]),
                 storage=ctx.storage,
                 ffmpeg_binary=getattr(ctx.ffmpeg, "binary", "ffmpeg"),
                 allow_probe=not ctx.dry_run,
@@ -2326,6 +2352,7 @@ def _build_impl(
                             state_dir,
                             owned,
                             protected_blocks=protected_blocks_for_lane(lane),
+                            lane=lane,
                             owned_uids=shard_owned_uids,
                             log=lambda msg: print(msg, flush=True),
                         )
@@ -2738,6 +2765,7 @@ def _build_impl(
                     state_dir,
                     owned,
                     protected_blocks=protected_blocks_for_lane(lane),
+                    lane=lane,
                     owned_uids=shard_owned_uids,
                     log=lambda msg: print(msg, flush=True),
                 )
@@ -2745,6 +2773,12 @@ def _build_impl(
                     storage,
                     state_dir,
                     owned,
+                    log=lambda msg: print(msg, flush=True),
+                )
+                pushed += push_refresh_state_merged(
+                    storage,
+                    state_dir,
+                    owned_source_keys=owned,
                     log=lambda msg: print(msg, flush=True),
                 )
                 pushed += push_state(

@@ -152,6 +152,96 @@ def test_run_stages_returns_stats_per_stage(tmp_path):
     assert eps[0].links.get("canonical_video")
 
 
+def test_completion_cache_skips_unchanged_episode_and_invalidates_on_input_change(tmp_path):
+    calls = []
+
+    class MarkerStage:
+        name = "marker"
+        version = "1"
+
+        def process(self, provider, city, episodes, ctx):
+            calls.append([ep.uid for ep in episodes])
+            return StageStats(self.name, ran=len(episodes))
+
+    episode = _ep("g1")
+    stage = MarkerStage()
+    run_stages(FakeProvider(), _city(), [episode], [stage], _ctx(tmp_path))
+    run_stages(FakeProvider(), _city(), [episode], [stage], _ctx(tmp_path))
+    assert calls == [["uid-g1"]]
+
+    episode.video_url = "https://src/new.m3u8"
+    run_stages(FakeProvider(), _city(), [episode], [stage], _ctx(tmp_path))
+    assert calls == [["uid-g1"], ["uid-g1"]]
+
+
+def test_completion_cache_handles_empty_results_new_episode_and_version_bumps(tmp_path):
+    calls = []
+
+    class EmptyStage:
+        name = "chapters"
+        version = "1"
+
+        def process(self, provider, city, episodes, ctx):
+            calls.append([ep.uid for ep in episodes])
+            return StageStats(self.name, reused=len(episodes))
+
+    stage = EmptyStage()
+    first = _ep("g1")
+    run_stages(FakeProvider(), _city(), [first], [stage], _ctx(tmp_path))
+    assert first.stage_completion["chapters"]["state"] == "complete-empty"
+
+    second = _ep("g2")
+    run_stages(FakeProvider(), _city(), [first, second], [stage], _ctx(tmp_path))
+    assert calls == [["uid-g1"], ["uid-g2"]]
+
+    stage.version = "2"
+    run_stages(FakeProvider(), _city(), [first, second], [stage], _ctx(tmp_path))
+    assert calls[-1] == ["uid-g1", "uid-g2"]
+
+
+def test_deferred_dirty_episode_does_not_poison_completed_sibling(tmp_path):
+    calls = []
+
+    class PartialStage:
+        name = "marker"
+        version = "1"
+        should_skip = False
+
+        def process(self, provider, city, episodes, ctx):
+            calls.append([ep.uid for ep in episodes])
+            return StageStats(
+                self.name,
+                skipped=len(episodes) if self.should_skip else 0,
+                ran=0 if self.should_skip else len(episodes),
+            )
+
+    first, second = _ep("g1"), _ep("g2")
+    stage = PartialStage()
+    run_stages(FakeProvider(), _city(), [first, second], [stage], _ctx(tmp_path))
+    second.video_url = "https://src/changed.m3u8"
+    stage.should_skip = True
+    run_stages(FakeProvider(), _city(), [first, second], [stage], _ctx(tmp_path))
+    assert calls[-1] == ["uid-g2"]
+    assert first.stage_completion["marker"]["state"] == "complete"
+
+
+def test_legacy_artifact_inference_skips_stage_without_marker(tmp_path):
+    calls = []
+
+    class LegacyAudioStage:
+        name = "audio"
+        version = "1"
+
+        def process(self, provider, city, episodes, ctx):
+            calls.append(episodes)
+            return StageStats(self.name, ran=len(episodes))
+
+    episode = _ep("g1")
+    episode.hosted_audio_url = "https://cdn/g1.m4a"
+    run_stages(FakeProvider(), _city(), [episode], [LegacyAudioStage()], _ctx(tmp_path))
+    assert calls == []
+
+
 def test_run_stages_halts_after_provider_throttle(tmp_path):
     calls: list[str] = []
 

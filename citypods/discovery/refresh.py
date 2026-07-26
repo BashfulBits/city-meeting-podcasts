@@ -13,8 +13,21 @@ from citypods.models import ChangeToken, Episode
 
 REFRESH_STATE_NAME = "source_refresh.json"
 _VOLATILE_QUERY_KEYS = frozenset(
-    {"token", "signature", "sig", "expires", "expiry", "hdnts", "auth", "jwt"}
+    {
+        "token",
+        "tokenid",
+        "signature",
+        "sig",
+        "expires",
+        "expiry",
+        "auth",
+        "jwt",
+        "policy",
+        "key-pair-id",
+        "nonce",
+    }
 )
+_VOLATILE_QUERY_PREFIXES = ("x-amz-", "hdn")
 
 
 def _iso(value: datetime | None = None) -> str:
@@ -72,7 +85,10 @@ def _canonical_media_ref(value: str | None) -> str | None:
     query = [
         (key, val)
         for key, val in parse_qsl(parts.query, keep_blank_values=True)
-        if key.casefold() not in _VOLATILE_QUERY_KEYS
+        if (
+            key.casefold() not in _VOLATILE_QUERY_KEYS
+            and not key.casefold().startswith(_VOLATILE_QUERY_PREFIXES)
+        )
     ]
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
 
@@ -84,10 +100,11 @@ def episode_input_fingerprint(ep: Episode) -> str:
     migrations and expiring URLs must not make unchanged media dirty. Derived/LLM fields are
     excluded from this trust-boundary input.
     """
+    published = ep.published.replace(tzinfo=UTC) if ep.published.tzinfo is None else ep.published
     payload = {
         "uid": ep.uid,
         "title": ep.title,
-        "published": ep.published.astimezone(UTC).isoformat(),
+        "published": published.astimezone(UTC).isoformat(),
         "description": ep.description,
         "video_url": _canonical_media_ref(ep.video_url),
         "audio_url": _canonical_media_ref(ep.audio_url),

@@ -667,6 +667,20 @@ def test_ci_runs_granicus_worker_unit_tests():
     assert step["run"] == "npm test"
 
 
+def test_swagit_worker_credentials_reach_provider_fetch_lanes():
+    for workflow, job_name, step_name in (
+        ("tag.yml", "tag", "Produce bounded LLM topic-tag candidates"),
+        ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)"),
+    ):
+        _wf, job = _job(workflow, job_name=job_name)
+        step = next(step for step in job["steps"] if step.get("name") == step_name)
+        assert step["env"]["SWAGIT_PROXY_BASE_URL"] == "${{ secrets.SWAGIT_PROXY_BASE_URL }}"
+        assert step["env"]["SWAGIT_PROXY_TOKEN"] == "${{ secrets.SWAGIT_PROXY_TOKEN }}"
+        if workflow == "audio.yml":
+            assert "--env SWAGIT_PROXY_BASE_URL" in step["run"]
+            assert "--env SWAGIT_PROXY_TOKEN" in step["run"]
+
+
 def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():
     wf, job = _job("granicus-worker-deploy.yml", job_name="deploy")
     triggers = _on(wf)
