@@ -54,7 +54,9 @@ The production deploy **splits render from enrich** into **separate workflows** 
 see below): `deploy.yml` is render-only — it publishes Pages quickly from already-known state and never
 runs ffmpeg/ASR — while the heavy, best-effort, resumable backfill runs in two dedicated workflows,
 `audio.yml` (ffmpeg encode → object storage) and `asr.yml` (faster-whisper transcription). `audio.yml`
-remains source-sharded; `asr.yml` now launches a matrix of **identical pull workers** that all run
+uses a canonical preflight to restore state once and emits only non-empty source shards; workers
+consume its fingerprinted snapshot and fail closed if it is stale. A fully idle cycle runs an
+explicit successful no-op. `asr.yml` now launches a matrix of **identical pull workers** that all run
 `citypods compute run-internal-worker` against the shared Stage-2 lease ledger. The **Audio** (and
 unscheduled **align**) lane is **source-atomic** — a `source_key` goes to exactly one shard — because that lane
 is throttled per source (per-source encode caps, Granicus media leases), so the
@@ -324,7 +326,7 @@ total on `/admin/status`.
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
   downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron;
   retries `actions/deploy-pages` up to 3× with backoff on GitHub's own transient deploy failures),
-  `audio.yml` (sharded audio materialization, 4h cron; own `audio` concurrency group),
+  `audio.yml` (preflighted dynamic source-sharded audio materialization, 4h cron; own `audio` concurrency group),
   `asr.yml` (shared-ledger faster-whisper pull workers, every 5h; own `asr` concurrency group) — the
   two heavy record-writers, with `audio.yml` still a `--shard K/N` × `--lane` matrix while `asr.yml`
   runs identical `compute run-internal-worker` slots after a reconcile/manifest-rebuild job,
