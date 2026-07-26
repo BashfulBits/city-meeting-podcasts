@@ -21,6 +21,7 @@ local dev backend simply no-op, keeping their on-disk ``.citypods-state``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -29,6 +30,11 @@ from pathlib import Path
 from posixpath import normpath
 
 STATE_PREFIX = "state"
+MANIFEST_REL_PATH = "catalog/manifest.json"
+MANIFEST_KEY = f"{STATE_PREFIX}/{MANIFEST_REL_PATH}"
+MANIFEST_VERSION = 1
+DIRTY_JOURNAL_NAME = ".dirty.json"
+TOMBSTONE_JOURNAL_NAME = ".tombstones.json"
 
 # The durable snapshot is a large fan-out of small JSON files (one ``episodes.json`` per source,
 # per-source calendar/run-event sidecars, etc. — thousands of objects on a mature deploy: 3,554 as
@@ -86,6 +92,120 @@ def _supported(storage) -> bool:
     return storage is not None and hasattr(storage, "get_file") and hasattr(storage, "list_objects")
 
 
+def _digest(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _manifest_path(state_dir: Path) -> Path:
+    return Path(state_dir) / MANIFEST_REL_PATH
+
+
+def mark_state_dirty(state_dir: Path, *paths: str | Path) -> None:
+    """Register exact state paths changed by a writer.
+
+    The journal is deliberately local and disposable: it is an optimization hint, never the
+    source of truth. A missing or malformed journal makes ``push_state`` use its safe scan path.
+    """
+    state_dir = Path(state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    journal = state_dir / DIRTY_JOURNAL_NAME
+    try:
+        data = json.loads(journal.read_text()) if journal.exists() else []
+    except (OSError, ValueError):
+        data = []
+    dirty = {str(p).replace("\\", "/") for p in data if isinstance(p, str)}
+    for raw in paths:
+        path = Path(raw)
+        if path.is_absolute():
+            try:
+                path = path.resolve().relative_to(state_dir.resolve())
+            except ValueError:
+                raise ValueError(f"dirty state path escapes state_dir: {raw!r}") from None
+        dirty.add(path.as_posix())
+    journal.write_text(json.dumps(sorted(dirty), indent=2) + "\n")
+
+
+def mark_state_deleted(state_dir: Path, *paths: str | Path) -> None:
+    """Record explicit state removals; partial local checkouts never imply deletion."""
+    state_dir = Path(state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    path = state_dir / TOMBSTONE_JOURNAL_NAME
+    try:
+        data = json.loads(path.read_text()) if path.exists() else []
+    except (OSError, ValueError):
+        data = []
+    tombstones = {str(p).replace("\\", "/") for p in data if isinstance(p, str)}
+    tombstones.update(Path(p).as_posix() for p in paths)
+    path.write_text(json.dumps(sorted(tombstones), indent=2) + "\n")
+
+
+def _load_manifest(storage, state_dir: Path, *, log) -> dict | None:
+    """Read and validate the compact remote index, returning None to request full sync."""
+    if not _supported(storage):
+        return None
+    with tempfile.TemporaryDirectory() as td:
+        local = Path(td) / "manifest.json"
+        try:
+            if not storage.get_file(MANIFEST_KEY, local):
+                return None
+            manifest = json.loads(local.read_text())
+        except (OSError, ValueError, TypeError) as exc:
+            log(f"state: WARNING invalid remote manifest ({exc}); falling back to full sync")
+            return None
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("version") != MANIFEST_VERSION
+        or not isinstance(manifest.get("generation"), int)
+        or not isinstance(manifest.get("objects"), dict)
+        or not isinstance(manifest.get("tombstones", {}), list)
+    ):
+        log("state: WARNING incompatible remote manifest; falling back to full sync")
+        return None
+    return manifest
+
+
+def _manifest_object(rel: str, path: Path) -> dict:
+    return {
+        "digest": _digest(path),
+        "size": path.stat().st_size,
+        "category": rel.split("/", 1)[0] or "root",
+    }
+
+
+def _read_local_manifest(state_dir: Path) -> dict:
+    path = _manifest_path(state_dir)
+    try:
+        data = json.loads(path.read_text())
+        if data.get("version") == MANIFEST_VERSION and isinstance(data.get("objects"), dict):
+            return data
+    except (OSError, ValueError, TypeError):
+        pass
+    return {"version": MANIFEST_VERSION, "generation": 0, "objects": {}, "tombstones": []}
+
+
+def _write_local_manifest(state_dir: Path, manifest: dict) -> None:
+    path = _manifest_path(state_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+
+
+def _full_state_keys(storage):
+    return [
+        key
+        for key, _ in storage.list_objects(f"{STATE_PREFIX}/")
+        if (rel := key[len(STATE_PREFIX) + 1 :])
+        and rel not in {MANIFEST_REL_PATH, DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}
+        and Path(rel).suffix in _SUFFIXES
+        and not _is_cas_managed(storage, key)
+    ]
+
+
 def pull_state(storage, state_dir: Path, *, log=None) -> int:
     """Download the durable state snapshot from the bucket into ``state_dir`` (bucket wins).
     Returns the number of files restored. No-op for backends without sync support.
@@ -105,18 +225,39 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
     emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
 
-    # Materialize the key list first (a single paginated LIST), then fan the per-object GETs out
+    emit = log or (lambda msg: print(msg, flush=True))
+    state_dir = Path(state_dir)
+    manifest = _load_manifest(storage, state_dir, log=emit)
+    if manifest is not None:
+        objects = manifest["objects"]
+        tombstones = set(manifest.get("tombstones", []))
+        keys = [f"{STATE_PREFIX}/{rel}" for rel in objects if rel not in tombstones]
+        # A valid manifest is authoritative for remote state. Do not remove local files here:
+        # unpushed local writes may be present after an interrupted run. Tombstones are applied
+        # only to files that are not locally dirty.
+        try:
+            dirty = set(json.loads((state_dir / DIRTY_JOURNAL_NAME).read_text()))
+        except (OSError, ValueError, TypeError):
+            dirty = set()
+        for rel in tombstones - dirty:
+            (state_dir / rel).unlink(missing_ok=True)
+    else:
+        keys = _full_state_keys(storage)
+
+    # Materialize the key list first (a single paginated LIST on fallback), then fan the per-object
+    # GETs out
     # across a bounded pool: the listing is cheap and sequential, the downloads are the expensive,
     # parallelizable part. Filtering here keeps the pool doing only real work.
-    keys = [
-        key
-        for key, _ in storage.list_objects(f"{STATE_PREFIX}/")
-        if (rel := key[len(STATE_PREFIX) + 1 :])
-        and Path(rel).suffix in _SUFFIXES
-        # CAS-managed on R2; not part of the bulk snapshot.
-        and not _is_cas_managed(storage, key)
-    ]
+    if manifest is not None:
+        keys = [
+            key
+            for key in keys
+            if _digest(state_dir / key[len(STATE_PREFIX) + 1 :])
+            != str(manifest["objects"].get(key[len(STATE_PREFIX) + 1 :], {}).get("digest", ""))
+        ]
     if not keys:
+        if manifest is not None:
+            _write_local_manifest(state_dir, manifest)
         return 0
 
     def _restore_one(key: str) -> bool:
@@ -136,7 +277,10 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
     with ThreadPoolExecutor(max_workers=workers) as pool:
         # ``map`` re-raises the first non-transient error from any worker (propagating a real 403
         # to the caller, exactly as the serial loop did), and otherwise yields one bool per key.
-        return sum(1 for got in pool.map(_restore_one, keys) if got)
+        restored = sum(1 for got in pool.map(_restore_one, keys) if got)
+    if manifest is not None:
+        _write_local_manifest(state_dir, manifest)
+    return restored
 
 
 def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None, log=None) -> int:
@@ -186,6 +330,33 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None,
             raise ValueError(f"only_paths entry is not a valid relative file: {raw_path!r}")
         exact_paths.add(rel)
     exact_paths = frozenset(exact_paths)
+    journal_path = state_dir / DIRTY_JOURNAL_NAME
+    journal_paths = None
+    if only_paths is None and only_prefixes is None and journal_path.exists():
+        try:
+            raw_dirty = json.loads(journal_path.read_text())
+            if isinstance(raw_dirty, list) and all(isinstance(p, str) for p in raw_dirty):
+                journal_paths = raw_dirty
+        except (OSError, ValueError, TypeError):
+            journal_paths = None
+    if journal_paths is not None:
+        # Writers outside the central helpers may not have journaled a new file. Include files
+        # absent from the manifest as a compatibility bridge; once published, warm runs remain
+        # journal-driven and do not rediscover unchanged objects.
+        known = set((_read_local_manifest(state_dir).get("objects") or {}).keys())
+        journal_paths = set(journal_paths)
+        journal_paths.update(
+            path.relative_to(state_dir).as_posix()
+            for path in state_dir.rglob("*")
+            if path.is_file()
+            and path.suffix in _SUFFIXES
+            and path.name not in {DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}
+            and path.relative_to(state_dir).as_posix() != MANIFEST_REL_PATH
+            and path.relative_to(state_dir).as_posix() not in known
+        )
+        only_paths = sorted(journal_paths)
+        exact_paths = frozenset(normpath(Path(p).as_posix()) for p in only_paths)
+
     if only_paths is not None:
         # Exact-path callers already know the files they created; avoid walking the retained
         # state tree just to rediscover one append-only event.
@@ -207,26 +378,96 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None,
             if not path.is_file() or path.suffix not in _SUFFIXES:
                 continue
             rel = path.relative_to(state_dir).as_posix()
+            if rel in {MANIFEST_REL_PATH, DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}:
+                continue
             if prefixes is not None and not rel.startswith(prefixes):
                 continue
             if _is_cas_managed(storage, f"{STATE_PREFIX}/{rel}"):
                 continue
             candidates.append(rel)
-    if not candidates:
+    tombstone_path = state_dir / TOMBSTONE_JOURNAL_NAME
+    if not candidates and not tombstone_path.exists():
         return 0
-    emit(f"state: pushing {len(candidates)} file(s) to durable storage")
+
+    manifest = _load_manifest(storage, state_dir, log=emit) or _read_local_manifest(state_dir)
+    objects = dict(manifest.get("objects", {}))
+    tombstones = set(manifest.get("tombstones", []))
+    changed = [
+        rel
+        for rel in candidates
+        if rel in tombstones or objects.get(rel, {}).get("digest") != _digest(state_dir / rel)
+    ]
+    if not changed and not tombstone_path.exists():
+        _write_local_manifest(state_dir, manifest)
+        journal_path.unlink(missing_ok=True)
+        # The return value is a durable-scope count used by cleanup callers as a successful
+        # persistence signal. It is intentionally not a network-upload count; the manifest is
+        # what proves unchanged objects were safely reconciled without PUTs.
+        return len(candidates)
+    emit(f"state: pushing {len(changed)} file(s) to durable storage")
 
     def _push_one(rel: str) -> bool:
         emit(f"state: pushing {rel}")
         storage.put_file(f"{STATE_PREFIX}/{rel}", state_dir / rel, "application/json")
         return True
 
-    workers = min(_STATE_SYNC_MAX_WORKERS, len(candidates))
+    workers = min(_STATE_SYNC_MAX_WORKERS, len(changed))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         # ``map`` re-raises the first error from any worker (matching the serial loop's contract:
         # an upload failure is not transient-tolerant here the way a restore's is, since a partial
         # push must not be silently reported as complete).
-        return sum(1 for ok in pool.map(_push_one, candidates) if ok)
+        sum(1 for ok in pool.map(_push_one, changed) if ok)
+
+    for rel in changed:
+        objects[rel] = _manifest_object(rel, state_dir / rel)
+        tombstones.discard(rel)
+    deleted = set()
+    if tombstone_path.exists():
+        try:
+            raw = json.loads(tombstone_path.read_text())
+            if isinstance(raw, list):
+                deleted = {p for p in raw if isinstance(p, str)}
+        except (OSError, ValueError, TypeError):
+            pass
+    for rel in deleted:
+        if hasattr(storage, "delete"):
+            storage.delete(f"{STATE_PREFIX}/{rel}")
+        objects.pop(rel, None)
+        tombstones.add(rel)
+    new_manifest = {
+        "version": MANIFEST_VERSION,
+        "generation": int(manifest.get("generation", 0)) + 1,
+        "updated_at": datetime.now(UTC).isoformat(),
+        "objects": objects,
+        "tombstones": sorted(tombstones),
+    }
+    payload = json.dumps(new_manifest, indent=2, sort_keys=True).encode()
+    cas_done = False
+    cas_attempted = False
+    if (
+        getattr(storage, "cas_capable", False)
+        and hasattr(storage, "get_bytes")
+        and hasattr(storage, "put_cas")
+    ):
+        cas_attempted = True
+        current = storage.get_bytes(MANIFEST_KEY)
+        try:
+            kwargs = {"if_match": current[1]} if current else {"if_none_match": "*"}
+            storage.put_cas(MANIFEST_KEY, payload, "application/json", **kwargs)
+            cas_done = True
+        except Exception as exc:  # noqa: BLE001 — retry next run after a concurrent writer
+            emit(f"state: WARNING manifest CAS failed ({exc}); keeping prior manifest")
+    if not cas_done and not cas_attempted:
+        with tempfile.NamedTemporaryFile() as manifest_file:
+            manifest_file.write(payload)
+            manifest_file.flush()
+            storage.put_file(MANIFEST_KEY, Path(manifest_file.name), "application/json")
+    manifest_published = cas_done or not cas_attempted
+    if manifest_published:
+        _write_local_manifest(state_dir, new_manifest)
+        journal_path.unlink(missing_ok=True)
+        tombstone_path.unlink(missing_ok=True)
+    return len(candidates)
 
 
 def fetch_remote_records(storage, src_key: str) -> dict | None:

@@ -61,6 +61,22 @@ def test_parse_clip_rejects_unapproved_host():
         probe._parse_clip("bad=https://example.com/video.mp4")
 
 
+def test_parse_clip_does_not_require_live_dns(monkeypatch):
+    calls = []
+
+    def record_validation(*args, **kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(probe, "validate_source_url", record_validation)
+    # The parser's validation is intentionally syntax/allowlist-only; run_probe performs the
+    # resolving SSRF check immediately before any external media fetch.
+    assert probe._parse_clip("fixture=https://archive-video.granicus.com/a.mp4") == (
+        "fixture",
+        "https://archive-video.granicus.com/a.mp4",
+    )
+    assert calls == [{"allowed_hosts": probe.ALLOWED_HOSTS, "resolve": False}]
+
+
 def test_transport_defaults_are_exact_redacted_archive_objects():
     names = {name for name, _url in transport.DEFAULT_CLIPS}
     assert {

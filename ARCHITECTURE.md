@@ -235,6 +235,11 @@ total on `/admin/status`.
 - **Timeline served↔source EDL** — silence-trim/concat/intro/transcripts/clips all reduce to one
   served-vs-source time map (see [`review/08`](review/08-timeline-and-content-transforms.md)).
 - **Bucket-as-truth state** — derived artifacts survive Actions cache eviction.
+- **Manifest/dirty durable state sync** — `citypods.statesync` publishes a versioned compact
+  object manifest, conditionally restores only changed state files, and accepts exact dirty-path
+  and tombstone registrations from state writers. Missing, corrupt, or incompatible manifests
+  fall back to the existing full list/restore path; CAS-managed coordination keys remain outside
+  the manifest.
 - **Fail-soft durable restore** — `pull_state()` retries recognized transient per-object download
   failures, keeps successfully restored objects, and retains the failed object's existing local or
   cache copy for later self-healing instead of aborting the Audio run.

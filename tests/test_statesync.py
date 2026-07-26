@@ -22,6 +22,7 @@ from citypods.statesync import (
     STATE_PREFIX,
     TransientStateSyncError,
     fetch_remote_records,
+    mark_state_dirty,
     pull_state,
     push_asr_runtime_log_merged,
     push_calendar_records_merged,
@@ -913,3 +914,51 @@ def test_cas_managed_uses_router_instance_prefixes_not_global(tmp_path):
     assert _is_cas_managed(router, "state/custom_coord.json") is True
     assert _is_cas_managed(router, "state/compute_budget.json") is False
     assert "state/compute_budget.json" in COORDINATION_PREFIXES  # would be excluded if using global
+
+
+def test_manifest_warm_pull_skips_unchanged_object_gets(tmp_path):
+    class CountingStorage(LocalStorage):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.gets = []
+
+        def get_file(self, key, local_path):
+            self.gets.append(key)
+            return super().get_file(key, local_path)
+
+    bucket = CountingStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    source = tmp_path / "source"
+    save_records(source, "src", {"u1": {"uid": "u1"}})
+    push_state(bucket, source)
+    bucket.gets.clear()
+    restored = tmp_path / "restored"
+    assert pull_state(bucket, restored) == 1
+    assert bucket.gets == ["state/catalog/manifest.json", "state/sources/src/episodes.json"]
+    bucket.gets.clear()
+    assert pull_state(bucket, restored) == 0
+    assert bucket.gets == ["state/catalog/manifest.json"]
+
+
+def test_dirty_push_uploads_only_registered_mutation(tmp_path):
+    class CountingStorage(LocalStorage):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.puts = []
+
+        def put_file(self, key, local_path, content_type):
+            self.puts.append(key)
+            return super().put_file(key, local_path, content_type)
+
+    bucket = CountingStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    source = tmp_path / "source"
+    save_records(source, "src", {"u1": {"uid": "u1"}})
+    event = source / "run_events" / "one.json"
+    event.parent.mkdir(parents=True)
+    event.write_text("{}")
+    mark_state_dirty(source, "run_events/one.json")
+    push_state(bucket, source)
+    bucket.puts.clear()
+    event.write_text('{"changed": true}')
+    mark_state_dirty(source, "run_events/one.json")
+    assert push_state(bucket, source) == 1
+    assert bucket.puts == ["state/run_events/one.json", "state/catalog/manifest.json"]

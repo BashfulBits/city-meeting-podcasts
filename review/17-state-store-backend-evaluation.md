@@ -186,6 +186,12 @@ the only state that defers straight to the Phase-R database. A near-term design 
 `episodes.json` read/writes** (S2 access patterns + dirty-only commits) so B2 remains comfortable at scale
 until that migration.
 
+**GH#1015 implementation note (2026-07-25):** the first S2 state-sync slice now publishes
+`state/catalog/manifest.json`, restores by digest, registers dirty paths in central writers, and
+requires explicit tombstones for deletion. The manifest uses backend CAS when available and falls
+back to the pre-S2 full list/restore path when absent or incompatible; demand planning and
+shard-specific hydration remain separate follow-up work.
+
 > **Cross-ref:** [`review/18`](18-work-distribution-sharding.md) Stage 2 — external workers **claim**
 > episodes from the lease ledger and write transcript records — is the "external workers read/write records
 > directly" case. With per-uid leasing each block is single-writer, so that path commits through the

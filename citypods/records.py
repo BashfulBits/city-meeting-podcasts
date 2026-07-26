@@ -591,6 +591,9 @@ def save_records(state_dir: Path, src_key: str, records: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     envelope = {"schema_version": SCHEMA_VERSION, "episodes": records}
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+    from citypods.statesync import mark_state_dirty
+
+    mark_state_dirty(state_dir, path.relative_to(state_dir))
 
 
 def calendar_records_path(state_dir: Path, src_key: str) -> Path:
@@ -663,6 +666,9 @@ def save_calendar_records(
     serialized = {uid: calendar_record_to_dict(record) for uid, record in records.items()}
     envelope = {"schema_version": CALENDAR_SCHEMA_VERSION, "records": serialized}
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+    from citypods.statesync import mark_state_dirty
+
+    mark_state_dirty(state_dir, path.relative_to(state_dir))
 
 
 def merge_calendar_records(
