@@ -94,6 +94,26 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`tag.yml` runs still got hard-cancelled by GitHub's job timeout with nothing persisted, even
+  after several rounds of narrowing specific in-pass cost sinks (state restore parallelization,
+  duration-heal gating, input-fingerprint short-circuiting, the wall-clock check ordering inside
+  `TagsStage` -- see the entries below).** None of those touch `_run_enrich_global_queue`'s
+  source-prepare pass (step 1: a `ThreadPoolExecutor` running `fetch_merge` over every unique
+  source in scope) -- it runs to completion unconditionally, with no `ctx.stop()` check anywhere
+  in that loop, *before* any of the stage processing the tag lane's graceful-yield deadline governs
+  even starts. A slow-fetching backlog (cities with many committee/board sources, plus the added
+  latency of the new Swagit Worker fallback relay above) can alone exceed a tight job timeout
+  regardless of how well-tuned `tag_run_time_budget_minutes` is. Rather than chase another specific
+  cost sink, `tag.yml`'s job `timeout-minutes` is now 240 (was 25), mirroring
+  `llm-deferred-sweep.yml`'s existing headroom, so source-prepare always has room to finish;
+  `tag_run_time_budget_minutes` (`config/site_config.yml`) is now 240 to match (window = 204m via
+  the existing `budget_safety`, leaving the same ~36m tail `run_time_budget_minutes` already uses)
+  so the stage-processing budget that was already correctly implemented gets a real amount of time
+  to do LLM work once prepare completes, instead of inheriting whatever scraps were left under the
+  old 25-minute cap. The source-prepare pass itself still has no time bound of its own -- if it
+  ever needs one, it needs its own `ctx.stop()` check inside that loop, which this change does not
+  add.
+
 - **Swagit and Granicus requests now share one denial-recovery transport.** Provider adapters use a
   single SSRF-gated request API that retries denied-access responses (especially HTTP 403) and
   exhausted transport errors once through each provider's narrowly allow-listed, authenticated
