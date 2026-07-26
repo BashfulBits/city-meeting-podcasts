@@ -33,6 +33,31 @@ function allowedTenants(env) {
   );
 }
 
+const GRANICUS_PATHS = new Set([
+  "Archive.php",
+  "DownloadFile.php",
+  "JSON.php",
+  "ViewPublisherRSS.php",
+]);
+const GRANICUS_QUERY_KEYS = new Set(["view_id", "clip_id", "mode", "file", "entrytime"]);
+
+function parseGranicusPath(requestUrl, env) {
+  const url = new URL(requestUrl);
+  if (url.hash) return null;
+  const match = url.pathname.match(/^\/v1\/granicus\/([a-z0-9.-]+)\/([^/]+)$/);
+  if (!match) return null;
+  const host = match[1];
+  const path = match[2];
+  const tenant = host.endsWith(".granicus.com") ? host.slice(0, -".granicus.com".length) : "";
+  if (!tenant || !allowedTenants(env).has(tenant) || !GRANICUS_PATHS.has(path)) return null;
+  const pairs = [...url.searchParams.entries()];
+  if (
+    pairs.length > 8 ||
+    pairs.some(([key, value]) => !GRANICUS_QUERY_KEYS.has(key) || value.length > 240)
+  ) return null;
+  return { host, path, search: url.search };
+}
+
 function parseArchivePath(requestUrl, env) {
   const url = new URL(requestUrl);
   if (url.search || url.hash || url.pathname.includes("%")) {
@@ -115,11 +140,14 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
     return plain(401, "unauthorized", { "www-authenticate": "Bearer" });
   }
   const archive = parseArchivePath(request.url, env);
-  if (!archive) {
+  const provider = archive ? null : parseGranicusPath(request.url, env);
+  if (!archive && !provider) {
     return plain(404, "not found");
   }
 
-  const upstreamUrl = `${UPSTREAM_ORIGIN}/${archive.tenant}/${archive.filename}`;
+  const upstreamUrl = archive
+    ? `${UPSTREAM_ORIGIN}/${archive.tenant}/${archive.filename}`
+    : `https://${provider.host}/${provider.path}${provider.search}`;
   let upstream;
   try {
     upstream = await fetchImpl(upstreamUrl, {
@@ -135,15 +163,22 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
     return plain(502, "upstream fetch failed");
   }
 
-  if (upstream.status !== 304 && upstream.status >= 300 && upstream.status < 400) {
+  if (
+    upstream.status !== 304 && upstream.status >= 300 && upstream.status < 400 &&
+    provider?.path !== "DownloadFile.php"
+  ) {
     return plain(502, "upstream redirect refused");
   }
 
   const noBody = request.method === "HEAD" || upstream.status === 304;
+  const headers = clientResponseHeaders(upstream);
+  if (provider?.path === "DownloadFile.php" && upstream.headers.get("location")) {
+    headers.set("location", upstream.headers.get("location"));
+  }
   return new Response(noBody ? null : upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
-    headers: clientResponseHeaders(upstream),
+    headers,
   });
 }
 

@@ -65,6 +65,10 @@ jobs:
 
       - name: Run audit
         env:
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+          SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
+          SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}

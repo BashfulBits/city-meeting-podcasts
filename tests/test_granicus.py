@@ -110,7 +110,7 @@ def test_parse_native_archive_page_retains_official_document_links():
 
 def test_fetch_episodes_wraps_network_errors(monkeypatch):
     class TimeoutSession:
-        def get(self, url, timeout=None):
+        def get(self, url, timeout=None, allow_redirects=False):
             raise requests.ConnectTimeout("timed out")
 
         def __enter__(self):
@@ -146,7 +146,7 @@ def test_fetch_episodes_uses_archive_not_capped_rss(monkeypatch):
         def __exit__(self, *args):
             return False
 
-        def get(self, url, timeout=None):
+        def get(self, url, timeout=None, allow_redirects=False):
             calls.append(url)
             return Response()
 
@@ -355,7 +355,7 @@ def test_fetch_chapters_uses_clip_id(monkeypatch):
         def __exit__(self, *a):
             return False
 
-        def get(self, url, timeout=None):
+        def get(self, url, timeout=None, allow_redirects=False):
             assert url == "https://c.granicus.com/JSON.php?clip_id=99"
             return Resp()
 

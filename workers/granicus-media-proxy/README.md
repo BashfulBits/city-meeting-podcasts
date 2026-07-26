@@ -1,16 +1,17 @@
 # Granicus media proxy
 
-This Cloudflare Worker is a narrow, authenticated fallback for Granicus media fetches that return
-HTTP 403 from GitHub-hosted runners but succeed from other networks.
+This Cloudflare Worker is a narrow, authenticated fallback for Granicus media and provider
+metadata/player fetches denied to GitHub-hosted runners but reachable from Cloudflare egress.
 
 It is **not** a general URL proxy:
 
 - only `GET` and `HEAD` are accepted;
 - requests require `Authorization: Bearer <PROXY_TOKEN>`;
 - only configured Granicus tenants are accepted;
-- the upstream host is hard-coded to `archive-video.granicus.com`;
-- filenames must be tenant-prefixed `.mp4` archive objects;
-- queries, encoded paths, traversal, and upstream redirects are refused;
+- upstreams are either `archive-video.granicus.com` or a configured `<tenant>.granicus.com` host;
+- archive filenames must be tenant-prefixed `.mp4` objects; metadata requests are restricted to
+  the provider's four PHP endpoints and their bounded query-key allow-list;
+- encoded paths, traversal, and unexpected upstream redirects are refused;
 - only selected range/cache validators are forwarded;
 - responses stream without buffering and use `Cache-Control: no-store`.
 

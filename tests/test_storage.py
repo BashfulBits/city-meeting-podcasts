@@ -622,6 +622,29 @@ def test_get_file_retries_transfer_failures_then_succeeds(tmp_path, monkeypatch)
     assert client.calls == 2
 
 
+def test_transient_storage_error_accepts_sdk_independent_injection(monkeypatch):
+    from citypods.storage import s3 as s3_module
+
+    real_import = __import__
+
+    def block_optional_sdk(name, *args, **kwargs):
+        if name in {"boto3", "botocore", "s3transfer"} or name.startswith(
+            ("boto3.", "botocore.", "s3transfer.")
+        ):
+            raise ImportError("optional S3 SDK unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", block_optional_sdk)
+
+    class InjectedTransportError(Exception):
+        pass
+
+    assert s3_module.is_transient_storage_error(
+        InjectedTransportError("connection reset"),
+        transient_errors=(InjectedTransportError,),
+    )
+
+
 def test_get_file_raises_after_exhausting_transfer_retries(tmp_path, monkeypatch):
     from botocore.exceptions import ReadTimeoutError
 

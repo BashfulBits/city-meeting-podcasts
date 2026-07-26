@@ -112,37 +112,13 @@ class SwagitWorkerFallback:
 def get_with_worker_fallback(
     session: requests.Session, url: str, *, timeout: float = DEFAULT_TIMEOUT
 ) -> requests.Response:
-    """GET ``url`` directly; on an immediate HTTP 403, retry once through the configured Swagit
-    Worker fallback (env-configured; a no-op, direct-only pass-through when unset).
+    """GET ``url`` through the shared provider-recovery policy.
 
-    Mirrors Granicus's direct-first, single-Worker-attempt shape (GH#353): production always
-    tries the canonical request first, and only an immediate 403 can trigger one Worker attempt.
-    Returns the *last* response tried, so callers keep their existing status-code handling
-    unchanged whether or not a fallback happened.
+    The direct request remains canonical; configured denied-access statuses and exhausted
+    transport failures get one authenticated Swagit Worker attempt. Redirects stay manual so
+    callers can validate any returned location before following it.
     """
-    # A redirect target -- or a Worker origin validated only once at construction -- is not
-    # implicitly trusted just because an earlier point in the call chain checked it (same
-    # reasoning as SwagitProvider.resolve_media_url's explicit validate_source_url on a redirect
-    # Location, CR-CP-35). Refuse automatic redirects on both requests rather than silently
-    # following one to a host the config-time allowlist never saw; callers explicitly validate
-    # the Location returned by the /download endpoint.
-    validate_source_url(url, resolve=True)
-    response = session.get(url, timeout=timeout, allow_redirects=False)
-    if response.status_code != 403:
-        return response
-    try:
-        fallback = SwagitWorkerFallback.from_env()
-    except ValueError as exc:
-        # A half-set/invalid SWAGIT_PROXY_* pair must not turn an already-handled 403 into an
-        # uncaught error -- degrade to the direct (still-403) response, same as unconfigured.
-        print(f"[enrich] swagit worker fallback misconfigured, using direct only: {exc}")
-        return response
-    if fallback is None:
-        return response
-    proxy_url = fallback.proxy_url(url)
-    if proxy_url is None:
-        return response
-    validate_source_url(proxy_url, resolve=True)
-    return session.get(
-        proxy_url, timeout=timeout, headers=fallback.headers(), allow_redirects=False
-    )
+    # Compatibility wrapper; all provider adapters share the policy in provider_request now.
+    from citypods.provider_request import get
+
+    return get(session, url, timeout=timeout, allow_redirects=False)

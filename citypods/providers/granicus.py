@@ -25,6 +25,7 @@ import requests
 from citypods.bodies import granicus_body
 from citypods.http import DEFAULT_TIMEOUT, make_session
 from citypods.models import ChangeToken, Episode
+from citypods.provider_request import get as provider_get
 from citypods.providers.base import ProviderError
 from citypods.security import SecurityError, validate_source_url
 
@@ -285,7 +286,7 @@ class GranicusProvider:
         with make_session() as session:
             for url in _archive_urls(source):
                 try:
-                    resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                    resp = provider_get(session, url, timeout=DEFAULT_TIMEOUT)
                 except requests.RequestException as exc:
                     raise ProviderError(f"GET {url} failed: {exc}") from exc
                 if resp.status_code >= 400:
@@ -307,7 +308,7 @@ class GranicusProvider:
         url = f"{origin}/JSON.php?clip_id={clip_id}"
         with make_session() as session:
             try:
-                resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+                resp = provider_get(session, url, timeout=DEFAULT_TIMEOUT)
             except requests.RequestException as exc:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
@@ -335,7 +336,7 @@ def _resolve_download_url(url: str) -> str:
         return url
     try:
         with make_session() as session:
-            resp = session.get(url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
+            resp = provider_get(session, url, timeout=DEFAULT_TIMEOUT, allow_redirects=False)
     except requests.RequestException:
         return url
     if resp.status_code in (301, 302, 303, 307, 308):

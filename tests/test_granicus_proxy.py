@@ -36,6 +36,30 @@ def test_proxy_url_accepts_only_canonical_native_granicus_archive(monkeypatch):
         "https://worker.example/v1/archive/arlingtontx/"
         "arlingtontx_f65c7a2f-9c73-4d9b-b7b7-205f7c12c0bf.mp4"
     )
+
+
+def test_proxy_url_accepts_bounded_granicus_provider_requests(monkeypatch):
+    fallback = _fallback(monkeypatch)
+    assert fallback.proxy_url(
+        "https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast"
+    ) == (
+        "https://worker.example/v1/granicus/arlingtontx.granicus.com/"
+        "ViewPublisherRSS.php?view_id=2&mode=vpodcast"
+    )
+    assert fallback.proxy_url("https://arlingtontx.granicus.com/DownloadFile.php?clip_id=2") == (
+        "https://worker.example/v1/granicus/arlingtontx.granicus.com/DownloadFile.php?clip_id=2"
+    )
+    too_many_query_pairs = "&".join(f"view_id={index}" for index in range(9))
+    assert (
+        fallback.proxy_url(f"https://arlingtontx.granicus.com/JSON.php?{too_many_query_pairs}")
+        is None
+    )
+    assert (
+        fallback.proxy_url("https://arlingtontx.granicus.com/JSON.php?view_id=" + "x" * 241) is None
+    )
+    assert fallback.proxy_url("https://arlingtontx.granicus.com/private") is None
+    assert fallback.proxy_url("https://evil.example/Archive.php?view_id=2") is None
+    assert fallback.proxy_url("https://arlingtontx.granicus.com/Archive.php?token=secret") is None
     assert fallback.proxy_url("https://example.com/video.mp4") is None
     assert fallback.proxy_url(f"{ARCHIVE_URL}?token=secret") is None
     assert (

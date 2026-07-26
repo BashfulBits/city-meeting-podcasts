@@ -10,12 +10,17 @@ from __future__ import annotations
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
 from citypods.security import validate_source_url
 
 _ARCHIVE_HOST = "archive-video.granicus.com"
 _WORKER_PATH_PREFIX = "/v1/archive/"
+_REQUEST_PATH_PREFIX = "/v1/granicus/"
+_GRANICUS_PAGE_PATHS = frozenset(
+    {"Archive.php", "DownloadFile.php", "JSON.php", "ViewPublisherRSS.php"}
+)
+_GRANICUS_QUERY_KEYS = frozenset({"view_id", "clip_id", "mode", "file", "entrytime"})
 _SAFE_FILENAME_CHARS = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
 )
@@ -59,14 +64,30 @@ class GranicusWorkerFallback:
         segments = [segment for segment in parts.path.split("/") if segment]
         if (
             parts.scheme != "https"
-            or parts.hostname != _ARCHIVE_HOST
+            or not parts.hostname
             or parts.username
             or parts.password
             or parts.port not in {None, 443}
-            or parts.query
             or parts.fragment
-            or len(segments) != 2
         ):
+            return None
+        if parts.hostname != _ARCHIVE_HOST:
+            if not parts.hostname.endswith(".granicus.com") or len(segments) != 1:
+                return None
+            path = segments[0]
+            if path not in _GRANICUS_PAGE_PATHS:
+                return None
+            query = parse_qsl(parts.query, keep_blank_values=True)
+            if len(query) > 8 or any(key not in _GRANICUS_QUERY_KEYS for key, _ in query):
+                return None
+            if any(len(value) > 240 for _, value in query):
+                return None
+            proxy = (
+                f"{self.base_url}{_REQUEST_PATH_PREFIX}"
+                f"{quote(parts.hostname, safe='')}/{quote(path, safe='')}"
+            )
+            return f"{proxy}?{urlencode(query)}" if query else proxy
+        if parts.query or len(segments) != 2:
             return None
         tenant, filename = segments
         if (
@@ -80,6 +101,9 @@ class GranicusWorkerFallback:
             f"{self.base_url}{_WORKER_PATH_PREFIX}"
             f"{quote(tenant, safe='')}/{quote(filename, safe='')}"
         )
+
+    def headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.token}"}
 
     def rewrite_ffmpeg_command(
         self,

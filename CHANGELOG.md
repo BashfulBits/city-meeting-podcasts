@@ -94,6 +94,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Swagit and Granicus requests now share one denial-recovery transport.** Provider adapters use a
+  single SSRF-gated request API that retries denied-access responses (especially HTTP 403) and
+  exhausted transport errors once through each provider's narrowly allow-listed, authenticated
+  Cloudflare Worker. Audio, render, tag, audit, contracts, and availability workflows receive both
+  Worker configurations, and the Granicus Worker now supports bounded metadata/player endpoints in
+  addition to native archive media. Direct success still costs one request and clean dirty-stage
+  skips remain untouched: no pipeline version changed and no artifact backfill or extra B2/R2 read
+  is introduced.
+
 - **Scoped lanes now upload only the run-event file created by the current run (GH#1016).** The
   append-only `run_events/` push uses an exact relative path returned by the run-history writer,
   so retained historical events are not rescanned and re-uploaded on every Audio/ASR shard. The

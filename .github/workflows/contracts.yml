@@ -46,13 +46,19 @@ jobs:
       # silently self-disables the Worker fallback, so the media-fetch check would revert to the
       # known direct-fetch 403 and report a false break instead of testing the real path. Checked
       # before the (up to 2h) wait loop below so a misconfigured run fails in seconds, not hours.
-      - name: Verify Granicus proxy secrets are configured
+      - name: Verify provider proxy secrets are configured
         env:
           GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
           GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+          SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
+          SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
         run: |
           if [ -z "$GRANICUS_PROXY_BASE_URL" ] || [ -z "$GRANICUS_PROXY_TOKEN" ]; then
             echo "::error::GRANICUS_PROXY_BASE_URL and GRANICUS_PROXY_TOKEN must both be set as repo secrets; the media-fetch contract check depends on the Worker fallback path."
+            exit 1
+          fi
+          if [ -z "$SWAGIT_PROXY_BASE_URL" ] || [ -z "$SWAGIT_PROXY_TOKEN" ]; then
+            echo "::error::SWAGIT_PROXY_BASE_URL and SWAGIT_PROXY_TOKEN must both be set as repo secrets; Swagit endpoint checks depend on the Worker fallback path."
             exit 1
           fi
 
@@ -104,6 +110,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
           GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+          SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
+          SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
         run: >-
           PYTHONPATH=. python scripts/check_endpoints.py --issues
           ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && '--all' || '' }}
