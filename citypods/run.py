@@ -2035,26 +2035,32 @@ def _build_impl(
                 f"backstop {backstop_min:.0f}m (+ yield before new starts if superseded)"
             )
         elif lane == "tag":
-            # The tag lane's own workflow (tag.yml) runs on a daily cron with a 25-minute *job*
+            # The tag lane's own workflow (tag.yml) runs on a daily cron with its own *job*
             # timeout, not the 4h-scale cron the generic `run_time_budget_minutes` window is sized
-            # for (== that lane's own cron interval, minus a tail -- see the comment above). Reusing
-            # the generic 240m default here would leave `stop()` never tripping before GitHub's own
-            # hard timeout kills the job -- which is exactly what happened (an untuned deadline gave
-            # this lane none of the "wrap up and persist" grace the audio/ASR lanes get; the job was
-            # SIGTERM'd mid-pass with nothing written). `tag_run_time_budget_minutes` gives it a
-            # deadline actually inside its own job's timeout, so a run that's still going too long
-            # stops dispatching new LLM calls and reaches the end-of-pass persist with margin to
-            # spare before GitHub cancels the job outright.
+            # for (== that lane's own cron interval, minus a tail -- see the comment above).
+            # `tag_run_time_budget_minutes` gives it a deadline anchored to its own job's timeout,
+            # so a run that's still going too long stops dispatching new LLM calls and reaches the
+            # end-of-pass persist with margin to spare before GitHub cancels the job outright.
             #
             # Anchor to `enrich_phase_start` (captured before the durable-state restore), NOT to a
             # fresh `monotonic()` read here: the restore and backend setup run *before* this point,
             # so a `monotonic()` read here would start the window only after that startup cost and
-            # let a slow start slide the deadline past the 25-minute job cap (observed: an ~11-min
-            # serial state restore did exactly this and the job was hard-cancelled). Counting
-            # startup against the window guarantees the graceful yield always fires first. Clamp at
-            # >= 0 so a startup that already overran the whole window yields immediately rather than
+            # let a slow start slide the deadline past the job cap (observed: an ~11-min serial
+            # state restore did exactly this and the job was hard-cancelled). Counting startup
+            # against the window guarantees the graceful yield always fires first. Clamp at >= 0 so
+            # a startup that already overran the whole window yields immediately rather than
             # computing a deadline in the past that reads as "never stop".
-            tag_window_min = float(defaults.get("tag_run_time_budget_minutes", 18))
+            #
+            # This deadline still can't save a run from `_run_enrich_global_queue`'s source-prepare
+            # pass (the `fetch_merge` `ThreadPoolExecutor` loop, step 1 in its docstring): it runs
+            # to completion unconditionally -- nothing in that loop calls `ctx.stop()` -- before any
+            # of the stage processing this deadline governs even starts. A slow-fetching backlog
+            # (many-committee cities, added latency from a Cloudflare Worker 403 fallback relay) can
+            # alone exceed a tight job timeout regardless of how well-tuned this window is; that's
+            # why `tag.yml`'s job timeout was widened to 240m (mirroring `llm-deferred-sweep.yml`)
+            # rather than tuning this number alone. If prepare itself ever needs a hard bound, it
+            # needs its own `ctx.stop()` check inside that loop -- this deadline can't reach it.
+            tag_window_min = float(defaults.get("tag_run_time_budget_minutes", 240))
             tag_deadline_secs = tag_window_min * 60 * safety
             remaining_secs = max(0.0, tag_deadline_secs - (time.monotonic() - enrich_phase_start))
             deadline = (time.monotonic() + remaining_secs) if tag_window_min > 0 else None
