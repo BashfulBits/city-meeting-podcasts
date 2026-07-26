@@ -13,6 +13,7 @@ from citypods.sharding import (
     create_shard_plan,
     episodes_for_shard,
     load_shard_plan,
+    matrix_for_plan,
     save_shard_plan,
 )
 
@@ -92,6 +93,7 @@ def test_transcribe_plan_is_per_episode_and_uses_snapshot_weights(tmp_path):
     assert loaded.weights[f"{key_b}/b1"] == 30 * 60
     assert set(loaded.assignment) == {f"{key_a}/a1", f"{key_b}/b1"}
     assert set(loaded.assignment.values()) == {0, 1}
+    assert loaded.snapshot_fingerprint
 
 
 def test_transcribe_plan_spreads_one_skewed_source_across_all_shards(tmp_path):
@@ -414,6 +416,21 @@ def test_plan_validation_fails_closed_on_lane_shards_or_source_drift():
         episodes_for_shard(
             plan, lane="audio", shard_index=0, num_shards=2, expected_sources={"a", "c"}
         )
+
+
+def test_audio_matrix_omits_zero_load_shards_and_keeps_plan_sources():
+    plan = ShardPlan(
+        lane="audio",
+        num_shards=4,
+        assignment={"a": 0, "b": 2},
+        weights={"a": 12.0, "b": 0.0},
+        unit="source",
+    )
+    assert matrix_for_plan(plan) == {"shard": [0]}
+    owned, _ = episodes_for_shard(
+        plan, lane="audio", shard_index=2, num_shards=4, expected_sources={"a", "b"}
+    )
+    assert owned == {"b"}
 
 
 def test_plan_validation_rejects_lane_unit_mismatch(tmp_path):

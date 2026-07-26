@@ -40,6 +40,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Audio now skips empty matrix shards.** GH#1021 adds a canonical preflight that restores the
+  durable state once, emits a fingerprinted source-atomic plan and a dynamic matrix containing only
+  positive-load shards, then packages that snapshot for workers. A fully idle Audio cycle produces a
+  visible successful no-op; no artifact or pipeline version is invalidated.
+
 - **Granicus sustained-probe parsing is offline-safe.** Custom `--clip` arguments now perform
   syntax/allowlist validation during argparse without DNS; the probe still performs the full
   resolving SSRF check immediately before ffmpeg runs. This prevents unit tests and local offline

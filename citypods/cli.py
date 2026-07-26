@@ -252,9 +252,20 @@ def main(argv: list[str] | None = None) -> int:
     cps.add_argument("--lane", choices=["audio", "transcribe", "align"], required=True)
     cps.add_argument("--shards", type=int, required=True, metavar="N")
     cps.add_argument("--output", required=True, metavar="PATH")
+    cps.add_argument(
+        "--matrix-output",
+        metavar="PATH",
+        help="also write a GitHub Actions matrix containing only positive-load shards",
+    )
+    cps.add_argument(
+        "--restore-state",
+        action="store_true",
+        help="pull the canonical durable state once before planning",
+    )
     cps.add_argument("--site-config", default="config/site_config.yml")
     cps.add_argument("--config-dir", default="config")
     cps.add_argument("--output-dir", default="docs")
+    cps.add_argument("--base-url", help="base URL (for resolving cloud storage)")
     crt = cp_sub.add_parser(
         "reclaim-transcript",
         help="re-adopt an ASR artifact already in storage whose record transcript block was "
@@ -983,6 +994,8 @@ def _compute_plan_shards(args) -> int:
     from citypods.sharding import create_shard_plan, save_shard_plan
     from citypods.stages import ASR_PIPELINE_VERSION
     from citypods.state import resolve_state_dir
+    from citypods.statesync import pull_state
+    from citypods.storage import make_storage
 
     if args.shards < 1:
         raise SystemExit("--shards must be >= 1")
@@ -990,6 +1003,12 @@ def _compute_plan_shards(args) -> int:
     defaults = site_config.get("defaults", {})
     cities = load_city_configs(args.config_dir, defaults)
     state_dir = resolve_state_dir(site_config, Path(args.output_dir))
+    if args.restore_state:
+        storage = make_storage(
+            site_config, args.base_url or site_config.get("base_url", ""), args.output_dir
+        )
+        restored = pull_state(storage, state_dir)
+        print(f"plan preflight: restored {restored} state file(s)")
     plan = create_shard_plan(
         cities,
         state_dir,
@@ -999,6 +1018,12 @@ def _compute_plan_shards(args) -> int:
         asr_pipeline_version=ASR_PIPELINE_VERSION,
     )
     save_shard_plan(args.output, plan)
+    if args.matrix_output:
+        from citypods.sharding import matrix_for_plan
+
+        matrix = matrix_for_plan(plan)
+        Path(args.matrix_output).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.matrix_output).write_text(json.dumps(matrix, sort_keys=True) + "\n")
     loads = [0.0] * plan.num_shards
     for key, owner in plan.assignment.items():
         loads[owner] += plan.weights[key]

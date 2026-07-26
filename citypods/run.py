@@ -107,7 +107,12 @@ from citypods.resources import (
 from citypods.search import build_search_index
 from citypods.security import SecurityError
 from citypods.seeds import merge_seed_episodes
-from citypods.sharding import create_shard_plan, episodes_for_shard, load_shard_plan
+from citypods.sharding import (
+    create_shard_plan,
+    episodes_for_shard,
+    load_shard_plan,
+    state_snapshot_fingerprint,
+)
 from citypods.site import (
     render_city_archive_page,
     render_city_page,
@@ -1991,6 +1996,12 @@ def _build_impl(
             print(f"state: restored {restored} file(s) from durable storage")
     elif state_snapshot_restored:
         print("state: using canonical pre-matrix snapshot; durable restore already completed")
+    if shard is not None and shard_plan_path is not None and plan.snapshot_fingerprint:
+        snapshot_fingerprint = state_snapshot_fingerprint(state_dir)
+        if plan.snapshot_fingerprint != snapshot_fingerprint:
+            raise ValueError(
+                "shard plan snapshot fingerprint does not match the local canonical snapshot"
+            )
     # H14a: adopt the unexpired dispatch leases from the restored manifest, so a transcript a prior
     # run handed to an external worker (still in flight) isn't dispatched again this run.
     if isinstance(compute_backend, DispatchCoordinator):
