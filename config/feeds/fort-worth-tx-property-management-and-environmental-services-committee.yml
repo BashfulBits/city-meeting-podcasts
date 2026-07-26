@@ -4,6 +4,11 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Property Management and Environmental Services Committee"
+lifecycle:
+  status: paused
+  recheck_after: 2027-02-01
+  reason: "infrequent committee not on reliable schedule"
+  evidence_url: "https://www.fortworthtexas.gov/departments/citysecretary/events/property-management-environmental-services-2026"
 podcast_title: "Fort Worth: Property Management and Environmental Services Committee"
 podcast_author: "City of Fort Worth, TX"
 podcast_email: ""
