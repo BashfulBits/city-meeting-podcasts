@@ -46,24 +46,16 @@ def test_proxy_url_accepts_bounded_granicus_provider_requests(monkeypatch):
         "https://worker.example/v1/granicus/arlingtontx.granicus.com/"
         "ViewPublisherRSS.php?view_id=2&mode=vpodcast"
     )
-    assert fallback.proxy_url(
-        "https://arlingtontx.granicus.com/DownloadFile.php?clip_id=2"
-    ) == (
-        "https://worker.example/v1/granicus/arlingtontx.granicus.com/"
-        "DownloadFile.php?clip_id=2"
+    assert fallback.proxy_url("https://arlingtontx.granicus.com/DownloadFile.php?clip_id=2") == (
+        "https://worker.example/v1/granicus/arlingtontx.granicus.com/DownloadFile.php?clip_id=2"
     )
     too_many_query_pairs = "&".join(f"view_id={index}" for index in range(9))
     assert (
-        fallback.proxy_url(
-            f"https://arlingtontx.granicus.com/JSON.php?{too_many_query_pairs}"
-        )
+        fallback.proxy_url(f"https://arlingtontx.granicus.com/JSON.php?{too_many_query_pairs}")
         is None
     )
     assert (
-        fallback.proxy_url(
-            "https://arlingtontx.granicus.com/JSON.php?view_id=" + "x" * 241
-        )
-        is None
+        fallback.proxy_url("https://arlingtontx.granicus.com/JSON.php?view_id=" + "x" * 241) is None
     )
     assert fallback.proxy_url("https://arlingtontx.granicus.com/private") is None
     assert fallback.proxy_url("https://evil.example/Archive.php?view_id=2") is None
