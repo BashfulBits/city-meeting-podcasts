@@ -38,6 +38,20 @@ from citypods.config import (
     load_city_configs,
     load_site_config,
 )
+from citypods.discovery.refresh import (
+    dirty_uids as discovery_dirty_uids,
+)
+from citypods.discovery.refresh import (
+    episode_input_fingerprints,
+    load_refresh_state,
+    next_poll_at,
+    normalized_content_digest,
+    refresh_due,
+    save_refresh_state,
+    token_from_dict,
+    token_to_dict,
+    tokens_equal,
+)
 from citypods.feeds import build_rss, chapters_json, chapters_url, has_items
 from citypods.h16_identity import H16IdentityTracker
 from citypods.http import HOST_LIMITER
@@ -113,6 +127,7 @@ from citypods.stages import (
     enrich_stages,
     render_stages,
     run_stages,
+    stage_is_dirty,
 )
 from citypods.state import (
     build_fingerprint,
@@ -125,6 +140,7 @@ from citypods.statesync import (
     push_asr_runtime_log_merged,
     push_calendar_records_merged,
     push_records_merged,
+    push_refresh_state_merged,
     push_state,
     push_transcript_quality_log_merged,
     reconcile_state,
@@ -137,6 +153,7 @@ from citypods.transcript_quality import load_quality_config, load_quality_routes
 # applies the identical projection (GH#1025).
 DEFAULT_MAX_ARCHIVE_ITEMS = 5000
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
+_SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
 
 
@@ -158,6 +175,9 @@ class SourcePipeline:
         max_archive_items: int = DEFAULT_MAX_ARCHIVE_ITEMS,
         max_archive_age_years: float = DEFAULT_MAX_ARCHIVE_AGE_YEARS,
         persist_records: bool = True,
+        refresh_state: dict[str, dict] | None = None,
+        refresh_ttl_hours: float = 0.0,
+        refresh_full_days: float = 7.0,
     ):
         self.state_dir = state_dir
         self.stages = stages
@@ -170,6 +190,9 @@ class SourcePipeline:
         # The render phase writes only docs/: it persists no records, so a stale render push can't
         # clobber audio/transcripts written by the separate enrich workflow (review/12 §H6/H11b).
         self.persist_records = persist_records
+        self.refresh_state = refresh_state if refresh_state is not None else {}
+        self.refresh_ttl_hours = max(0.0, float(refresh_ttl_hours))
+        self.refresh_full_days = max(0.0, float(refresh_full_days))
         self.h16_identity = H16IdentityTracker(
             storage=ctx.storage,
             max_kbps=ctx.max_kbps,
@@ -184,6 +207,7 @@ class SourcePipeline:
         self._calendar_store: dict[str, dict[str, AgendaRecord]] = {}
         self._aggregate_persist: dict[str, list[Episode]] = {}
         self._notes: dict[str, str] = {}
+        self._dirty_uids: dict[str, dict[str, str]] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
         # Per-stage cost totals across all sources this run (for run history / projection).
@@ -221,11 +245,152 @@ class SourcePipeline:
         self._calendar_cache[key] = list(calendar.values())
         return calendar
 
+    def dirty_uids(self, key: str) -> frozenset[str] | None:
+        """Return the source's changed UID set; ``None`` means legacy/unfiltered planning."""
+        if key not in self._dirty_uids:
+            return None
+        return frozenset(self._dirty_uids[key])
+
+    def _refresh_meta(
+        self,
+        key: str,
+        *,
+        token=None,
+        fingerprints: dict[str, str] | None = None,
+        outcome: str,
+        dirty: dict[str, str] | None = None,
+        error: str | None = None,
+    ) -> None:
+        previous = self.refresh_state.get(key) or {}
+        current = dict(previous)
+        timestamp = datetime.now(UTC).isoformat()
+        current.update(
+            {
+                "last_attempt": timestamp,
+                "validator_outcome": outcome,
+                "last_success": timestamp
+                if outcome in {"changed", "unchanged", "fetched"}
+                else previous.get("last_success"),
+                "next_poll_at": next_poll_at(ttl_hours=self.refresh_ttl_hours),
+            }
+        )
+        if outcome in {"changed", "fetched"}:
+            current["last_full_refresh"] = current["last_success"]
+        if token is not None:
+            current["change_token"] = token_to_dict(token)
+        if fingerprints is not None:
+            current["episode_fingerprints"] = fingerprints
+            current["content_digest"] = normalized_content_digest(fingerprints)
+        if dirty is not None:
+            current["dirty_uids"] = dirty
+            current["dirty_episode_count"] = len(dirty)
+        if error:
+            current["last_error"] = error
+        else:
+            current.pop("last_error", None)
+        self.refresh_state[key] = current
+
+    def _records_archive(self, city: City, key: str, persisted: dict) -> list[Episode]:
+        episodes = merge_seed_episodes(city, [])
+        assign_uids(city, episodes)
+        episodes.extend(record_to_episode(rec) for rec in persisted.values())
+        # A seed can collide with a persisted UID; preserve one deterministic row.
+        by_uid = {ep.uid or ep.guid: ep for ep in episodes}
+        archive = list(by_uid.values())
+        self._cache_cities[key] = city
+        self._hydrate_calendar(key)
+        return archive
+
+    def _cached_dirty(
+        self, city: City, episodes: list[Episode], persisted: dict, metadata: dict
+    ) -> dict[str, str]:
+        previous = metadata.get("episode_fingerprints")
+        if not isinstance(previous, dict):
+            dirty = {
+                ep.uid or ep.guid: "fingerprint_baseline_missing"
+                for ep in episodes
+                if ep.uid or ep.guid
+            }
+        else:
+            # A validator-unchanged result is already the provider's assertion that its current
+            # listing is unchanged. Do not compare the durable archive (which is intentionally
+            # wider than the provider window) to the window-scoped baseline and dirty every
+            # archived episode on each run.
+            dirty = {}
+        for uid, reason in self._backfill_dirty(city, episodes):
+            dirty.setdefault(uid, reason)
+        return dirty
+
+    def _backfill_dirty(self, city: City, episodes: list[Episode]) -> list[tuple[str, str]]:
+        """Keep every stage with incomplete/deferred output eligible after unchanged discovery."""
+        result: list[tuple[str, str]] = []
+        allowed = LANE_STAGES.get(self.ctx.lane)
+        stages = tuple(stage for stage in self.stages if allowed is None or stage.name in allowed)
+        for ep in episodes:
+            uid = ep.uid or ep.guid
+            if not uid:
+                continue
+            if ep.integrity:
+                result.append((uid, "repair_requested"))
+            for stage in stages:
+                if stage_is_dirty(stage, ep, city):
+                    result.append((uid, f"{stage.name}_incomplete"))
+        return result
+
     def fetch_merge(self, city: City, key: str) -> tuple[object, list[Episode], dict, int]:
         """Fetch the source + merge persisted records + migrate legacy manifests. The cheap
         prepare step shared by ``enrich`` (per-source) and the global orchestrator (PR3).
         Returns ``(provider, episodes, persisted, seeded)``. ``ProviderError`` propagates."""
         provider = get_provider(city.provider)
+        persisted = load_records(self.state_dir, key)
+        metadata = self.refresh_state.get(key) or {}
+        due = refresh_due(
+            metadata,
+            ttl_hours=self.refresh_ttl_hours,
+            full_refresh_days=self.refresh_full_days,
+        )
+        token = None
+        validator_error: str | None = None
+        if not due and persisted:
+            episodes = self._records_archive(city, key, persisted)
+            dirty = self._cached_dirty(city, episodes, persisted, metadata)
+            self._dirty_uids[key] = dirty
+            print(
+                f"[enrich] source refresh deferred slug={city.slug} provider={city.provider} "
+                f"source={key} reason=ttl dirty={len(dirty)}",
+                flush=True,
+            )
+            return provider, episodes, persisted, 0
+        try:
+            token = provider.detect_change(city.source)
+        except ProviderError as exc:
+            # A failed validator is not evidence of an unchanged source. Fall back to the full
+            # listing; a later run retries the cheap probe.
+            validator_error = str(exc)
+            print(
+                f"[enrich] source validator failed slug={city.slug} provider={city.provider} "
+                f"source={key} error={exc}; falling back to fetch",
+                flush=True,
+            )
+        cached_token = token_from_dict(metadata.get("change_token"))
+        if validator_error is None and tokens_equal(token, cached_token) and persisted:
+            episodes = self._records_archive(city, key, persisted)
+            dirty = self._cached_dirty(city, episodes, persisted, metadata)
+            self._dirty_uids[key] = dirty
+            self._refresh_meta(
+                key,
+                token=token,
+                fingerprints=None,
+                outcome="unchanged",
+                dirty=dirty,
+            )
+            print(
+                f"[enrich] source unchanged slug={city.slug} provider={city.provider} "
+                f"source={key} episodes={len(episodes)} dirty={len(dirty)}",
+                flush=True,
+            )
+            return provider, episodes, persisted, 0
+
         episodes = merge_seed_episodes(city, provider.fetch_episodes(city.source))
         fresh_calendar: list[AgendaRecord] = []
         if city.aux_provider and city.aux_source:
@@ -275,7 +440,25 @@ class SourcePipeline:
             flush=True,
         )
         assign_uids(city, episodes)
-        persisted = load_records(self.state_dir, key)
+        previous = self.refresh_state.get(key, {}).get("episode_fingerprints")
+        previous_fingerprints = previous if isinstance(previous, dict) else {}
+        current_fingerprints = episode_input_fingerprints(episodes)
+        dirty = (
+            discovery_dirty_uids(previous_fingerprints, current_fingerprints)
+            if previous_fingerprints
+            else {uid: "fingerprint_baseline_missing" for uid in current_fingerprints}
+        )
+        for uid, reason in self._backfill_dirty(city, episodes):
+            dirty.setdefault(uid, reason)
+        self._dirty_uids[key] = dirty
+        self._refresh_meta(
+            key,
+            token=token,
+            fingerprints=current_fingerprints,
+            outcome="fetched" if not dirty else "changed",
+            dirty=dirty,
+            error=validator_error,
+        )
         merge_persisted(episodes, persisted)
         self._cache_cities[key] = city
         if city.source.get("aggregate"):
@@ -295,6 +478,11 @@ class SourcePipeline:
             self._calendar_cache[key] = list(calendar.values())
         seeded = migrate_legacy_manifests(self.state_dir, episodes)
         self.h16_identity.capture(city, episodes)
+        print(
+            f"[enrich] source refresh slug={city.slug} provider={city.provider} source={key} "
+            f"dirty={len(dirty)}",
+            flush=True,
+        )
         return provider, episodes, persisted, seeded
 
     def reconcile_aggregate(
@@ -468,12 +656,21 @@ class SourcePipeline:
             )
             provider, episodes, persisted, seeded = self.fetch_merge(city, key)
             persist_episodes = self._aggregate_persist.pop(key, episodes)
+            retained_episodes = _retained_working_set(
+                self,
+                city,
+                episodes,
+                persist_episodes,
+                persisted,
+                None,
+            )
             work_episodes = _retained_working_set(
                 self,
                 city,
                 episodes,
                 persist_episodes,
                 persisted,
+                self.dirty_uids(key),
             )
             if self.ctx.lane != "audio":
                 _normalize_episode_durations_for_dispatch(
@@ -484,7 +681,10 @@ class SourcePipeline:
                     allow_probe=not self.ctx.dry_run,
                     stop=self.ctx.stop,
                 )
-            stats = run_stages(provider, city, work_episodes, self.stages, self.ctx)
+            stats: list = []
+            for stage in self.stages:
+                target = retained_episodes if stage.name in _SOURCE_STAGE_NAMES else work_episodes
+                stats.extend(run_stages(provider, city, target, [stage], self.ctx))
             notes = [s.note() for s in stats if s.note()]
             self.accumulate_stats(stats)
             if seeded:
@@ -1144,6 +1344,9 @@ def _retained_working_set(
     episodes: list[Episode],
     persist_episodes: list[Episode],
     persisted: dict,
+    dirty_uids: frozenset[str] | set[str] | None = None,
+    *,
+    filter_dirty: bool = True,
 ) -> list[Episode]:
     """Filter fresh observations to the UIDs that final persistence will actually retain.
 
@@ -1181,6 +1384,9 @@ def _retained_working_set(
             f"suppressed_candidates={suppressed_candidates} cap={max_items}",
             flush=True,
         )
+    if filter_dirty and dirty_uids is not None:
+        wanted = set(dirty_uids)
+        working = [ep for ep in working if (ep.uid or ep.guid) in wanted]
     return working
 
 
@@ -1194,7 +1400,7 @@ def _order_global_candidates(prepared: dict, policy) -> list[tuple[str, Episode]
     for key, st in prepared.items():
         city = st["city"]
         for ep in _materialize_set(
-            st.get("retained_episodes", st["episodes"]),
+            st.get("candidate_episodes", st.get("retained_episodes", st["episodes"])),
             city.max_episodes,
             policy=policy,
             city_slug=city.slug,
@@ -1254,7 +1460,7 @@ def _run_enrich_global_queue(
     allowed = LANE_STAGES.get(ctx.lane) if ctx.lane is not None else None
     # Document stages need a source-wide episode list: agenda-derived minutes attach to the
     # preceding same-body meeting, which a one-episode global-queue invocation cannot see.
-    source_stage_names = {"links", "agenda_text", "minutes_text"}
+    source_stage_names = _SOURCE_STAGE_NAMES
     source_stages = [
         s
         for s in pipeline.stages
@@ -1317,6 +1523,9 @@ def _run_enrich_global_queue(
                 "persisted": persisted,
                 "notes": notes,
                 "persist_episodes": getattr(pipeline, "_aggregate_persist", {}).pop(key, episodes),
+                "dirty_uids": (
+                    pipeline.dirty_uids(key) if hasattr(pipeline, "dirty_uids") else None
+                ),
             }
     # Aggregate archive feeds are projections over the dedicated feeds. Reconcile them before
     # candidate selection so an overlapping recording is never materialized or persisted twice.
@@ -1348,6 +1557,15 @@ def _run_enrich_global_queue(
             state["episodes"],
             state.get("persist_episodes", state["episodes"]),
             state["persisted"],
+            None,
+        )
+        state["candidate_episodes"] = _retained_working_set(
+            pipeline,
+            state["city"],
+            state["episodes"],
+            state.get("persist_episodes", state["episodes"]),
+            state["persisted"],
+            state.get("dirty_uids"),
         )
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
     # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). Neither
@@ -1366,7 +1584,7 @@ def _run_enrich_global_queue(
             key, st = item
             _normalize_episode_durations_for_dispatch(
                 key,
-                st["retained_episodes"],
+                st.get("candidate_episodes", st["retained_episodes"]),
                 storage=ctx.storage,
                 ffmpeg_binary=getattr(ctx.ffmpeg, "binary", "ffmpeg"),
                 allow_probe=not ctx.dry_run,
@@ -1778,6 +1996,7 @@ def _build_impl(
     if isinstance(compute_backend, DispatchCoordinator):
         compute_backend.seed_leases(load_manifest(state_dir))
     cache = load_etag_cache(state_dir)
+    refresh_state = load_refresh_state(state_dir)
 
     # Phase wiring: which stages run, whether we render docs/, and whether the run is time-bounded.
     # Only the heavy phases ("enrich"/"all", which encode) carry the wall-clock budget + graceful
@@ -2059,6 +2278,9 @@ def _build_impl(
             defaults.get("max_archive_age_years", DEFAULT_MAX_ARCHIVE_AGE_YEARS)
         ),
         persist_records=persist_records,
+        refresh_state=refresh_state,
+        refresh_ttl_hours=float(defaults.get("source_refresh_ttl_hours", 0.0)),
+        refresh_full_days=float(defaults.get("source_refresh_full_refresh_days", 7.0)),
     )
 
     # Pre-load the Whisper model BEFORE the parallel worker pool starts.
@@ -2363,6 +2585,8 @@ def _build_impl(
         # provider refresh validators already earned this run.  A second save below persists a
         # successful render's search cache.
         save_etag_cache(state_dir, cache)
+        if persist_records:
+            save_refresh_state(state_dir, pipeline.refresh_state)
         # Render-phase outputs (feeds/pages already written per-city above; here the site-wide
         # index/aliases/meta). The enrich phase skips all of this — it only backfills + persists.
         if do_render:
@@ -2451,6 +2675,8 @@ def _build_impl(
         # Search shard hashes are part of this same render cache.  Save after successful rendering
         # so a failed render cannot record a cache hit for files it did not finish publishing.
         save_etag_cache(state_dir, cache)
+        if persist_records:
+            save_refresh_state(state_dir, pipeline.refresh_state)
         # Run history calibrates the cost projection from real encode time, so record it only for
         # the phase that does that work (enrich/all) — a near-zero-cost render run would dilute it.
         run_event_path = None
@@ -2547,6 +2773,12 @@ def _build_impl(
                     storage,
                     state_dir,
                     owned,
+                    log=lambda msg: print(msg, flush=True),
+                )
+                pushed += push_refresh_state_merged(
+                    storage,
+                    state_dir,
+                    owned_source_keys=owned,
                     log=lambda msg: print(msg, flush=True),
                 )
                 pushed += push_state(
