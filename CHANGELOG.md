@@ -17,6 +17,32 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **ASR transcript-record commits are now batched per source, not pushed once per episode**
+  ([GH#1019](https://github.com/BashfulBits/city-meeting-podcasts/issues/1019), child of
+  [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)). Every successful
+  transcript previously called `push_records_merged()` — a whole-source fetch+merge+put of
+  `sources/<src>/episodes.json` — immediately; on the largest inspected source (~5,480 records) 59
+  of one run's 93 successes each paid that full-file round-trip for a single uid's delta.
+  `ExternalTranscribeWorker` (shared by external Modal/Beam and internal ASR workers) now queues a
+  successful commit into an in-memory per-run batch and flushes one `owned_uids`-scoped
+  `push_records_merged()` call per 5 queued records, 1800 seconds, or end of run — whichever comes
+  first — cutting the number of whole-source round-trips from one per episode to roughly one per
+  batch. (The age bound shipped at 120s first; raised to 1800s after finding every backend's own
+  `min_runtime_seconds` floor — 180–240s, `config/site_config.yml` — already exceeded 120s, which
+  had capped real-world batches at ~2 instead of 5 regardless of the item-count bound. A regression
+  test now locks in a realistic per-item gap across a full batch.) Lease liveness needed no new
+  keepalive thread: `lease_ttl_seconds` (6–20h) already dwarfs the batch window given the existing
+  per-item renewal thread's minutes-fresh refresh at queue time. A failed flush leaves the batch
+  queued for the next attempt to retry (the owned-block merge is idempotent), and the
+  media-decode-quarantine/timeout-backoff paths are unchanged (still immediate, single-item
+  pushes). Each flush now logs its `sources`/`records`/`payload_bytes`/`elapsed_s` for real
+  production measurement. This is the "same-source commit batching" option from the two the issue
+  proposed; the sidecar/per-uid-object alternative was investigated directly against R6/R7's actual
+  record-shape additions and Backblaze B2's real pricing (transactions are entirely free; egress is
+  free up to 3× average monthly storage) and found not currently justified — worked numbers and
+  concrete re-open triggers in the design doc, not "once R6/R7 ship." Design:
+  [review/18 §4.8–§4.9](review/18-work-distribution-sharding.md#48-batched-transcript-record-commits-gh1019--implemented).
+
 - **`compute reconcile`'s Stage-2 work-lease sweep now costs `O(active leases)`, not `O(backlog)`**
   ([GH#1018](https://github.com/BashfulBits/city-meeting-podcasts/issues/1018), child of
   [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)). The prior
