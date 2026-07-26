@@ -40,6 +40,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Production Pages deploys now render without provider refresh (GH#1023).** `deploy.yml` invokes
+  the existing records-only `build --phase render --no-refresh` path, so a provider outage cannot
+  block publication of the last-known catalog. The build log reports canonical-state age, oldest
+  source-refresh age, due sources, and refresh errors; the later discovery-centralization design in
+  [`review/38`](review/38-discovery-centralization.md) remains separate. No pipeline version or
+  artifact backfill changed.
+
 - **Granicus sustained-probe parsing is offline-safe.** Custom `--clip` arguments now perform
   syntax/allowlist validation during argparse without DNS; the probe still performs the full
   resolving SSRF check immediately before ffmpeg runs. This prevents unit tests and local offline
