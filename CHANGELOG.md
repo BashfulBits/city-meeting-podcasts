@@ -40,6 +40,16 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Deferred LLM reconciliation now uses a route-partitioned B2 pointer index (GH#1022).** Pending
+  `tag` and `classify-civic-platforms` records are indexed under the existing `ROUTES` model keys
+  (one small pointer object per record, no shared aggregate file and no time-bucket layer -- no
+  code path persists a genuine future retry time for these records, so bucketing by day would
+  only add LIST calls with nothing to skip). The sweep lists only the route partitions for models
+  with current ledger capacity, then re-verifies canonical records before acting; stale or missing
+  pointers are safe. Migration is dual-read until `scripts/llm_deferred_sweep.py --repair-index`
+  rebuilds the index. This is metadata-only: no model-output pipeline bump, retry-semantic change,
+  or automatic backfill is required; rollback is to omit the repair marker and use the canonical
+  full listing.
 - **Audio now skips empty matrix shards.** GH#1021 adds a canonical preflight that restores the
   durable state once, emits a fingerprinted source-atomic plan and a dynamic matrix containing only
   positive-load shards, then packages that snapshot for workers. A fully idle Audio cycle produces a

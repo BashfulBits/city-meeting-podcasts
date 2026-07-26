@@ -1,9 +1,14 @@
 from datetime import UTC, datetime, timedelta
 
 from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.llm_budget import mutate_llm_budget
 from citypods.compute.llm_deferred import (
     DEFAULT_TTL_DAYS,
+    DEFERRED_INDEX_MIGRATION_KEY,
+    DEFERRED_INDEX_PENDING_PREFIX,
     DEFERRED_PREFIX,
+    _indexed_listing,
+    _write_json,
     deferred_key,
     iter_pending_deferred,
     list_pending_deferred,
@@ -11,9 +16,10 @@ from citypods.compute.llm_deferred import (
     look_up_deferred,
     prune_expired_deferred,
     prune_expired_deferred_snapshot,
+    repair_deferred_index,
     write_deferred,
 )
-from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
+from citypods.compute.llm_policy import ROUTES, DeferredLLMRequest, LLMRequestPolicy
 from tests._cas_fake import MemStorage
 
 NOW = datetime(2026, 7, 16, 12, tzinfo=UTC)
@@ -50,6 +56,157 @@ def test_write_and_look_up_a_pending_handle_round_trips():
     assert found.deferred_request is not None
     assert found.deferred_request.messages == ({"role": "user", "content": "hi"},)
     assert found.deferred_request.policy == policy
+
+
+def test_pending_records_index_both_live_route_consumers_without_shared_bucket_writes():
+    storage = MemStorage()
+    models = ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")
+    for task, recipe_hash, purpose in (
+        ("tag", "tag-recipe", "topic-tags"),
+        ("classify", "classify-recipe", "classify-civic-platforms"),
+    ):
+        handle = _pending_handle(recipe_hash)
+        handle = JobHandle(
+            **{
+                **handle.__dict__,
+                "task": task,
+                "deferred_request": DeferredLLMRequest(
+                    messages=handle.deferred_request.messages,
+                    policy=LLMRequestPolicy(allowed_models=models, purpose=purpose),
+                ),
+            }
+        )
+        write_deferred(storage, recipe_hash, handle, now=NOW)
+
+    assert set(storage.keys(DEFERRED_INDEX_PENDING_PREFIX)) == {
+        f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/{recipe}.json"
+        for model in models
+        for recipe in ("tag-recipe", "classify-recipe")
+    }
+
+
+def test_completion_removes_old_route_pointers_after_canonical_write():
+    storage = MemStorage()
+    write_deferred(
+        storage,
+        "recipe-1",
+        _pending_handle("recipe-1"),
+        now=NOW,
+    )
+    assert storage.keys(DEFERRED_INDEX_PENDING_PREFIX)
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={}, model="m"),
+        now=NOW,
+    )
+    assert storage.keys(DEFERRED_INDEX_PENDING_PREFIX) == []
+
+
+def test_a_retry_narrowing_the_candidate_models_drops_only_the_stale_pointer():
+    """Regression for the crash-safety fix: pointers common to both the old and new model set are
+    left alone (never deleted then immediately recreated), and only the pointer for a model that's
+    no longer a candidate is removed. New-then-canonical-then-stale-delete ordering means a crash
+    at any point during this call never leaves the still-pending record with zero pointers."""
+    storage = MemStorage()
+    kept_model, dropped_model = ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobHandle(
+            task="tag",
+            recipe_hash="recipe-1",
+            backend="litellm",
+            ref="deferred:recipe-1",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "hi"},),
+                policy=LLMRequestPolicy(allowed_models=(kept_model, dropped_model)),
+            ),
+        ),
+        now=NOW,
+    )
+    assert set(storage.keys(DEFERRED_INDEX_PENDING_PREFIX)) == {
+        f"{DEFERRED_INDEX_PENDING_PREFIX}{kept_model}/recipe-1.json",
+        f"{DEFERRED_INDEX_PENDING_PREFIX}{dropped_model}/recipe-1.json",
+    }
+
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobHandle(
+            task="tag",
+            recipe_hash="recipe-1",
+            backend="litellm",
+            ref="deferred:recipe-1",
+            model=kept_model,
+        ),
+        now=NOW,
+    )
+
+    assert set(storage.keys(DEFERRED_INDEX_PENDING_PREFIX)) == {
+        f"{DEFERRED_INDEX_PENDING_PREFIX}{kept_model}/recipe-1.json"
+    }
+
+
+def test_repair_marks_migration_and_indexed_snapshot_rechecks_canonical_records():
+    storage = MemStorage()
+    write_deferred(storage, "pending-1", _pending_handle("pending-1"), now=NOW)
+    write_deferred(
+        storage,
+        "completed-1",
+        JobResult(task="tag", recipe_hash="completed-1", output={}, model="m"),
+        now=NOW,
+    )
+
+    assert repair_deferred_index(storage, now=NOW) == 2
+    assert storage.exists(DEFERRED_INDEX_MIGRATION_KEY)
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    assert [handle.recipe_hash for handle in snapshot.pending()] == ["pending-1"]
+    assert len(snapshot.entries) == 1
+
+
+def test_indexed_listing_skips_a_model_partition_that_is_out_of_capacity():
+    storage = MemStorage()
+    blocked_model, open_model = ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")
+    for recipe_hash, model in (("r-blocked", blocked_model), ("r-open", open_model)):
+        write_deferred(
+            storage,
+            recipe_hash,
+            JobHandle(
+                task="tag",
+                recipe_hash=recipe_hash,
+                backend="litellm",
+                ref=f"deferred:{recipe_hash}",
+                model=model,
+            ),
+            now=NOW,
+        )
+    mutate_llm_budget(
+        storage,
+        lambda budget, now: budget.block(
+            blocked_model, until=now + timedelta(days=1), route=ROUTES[blocked_model], now=now
+        ),
+        now=NOW,
+    )
+
+    listing = _indexed_listing(storage, now=NOW)
+
+    assert {key for key, _ in listing} == {
+        f"{DEFERRED_INDEX_PENDING_PREFIX}{open_model}/r-open.json"
+    }
+
+
+def test_repair_deletes_an_orphan_pointer_not_backed_by_any_canonical_record():
+    storage = MemStorage()
+    write_deferred(storage, "pending-1", _pending_handle("pending-1"), now=NOW)
+    model = next(iter(ROUTES))
+    orphan_key = f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/never-written.json"
+    _write_json(storage, orphan_key, b'{"recipe_hash": "never-written"}\n')
+
+    assert repair_deferred_index(storage, now=NOW) == 1
+    remaining = set(storage.keys(DEFERRED_INDEX_PENDING_PREFIX))
+    assert orphan_key not in remaining
+    assert any(key.endswith("/pending-1.json") for key in remaining)
 
 
 def test_write_and_look_up_a_completed_result_round_trips():
