@@ -101,4 +101,11 @@ def load_etag_cache(state_dir: Path) -> dict:
 
 def save_etag_cache(state_dir: Path, cache: dict) -> None:
     state_dir.mkdir(parents=True, exist_ok=True)
-    (state_dir / ETAG_CACHE_NAME).write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
+    path = state_dir / ETAG_CACHE_NAME
+    path.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
+    try:
+        from citypods.statesync import mark_state_dirty  # local import breaks the module cycle
+
+        mark_state_dirty(state_dir, path.relative_to(state_dir))
+    except OSError:
+        pass  # the journal is disposable; the persisted cache remains authoritative

@@ -22,6 +22,8 @@ from citypods.statesync import (
     STATE_PREFIX,
     TransientStateSyncError,
     fetch_remote_records,
+    mark_state_deleted,
+    mark_state_dirty,
     pull_state,
     push_asr_runtime_log_merged,
     push_calendar_records_merged,
@@ -913,3 +915,112 @@ def test_cas_managed_uses_router_instance_prefixes_not_global(tmp_path):
     assert _is_cas_managed(router, "state/custom_coord.json") is True
     assert _is_cas_managed(router, "state/compute_budget.json") is False
     assert "state/compute_budget.json" in COORDINATION_PREFIXES  # would be excluded if using global
+
+
+def test_manifest_warm_pull_skips_unchanged_object_gets(tmp_path):
+    class CountingStorage(LocalStorage):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.gets = []
+
+        def get_file(self, key, local_path):
+            self.gets.append(key)
+            return super().get_file(key, local_path)
+
+    bucket = CountingStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    source = tmp_path / "source"
+    save_records(source, "src", {"u1": {"uid": "u1"}})
+    push_state(bucket, source)
+    bucket.gets.clear()
+    restored = tmp_path / "restored"
+    assert pull_state(bucket, restored) == 1
+    assert bucket.gets == ["state/catalog/manifest.json", "state/sources/src/episodes.json"]
+    bucket.gets.clear()
+    assert pull_state(bucket, restored) == 0
+    assert bucket.gets == ["state/catalog/manifest.json"]
+
+
+def test_dirty_push_uploads_only_registered_mutation(tmp_path):
+    class CountingStorage(LocalStorage):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.puts = []
+
+        def put_file(self, key, local_path, content_type):
+            self.puts.append(key)
+            return super().put_file(key, local_path, content_type)
+
+    bucket = CountingStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    source = tmp_path / "source"
+    save_records(source, "src", {"u1": {"uid": "u1"}})
+    event = source / "run_events" / "one.json"
+    event.parent.mkdir(parents=True)
+    event.write_text("{}")
+    mark_state_dirty(source, "run_events/one.json")
+    push_state(bucket, source)
+    bucket.puts.clear()
+    event.write_text('{"changed": true}')
+    mark_state_dirty(source, "run_events/one.json")
+    assert push_state(bucket, source) == 1
+    assert bucket.puts == ["state/run_events/one.json", "state/catalog/manifest.json"]
+
+
+def test_tombstone_deletes_remote_object_and_is_applied_on_pull(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state = tmp_path / "state"
+    save_records(state, "src", {"u1": {"uid": "u1"}})
+    push_state(bucket, state)
+    mark_state_deleted(state, "sources/src/episodes.json")
+    (state / "sources" / "src" / "episodes.json").unlink()
+    push_state(bucket, state)
+    assert not bucket.exists(f"{STATE_PREFIX}/sources/src/episodes.json")
+    restored = tmp_path / "restored"
+    assert pull_state(bucket, restored) == 0
+    assert not (restored / "sources" / "src" / "episodes.json").exists()
+
+
+def test_invalid_remote_manifest_falls_back_to_full_push(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state = tmp_path / "state"
+    save_records(state, "src", {"u1": {"uid": "u1"}})
+    corrupt = _tmpfile(tmp_path, "not json", name="manifest.json")
+    bucket.put_file(f"{STATE_PREFIX}/catalog/manifest.json", corrupt, "application/json")
+    push_state(bucket, state)
+    restored = tmp_path / "restored"
+    assert pull_state(bucket, restored) == 1
+    assert (restored / "sources" / "src" / "episodes.json").exists()
+
+
+def test_cas_manifest_conflict_remerges_disjoint_updates(tmp_path):
+    from citypods.storage.s3 import CASConflict
+
+    class CASStorage(LocalStorage):
+        cas_capable = True
+
+        def get_bytes(self, key):
+            path = self._path(key)
+            if not path.exists():
+                return None
+            data = path.read_bytes()
+            return data, str(path.stat().st_mtime_ns)
+
+        def put_cas(self, key, data, content_type, *, if_none_match=None, if_match=None):
+            current = self.get_bytes(key)
+            if if_none_match == "*" and current is not None:
+                raise CASConflict(key)
+            if if_match is not None and (current is None or current[1] != if_match):
+                raise CASConflict(key)
+            path = self._path(key)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            return self.public_url(key), self.get_bytes(key)[1]
+
+    bucket = CASStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    save_records(first, "one", {"u1": {"uid": "u1"}})
+    push_state(bucket, first)
+    save_records(second, "two", {"u2": {"uid": "u2"}})
+    push_state(bucket, second)
+    manifest = json.loads((bucket._path(f"{STATE_PREFIX}/catalog/manifest.json")).read_text())
+    assert set(manifest["objects"]) == {"sources/one/episodes.json", "sources/two/episodes.json"}

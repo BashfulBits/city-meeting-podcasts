@@ -159,7 +159,9 @@ def _parse_clip(raw: str) -> tuple[str, str]:
         name, url = raw.split("=", 1)
     except ValueError as exc:
         raise argparse.ArgumentTypeError("clip must be NAME=https://host/path") from exc
-    validate_source_url(url, allowed_hosts=ALLOWED_HOSTS)
+    # Keep argument parsing offline-safe. ``run_probe`` repeats the SSRF check with DNS resolution
+    # immediately before invoking ffmpeg, so parsing must not depend on runner DNS.
+    validate_source_url(url, allowed_hosts=ALLOWED_HOSTS, resolve=False)
     return name, url
 
 

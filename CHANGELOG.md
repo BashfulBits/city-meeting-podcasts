@@ -40,6 +40,18 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Granicus sustained-probe parsing is offline-safe.** Custom `--clip` arguments now perform
+  syntax/allowlist validation during argparse without DNS; the probe still performs the full
+  resolving SSRF check immediately before ffmpeg runs. This prevents unit tests and local offline
+  validation from depending on DNS availability.
+
+- **B2 durable state sync is now manifest- and dirty-path-driven (GH#1015).** A versioned
+  `state/catalog/manifest.json` lets warm workers GET only new or changed JSON/JSONL objects;
+  central state writers register exact dirty paths, and explicit tombstones are required for
+  removals. Manifest publication uses conditional CAS when the backend supports it and otherwise
+  retains the existing safe full-sync/list fallback. No pipeline-version bump or artifact backfill
+  is required.
+
 - **Conditional source refresh and dirty episode planning now form the S1 efficiency foundation (GH#1014).** `SourcePipeline` invokes each adapter's `detect_change()` probe, persists validator/content-digest state in `state/source_refresh.json`, and compares a canonical normalized input fingerprint per stable episode UID. Unchanged validator-backed sources skip full list parsing; validator-less adapters use the safe fetch-and-digest path (with configurable TTL/full-refresh bounds), and only new/materially edited UIDs enter heavy-stage planning. Append-only archives, stable provider-migration UIDs, SSRF validation, and all content-addressed artifact hashes remain unchanged; no pipeline-version bump or automatic artifact backfill is required.
 
 - **Swagit's Worker fallback now covers all tenant-page requests used by enrichment.** A recurring
