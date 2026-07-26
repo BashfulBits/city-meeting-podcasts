@@ -50,8 +50,70 @@ jobs:
           done
           echo "Timed out after 20 minutes. Proceeding anyway."
 
-  audio:
+  plan:
     needs: wait-for-contracts
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_work: ${{ steps.plan.outputs.has_work }}
+      shard_count: ${{ steps.plan.outputs.shard_count }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install planner
+        run: pip install -e "[storage]" -c constraints/prod.txt
+
+      - name: Restore canonical state and plan Audio matrix
+        id: plan
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          mkdir -p audio-plan
+          citypods compute plan-shards \
+            --lane audio --shards 4 \
+            --output audio-plan/plan.json \
+            --matrix-output audio-plan/matrix.json \
+            --restore-state
+          tar -czf audio-plan/state.tar.gz \
+            -C "$(dirname .citypods-state)" "$(basename .citypods-state)"
+          matrix=$(cat audio-plan/matrix.json)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "has_work=$(python -c 'import json; print(str(bool(json.load(open("audio-plan/matrix.json"))["shard"])).lower())')" >> "$GITHUB_OUTPUT"
+          echo "shard_count=$(python -c 'import json; print(len(json.load(open("audio-plan/matrix.json"))["shard"]))')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload canonical Audio snapshot and plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: audio-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: audio-plan
+          if-no-files-found: error
+          retention-days: 1
+
+  audio-no-op:
+    needs: plan
+    if: needs.plan.outputs.has_work == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Audio preflight found no actionable sources; no worker shards started."
+
+  audio:
+    needs: plan
     runs-on: ubuntu-latest
     # Explicit for documentation (audio-workflow review, 2026-07-19): GitHub-hosted runners already
     # hard-cap job execution at 360 minutes with or without this line, unconfigurable upward — a
@@ -64,8 +126,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 4 shards by source_key. Disjoint + exhaustive — keep in sync with the `/4` below.
-        shard: [0, 1, 2, 3]
+        # Preflight emits only shards with actionable source work. Ownership remains source-atomic.
+        shard: ${{ fromJSON(needs.plan.outputs.matrix).shard }}
     env:
       AUDIO_RUNNER_IMAGE: ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1
       FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
@@ -80,16 +142,14 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      # Latency optimization only: the object bucket is the source of truth for build state
-      # (citypods/statesync.py pulls it at start, scoped-pushes owned records at the end), so an
-      # evicted cache self-heals from the bucket. Per-shard key so shards don't fight over one entry.
-      - name: Restore build state
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - name: Download canonical Audio snapshot and plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          path: .citypods-state
-          key: build-state-audio-${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: |
-            build-state-
+          name: audio-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: audio-plan
+
+      - name: Restore canonical snapshot
+        run: tar -xzf audio-plan/state.tar.gz
 
       # The host fallback is cached independently of the GHCR image. It is restored before the pull
       # attempt so a registry outage does not turn into an apt mirror dependency.
@@ -198,10 +258,11 @@ jobs:
               --env SWAGIT_PROXY_BASE_URL \
               --env SWAGIT_PROXY_TOKEN \
               "${AUDIO_RUNNER_IMAGE}" \
-              enrich --lane audio --shard ${{ matrix.shard }}/4 2>&1 | tee "$log"
+              enrich --lane audio --shard ${{ matrix.shard }}/4 --shard-plan audio-plan/plan.json --state-snapshot-restored 2>&1 | tee "$log"
           else
             PATH="${FFMPEG_FALLBACK_DIR}/bin:${PATH}" \
               python -m citypods.cli enrich --lane audio --shard ${{ matrix.shard }}/4 \
+              --shard-plan audio-plan/plan.json --state-snapshot-restored \
               2>&1 | tee "$log"
           fi
           code=${PIPESTATUS[0]}
@@ -234,7 +295,7 @@ jobs:
 
   validate-h16:
     if: always()
-    needs: audio
+    needs: [plan, audio, audio-no-op]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -264,7 +325,7 @@ jobs:
             --input-dir h16-input \
             --output-dir h16-report \
             --run-id "${GITHUB_RUN_ID}" \
-            --expected-shards 4 \
+            --expected-shards "${{ needs.plan.outputs.shard_count }}" \
             --markdown >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload H16 acceptance report

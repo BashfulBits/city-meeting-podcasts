@@ -107,7 +107,12 @@ from citypods.resources import (
 from citypods.search import build_search_index
 from citypods.security import SecurityError
 from citypods.seeds import merge_seed_episodes
-from citypods.sharding import create_shard_plan, episodes_for_shard, load_shard_plan
+from citypods.sharding import (
+    create_shard_plan,
+    episodes_for_shard,
+    load_shard_plan,
+    state_snapshot_fingerprint,
+)
 from citypods.site import (
     render_city_archive_page,
     render_city_page,
@@ -1888,6 +1893,11 @@ def _build_impl(
         if shard_plan_path is not None:
             plan = load_shard_plan(shard_plan_path)
             plan_source_desc = f"loaded {shard_plan_path}"
+            snapshot_fingerprint = state_snapshot_fingerprint(state_dir)
+            if plan.snapshot_fingerprint and plan.snapshot_fingerprint != snapshot_fingerprint:
+                raise ValueError(
+                    "shard plan snapshot fingerprint does not match the local canonical snapshot"
+                )
         else:
             # Legacy/local path: compute once inside this process. Production ASR supplies the
             # immutable planner artifact so all four matrix jobs share one ownership decision.

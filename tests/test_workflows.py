@@ -210,7 +210,7 @@ def test_heavy_workflow_is_sharded_and_lane_pinned(workflow, lane, job_name):
     matrix = job.get("strategy", {}).get("matrix", {})
     if workflow == "audio.yml":
         shards = matrix.get("shard")
-        assert shards == [0, 1, 2, 3], f"{workflow} must shard by source_key (matrix.shard)"
+        assert "fromJSON(needs.plan.outputs.matrix).shard" in str(shards)
     else:
         shards = matrix.get("slot")
         assert shards == [0, 1, 2, 3], f"{workflow} must run four identical pull workers"
@@ -222,10 +222,9 @@ def test_heavy_workflow_is_sharded_and_lane_pinned(workflow, lane, job_name):
     )
     run = str(step["run"])
     if workflow == "audio.yml":
-        n = len(shards)
         assert f"--lane {lane}" in run, f"{workflow} must pin --lane {lane}"
-        assert f"--shard ${{{{ matrix.shard }}}}/{n}" in run, (
-            f"{workflow} must pass --shard <matrix.shard>/{n} matching the matrix size"
+        assert "--shard ${{ matrix.shard }}/4" in run, (
+            f"{workflow} must pass --shard <matrix.shard>/4 matching the canonical plan"
         )
     else:
         assert "citypods compute run-internal-worker" in run
@@ -437,9 +436,16 @@ def test_audio_workflow_uploads_shard_evidence_and_builds_h16_report():
     wf, audio = _job("audio.yml", job_name="audio")
     _wf, validate = _job("audio.yml", job_name="validate-h16")
 
-    assert validate["needs"] == "audio"
+    assert validate["needs"] == ["plan", "audio", "audio-no-op"]
     assert validate["if"] == "always()"
     assert wf["permissions"]["actions"] == "read"
+    plan = wf["jobs"]["plan"]
+    assert plan["outputs"]["matrix"] == "${{ steps.plan.outputs.matrix }}"
+    plan_step = next(step for step in plan["steps"] if step.get("id") == "plan")
+    assert "--restore-state" in plan_step["run"]
+    assert "--matrix-output audio-plan/matrix.json" in plan_step["run"]
+    assert "actions/upload-artifact@" in str(plan["steps"])
+    assert "state-snapshot-restored" in " ".join(str(s.get("run", "")) for s in audio["steps"])
 
     upload = next(
         step for step in audio["steps"] if step.get("name") == "Upload H16 shard evidence"

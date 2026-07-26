@@ -9,6 +9,7 @@ source-atomic; transcribe ownership is per episode with matching cross-source AS
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -56,6 +57,7 @@ class ShardPlan:
     assignment: dict[str, int]
     weights: dict[str, float]
     unit: str = "source"  # "source" (audio/align) | "episode" (transcribe; keys are source/uid)
+    snapshot_fingerprint: str | None = None
     version: int = SHARD_PLAN_VERSION
 
     def to_dict(self) -> dict[str, Any]:
@@ -66,6 +68,7 @@ class ShardPlan:
             "num_shards": self.num_shards,
             "assignment": dict(sorted(self.assignment.items())),
             "weights": dict(sorted(self.weights.items())),
+            "snapshot_fingerprint": self.snapshot_fingerprint,
         }
 
 
@@ -182,6 +185,7 @@ def create_shard_plan(
             assignment=assignment,
             weights=weights,
             unit="episode",
+            snapshot_fingerprint=state_snapshot_fingerprint(state_dir),
         )
 
     def _weight(key: str, city: City) -> float:
@@ -227,7 +231,34 @@ def create_shard_plan(
         assignment=assignment,
         weights=weights,
         unit="source",
+        snapshot_fingerprint=state_snapshot_fingerprint(state_dir),
     )
+
+
+def state_snapshot_fingerprint(state_dir: str | Path) -> str:
+    """Fingerprint the canonical local planning snapshot used by a shard plan.
+
+    The manifest is the compact canonical input produced by state sync. The fallback keeps local
+    development and older snapshots safe by hashing the source record files directly.
+    """
+    state_dir = Path(state_dir)
+    manifest = state_dir / "catalog" / "manifest.json"
+    digest = hashlib.sha256()
+    if manifest.is_file():
+        digest.update(manifest.read_bytes())
+        return digest.hexdigest()
+    for path in sorted(state_dir.glob("sources/*/episodes.json")):
+        digest.update(path.relative_to(state_dir).as_posix().encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def matrix_for_plan(plan: ShardPlan) -> dict[str, list[int]]:
+    """Return the dynamic Audio matrix, omitting shards with no actionable work."""
+    loads = [0.0] * plan.num_shards
+    for key, owner in plan.assignment.items():
+        loads[owner] += plan.weights[key]
+    return {"shard": [index for index, load in enumerate(loads) if load > 0]}
 
 
 def save_shard_plan(path: str | Path, plan: ShardPlan) -> None:
@@ -255,6 +286,7 @@ def load_shard_plan(path: str | Path) -> ShardPlan:
         num_shards = int(data["num_shards"])
         assignment = {str(key): int(value) for key, value in data["assignment"].items()}
         weights = {str(key): float(value) for key, value in data["weights"].items()}
+        snapshot_fingerprint = data.get("snapshot_fingerprint")
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise ValueError(f"invalid shard plan {path}: {exc}") from exc
     if lane not in {"audio", "transcribe", "align"}:
@@ -274,6 +306,7 @@ def load_shard_plan(path: str | Path) -> ShardPlan:
         assignment=assignment,
         weights=weights,
         unit=unit,
+        snapshot_fingerprint=(str(snapshot_fingerprint) if snapshot_fingerprint else None),
         version=version,
     )
 
