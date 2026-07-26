@@ -68,7 +68,7 @@ jobs:
           cache: pip
 
       - name: Install planner
-        run: pip install -e "[storage]" -c constraints/prod.txt
+        run: pip install -e ".[storage]" -c constraints/prod.txt
 
       - name: Restore canonical state and plan Audio matrix
         id: plan
@@ -114,6 +114,7 @@ jobs:
 
   audio:
     needs: plan
+    if: needs.plan.outputs.has_work == 'true'
     runs-on: ubuntu-latest
     # Explicit for documentation (audio-workflow review, 2026-07-19): GitHub-hosted runners already
     # hard-cap job execution at 360 minutes with or without this line, unconfigurable upward — a
@@ -325,7 +326,7 @@ jobs:
             --input-dir h16-input \
             --output-dir h16-report \
             --run-id "${GITHUB_RUN_ID}" \
-            --expected-shards "${{ needs.plan.outputs.shard_count }}" \
+            --expected-shards "${{ needs.plan.outputs.shard_count || '0' }}" \
             --markdown >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload H16 acceptance report

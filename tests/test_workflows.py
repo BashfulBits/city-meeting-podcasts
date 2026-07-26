@@ -439,12 +439,15 @@ def test_audio_workflow_uploads_shard_evidence_and_builds_h16_report():
     assert validate["needs"] == ["plan", "audio", "audio-no-op"]
     assert validate["if"] == "always()"
     assert wf["permissions"]["actions"] == "read"
+    assert audio["if"] == "needs.plan.outputs.has_work == 'true'"
     plan = wf["jobs"]["plan"]
     assert plan["outputs"]["matrix"] == "${{ steps.plan.outputs.matrix }}"
     plan_step = next(step for step in plan["steps"] if step.get("id") == "plan")
     assert "--restore-state" in plan_step["run"]
     assert "--matrix-output audio-plan/matrix.json" in plan_step["run"]
     assert "actions/upload-artifact@" in str(plan["steps"])
+    planner_install = next(step for step in plan["steps"] if step.get("name") == "Install planner")
+    assert 'pip install -e ".[storage]"' in planner_install["run"]
     assert "state-snapshot-restored" in " ".join(str(s.get("run", "")) for s in audio["steps"])
 
     upload = next(
@@ -473,6 +476,7 @@ def test_audio_workflow_uploads_shard_evidence_and_builds_h16_report():
         step for step in validate["steps"] if step.get("name") == "Build H16 acceptance report"
     )
     assert "citypods h16-report" in report["run"]
+    assert "needs.plan.outputs.shard_count || '0'" in report["run"]
     assert "mkdir -p h16-input" in report["run"]
     assert '>> "$GITHUB_STEP_SUMMARY"' in report["run"]
 

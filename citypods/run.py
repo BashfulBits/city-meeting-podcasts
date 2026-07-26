@@ -1893,11 +1893,6 @@ def _build_impl(
         if shard_plan_path is not None:
             plan = load_shard_plan(shard_plan_path)
             plan_source_desc = f"loaded {shard_plan_path}"
-            snapshot_fingerprint = state_snapshot_fingerprint(state_dir)
-            if plan.snapshot_fingerprint and plan.snapshot_fingerprint != snapshot_fingerprint:
-                raise ValueError(
-                    "shard plan snapshot fingerprint does not match the local canonical snapshot"
-                )
         else:
             # Legacy/local path: compute once inside this process. Production ASR supplies the
             # immutable planner artifact so all four matrix jobs share one ownership decision.
@@ -2001,6 +1996,12 @@ def _build_impl(
             print(f"state: restored {restored} file(s) from durable storage")
     elif state_snapshot_restored:
         print("state: using canonical pre-matrix snapshot; durable restore already completed")
+    if shard is not None and shard_plan_path is not None and plan.snapshot_fingerprint:
+        snapshot_fingerprint = state_snapshot_fingerprint(state_dir)
+        if plan.snapshot_fingerprint != snapshot_fingerprint:
+            raise ValueError(
+                "shard plan snapshot fingerprint does not match the local canonical snapshot"
+            )
     # H14a: adopt the unexpired dispatch leases from the restored manifest, so a transcript a prior
     # run handed to an external worker (still in flight) isn't dispatched again this run.
     if isinstance(compute_backend, DispatchCoordinator):
