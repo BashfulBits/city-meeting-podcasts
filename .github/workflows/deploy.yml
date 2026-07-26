@@ -111,7 +111,7 @@ jobs:
           GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
           SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
           SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
-        run: citypods build --phase render
+        run: citypods build --phase render --no-refresh
 
       # Resource cost/time projection: writes docs/admin/{index.html,report.json} (the live
       # what-if calculator) and appends a summary to the run page. Reads accumulated run history

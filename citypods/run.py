@@ -2511,6 +2511,10 @@ def _build_impl(
         for domain, values in _transport_telemetry.telemetry().items():
             provider_rate_limit_telemetry.setdefault(domain, {}).update(values)
 
+    # Render deploys deliberately use the canonical record store. Make the state age and refresh
+    # coverage visible in the same build log so --no-refresh cannot be mistaken for "never refresh".
+    _print_refresh_health(pipeline.refresh_state, phase=phase, no_refresh=no_refresh)
+
     # Per-stage activity for the run, to stdout (build logs). Makes "did audio actually
     # materialize?" answerable without the step-summary report: ``ran`` is newly produced this
     # run, ``reused`` already up to date, ``queued`` deferred by budget (remaining backlog), plus
@@ -3050,6 +3054,69 @@ RUN_SUMMARY_NAME = "run_summary.json"
 RUN_EVENTS_DIR_NAME = "run_events"
 ASR_RUNTIME_LOG_NAME = "asr_runtime_log.json"
 _RUN_HISTORY_KEEP = 1000  # cap the rolling log so the synced state stays small
+
+
+def _refresh_health_summary(refresh_state: dict[str, dict], *, now: datetime | None = None) -> dict:
+    """Summarize canonical-state freshness for build logs without contacting providers.
+
+    ``last_success`` is the age of the source's canonical record observation, not the age of the
+    current workflow. The newest success is the canonical-state age; the oldest success is the
+    source-refresh age that bounds how stale part of the catalog may be.
+    """
+    now = now or datetime.now(UTC)
+    successes: list[datetime] = []
+    errors = 0
+    due = 0
+    for metadata in refresh_state.values():
+        if metadata.get("last_error"):
+            errors += 1
+        raw_next_poll = metadata.get("next_poll_at")
+        if raw_next_poll:
+            try:
+                next_poll = datetime.fromisoformat(str(raw_next_poll))
+                if next_poll.tzinfo is None:
+                    next_poll = next_poll.replace(tzinfo=UTC)
+                if next_poll <= now:
+                    due += 1
+            except (TypeError, ValueError):
+                pass
+        raw = metadata.get("last_success")
+        if not raw:
+            continue
+        try:
+            timestamp = datetime.fromisoformat(str(raw))
+        except (TypeError, ValueError):
+            continue
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+        successes.append(timestamp.astimezone(UTC))
+
+    ages = [max(0.0, (now - timestamp).total_seconds()) for timestamp in successes]
+    return {
+        "sources": len(refresh_state),
+        "sources_with_success": len(successes),
+        "sources_with_errors": errors,
+        "sources_due": due,
+        "canonical_state_age_seconds": round(min(ages), 1) if ages else None,
+        "oldest_source_refresh_age_seconds": round(max(ages), 1) if ages else None,
+    }
+
+
+def _print_refresh_health(refresh_state: dict[str, dict], *, phase: str, no_refresh: bool) -> None:
+    health = _refresh_health_summary(refresh_state)
+
+    def _age(value: float | None) -> str:
+        return "unknown" if value is None else f"{value / 3600:.1f}h"
+
+    print(
+        "canonical state: "
+        f"phase={phase} mode={'no-refresh' if no_refresh else 'refresh'} "
+        f"sources={health['sources']} successful={health['sources_with_success']} "
+        f"canonical_age={_age(health['canonical_state_age_seconds'])} "
+        f"oldest_source_refresh_age={_age(health['oldest_source_refresh_age_seconds'])} "
+        f"due={health['sources_due']} errors={health['sources_with_errors']}",
+        flush=True,
+    )
 
 
 def _record_run_history(

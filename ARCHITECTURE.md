@@ -51,8 +51,9 @@ docs/  ──► GitHub Pages              ;   audio + transcripts + state ─�
 ```
 
 The production deploy **splits render from enrich** into **separate workflows** (separate CLI commands,
-see below): `deploy.yml` is render-only — it publishes Pages quickly from already-known state and never
-runs ffmpeg/ASR — while the heavy, best-effort, resumable backfill runs in two dedicated workflows,
+see below): `deploy.yml` is render-only — it publishes Pages quickly from already-known state, makes no
+provider episode-list requests (`build --phase render --no-refresh`), and never runs ffmpeg/ASR — while the
+heavy, best-effort, resumable backfill runs in two dedicated workflows,
 `audio.yml` (ffmpeg encode → object storage) and `asr.yml` (faster-whisper transcription). `audio.yml`
 uses a canonical preflight to restore state once and emits only non-empty source shards; workers
 consume its fingerprinted snapshot and fail closed if it is stale. A fully idle cycle runs an

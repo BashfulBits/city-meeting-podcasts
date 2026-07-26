@@ -750,7 +750,7 @@ def test_deploy_is_render_only():
     assert "actions" not in (wf.get("permissions") or {}), (
         "deploy.yml must drop `actions: read` once enrich (the only Actions-API caller) moves out"
     )
-    render = _step_index(job, "citypods build --phase render")
+    render = _step_index(job, "citypods build --phase render --no-refresh")
     deploy = _step_index(job, "actions/deploy-pages")
     assert render >= 0 and deploy >= 0, "render and deploy steps required"
     assert render < deploy, "deploy.yml must render before deploying"
@@ -766,7 +766,9 @@ def test_deploy_scopes_storage_secrets_to_render_step_only():
     assert "env" not in job or not any(
         k.startswith(("B2_", "R2_", "CLOUDFLARE_")) for k in (job.get("env") or {})
     )
-    render = next(s for s in job["steps"] if s.get("run") == "citypods build --phase render")
+    render = next(
+        s for s in job["steps"] if s.get("run") == "citypods build --phase render --no-refresh"
+    )
     env = render.get("env", {})
     for var in ("B2_ENDPOINT", "B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_PUBLIC_BASE_URL"):
         assert var in env, f"deploy.yml's render step is missing {var}"

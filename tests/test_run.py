@@ -81,6 +81,51 @@ def test_build_fingerprint_tracks_base_url_and_templates():
     assert build_fingerprint("https://a") == build_fingerprint("https://a")
 
 
+def test_refresh_health_summary_reports_canonical_and_oldest_source_age():
+    now = datetime(2026, 7, 25, 12, tzinfo=UTC)
+    state = {
+        "fresh": {
+            "last_success": (now - timedelta(hours=2)).isoformat(),
+            "next_poll_at": (now + timedelta(hours=2)).isoformat(),
+        },
+        "stale": {
+            "last_success": (now - timedelta(hours=26)).isoformat(),
+            "next_poll_at": (now - timedelta(hours=1)).isoformat(),
+            "last_error": "provider unavailable",
+        },
+        "legacy-naive": {
+            "last_success": (now - timedelta(hours=3)).isoformat(),
+            "next_poll_at": (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S"),
+        },
+        "uninitialized": {},
+    }
+
+    summary = run._refresh_health_summary(state, now=now)
+
+    assert summary == {
+        "sources": 4,
+        "sources_with_success": 3,
+        "sources_with_errors": 1,
+        "sources_due": 2,
+        "canonical_state_age_seconds": 7200.0,
+        "oldest_source_refresh_age_seconds": 93600.0,
+    }
+
+
+def test_print_refresh_health_exposes_no_refresh_and_source_age(capsys):
+    now = datetime(2026, 7, 25, 12, tzinfo=UTC)
+    state = {"source": {"last_success": (now - timedelta(hours=4)).isoformat()}}
+
+    # The helper uses the current clock for log output; assert its stable contract rather than
+    # depending on a wall-clock value in the age text.
+    run._print_refresh_health(state, phase="render", no_refresh=True)
+
+    output = capsys.readouterr().out
+    assert "canonical state: phase=render mode=no-refresh" in output
+    assert "sources=1 successful=1" in output
+    assert "canonical_age=" in output and "oldest_source_refresh_age=" in output
+
+
 def test_build_closes_compute_backend_when_impl_raises(monkeypatch):
     class _Backend:
         closed = False
