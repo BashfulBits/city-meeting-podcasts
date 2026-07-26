@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -52,6 +53,8 @@ TOMBSTONE_JOURNAL_NAME = ".tombstones.json"
 # tail budget it had left before GitHub's hard timeout killed it mid-upload. Same fix, same pool,
 # both directions.
 _STATE_SYNC_MAX_WORKERS = 16
+_MANIFEST_CAS_ATTEMPTS = 3
+_JOURNAL_LOCK = threading.Lock()
 
 
 class TransientStateSyncError(RuntimeError):
@@ -106,6 +109,43 @@ def _manifest_path(state_dir: Path) -> Path:
     return Path(state_dir) / MANIFEST_REL_PATH
 
 
+def _journal_rel_path(state_dir: Path, raw_path: str | Path, *, label: str) -> str:
+    candidate = Path(raw_path)
+    if candidate.is_absolute():
+        try:
+            candidate = candidate.resolve().relative_to(Path(state_dir).resolve())
+        except ValueError:
+            raise ValueError(f"{label} path escapes state_dir: {raw_path!r}") from None
+    rel = normpath(candidate.as_posix())
+    if rel in {".", ".."} or rel.startswith("../"):
+        raise ValueError(f"{label} path escapes state_dir: {raw_path!r}")
+    if Path(rel).suffix not in _SUFFIXES:
+        raise ValueError(f"{label} path must be JSON or JSONL: {raw_path!r}")
+    if rel in {MANIFEST_REL_PATH, DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}:
+        raise ValueError(f"{label} path is reserved: {raw_path!r}")
+    return rel
+
+
+def _read_journal(path: Path, state_dir: Path, *, label: str) -> set[str]:
+    try:
+        data = json.loads(path.read_text()) if path.exists() else []
+    except (OSError, ValueError, TypeError):
+        return set()
+    if not isinstance(data, list):
+        return set()
+    valid: set[str] = set()
+    for raw in data:
+        if not isinstance(raw, str):
+            continue
+        try:
+            valid.add(_journal_rel_path(state_dir, raw, label=label))
+        except ValueError:
+            # Journals are optimization hints; discard hand-edited/corrupt entries rather than
+            # allowing them to reach a destructive consumer.
+            continue
+    return valid
+
+
 def mark_state_dirty(state_dir: Path, *paths: str | Path) -> None:
     """Register exact state paths changed by a writer.
 
@@ -113,36 +153,36 @@ def mark_state_dirty(state_dir: Path, *paths: str | Path) -> None:
     source of truth. A missing or malformed journal makes ``push_state`` use its safe scan path.
     """
     state_dir = Path(state_dir)
-    state_dir.mkdir(parents=True, exist_ok=True)
-    journal = state_dir / DIRTY_JOURNAL_NAME
-    try:
-        data = json.loads(journal.read_text()) if journal.exists() else []
-    except (OSError, ValueError):
-        data = []
-    dirty = {str(p).replace("\\", "/") for p in data if isinstance(p, str)}
-    for raw in paths:
-        path = Path(raw)
-        if path.is_absolute():
-            try:
-                path = path.resolve().relative_to(state_dir.resolve())
-            except ValueError:
-                raise ValueError(f"dirty state path escapes state_dir: {raw!r}") from None
-        dirty.add(path.as_posix())
-    journal.write_text(json.dumps(sorted(dirty), indent=2) + "\n")
+    with _JOURNAL_LOCK:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        journal = state_dir / DIRTY_JOURNAL_NAME
+        dirty = _read_journal(journal, state_dir, label="dirty")
+        dirty.update(_journal_rel_path(state_dir, raw, label="dirty") for raw in paths)
+        journal.write_text(json.dumps(sorted(dirty), indent=2) + "\n")
 
 
 def mark_state_deleted(state_dir: Path, *paths: str | Path) -> None:
     """Record explicit state removals; partial local checkouts never imply deletion."""
     state_dir = Path(state_dir)
-    state_dir.mkdir(parents=True, exist_ok=True)
-    path = state_dir / TOMBSTONE_JOURNAL_NAME
-    try:
-        data = json.loads(path.read_text()) if path.exists() else []
-    except (OSError, ValueError):
-        data = []
-    tombstones = {str(p).replace("\\", "/") for p in data if isinstance(p, str)}
-    tombstones.update(Path(p).as_posix() for p in paths)
-    path.write_text(json.dumps(sorted(tombstones), indent=2) + "\n")
+    with _JOURNAL_LOCK:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        path = state_dir / TOMBSTONE_JOURNAL_NAME
+        tombstones = _read_journal(path, state_dir, label="tombstone")
+        tombstones.update(_journal_rel_path(state_dir, raw, label="tombstone") for raw in paths)
+        path.write_text(json.dumps(sorted(tombstones), indent=2) + "\n")
+
+
+def _validate_manifest(manifest: object) -> dict | None:
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("version") != MANIFEST_VERSION
+        or not isinstance(manifest.get("generation"), int)
+        or not isinstance(manifest.get("objects"), dict)
+        or not isinstance(manifest.get("tombstones", []), list)
+        or not all(isinstance(value, dict) for value in manifest["objects"].values())
+    ):
+        return None
+    return manifest
 
 
 def _load_manifest(storage, state_dir: Path, *, log) -> dict | None:
@@ -158,13 +198,7 @@ def _load_manifest(storage, state_dir: Path, *, log) -> dict | None:
         except (OSError, ValueError, TypeError) as exc:
             log(f"state: WARNING invalid remote manifest ({exc}); falling back to full sync")
             return None
-    if (
-        not isinstance(manifest, dict)
-        or manifest.get("version") != MANIFEST_VERSION
-        or not isinstance(manifest.get("generation"), int)
-        or not isinstance(manifest.get("objects"), dict)
-        or not isinstance(manifest.get("tombstones", {}), list)
-    ):
+    if _validate_manifest(manifest) is None:
         log("state: WARNING incompatible remote manifest; falling back to full sync")
         return None
     return manifest
@@ -224,9 +258,6 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
 
     emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
-
-    emit = log or (lambda msg: print(msg, flush=True))
-    state_dir = Path(state_dir)
     manifest = _load_manifest(storage, state_dir, log=emit)
     if manifest is not None:
         objects = manifest["objects"]
@@ -249,12 +280,18 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
     # across a bounded pool: the listing is cheap and sequential, the downloads are the expensive,
     # parallelizable part. Filtering here keeps the pool doing only real work.
     if manifest is not None:
-        keys = [
-            key
-            for key in keys
-            if _digest(state_dir / key[len(STATE_PREFIX) + 1 :])
-            != str(manifest["objects"].get(key[len(STATE_PREFIX) + 1 :], {}).get("digest", ""))
-        ]
+
+        def _needs_restore(rel: str) -> bool:
+            entry = manifest["objects"].get(rel, {})
+            local = state_dir / rel
+            if not local.is_file():
+                return True
+            size = entry.get("size")
+            if isinstance(size, int) and local.stat().st_size != size:
+                return True
+            return _digest(local) != str(entry.get("digest", ""))
+
+        keys = [key for key in keys if _needs_restore(key[len(STATE_PREFIX) + 1 :])]
     if not keys:
         if manifest is not None:
             _write_local_manifest(state_dir, manifest)
@@ -285,7 +322,9 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
 
 def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None, log=None) -> int:
     """Upload state files under ``state_dir`` to the bucket's ``state/`` prefix.
-    Returns the number of files pushed. No-op for backends without sync support.
+    Returns the number of durable-scope candidates reconciled. Unchanged candidates may require
+    no PUT because the manifest already proves them current. No-op for backends without sync
+    support.
 
     ``only_prefixes`` (the scope hook the H6b shards use): when given, push **only** files whose
     path relative to ``state_dir`` (POSIX form) starts with one of the prefixes. A source-sharded
@@ -319,6 +358,7 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None,
         return 0
     if only_prefixes is not None and only_paths is not None:
         raise ValueError("only_prefixes and only_paths are mutually exclusive")
+    explicitly_scoped = only_prefixes is not None or only_paths is not None
     prefixes = tuple(only_prefixes) if only_prefixes is not None else None
     exact_paths = set()
     for raw_path in only_paths or ():
@@ -334,28 +374,14 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None,
     journal_paths = None
     if only_paths is None and only_prefixes is None and journal_path.exists():
         try:
-            raw_dirty = json.loads(journal_path.read_text())
-            if isinstance(raw_dirty, list) and all(isinstance(p, str) for p in raw_dirty):
-                journal_paths = raw_dirty
+            journal_paths = sorted(_read_journal(journal_path, state_dir, label="dirty"))
         except (OSError, ValueError, TypeError):
             journal_paths = None
-    if journal_paths is not None:
-        # Writers outside the central helpers may not have journaled a new file. Include files
-        # absent from the manifest as a compatibility bridge; once published, warm runs remain
-        # journal-driven and do not rediscover unchanged objects.
-        known = set((_read_local_manifest(state_dir).get("objects") or {}).keys())
-        journal_paths = set(journal_paths)
-        journal_paths.update(
-            path.relative_to(state_dir).as_posix()
-            for path in state_dir.rglob("*")
-            if path.is_file()
-            and path.suffix in _SUFFIXES
-            and path.name not in {DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}
-            and path.relative_to(state_dir).as_posix() != MANIFEST_REL_PATH
-            and path.relative_to(state_dir).as_posix() not in known
-        )
-        only_paths = sorted(journal_paths)
-        exact_paths = frozenset(normpath(Path(p).as_posix()) for p in only_paths)
+    journal_driven = journal_paths is not None
+    if journal_driven and not explicitly_scoped:
+        # The journal narrows the upload decision, not candidate discovery: an unjournaled write
+        # must still be compared with the manifest rather than being hidden by a warm cache.
+        only_paths = None
 
     if only_paths is not None:
         # Exact-path callers already know the files they created; avoid walking the retained
@@ -389,58 +415,65 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None,
     if not candidates and not tombstone_path.exists():
         return 0
 
-    manifest = _load_manifest(storage, state_dir, log=emit) or _read_local_manifest(state_dir)
-    objects = dict(manifest.get("objects", {}))
-    tombstones = set(manifest.get("tombstones", []))
+    remote_manifest = _load_manifest(storage, state_dir, log=emit)
+    manifest = remote_manifest or {
+        "version": MANIFEST_VERSION,
+        "generation": 0,
+        "objects": {},
+        "tombstones": [],
+    }
+    remote_objects = dict(manifest.get("objects", {}))
+    remote_tombstones = set(manifest.get("tombstones", []))
     changed = [
         rel
         for rel in candidates
-        if rel in tombstones or objects.get(rel, {}).get("digest") != _digest(state_dir / rel)
+        if remote_manifest is None
+        or rel in remote_tombstones
+        or remote_objects.get(rel, {}).get("digest") != _digest(state_dir / rel)
     ]
-    if not changed and not tombstone_path.exists():
+    deleted = _read_journal(tombstone_path, state_dir, label="tombstone")
+    if not changed and not deleted:
         _write_local_manifest(state_dir, manifest)
         journal_path.unlink(missing_ok=True)
         # The return value is a durable-scope count used by cleanup callers as a successful
         # persistence signal. It is intentionally not a network-upload count; the manifest is
         # what proves unchanged objects were safely reconciled without PUTs.
-        return len(candidates)
+        return len(changed) if journal_driven else len(candidates)
     emit(f"state: pushing {len(changed)} file(s) to durable storage")
 
-    def _push_one(rel: str) -> bool:
+    def _push_one(rel: str) -> None:
         emit(f"state: pushing {rel}")
         storage.put_file(f"{STATE_PREFIX}/{rel}", state_dir / rel, "application/json")
-        return True
 
-    workers = min(_STATE_SYNC_MAX_WORKERS, len(changed))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        # ``map`` re-raises the first error from any worker (matching the serial loop's contract:
-        # an upload failure is not transient-tolerant here the way a restore's is, since a partial
-        # push must not be silently reported as complete).
-        sum(1 for ok in pool.map(_push_one, changed) if ok)
+    if changed:
+        workers = min(_STATE_SYNC_MAX_WORKERS, len(changed))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            # ``map`` re-raises the first error from any worker (matching the serial loop's
+            # contract: an upload failure is not transient-tolerant here the way a restore's is,
+            # since a partial push must not be silently reported as complete).
+            for _ in pool.map(_push_one, changed):
+                pass
 
-    for rel in changed:
-        objects[rel] = _manifest_object(rel, state_dir / rel)
-        tombstones.discard(rel)
-    deleted = set()
-    if tombstone_path.exists():
-        try:
-            raw = json.loads(tombstone_path.read_text())
-            if isinstance(raw, list):
-                deleted = {p for p in raw if isinstance(p, str)}
-        except (OSError, ValueError, TypeError):
-            pass
-    for rel in deleted:
-        if hasattr(storage, "delete"):
-            storage.delete(f"{STATE_PREFIX}/{rel}")
-        objects.pop(rel, None)
-        tombstones.add(rel)
-    new_manifest = {
-        "version": MANIFEST_VERSION,
-        "generation": int(manifest.get("generation", 0)) + 1,
-        "updated_at": datetime.now(UTC).isoformat(),
-        "objects": objects,
-        "tombstones": sorted(tombstones),
-    }
+    delta_objects = {rel: _manifest_object(rel, state_dir / rel) for rel in changed}
+
+    def _merge_manifest(base: dict) -> dict:
+        objects = dict(base.get("objects", {}))
+        objects.update(delta_objects)
+        tombstones = set(base.get("tombstones", []))
+        tombstones.update(deleted)
+        for rel in delta_objects:
+            tombstones.discard(rel)
+        for rel in deleted:
+            objects.pop(rel, None)
+        return {
+            "version": MANIFEST_VERSION,
+            "generation": int(base.get("generation", 0)) + 1,
+            "updated_at": datetime.now(UTC).isoformat(),
+            "objects": objects,
+            "tombstones": sorted(tombstones),
+        }
+
+    new_manifest = _merge_manifest(manifest)
     payload = json.dumps(new_manifest, indent=2, sort_keys=True).encode()
     cas_done = False
     cas_attempted = False
@@ -450,13 +483,34 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None,
         and hasattr(storage, "put_cas")
     ):
         cas_attempted = True
-        current = storage.get_bytes(MANIFEST_KEY)
-        try:
-            kwargs = {"if_match": current[1]} if current else {"if_none_match": "*"}
-            storage.put_cas(MANIFEST_KEY, payload, "application/json", **kwargs)
-            cas_done = True
-        except Exception as exc:  # noqa: BLE001 — retry next run after a concurrent writer
-            emit(f"state: WARNING manifest CAS failed ({exc}); keeping prior manifest")
+        for attempt in range(_MANIFEST_CAS_ATTEMPTS):
+            try:
+                current = storage.get_bytes(MANIFEST_KEY)
+                if current is None:
+                    base = {
+                        "version": MANIFEST_VERSION,
+                        "generation": 0,
+                        "objects": {},
+                        "tombstones": [],
+                    }
+                    etag_kwargs = {"if_none_match": "*"}
+                else:
+                    raw_manifest = json.loads(current[0])
+                    base = _validate_manifest(raw_manifest)
+                    if base is None:
+                        emit("state: WARNING incompatible CAS manifest; keeping prior manifest")
+                        break
+                    etag_kwargs = {"if_match": current[1]}
+                new_manifest = _merge_manifest(base)
+                payload = json.dumps(new_manifest, indent=2, sort_keys=True).encode()
+                storage.put_cas(MANIFEST_KEY, payload, "application/json", **etag_kwargs)
+                cas_done = True
+                break
+            except Exception as exc:  # noqa: BLE001 — preserve journals for the next run
+                if attempt + 1 < _MANIFEST_CAS_ATTEMPTS:
+                    emit(f"state: manifest CAS retry {attempt + 1}: {exc}")
+                else:
+                    emit(f"state: WARNING manifest CAS failed; keeping prior manifest ({exc})")
     if not cas_done and not cas_attempted:
         with tempfile.NamedTemporaryFile() as manifest_file:
             manifest_file.write(payload)
@@ -466,8 +520,24 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None,
     if manifest_published:
         _write_local_manifest(state_dir, new_manifest)
         journal_path.unlink(missing_ok=True)
-        tombstone_path.unlink(missing_ok=True)
-    return len(candidates)
+        if deleted:
+            if not hasattr(storage, "delete"):
+                emit("state: WARNING storage cannot delete tombstones; retaining journal")
+            else:
+                failed_deletes = []
+                for rel in deleted:
+                    try:
+                        storage.delete(f"{STATE_PREFIX}/{rel}")
+                    except Exception as exc:  # noqa: BLE001 — retry on the next run
+                        emit(f"state: WARNING could not delete tombstone {rel}: {exc}")
+                        failed_deletes.append(rel)
+                if failed_deletes:
+                    tombstone_path.write_text(json.dumps(sorted(failed_deletes), indent=2) + "\n")
+                else:
+                    tombstone_path.unlink(missing_ok=True)
+        else:
+            tombstone_path.unlink(missing_ok=True)
+    return len(changed) if journal_driven else len(candidates)
 
 
 def fetch_remote_records(storage, src_key: str) -> dict | None:
