@@ -65,7 +65,7 @@ before GH#353 removed it.)
 That emulation is the efficiency and reliability cost, and it gets worse as shards multiply and as
 non-Actions workers join (H13/H14), each of which must participate in the same emulated protocol.
 
-### 1.3 Corrected facts that reshaped this evaluation (verified Jun 2026)
+### 1.3 Corrected facts that reshaped this evaluation (verified Jun 2026; B2 pricing re-verified 2026-07-26)
 
 A naive reading is "move state off B2 to get speed/consistency." The facts say otherwise:
 

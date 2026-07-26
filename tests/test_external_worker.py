@@ -1174,6 +1174,46 @@ def test_transcript_batch_survives_realistic_per_item_gaps(tmp_path, monkeypatch
     assert push_calls[0]["owned_uids"] == {"src": frozenset(uids)}
 
 
+def test_transcript_batch_retains_pending_records_on_failed_flush(tmp_path, monkeypatch):
+    """GH#1019: the whole batching design leans on a failed flush leaving records queued rather than
+    dropping them, so a later flush (in-process) retries the same records instead of silently losing
+    them. A push that raises must not clear ``_pending_transcript_records``; the next flush attempt
+    then succeeds and clears it, proving the retry path is genuinely idempotent, not untested."""
+    worker = _loop_worker(tmp_path, ["a"])
+    _patch_transcribe_item(monkeypatch, worker, exists=False)
+    attempts = {"n": 0}
+
+    def _flaky_push(
+        storage,
+        state_dir,
+        sources,
+        *,
+        protected_blocks,
+        lane=None,
+        owned_uids,
+        raise_on_transient=False,
+    ):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("transient push failure")
+        return len(sources)
+
+    monkeypatch.setattr(ew, "push_records_merged", _flaky_push)
+
+    worker._run_transcribe_item(_queued("a"), ew.ResourceTracker())
+    assert worker._pending_transcript_records != {}, "queuing must not have flushed yet"
+
+    with pytest.raises(RuntimeError, match="transient push failure"):
+        worker._flush_pending_transcripts()
+    assert worker._pending_transcript_records == {"src": {"a": {"uid": "a"}}}, (
+        "a failed flush must leave the batch queued for the next attempt to retry"
+    )
+
+    worker._flush_pending_transcripts()
+    assert worker._pending_transcript_records == {}, "a subsequent successful flush must clear it"
+    assert attempts["n"] == 2
+
+
 def test_run_flushes_pending_transcripts_at_end_of_run(tmp_path, monkeypatch):
     """GH#1019: ``run()`` must drain any still-pending batch before returning, even if it never hit
     the size/age bound, so a short run's completions aren't left unpushed in memory. Uses an empty

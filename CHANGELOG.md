@@ -32,10 +32,11 @@ Phase R (Research-Tool Surface)._
   had capped real-world batches at ~2 instead of 5 regardless of the item-count bound. A regression
   test now locks in a realistic per-item gap across a full batch.) Lease liveness needed no new
   keepalive thread: `lease_ttl_seconds` (6–20h) already dwarfs the batch window given the existing
-  per-item renewal thread's minutes-fresh refresh at queue time. A failed flush leaves the batch
-  queued for the next attempt to retry (the owned-block merge is idempotent), and the
-  media-decode-quarantine/timeout-backoff paths are unchanged (still immediate, single-item
-  pushes). Each flush now logs its `sources`/`records`/`payload_bytes`/`elapsed_s` for real
+  per-item renewal thread's minutes-fresh refresh at queue time. A failed flush remains queued for
+  another in-process attempt (the owned-block merge is idempotent); if the process exits before a
+  later attempt succeeds, the in-memory batch does not survive it — the durable artifact is instead
+  re-adopted and its record re-queued by a later run. Media-decode-quarantine/timeout-backoff paths
+  are unchanged (still immediate, single-item pushes). Each flush now logs its `sources`/`records`/`payload_bytes`/`elapsed_s` for real
   production measurement. This is the "same-source commit batching" option from the two the issue
   proposed; the sidecar/per-uid-object alternative was investigated directly against R6/R7's actual
   record-shape additions and Backblaze B2's real pricing (transactions are entirely free; egress is
