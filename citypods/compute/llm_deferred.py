@@ -27,6 +27,9 @@ from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
 
 DEFERRED_PREFIX = "state/llm_deferred/"
+DEFERRED_INDEX_PREFIX = "state/llm_deferred_index/"
+DEFERRED_INDEX_PENDING_PREFIX = f"{DEFERRED_INDEX_PREFIX}pending/"
+DEFERRED_INDEX_MIGRATION_KEY = f"{DEFERRED_INDEX_PREFIX}migration-complete.json"
 
 # Worst case a record should ever need to sit here: a caller with no deadline_at (or a caller
 # that never asks again, like a Stage whose own recipe_hash changes run to run) waiting out a
@@ -74,6 +77,81 @@ class DeferredSnapshot:
 
 def deferred_key(recipe_hash: str) -> str:
     return f"{DEFERRED_PREFIX}{recipe_hash}.json"
+
+
+def _index_models(data: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return configured route keys a pending record may select.
+
+    A policy record is deliberately indexed in every candidate route partition.  The pointer is
+    only a cheap prefilter; the canonical record and scheduler still perform the authoritative
+    policy/transport/capacity checks after the pointer is read.
+    """
+    if data.get("status") != "pending":
+        return ()
+    from citypods.compute.llm_policy import ROUTES
+
+    resolved = data.get("model")
+    if isinstance(resolved, str) and resolved in ROUTES:
+        return (resolved,)
+    policy = data.get("policy")
+    allowed = policy.get("allowed_models") if isinstance(policy, Mapping) else None
+    candidates = set(allowed) if isinstance(allowed, list | tuple) else set(ROUTES)
+    allow_paid = bool(policy.get("allow_paid", False)) if isinstance(policy, Mapping) else False
+    return tuple(
+        sorted(
+            model
+            for model, route in ROUTES.items()
+            if model in candidates and (allow_paid or route.free)
+        )
+    )
+
+
+def _index_keys(data: Mapping[str, Any], *, recipe_hash: str) -> tuple[str, ...]:
+    """Pointer keys for every route ``data`` could currently be reconciled against.
+
+    No time-bucket layer: nothing in this codebase computes a genuine future retry/backoff time
+    for a persisted record today (route pacing/backoff lives in-memory for the duration of one
+    sweep -- ``llm_scheduler.Selection.retry_at`` -- and is never written back to the registry),
+    so every pending record is always "due now." Partitioning by day would only add one LIST per
+    (model, day) with nothing to skip, which is pure overhead. If a real scheduled-retry feature
+    is added later, bucket by its actual due time then, not preemptively.
+    """
+    return tuple(
+        f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/{recipe_hash}.json"
+        for model in _index_models(data)
+    )
+
+
+def _delete_pointer_keys(storage, keys) -> None:
+    for key in keys:
+        try:
+            storage.delete(key)
+        except Exception:  # noqa: BLE001 -- an advisory index never blocks canonical state
+            pass
+
+
+def _write_pointer_keys(storage, keys, recipe_hash: str) -> None:
+    body = (json.dumps({"recipe_hash": recipe_hash}) + "\n").encode()
+    for key in keys:
+        try:
+            _write_json(storage, key, body)
+        except Exception:  # noqa: BLE001 -- canonical state is authoritative
+            pass
+
+
+def _best_effort_delete_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
+    _delete_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash))
+
+
+def _write_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
+    _write_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash), recipe_hash)
+
+
+def _index_ready(storage) -> bool:
+    try:
+        return bool(storage.exists(DEFERRED_INDEX_MIGRATION_KEY))
+    except Exception:  # noqa: BLE001 -- old/local storage doubles may lack exists
+        return False
 
 
 def _serialize_policy(policy: LLMRequestPolicy) -> dict[str, Any]:
@@ -219,7 +297,21 @@ def write_deferred(
         created_at if isinstance(created_at, str) and created_at else now.isoformat()
     )
     body = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
+    old_keys = (
+        set(_index_keys(existing_raw, recipe_hash=recipe_hash))
+        if isinstance(existing_raw, Mapping)
+        else set()
+    )
+    new_keys = set(_index_keys(record, recipe_hash=recipe_hash))
+    # New pointers first, then the canonical record, then only the now-stale old pointers --
+    # never the reverse. A crash between any two of these steps leaves either a pointer with
+    # nothing (yet) behind it (harmless: a canonical GET on a missing/stale-status key is just
+    # treated as absent) or a stale extra pointer (harmless: advisory, cleaned up by the next
+    # write or `repair_deferred_index`) -- but never a valid pending canonical record reachable
+    # by zero pointers, which the old delete-old/write-canonical/write-new order could produce.
+    _write_pointer_keys(storage, new_keys - old_keys, recipe_hash)
     _write_json(storage, deferred_key(recipe_hash), body)
+    _delete_pointer_keys(storage, old_keys - new_keys)
 
 
 def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
@@ -259,14 +351,14 @@ def iter_pending_deferred(storage):
             yield decoded
 
 
-def load_deferred_snapshot(storage) -> DeferredSnapshot:
-    """Read and decode every registry record once, ordered by last modification."""
-    listing = sorted(
-        storage.list_objects(DEFERRED_PREFIX),
-        key=lambda item: (item[1] is None, item[1]),
-    )
+def _load_snapshot_from_keys(storage, listing) -> DeferredSnapshot:
+    """Read canonical records named by a listing, de-duplicating multi-route pointers."""
     entries = []
-    for key, last_modified in listing:
+    seen: set[str] = set()
+    for key, last_modified in sorted(listing, key=lambda item: (item[1] is None, item[1])):
+        if key in seen:
+            continue
+        seen.add(key)
         data = _read_json(storage, key)
         entries.append(
             DeferredSnapshotEntry(
@@ -277,6 +369,90 @@ def load_deferred_snapshot(storage) -> DeferredSnapshot:
             )
         )
     return DeferredSnapshot(entries)
+
+
+def _indexed_listing(storage, *, now: datetime) -> list[tuple[str, Any]]:
+    """List pending pointers only for route models that currently have capacity.
+
+    One LIST per eligible model (pointer count is bounded by actual pending volume, since
+    completion/expiry always removes a record's pointers -- see ``write_deferred``/
+    ``prune_expired_deferred_snapshot``), instead of one LIST across the whole registry.
+
+    Every other index operation in this module (write/delete/``_index_ready``) is best-effort --
+    this one wasn't, so a single transient ledger read or LIST would abort the whole sweep instead
+    of degrading gracefully (``scripts/llm_deferred_sweep.py`` has no try/except around its
+    ``load_deferred_snapshot`` call). A capacity-check failure just means "assume no known
+    capacity for this model"; a listing failure just means "no pointers found in this partition
+    this run" -- both self-heal on the next sweep, same as every other advisory-index miss.
+    """
+    from citypods.compute.llm_budget import load_llm_budget_cas
+    from citypods.compute.llm_policy import ROUTES
+
+    try:
+        budget, _ = load_llm_budget_cas(storage)
+    except Exception:  # noqa: BLE001 -- a transient ledger read must not sink the whole sweep
+        budget = None
+    listing: list[tuple[str, Any]] = []
+    for model, route in ROUTES.items():
+        if budget is not None and not budget.available(
+            model, route=route, requests=1, tokens=0, cost=0.0, now=now
+        ):
+            continue
+        try:
+            listing.extend(storage.list_objects(f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/"))
+        except Exception:  # noqa: BLE001 -- one bad partition must not sink the whole sweep
+            continue
+    return listing
+
+
+def load_deferred_snapshot(storage, *, now: datetime | None = None) -> DeferredSnapshot:
+    """Read canonical records once, using the advisory index after migration.
+
+    Before the repair pass marks migration complete, the old full listing remains active. This
+    makes rollout safe for existing records and for a repair that is interrupted halfway through.
+    """
+    if now is not None:
+        current = now
+    else:
+        current = datetime.now(UTC)
+    if _index_ready(storage):
+        listing = _indexed_listing(storage, now=current)
+        return _load_snapshot_from_keys(
+            storage,
+            ((deferred_key(key.rsplit("/", 1)[-1][:-5]), modified) for key, modified in listing),
+        )
+    # Canonical keys from a full-registry listing are already unique, so the de-dup in
+    # `_load_snapshot_from_keys` is a harmless no-op here -- same helper, no duplicated loop.
+    return _load_snapshot_from_keys(storage, storage.list_objects(DEFERRED_PREFIX))
+
+
+def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
+    """Rebuild pending pointers from canonical B2 records and atomically finish migration.
+
+    The pass is idempotent. It intentionally lists the canonical prefix only when invoked by an
+    operator/maintenance run; ordinary sweeps use the narrow index listings.
+    """
+    repaired = 0
+    desired: set[str] = set()
+    for key, _ in storage.list_objects(DEFERRED_PREFIX):
+        data = _read_json(storage, key)
+        if not isinstance(data, Mapping):
+            continue
+        recipe_hash = key[len(DEFERRED_PREFIX) : -len(".json")]
+        _best_effort_delete_index(storage, data, recipe_hash)
+        _write_index(storage, data, recipe_hash)
+        desired.update(_index_keys(data, recipe_hash=recipe_hash))
+        repaired += 1
+    # Compaction is safe after the canonical listing: every valid pointer for the current
+    # registry is in ``desired``. Orphans are only advisory, so deleting them cannot lose work.
+    for key, _ in storage.list_objects(DEFERRED_INDEX_PENDING_PREFIX):
+        if key not in desired:
+            try:
+                storage.delete(key)
+            except Exception:  # noqa: BLE001 -- cleanup remains best-effort
+                pass
+    _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 1}\n')
+    return repaired
 
 
 def list_pending_deferred(storage) -> list[JobHandle]:
@@ -342,6 +518,7 @@ def prune_expired_deferred_snapshot(
                 continue
             _release_abandoned_reservation(storage, data, now=now)
             storage.delete(key)
+            _best_effort_delete_index(storage, data, key[len(DEFERRED_PREFIX) : -len(".json")])
             entry.deleted = True
             deleted += 1
     return deleted
@@ -375,6 +552,7 @@ def _release_abandoned_reservation(storage, data: Mapping[str, Any], *, now: dat
 __all__ = [
     "DEFAULT_TTL_DAYS",
     "DEFERRED_PREFIX",
+    "DEFERRED_INDEX_PREFIX",
     "DeferredSnapshot",
     "DeferredSnapshotEntry",
     "deferred_key",
@@ -384,5 +562,6 @@ __all__ = [
     "iter_pending_deferred",
     "prune_expired_deferred",
     "prune_expired_deferred_snapshot",
+    "repair_deferred_index",
     "write_deferred",
 ]

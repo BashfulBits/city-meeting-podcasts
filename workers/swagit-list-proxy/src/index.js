@@ -94,6 +94,53 @@ function clientResponseHeaders(upstream) {
   return headers;
 }
 
+/**
+ * Follow a single upstream redirect when its target is still an allowed Swagit list/video path
+ * on an allowed host. Returns the redirected response, or `null` when the target isn't safe to
+ * follow (missing/unparseable Location, disallowed host, unrecognized path shape, or a second
+ * redirect) -- in which case the caller refuses the original response as before.
+ */
+async function followAllowedRedirect(upstream, requestedUrl, env, fetchImpl) {
+  const location = upstream.headers.get("location");
+  if (!location) {
+    return null;
+  }
+  let target;
+  try {
+    target = new URL(location, requestedUrl);
+  } catch {
+    return null;
+  }
+  const path = target.pathname.replace(/^\//, "");
+  if (
+    target.protocol !== "https:" ||
+    target.username ||
+    target.password ||
+    !allowedHosts(env).has(target.hostname.toLowerCase()) ||
+    !PATH_RE.test(path)
+  ) {
+    return null;
+  }
+  let redirected;
+  try {
+    redirected = await fetchImpl(target.toString(), {
+      method: "GET",
+      headers: upstreamRequestHeaders(env),
+      redirect: "manual",
+      cf: {
+        cacheEverything: false,
+        cacheTtl: 0,
+      },
+    });
+  } catch {
+    return null;
+  }
+  if (redirected.status >= 300 && redirected.status < 400) {
+    return null; // one hop only
+  }
+  return redirected;
+}
+
 export async function handleRequest(request, env, fetchImpl = fetch) {
   if (request.method !== "GET") {
     return plain(405, "method not allowed", { allow: "GET" });
@@ -124,8 +171,18 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
     return plain(502, "upstream fetch failed");
   }
 
+  // Swagit resolves stale/alias view paths (e.g. "views/default/...") with a same-tenant 302
+  // rather than a permanent rename, so a blanket redirect refusal permanently breaks any feed
+  // still using an alias URL (observed: dallastx's "views/default/city-council" -> "views/113/
+  // city-council", 2026-07). Follow exactly one hop when the target still resolves to an
+  // allowed host and the same accepted path shape; anything else (cross-host, malformed, or a
+  // second redirect) is refused exactly as before -- that's the actual SSRF-via-redirect guard.
   if (upstream.status >= 300 && upstream.status < 400 && !parsed.path.endsWith("/download")) {
-    return plain(502, "upstream redirect refused");
+    const redirected = await followAllowedRedirect(upstream, upstreamUrl, env, fetchImpl);
+    if (redirected === null) {
+      return plain(502, "upstream redirect refused");
+    }
+    upstream = redirected;
   }
 
   return new Response(upstream.body, {

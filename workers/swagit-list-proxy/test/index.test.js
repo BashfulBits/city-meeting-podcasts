@@ -130,7 +130,7 @@ test("a bare (no page) request omits the query string upstream", async () => {
   assert.equal(captured.url, "https://austintx.new.swagit.com/views/117/city-council-meetings");
 });
 
-test("upstream redirects are refused", async () => {
+test("upstream redirects to a disallowed host are refused", async () => {
   const response = await handleRequest(request(), ENV, async () => {
     return new Response(null, {
       status: 302,
@@ -139,6 +139,60 @@ test("upstream redirects are refused", async () => {
   });
   assert.equal(response.status, 502);
   assert.equal(response.headers.get("location"), null);
+});
+
+test("a same-tenant alias redirect (e.g. views/default/...) is followed once", async () => {
+  let calls = 0;
+  const response = await handleRequest(request(), ENV, async (url) => {
+    calls += 1;
+    if (calls === 1) {
+      assert.equal(url, "https://austintx.new.swagit.com/views/117/city-council-meetings");
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://austintx.new.swagit.com/views/117/city-council" },
+      });
+    }
+    assert.equal(url, "https://austintx.new.swagit.com/views/117/city-council");
+    return new Response("<html>resolved</html>", { status: 200 });
+  });
+  assert.equal(calls, 2);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "<html>resolved</html>");
+});
+
+test("a redirect to a disallowed host after the first hop is still refused", async () => {
+  const response = await handleRequest(request(), ENV, async () => {
+    return new Response(null, {
+      status: 302,
+      headers: { location: "https://evil.example/steal" },
+    });
+  });
+  assert.equal(response.status, 502);
+});
+
+test("a redirect chain (two hops) is refused rather than followed indefinitely", async () => {
+  let calls = 0;
+  const response = await handleRequest(request(), ENV, async () => {
+    calls += 1;
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: `https://austintx.new.swagit.com/views/117/hop-${calls}`,
+      },
+    });
+  });
+  assert.equal(calls, 2);
+  assert.equal(response.status, 502);
+});
+
+test("a redirect to an unrecognized path shape is refused", async () => {
+  const response = await handleRequest(request(), ENV, async () => {
+    return new Response(null, {
+      status: 302,
+      headers: { location: "https://austintx.new.swagit.com/admin/secret" },
+    });
+  });
+  assert.equal(response.status, 502);
 });
 
 test("download redirects are returned without following and expose only Location", async () => {
