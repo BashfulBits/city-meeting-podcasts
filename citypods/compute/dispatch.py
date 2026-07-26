@@ -381,6 +381,7 @@ def reconcile_compute(
     leases: dict = {"completed": 0, "requeued": 0, "in_flight": 0}
     if cas and sweep_work_leases:
         from citypods.compute.budget import release_reservation, settle_reservation
+        from citypods.ops import work_leases
         from citypods.ops.work_leases import reap as reap_work_leases
         from citypods.ops.work_leases import reap_indexed as reap_work_leases_indexed
 
@@ -400,9 +401,9 @@ def reconcile_compute(
             release_reservation(storage, owner, _backend(owner), now=now)
 
         if use_lease_index:
-            # One bounded partition of the candidate keyspace per run — rotated by day so the full
-            # backlog is eventually re-checked (review/18 §4.2 / GH#1018 acceptance criterion 4)
-            # without ever probing more than a fixed slice in a single reconcile.
+            # One bounded partition of the candidate keyspace per run — rotated per minute so the
+            # full backlog is eventually re-checked (review/18 §4.2 / GH#1018 acceptance criterion
+            # 4) without ever probing more than a fixed slice in a single reconcile.
             leases = reap_work_leases_indexed(
                 storage,
                 artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
@@ -410,7 +411,7 @@ def reconcile_compute(
                 on_requeued=on_requeued,
                 now=now,
                 integrity_candidates=candidates,
-                integrity_partition=now.toordinal(),
+                integrity_partition=work_leases.integrity_partition_for(now),
             )
         else:
             leases = reap_work_leases(

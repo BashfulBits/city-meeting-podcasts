@@ -813,6 +813,7 @@ def _compute_reconcile(args) -> int:
         import tempfile
 
         from citypods.compute.dispatch import _asr_artifact_present
+        from citypods.ops.work_leases import integrity_partition_for
         from citypods.ops.work_leases import reap as reap_work_leases
         from citypods.ops.work_leases import reap_indexed as reap_work_leases_indexed
 
@@ -842,7 +843,7 @@ def _compute_reconcile(args) -> int:
                         now=now,
                         dry_run=True,
                         integrity_candidates=candidates,
-                        integrity_partition=now.toordinal(),
+                        integrity_partition=integrity_partition_for(now),
                     )
                 else:
                     lease_preview = reap_work_leases(

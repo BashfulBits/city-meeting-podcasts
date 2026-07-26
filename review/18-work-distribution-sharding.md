@@ -400,9 +400,13 @@ unbounded list. `ops/work_leases.py` adds:
 - **Crash recovery / integrity sweep.** A crash between a successful claim and its index write would otherwise
   hide that lease from `reap_indexed()` forever. Callers may pass `integrity_candidates` (the same
   policy-ordered list `reap()` already derives) and `integrity_partition` (rotated per run — `reconcile_compute`
-  uses `now.toordinal() % bucket_count`); `reap_indexed()` candidate-probes only the slice of `integrity_candidates`
-  that hashes to that one partition, repairing any found-but-unindexed active lease back into the index. One
-  bounded partition per run, not a full backlog scan — full coverage recurs every `bucket_count` runs.
+  uses `work_leases.integrity_partition_for(now)`, a **minute**-granularity counter; `now.toordinal()` was tried
+  first but only advances once a day, so every reconcile on the same UTC day probed the identical slice —
+  full-keyspace recovery in ~64 *days*, not the ~64 *runs* this design promises); `reap_indexed()`
+  candidate-probes only the slice of `integrity_candidates` that hashes to that one partition, repairing any
+  found-but-unindexed active lease back into the index. One bounded partition per run, not a full backlog scan —
+  full coverage recurs within `bucket_count` minutes (in practice, `bucket_count` runs, since reconcile fires at
+  most a few times a minute).
 - **Rollback.** `reconcile_compute(..., use_lease_index=True)` (default once `sweep_work_leases` is on) picks
   `reap_indexed()`; `use_lease_index=False` (`work_lease_index_enabled: false` under `defaults:`) reverts to the
   original `reap()` candidate-probe with no code change — the config-only rollback the issue asked for.

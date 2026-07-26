@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import time as _time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -95,6 +96,17 @@ def index_bucket_key(n: int) -> str:
     return f"{INDEX_PREFIX}/bucket-{n:04d}.json"
 
 
+def integrity_partition_for(now: datetime) -> int:
+    """A per-run rotating partition selector for :func:`reap_indexed`'s integrity sweep.
+
+    Minute-granularity (not ``now.toordinal()``, which only advances once a day — with
+    ``INDEX_BUCKET_COUNT`` buckets that stretched full-keyspace recovery to ~64 *days*, not the
+    documented ~64 *runs*, since every reconcile on the same UTC day picked the identical slice).
+    Reconcile realistically fires at most a few times a minute, so this is effectively one
+    partition per run and gets worst-case full coverage down to ``INDEX_BUCKET_COUNT`` minutes."""
+    return int(now.timestamp() // 60)
+
+
 def _load_index_bucket(storage, n: int) -> tuple[dict[str, dict], str | None]:
     """Read one bucket's entries + ETag. Absent or corrupt → ``({}, etag)`` (corrupt keeps the ETag
     so the next CAS write cleanly replaces it, same convention as :func:`read_lease`)."""
@@ -124,16 +136,21 @@ def _mutate_index_bucket(
     base_sleep: float = 0.05,
     max_sleep: float = 1.0,
     sleep=_time.sleep,
+    rng: random.Random | None = None,
 ) -> None:
     """CAS read-modify-write of index bucket ``n`` (same retry shape as
-    ``compute.budget.mutate_budget``): load the freshest entries + ETag, apply ``mutate`` in place,
-    write back conditionally, and retry with backoff on a losing race so a sibling worker's
-    concurrent add/remove in the same bucket is never silently dropped. Best-effort by design (the
-    lease object, not the index, is claim authority — GH#1018 acceptance criterion 7): a caller that
-    exhausts ``max_attempts`` should log and continue rather than fail the lease operation itself.
+    ``compute.budget.mutate_budget``, including its randomized jitter — a fixed 64-bucket keyspace
+    means siblings collide on the same bucket far more often than on the single budget object, so
+    deterministic per-attempt backoff would just retry them in lockstep): load the freshest entries
+    + ETag, apply ``mutate`` in place, write back conditionally, and retry with backoff on a losing
+    race so a sibling worker's concurrent add/remove in the same bucket is never silently dropped.
+    Best-effort by design (the lease object, not the index, is claim authority — GH#1018 acceptance
+    criterion 7): a caller that exhausts ``max_attempts`` should log and continue rather than fail
+    the lease operation itself.
     """
     from citypods.storage import CASConflict
 
+    rng = rng or random
     last: CASConflict | None = None
     for attempt in range(max_attempts):
         entries, etag = _load_index_bucket(storage, n)
@@ -147,7 +164,8 @@ def _mutate_index_bucket(
             return
         except CASConflict as exc:
             last = exc
-            sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + attempt % 3 / 3))
+            if attempt < max_attempts - 1:  # no point sleeping before the final raise
+                sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
     assert last is not None
     raise last
 
@@ -197,6 +215,21 @@ def _index_remove(
         _mutate_index_bucket(storage, n, _mutate)
     except Exception as exc:  # noqa: BLE001 — index maintenance is best-effort
         print(f"[work-leases] active-index remove failed for {source_key}/{uid}: {exc}", flush=True)
+
+
+def _drop_index_entries(storage, n: int, entry_ids: Sequence[str]) -> None:
+    """Remove several entries from bucket ``n`` in a single CAS write — used by
+    :func:`reap_indexed` to prune every settled/drifted item found in one bucket at once instead of
+    one write per item. Best-effort, same rationale as :func:`_index_upsert`."""
+
+    def _mutate(entries: dict[str, dict]) -> None:
+        for entry_id in entry_ids:
+            entries.pop(entry_id, None)
+
+    try:
+        _mutate_index_bucket(storage, n, _mutate)
+    except Exception as exc:  # noqa: BLE001 — index maintenance is best-effort
+        print(f"[work-leases] active-index bucket {n} prune failed: {exc}", flush=True)
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -518,7 +551,14 @@ def _invoke_reap_callback(
     owner: str,
     on_completed: Callable[[str], None] | None,
     on_requeued: Callable[[str], None] | None,
+    *,
+    dry_run: bool,
 ) -> None:
+    # A dry run must stay entirely read-only, but ``on_completed``/``on_requeued`` are real CAS
+    # mutations in production (budget settle/release) — skip them here rather than trusting every
+    # call site to remember the guard.
+    if dry_run:
+        return
     # The lease has already been moved off "leased", so a raising callback (e.g. a budget settle
     # that exhausts its CAS retries) must not abort the rest of the sweep — that item can't be
     # re-swept. Log and keep going; the budget update for this one item is best-effort.
@@ -579,7 +619,7 @@ def reap(
             continue
         completed += outcome == "completed"
         requeued += outcome == "requeued"
-        _invoke_reap_callback(outcome, owner, on_completed, on_requeued)
+        _invoke_reap_callback(outcome, owner, on_completed, on_requeued, dry_run=dry_run)
     return {"completed": completed, "requeued": requeued, "in_flight": in_flight}
 
 
@@ -615,7 +655,7 @@ def reap_indexed(
     though it's genuinely held. Pass ``integrity_candidates`` (the same policy-ordered candidate
     list :func:`reap`'s caller already derives from the discovery index) and
     ``integrity_partition`` (an integer the caller rotates across runs, e.g.
-    ``now.toordinal() % bucket_count``) to additionally candidate-probe **one bounded partition**
+    :func:`integrity_partition_for`) to additionally candidate-probe **one bounded partition**
     of the keyspace per run — the same partition every candidate in it would hash to via
     :func:`index_bucket_for`, so this reuses the bucket assignment rather than inventing a second
     one. A found-but-unindexed active lease is repaired into the index (and reaped/left running
@@ -631,6 +671,7 @@ def reap_indexed(
 
     for n in range(max(bucket_count, 0)):
         entries, _bucket_etag = _load_index_bucket(storage, n)
+        drop: list[str] = []
         for meta in entries.values():
             source_key, uid = str(meta.get("source_key", "")), str(meta.get("uid", ""))
             if not source_key or not uid:
@@ -638,8 +679,7 @@ def reap_indexed(
             seen.add((source_key, uid))
             existing, etag = read_lease(storage, source_key, uid)
             if existing is None or etag is None or existing.state != "leased":
-                if not dry_run:
-                    _index_remove(storage, source_key, uid, bucket_count=bucket_count)
+                drop.append(_entry_id(source_key, uid))
                 continue  # index drift: no longer an active lease — nothing to reap
             owner = existing.owner
             outcome = _settle_leased(
@@ -659,9 +699,13 @@ def reap_indexed(
                 continue  # a sibling raced us — leave it indexed, re-sweep next cycle
             completed += outcome == "completed"
             requeued += outcome == "requeued"
-            if not dry_run:
-                _index_remove(storage, source_key, uid, bucket_count=bucket_count)
-            _invoke_reap_callback(outcome, owner, on_completed, on_requeued)
+            drop.append(_entry_id(source_key, uid))
+            _invoke_reap_callback(outcome, owner, on_completed, on_requeued, dry_run=dry_run)
+        # One CAS write removes every settled/drifted entry found in this bucket (instead of one
+        # write per entry) — the mutate re-reads fresh entries, so a concurrent claim landing in
+        # this bucket mid-sweep is still preserved.
+        if drop and not dry_run:
+            _drop_index_entries(storage, n, drop)
 
     integrity_checked = 0
     if integrity_candidates is not None and integrity_partition is not None and bucket_count > 0:
@@ -703,7 +747,7 @@ def reap_indexed(
                 continue
             completed += outcome == "completed"
             requeued += outcome == "requeued"
-            _invoke_reap_callback(outcome, owner, on_completed, on_requeued)
+            _invoke_reap_callback(outcome, owner, on_completed, on_requeued, dry_run=dry_run)
 
     return {
         "completed": completed,
