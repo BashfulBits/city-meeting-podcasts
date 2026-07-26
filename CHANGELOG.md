@@ -105,7 +105,8 @@ Phase R (Research-Tool Surface)._
   latency of the new Swagit Worker fallback relay above) can alone exceed a tight job timeout
   regardless of how well-tuned `tag_run_time_budget_minutes` is. Rather than chase another specific
   cost sink, `tag.yml`'s job `timeout-minutes` is now 240 (was 25), mirroring
-  `llm-deferred-sweep.yml`'s existing headroom, so source-prepare always has room to finish;
+  `llm-deferred-sweep.yml`'s existing headroom -- not a completion guarantee (source-prepare still
+  has no bound of its own, see below), but real additional room for it to finish in practice;
   `tag_run_time_budget_minutes` (`config/site_config.yml`) is now 240 to match (window = 204m via
   the existing `budget_safety`, leaving the same ~36m tail `run_time_budget_minutes` already uses)
   so the stage-processing budget that was already correctly implemented gets a real amount of time

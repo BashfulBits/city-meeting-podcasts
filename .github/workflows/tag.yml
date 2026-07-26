@@ -27,9 +27,10 @@ jobs:
     # to completion before ctx.stop() is ever checked, so a slow-fetching backlog (many-committee
     # cities, a Cloudflare Worker fallback relay adding latency) can alone burn the whole job
     # before the tag-lane's own graceful budget below gets a chance to matter. Mirrors
-    # llm-deferred-sweep.yml's headroom: give the job enough wall-clock room that prepare always
-    # finishes, so tag_run_time_budget_minutes (site_config.yml) can then do its job -- stop
-    # dispatching, persist what's done, and exit cleanly well before this outer limit.
+    # llm-deferred-sweep.yml's headroom: give the job much more wall-clock room for prepare to
+    # finish (not a guarantee -- that pass still has no bound of its own, see citypods/run.py),
+    # so tag_run_time_budget_minutes (site_config.yml) can then do its job -- stop dispatching,
+    # persist what's done, and exit cleanly well before this outer limit.
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6

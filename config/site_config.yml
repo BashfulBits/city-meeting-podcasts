@@ -169,8 +169,9 @@ defaults:
   # unique source in scope) runs to completion unconditionally before `stop()` is ever checked, so
   # a slow-fetching backlog (many-committee cities, Cloudflare Worker fallback relay latency) can
   # alone exceed a tight job timeout regardless of how well-tuned this window is. `tag.yml`'s job
-  # timeout is now 240m (mirrors `llm-deferred-sweep.yml`) so prepare always has room to finish;
-  # this window matches `run_time_budget_minutes` so the same `budget_safety` gives it the same
+  # timeout is now 240m (mirrors `llm-deferred-sweep.yml`) to give prepare much more room to
+  # finish -- not a guarantee, that pass still has no bound of its own (see `citypods/run.py`).
+  # This window matches `run_time_budget_minutes` so the same `budget_safety` gives it the same
   # ~36m tail. Window = tag_run_time_budget_minutes × budget_safety; keep it comfortably under the
   # job's `timeout-minutes`.
   tag_run_time_budget_minutes: 240
