@@ -12,8 +12,15 @@ from dataclasses import dataclass
 from urllib.parse import urljoin
 
 _MINUTES_RE = re.compile(r"\bminutes?\b", re.I)
-_AGENDA_RE = re.compile(r"\bagenda|packet|backup|attachment|supporting\b", re.I)
 _URL_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
+# A short alphanumeric case/item identifier such as "PD20-25", "ZA20-8", "SUP20-6", or "2026-0071"
+# -- confirmed, on real live Granicus and Legistar agendas, to be the identifier a backup
+# document's own filename/label or a per-item detail page repeats verbatim next to its parent
+# item's title. Matching on this (or the full title text) is what replaces English-keyword
+# matching (agenda/packet/backup/attachment/supporting) as the backup-document classification
+# signal -- keyword phrases are English- and convention-specific; an item identifier embedded in
+# a document's own name is not.
+_ITEM_ID_RE = re.compile(r"\b[A-Za-z]{1,4}-?\d{2,4}(?:-\d{1,4})?\b")
 MAX_TEXT_CHARS = 1_000_000
 MAX_LINKS = 200
 AGENDA_TEXT_MAX_CHARS = 50_000
@@ -116,9 +123,16 @@ def extract_html(
             continue
         label = " ".join(anchor.get_text(" ", strip=True).split())
         haystack = f"{label} {href}"
+        # Every same-origin-validated link on the page becomes a backup-document candidate --
+        # not gated on English keywords (agenda/packet/backup/attachment/supporting), since a
+        # different city's agenda platform may label these links entirely differently (or not
+        # label them with words at all, e.g. Legistar's bare "File #" links). Bounded by
+        # MAX_LINKS and, at the fetch site (AgendaTextStage), by the same SSRF-gated
+        # same-origin/domain checks every other candidate link already goes through -- this is a
+        # classification change, not a change to what is safe to fetch. Real attribution to a
+        # specific agenda item happens later (attribute_links_by_content / the position-based
+        # fallback), not here.
         kind = "minutes" if _MINUTES_RE.search(haystack) else "backup"
-        if kind == "backup" and not (_AGENDA_RE.search(haystack) or ".pdf" in href.lower()):
-            continue
         links.append(DocumentLink(_clean_url(href), label, source_url, label or None, kind))
     return soup.get_text("\n", strip=True)[:MAX_TEXT_CHARS], _dedupe_links(links)
 
@@ -155,6 +169,10 @@ def extract_agenda_text(
 def attribute_links_to_chapters(
     links: list[tuple[int, str]], chapters: list[dict], pdf_page_count: int
 ) -> list[tuple[int | None, str | None, str]]:
+    """Order-based fallback attribution: distribute links across chapters proportionally by
+    page-order position. Kept as the graceful fallback (review/29 §6a's original design) for when
+    ``attribute_links_by_content`` finds no identifier/title match at all -- not guaranteed
+    precise, good enough for "which item is this probably about" rather than a hard guarantee."""
     if not chapters:
         return [(None, None, url) for _, url in links]
     total_pages = max(1, pdf_page_count)
@@ -163,6 +181,101 @@ def attribute_links_to_chapters(
         chapter_index = min(len(chapters) - 1, (max(0, page_index) * len(chapters)) // total_pages)
         out.append((chapter_index, chapters[chapter_index].get("title"), url))
     return out
+
+
+def _normalize_ws(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def item_identifiers(title: str) -> list[str]:
+    """Short alphanumeric case/item identifiers found in a chapter title (e.g. "PD20-25" out of
+    "Zoning Case PD20-25"). Confirmed, on real Granicus and Legistar agendas, to be the string a
+    backup document's own filename/label or per-item detail page repeats verbatim -- a stronger,
+    more broadly generalizable signal than the title's full text (which may be paraphrased or
+    truncated in a document label) or page/text position alone."""
+    return [m.group(0) for m in _ITEM_ID_RE.finditer(title)]
+
+
+def chapter_text_matches(candidate_text: str, chapter_title: str) -> bool:
+    """Does ``candidate_text`` (a link's own label/URL, or a fetched page's extracted text)
+    plausibly belong to ``chapter_title``? Prefers an item identifier match (see
+    ``item_identifiers``); falls back to the whitespace-normalized full title as a substring."""
+    if not candidate_text or not chapter_title:
+        return False
+    haystack = _normalize_ws(candidate_text).casefold()
+    identifiers = item_identifiers(chapter_title)
+    if identifiers:
+        # A boundary-aware match, not raw containment: "PD20-2" is a substring of
+        # "PD20-25" (a different, longer case number), so a plain `in` check would attribute a
+        # backup document to the wrong item whenever one case number is a prefix of another.
+        return any(
+            re.search(rf"(?<![0-9a-z]){re.escape(identifier.casefold())}(?![0-9a-z])", haystack)
+            for identifier in identifiers
+        )
+    return _normalize_ws(chapter_title).casefold() in haystack
+
+
+def attribute_links_by_content(
+    links: list[DocumentLink], chapters: list[dict]
+) -> list[tuple[int | None, str | None, DocumentLink]]:
+    """Attribute each link to a chapter by matching an item/case identifier or the chapter title
+    itself against the link's own label/URL text -- platform-agnostic (validated against real
+    Legistar and Granicus agendas, see review/29), unlike ``attribute_links_to_chapters``'s
+    page-position proxy. A link that matches no chapter is left unattributed (``None``) rather
+    than guessed; callers should fall back to ``attribute_links_to_chapters`` for those."""
+    result: list[tuple[int | None, str | None, DocumentLink]] = []
+    for link in links:
+        haystack = f"{link.label or ''} {link.url}"
+        matched: tuple[int, str] | None = None
+        for index, chapter in enumerate(chapters):
+            title = str(chapter.get("title") or "")
+            if title and chapter_text_matches(haystack, title):
+                matched = (index, title)
+                break
+        if matched is None:
+            result.append((None, None, link))
+        else:
+            result.append((matched[0], matched[1], link))
+    return result
+
+
+def resolve_chapter_spans(
+    text: str, chapter_titles: list[str]
+) -> tuple[str, list[tuple[int, int] | None]]:
+    """Locate each chapter title, in order, within ``text`` and return (a) the
+    whitespace-normalized/casefolded text those offsets are valid against, and (b) one
+    ``(start, end)`` span per chapter -- text between title *i* and title *i+1* belongs to
+    chapter *i*. A title not found (out of order, paraphrased, or simply absent from this
+    document) resolves to ``None`` for that chapter rather than a guessed span; the next
+    found title still anchors the span *before* it correctly, since the search cursor only
+    advances on an actual match.
+
+    Text before the first resolved title (meeting-notice boilerplate, hearing sign-up
+    instructions -- typically NOT part of any agenda item) belongs to no chapter and is exactly
+    what callers should treat as excluded preamble.
+    """
+    norm_text = _normalize_ws(text).casefold()
+    starts: list[int | None] = []
+    cursor = 0
+    for title in chapter_titles:
+        norm_title = _normalize_ws(title).casefold()
+        if not norm_title:
+            starts.append(None)
+            continue
+        idx = norm_text.find(norm_title, cursor)
+        if idx == -1:
+            starts.append(None)
+            continue
+        starts.append(idx)
+        cursor = idx + len(norm_title)
+    spans: list[tuple[int, int] | None] = []
+    for i, start in enumerate(starts):
+        if start is None:
+            spans.append(None)
+            continue
+        end = next((nxt for nxt in starts[i + 1 :] if nxt is not None), len(norm_text))
+        spans.append((start, end))
+    return norm_text, spans
 
 
 def extract_backup_item(url: str, session) -> tuple[str | None, bool]:

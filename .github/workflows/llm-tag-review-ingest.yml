@@ -29,10 +29,23 @@ jobs:
     outputs:
       numbers: ${{ steps.resolve.outputs.numbers }}
     steps:
+      - name: Checkout setup-gh-cli action
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions/setup-gh-cli
+            constraints/gh-cli.txt
+          sparse-checkout-cone-mode: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
       - name: Resolve review issues
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
+          # No checkout in this job, so gh has no git remote to infer the repo from; give it one
+          # explicitly rather than relying on gh's (version-dependent) implicit repo resolution.
+          GH_REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           ISSUE_NUMBER_INPUT: ${{ github.event.inputs.issue_number || '' }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
@@ -96,6 +109,8 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -165,6 +180,16 @@ jobs:
     permissions:
       issues: write
     steps:
+      - name: Checkout setup-gh-cli action
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions/setup-gh-cli
+            constraints/gh-cli.txt
+          sparse-checkout-cone-mode: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
       - name: Close cleared native review batches
         env:
           GH_TOKEN: ${{ github.token }}
@@ -175,7 +200,7 @@ jobs:
             --jq '[.[] | select(.title == "R5 LLM tag calibration digest")] | .[].number')
           for parent in $parents; do
             open_children=$(gh issue view "$parent" --repo "$GH_REPO" --json subIssues \
-              --jq '[.subIssues[] | select(.state == "OPEN")] | length')
+              --jq '[.subIssues.nodes[] | select(.state == "OPEN")] | length')
             if [ "$open_children" -eq 0 ]; then
               gh issue comment "$parent" --body "All native LLM calibration review sub-issues in this batch are resolved — closing."
               gh issue close "$parent"

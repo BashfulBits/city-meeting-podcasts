@@ -82,6 +82,7 @@ tr:hover td{background:#1c2128}
 <nav class="nav">
   <a href="#kpis">At-a-glance</a>
   <a href="#backlog">Backlog</a>
+  <a href="#deferred">Deferred Work</a>
   <a href="#transcript_quality">H15 Trust</a>
   <a href="#issues">Issues</a>
   <a href="#table">Resource Table</a>
@@ -93,6 +94,7 @@ tr:hover td{background:#1c2128}
 
 <div id="kpis"></div>
 <div id="backlog"></div>
+<div id="deferred"></div>
 <div id="transcript_quality"></div>
 <div id="issues"></div>
 <div id="table"></div>
@@ -791,7 +793,7 @@ function updateAgeDisplay(idx){
 
 function renderHistory(){
   const rows = (S.run_history||[]).map(r=>{
-    const ts = r.ts?new Date(r.ts).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short',hour12:false}):'—';
+    const ts = r.ts?new Date(r.ts).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short',hour12:false,timeZone:'UTC'}):'—';
     const audio = (r.stages||{}).audio||{};
     const tx = (r.stages||{}).transcript||{};
     const sCls = r.errors>0?'run-err':r.built>0?'run-ok':'run-skip';
@@ -845,6 +847,114 @@ function renderHistory(){
 </div>`;
 }
 
+function renderBurndownChart(points){
+  if(points.length < 2){
+    return '<div class="muted" style="font-size:.8rem">Not enough run history yet for a trend chart.</div>';
+  }
+  const w = 640, h = 140, padL = 30, padR = 10, padT = 10, padB = 26;
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+  const maxVal = Math.max(1, ...points.map(p=>p.total));
+  const stepX = innerW/(points.length-1);
+  const xAt = i => padL + i*stepX;
+  const yAt = v => padT + innerH - (v/maxVal)*innerH;
+  const linePts = points.map((p,i)=>`${xAt(i).toFixed(1)},${yAt(p.total).toFixed(1)}`).join(' ');
+  const baseY = (padT+innerH).toFixed(1);
+  const areaPts = `${xAt(0).toFixed(1)},${baseY} ${linePts} ${xAt(points.length-1).toFixed(1)},${baseY}`;
+  const dots = points.map((p,i)=>{
+    const prev = points[i-1];
+    const col = i===0 ? '#58a6ff' : (p.total > prev.total ? '#f85149' : p.total < prev.total ? '#3fb950' : '#9db2c8');
+    return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(p.total).toFixed(1)}" r="3" fill="${col}"><title>${esc(fmtDate(p.ts))}: ${p.total} deferred</title></circle>`;
+  }).join('');
+  const firstTs = fmtDate(points[0].ts);
+  const lastTs = fmtDate(points[points.length-1].ts);
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;max-width:${w}px;height:auto;display:block;margin:6px 0">
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+innerH}" stroke="#30363d"/>
+    <line x1="${padL}" y1="${padT+innerH}" x2="${padL+innerW}" y2="${padT+innerH}" stroke="#30363d"/>
+    <text x="2" y="${padT+4}" fill="#9db2c8" font-size="9">${maxVal}</text>
+    <text x="2" y="${padT+innerH}" fill="#9db2c8" font-size="9">0</text>
+    <text x="${padL}" y="${h-4}" fill="#9db2c8" font-size="9">${esc(firstTs)}</text>
+    <text x="${(padL+innerW-40).toFixed(0)}" y="${h-4}" fill="#9db2c8" font-size="9">${esc(lastTs)}</text>
+    <polygon points="${areaPts}" fill="#58a6ff22" stroke="none"/>
+    <polyline points="${linePts}" fill="none" stroke="#58a6ff" stroke-width="2"/>
+    ${dots}
+  </svg>
+  <div class="legend">
+    <span>🔴 backlog grew vs prior run</span>
+    <span>🟢 backlog shrank vs prior run</span>
+  </div>`;
+}
+
+function renderDeferred(){
+  const hist = S.run_history||[];
+  const stageRuns = (S.backlog||{}).stage_runs||{};
+
+  // "Still deferred" = each stage's own most recently reported run's backlog, summed -- NOT
+  // summed across the history table below, which would double-count the same still-outstanding
+  // backlog every time it shows up in an unrelated later run's snapshot.
+  const totalDeferred = Object.values(stageRuns).reduce((s,run)=>s+((run.totals||{}).backlog||0), 0);
+
+  // Flat (run, stage, reason, count) rows across the retained run history (S.run_history is
+  // already the last handful of runs, newest first).
+  const detailRows = [];
+  hist.forEach(r=>{
+    const ts = r.ts ? new Date(r.ts).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short',hour12:false,timeZone:'UTC'}) : '—';
+    Object.entries(r.stages||{}).forEach(([stage, t])=>{
+      Object.entries((t||{}).defer_reasons||{}).forEach(([reason,count])=>{
+        if(count) detailRows.push({ts, stage, reason, count});
+      });
+    });
+  });
+  detailRows.sort((a,b)=> b.count - a.count || a.stage.localeCompare(b.stage));
+  const rowsHtml = detailRows.length ? detailRows.map(row=>`<tr>
+      <td>${esc(row.ts)}</td><td>${esc(row.stage)}</td><td>${esc(row.reason)}</td><td>${fmtNum(row.count)}</td>
+    </tr>`).join('') : '<tr><td colspan="4" class="muted">No deferred work recorded in the retained run history.</td></tr>';
+
+  // Chronological (oldest -> newest) total backlog per run, for the trend chart. This is the
+  // best available proxy for a burndown: individual deferred items aren't tracked by identity
+  // across runs, so this shows the NET trend (is the queue growing or draining) rather than
+  // gross added/resolved counts.
+  const chrono = [...hist].reverse();
+  const points = chrono.map(r=>({
+    ts: r.ts,
+    total: Object.values(r.stages||{}).reduce((s,t)=>s+((t||{}).backlog||0), 0),
+  }));
+
+  document.getElementById('deferred').innerHTML = `
+<h2>Deferred Work</h2>
+<div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:10px">
+  <div class="card">
+    <div class="card-label">STILL DEFERRED (LATEST PER STAGE)</div>
+    <div class="card-val ${totalDeferred>0?'warn':'ok'}">${fmtNum(totalDeferred)}</div>
+    <div class="card-sub">Summed across every stage's most recently reported run</div>
+  </div>
+  <div class="card">
+    <div class="card-label">RUNS IN TREND BELOW</div>
+    <div class="card-val">${points.length}</div>
+    <div class="card-sub">From the retained run_history (last ${hist.length})</div>
+  </div>
+</div>
+${renderBurndownChart(points)}
+<h3>Deferred reasons per run</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>Run (UTC)</th><th>Stage</th><th>Reason</th><th title="How many items were deferred for this reason during THIS run only -- not a running/cumulative total.">Count (this run)</th></tr></thead>
+<tbody>${rowsHtml}</tbody>
+</table>
+</div>
+<div class="muted" style="font-size:.75rem;margin:.4rem 0">
+  <strong>Count is per-run, not cumulative</strong> -- each row is how many items that one run
+  deferred for that reason, freshly counted every run. An item still stuck two runs later gets
+  counted again in the later run's row, so summing Count down this table over multiple runs
+  overstates how many distinct items are actually outstanding (a chronically-stuck item inflates
+  the sum every run it reappears in). For "how many are outstanding right now," use the "Still
+  deferred" KPI above instead -- it reflects each stage's own most recent completed run only, not
+  a sum across this table. The trend chart plots total deferred count (summed across stages) per
+  run in the retained history as an approximate burndown -- a falling line means the backlog is
+  draining faster than it's growing, not that specific items were resolved one-for-one
+  (individual deferred items aren't tracked by identity across runs).
+</div>`;
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 renderKpis();
@@ -854,5 +964,6 @@ renderIssues();
 renderTable();
 renderStorage();
 renderHistory();
+renderDeferred();
 </script>
 </div></body></html>

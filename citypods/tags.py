@@ -18,9 +18,10 @@ from typing import Any, Literal
 
 import yaml
 
+from citypods.agenda_text import resolve_chapter_spans
 from citypods.chapters import episode_served_chapters
 
-TAGGER_VERSION = "1"
+TAGGER_VERSION = "2"
 LLM_CONTRACT = "topic-tags"
 TAG_PROMPT_VERSION = "2"
 TAG_FEATURE = "topic-tags"
@@ -479,15 +480,75 @@ def agenda_item_context(ep: Any, storage: Any = None) -> dict[int, str]:
     return result
 
 
+def _strip_preamble(agenda_text: str, chapter_titles: list[str]) -> str:
+    """Drop meeting-notice boilerplate/hearing-procedure text that precedes the first agenda
+    item's title -- confirmed, on a real production false positive (GH issue #1068, a
+    neighborhood-engagement tag fired on standard hearing sign-up instructions), to sit before the
+    first resolved chapter title and nowhere else. Falls back to the untouched text when no
+    chapter title resolves at all, rather than guessing where an item boundary is."""
+    if not chapter_titles:
+        return agenda_text
+    # resolve_chapter_spans()'s offsets are only valid against its own whitespace-normalized,
+    # casefolded copy -- slicing the ORIGINAL agenda_text with those offsets would silently
+    # replace it with lowercase, whitespace-collapsed text. That text is what rule-tag evidence
+    # spans are captured from and what the LLM quotes back as "exact quote copied from the
+    # supplied agenda", so it must stay verbatim. Re-locate the same matched title in the
+    # original text (tolerating whitespace differences, not case) and slice from there instead.
+    _, spans = resolve_chapter_spans(agenda_text, chapter_titles)
+    first_title = next(
+        (title for title, span in zip(chapter_titles, spans, strict=False) if span is not None),
+        None,
+    )
+    if first_title is None:
+        return agenda_text
+    pattern = r"\s+".join(re.escape(part) for part in first_title.split())
+    match = re.search(pattern, agenda_text, re.IGNORECASE)
+    return agenda_text[match.start() :] if match else agenda_text
+
+
+def _episode_backup_text(ep: Any, storage: Any = None) -> str:
+    """Concatenate all backup/attachment document text from the agenda_backup manifest, for
+    episode-level tagging context. Unlike agenda_item_context() (which only surfaces text with a
+    resolved chapter_index, for per-chapter attribution), this includes every extracted item's
+    text regardless of attribution -- an unattributed backup document (e.g. a generic staff
+    report the content-match heuristic couldn't tie to one item) still describes something real
+    about the episode and should not be silently dropped from episode-level tagging."""
+    links = ep.links or {}
+    data = _read_storage_bytes(storage, links.get("agenda_backup_artifact_key"))
+    if not data:
+        return ""
+    try:
+        payload = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    items = payload.get("items") or payload.get("links") if isinstance(payload, dict) else []
+    if not isinstance(items, list):
+        return ""
+    parts: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("item_text") or item.get("text")
+        if isinstance(text, str) and text.strip():
+            parts.append(text.strip()[:20_000])
+    return "\n\n".join(parts)
+
+
 def episode_tag_inputs(ep: Any, storage: Any = None) -> tuple[str, str, str]:
-    titles = "\n".join(
+    chapter_titles = [
         str(chapter.get("title") or "")
         for chapter in episode_served_chapters(ep)
         if isinstance(chapter, dict) and chapter.get("title")
-    )
+    ]
+    titles = "\n".join(chapter_titles)
     links = ep.links or {}
     agenda_data = _read_storage_bytes(storage, links.get("agenda_text_artifact_key"))
     agenda_text = agenda_data.decode("utf-8", errors="replace") if agenda_data else ""
+    if agenda_text:
+        agenda_text = _strip_preamble(agenda_text, chapter_titles)
+    backup_text = _episode_backup_text(ep, storage)
+    if backup_text:
+        agenda_text = f"{agenda_text}\n\n--- backup/attachment documents ---\n\n{backup_text}"
     transcript_data = _read_storage_bytes(storage, ep.transcript_key)
     transcript = _text_from_transcript(transcript_data, ep.transcript_format)
     return titles, agenda_text, transcript
@@ -634,15 +695,24 @@ def llm_tag_suggestions(
     deadline_at: Any | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], bool, str | None]:
     """Run and validate additive suggestions; return episode tags, chapter tags, dispatched, and
-    the resolved model that produced them (``None`` when dispatched/unresolved)."""
+    the resolved model that produced them (``None`` when dispatched/unresolved). When ``dispatched``
+    is true because the material could never fit any allowed route's real token budget (not an
+    ordinary "no capacity this minute" defer), the fourth element is instead the literal string
+    ``"payload-too-large"`` -- callers (``TagsStage``) must not treat that as evidence of genuine
+    quota exhaustion for the whole run, since it says nothing about remaining capacity."""
     model = ensure_llm_contract()
     from citypods.compute.base import InferenceJob, JobHandle, JobResult
-    from citypods.compute.llm_policy import LLMRequestPolicy
+    from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy, estimate_tokens
 
     allowed = taxonomy.by_id
     material = {
         "agenda_item_titles": agenda_item_titles[:40_000],
-        "agenda_text": agenda_text[:40_000],
+        # No fixed character cap here (unlike the other fields): agenda_text now includes
+        # backup/attachment document text (episode_tag_inputs()), whose size varies a lot
+        # per-episode. Blindly truncating at a small fixed length would silently drop most of
+        # that content before it ever reached the real budget check below. The pre-flight
+        # estimate_tokens() check right after `messages` is assembled is the real backstop now.
+        "agenda_text": agenda_text,
         "transcript_text": transcript_text[:100_000],
         "agenda_documents": agenda_documents or [],
         "taxonomy": [
@@ -673,11 +743,14 @@ def llm_tag_suggestions(
             "role": "system",
             "content": (
                 "Return only topic tags from the supplied taxonomy. Use an existing id exactly. "
-                "Suggest a tag only when the evidence supports it; never invent ids. Every "
-                "evidence item must include a short exact quote copied from the supplied agenda "
-                "or transcript. Transcript evidence should include start/end seconds when the "
-                "chapter segments provide them. Agenda evidence may cite only a supplied document "
-                "URL and should include a section/page locator when one is known."
+                "Suggest a tag only when the evidence supports it; never invent ids. A tag's "
+                "description may explicitly say what it should NOT be used for (often to "
+                "distinguish it from a similarly-worded tag) -- follow that guidance precisely "
+                "even when the material otherwise seems to match. Every evidence item must "
+                "include a short exact quote copied from the supplied agenda or transcript. "
+                "Transcript evidence should include start/end seconds when the chapter segments "
+                "provide them. Agenda evidence may cite only a supplied document URL and should "
+                "include a section/page locator when one is known."
             ),
         },
         {"role": "user", "content": json.dumps(material, ensure_ascii=False)},
@@ -700,6 +773,34 @@ def llm_tag_suggestions(
         # storage isn't CAS-capable (local dev/dry runs), so tagging works there as it did pre-R13.
         additional = tuple(getattr(backend_config, "additional_models", ()) or ())
         allowed_models = (backend_model, *(m for m in additional if m != backend_model))
+        # Pre-flight check for the one case the token-aware reservation ledger
+        # (citypods/compute/llm_budget.py) can't already self-resolve: it correctly lets a single
+        # call use an entire otherwise-empty minute's tpm budget (paced throughput is fine to drop
+        # to 1 request/minute for a large episode), but a structured (Instructor) call reserves
+        # estimate_tokens(messages)*2 up front for its worst-case retry accounting
+        # (citypods/compute/llm.py) -- so a payload whose own estimate already exceeds HALF of a
+        # route's tpm can never be reserved on that route, in any window, and would otherwise
+        # retry forever with no distinguishing signal from an ordinary "full this minute" defer.
+        token_estimate = estimate_tokens(messages)
+        capped_tpm = {
+            candidate: ROUTES[candidate].quota.tpm
+            for candidate in allowed_models
+            if candidate in ROUTES and ROUTES[candidate].quota.tpm is not None
+        }
+        if capped_tpm and all(token_estimate > tpm // 2 for tpm in capped_tpm.values()):
+            print(
+                f"llm tag budget: material estimate={token_estimate} tokens exceeds half of "
+                f"every tpm-capped allowed route's budget ({capped_tpm}) for recipe_hash="
+                f"{recipe_hash} -- this would never fit any window as-is, not just this minute. "
+                "Deferring (see CHANGELOG for the reassign-to-uncapped-route/truncate follow-up, "
+                "gated on how often this actually fires).",
+                flush=True,
+            )
+            # A distinct sentinel, not None (the ordinary "dispatched, unresolved" value) -- see
+            # the docstring above. TagsStage must be able to tell this apart from a genuine
+            # capacity-exhausted defer, or one oversized episode would stop the rest of the run's
+            # episodes from even attempting a dispatch.
+            return [], {}, True, "payload-too-large"
         inputs["llm_policy"] = LLMRequestPolicy(
             allowed_models=allowed_models,
             allow_paid=allow_paid,

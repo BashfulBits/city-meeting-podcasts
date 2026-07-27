@@ -15,9 +15,78 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **`LLM Tag Calibration Ingest` / `ASR Quality Ingest` failed on every run, silently.** Both
+  workflows' `resolve`/`finalize` jobs passed `token: ""` to `actions/checkout@v6` intending an
+  anonymous, no-token sparse checkout; the pinned checkout version's bundled code calls
+  `core.getInput('token', { required: true })` unconditionally, and `@actions/core`'s `getInput`
+  treats an explicitly empty string the same as "not supplied" regardless of the action.yml
+  schema's default — so the checkout step threw `Input required and not supplied: token` on every
+  invocation, before the `ingest` job's own `set +e` failure-tolerance even ran. Every reviewer
+  checkbox on an `R5 LLM tag sample …` / `H15 sample …` issue this week was therefore never
+  ingested, regardless of how it was filled in. Fixed by dropping `token: ""` and letting checkout
+  default to `github.token`, already scoped down to `issues: read`/`issues: write` by each job's
+  own `permissions:` block, with `persist-credentials: false` unchanged.
+
+- **`zoning-reform` fired on individual-property rezoning cases instead of code-wide zoning
+  reform** (confirmed on real open calibration issues: GH #1057/#1062/#1072/#1076 — "PUBLIC
+  HEARING FOR ZONING CASES," individual PD/SUP/replat/variance items). Split into `zoning-reform`
+  (citywide/district-wide text amendments, code rewrites) and a new `rezoning` tag (individual
+  parcel rezonings, planned-development cases, specific/special use permits, replats, variances),
+  each with a description that explicitly cross-references the other to disambiguate them for the
+  LLM path. `config/taxonomy.yml` bumped to `version: 2`.
+
+- **`neighborhood-engagement` fired on standard, every-meeting hearing sign-up boilerplate**
+  (confirmed on real GH #1068 — a phone-number sign-up instruction, not an engagement
+  opportunity). Tightened the tag's description (the LLM path's only signal — it never sees the
+  keyword lists) to explicitly exclude recurring procedural notices, removed the overly generic
+  `public meeting` keyword from the rule path, and added a small defense-in-depth exclude list of
+  common hearing-procedure phrases. The load-bearing fix is structural, not keyword-based — see
+  the agenda-text-preamble-stripping entry below.
+
 ### Added
 
 - **Body-aware three-tier retention and gradual archive backfill** ([review/39](review/39-body-aware-tiered-retention.md)). All feeds now inherit 500 RSS-visible episodes per body, retain hosted audio and every artifact through 2,000 per body, and retain metadata plus non-audio artifacts through 10,000 per body. The shared source record store contains the union of body windows, preventing active boards from evicting quieter ones; audio is removed only from the metadata-only tier and reclaimed through normal orphan GC. Feed-visible work is prioritized before bounded 501–2,000 backfill under the existing wall-clock budget. No pipeline-version bump or forced re-encode is introduced; pre-existing artifacts remain valid and the deeper cohort fills gradually.
+- **Agenda backup/attachment document text is now used for tagging, and its discovery no longer
+  depends on English keyword matching.** Backup documents were already fetched and text-extracted
+  (`AgendaTextStage`) but silently unused by both the rule and LLM taggers; `episode_tag_inputs()`
+  now folds this text in. Getting there required generalizing the backup-document pipeline itself,
+  validated against real, currently-live agendas from two independent platforms (Legistar,
+  Granicus) fetched during investigation, not synthetic fixtures:
+  - Discovery no longer requires an English keyword (`agenda`/`packet`/`backup`/`attachment`/
+    `supporting`) in a link's label or URL — a real gap, since a different city's agenda platform
+    may label these links entirely differently, or not with words at all (confirmed on Legistar's
+    bare "File #" links).
+  - New content-based chapter/item attribution (`attribute_links_by_content`,
+    `citypods/agenda_text.py`) matches a backup document to its agenda item via an embedded case
+    identifier or the item's title — confirmed live on both a real Granicus agenda (backup
+    filenames embed the case number, e.g. `PD20-25`) and a real Legistar attachment page (the
+    per-item detail page repeats the file number and title verbatim). Replaces
+    `attribute_links_to_chapters`'s page-position-proportional guess as the primary mechanism
+    (kept as a documented fallback) — that function and `extract_backup_item()` were designed in
+    [review/29](review/29-agenda-text-extraction.md) §6a but had zero call sites until now.
+  - A bounded second hop (one extra fetch per originally-discovered link) follows a linked page
+    when its own fetched content confirms — by the same content-match, not a page-shape guess tied
+    to any one provider — that it's an item's own detail/attachment-enumeration page (the real
+    shape of Legistar's `MeetingDetail.aspx` → `LegislationDetail.aspx` → Attachments chain).
+  - Meeting-notice/hearing-procedure boilerplate that precedes an agenda's first resolved chapter
+    title is now excluded from tagging input entirely, at both the rule and LLM path
+    (`resolve_chapter_spans`/`_strip_preamble`, `citypods/tags.py`) — validated directly against
+    the real document behind the GH #1068 false positive above, not a synthetic approximation.
+  - The material sent to the tagging LLM is no longer truncated to a small fixed character count;
+    a pre-flight check (`llm_tag_suggestions()`) instead compares the real estimated token count
+    against half of every allowed `tpm`-capped route's budget (accounting for the structured-call
+    worst-case double-attempt reservation, `citypods/compute/llm.py`) and only distinctly flags/
+    defers the rare payload that could never fit any window at all — an ordinary "fits, but not
+    this minute" case is already handled correctly by the existing token-aware reservation ledger
+    (`citypods/compute/llm_budget.py`), which was previously undermined by an unrelated fixed
+    truncation. If this new signal fires only occasionally in production, the intended next step
+    is routing those calls to a route with no `tpm` cap (Mistral, DeepSeek); if it fires
+    frequently, truncation is the more appropriate fix — neither is implemented yet, this just
+    makes the decision measurable.
+  - `TAGGER_VERSION` bumped `"1"` → `"2"` so already-tagged episodes reprocess under the new logic.
+
 - **ASR transcript-record commits are now batched per source, not pushed once per episode**
   ([GH#1019](https://github.com/BashfulBits/city-meeting-podcasts/issues/1019), child of
   [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)). Every successful
@@ -61,6 +130,17 @@ Phase R (Research-Tool Surface)._
   [review/18 §4.7](review/18-work-distribution-sharding.md#47-active-lease-index-gh1018--implemented).
 
 ### Fixed
+
+- **`ASR Quality Eval` silently produced zero H15 samples for 3 consecutive weekly runs**
+  (2026-07-13, 07-20, 07-27) while reporting green. `asr-quality-eval.yml` never had an `ffmpeg`
+  install step; `citypods transcript-quality evaluate` clips each sampled candidate's audio with
+  `ffmpeg` before scoring, so every one of the 8 samples found each week failed with
+  `FileNotFoundError: 'ffmpeg'`. That error is caught per-sample by design (one bad sample
+  shouldn't sink the whole batch), so `evaluate` finished with 0 rows written to the rollups
+  ledger and the job's own exit code stayed 0 throughout — `ASR Quality Review` then correctly
+  found nothing to package, leaving the weekly parent issue empty with no signal that anything
+  was wrong. Added the same checksum-pinned static-ffmpeg install (`FFMPEG_URL`/`FFMPEG_SHA256` →
+  `scripts/install_static_ffmpeg.py`, prepended to `PATH`) already used by `asr.yml`/`audio.yml`.
 
 - **`compute reconcile` failed every run since the GH#1018 active-lease index shipped**, crashing
   with `NotImplementedError: backend 'b2' is not cas_capable; get_bytes unavailable`. The index's

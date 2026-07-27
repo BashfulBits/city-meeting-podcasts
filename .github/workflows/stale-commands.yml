@@ -27,6 +27,8 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:

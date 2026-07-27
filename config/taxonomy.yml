@@ -1,5 +1,5 @@
-version: 1
-reviewed_at: 2026-07-16
+version: 2
+reviewed_at: 2026-07-27
 
 # Compact bibliography for the annual taxonomy review.  The design document explains how these
 # references are re-evaluated; keeping identifiers here makes each seed tag's provenance auditable
@@ -25,12 +25,28 @@ source_refs:
 tags:
   - id: zoning-reform
     label: Zoning reform
-    description: Changes to zoning districts, use permissions, or development standards.
+    description: >-
+      A citywide or district-wide change to the zoning code text itself -- a text amendment, a
+      code rewrite, a unified development code update, or a comprehensive rezoning that applies
+      broadly across many properties. Do not use this for an individual property's rezoning,
+      platting, variance, or planned-development case; use the "rezoning" tag for those instead.
     group: land-use-housing
     source_refs: [st-walkability, cnu-missing-middle, dallas-urbanists, lean-code]
     rules:
-      include: [zoning reform, zoning amendment, zoning code, rezoning, land use code, use district]
+      include: [zoning reform, zoning code amendment, zoning text amendment, zoning ordinance amendment, unified development code, land use code amendment, citywide rezoning]
       exclude: [school zoning, school zone]
+  - id: rezoning
+    label: Rezoning (individual case)
+    description: >-
+      An individual property or site-specific zoning action: rezoning a specific parcel, a
+      planned development (PD) zoning case, a specific/special use permit, a replat, or a
+      variance request tied to one property or a small set of parcels. Do not use this for a
+      citywide or district-wide change to the zoning code text; use the "zoning-reform" tag for
+      those instead.
+    group: land-use-housing
+    source_refs: [st-walkability, cnu-missing-middle, dallas-urbanists, lean-code]
+    rules:
+      include: [rezoning, re-zoning, zoning case, specific use permit, planned development district, PD zoning, replat, variance request, board of adjustment]
   - id: parking-mandates
     label: Parking mandates
     description: Minimum parking requirements and their effect on development or public space.
@@ -281,8 +297,19 @@ tags:
       include: [climate resilience, climate adaptation, extreme heat, heat resilience, resilience plan, flood resilience, extreme weather, disaster mitigation]
   - id: neighborhood-engagement
     label: Neighborhood engagement
-    description: Resident participation, neighborhood input, civic engagement, and co-design.
+    description: >-
+      A specific, non-recurring opportunity or effort for resident/neighborhood input on a plan,
+      project, or policy -- a town hall, workshop, survey, co-design session, or new engagement
+      program. Do not use this for standard, boilerplate instructions on how to sign up or comment
+      at a public hearing/meeting that appear on every agenda; that is a recurring procedural
+      notice, not an engagement opportunity.
     group: civic-process
     source_refs: [better-block-tactical, pps-lqc, southern-third-places, dallas-urbanists]
     rules:
-      include: [neighborhood engagement, resident input, community engagement, public engagement, resident-led, co-design, participatory planning, community workshop, public meeting]
+      include: [neighborhood engagement, resident input, community engagement, public engagement, resident-led, co-design, participatory planning, community workshop]
+      # Best-effort defense-in-depth for the rule path -- boilerplate hearing-procedure wording
+      # varies city to city and this list is not exhaustive. The load-bearing fix for boilerplate
+      # false positives is the description above (the LLM path's only signal) plus the
+      # chapter-span preamble stripping in citypods/tags.py, which removes this kind of text from
+      # tagging input structurally rather than relying on keyword matching alone.
+      exclude: [sign up to speak, register to speak, public comment period, wish to speak on]
