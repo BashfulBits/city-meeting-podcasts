@@ -31,9 +31,7 @@ SHA_PINNED_RE = re.compile(r"^[^@]+@[0-9a-f]{40}$")
 # actions/checkout step -- a local ./ ref can't resolve without one), pinned to the exact
 # commit under test. This can't drift the way a third-party @<tag> can: the content that
 # runs is this commit, full stop. Only exempt this exact repo+ref pairing, not any owner/repo@ref.
-SELF_REF_RE = re.compile(
-    r"^\$\{\{\s*github\.repository\s*\}\}/.+@\$\{\{\s*github\.sha\s*\}\}$"
-)
+SELF_REF_RE = re.compile(r"^\$\{\{\s*github\.repository\s*\}\}/.+@\$\{\{\s*github\.sha\s*\}\}$")
 
 
 def check_pinned_actions() -> list[str]:
