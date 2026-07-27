@@ -585,6 +585,12 @@ def test_episode_tag_inputs_strips_preamble_and_includes_backup_text():
     assert "555-1234" not in agenda_text
     assert "I. Call to Order" in titles
     assert "Staff Report - Zoning Case PD20-25 details" in agenda_text
+    # CodeRabbit regression: the retained agenda_text must stay verbatim (original casing/
+    # whitespace), not the lowercase/whitespace-collapsed copy resolve_chapter_spans() uses
+    # internally -- it's what rule-tag evidence spans and LLM "exact quote" evidence are drawn
+    # from.
+    assert "I. Call to Order" in agenda_text
+    assert "i. call to order" not in agenda_text
 
 
 def test_llm_tag_suggestions_defers_when_material_exceeds_every_tpm_capped_route():
@@ -626,7 +632,9 @@ def test_llm_tag_suggestions_defers_when_material_exceeds_every_tpm_capped_route
     assert tags == []
     assert chapter_tags == {}
     assert dispatched is True
-    assert resolved_model is None
+    # Distinct from the ordinary "dispatched, unresolved" None -- TagsStage uses this sentinel to
+    # avoid treating one oversized episode as evidence of whole-run quota exhaustion.
+    assert resolved_model == "payload-too-large"
 
 
 def test_llm_tag_suggestions_dispatches_when_material_fits_one_tpm_capped_route():

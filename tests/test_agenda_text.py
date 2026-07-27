@@ -170,6 +170,18 @@ def test_chapter_text_matches_real_backup_filenames_by_case_identifier():
     assert not chapter_text_matches("FINAL_SUP20-6_Staff_Report.pdf", "III.A Zoning Case PD20-25")
 
 
+def test_chapter_text_matches_does_not_let_a_shorter_case_number_match_a_longer_one():
+    """CodeRabbit regression: raw substring containment let "PD20-2" match inside the unrelated,
+    longer case number "PD20-25" (one case number is a prefix of another). The match must be
+    boundary-aware."""
+    assert not chapter_text_matches(
+        "FINAL_PD20-25_The_Mark_at_Arlington_Staff_Report.pdf", "III.A Zoning Case PD20-2"
+    )
+    assert chapter_text_matches(
+        "FINAL_PD20-25_The_Mark_at_Arlington_Staff_Report.pdf", "III.A Zoning Case PD20-25"
+    )
+
+
 def test_attribute_links_by_content_on_real_granicus_agenda():
     """Validates chapter attribution against the actual real agenda that produced GH #1057 --
     each zoning case's real staff-report/case-info backup documents resolve to that case's own

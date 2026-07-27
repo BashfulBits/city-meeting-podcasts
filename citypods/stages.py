@@ -996,17 +996,26 @@ class TagsStage:
                                 deadline_at=ctx.tag_llm_deadline,
                             )
                         if dispatched:
-                            stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
                             candidate_tags = []
                             completed_llm_recipe = None
-                            if not had_cached_pending:
-                                # A fresh dispatch attempt (no pre-existing registry entry) came
-                                # back deferred -- the live pacing loop genuinely found no eligible
-                                # route before the run's deadline. Signal the rest of this run's
-                                # episodes not to re-fetch their text merely to re-attempt a
-                                # dispatch that will also just defer -- see the in-memory triage's
-                                # `tag_llm_dispatch_exhausted` gate above.
-                                ctx.tag_llm_dispatch_exhausted.set()
+                            if resolved_model == "payload-too-large":
+                                # This episode's own material could never fit any allowed route's
+                                # real token budget -- says nothing about remaining quota, unlike
+                                # an ordinary defer, so it must NOT set
+                                # `tag_llm_dispatch_exhausted` (that would stop every other
+                                # episode in this run from even attempting a dispatch over one
+                                # oversized episode). See llm_tag_suggestions()'s docstring.
+                                stats.defer("tag-llm-oversized", sample=ep.uid or ep.guid)
+                            else:
+                                stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
+                                if not had_cached_pending:
+                                    # A fresh dispatch attempt (no pre-existing registry entry)
+                                    # came back deferred -- the live pacing loop genuinely found
+                                    # no eligible route before the run's deadline. Signal the rest
+                                    # of this run's episodes not to re-fetch their text merely to
+                                    # re-attempt a dispatch that will also just defer -- see the
+                                    # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
+                                    ctx.tag_llm_dispatch_exhausted.set()
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to
@@ -1889,7 +1898,11 @@ class AgendaTextStage:
     """Fetch agenda/packet documents, retain bounded text, and discover backup/minutes links."""
 
     name = "agenda_text"
-    version = "1"
+    # Bumped 1 -> 2: content-based chapter attribution (chapter_index/chapter_title) and the
+    # bounded second-hop enumeration-page follow are new manifest fields/behavior. Without this
+    # bump, stage_is_dirty()'s generic version check would never re-derive an already-completed
+    # episode's backup manifest, leaving it permanently on the old, unattributed shape.
+    version = "2"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -2046,9 +2059,19 @@ class AgendaTextStage:
                 if agenda_backup_backoff_until(ep) and agenda_backup_backoff_until(ep) > now:
                     stats.reused += 1
                     continue
+                # Second-hop fetches are additional, unplanned work discovered while already
+                # inside this episode's backup pass -- bound the TOTAL across the whole episode
+                # (not just per originally-discovered link, which with up to 50 candidates x 10
+                # sub-links each could otherwise reach ~500 sequential fetches for one episode)
+                # and gate every fetch -- primary candidates and second-hop alike -- on
+                # ctx.stop() so a long episode defers to a later run instead of overrunning the
+                # wall-clock budget.
+                second_hop_remaining = 20
                 for chapter_index, chapter_title, link in attributed:
                     if link.url == agenda_url:
                         continue
+                    if ctx.stop is not None and ctx.stop():
+                        break
                     manifest_item = next(item for item in manifest if item["url"] == link.url)
                     try:
                         item_content, item_type = fetch(link.url)
@@ -2064,24 +2087,29 @@ class AgendaTextStage:
                                 "source": "agenda-link",
                             }
                         )
-                        # Second hop, bounded to one extra fetch per originally-discovered link:
-                        # some agenda platforms (e.g. Legistar's MeetingDetail -> LegislationDetail
-                        # chain) link to a per-item page that itself only *enumerates* further
-                        # backup-document links rather than being a document itself. Trigger only
-                        # when this fetched page's own text confirms it belongs to the same
-                        # chapter (a content match, not a page-shape guess) and it discovered
-                        # further links -- a platform-agnostic signal, not tuned to any one
-                        # provider's page structure.
+                        # Second hop: some agenda platforms (e.g. Legistar's MeetingDetail ->
+                        # LegislationDetail chain) link to a per-item page that itself only
+                        # *enumerates* further backup-document links rather than being a document
+                        # itself. Trigger only when this fetched page's own text confirms it
+                        # belongs to the same chapter (a content match, not a page-shape guess)
+                        # and it discovered further links -- a platform-agnostic signal, not
+                        # tuned to any one provider's page structure.
                         if (
                             chapter_title
                             and item_links
+                            and second_hop_remaining > 0
                             and chapter_text_matches(item_text, chapter_title)
                         ):
                             for sub_link in item_links[:10]:
+                                if second_hop_remaining <= 0:
+                                    break
                                 if not _is_valid_document_url(city, sub_link.url) or any(
                                     m["url"] == sub_link.url for m in manifest
                                 ):
                                     continue
+                                if ctx.stop is not None and ctx.stop():
+                                    break
+                                second_hop_remaining -= 1
                                 sub_entry = {
                                     "url": sub_link.url,
                                     "label": sub_link.label,
@@ -2360,7 +2388,8 @@ def _document_key(source: str, uid: str, kind: str, content: bytes) -> str:
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
 AGENDA_TEXT_PIPELINE_VERSION = "1"
-AGENDA_BACKUP_PIPELINE_VERSION = "1"
+# Bumped alongside AgendaTextStage.version -- see that class's comment.
+AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
 MINUTES_VOTES_PIPELINE_VERSION = "1"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"

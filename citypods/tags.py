@@ -488,11 +488,22 @@ def _strip_preamble(agenda_text: str, chapter_titles: list[str]) -> str:
     chapter title resolves at all, rather than guessing where an item boundary is."""
     if not chapter_titles:
         return agenda_text
-    norm_text, spans = resolve_chapter_spans(agenda_text, chapter_titles)
-    first_start = next((span[0] for span in spans if span is not None), None)
-    if first_start is None:
+    # resolve_chapter_spans()'s offsets are only valid against its own whitespace-normalized,
+    # casefolded copy -- slicing the ORIGINAL agenda_text with those offsets would silently
+    # replace it with lowercase, whitespace-collapsed text. That text is what rule-tag evidence
+    # spans are captured from and what the LLM quotes back as "exact quote copied from the
+    # supplied agenda", so it must stay verbatim. Re-locate the same matched title in the
+    # original text (tolerating whitespace differences, not case) and slice from there instead.
+    _, spans = resolve_chapter_spans(agenda_text, chapter_titles)
+    first_title = next(
+        (title for title, span in zip(chapter_titles, spans, strict=False) if span is not None),
+        None,
+    )
+    if first_title is None:
         return agenda_text
-    return norm_text[first_start:]
+    pattern = r"\s+".join(re.escape(part) for part in first_title.split())
+    match = re.search(pattern, agenda_text, re.IGNORECASE)
+    return agenda_text[match.start() :] if match else agenda_text
 
 
 def _episode_backup_text(ep: Any, storage: Any = None) -> str:
@@ -684,7 +695,11 @@ def llm_tag_suggestions(
     deadline_at: Any | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], bool, str | None]:
     """Run and validate additive suggestions; return episode tags, chapter tags, dispatched, and
-    the resolved model that produced them (``None`` when dispatched/unresolved)."""
+    the resolved model that produced them (``None`` when dispatched/unresolved). When ``dispatched``
+    is true because the material could never fit any allowed route's real token budget (not an
+    ordinary "no capacity this minute" defer), the fourth element is instead the literal string
+    ``"payload-too-large"`` -- callers (``TagsStage``) must not treat that as evidence of genuine
+    quota exhaustion for the whole run, since it says nothing about remaining capacity."""
     model = ensure_llm_contract()
     from citypods.compute.base import InferenceJob, JobHandle, JobResult
     from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy, estimate_tokens
@@ -781,7 +796,11 @@ def llm_tag_suggestions(
                 "gated on how often this actually fires).",
                 flush=True,
             )
-            return [], {}, True, None
+            # A distinct sentinel, not None (the ordinary "dispatched, unresolved" value) -- see
+            # the docstring above. TagsStage must be able to tell this apart from a genuine
+            # capacity-exhausted defer, or one oversized episode would stop the rest of the run's
+            # episodes from even attempting a dispatch.
+            return [], {}, True, "payload-too-large"
         inputs["llm_policy"] = LLMRequestPolicy(
             allowed_models=allowed_models,
             allow_paid=allow_paid,

@@ -205,7 +205,13 @@ def chapter_text_matches(candidate_text: str, chapter_title: str) -> bool:
     haystack = _normalize_ws(candidate_text).casefold()
     identifiers = item_identifiers(chapter_title)
     if identifiers:
-        return any(identifier.casefold() in haystack for identifier in identifiers)
+        # A boundary-aware match, not raw containment: "PD20-2" is a substring of
+        # "PD20-25" (a different, longer case number), so a plain `in` check would attribute a
+        # backup document to the wrong item whenever one case number is a prefix of another.
+        return any(
+            re.search(rf"(?<![0-9a-z]){re.escape(identifier.casefold())}(?![0-9a-z])", haystack)
+            for identifier in identifiers
+        )
     return _normalize_ws(chapter_title).casefold() in haystack
 
 
