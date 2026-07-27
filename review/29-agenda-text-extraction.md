@@ -287,7 +287,22 @@ extraction fails at a meaningfully different rate).
     document); return `None` on any fetch/parse failure or near-empty result (fewer than ~200 characters,
     a cheap proxy for "this was a scanned image or an error page, not real agenda text").
 
-### §6a. Backup/packet extraction and attribution (new, 2026-07-12)
+### §6a. Backup/packet extraction and attribution (new, 2026-07-12; wired into tagging 2026-07-27)
+
+**2026-07-27 update:** this section's `attribute_links_to_chapters`/`extract_backup_item` had zero
+call sites for over two weeks — `AgendaTextStage` reimplemented per-item fetch inline without ever
+setting `chapter_index`, so `agenda_item_context()` (`citypods/tags.py`) always returned `{}` in
+production, and neither tagger read backup text at all. Found and fixed as part of the R5
+calibration pass (real GH #1057/#1062/#1068/#1072/#1076 review) — see the
+[review/11 R5 row](11-technical-design-roadmap.md) for the full account. `AgendaTextStage` now
+sets real `chapter_index` values, primarily via a new **content-based** attribution
+(`attribute_links_by_content`, validated live against real Legistar and Granicus agendas — see
+below), with `attribute_links_to_chapters`'s page-position heuristic kept as the documented
+fallback for links that don't content-match. The per-item 200,000-character *aggregate* cap this
+section originally proposed was deliberately **not** implemented as a fixed character count;
+instead, `episode_tag_inputs()`/`llm_tag_suggestions()` fold in the full available backup text and
+a real-token pre-flight check (against the LLM route's actual `tpm` budget) is the backstop — see
+the review/11 R5 addendum.
 
 Three more functions in `citypods/agenda_text.py`:
 

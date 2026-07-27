@@ -7,6 +7,7 @@ from citypods.tags import (
     TAG_PROMPT_VERSION,
     chapter_id,
     chapter_tag_inputs,
+    episode_tag_inputs,
     llm_tag_suggestions,
     load_taxonomy,
     merge_tag_sources,
@@ -32,6 +33,41 @@ def test_seed_taxonomy_is_flat_and_contains_the_approved_unique_topics():
         "community-wealth-local-ownership",
     } <= ids
     assert "downtown-incremental-development" not in ids
+    # rezoning was split out of zoning-reform (individual-property cases were firing on the
+    # code-wide "zoning-reform" tag -- see GH #1057/#1062/#1072/#1076) and must be its own id.
+    assert "rezoning" in ids
+
+
+def test_zoning_case_matches_rezoning_not_zoning_reform():
+    """Rule-path regression guard for the real production false positives (GH #1057/#1072/#1076):
+    individual-property zoning actions must match the new "rezoning" tag, not "zoning-reform"."""
+    taxonomy = load_taxonomy()
+    for text in (
+        "III.A Zoning Case PD20-25",
+        "Application for a Specific Use Permit SUP20-6",
+        "Replat of Odom Addition",
+        "Variance Request for a rear setback",
+    ):
+        tags = {tag["id"] for tag in tag_episode(text, "", taxonomy)}
+        assert "rezoning" in tags, text
+        assert "zoning-reform" not in tags, text
+
+
+def test_zoning_code_amendment_matches_zoning_reform_not_rezoning():
+    taxonomy = load_taxonomy()
+    text = "Proposed zoning code amendment to allow ADUs citywide"
+    tags = {tag["id"] for tag in tag_episode(text, "", taxonomy)}
+    assert "zoning-reform" in tags
+    assert "rezoning" not in tags
+
+
+def test_neighborhood_engagement_no_longer_matches_bare_public_meeting():
+    """Regression guard: "public meeting" was the most generic, most boilerplate-prone keyword in
+    neighborhood-engagement's include list (present on nearly every agenda header) and was
+    removed. See also the structural preamble-stripping test in test_episode_tag_inputs_*."""
+    taxonomy = load_taxonomy()
+    tags = tag_episode("Notice of Public Meeting", "", taxonomy)
+    assert all(tag["id"] != "neighborhood-engagement" for tag in tags)
 
 
 def test_rules_are_explainable_and_preserve_agenda_transcript_location():
@@ -496,3 +532,142 @@ def test_tag_input_fingerprint_changes_with_llm_config():
         admission_policy="policy-2",
     )
     assert len({disabled, enabled, other_route, other_admission}) == 4
+
+
+def test_episode_tag_inputs_strips_preamble_and_includes_backup_text():
+    """End-to-end (production-shaped, not hand-constructed) validation of 4c/4d: preamble text
+    before the first chapter title is dropped from agenda_text, and backup/attachment document
+    text from the agenda_backup manifest is folded in."""
+
+    class Storage:
+        def exists(self, key):
+            return key in ("agenda-key", "backup-key")
+
+        def get_file(self, key, path):
+            if key == "agenda-key":
+                path.write_text(
+                    "Notice of public meeting. Members of the public who wish to speak "
+                    "can call 555-1234.\n\nI. Call to Order\nII. Zoning Case PD20-25"
+                )
+            elif key == "backup-key":
+                import json
+
+                path.write_text(
+                    json.dumps(
+                        {
+                            "links": [
+                                {
+                                    "url": "https://example.test/staff-report.pdf",
+                                    "chapter_index": 1,
+                                    "text": "Staff Report - Zoning Case PD20-25 details",
+                                }
+                            ]
+                        }
+                    )
+                )
+            return True
+
+    ep = Episode(
+        "g1",
+        "Meeting",
+        datetime(2026, 1, 1, tzinfo=UTC),
+        "https://example.test/video",
+        source_chapters=[
+            {"start": 0, "title": "I. Call to Order"},
+            {"start": 100, "title": "II. Zoning Case PD20-25"},
+        ],
+        links={
+            "agenda_text_artifact_key": "agenda-key",
+            "agenda_backup_artifact_key": "backup-key",
+        },
+    )
+    titles, agenda_text, _transcript = episode_tag_inputs(ep, Storage())
+    assert "555-1234" not in agenda_text
+    assert "I. Call to Order" in titles
+    assert "Staff Report - Zoning Case PD20-25 details" in agenda_text
+
+
+def test_llm_tag_suggestions_defers_when_material_exceeds_every_tpm_capped_route():
+    """A message payload whose own single-attempt estimate exceeds half of every allowed
+    tpm-capped route's budget (the structured-call x2 reservation, citypods/compute/llm.py) can
+    never be reserved on that route, in any window -- this must be flagged distinctly and
+    deferred, not passed through to a dispatch that would retry it forever."""
+
+    class Config:
+        model = "gemini/gemini-3.1-flash-lite"
+        additional_models = ()
+
+    class Storage:
+        cas_capable = True
+
+    class Backend:
+        storage = Storage()
+        config = Config()
+
+        def run_inference(self, job):
+            raise AssertionError("must not dispatch when material can never fit any window")
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    huge_agenda_text = "housing " * 200_000  # far past half of gemini-3.1-flash-lite's tpm=250,000
+    tags, chapter_tags, dispatched, resolved_model = llm_tag_suggestions(
+        Backend(),
+        taxonomy=taxonomy,
+        agenda_item_titles="Housing plan",
+        agenda_text=huge_agenda_text,
+        transcript_text="housing supply",
+        recipe_hash="recipe",
+    )
+    assert tags == []
+    assert chapter_tags == {}
+    assert dispatched is True
+    assert resolved_model is None
+
+
+def test_llm_tag_suggestions_dispatches_when_material_fits_one_tpm_capped_route():
+    """A payload that fits under half of at least one allowed tpm-capped route's budget must
+    still dispatch normally, even if it would use most of that route's minute."""
+    from citypods.compute.base import JobResult
+
+    class Config:
+        model = "gemini/gemini-3.1-flash-lite"
+        additional_models = ()
+
+    class Storage:
+        cas_capable = True
+
+    class Backend:
+        storage = Storage()
+        config = Config()
+
+        def run_inference(self, job):
+            assert "llm_policy" in job.inputs
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": '{"tags":[]}'}}]},
+            )
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    tags, chapter_tags, dispatched, _resolved_model = llm_tag_suggestions(
+        Backend(),
+        taxonomy=taxonomy,
+        agenda_item_titles="Housing plan",
+        agenda_text="housing plan",
+        transcript_text="housing supply",
+        recipe_hash="recipe",
+    )
+    assert tags == []
+    assert chapter_tags == {}
+    assert dispatched is False
