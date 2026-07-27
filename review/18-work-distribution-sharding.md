@@ -416,6 +416,177 @@ the lease or index prefixes, ever) and does not change the frozen `claim`/`renew
 signatures beyond the additive `update_index` keyword — existing non-indexed callers pay exactly the same cost
 as before.
 
+### §4.8 Batched transcript-record commits (GH#1019) — implemented
+
+§4.5 keeps the per-uid **claim** cheap, but each *commit* still pays the full cost the swing-case
+decision in §7 accepted: `push_records_merged()` does a whole-source fetch+merge+put of
+`sources/<src>/episodes.json` per call, and until now `external_worker.py`'s success path
+(`_run_transcribe_item`) called it **once per completed episode**. On the largest inspected source
+(~5,480 records, 59 of one run's 93 successes) that is 59 whole-file B2 round-trips to durably
+record 59 single-uid deltas — the archive-sized transfer scales with total historical episodes, not
+with what actually changed, and gets worse every time an append-only feed grows.
+
+The issue proposed two options: **(A)** per-episode/lane sidecars — turn the canonical source record
+into an index/pointer over content-addressed or UID-keyed per-uid objects, composed on read — or
+**(B)** same-source commit batching — queue successful deltas locally and commit one merge per source
+per bounded interval/end-of-run, preserving leases until the batch lands durably. Option A would
+finally deliver the "per-stage object files" end-state §4.5 explicitly deferred (H17/GH#390) — but
+that discarded end-state was deferred *on purpose*: it changes the physical record layout, and
+GH#1019's own Phase R sequencing note says exactly that layout choice should be co-designed with the
+R6/R7 speaker/attendee record shapes so it isn't migrated twice. Option B does not eliminate
+archive-sized transfer (a flushed batch still fetches+merges+puts the whole source file), but it makes
+the number of times that happens proportional to *batches*, not *episodes*, entirely inside
+`external_worker.py` with zero record-layout or schema change — safe to land now, and it does not
+foreclose Option A later. **Decision: ship Option B now. §4.9 investigates Option A against R6/R7's
+actual record-shape additions and the real Backblaze B2 cost model, and finds it isn't currently
+justified on cost grounds — see §4.9 for the worked numbers and what would actually trigger revisiting
+it.**
+
+**Design.** `ExternalTranscribeWorker` (base class shared by both the Modal/Beam external workers and
+`InternalTranscribeWorker`) gains a per-run, in-memory pending batch:
+
+- `_pending_transcript_records: dict[source_key, dict[uid, record]]` and `_pending_transcript_since:
+  float | None` (monotonic timestamp of the oldest unflushed record). `_run_claim_loop` claims and
+  processes one item at a time (no concurrency in this loop — the GPU-characterization canary path is
+  separate and does not persist records at all), so a plain dict needs no locking.
+- The success path in `_run_transcribe_item` (fresh transcription *and* adoption — both durably persist
+  the owned block) now calls `_queue_transcript_record` instead of pushing immediately:
+  `save_records` (local, ephemeral-worker-filesystem) still runs synchronously as before; the record is
+  added to the pending batch instead of pushed remotely.
+- The batch flushes — one `push_records_merged()` call covering every queued `(source, uid)`, still
+  scoped by `owned_uids` exactly as the single-item call was — on whichever bound is hit first:
+  `_TRANSCRIPT_BATCH_MAX_ITEMS` (5) queued records, or `_TRANSCRIPT_BATCH_MAX_SECONDS` since the oldest
+  queued record, or unconditionally at end of run (`run()`'s `finally`, best-effort — a failure there is
+  logged, not raised, since the artifacts are already durable and a later run's adoption path re-queues
+  the same records).
+- **Post-ship fix: the age bound must exceed every backend's own per-item floor, not just look small.**
+  The first shipped value (120s) was picked off the `_CHECKPOINT_INTERVAL_SECONDS = 180.0` precedent in
+  `run.py` without checking it against this loop's own timing model. `config/site_config.yml` sets
+  `min_runtime_seconds` to 180–240s for **every** backend (Modal, Beam, GitHub Actions) — every single
+  transcription takes at least that long, which is longer than 120s. So by the time a second item
+  finished and was queued, the age bound had already tripped, capping real-world batches at ~2
+  regardless of `_TRANSCRIPT_BATCH_MAX_ITEMS` — a real reduction from the pre-#1019 baseline, but a
+  fraction of the intended 5×. Fixed by raising `_TRANSCRIPT_BATCH_MAX_SECONDS` to 1800s: the age bound
+  is meant as a backstop against a sparse/slow source leaving a batch open, not the thing that should
+  drive typical batching, so it needs to sit comfortably above per-item duration, not near it. A
+  regression test (`test_transcript_batch_survives_realistic_per_item_gaps`) locks in a realistic
+  240s-per-item gap across a full 5-item batch so this can't silently regress again.
+- **Lease preservation without new machinery.** The issue calls out that leases must be "preserved
+  until durable batch commit." Rather than add a second keepalive thread, this relies on the existing
+  §4.2 lease lifecycle: `lease_ttl_seconds` defaults to 6–20 *hours* (`ExternalWorkerConfig`), while the
+  batch's own bounds cap the wait at 5 items or 1800 seconds — and the loop's per-item renewal thread
+  (`_run_with_renewal`) renews the lease every `_renew_interval()` (60–300s) up until the moment the item
+  completes and is queued. A queued-but-unflushed item's lease is therefore always minutes-fresh
+  relative to an hours-long TTL, comfortably inside the flush window with no extra renew call. Per
+  `_run_claim_loop`, success never explicitly releases the lease anyway (§4.6 point 3 — completion is
+  inferred from record+artifact presence), so a queued record sits exactly as "leased" as it always did;
+  batching changes *when* the record commits, not the lease's existing liveness contract.
+- **Measurement, not estimation.** Each flush now logs `sources=`/`records=`/`payload_bytes=`/
+  `elapsed_s=` (`[<backend>-worker] transcript-batch-flush ...`) — real production numbers for whatever
+  later re-evaluates §4.9's decision, rather than the back-of-envelope figures that decision was worked
+  from.
+- **Partial-failure retry-idempotency.** `_flush_pending_transcripts` only clears the batch on a fully
+  successful push; a failed flush (transient remote-read error, or a fail-safe per-source skip) leaves
+  every queued record in place, so the *next* queue call (or the end-of-run flush) retries the same
+  records — `merge_preserving_foreign`'s owned-block merge (§3.2) is idempotent, so re-pushing an
+  already-pushed record is a no-op, not a corruption risk.
+- Unaffected on purpose: the media-decode-quarantine (`_quarantine_media_decode`) and
+  timeout-backoff (`_record_timeout_backoff`) paths keep pushing immediately via the original
+  `_push_owned_transcript_record` — both are single-item, already-exceptional paths where batching would
+  add lease-scoping complexity for no measurable win.
+
+**Acceptance criteria mapping.** A batch of `_TRANSCRIPT_BATCH_MAX_ITEMS` successes on one source now
+costs one fetch+merge+put instead of `_TRANSCRIPT_BATCH_MAX_ITEMS`, independent of source length — a
+5–10× reduction in the steady state this worker loop drives, growing with run size up to the per-batch
+cap; concurrent audio/ASR lanes keep their field ownership (the merge call is unchanged, just batched);
+legacy single-record pushes remain byte-identical when a batch happens to contain exactly one uid; nothing
+about `episodes.json`'s on-disk shape changed, so there is no migration/rollback to plan (this is the
+Option-B slice — Option A is the one that would need a schema/versioned dual-read migration plan, per
+the issue's own criteria, and is examined next).
+
+### §4.9 Option A investigated against R6/R7 and real B2 pricing — deferred, not a cost win
+
+GH#1019's own text suggested revisiting Option A (per-episode/lane sidecars) "once R6/R7 stabilize," on
+the theory that those items' new record fields would settle the physical layout question before paying
+for a migration. Investigated directly rather than deferred on schedule — the finding changes the
+recommendation from "revisit later" to "not currently justified, and re-opened by a different trigger
+than R6/R7 shipping."
+
+**What R6/R7 actually add (checked against their own L3 docs, not assumed):**
+
+- **R6** ([`review/36`](36-llm-first-cards-summaries-soundbites.md) §2, superseding the deprecated
+  `review/30`) adds four **inline** `Episode` fields — `moment_summary_candidates` (one per chapter),
+  `moment_pullquote_candidates` (≤10), `moment_decision_candidates` (≤20), `moments_llm_recipe_hash` —
+  plus a new `"moments"` `ARTIFACT_BLOCKS` entry. Sized from the schema's own field limits: roughly
+  4–7 KB (summary points, chapter-count-scaled) + up to 7.5 KB (pull-quotes) + up to 15 KB (decisions) ≈
+  **+5–15 KB/episode typical, +26 KB worst case.**
+- **R7** ([`review/31`](31-speaker-diarization-attendee-extraction.md) §A.3/§B.4) keeps its bulky part —
+  per-turn speaker segments — in its **own sidecar** (`transcripts/<src>/<uid>-diarize-<spec>.speakers.json`),
+  exactly the sidecar pattern GH#1019 Option A wants generalized; only small pointer/provenance fields
+  (`speakers_source`, plus the already-existing `speakers_*` pointer fields) and `attendees: list[str] |
+  None` land inline — under 1 KB added.
+- **Combined: R6 alone will roughly 2–3× today's measured ~5 KB/record average** (measured directly from
+  three cached production `episodes.json` files: 2,338–5,672 bytes/record) **to ~10–20 KB.** This does
+  make each Option-B flush's payload bigger — but see the cost model below for why that doesn't change
+  the recommendation.
+- `external_worker.py:107` already reserves `RESERVED_WORK_CLASSES = frozenset({"transcript-diarize"})`
+  — R7's diarization is planned to run through this exact same per-episode claim-loop/commit path, so any
+  future Option A (or further Option B tuning) needs to cover the `diarize` lane too, not just
+  `transcribe`.
+
+**The real constraint: Backblaze B2 pricing, re-verified 2026-07-26 (review/17 §1.3's prior "Class B/C,
+2,500/day free then metered" reading was stale — corrected there and here).** B2 Class A/B/C API
+transactions are **entirely free, no tier limit**. The actual metered dimension is **egress bytes**: free
+up to **3× the account's average monthly storage**, then $0.01/GB.
+
+**Worked from this project's own real numbers** (an archived `run_summary.json` snapshot, not invented):
+84 cities; one run materialized 192 episodes at 7,392,822,387 bytes ⇒ **≈38.5 MB/episode** average
+encoded audio; 2,225 episodes already materialized (`reused`+`credited`+`encoded`; `backlog` isn't stored
+yet) ⇒ **current total B2 storage ≈ 2,225 × 38.5 MB ≈ 86 GB** (audio-dominated; transcripts/records are
+KB-scale and don't move this figure). **Free egress ceiling ≈ 3 × 86 GB ≈ 258 GB/month.**
+
+Demand side, **unbatched** (i.e. pre-#1019, one full-source download per commit — the worst case, since
+Option B only makes this better): external workers run ~7×/day (Modal daily, Beam daily, GitHub Actions
+every 5h) at up to ~32 claims/run ⇒ ≤224 commits/day. Using the issue's own largest known source (Fort
+Worth, ~27 MB): 224 × 27 MB ≈ 6 GB/day ≈ **~181 GB/month**, *if every single commit landed on the one
+largest known source* — an extreme case a finite per-source backlog can't sustain every day. Using the
+actually-measured typical record size (~5 KB) and typical source sizes (75 KB–1.9 MB, not 27 MB), realistic
+unbatched volume is closer to **~7 GB/month — comfortably inside the ~258 GB ceiling by ~30–40×**, even
+with *zero* batching.
+
+**Why R6/R7's growth doesn't close this margin:** audio is ~38.5 MB/episode vs. records at ~5–20 KB even
+post-R6 — a 2,000–8,000× gap. Records will never meaningfully move the total-storage denominator that
+sets the free-egress ceiling, so the ceiling grows with the archive at roughly the same rate the download
+need does. There is no future crossover point coming from record-size growth alone. And because Option A
+doesn't reduce total bytes downloaded (it changes *which* bytes move per commit — one episode's ~5–20 KB
+instead of a whole source — not the total moved across all commits for a given amount of real work), it
+doesn't change this margin calculation at all.
+
+**Decision: do not build Option A now.** The pathological worst case (all commits landing on the single
+largest source, ~181 GB/month) sits inside the ~258 GB ceiling by only ~1.4× — real but modest, and it is
+exactly what the §4.8 age-bound fix (and batching generally) widens, not what Option A's per-uid layout
+would fix (Option A doesn't reduce total egress bytes, only re-shapes per-commit size). Building the
+sidecar migration now would also risk the same "double migration" waste this project already explicitly
+avoided once: [review/17](17-state-store-backend-evaluation.md) §3 kept records on B2 instead of moving
+to R2-CAS specifically to avoid a B2→R2→DB double migration once the Phase-R managed-search-DB lands;
+a B2→per-uid-sidecar→DB path repeats that exact pattern. That DB migration itself is **trigger-gated, not
+scheduled** — [ROADMAP.md](../ROADMAP.md) and [review/11](11-technical-design-roadmap.md) §5.5 place it
+decisively past 1.0, itself gated on R6/R7/R8/R9 (all still "Not started" as of this writing) plus one of
+four specific triggers (federated query need, a public API, a search partition exceeding budget, or the
+full custom-query feed builder) that hasn't fired.
+
+**What would actually re-open this, in order of likelihood:**
+
+1. §4.8's `payload_bytes`/`elapsed_s` flush telemetry (now logged on every flush) shows real wall-clock or
+   memory pressure from R6/R7-grown records that this back-of-envelope pass missed — a "measure, don't
+   estimate" trigger, matching the same discipline H9/H14d already use (cited directly in
+   [review/31](31-speaker-diarization-attendee-extraction.md) §0).
+2. The R7 `diarize` lane goes live on this same commit path and its own record contribution (or the
+   diarize lane's own commit *cadence*, not just size) changes the egress math materially.
+3. The Phase-R managed-search-DB migration's trigger fires — at which point Option A is skipped
+   entirely and the migration goes straight from whole-file B2 to the DB, the same "no double migration"
+   reasoning §3 already used for the R2 swing case.
+
 ---
 
 ## §5. Tradeoffs (stated honestly)
@@ -482,6 +653,14 @@ as before.
   [`CHANGELOG.md`](../CHANGELOG.md); flip the catalog entry; mature this doc's Stage-1 row to **Shipped**.
 - **Before building H14b/H14c:** mature Stage 2 to L3 here (full ledger schema, TTL/renew/reaper params,
   R2 key layout, claim-loop CLI) under GH#390, so the worker contract is frozen first.
+- **§4.8/§4.9 (GH#1019, child of GH#1012):** shipped as the L3 breakout the issue asked for — batching
+  decision, lease-preservation argument, and acceptance-criteria mapping live in §4.8 itself rather than
+  a separate document, matching the H22/§4.7 precedent. §4.9 investigated Option A (per-episode/lane
+  sidecars) directly against R6/R7's actual record-shape additions and the real (re-verified) Backblaze
+  B2 cost model, and found it isn't currently justified on cost grounds — deferred with three concrete
+  re-open triggers (§4.9), none of which is "R6/R7 ship." If Option A is designed later, it belongs in a
+  new §4.10 (or a dedicated breakout) rather than reopening §4.8/§4.9, since §4.8's batching layer is
+  independent of and compatible with a later sidecar migration.
 
 ---
 
@@ -492,7 +671,8 @@ as before.
   `merge_preserving_foreign`, `protected_blocks_for_lane`, `ARTIFACT_BLOCKS`);
   `citypods/statesync.py` (`push_records_merged`); `citypods/ops/workqueue.py` (H5 manifest);
   `citypods/compute/` (H13 backend, H14a `DispatchCoordinator`/`compute reconcile`);
-  `.github/workflows/asr.yml`.
+  `citypods/compute/external_worker.py` (§4.8 `_queue_transcript_record`/`_flush_pending_transcripts`,
+  GH#1019); `.github/workflows/asr.yml`.
 - [`review/17`](17-state-store-backend-evaluation.md) — R2 + `put_cas` substrate; per-artifact
   disposition; `episodes.json` swing case; CAS retry-storm mitigation.
 - [`review/16`](16-scaling-review-plan.md) — scaling envelope; S2 access patterns (dirty-only writes).

@@ -40,6 +40,7 @@ The canonical worker env vars parsed here are:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -109,6 +110,21 @@ RESERVED_WORK_CLASSES = frozenset({"transcript-diarize"})
 # How many already-done (adopted) head-of-queue items one run will skip past, beyond ``max_claims``,
 # before giving up — the default bound on stale-manifest scanning when ``max_scan`` is unset.
 _DEFAULT_ADOPT_HEADROOM = 50
+
+# GH#1019: successful transcript commits are coalesced into a bounded batch instead of one
+# push_records_merged() fetch+merge+put of the whole source episodes.json per episode. A batch
+# flushes on whichever bound is hit first, so one slow item can't stall visibility indefinitely.
+# The age bound is a backstop against a sparse/slow source leaving a partial batch open, not the
+# thing meant to drive typical batching — every backend's own ``min_runtime_seconds`` floor
+# (config/site_config.yml: 180-240s) already exceeds a short age bound, so an age bound picked
+# without checking that floor (an earlier value here was 120s) fires after the *second* item every
+# time, capping real-world batches at ~2 regardless of _TRANSCRIPT_BATCH_MAX_ITEMS. Set well above
+# that floor so a source with a real backlog can actually reach the item-count bound; a lone item on
+# a quiet source still lands via this backstop or the unconditional end-of-run flush. Both bounds
+# stay small relative to lease_ttl_seconds (hours), so the lease held for an item added to the batch
+# has ample headroom to survive the wait for the next flush without an extra renew.
+_TRANSCRIPT_BATCH_MAX_ITEMS = 5
+_TRANSCRIPT_BATCH_MAX_SECONDS = 1800.0
 
 
 @dataclass(frozen=True)
@@ -428,6 +444,11 @@ class ExternalTranscribeWorker:
         self._models_lock = threading.Lock()
         for city in cities:
             self._city_by_source.setdefault(source_key(city), city)
+        # GH#1019 commit batch: source_key -> {uid: record}, plus the monotonic time the oldest
+        # unflushed record was queued. `_run_claim_loop` claims one item at a time (no concurrency
+        # in this loop), so a plain dict is safe without locking.
+        self._pending_transcript_records: dict[str, dict[str, dict]] = {}
+        self._pending_transcript_since: float | None = None
 
     def _budget_policy(self, work_class: str | None = None):
         return backend_policy(
@@ -642,6 +663,18 @@ class ExternalTranscribeWorker:
             settled_claims.extend(claims)
             return summary
         finally:
+            # GH#1019: drain whatever the batch didn't reach its own size/age bound to flush yet.
+            # Best-effort — a failure here leaves the records un-pushed but the artifacts already
+            # durable on canonical storage and the leases still held, so a later run's adoption
+            # path re-queues (and flushes) the same records rather than losing the work.
+            try:
+                self._flush_pending_transcripts(raise_on_transient=False)
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"[{self.config.backend}-worker] warning: end-of-run transcript batch "
+                    f"flush failed: {exc}",
+                    flush=True,
+                )
             if settled_claims:
                 run_finished_at = datetime.now(UTC)
                 run_elapsed_seconds = max(0.0, time.monotonic() - run_started)
@@ -1267,6 +1300,71 @@ class ExternalTranscribeWorker:
                 f"failed to push owned transcript record for {item.source_key}/{ref_uid}"
             )
 
+    def _queue_transcript_record(
+        self,
+        item: WorkItem,
+        ep: Episode,
+        records: dict,
+        *,
+        ref_uid: str,
+    ) -> None:
+        """Coalesce a successful transcript's record into the pending batch instead of pushing it
+        remotely right away (GH#1019). ``save_records`` still runs immediately — it only touches
+        the local ``state_dir`` — so a crash before the next flush loses nothing durable: the
+        transcript artifact is already on canonical storage and a later run's adoption path
+        re-queues (and eventually flushes) the same record."""
+        records[item.episode_uid] = episode_to_record(ep)
+        save_records(self.state_dir, item.source_key, records)
+        self._pending_transcript_records.setdefault(item.source_key, {})[item.episode_uid] = (
+            records[item.episode_uid]
+        )
+        if self._pending_transcript_since is None:
+            self._pending_transcript_since = time.monotonic()
+        pending_count = sum(len(uids) for uids in self._pending_transcript_records.values())
+        elapsed = time.monotonic() - self._pending_transcript_since
+        if pending_count >= _TRANSCRIPT_BATCH_MAX_ITEMS or elapsed >= _TRANSCRIPT_BATCH_MAX_SECONDS:
+            self._flush_pending_transcripts(ref_uid=ref_uid)
+
+    def _flush_pending_transcripts(
+        self, *, ref_uid: str | None = None, raise_on_transient: bool = True
+    ) -> None:
+        """Commit every batched transcript record in one push_records_merged() call — one
+        fetch+merge+put per *source*, not per episode. Left un-cleared on failure so the next queue
+        (or the end-of-run flush in ``run()``) retries the same records; the merge is idempotent."""
+        if not self._pending_transcript_records:
+            return
+        source_keys = sorted(self._pending_transcript_records)
+        owned_uids = {sk: frozenset(uids) for sk, uids in self._pending_transcript_records.items()}
+        record_count = sum(len(uids) for uids in owned_uids.values())
+        # Real measured payload size/duration, not an estimate — review/18 §4.8's cost analysis was
+        # worked from one archived run_summary.json snapshot; this gives a future revisit (or a
+        # decision to reopen Option A) real production numbers instead of a back-of-envelope guess.
+        payload_bytes = len(json.dumps(self._pending_transcript_records).encode())
+        started = time.monotonic()
+        try:
+            pushed = push_records_merged(
+                self.storage,
+                self.state_dir,
+                source_keys,
+                protected_blocks=protected_blocks_for_lane("transcribe"),
+                lane="transcribe",
+                owned_uids=owned_uids,
+                raise_on_transient=raise_on_transient,
+            )
+        finally:
+            elapsed = time.monotonic() - started
+            print(
+                f"[{self.config.backend}-worker] transcript-batch-flush "
+                f"sources={len(source_keys)} records={record_count} "
+                f"payload_bytes={payload_bytes} elapsed_s={elapsed:.2f}",
+                flush=True,
+            )
+        if pushed != len(source_keys):
+            where = f" for {ref_uid}" if ref_uid else ""
+            raise RuntimeError(f"failed to flush batched transcript records{where}")
+        self._pending_transcript_records = {}
+        self._pending_transcript_since = None
+
     def _run_transcribe_item(
         self,
         item: WorkItem,
@@ -1341,7 +1439,9 @@ class ExternalTranscribeWorker:
         # the ephemeral worker filesystem, which is discarded when the Modal/Beam function exits.
         # Without this push the artifact lands in object storage but the record silently loses its
         # ``transcript`` block (GH#833 symptom), so the item looks un-transcribed to later runs.
-        self._push_owned_transcript_record(item, ep, records, ref_uid=uid)
+        # GH#1019: queued into the run's batch rather than pushed immediately — ``run()`` flushes
+        # whatever remains at end of run, so this still lands durably even for a batch of one.
+        self._queue_transcript_record(item, ep, records, ref_uid=uid)
         return adopted
 
     def _append_telemetry_sample(
