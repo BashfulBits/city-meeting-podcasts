@@ -17,6 +17,8 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Audio existence checks now use persisted trust with a bounded audit backstop** ([GH#1024](https://github.com/BashfulBits/city-meeting-podcasts/issues/1024), child of [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)). Successful audio reuse, credit, and upload paths persist the immutable key/spec verification marker. Matching trusted pointers skip routine storage probes; small dirty sets use direct existence checks and larger batches escalate to the existing single-prefix cache. A daily 32-partition audit checks at most 100 trusted pointers, clears missing audio pointers and the Audio completion marker, and lets the normal lane rebuild them. Legacy, changed, and repaired pointers remain fail-closed. No audio pipeline-version bump or encoded-byte backfill is required.
+
 - **ASR transcript-record commits are now batched per source, not pushed once per episode**
   ([GH#1019](https://github.com/BashfulBits/city-meeting-podcasts/issues/1019), child of
   [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)). Every successful

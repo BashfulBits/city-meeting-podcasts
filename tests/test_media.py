@@ -668,9 +668,7 @@ class CountingStorage:
 
 
 def test_hosted_keys_cache_lists_once_per_source(tmp_path):
-    """``HostedKeysCache`` lists a source's storage prefix at most once, however many times
-    ``materialize_audio`` is called for that source — the fix for the global queue (H5 PR3)
-    dispatching ``AudioStage`` once per episode instead of once per source."""
+    """A small dirty batch uses direct probes, then escalates to one source listing."""
     from citypods.media import HostedKeysCache
 
     city = _city()
@@ -694,7 +692,7 @@ def test_hosted_keys_cache_lists_once_per_source(tmp_path):
 
 
 def test_hosted_keys_cache_is_per_source(tmp_path):
-    """Two distinct sources each get their own listing — the cache doesn't conflate sources."""
+    """Direct probes for small dirty batches do not list unrelated source prefixes."""
     from citypods.media import HostedKeysCache
 
     store = CountingStorage(_store(tmp_path))
@@ -713,7 +711,49 @@ def test_hosted_keys_cache_is_per_source(tmp_path):
             hosted_keys_cache=cache,
         )
 
-    assert len(store.list_objects_calls) == 2
+    assert len(store.list_objects_calls) == 0
+
+
+def test_verified_audio_pointer_bypasses_storage_probe(tmp_path):
+    from citypods.media import _mark_audio_verified
+
+    city = _city()
+    store = CountingStorage(_store(tmp_path))
+    ep = _ep("verified")
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    key = audio_object_key(city, ep, spec)
+    ep.audio_key = key
+    ep.audio_spec_hash = spec
+    ep.hosted_audio_url = store.public_url(key)
+    _mark_audio_verified(ep, key, spec, store)
+
+    stats = _materialize(city, [ep], store, FakeFfmpeg())
+
+    assert stats.reused == 1
+    assert store.list_objects_calls == []
+
+
+def test_audio_integrity_audit_clears_missing_pointer_and_audio_completion(tmp_path):
+    from citypods.media import _mark_audio_verified, audio_audit_partition, audit_verified_audio
+
+    city = _city()
+    store = _store(tmp_path)
+    ep = _ep("audit-missing")
+    spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    key = audio_object_key(city, ep, spec)
+    ep.audio_key = key
+    ep.audio_spec_hash = spec
+    ep.hosted_audio_url = store.public_url(key)
+    _mark_audio_verified(ep, key, spec, store)
+    ep.stage_completion["audio"] = {"state": "complete"}
+    partition = audio_audit_partition(ep.uid)
+
+    checked, missing = audit_verified_audio([ep], store, partition=partition, max_items=1)
+
+    assert (checked, missing) == (1, 1)
+    assert ep.audio_key is None
+    assert ep.hosted_audio_url is None
+    assert "audio" not in ep.stage_completion
 
 
 def test_audio_artifact_cache_encodes_duplicate_source_views_once(tmp_path):

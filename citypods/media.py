@@ -2560,6 +2560,47 @@ def _hosted_keys(city: City, storage: StorageBackend) -> set[str] | None:
     return {key for key, _ in storage.list_objects(prefix)}
 
 
+_HOSTED_KEYS_LIST_THRESHOLD = 8
+
+
+def _storage_verification_epoch(storage: StorageBackend) -> str | None:
+    """Return an optional backend epoch used to invalidate trusted pointers.
+
+    Existing storage backends do not expose an epoch, so this is deliberately capability-based.
+    A backend that can detect bucket replacement/restore may expose ``verification_epoch`` without
+    coupling the audio pipeline to a concrete B2/S3 implementation.
+    """
+    epoch = getattr(storage, "verification_epoch", None)
+    return str(epoch) if epoch is not None else None
+
+
+def _audio_verification_matches(ep: Episode, key: str, spec: str, storage: StorageBackend) -> bool:
+    marker = ep.audio_verification if isinstance(ep.audio_verification, dict) else {}
+    return (
+        marker.get("key") == key
+        and marker.get("spec_hash") == spec
+        and marker.get("epoch") == _storage_verification_epoch(storage)
+    )
+
+
+def _mark_audio_verified(ep: Episode, key: str, spec: str, storage: StorageBackend) -> None:
+    epoch = _storage_verification_epoch(storage)
+    current = ep.audio_verification if isinstance(ep.audio_verification, dict) else {}
+    if (
+        current.get("key") == key
+        and current.get("spec_hash") == spec
+        and current.get("epoch") == epoch
+        and current.get("verified_at")
+    ):
+        return
+    ep.audio_verification = {
+        "key": key,
+        "spec_hash": spec,
+        "verified_at": datetime.now(UTC).isoformat(),
+        "epoch": epoch,
+    }
+
+
 class HostedKeysCache:
     """Thread-safe per-pass cache of :func:`_hosted_keys`, keyed by source.
 
@@ -2573,8 +2614,10 @@ class HostedKeysCache:
     many worker threads end up processing that source's episodes concurrently.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, list_threshold: int = _HOSTED_KEYS_LIST_THRESHOLD) -> None:
         self._keys: dict[str, set[str] | None] = {}
+        self._probes: dict[str, int] = collections.defaultdict(int)
+        self._list_threshold = max(1, int(list_threshold))
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
 
@@ -2586,6 +2629,82 @@ class HostedKeysCache:
             if key not in self._keys:
                 self._keys[key] = _hosted_keys(city, storage)
             return self._keys[key]
+
+    def present(self, city: City, storage: StorageBackend, key: str) -> bool:
+        """Check one untrusted key cheaply, escalating to one prefix list for a large batch.
+
+        Trusted pointers bypass this method entirely.  For a small dirty set, direct existence
+        probes avoid paying for an otherwise unnecessary prefix LIST; larger batches retain the
+        existing one-list-per-source behavior.
+        """
+        source = source_key(city)
+        with self._guard:
+            lock = self._locks[source]
+        with lock:
+            keys = self._keys.get(source)
+            if keys is not None:
+                return key in keys
+            self._probes[source] += 1
+            if self._probes[source] < self._list_threshold or not hasattr(storage, "list_objects"):
+                return bool(storage.exists(key))
+            keys = _hosted_keys(city, storage)
+            self._keys[source] = keys
+            return keys is not None and key in keys
+
+
+def audio_audit_partition(uid: str, *, partitions: int = 32) -> int:
+    """Stable partition assignment for bounded audio integrity audits."""
+    count = max(1, int(partitions))
+    return int.from_bytes(hashlib.sha256(uid.encode()).digest()[:8], "big") % count
+
+
+def audit_verified_audio(
+    episodes: list[Episode],
+    storage: StorageBackend,
+    *,
+    partition: int,
+    partitions: int = 32,
+    max_items: int = 100,
+) -> tuple[int, int]:
+    """HEAD a bounded partition of trusted pointers and clear missing ones.
+
+    The caller owns persistence.  Clearing the pointer makes the normal AudioStage path enqueue
+    repair while preserving the stable episode UID; no prefix listing is needed.
+    """
+    checked = missing = 0
+    selected = sorted(
+        (
+            ep
+            for ep in episodes
+            if ep.uid and audio_audit_partition(ep.uid, partitions=partitions) == partition
+        ),
+        key=lambda ep: ep.uid or "",
+    )[: max(0, int(max_items))]
+    for ep in selected:
+        marker = ep.audio_verification if isinstance(ep.audio_verification, dict) else {}
+        key = marker.get("key")
+        spec = marker.get("spec_hash")
+        if (
+            not isinstance(key, str)
+            or not key
+            or key != ep.audio_key
+            or not isinstance(spec, str)
+            or spec != ep.audio_spec_hash
+        ):
+            if marker:
+                ep.audio_verification = {}
+            continue
+        checked += 1
+        if not storage.exists(key):
+            ep.audio_verification = {}
+            ep.stage_completion.pop("audio", None)
+            ep.hosted_audio_url = None
+            ep.audio_key = None
+            ep.audio_spec_hash = None
+            missing += 1
+        else:
+            _mark_audio_verified(ep, key, spec, storage)
+    return checked, missing
 
 
 @dataclass(frozen=True)
@@ -2835,11 +2954,6 @@ def materialize_audio(
     while leaving their source-scoped records independent (GH#421).
     """
     stats = MaterializeStats()
-    hosted_keys = (
-        hosted_keys_cache.get(city, storage)
-        if hosted_keys_cache is not None
-        else _hosted_keys(city, storage)
-    )
     now = datetime.now(UTC)
 
     # Deferred-but-out-of-backoff episodes first: when a feature lands that unblocks
@@ -2850,8 +2964,16 @@ def materialize_audio(
         key=lambda ep: 0 if (ep.materialize_attempts > 0 and not _in_backoff(ep, now)) else 1,
     )
 
-    def _present(key: str) -> bool:
-        return key in hosted_keys if hosted_keys is not None else storage.exists(key)
+    def _present(key: str, ep: Episode | None = None, spec: str | None = None) -> bool:
+        if (
+            ep is not None
+            and spec is not None
+            and _audio_verification_matches(ep, key, spec, storage)
+        ):
+            return True
+        if hosted_keys_cache is not None:
+            return hosted_keys_cache.present(city, storage, key)
+        return storage.exists(key)
 
     # Cheap pass: handle reuse / credit / backoff inline (always sequential — fast).
     # Collect episodes that need the expensive encode into to_encode.
@@ -2974,7 +3096,7 @@ def materialize_audio(
         # ever written) would short-circuit forever and never re-materialize (issue #116).
         legacy_ok = ep.audio_spec_hash == "legacy" and not (loudness_profile or processing_profile)
         spec_ok = bool(ep.hosted_audio_url) and (ep.audio_spec_hash == spec or legacy_ok)
-        present = bool(ep.audio_key) and _present(ep.audio_key)
+        present = bool(ep.audio_key) and _present(ep.audio_key, ep, spec)
         # An episode flagged with a materialization error is not "done" even if a stale object with
         # a matching spec is still in storage (e.g. an encode that uploaded bytes but failed to
         # probe a duration). Don't reuse/credit it: re-encode (subject to the backoff below) so a
@@ -2982,6 +3104,7 @@ def materialize_audio(
         # ~600 errored episodes the ASR lane now skips back to the audio lane (run #25).
         errored = bool(ep.materialize_error)
         if spec_ok and present and not errored:
+            _mark_audio_verified(ep, ep.audio_key, spec, storage)
             _backfill_served_duration(ep)
             if cache is not None:
                 cache.complete(cache_key, _artifact(ep))
@@ -3028,10 +3151,11 @@ def materialize_audio(
         # an encode — so it does NOT draw from the budget. The budget meters the expensive encode
         # path only, which keeps its per-episode time estimate honest and lets a credit-heavy
         # catch-up run reconcile freely without deferring real encodes.
-        if _present(key) and not errored:
+        if _present(key, ep, spec) and not errored:
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = storage.public_url(key)
+            _mark_audio_verified(ep, key, spec, storage)
             _backfill_served_duration(ep)
             ep.materialize_attempts = 0
             ep.materialize_last_attempt = None
@@ -3244,6 +3368,7 @@ def materialize_audio(
             ep.audio_key = key
             ep.audio_spec_hash = spec
             ep.hosted_audio_url = url
+            _mark_audio_verified(ep, key, spec, storage)
             ep.audio_encode_time = now.isoformat()
             if probed is not None:
                 set_served_duration_seconds(ep, probed)

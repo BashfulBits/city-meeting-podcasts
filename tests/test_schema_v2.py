@@ -392,6 +392,16 @@ class TestRoundTrip:
         assert rec["audio"]["rebuild"] == "fix-pr-42"
         assert record_to_episode(rec).audio_rebuild == "fix-pr-42"
 
+    def test_audio_verification_round_trips(self):
+        ep = _ep()
+        ep.audio_verification = {
+            "key": "granicus/source/uid-spec.m4a",
+            "spec_hash": "spec",
+            "verified_at": "2026-07-27T00:00:00+00:00",
+            "epoch": "bucket-v1",
+        }
+        assert record_to_episode(episode_to_record(ep)).audio_verification == ep.audio_verification
+
     def test_empty_nonce_omitted_from_record(self):
         ep = _ep()
         ep.audio_rebuild = ""

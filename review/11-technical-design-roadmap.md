@@ -133,6 +133,8 @@ sync · #20 video enclosures (partial).
 
 ### Phase R — Research-Tool Surface (toward 1.0)
 
+| **Bounded audio integrity audits** | [GH#1024](https://github.com/BashfulBits/city-meeting-podcasts/issues/1024) (child of [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)) | L3 | **Implemented in the first 1.0 efficiency tranche.** Audio records now persist the verified immutable key/spec marker. Matching trusted pointers bypass routine prefix LIST/HEAD/GET work; a small dirty set uses direct existence probes and larger batches retain one bounded source LIST fallback. `scripts/audit_audio_integrity.py` and `audio-integrity.yml` rotate through 32 stable UID partitions, clear missing pointers and the Audio completion marker, and let ordinary Audio repair them without changing episode identity. Legacy/changed/repair pointers remain fail-closed. No audio pipeline-version bump or byte backfill is required. |
+
 **Implementation status checked against `main` (2026-07-14).** R1 is shipped in PR #897; R10 is
 shipped in PR #899 with pacing hardening; R11's core phases are shipped in PRs #906–#908
 (Granicus archive-first discovery, calendar composition/backfill, durable no-video rows, and Swagit

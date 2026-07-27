@@ -91,6 +91,10 @@ class Episode:
     # rollback, and orphan detection. audio_spec_hash records the recipe the file was made with.
     audio_key: str | None = None
     audio_spec_hash: str | None = None
+    # Storage verification for the immutable audio pointer.  The marker is intentionally a
+    # record-compatible dict so older records can be upgraded lazily and future storage backends
+    # can add an epoch without changing the Episode constructor again.
+    audio_verification: dict = field(default_factory=dict)
     # Enrichment artifacts populated by later stages (transcript/summary/chapters/links).
     links: dict = field(default_factory=dict)  # {"agenda": url, "canonical_video": url, ...}
     # Document enrichment sidecars. URLs are the effective source links (provider links remain

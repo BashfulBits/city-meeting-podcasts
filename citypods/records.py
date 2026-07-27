@@ -1190,6 +1190,7 @@ def episode_to_record(ep: Episode) -> dict:
             "key": ep.audio_key,
             "url": ep.hosted_audio_url,
             "spec_hash": ep.audio_spec_hash,
+            "verification": ep.audio_verification or None,
             "bytes": ep.audio_bytes,
             "encode_time": ep.audio_encode_time,
             "rebuild": ep.audio_rebuild or None,  # omit when empty to keep records clean
@@ -1349,6 +1350,9 @@ def record_to_episode(rec: dict) -> Episode:
         hosted_audio_url=audio.get("url"),
         audio_key=audio.get("key"),
         audio_spec_hash=audio.get("spec_hash"),
+        audio_verification=(
+            audio.get("verification") if isinstance(audio.get("verification"), dict) else {}
+        ),
         materialize_attempts=audio.get("attempts") or 0,
         materialize_last_attempt=audio.get("last_attempt"),
         materialize_error=audio.get("error"),
