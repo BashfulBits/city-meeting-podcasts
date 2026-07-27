@@ -23,6 +23,8 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -83,7 +85,7 @@ jobs:
           # Native sub-issues (rather than a body-text convention) make the review batch
           # visible in GitHub's issue hierarchy and Project progress fields.  Keep this
           # idempotent because the same unreviewed candidate is re-packaged weekly.
-          native_children=$(gh issue view "$parent" --json subIssues --jq '[.subIssues[].number]')
+          native_children=$(gh issue view "$parent" --json subIssues --jq '[.subIssues.nodes[].number]')
           attach_child() {
             child="$1"
             if ! jq -e --argjson child "$child" 'index($child) != null' \

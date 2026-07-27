@@ -23,16 +23,31 @@ permissions: {}
 jobs:
   resolve:
     runs-on: ubuntu-latest
-    # Only reads issues (gh issue list) — no checkout, no writes.
+    # Only reads issues (gh issue list) — no writes. The sparse checkout below is anonymous
+    # (token: "") so it needs no `contents` permission.
     permissions:
       issues: read
     outputs:
       numbers: ${{ steps.resolve.outputs.numbers }}
     steps:
+      - name: Checkout setup-gh-cli action
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          token: ""
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions/setup-gh-cli
+            constraints/gh-cli.txt
+          sparse-checkout-cone-mode: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
       - name: Resolve candidate issue(s)
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
+          # No checkout in this job, so gh has no git remote to infer the repo from; give it one
+          # explicitly rather than relying on gh's (version-dependent) implicit repo resolution.
+          GH_REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           ISSUE_NUMBER_INPUT: ${{ github.event.inputs.issue_number || '' }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
@@ -73,6 +88,8 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -138,10 +155,22 @@ jobs:
     needs: [resolve, ingest]
     if: always() && needs.resolve.result != 'failure' && needs.resolve.outputs.numbers != '[]'
     runs-on: ubuntu-latest
-    # Never checks out code; comments/closes parent issues.
+    # Comments/closes parent issues. The sparse checkout below is anonymous (token: "") so it
+    # needs no `contents` permission.
     permissions:
       issues: write
     steps:
+      - name: Checkout setup-gh-cli action
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          token: ""
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions/setup-gh-cli
+            constraints/gh-cli.txt
+          sparse-checkout-cone-mode: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
       - name: Close parent issues when their batch is clear
         env:
           GH_TOKEN: ${{ github.token }}
@@ -155,7 +184,7 @@ jobs:
             # A review batch is at most 10 children today, but query the relation itself so a future
             # batch-size increase cannot make us close the parent while a child is still open.
             open_children=$(gh issue view "$parent" --repo "$GH_REPO" --json subIssues \
-              --jq '[.subIssues[] | select(.state == "OPEN")] | length')
+              --jq '[.subIssues.nodes[] | select(.state == "OPEN")] | length')
             if [ "$open_children" -eq 0 ]; then
               gh issue comment "$parent" --body "All child H15 review issues in this batch are resolved — closing."
               gh issue close "$parent"

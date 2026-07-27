@@ -1,0 +1,52 @@
+name: Setup pinned gh CLI
+description: >
+  Installs the exact `gh` CLI version pinned in constraints/gh-cli.txt (linux/amd64 -- the only
+  platform any of our runners use) and prepends it to PATH, verified against the SHA-256 pinned
+  in that same file (GH_CLI_SHA256_LINUX_AMD64) rather than a checksum fetched at install time.
+  Exists so gh's JSON output shapes and repo-resolution behavior don't silently change out from
+  under these workflows when the hosted runner image bumps its preinstalled gh (see
+  constraints/gh-cli.txt for the 2026-07-27 incident this guards against).
+
+  Requires `actions/checkout` (of at least this action's own directory) to already have run --
+  it is a local composite action and the runner can only resolve `uses: ./...` paths against an
+  already-checked-out workspace. Jobs with no other need for a full checkout (most of the
+  resolve/finalize jobs that only call `gh issue list`/`gh issue view`) should sparse-checkout
+  just this directory and constraints/gh-cli.txt first.
+
+runs:
+  using: composite
+  steps:
+    - name: Install pinned gh CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        pin_file="${GITHUB_ACTION_PATH}/../../../constraints/gh-cli.txt"
+        version=$(grep -m1 '^GH_CLI_VERSION=' "$pin_file" | cut -d= -f2)
+        expected=$(grep -m1 '^GH_CLI_SHA256_LINUX_AMD64=' "$pin_file" | cut -d= -f2)
+        if [ -z "$expected" ]; then
+          echo "::error::no GH_CLI_SHA256_LINUX_AMD64 pin in constraints/gh-cli.txt"
+          exit 1
+        fi
+        tarball="gh_${version}_linux_amd64.tar.gz"
+        base_url="https://github.com/cli/cli/releases/download/v${version}"
+        curl_opts=(--connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2)
+
+        tmp=$(mktemp -d)
+        curl -fsSL "${curl_opts[@]}" "${base_url}/${tarball}" -o "${tmp}/${tarball}"
+
+        actual=$(sha256sum "${tmp}/${tarball}" | awk '{print $1}')
+        if [ "$expected" != "$actual" ]; then
+          echo "::error::gh CLI checksum mismatch for ${tarball}: expected ${expected}, got ${actual}"
+          exit 1
+        fi
+
+        tar -xzf "${tmp}/${tarball}" -C "${tmp}"
+        install_dir="${RUNNER_TEMP}/gh-cli-${version}/bin"
+        mkdir -p "$install_dir"
+        cp "${tmp}/gh_${version}_linux_amd64/bin/gh" "${install_dir}/gh"
+        chmod +x "${install_dir}/gh"
+
+        # Prepend (not append): must shadow the runner image's preinstalled gh on PATH.
+        echo "$install_dir" >> "$GITHUB_PATH"
+        export PATH="${install_dir}:${PATH}"
+        gh --version
