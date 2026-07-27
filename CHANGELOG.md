@@ -18,6 +18,32 @@ Phase R (Research-Tool Surface)._
 ### Added
 
 - **Body-aware three-tier retention and gradual archive backfill** ([review/39](review/39-body-aware-tiered-retention.md)). All feeds now inherit 500 RSS-visible episodes per body, retain hosted audio and every artifact through 2,000 per body, and retain metadata plus non-audio artifacts through 10,000 per body. The shared source record store contains the union of body windows, preventing active boards from evicting quieter ones; audio is removed only from the metadata-only tier and reclaimed through normal orphan GC. Feed-visible work is prioritized before bounded 501–2,000 backfill under the existing wall-clock budget. No pipeline-version bump or forced re-encode is introduced; pre-existing artifacts remain valid and the deeper cohort fills gradually.
+- **ASR transcript-record commits are now batched per source, not pushed once per episode**
+  ([GH#1019](https://github.com/BashfulBits/city-meeting-podcasts/issues/1019), child of
+  [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)). Every successful
+  transcript previously called `push_records_merged()` — a whole-source fetch+merge+put of
+  `sources/<src>/episodes.json` — immediately; on the largest inspected source (~5,480 records) 59
+  of one run's 93 successes each paid that full-file round-trip for a single uid's delta.
+  `ExternalTranscribeWorker` (shared by external Modal/Beam and internal ASR workers) now queues a
+  successful commit into an in-memory per-run batch and flushes one `owned_uids`-scoped
+  `push_records_merged()` call per 5 queued records, 1800 seconds, or end of run — whichever comes
+  first — cutting the number of whole-source round-trips from one per episode to roughly one per
+  batch. (The age bound shipped at 120s first; raised to 1800s after finding every backend's own
+  `min_runtime_seconds` floor — 180–240s, `config/site_config.yml` — already exceeded 120s, which
+  had capped real-world batches at ~2 instead of 5 regardless of the item-count bound. A regression
+  test now locks in a realistic per-item gap across a full batch.) Lease liveness needed no new
+  keepalive thread: `lease_ttl_seconds` (6–20h) already dwarfs the batch window given the existing
+  per-item renewal thread's minutes-fresh refresh at queue time. A failed flush remains queued for
+  another in-process attempt (the owned-block merge is idempotent); if the process exits before a
+  later attempt succeeds, the in-memory batch does not survive it — the durable artifact is instead
+  re-adopted and its record re-queued by a later run. Media-decode-quarantine/timeout-backoff paths
+  are unchanged (still immediate, single-item pushes). Each flush now logs its `sources`/`records`/`payload_bytes`/`elapsed_s` for real
+  production measurement. This is the "same-source commit batching" option from the two the issue
+  proposed; the sidecar/per-uid-object alternative was investigated directly against R6/R7's actual
+  record-shape additions and Backblaze B2's real pricing (transactions are entirely free; egress is
+  free up to 3× average monthly storage) and found not currently justified — worked numbers and
+  concrete re-open triggers in the design doc, not "once R6/R7 ship." Design:
+  [review/18 §4.8–§4.9](review/18-work-distribution-sharding.md#48-batched-transcript-record-commits-gh1019--implemented).
 
 - **`compute reconcile`'s Stage-2 work-lease sweep now costs `O(active leases)`, not `O(backlog)`**
   ([GH#1018](https://github.com/BashfulBits/city-meeting-podcasts/issues/1018), child of
@@ -33,6 +59,17 @@ Phase R (Research-Tool Surface)._
   `reconcile_compute(..., use_lease_index=False)` (`work_lease_index_enabled: false` under
   `defaults:`) reverts to the original candidate-probe sweep with no code change. Design:
   [review/18 §4.7](review/18-work-distribution-sharding.md#47-active-lease-index-gh1018--implemented).
+
+### Fixed
+
+- **`compute reconcile` failed every run since the GH#1018 active-lease index shipped**, crashing
+  with `NotImplementedError: backend 'b2' is not cas_capable; get_bytes unavailable`. The index's
+  `work-leases-index/bucket-<n>.json` CAS objects were never added to `RoutingStorage`'s
+  `COORDINATION_PREFIXES` (`citypods/storage/routing.py`), so every bucket read/write fell through
+  to the B2 primary backend, which doesn't implement compare-and-swap, instead of routing to R2.
+  `work-leases-index/` is now registered alongside `work-leases/` and `provider-leases/`, with the
+  matching ephemeral-prefix declaration (a lost bucket is re-derived from the lease objects, which
+  remain claim authority, via the integrity sweep).
 
 - **An authenticated Cloudflare Worker fallback covers Swagit list-page `403`s from GitHub-hosted
   runners.** Paired local/GitHub-Actions probes ([PR #1011](https://github.com/BashfulBits/city-meeting-podcasts/pull/1011)),

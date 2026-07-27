@@ -65,12 +65,16 @@ before GH#353 removed it.)
 That emulation is the efficiency and reliability cost, and it gets worse as shards multiply and as
 non-Actions workers join (H13/H14), each of which must participate in the same emulated protocol.
 
-### 1.3 Corrected facts that reshaped this evaluation (verified Jun 2026)
+### 1.3 Corrected facts that reshaped this evaluation (verified Jun 2026; B2 pricing re-verified 2026-07-26)
 
 A naive reading is "move state off B2 to get speed/consistency." The facts say otherwise:
 
-- **B2 Class A transactions (uploads/writes) are FREE and unlimited.** Only Class B (downloads,
-  2,500/day free) and Class C (lists, 2,500/day free) are metered, cheaply. B2 is **already strongly
+- **B2 Class A, B, and C transactions (uploads, downloads, lists) are all FREE with no tier limit**
+  (corrected 2026-07-26 against Backblaze's live pricing page — an earlier "Class B/C, 2,500/day free
+  then metered" reading here was stale/wrong; only Class D outbound-webhook calls carry that
+  2,500/day-then-metered shape, and this project doesn't use those). **The actual metered dimension is
+  egress bytes**: downloads are free up to **3× the account's average monthly storage**, then
+  **$0.01/GB**; storage itself is $0.005/GB/month past a 10GB free allowance. B2 is **already strongly
   consistent** (read-after-write). [B2-pricing] [B2-consistency]
 - **R2 meters Class A = writes *and* lists** (1M/mo free, then **$4.50/M**); Class B 10M/mo free then
   $0.36/M; storage $0.015/GB; egress $0. [R2-pricing]
@@ -443,9 +447,10 @@ the plumbing works against the **live** services without risking production data
 
 ---
 
-## §10. References (verified Jun 2026)
+## §10. References (verified Jun 2026; B2 pricing re-verified 2026-07-26)
 
-- [B2-pricing] Backblaze B2 transaction pricing — Class A free; Class B/C 2,500/day free:
+- [B2-pricing] Backblaze B2 transaction pricing — Class A/B/C entirely free, no tier limit; egress
+  free up to 3× average monthly storage, then $0.01/GB; storage $0.005/GB/month past 10GB free:
   <https://www.backblaze.com/cloud-storage/transaction-pricing>
 - [B2-consistency] B2 strong read-after-write consistency: <https://news.ycombinator.com/item?id=23072419>
 - [R2-pricing] Cloudflare R2 pricing & free tier (10 GB / 1M Class A / 10M Class B; $4.50/M Class A;

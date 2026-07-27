@@ -1073,15 +1073,20 @@ def _patch_transcribe_item(monkeypatch, worker, *, exists):
 def test_fresh_transcription_pushes_owned_record(tmp_path, monkeypatch):
     """Regression (GH#706): a fresh transcription MUST push its owned transcript block back to
     canonical storage. A stray ``return`` once orphaned the ``push_records_merged`` call, so the
-    artifact landed but the record silently lost its ``transcript`` block on every external run."""
+    artifact landed but the record silently lost its ``transcript`` block on every external run.
+
+    GH#1019: the push is now batched rather than immediate, so this exercises the explicit
+    end-of-run-style flush a caller (``run()``) always performs."""
     worker = _loop_worker(tmp_path, ["a"])
     push_calls = _patch_transcribe_item(monkeypatch, worker, exists=False)
 
     adopted = worker._run_transcribe_item(_queued("a"), ew.ResourceTracker())
+    assert push_calls == [], "a single item under the batch bounds must not push immediately"
+    worker._flush_pending_transcripts()
 
     assert adopted is False
     assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}], (
-        "fresh transcription did not durably push its owned transcript record"
+        "fresh transcription did not durably push its owned transcript record once flushed"
     )
 
 
@@ -1093,9 +1098,134 @@ def test_adopted_item_pushes_owned_record(tmp_path, monkeypatch):
     push_calls = _patch_transcribe_item(monkeypatch, worker, exists=True)
 
     adopted = worker._run_transcribe_item(_queued("a"), ew.ResourceTracker())
+    worker._flush_pending_transcripts()
 
     assert adopted is True
     assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}]
+
+
+def test_transcript_batch_coalesces_multiple_items_into_one_push(tmp_path, monkeypatch):
+    """GH#1019: several successful items for the same source must coalesce into a single
+    push_records_merged() call instead of one whole-source fetch+merge+put per episode."""
+    worker = _loop_worker(tmp_path, ["a", "b", "c"])
+    push_calls = _patch_transcribe_item(monkeypatch, worker, exists=False)
+
+    for uid in ("a", "b", "c"):
+        worker._run_transcribe_item(_queued(uid), ew.ResourceTracker())
+    assert push_calls == [], "batch below both size and age bounds must not flush yet"
+
+    worker._flush_pending_transcripts()
+
+    assert push_calls == [
+        {"sources": ["src"], "owned_uids": {"src": frozenset({"a", "b", "c"})}}
+    ], "three episodes on one source should coalesce into a single push"
+
+
+def test_transcript_batch_flushes_at_size_bound(tmp_path, monkeypatch):
+    """GH#1019: the batch flushes on its own once it reaches ``_TRANSCRIPT_BATCH_MAX_ITEMS``,
+    without needing an explicit caller-side flush."""
+    uids = [chr(ord("a") + i) for i in range(ew._TRANSCRIPT_BATCH_MAX_ITEMS)]
+    worker = _loop_worker(tmp_path, uids)
+    push_calls = _patch_transcribe_item(monkeypatch, worker, exists=False)
+
+    for uid in uids:
+        worker._run_transcribe_item(_queued(uid), ew.ResourceTracker())
+
+    assert len(push_calls) == 1
+    assert push_calls[0]["owned_uids"] == {"src": frozenset(uids)}
+    assert worker._pending_transcript_records == {}
+
+
+def test_transcript_batch_flushes_at_age_bound(tmp_path, monkeypatch):
+    """GH#1019: a single slow-arriving item still flushes once ``_TRANSCRIPT_BATCH_MAX_SECONDS``
+    has elapsed, so a quiet source isn't held open indefinitely waiting for a fifth episode."""
+    worker = _loop_worker(tmp_path, ["a"])
+    push_calls = _patch_transcribe_item(monkeypatch, worker, exists=False)
+    monkeypatch.setattr(
+        ew.time, "monotonic", lambda: 10_000.0 + ew._TRANSCRIPT_BATCH_MAX_SECONDS + 1
+    )
+    worker._pending_transcript_since = 10_000.0
+
+    worker._run_transcribe_item(_queued("a"), ew.ResourceTracker())
+
+    assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}]
+
+
+def test_transcript_batch_survives_realistic_per_item_gaps(tmp_path, monkeypatch):
+    """Regression: an earlier ``_TRANSCRIPT_BATCH_MAX_SECONDS`` (120s) was shorter than every
+    backend's own ``min_runtime_seconds`` floor (180-240s, config/site_config.yml) — every
+    transcription takes at least that long, so the age bound tripped after just the second queued
+    item and the batch never reached its size cap in practice. Simulates the worst-case realistic
+    gap (240s between each item completing) across a full batch and asserts it still coalesces to
+    one push, not one-per-item."""
+    uids = [chr(ord("a") + i) for i in range(ew._TRANSCRIPT_BATCH_MAX_ITEMS)]
+    worker = _loop_worker(tmp_path, uids)
+    push_calls = _patch_transcribe_item(monkeypatch, worker, exists=False)
+    clock = {"t": 10_000.0}
+    monkeypatch.setattr(ew.time, "monotonic", lambda: clock["t"])
+
+    for uid in uids:
+        worker._run_transcribe_item(_queued(uid), ew.ResourceTracker())
+        clock["t"] += 240.0  # the slowest backend's min_runtime_seconds floor
+
+    assert len(push_calls) == 1, (
+        "realistic per-item gaps must not fragment the batch below its own size cap"
+    )
+    assert push_calls[0]["owned_uids"] == {"src": frozenset(uids)}
+
+
+def test_transcript_batch_retains_pending_records_on_failed_flush(tmp_path, monkeypatch):
+    """GH#1019: the whole batching design leans on a failed flush leaving records queued rather than
+    dropping them, so a later flush (in-process) retries the same records instead of silently losing
+    them. A push that raises must not clear ``_pending_transcript_records``; the next flush attempt
+    then succeeds and clears it, proving the retry path is genuinely idempotent, not untested."""
+    worker = _loop_worker(tmp_path, ["a"])
+    _patch_transcribe_item(monkeypatch, worker, exists=False)
+    attempts = {"n": 0}
+
+    def _flaky_push(
+        storage,
+        state_dir,
+        sources,
+        *,
+        protected_blocks,
+        lane=None,
+        owned_uids,
+        raise_on_transient=False,
+    ):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("transient push failure")
+        return len(sources)
+
+    monkeypatch.setattr(ew, "push_records_merged", _flaky_push)
+
+    worker._run_transcribe_item(_queued("a"), ew.ResourceTracker())
+    assert worker._pending_transcript_records != {}, "queuing must not have flushed yet"
+
+    with pytest.raises(RuntimeError, match="transient push failure"):
+        worker._flush_pending_transcripts()
+    assert worker._pending_transcript_records == {"src": {"a": {"uid": "a"}}}, (
+        "a failed flush must leave the batch queued for the next attempt to retry"
+    )
+
+    worker._flush_pending_transcripts()
+    assert worker._pending_transcript_records == {}, "a subsequent successful flush must clear it"
+    assert attempts["n"] == 2
+
+
+def test_run_flushes_pending_transcripts_at_end_of_run(tmp_path, monkeypatch):
+    """GH#1019: ``run()`` must drain any still-pending batch before returning, even if it never hit
+    the size/age bound, so a short run's completions aren't left unpushed in memory. Uses an empty
+    candidate manifest so the claim loop itself does nothing — only the end-of-run flush matters."""
+    worker = _loop_worker(tmp_path, [])
+    push_calls = _patch_transcribe_item(monkeypatch, worker, exists=False)
+    worker._pending_transcript_records = {"src": {"a": {"uid": "a"}}}
+
+    worker.run()
+
+    assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}]
+    assert worker._pending_transcript_records == {}
 
 
 def test_benchmark_transcription_skips_record_persist(tmp_path, monkeypatch):
