@@ -61,6 +61,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`ASR Quality Eval` silently produced zero H15 samples for 3 consecutive weekly runs**
+  (2026-07-13, 07-20, 07-27) while reporting green. `asr-quality-eval.yml` never had an `ffmpeg`
+  install step; `citypods transcript-quality evaluate` clips each sampled candidate's audio with
+  `ffmpeg` before scoring, so every one of the 8 samples found each week failed with
+  `FileNotFoundError: 'ffmpeg'`. That error is caught per-sample by design (one bad sample
+  shouldn't sink the whole batch), so `evaluate` finished with 0 rows written to the rollups
+  ledger and the job's own exit code stayed 0 throughout — `ASR Quality Review` then correctly
+  found nothing to package, leaving the weekly parent issue empty with no signal that anything
+  was wrong. Added the same checksum-pinned static-ffmpeg install (`FFMPEG_URL`/`FFMPEG_SHA256` →
+  `scripts/install_static_ffmpeg.py`, prepended to `PATH`) already used by `asr.yml`/`audio.yml`.
+
 - **`compute reconcile` failed every run since the GH#1018 active-lease index shipped**, crashing
   with `NotImplementedError: backend 'b2' is not cas_capable; get_bytes unavailable`. The index's
   `work-leases-index/bucket-<n>.json` CAS objects were never added to `RoutingStorage`'s
