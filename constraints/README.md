@@ -8,6 +8,7 @@ fully-resolved pins that make installs reproducible. Policy: [`review/22`](../re
 | `prod.txt` | core + `storage` + `wer` + `llm` | `deploy.yml`, `audit.yml`, `audio.yml`, `asr-quality-review.yml`, … and the audio-runner image |
 | `asr.txt`  | core + `storage` + `asr-*` (incl. `asr-align2`) | `asr.yml`, `asr-bench.yml`, `asr-quality-eval.yml`, Modal/Beam worker images |
 | `dev.txt`  | core + `storage` + `dev` + `wer` + `llm` | `ci.yml` |
+| `gh-cli.txt` | n/a (not pip-compile — hand-maintained, `gh` isn't a Python package) | `.github/actions/setup-gh-cli`, used by every workflow that calls `gh` |
 
 `asr-align2` (H15 Layer 2's independent CTC aligner, `torchcodec`) is compiled into `asr.txt`
 rather than its own file: `torch`/`torchaudio` are already a transitive pin there via

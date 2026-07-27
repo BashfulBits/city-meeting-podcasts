@@ -1,0 +1,20 @@
+# Pinned `gh` (GitHub CLI) version, installed by .github/actions/setup-gh-cli instead of
+# every workflow trusting whatever `gh` ships preinstalled on the GitHub-hosted runner image.
+#
+# Unlike prod.txt/asr.txt/dev.txt this file is hand-maintained -- gh isn't a pip package --
+# but follows the same review/22 pin policy: single source of truth, checked into git, bumped
+# only via an opened PR, never silently. Renovate tracks just the version below (custom regex
+# manager in .github/renovate.json5); the release's own gh_<version>_checksums.txt is fetched
+# and verified at install time, so there's no separate hash here to fall out of sync with it.
+#
+# This exists because of the 2026-07-27 incident: an unannounced gh CLI bump on the runner
+# image changed `gh issue view --json subIssues` from a flat array to a `{nodes,totalCount}`
+# object, and changed `gh issue list` (no checkout, no git remote) to require an explicit
+# --repo/GH_REPO instead of resolving one implicitly -- breaking 4 scheduled workflows with no
+# warning. Pinning trades that surprise for an ordinary, reviewable version-bump PR.
+#
+# Same caveat as the SHA-pinned Actions in .github/renovate.json5: never auto-merged, because a
+# compromised gh release could move under an unpinned tag just as an Action's SHA could.
+#
+# renovate: datasource=github-releases depName=cli/cli
+GH_CLI_VERSION=2.96.0
