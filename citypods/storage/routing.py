@@ -28,6 +28,10 @@ from citypods.storage.base import StorageBackend
 #   - ``work-leases/`` (H17 PR4): the Stage-2 per-item competitive-claim ledger (review/18 §4); each
 #     ``work-leases/<source>/<uid>.json`` is an independent CAS object. Derived/GET by key, never
 #     listed (listing is a Class-A op on R2).
+#   - ``work-leases-index/`` (GH#1018): the bounded active-lease index — a fixed set of
+#     ``work-leases-index/bucket-<NNNN>.json`` CAS objects tracking which leases are currently
+#     claimed, so the reaper sweeps O(active leases) instead of O(backlog). Derived/GET by key,
+#     never listed.
 #   - ``state/asr_worker_telemetry.json`` (H14b/H14c): bounded, non-secret worker memory samples
 #     used by ``asr-worker-report`` and H14d admission tuning. One fixed CAS object avoids listing
 #     a telemetry prefix on R2.
@@ -43,6 +47,7 @@ COORDINATION_PREFIXES: tuple[str, ...] = (
     "state/asr_worker_telemetry.json",
     "state/transcript_quality_ledger.json",
     "work-leases/",
+    "work-leases-index/",
     "provider-leases/",
 )
 
@@ -72,6 +77,10 @@ _EPHEMERAL_R2_PREFIXES: dict[str, str] = {
     # Stage-2 per-item work-lease ledger: a claim token, not a work product. If lost, the item
     # looks unclaimed and is re-derived from the B2 discovery index and re-claimed.
     "work-leases/": "per-item claim tokens; re-derived from the B2 discovery index",
+    "work-leases-index/": (
+        "active-lease index buckets; re-derived from the lease objects (claim authority) via "
+        "the integrity sweep if lost"
+    ),
     # Provider concurrency slots: transient N-fixed CAS objects; a lost slot just frees capacity and
     # is re-created on the next claim. Carries no durable state.
     "provider-leases/": "transient concurrency slots; re-created on next claim",
