@@ -384,6 +384,30 @@ def test_build_status_retained_per_feed_preserves_measured_zero(tmp_path):
     assert status["storage"]["retained_per_feed"] == 0
 
 
+def test_retained_per_feed_reports_metadata_tier_not_audio_cap(tmp_path):
+    # CodeRabbit: retained_per_feed must reflect the real (metadata-tier) record count, not the
+    # audio-capped full_artifact_episodes value used for storage/cost modeling — a source keeping
+    # 10 metadata rows should not be reported as capped down to its 5-record full-artifact tier.
+    from citypods.records import save_records, source_key
+
+    site = {
+        "defaults": {
+            "max_episodes": 2,
+            "full_artifact_episodes": 5,
+            "metadata_retention_episodes": 20,
+            "audio_max_kbps": 96,
+        }
+    }
+    city = _hls_city("many-records")
+    save_records(tmp_path, source_key(city), {f"u{i}": _rec(f"u{i}") for i in range(10)})
+
+    status = build_status([city], site_config=site, state_dir=tmp_path)
+    assert status["storage"]["retained_per_feed"] == 10
+
+    report = build_report([city], site_config=site, state_dir=tmp_path)
+    assert report["retention"]["retained_per_feed"] == 10
+
+
 def test_build_status_direct_extract_audio_counts_as_pending_not_linked(tmp_path):
     """Direct providers become audio backlog when extract_audio is enabled."""
     from citypods.records import save_records, source_key

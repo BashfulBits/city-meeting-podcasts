@@ -488,11 +488,18 @@ def test_materialize_set_selection_unchanged_by_policy():
 def test_feed_visible_first_precedes_active_archive_backfill():
     from citypods.stages import _materialize_set
 
-    # A policy now distinguishes the active 501–2,000 tier from the RSS window.
-    eps = [_ep(f"c{i}", i, body="City Council") for i in range(4)]
+    # Two distinct bodies competing for the wall-clock budget: feed-visible work for BOTH bodies
+    # must precede either body's archive-backfill work — a single pre-sorted body would pass even
+    # if feed_visible_per_body were silently ignored, since it's already newest-first.
+    eps = [
+        _ep("a0", 0, body="City Council"),
+        _ep("a1", 1, body="City Council"),
+        _ep("b0", 0, body="Library Board"),
+        _ep("b1", 1, body="Library Board"),
+    ]
     policy = BacklogPolicy.from_site_config({"backlog_priority": ["feed_visible_first"]}, now=NOW)
-    ordered = _materialize_set(eps, 4, feed_visible_per_body=2, policy=policy)
-    assert [ep.guid for ep in ordered] == ["c0", "c1", "c2", "c3"]
+    ordered = _materialize_set(eps, 2, feed_visible_per_body=1, policy=policy)
+    assert [ep.guid for ep in ordered] == ["a0", "b0", "a1", "b1"]
 
 
 # --------------------------------------------------------------------------------------------

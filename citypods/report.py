@@ -211,6 +211,9 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
     base = ModelInputs(
         episodes_per_feed=int(defaults.get("max_episodes", DEFAULT_MAX_EPISODES)),
         archive_items=int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)),
+        full_artifact_episodes=int(
+            defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)
+        ),
         kbps=int(defaults.get("audio_max_kbps", 96)),
         per_run_cap=int(cap_raw) if cap_raw is not None else None,
     )
@@ -236,19 +239,24 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
     current = project(inputs)
     scenarios = {str(f): at_scale(inputs, f).as_dict() for f in SCALE_SCENARIOS}
 
-    # Retention what-if models the hosted-audio tier; metadata-only records do not carry M4As.
+    # Retention what-if models the hosted-audio tier (candidates/savings); metadata-only records
+    # do not carry M4As, so ratcheting down the audio-capped count is the only real $/mo lever.
     retained = archived_per_feed(inputs)
     candidates = [c for c in (50, 100, 250, 500, 1000, 2000) if c < retained]
+    metadata_retention_episodes = int(
+        defaults.get("metadata_retention_episodes", DEFAULT_METADATA_RETENTION_EPISODES)
+    )
+    # Reported retained-record count must reflect the real metadata tier, not the audio-capped
+    # `retained` above — a source keeping 10,000 metadata rows should not be reported as 2,000.
+    retained_per_feed = archive_items if archive_items is not None else metadata_retention_episodes
     retention = {
         "feed_visible_episodes": int(defaults.get("max_episodes", DEFAULT_MAX_EPISODES)),
         "full_artifact_episodes": int(
             defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)
         ),
-        "metadata_retention_episodes": int(
-            defaults.get("metadata_retention_episodes", DEFAULT_METADATA_RETENTION_EPISODES)
-        ),
+        "metadata_retention_episodes": metadata_retention_episodes,
         "max_archive_age_years": int(defaults.get("max_archive_age_years", 1000)),
-        "retained_per_feed": retained,
+        "retained_per_feed": retained_per_feed,
         "savings": [savings_if_capped(inputs, c) for c in candidates],
     }
 
@@ -1343,6 +1351,9 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     base = ModelInputs(
         episodes_per_feed=int(defaults.get("max_episodes", DEFAULT_MAX_EPISODES)),
         archive_items=int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)),
+        full_artifact_episodes=int(
+            defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)
+        ),
         kbps=max_kbps,
         per_run_cap=int(cap_raw) if cap_raw is not None else None,
     )
@@ -1436,12 +1447,13 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
         round(audio_backlog_total / audio_capacity_per_day, 1) if audio_capacity_per_day else None
     )
 
-    # Storage detail
+    # Storage detail. Falls back to the metadata tier (not the audio-capped full-artifact tier)
+    # so this matches storage.archive_cap below — the real retention ceiling for reported counts.
     ref_keys = len(referenced_audio_keys(Path(state_dir))) if state_dir else None
     retained = (
         archive_items
         if archive_items is not None
-        else int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES))
+        else int(defaults.get("metadata_retention_episodes", DEFAULT_METADATA_RETENTION_EPISODES))
     )
     g_per_ep = gb_per_episode(max_kbps, avg_duration_h)
 

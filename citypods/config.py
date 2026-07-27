@@ -51,6 +51,22 @@ _RETENTION_POLICY_KEYS = frozenset(
 )
 
 
+def _require_retention_int(value: object, *, key: str, source_file: Path) -> int:
+    """Strictly validate one retention-policy count.
+
+    ``int()`` alone silently accepts a malformed policy: ``int(500.9) == 500`` and
+    ``int(True) == 1`` (``bool`` is an ``int`` subclass), either of which would load a
+    production retention limit different from what the operator wrote. Retention values gate
+    real deletion (audio demotion, eventual pruning), so a typo here must fail loudly rather
+    than silently apply a different cap.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{source_file.name}: {key} must be an integer, got {value!r}")
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError(f"{source_file.name}: {key} must be an integer, got {value!r}")
+    return int(value)
+
+
 def _validate_slug_format(slug: str, *, source_file: Path, kind: str) -> None:
     if not _SLUG_RE.match(slug):
         raise ValueError(
@@ -301,9 +317,19 @@ def _build_city(
         }
     )
     try:
-        max_episodes = int(defaults["max_episodes"])
-        full_artifact_episodes = int(defaults["full_artifact_episodes"])
-        metadata_retention_episodes = int(defaults["metadata_retention_episodes"])
+        max_episodes = _require_retention_int(
+            defaults["max_episodes"], key="max_episodes", source_file=source_file
+        )
+        full_artifact_episodes = _require_retention_int(
+            defaults["full_artifact_episodes"],
+            key="full_artifact_episodes",
+            source_file=source_file,
+        )
+        metadata_retention_episodes = _require_retention_int(
+            defaults["metadata_retention_episodes"],
+            key="metadata_retention_episodes",
+            source_file=source_file,
+        )
     except KeyError as exc:
         raise ValueError(
             "config/site_config.yml defaults must define max_episodes, "

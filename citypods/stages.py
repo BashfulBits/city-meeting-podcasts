@@ -753,7 +753,13 @@ class TagsStage:
             evaluation_state = cache["evaluation_state"]
             admission_policy = cache["admission_policy"]
 
-        for ep in _materialize_set(episodes, city.full_artifact_episodes):
+        for ep in _materialize_set(
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+        ):
             llm_route = (
                 f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
                 f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
