@@ -89,7 +89,8 @@ from citypods.records import (
     merge_calendar_records,
     merge_persisted,
     migrate_legacy_manifests,
-    project_retained_archive,
+    project_body_retained_archive,
+    project_calendar_records,
     protected_blocks_for_lane,
     reconcile_cross_feed_episodes,
     record_to_episode,
@@ -153,10 +154,10 @@ from citypods.statesync import (
 from citypods.storage import make_storage
 from citypods.transcript_quality import load_quality_config, load_quality_routes
 
-# Retention caps for the append-only archive (issue #109). These bound source growth; provider
-# observations outside the resulting archive are excluded from enrichment before final persistence
-# applies the identical projection (GH#1025).
-DEFAULT_MAX_ARCHIVE_ITEMS = 5000
+# Retention caps are supplied by config/site_config.yml.  This remains a code fallback only for
+# lightweight direct-call tests and temporary orchestration doubles.
+DEFAULT_FULL_ARTIFACT_EPISODES = 2000
+DEFAULT_METADATA_RETENTION_EPISODES = 10000
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
 _SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
@@ -177,7 +178,8 @@ class SourcePipeline:
         state_dir: Path,
         stages,
         ctx: StageContext,
-        max_archive_items: int = DEFAULT_MAX_ARCHIVE_ITEMS,
+        full_artifact_episodes: int,
+        metadata_retention_episodes: int,
         max_archive_age_years: float = DEFAULT_MAX_ARCHIVE_AGE_YEARS,
         persist_records: bool = True,
         refresh_state: dict[str, dict] | None = None,
@@ -187,7 +189,8 @@ class SourcePipeline:
         self.state_dir = state_dir
         self.stages = stages
         self.ctx = ctx
-        self.max_archive_items = max_archive_items
+        self.full_artifact_episodes = full_artifact_episodes
+        self.metadata_retention_episodes = metadata_retention_episodes
         self.max_archive_age_years = max_archive_age_years
         # One cutoff instant makes prospective planning and every incremental/final persistence
         # checkpoint use an identical age boundary, even during a long-running enrich job.
@@ -476,7 +479,10 @@ class SourcePipeline:
                 )
         persisted_calendar = load_calendar_records(self.state_dir, key)
         assign_uids(city, fresh_calendar)
-        calendar = merge_calendar_records(persisted_calendar, fresh_calendar)
+        calendar = project_calendar_records(
+            merge_calendar_records(persisted_calendar, fresh_calendar),
+            metadata_retention_episodes=self.metadata_retention_episodes,
+        )
         attach_auxiliary_agenda_links(episodes, list(calendar.values()))
         if city.aux_provider or calendar:
             self._calendar_store[key] = calendar
@@ -615,10 +621,11 @@ class SourcePipeline:
         # left the provider window keeps its record + audio. Bounded by the (high) retention
         # caps so it never grows truly unbounded.
         fresh = {ep.uid: episode_to_record(ep) for ep in episodes if ep.uid}
-        combined = project_retained_archive(
+        combined = project_body_retained_archive(
             persisted,
             fresh,
-            max_items=self.max_archive_items,
+            full_artifact_episodes=self.full_artifact_episodes,
+            metadata_retention_episodes=self.metadata_retention_episodes,
             max_age_years=self.max_archive_age_years,
             now=self.retention_now,
         )
@@ -1356,21 +1363,26 @@ def _retained_working_set(
     """Filter fresh observations to the UIDs that final persistence will actually retain.
 
     Keep ``persist_episodes`` intact for the authoritative append→prune write.  Only the list
-    handed to enrichment stages is filtered.  This makes a source-wide retention cap a planning
-    boundary as well as a persistence boundary: an archive overflow row can still be observed and
-    counted cheaply, but cannot consume timeline/audio/ASR work that would be discarded at the end
-    of the same run (GH#1025).
+    handed to enrichment stages is filtered. This makes the body-aware retention policy a planning
+    boundary as well as a persistence boundary: a metadata-only/archive-overflow row can still be
+    observed and counted cheaply, but cannot consume work outside its retained tier.
 
     ``getattr`` defaults keep small test/dry orchestration doubles compatible; production always
     supplies a real :class:`SourcePipeline` with the configured values.
     """
-    max_items = int(getattr(pipeline, "max_archive_items", DEFAULT_MAX_ARCHIVE_ITEMS))
+    full_artifact_episodes = int(
+        getattr(pipeline, "full_artifact_episodes", city.full_artifact_episodes)
+    )
+    metadata_retention_episodes = int(
+        getattr(pipeline, "metadata_retention_episodes", city.metadata_retention_episodes)
+    )
     max_age_years = float(getattr(pipeline, "max_archive_age_years", DEFAULT_MAX_ARCHIVE_AGE_YEARS))
     fresh = {ep.uid: episode_to_record(ep) for ep in persist_episodes if ep.uid}
-    retained = project_retained_archive(
+    retained = project_body_retained_archive(
         persisted,
         fresh,
-        max_items=max_items,
+        full_artifact_episodes=full_artifact_episodes,
+        metadata_retention_episodes=metadata_retention_episodes,
         max_age_years=max_age_years,
         now=getattr(pipeline, "retention_now", None),
     )
@@ -1379,14 +1391,17 @@ def _retained_working_set(
 
     suppressed_rows = sum(1 for ep in persist_episodes if ep.uid and ep.uid not in retained_uids)
     if suppressed_rows:
-        before = _materialize_set(episodes, city.max_episodes)
-        after_uids = {ep.uid or ep.guid for ep in _materialize_set(working, city.max_episodes)}
+        before = _materialize_set(episodes, city.full_artifact_episodes)
+        after_uids = {
+            ep.uid or ep.guid for ep in _materialize_set(working, city.full_artifact_episodes)
+        }
         suppressed_candidates = sum(1 for ep in before if (ep.uid or ep.guid) not in after_uids)
         print(
             f"[enrich] retention plan slug={city.slug} provider={city.provider} "
             f"fetched={len(persist_episodes)} retained={len(retained)} "
             f"suppressed_rows={suppressed_rows} "
-            f"suppressed_candidates={suppressed_candidates} cap={max_items}",
+            f"suppressed_candidates={suppressed_candidates} "
+            f"full_artifacts={full_artifact_episodes} metadata={metadata_retention_episodes}",
             flush=True,
         )
     if filter_dirty and dirty_uids is not None:
@@ -1406,7 +1421,8 @@ def _order_global_candidates(prepared: dict, policy) -> list[tuple[str, Episode]
         city = st["city"]
         for ep in _materialize_set(
             st.get("candidate_episodes", st.get("retained_episodes", st["episodes"])),
-            city.max_episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
             policy=policy,
             city_slug=city.slug,
         ):
@@ -2290,7 +2306,12 @@ def _build_impl(
         state_dir=state_dir,
         stages=stages,
         ctx=ctx,
-        max_archive_items=int(defaults.get("max_archive_items", DEFAULT_MAX_ARCHIVE_ITEMS)),
+        full_artifact_episodes=int(
+            defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)
+        ),
+        metadata_retention_episodes=int(
+            defaults.get("metadata_retention_episodes", DEFAULT_METADATA_RETENTION_EPISODES)
+        ),
         max_archive_age_years=float(
             defaults.get("max_archive_age_years", DEFAULT_MAX_ARCHIVE_AGE_YEARS)
         ),

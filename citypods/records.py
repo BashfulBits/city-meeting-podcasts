@@ -663,7 +663,7 @@ def load_calendar_records(state_dir: Path, src_key: str) -> dict[str, AgendaReco
 def save_calendar_records(
     state_dir: Path, src_key: str, records: Mapping[str, AgendaRecord]
 ) -> None:
-    """Persist all known calendar rows.  This store intentionally has no retention prune."""
+    """Persist the caller's body-retained calendar rows."""
     path = calendar_records_path(state_dir, src_key)
     path.parent.mkdir(parents=True, exist_ok=True)
     serialized = {uid: calendar_record_to_dict(record) for uid, record in records.items()}
@@ -707,6 +707,27 @@ def merge_calendar_records(
             uid=record.uid,
         )
     return merged
+
+
+def project_calendar_records(
+    records: Mapping[str, AgendaRecord], *, metadata_retention_episodes: int
+) -> dict[str, AgendaRecord]:
+    """Keep the newest calendar/document rows per body through the metadata tier.
+
+    Calendar-only rows are public non-audio history, so leaving this side store unbounded would
+    violate the same retention policy used for episode records.
+    """
+    if metadata_retention_episodes <= 0:
+        raise ValueError("metadata_retention_episodes must be positive")
+    grouped: dict[str, list[tuple[str, AgendaRecord]]] = {}
+    for uid, record in records.items():
+        key = body_key(canonical_body(record.body or ""))
+        grouped.setdefault(key, []).append((uid, record))
+    retained: dict[str, AgendaRecord] = {}
+    for values in grouped.values():
+        values.sort(key=lambda item: (item[1].published, item[0]), reverse=True)
+        retained.update(values[:metadata_retention_episodes])
+    return retained
 
 
 def estimate_audio_shard_work(
@@ -1433,6 +1454,70 @@ def project_retained_archive(
         max_age_years=max_age_years,
         now=now,
     )
+
+
+def project_body_retained_archive(
+    persisted: dict,
+    fresh: dict,
+    *,
+    full_artifact_episodes: int,
+    metadata_retention_episodes: int,
+    max_age_years: float,
+    now=None,
+) -> dict:
+    """Merge and retain a shared source archive by *body*, not source-wide.
+
+    A single provider listing commonly supplies a combined feed plus many board feeds.
+    Retention must therefore be calculated independently for each canonical body and the
+    surviving sets unioned in the one source record store.  The newest
+    ``full_artifact_episodes`` per body retain hosted audio; the remainder through
+    ``metadata_retention_episodes`` keep the durable record and every non-audio artifact.
+    Audio keys intentionally disappear from the latter tier so normal orphan GC reclaims
+    their objects after its safety window.
+    """
+    if not (0 < full_artifact_episodes <= metadata_retention_episodes):
+        raise ValueError("require 0 < full_artifact_episodes <= metadata_retention_episodes")
+    now = now or datetime.now(UTC)
+    cutoff = now.timestamp() - max_age_years * 365.25 * 86400
+
+    def _ts(rec: dict) -> float | None:
+        published = rec.get("published")
+        if not published:
+            return None
+        try:
+            return datetime.fromisoformat(published).timestamp()
+        except ValueError:
+            return None
+
+    grouped: dict[str, list[tuple[str, dict]]] = {}
+    for uid, record in merge_records(persisted, fresh).items():
+        timestamp = _ts(record)
+        # Match the existing fail-safe age semantics: undated records survive the age gate.
+        if timestamp is not None and timestamp < cutoff:
+            continue
+        key = body_key(canonical_body(str(record.get("body") or "")))
+        grouped.setdefault(key, []).append((uid, record))
+
+    retained: dict[str, dict] = {}
+    for records in grouped.values():
+        records.sort(
+            key=lambda item: (
+                _ts(item[1]) is not None,
+                _ts(item[1]) or 0.0,
+                item[0],
+            ),
+            reverse=True,
+        )
+        for rank, (uid, record) in enumerate(records):
+            if rank >= metadata_retention_episodes:
+                break
+            # Do not mutate an input record: the fresh episode mapping can be reused during
+            # incremental persistence in another lane.
+            kept = copy.deepcopy(record)
+            if rank >= full_artifact_episodes:
+                kept.pop("audio", None)
+            retained[uid] = kept
+    return retained
 
 
 # --- cross-lane write isolation (review/12 §H6) ----------------------------------------

@@ -131,6 +131,8 @@ def test_source_pipeline_skips_full_fetch_for_unchanged_validator(tmp_path):
             state_dir=state_dir,
             stages=[],
             ctx=StageContext(storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None),
+            full_artifact_episodes=2000,
+            metadata_retention_episodes=10000,
             refresh_state=state,
         )
         key = source_key(city)

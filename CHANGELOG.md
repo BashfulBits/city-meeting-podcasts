@@ -17,6 +17,8 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Body-aware three-tier retention and gradual archive backfill** ([review/39](review/39-body-aware-tiered-retention.md)). All feeds now inherit 500 RSS-visible episodes per body, retain hosted audio and every artifact through 2,000 per body, and retain metadata plus non-audio artifacts through 10,000 per body. The shared source record store contains the union of body windows, preventing active boards from evicting quieter ones; audio is removed only from the metadata-only tier and reclaimed through normal orphan GC. Feed-visible work is prioritized before bounded 501–2,000 backfill under the existing wall-clock budget. No pipeline-version bump or forced re-encode is introduced; pre-existing artifacts remain valid and the deeper cohort fills gradually.
+
 - **`compute reconcile`'s Stage-2 work-lease sweep now costs `O(active leases)`, not `O(backlog)`**
   ([GH#1018](https://github.com/BashfulBits/city-meeting-podcasts/issues/1018), child of
   [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)). The prior

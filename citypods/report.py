@@ -204,7 +204,8 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
     defaults = site_config.get("defaults", {})
     cap_raw = defaults.get("materialize_budget_per_run")
     base = ModelInputs(
-        episodes_per_feed=int(defaults.get("max_episodes", 50)),
+        episodes_per_feed=int(defaults.get("max_episodes", 500)),
+        archive_items=int(defaults.get("full_artifact_episodes", 2000)),
         kbps=int(defaults.get("audio_max_kbps", 96)),
         per_run_cap=int(cap_raw) if cap_raw is not None else None,
     )
@@ -213,17 +214,20 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
         cities,
         run_history=history,
         hosted_feeds=round(_hosted_fraction(cities) * len(cities)) if cities else None,
-        archive_items=_measured_archive_items(cities, state_dir),
+        # The storage model estimates hosted-audio cost, not the much smaller metadata tier.
+        archive_items=int(defaults.get("full_artifact_episodes", 2000)),
         base=base,
     )
     current = project(inputs)
     scenarios = {str(f): at_scale(inputs, f).as_dict() for f in SCALE_SCENARIOS}
 
-    # Retention what-if (issue #109): how much B2 $/mo ratcheting the archive cap down would free.
+    # Retention what-if models the hosted-audio tier; metadata-only records do not carry M4As.
     retained = archived_per_feed(inputs)
     candidates = [c for c in (50, 100, 250, 500, 1000, 2000) if c < retained]
     retention = {
-        "max_archive_items": int(defaults.get("max_archive_items", 5000)),
+        "feed_visible_episodes": int(defaults.get("max_episodes", 500)),
+        "full_artifact_episodes": int(defaults.get("full_artifact_episodes", 2000)),
+        "metadata_retention_episodes": int(defaults.get("metadata_retention_episodes", 10000)),
         "max_archive_age_years": int(defaults.get("max_archive_age_years", 1000)),
         "retained_per_feed": retained,
         "savings": [savings_if_capped(inputs, c) for c in candidates],
@@ -286,8 +290,10 @@ def to_markdown(report: dict) -> str:
     ret = report.get("retention")
     if ret:
         line = (
-            f"- **Archive retention:** ~{ret['retained_per_feed']} recordings/feed "
-            f"(total÷feeds; cap {ret['max_archive_items']}, ≤{ret['max_archive_age_years']}y)"
+            f"- **Retention:** {ret['feed_visible_episodes']} published, "
+            f"{ret['full_artifact_episodes']} with audio/all artifacts, "
+            f"{ret['metadata_retention_episodes']} metadata/non-audio artifacts per body "
+            f"(≤{ret['max_archive_age_years']}y)"
         )
         if ret["savings"]:
             best = max(ret["savings"], key=lambda s: s["monthly_cost_delta"])
@@ -1316,18 +1322,26 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
 
     cap_raw = defaults.get("materialize_budget_per_run")
     base = ModelInputs(
-        episodes_per_feed=int(defaults.get("max_episodes", 50)),
+        episodes_per_feed=int(defaults.get("max_episodes", 500)),
+        archive_items=int(defaults.get("full_artifact_episodes", 2000)),
         kbps=max_kbps,
         per_run_cap=int(cap_raw) if cap_raw is not None else None,
     )
     # CR2-CP-33: computed once and reused below (`retained`) — each call re-reads and re-parses
     # every source's episodes.json from disk via load_records.
+    # Keep the actual retained-record count for status (including a real zero on a fresh state),
+    # but model hosted-audio cost only through the full-artifact tier.
     archive_items = _measured_archive_items(cities, state_dir)
+    audio_archive_items = (
+        min(archive_items, int(defaults.get("full_artifact_episodes", 2000)))
+        if archive_items is not None
+        else int(defaults.get("full_artifact_episodes", 2000))
+    )
     inputs = measured_inputs(
         cities,
         run_history=history,
         hosted_feeds=round(_hosted_fraction(cities) * len(cities)) if cities else None,
-        archive_items=archive_items,
+        archive_items=audio_archive_items,
         base=base,
     )
     proj = project(inputs)
@@ -1402,7 +1416,11 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
 
     # Storage detail
     ref_keys = len(referenced_audio_keys(Path(state_dir))) if state_dir else None
-    retained = archive_items if archive_items is not None else int(defaults.get("max_episodes", 50))
+    retained = (
+        archive_items
+        if archive_items is not None
+        else int(defaults.get("full_artifact_episodes", 2000))
+    )
     g_per_ep = gb_per_episode(max_kbps, avg_duration_h)
 
     # Oldest publication year across all records — used by the age-cap what-if slider.
@@ -1543,7 +1561,8 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "gb_stored": gb_stored,
             "gb_exact": gb_exact,
             "monthly_cost_usd": monthly_cost,
-            "archive_cap": int(defaults.get("max_archive_items", 5000)),
+            "archive_cap": int(defaults.get("metadata_retention_episodes", 10000)),
+            "full_artifact_cap": int(defaults.get("full_artifact_episodes", 2000)),
             "archive_age_years": int(defaults.get("max_archive_age_years", 1000)),
             "retained_per_feed": retained,
             "gb_per_ep": round(g_per_ep, 5),

@@ -322,7 +322,14 @@ class City:
     meetings_url: str | None = None
     podcast_language: str = "en-us"
     podcast_category: str = "Government"
-    max_episodes: int = 50
+    # The recent window published in RSS and shown on the feed landing page.
+    max_episodes: int = 500
+    # Retention is deliberately deeper than the RSS window.  The first tier keeps
+    # every artifact, including hosted audio; the second retains the record and
+    # non-audio artifacts only.  Both limits are applied per canonical body in a
+    # shared source archive (never source-wide).
+    full_artifact_episodes: int = 2000
+    metadata_retention_episodes: int = 10000
     extract_audio: bool = False
     # body substrings to skip when generating per-board feeds
     body_exclude: list[str] = field(default_factory=list)

@@ -110,6 +110,7 @@ provider_transport_telemetry_domains:
 # then fall to the default order. `long_first` never reorders `audio`, and the local ASR lane simply
 # defers the floated >4h items at preflight (cheap, pre-download) — see workqueue.DURATION_AWARE_*.
 backlog_priority:
+  - feed_visible_first                    # publish the 500-episode RSS window before archive backfill
   - long_first: 4                          # >4h transcript work first (== asr_local_max_duration_hours)
   - recency: {order: desc, within_days: 30}
 # city_order: [denton-tx, dallas-tx]       # explicit city ranking (unset today)
@@ -127,13 +128,14 @@ defaults:
   search_index_budget_minutes: 20
   podcast_language: "en-us"
   podcast_category: "Government"
-  max_episodes: 500                      # how many episodes a FEED renders (display cap)
-  # Append-only archive retention (issue #109). The archive keeps every meeting we've ever seen
-  # — even after it drops off the provider's window — so content + audio are never silently lost.
-  # These caps bound that growth. Provider inventory beyond the cap is still observed, but is
-  # excluded from enrichment before the same merge→prune policy is applied at persistence. Ratchet
-  # them DOWN to reclaim storage (the admin/usage report shows the $/mo cost of keeping old audio).
-  max_archive_items: 5000                # max records RETAINED per source (newest kept)
+  # Retention is body-aware even where several body feeds share one provider source.
+  # 500 records are published in RSS; the next 1,500 remain hosted with all derived artifacts;
+  # the next 8,000 retain metadata/documents/transcripts but not hosted audio. A source's durable
+  # archive is the union of these windows across its bodies, so an active body cannot evict a
+  # quieter body's history.
+  max_episodes: 500                      # published RSS + main feed-page records per body
+  full_artifact_episodes: 2000           # hosted audio + all artifacts retained per body
+  metadata_retention_episodes: 10000     # metadata + non-audio artifacts retained per body
   max_archive_age_years: 1000            # drop records older than this many years
   extract_audio: true                    # re-host audio for direct (Granicus) sources as M4A
   audio_storage_backend: "routing"       # "local" | "b2" | "r2" | "routing"
