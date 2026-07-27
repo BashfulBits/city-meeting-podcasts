@@ -27,6 +27,14 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*['\"]?([^'\"\s#]+)['\"]?")
 SHA_PINNED_RE = re.compile(r"^[^@]+@[0-9a-f]{40}$")
 
+# A same-repo action referenced via the self-fetching form (needed by jobs with no
+# actions/checkout step -- a local ./ ref can't resolve without one), pinned to the exact
+# commit under test. This can't drift the way a third-party @<tag> can: the content that
+# runs is this commit, full stop. Only exempt this exact repo+ref pairing, not any owner/repo@ref.
+SELF_REF_RE = re.compile(
+    r"^\$\{\{\s*github\.repository\s*\}\}/.+@\$\{\{\s*github\.sha\s*\}\}$"
+)
+
 
 def check_pinned_actions() -> list[str]:
     problems: list[str] = []
@@ -41,6 +49,8 @@ def check_pinned_actions() -> list[str]:
             ref = m.group(1)
             if ref.startswith("./") or ref.startswith("docker://") and "@sha256:" in ref:
                 continue  # local action or digest-pinned container
+            if SELF_REF_RE.match(ref):
+                continue  # same-repo action pinned to the exact commit under test
             if not SHA_PINNED_RE.match(ref):
                 rel = wf.relative_to(ROOT)
                 problems.append(f"{rel}:{lineno}: not SHA-pinned -> uses: {ref}")

@@ -419,7 +419,9 @@ def test_asr_quality_ingest_schedule_fallback_scans_open_children():
     # Native GitHub hierarchy, rather than the retired body-text convention. The query comes
     # directly from each parent, so issue numbers such as #5/#50 cannot collide.
     assert "--json subIssues" in close_parent["run"]
-    assert ".subIssues[]" in close_parent["run"]
+    # gh's --json subIssues returns a GraphQL connection object ({nodes, totalCount}), not a
+    # flat array -- see constraints/gh-cli.txt for the 2026-07-27 incident this was fixed from.
+    assert ".subIssues.nodes[]" in close_parent["run"]
     assert "Parent issue: #" not in close_parent["run"]
 
 
