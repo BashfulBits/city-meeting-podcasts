@@ -15,6 +15,12 @@ from citypods.timeline import SourceMedia, Timeline
 if TYPE_CHECKING:
     from citypods.availability import MediaAvailability
 
+# Single source of truth for the body-aware tiered retention policy (review/39). config.py,
+# run.py, and report.py all import these rather than re-declaring the same three integers.
+DEFAULT_MAX_EPISODES = 500
+DEFAULT_FULL_ARTIFACT_EPISODES = 2000
+DEFAULT_METADATA_RETENTION_EPISODES = 10000
+
 
 @dataclass(frozen=True)
 class FeedLifecycle:
@@ -322,7 +328,14 @@ class City:
     meetings_url: str | None = None
     podcast_language: str = "en-us"
     podcast_category: str = "Government"
-    max_episodes: int = 50
+    # The recent window published in RSS and shown on the feed landing page.
+    max_episodes: int = DEFAULT_MAX_EPISODES
+    # Retention is deliberately deeper than the RSS window.  The first tier keeps
+    # every artifact, including hosted audio; the second retains the record and
+    # non-audio artifacts only.  Both limits are applied per canonical body in a
+    # shared source archive (never source-wide).
+    full_artifact_episodes: int = DEFAULT_FULL_ARTIFACT_EPISODES
+    metadata_retention_episodes: int = DEFAULT_METADATA_RETENTION_EPISODES
     extract_audio: bool = False
     # body substrings to skip when generating per-board feeds
     body_exclude: list[str] = field(default_factory=list)

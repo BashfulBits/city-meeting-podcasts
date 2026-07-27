@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Literal
 
 from citypods.availability import MediaAvailability
-from citypods.bodies import body_key, canonical_body
+from citypods.bodies import body_key, canonical_body, rank_by_body
 from citypods.chapters import episode_served_chapters
 from citypods.durations import (
     episode_duration_hours,
@@ -663,7 +663,7 @@ def load_calendar_records(state_dir: Path, src_key: str) -> dict[str, AgendaReco
 def save_calendar_records(
     state_dir: Path, src_key: str, records: Mapping[str, AgendaRecord]
 ) -> None:
-    """Persist all known calendar rows.  This store intentionally has no retention prune."""
+    """Persist the caller's body-retained calendar rows."""
     path = calendar_records_path(state_dir, src_key)
     path.parent.mkdir(parents=True, exist_ok=True)
     serialized = {uid: calendar_record_to_dict(record) for uid, record in records.items()}
@@ -707,6 +707,24 @@ def merge_calendar_records(
             uid=record.uid,
         )
     return merged
+
+
+def project_calendar_records(
+    records: Mapping[str, AgendaRecord], *, metadata_retention_episodes: int
+) -> dict[str, AgendaRecord]:
+    """Keep the newest calendar/document rows per body through the metadata tier.
+
+    Calendar-only rows are public non-audio history, so leaving this side store unbounded would
+    violate the same retention policy used for episode records.
+    """
+    if metadata_retention_episodes <= 0:
+        raise ValueError("metadata_retention_episodes must be positive")
+    retained: dict[str, AgendaRecord] = {}
+    for items in rank_by_body(
+        records.items(), body_of=lambda kv: kv[1].body, published_of=lambda kv: kv[1].published
+    ):
+        retained.update(items[:metadata_retention_episodes])
+    return retained
 
 
 def estimate_audio_shard_work(
@@ -1403,6 +1421,26 @@ def record_to_episode(rec: dict) -> Episode:
     )
 
 
+def _record_timestamp(rec: dict) -> float | None:
+    """Parse a record's ``published`` into a timestamp; ``None`` for missing/unparseable dates.
+
+    Shared by every age-based retention boundary (``prune_archive``,
+    ``project_body_retained_archive``) so "undated records are fail-safe, never aged out" stays
+    one rule instead of two independently maintained closures.
+    """
+    published = rec.get("published")
+    if not published:
+        return None
+    try:
+        return datetime.fromisoformat(published).timestamp()
+    except ValueError:
+        return None
+
+
+def _age_cutoff(max_age_years: float, now: datetime) -> float:
+    return now.timestamp() - max_age_years * 365.25 * 86400
+
+
 def merge_records(persisted: dict, fresh: dict) -> dict:
     """Append-only merge of the record store: keep every previously-known episode and let a
     freshly-fetched record win on a uid collision (fresh provider fields + re-enriched
@@ -1433,6 +1471,55 @@ def project_retained_archive(
         max_age_years=max_age_years,
         now=now,
     )
+
+
+def project_body_retained_archive(
+    persisted: dict,
+    fresh: dict,
+    *,
+    full_artifact_episodes: int,
+    metadata_retention_episodes: int,
+    max_age_years: float,
+    now=None,
+) -> dict:
+    """Merge and retain a shared source archive by *body*, not source-wide.
+
+    A single provider listing commonly supplies a combined feed plus many board feeds.
+    Retention must therefore be calculated independently for each canonical body and the
+    surviving sets unioned in the one source record store.  The newest
+    ``full_artifact_episodes`` per body retain hosted audio; the remainder through
+    ``metadata_retention_episodes`` keep the durable record and every non-audio artifact.
+    Audio keys intentionally disappear from the latter tier so normal orphan GC reclaims
+    their objects after its safety window.
+    """
+    if not (0 < full_artifact_episodes <= metadata_retention_episodes):
+        raise ValueError("require 0 < full_artifact_episodes <= metadata_retention_episodes")
+    now = now or datetime.now(UTC)
+    cutoff = _age_cutoff(max_age_years, now)
+
+    survivors = [
+        (uid, record)
+        for uid, record in merge_records(persisted, fresh).items()
+        # Match the existing fail-safe age semantics: undated records survive the age gate.
+        if (timestamp := _record_timestamp(record)) is None or timestamp >= cutoff
+    ]
+
+    retained: dict[str, dict] = {}
+    for items in rank_by_body(
+        survivors,
+        body_of=lambda kv: kv[1].get("body"),
+        published_of=lambda kv: _record_timestamp(kv[1]),
+    ):
+        for rank, (uid, record) in enumerate(items):
+            if rank >= metadata_retention_episodes:
+                break
+            # Do not mutate an input record: the fresh episode mapping can be reused during
+            # incremental persistence in another lane.
+            kept = copy.deepcopy(record)
+            if rank >= full_artifact_episodes:
+                kept.pop("audio", None)
+            retained[uid] = kept
+    return retained
 
 
 # --- cross-lane write isolation (review/12 §H6) ----------------------------------------
@@ -1691,23 +1778,20 @@ def prune_archive(records: dict, *, max_items: int, max_age_years: float, now=No
     an unparseable ``published`` are exempt from age pruning (fail safe — never age out content we
     can't date), but still participate in the source-wide item cap."""
     now = now or datetime.now(UTC)
-    cutoff = now.timestamp() - max_age_years * 365.25 * 86400
+    cutoff = _age_cutoff(max_age_years, now)
 
-    def _ts(rec: dict) -> float | None:
-        published = rec.get("published")
-        if not published:
-            return None
-        try:
-            return datetime.fromisoformat(published).timestamp()
-        except ValueError:
-            return None
-
-    kept = {uid: rec for uid, rec in records.items() if (_ts(rec) is None or _ts(rec) >= cutoff)}
+    kept = {
+        uid: rec
+        for uid, rec in records.items()
+        if (timestamp := _record_timestamp(rec)) is None or timestamp >= cutoff
+    }
     if len(kept) <= max_items:
         return kept
     # Keep the newest max_items; undated records sort last (kept only if room remains).
     ordered = sorted(
-        kept.items(), key=lambda kv: (_ts(kv[1]) is not None, _ts(kv[1]) or 0.0), reverse=True
+        kept.items(),
+        key=lambda kv: (_record_timestamp(kv[1]) is not None, _record_timestamp(kv[1]) or 0.0),
+        reverse=True,
     )
     return dict(ordered[:max_items])
 

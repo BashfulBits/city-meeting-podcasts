@@ -378,7 +378,8 @@ function renderBacklog(){
     <div>Audio backlog estimate: ${B.audio_backlog?.total??B.pending} ep(s) → ${B.audio_backlog?.estimated_days??'—'} day(s) at current budget</div>
   </div>
   <div style="margin-top:.6rem;font-size:.85rem">
-    <div><strong>Current actionable work-list by artifact</strong> (feed-visible): <strong>${B.work_pending??0}</strong> queued</div>
+    <div><strong>Current actionable work-list by artifact:</strong> <strong>${B.work_pending??0}</strong> feed-visible queued
+      · <strong>${B.archive_backfill_pending??0}</strong> archive-backfill (501–2,000, active) queued</div>
     ${wcRows}
     <div class="muted" style="font-size:.75rem;margin-top:.3rem">
       Alignment-disabled: ${B.alignment_disabled??0} · Deep-archive (inert, not worked today): ${B.deep_archive_items??0}

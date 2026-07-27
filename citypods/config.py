@@ -8,7 +8,13 @@ from pathlib import Path
 
 import yaml
 
-from citypods.models import City, FeedLifecycle
+from citypods.models import (
+    DEFAULT_FULL_ARTIFACT_EPISODES,
+    DEFAULT_MAX_EPISODES,
+    DEFAULT_METADATA_RETENTION_EPISODES,
+    City,
+    FeedLifecycle,
+)
 from citypods.ops.workqueue import BacklogPolicy
 from citypods.providers import get_provider
 from citypods.security import validate_city_sources, validate_source_url
@@ -35,6 +41,30 @@ _SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _EPISODE_UID_RE = re.compile(r"^[0-9a-f]{16}$")
 _LIFECYCLE_STATUSES = frozenset({"active", "paused", "dormant", "retired"})
+_RETENTION_POLICY_KEYS = frozenset(
+    {
+        "max_episodes",
+        "full_artifact_episodes",
+        "metadata_retention_episodes",
+        "max_archive_items",
+    }
+)
+
+
+def _require_retention_int(value: object, *, key: str, source_file: Path) -> int:
+    """Strictly validate one retention-policy count.
+
+    ``int()`` alone silently accepts a malformed policy: ``int(500.9) == 500`` and
+    ``int(True) == 1`` (``bool`` is an ``int`` subclass), either of which would load a
+    production retention limit different from what the operator wrote. Retention values gate
+    real deletion (audio demotion, eventual pruning), so a typo here must fail loudly rather
+    than silently apply a different cap.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{source_file.name}: {key} must be an integer, got {value!r}")
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError(f"{source_file.name}: {key} must be an integer, got {value!r}")
+    return int(value)
 
 
 def _validate_slug_format(slug: str, *, source_file: Path, kind: str) -> None:
@@ -151,6 +181,11 @@ def _parse_lifecycle(raw: object, *, source_file: Path) -> FeedLifecycle:
 def load_site_config(path: str | Path) -> dict:
     data = yaml.safe_load(Path(path).read_text()) or {}
     data.setdefault("defaults", {})
+    # Compatibility defaults keep small/local site configs usable. The repository's production
+    # policy is declared explicitly in config/site_config.yml; feed files can never override it.
+    data["defaults"].setdefault("max_episodes", DEFAULT_MAX_EPISODES)
+    data["defaults"].setdefault("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)
+    data["defaults"].setdefault("metadata_retention_episodes", DEFAULT_METADATA_RETENTION_EPISODES)
     # Search is a site-wide render feature, not a per-feed provider setting.  Keep the opt-out
     # explicit so a deployment that disables it also has a deterministic default.
     data["defaults"].setdefault("search", True)
@@ -189,6 +224,16 @@ def load_entity_configs(entities_dir: str | Path) -> dict[str, dict]:
 def _build_city(
     raw: dict, defaults: dict, source_file: Path, entities: dict[str, dict] | None = None
 ) -> City:
+    # Retention is deliberately a single site policy, not a feed setting.  A shared provider
+    # source is projected independently by body, so a feed-local cap would be both misleading
+    # and incapable of changing the source-level persistence behavior.  Fail old configuration
+    # loudly rather than letting a legacy 25/50 limit shadow the global policy.
+    legacy_retention_keys = sorted(_RETENTION_POLICY_KEYS & set(raw))
+    if legacy_retention_keys:
+        raise ValueError(
+            f"{source_file.name}: retention is configured only in config/site_config.yml "
+            f"defaults; remove feed-level {', '.join(legacy_retention_keys)}"
+        )
     missing = [k for k in REQUIRED_CITY_KEYS if not raw.get(k)]
     missing += [k for k in PRESENT_BUT_MAY_BE_BLANK if k not in raw]
     if missing:
@@ -258,7 +303,6 @@ def _build_city(
             "meetings_url",
             "podcast_language",
             "podcast_category",
-            "max_episodes",
             "extract_audio",
             "body_exclude",
             "colors",
@@ -272,6 +316,31 @@ def _build_city(
             "asr_alignment_enabled",
         }
     )
+    try:
+        max_episodes = _require_retention_int(
+            defaults["max_episodes"], key="max_episodes", source_file=source_file
+        )
+        full_artifact_episodes = _require_retention_int(
+            defaults["full_artifact_episodes"],
+            key="full_artifact_episodes",
+            source_file=source_file,
+        )
+        metadata_retention_episodes = _require_retention_int(
+            defaults["metadata_retention_episodes"],
+            key="metadata_retention_episodes",
+            source_file=source_file,
+        )
+    except KeyError as exc:
+        raise ValueError(
+            "config/site_config.yml defaults must define max_episodes, "
+            "full_artifact_episodes, and metadata_retention_episodes"
+        ) from exc
+    if not (0 < max_episodes <= full_artifact_episodes <= metadata_retention_episodes):
+        raise ValueError(
+            f"{source_file.name}: require 0 < max_episodes <= full_artifact_episodes "
+            "<= metadata_retention_episodes"
+        )
+
     return City(
         slug=raw["slug"],
         provider=raw["provider"],
@@ -291,7 +360,9 @@ def _build_city(
         meetings_url=_get("meetings_url"),
         podcast_language=_get("podcast_language", defaults.get("podcast_language", "en-us")),
         podcast_category=_get("podcast_category", defaults.get("podcast_category", "Government")),
-        max_episodes=int(_get("max_episodes", defaults.get("max_episodes", 50))),
+        max_episodes=max_episodes,
+        full_artifact_episodes=full_artifact_episodes,
+        metadata_retention_episodes=metadata_retention_episodes,
         extract_audio=bool(_get("extract_audio", defaults.get("extract_audio", False))),
         body_exclude=list(_get("body_exclude", defaults.get("body_exclude", []))),
         colors=[str(c) for c in _get("colors", [])],
@@ -320,6 +391,14 @@ RESERVED_PUBLIC_DIRS = {"audio", "assets", "data", "search", "static", ".git"}
 def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
     """Load every feed from ``config/feeds/*.yml``, merging entity fields from
     ``config/cities/*.yml`` (referenced per feed via the ``city:`` key)."""
+    # Direct library callers historically passed an empty defaults mapping. Preserve that API
+    # while keeping the repository's actual policy explicit in site_config.yml.
+    defaults = {
+        "max_episodes": DEFAULT_MAX_EPISODES,
+        "full_artifact_episodes": DEFAULT_FULL_ARTIFACT_EPISODES,
+        "metadata_retention_episodes": DEFAULT_METADATA_RETENTION_EPISODES,
+        **defaults,
+    }
     config_dir = Path(config_dir)
     feeds_dir = config_dir / "feeds"
     entities = load_entity_configs(config_dir / "cities")

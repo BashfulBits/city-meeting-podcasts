@@ -151,15 +151,16 @@ configured city entity are assigned to one shard. Within that process, `AudioArt
 identical `(provider, stable uid, audio recipe)` candidates: one alias encodes or reuses the artifact
 and every other source-local record adopts that single CAS pointer (GH#421).
 
-Source archive retention is also a planning boundary, not merely an end-of-run cleanup (GH#1025).
-Before any document, timeline, audio, or ASR stage is planned, `project_retained_archive()` applies the
-same deterministic `merge_records()` → `prune_archive()` operation used by `persist_source()`. Only
-fresh observations whose stable UIDs survive that projection enter enrichment; the complete provider
-observation set remains available for cheap counts and the authoritative append/prune write. This
-prevents archive-first providers from repeatedly downloading and crediting an old content-addressed
-artifact that the same run would immediately discard. Normal repair flags do not bypass retention;
-raising the source cap is the explicit way to make an excluded row eligible again. No audio, ASR, or
-other output recipe changed, so this boundary creates no artifact backfill.
+Source archive retention is also a planning boundary, not merely an end-of-run cleanup. The canonical
+source store is shared by combined and per-board feeds, but `project_body_retained_archive()` ranks
+records independently by canonical body and unions their survivors: 500 are RSS-visible, the newest
+2,000 retain audio and every artifact, and the next 8,000 retain metadata/non-audio artifacts only.
+Before any document, timeline, audio, or ASR stage is planned, the same merge → age-filter → body-tier
+projection used by `persist_source()` filters observations. The active 501–2,000 cohort backfills under
+the normal wall-clock budget after feed-visible work; the 2,001–10,000 cohort never enters expensive
+work and has its audio block removed, allowing normal orphan GC to reclaim that audio while preserving
+transcript/document history. This prevents one busy board from evicting another from a shared provider
+archive and prevents archive-first providers from repeatedly processing rows that cannot survive.
 
 Unchanged-episode scheduling is a second, independent boundary (GH#1013). Each `Episode` persists a
 `stage_completion` map keyed by stage name. Every terminal marker contains the stage version,

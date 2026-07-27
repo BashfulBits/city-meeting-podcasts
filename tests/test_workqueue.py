@@ -485,13 +485,36 @@ def test_materialize_set_selection_unchanged_by_policy():
     assert len(base) == 2
 
 
+def test_feed_visible_first_precedes_active_archive_backfill():
+    from citypods.stages import _materialize_set
+
+    # Two distinct bodies competing for the wall-clock budget: feed-visible work for BOTH bodies
+    # must precede either body's archive-backfill work — a single pre-sorted body would pass even
+    # if feed_visible_per_body were silently ignored, since it's already newest-first.
+    eps = [
+        _ep("a0", 0, body="City Council"),
+        _ep("a1", 1, body="City Council"),
+        _ep("b0", 0, body="Library Board"),
+        _ep("b1", 1, body="Library Board"),
+    ]
+    policy = BacklogPolicy.from_site_config({"backlog_priority": ["feed_visible_first"]}, now=NOW)
+    ordered = _materialize_set(eps, 2, feed_visible_per_body=1, policy=policy)
+    assert [ep.guid for ep in ordered] == ["a0", "b0", "a1", "b1"]
+
+
 # --------------------------------------------------------------------------------------------
 # Manifest derivation (build_manifest / manifest_counts)
 # --------------------------------------------------------------------------------------------
 
 
 def _city(
-    slug, *, max_episodes=50, extract_audio=False, asr_enabled=True, asr_alignment_enabled=False
+    slug,
+    *,
+    max_episodes=50,
+    full_artifact_episodes=2000,
+    extract_audio=False,
+    asr_enabled=True,
+    asr_alignment_enabled=False,
 ):
     return City(
         slug=slug,
@@ -502,6 +525,7 @@ def _city(
         podcast_email="",
         podcast_description="d",
         max_episodes=max_episodes,
+        full_artifact_episodes=full_artifact_episodes,
         extract_audio=extract_audio,
         asr_enabled=asr_enabled,
         asr_alignment_enabled=asr_alignment_enabled,
@@ -760,11 +784,12 @@ def test_build_manifest_no_transcript_when_asr_disabled():
 
 def test_build_manifest_deep_archive_beyond_cap():
     recs = {f"u{i}": _rec(i, hosted=True, body="City Council") for i in range(5)}
-    items = build_manifest([("s", _city("d", max_episodes=2), recs)])
+    items = build_manifest([("s", _city("d", max_episodes=2, full_artifact_episodes=3), recs)])
     audio = {it.episode_uid: it for it in items if it.work_class == "audio"}
     assert audio["u0"].priority_bucket == BUCKET_FEED_VISIBLE
     assert audio["u1"].priority_bucket == BUCKET_FEED_VISIBLE
-    assert audio["u2"].priority_bucket == BUCKET_DEEP_ARCHIVE
+    assert audio["u2"].priority_bucket == "recent_archive"
+    assert audio["u3"].priority_bucket == BUCKET_DEEP_ARCHIVE
     assert audio["u4"].priority_bucket == BUCKET_DEEP_ARCHIVE
 
 
@@ -867,14 +892,20 @@ def test_manifest_counts():
     assert counts["alignment_disabled"] == 1
     # queued only — alignment-disabled is NOT counted as actionable backlog
     assert counts["feed_visible_pending"] == 2
+    assert counts["archive_backfill_pending"] == 0
     assert counts["deep_archive_items"] == 0
 
 
 def test_manifest_counts_deep_archive_excluded_from_actionable():
     recs = {f"u{i}": _rec(i, hosted=False, media_kind="hls") for i in range(4)}
-    counts = manifest_counts(build_manifest([("s", _city("d", max_episodes=2), recs)]))
-    assert counts["feed_visible_pending"] == 2  # only the newest 2 are actionable
-    assert counts["deep_archive_items"] == 2
+    counts = manifest_counts(
+        build_manifest([("s", _city("d", max_episodes=2, full_artifact_episodes=3), recs)])
+    )
+    # feed-visible (ranks 0-1) and archive backfill (rank 2) are both actionable, but counted
+    # separately so `feed_visible_pending` keeps meaning exactly what its name says.
+    assert counts["feed_visible_pending"] == 2
+    assert counts["archive_backfill_pending"] == 1
+    assert counts["deep_archive_items"] == 1
 
 
 # --------------------------------------------------------------------------------------------

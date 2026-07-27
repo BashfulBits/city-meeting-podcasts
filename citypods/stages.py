@@ -28,7 +28,7 @@ push or the next cron takes over without hard-cancelling the in-flight Pages dep
 canonical shape for a stage that does expensive per-item work (encode, transcription,
 translation, summarization, any multi-second ASR/LLM/network/CPU job) is::
 
-    for ep in _materialize_set(episodes, city.max_episodes):
+    for ep in _materialize_set(episodes, city.full_artifact_episodes):
         if <already done for ep>:                 # cheap, idempotent — NOT gated by stop
             stats.reused += 1
             continue
@@ -85,7 +85,7 @@ from typing import Any, Protocol
 
 from citypods import asr as asr_mod
 from citypods.asr import asr_initial_prompt
-from citypods.bodies import body_key, canonical_body
+from citypods.bodies import canonical_body, rank_by_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
 from citypods.durations import (
@@ -138,6 +138,7 @@ def _materialize_set(
     episodes: list[Episode],
     max_per_body: int,
     *,
+    feed_visible_per_body: int | None = None,
     policy: BacklogPolicy | None = None,
     city_slug: str = "",
     work_class: str = "audio",
@@ -157,18 +158,27 @@ def _materialize_set(
     from a non-transcript stage's call. Defaults to ``"audio"``: every caller except
     ``TranscriptStage`` / ``ProviderTranscriptDiarizeStage`` processes audio-adjacent work that
     duration-based external-GPU prioritization should never reorder."""
-    by_body: dict[str, list[Episode]] = collections.defaultdict(list)
-    for ep in episodes:
-        by_body[body_key(canonical_body(ep.body or ""))].append(ep)
     out: list[Episode] = []
-    for eps in by_body.values():
-        eps.sort(key=lambda e: e.published, reverse=True)
-        out.extend(eps[:max_per_body])
+    ranked: list[tuple[Episode, str]] = []
+    visible = max_per_body if feed_visible_per_body is None else feed_visible_per_body
+    for eps in rank_by_body(episodes, body_of=lambda e: e.body, published_of=lambda e: e.published):
+        selected = eps[:max_per_body]
+        out.extend(selected)
+        ranked.extend(
+            (ep, "feed_visible" if index < visible else "recent_archive")
+            for index, ep in enumerate(selected)
+        )
     if policy is not None and policy.keys:
         key = sort_key_for(policy)
+        buckets = {id(ep): bucket for ep, bucket in ranked}
         out.sort(
             key=lambda ep: key(
-                workitem_from_episode(ep, city_slug=city_slug, work_class=work_class)
+                workitem_from_episode(
+                    ep,
+                    city_slug=city_slug,
+                    work_class=work_class,
+                    priority_bucket=buckets[id(ep)],
+                )
             )
         )
     return out
@@ -743,7 +753,13 @@ class TagsStage:
             evaluation_state = cache["evaluation_state"]
             admission_policy = cache["admission_policy"]
 
-        for ep in _materialize_set(episodes, city.max_episodes):
+        for ep in _materialize_set(
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+        ):
             llm_route = (
                 f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
                 f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
@@ -1376,7 +1392,8 @@ class AudioStage:
                 _playable(
                     _materialize_set(
                         episodes,
-                        city.max_episodes,
+                        city.full_artifact_episodes,
+                        feed_visible_per_body=city.max_episodes,
                         policy=ctx.backlog_policy,
                         city_slug=city.slug,
                     )
@@ -1540,7 +1557,11 @@ class TimelineStage:
         require_decoded_source_basis = self._requires_decoded_source_basis()
         all_eps = list(
             _materialize_set(
-                episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+                episodes,
+                city.full_artifact_episodes,
+                feed_visible_per_body=city.max_episodes,
+                policy=ctx.backlog_policy,
+                city_slug=city.slug,
             )
         )
 
@@ -1732,7 +1753,11 @@ class RemapStage:
     ) -> StageStats:
         stats = StageStats(self.name)
         for ep in _materialize_set(
-            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
         ):
             if not _needs_chapter_remap(ep):
                 stats.reused += 1
@@ -1812,7 +1837,11 @@ class ChaptersStage:
             return stats
         remaining = ctx.chapters_per_source
         for ep in _materialize_set(
-            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
         ):
             if ep.source_chapters:
                 stats.reused += 1
@@ -1869,7 +1898,11 @@ class LinksStage:
         stats = StageStats(self.name)
         episode_links = getattr(provider, "episode_links", None)
         for ep in _materialize_set(
-            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
         ):
             links = dict(ep.links or {})
             if episode_links is not None:
@@ -1936,7 +1969,11 @@ class AgendaTextStage:
             return fetch_document_bytes(session, _validated_document_url(city, url), timeout=30)
 
         for ep in _materialize_set(
-            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
         ):
             links_map = ep.links or {}
             agenda_url = (
@@ -2197,7 +2234,11 @@ class MinutesTextStage:
         session = make_session()
         src_key = source_key(city)
         for ep in _materialize_set(
-            episodes, city.max_episodes, policy=ctx.backlog_policy, city_slug=city.slug
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
         ):
             minutes_url = (ep.links or {}).get("minutes")
             if not minutes_url:
@@ -3145,7 +3186,8 @@ class TranscriptStage:
 
         for ep in _materialize_set(
             episodes,
-            city.max_episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
             policy=ctx.backlog_policy,
             city_slug=city.slug,
             work_class="transcript-asr",
@@ -4112,7 +4154,8 @@ class ProviderTranscriptDiarizeStage:
         src_key = _src_key(city)
         for ep in _materialize_set(
             episodes,
-            city.max_episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
             policy=ctx.backlog_policy,
             city_slug=city.slug,
             work_class="provider-transcript-diarize",

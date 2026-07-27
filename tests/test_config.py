@@ -10,7 +10,13 @@ import pytest
 
 from citypods.config import filter_city_configs, load_city_configs, load_site_config
 
-DEFAULTS = {"podcast_language": "en-us", "podcast_category": "Government", "max_episodes": 50}
+DEFAULTS = {
+    "podcast_language": "en-us",
+    "podcast_category": "Government",
+    "max_episodes": 500,
+    "full_artifact_episodes": 2000,
+    "metadata_retention_episodes": 10000,
+}
 
 VALID = """\
 slug: foo-tx
@@ -46,7 +52,9 @@ def test_loads_valid_city(tmp_path):
     c = cities[0]
     assert c.slug == "foo-tx"
     assert c.podcast_email == ""  # blank email allowed through
-    assert c.max_episodes == 50  # inherited default
+    assert c.max_episodes == 500  # inherited default
+    assert c.full_artifact_episodes == 2000
+    assert c.metadata_retention_episodes == 10000
     assert c.source_id is None
     assert c.lifecycle.status == "active"
 
@@ -264,10 +272,21 @@ def test_duplicate_slug_raises(tmp_path):
         load_city_configs(tmp_path, DEFAULTS)
 
 
-def test_override_default(tmp_path):
-    _write(tmp_path, "foo-tx.yml", VALID + "max_episodes: 10\n")
-    cities = load_city_configs(tmp_path, DEFAULTS)
-    assert cities[0].max_episodes == 10
+@pytest.mark.parametrize(
+    "key",
+    ["max_episodes", "full_artifact_episodes", "metadata_retention_episodes", "max_archive_items"],
+)
+def test_feed_retention_override_is_rejected(tmp_path, key):
+    _write(tmp_path, "foo-tx.yml", VALID + f"{key}: 10\n")
+    with pytest.raises(ValueError, match="retention is configured only"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_retention_defaults_reject_invalid_ordering(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID)
+    bad_defaults = {**DEFAULTS, "max_episodes": 3000}  # > full_artifact_episodes (2000)
+    with pytest.raises(ValueError, match="require 0 < max_episodes"):
+        load_city_configs(tmp_path, bad_defaults)
 
 
 def test_asr_alignment_defaults_off_and_can_be_enabled(tmp_path):
