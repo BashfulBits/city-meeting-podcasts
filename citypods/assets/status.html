@@ -792,7 +792,7 @@ function updateAgeDisplay(idx){
 
 function renderHistory(){
   const rows = (S.run_history||[]).map(r=>{
-    const ts = r.ts?new Date(r.ts).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short',hour12:false}):'—';
+    const ts = r.ts?new Date(r.ts).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short',hour12:false,timeZone:'UTC'}):'—';
     const audio = (r.stages||{}).audio||{};
     const tx = (r.stages||{}).transcript||{};
     const sCls = r.errors>0?'run-err':r.built>0?'run-ok':'run-skip';
@@ -896,7 +896,7 @@ function renderDeferred(){
   // already the last handful of runs, newest first).
   const detailRows = [];
   hist.forEach(r=>{
-    const ts = r.ts ? new Date(r.ts).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short',hour12:false}) : '—';
+    const ts = r.ts ? new Date(r.ts).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short',hour12:false,timeZone:'UTC'}) : '—';
     Object.entries(r.stages||{}).forEach(([stage, t])=>{
       Object.entries((t||{}).defer_reasons||{}).forEach(([reason,count])=>{
         if(count) detailRows.push({ts, stage, reason, count});
