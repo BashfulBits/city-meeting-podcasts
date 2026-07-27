@@ -59,6 +59,17 @@ Phase R (Research-Tool Surface)._
   `defaults:`) reverts to the original candidate-probe sweep with no code change. Design:
   [review/18 §4.7](review/18-work-distribution-sharding.md#47-active-lease-index-gh1018--implemented).
 
+### Fixed
+
+- **`compute reconcile` failed every run since the GH#1018 active-lease index shipped**, crashing
+  with `NotImplementedError: backend 'b2' is not cas_capable; get_bytes unavailable`. The index's
+  `work-leases-index/bucket-<n>.json` CAS objects were never added to `RoutingStorage`'s
+  `COORDINATION_PREFIXES` (`citypods/storage/routing.py`), so every bucket read/write fell through
+  to the B2 primary backend, which doesn't implement compare-and-swap, instead of routing to R2.
+  `work-leases-index/` is now registered alongside `work-leases/` and `provider-leases/`, with the
+  matching ephemeral-prefix declaration (a lost bucket is re-derived from the lease objects, which
+  remain claim authority, via the integrity sweep).
+
 - **An authenticated Cloudflare Worker fallback covers Swagit list-page `403`s from GitHub-hosted
   runners.** Paired local/GitHub-Actions probes ([PR #1011](https://github.com/BashfulBits/city-meeting-podcasts/pull/1011)),
   plus production Audio #257-#259 and the LLM tag-lane enrich, showed every known Swagit tenant's
