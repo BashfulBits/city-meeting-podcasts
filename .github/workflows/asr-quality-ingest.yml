@@ -23,9 +23,9 @@ permissions: {}
 jobs:
   resolve:
     runs-on: ubuntu-latest
-    # Only reads issues (gh issue list) — no writes. The sparse checkout below is anonymous
-    # (token: "") so it needs no `contents` permission.
+    # Reads issues (gh issue list) and checks out just enough to install the pinned gh CLI.
     permissions:
+      contents: read
       issues: read
     outputs:
       numbers: ${{ steps.resolve.outputs.numbers }}
@@ -33,7 +33,6 @@ jobs:
       - name: Checkout setup-gh-cli action
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          token: ""
           persist-credentials: false
           sparse-checkout: |
             .github/actions/setup-gh-cli
@@ -155,15 +154,14 @@ jobs:
     needs: [resolve, ingest]
     if: always() && needs.resolve.result != 'failure' && needs.resolve.outputs.numbers != '[]'
     runs-on: ubuntu-latest
-    # Comments/closes parent issues. The sparse checkout below is anonymous (token: "") so it
-    # needs no `contents` permission.
+    # Comments/closes parent issues, and checks out just enough to install the pinned gh CLI.
     permissions:
+      contents: read
       issues: write
     steps:
       - name: Checkout setup-gh-cli action
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          token: ""
           persist-credentials: false
           sparse-checkout: |
             .github/actions/setup-gh-cli

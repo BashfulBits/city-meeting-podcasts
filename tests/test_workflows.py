@@ -361,10 +361,13 @@ def test_asr_quality_ingest_workflow_is_event_driven():
     wf, resolve_job = _job("asr-quality-ingest.yml", job_name="resolve")
     triggers = _on(wf)
     assert set(triggers) >= {"issues", "issue_comment", "schedule", "workflow_dispatch"}
-    # Deny-all at the workflow level; each job grants only what it actually needs (resolve only
-    # ever reads issues — no checkout, no writes).
+    # Deny-all at the workflow level; each job grants only what it actually needs (resolve reads
+    # issues and sparse-checks-out just .github/actions/setup-gh-cli + constraints/gh-cli.txt to
+    # install the pinned gh CLI -- contents: read is required for that checkout to succeed;
+    # actions/checkout treats an explicit token: "" as a required-input failure, not anonymous
+    # auth, so this can't be avoided by withholding the permission instead).
     assert wf["permissions"] == {}
-    assert resolve_job["permissions"] == {"issues": "read"}
+    assert resolve_job["permissions"] == {"contents": "read", "issues": "read"}
     resolve = next(
         step for step in resolve_job["steps"] if step.get("name") == "Resolve candidate issue(s)"
     )
@@ -409,7 +412,8 @@ def test_asr_quality_ingest_schedule_fallback_scans_open_children():
     assert finalize_job["if"] == (
         "always() && needs.resolve.result != 'failure' && needs.resolve.outputs.numbers != '[]'"
     )
-    assert finalize_job["permissions"] == {"issues": "write"}  # never checks out code
+    # contents: read is needed for the same sparse gh-cli checkout as the resolve job above.
+    assert finalize_job["permissions"] == {"contents": "read", "issues": "write"}
     close_parent = next(
         step
         for step in finalize_job["steps"]
