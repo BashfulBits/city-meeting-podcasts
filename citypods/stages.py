@@ -996,17 +996,26 @@ class TagsStage:
                                 deadline_at=ctx.tag_llm_deadline,
                             )
                         if dispatched:
-                            stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
                             candidate_tags = []
                             completed_llm_recipe = None
-                            if not had_cached_pending:
-                                # A fresh dispatch attempt (no pre-existing registry entry) came
-                                # back deferred -- the live pacing loop genuinely found no eligible
-                                # route before the run's deadline. Signal the rest of this run's
-                                # episodes not to re-fetch their text merely to re-attempt a
-                                # dispatch that will also just defer -- see the in-memory triage's
-                                # `tag_llm_dispatch_exhausted` gate above.
-                                ctx.tag_llm_dispatch_exhausted.set()
+                            if resolved_model == "payload-too-large":
+                                # This episode's own material could never fit any allowed route's
+                                # real token budget -- says nothing about remaining quota, unlike
+                                # an ordinary defer, so it must NOT set
+                                # `tag_llm_dispatch_exhausted` (that would stop every other
+                                # episode in this run from even attempting a dispatch over one
+                                # oversized episode). See llm_tag_suggestions()'s docstring.
+                                stats.defer("tag-llm-oversized", sample=ep.uid or ep.guid)
+                            else:
+                                stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
+                                if not had_cached_pending:
+                                    # A fresh dispatch attempt (no pre-existing registry entry)
+                                    # came back deferred -- the live pacing loop genuinely found
+                                    # no eligible route before the run's deadline. Signal the rest
+                                    # of this run's episodes not to re-fetch their text merely to
+                                    # re-attempt a dispatch that will also just defer -- see the
+                                    # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
+                                    ctx.tag_llm_dispatch_exhausted.set()
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to
@@ -1889,7 +1898,11 @@ class AgendaTextStage:
     """Fetch agenda/packet documents, retain bounded text, and discover backup/minutes links."""
 
     name = "agenda_text"
-    version = "1"
+    # Bumped 1 -> 2: content-based chapter attribution (chapter_index/chapter_title) and the
+    # bounded second-hop enumeration-page follow are new manifest fields/behavior. Without this
+    # bump, stage_is_dirty()'s generic version check would never re-derive an already-completed
+    # episode's backup manifest, leaving it permanently on the old, unattributed shape.
+    version = "2"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -1900,9 +1913,12 @@ class AgendaTextStage:
         from citypods.agenda_text import (
             AGENDA_TEXT_MAX_CHARS,
             DocumentLink,
+            attribute_links_by_content,
+            chapter_text_matches,
             extract_document,
             minutes_links,
         )
+        from citypods.chapters import episode_served_chapters
         from citypods.http import fetch_document_bytes, make_session
         from citypods.records import (
             agenda_backup_backoff_until,
@@ -1999,6 +2015,35 @@ class AgendaTextStage:
                         if link is not None and _is_valid_document_url(city, link.url)
                     }.values()
                 )[:50]
+                # Attribute each candidate to a served chapter/agenda item by content (an item
+                # identifier or the chapter title itself found in the link's own label/URL --
+                # confirmed on real Legistar and Granicus agendas, platform-agnostic; see
+                # citypods/agenda_text.py's attribute_links_by_content). A link that doesn't
+                # content-match stays unattributed (chapter_index None) rather than guessed.
+                #
+                # `with_source_index=True` and the resulting remap below matter because
+                # agenda_item_context()/chapter_tag_inputs() (citypods/tags.py) key this
+                # manifest's chapter_index by SOURCE chapter position, not served-list position --
+                # the same desync chapter_id() already guards against when remap() drops a chapter
+                # (see tests/test_agenda_text.py::test_agenda_text_survives_a_dropped_chapter).
+                # Storing a raw served-list position here would silently misattribute a surviving
+                # chapter's backup text to whatever chapter now sits at that position after a drop.
+                served_chapters = [
+                    ch
+                    for ch in episode_served_chapters(ep, with_source_index=True)
+                    if isinstance(ch, dict) and ch.get("title")
+                ]
+                attributed_raw = attribute_links_by_content(candidates, served_chapters)
+                attributed = [
+                    (
+                        served_chapters[index].get("source_index", index)
+                        if index is not None
+                        else None,
+                        title,
+                        link,
+                    )
+                    for index, title, link in attributed_raw
+                ]
                 manifest = [
                     {
                         "url": link.url,
@@ -2006,23 +2051,35 @@ class AgendaTextStage:
                         "source_url": link.source_url,
                         "kind": link.kind,
                         "item_label": link.item_label,
+                        "chapter_index": chapter_index,
+                        "chapter_title": chapter_title,
                     }
-                    for link in candidates
+                    for chapter_index, chapter_title, link in attributed
                 ]
                 if agenda_backup_backoff_until(ep) and agenda_backup_backoff_until(ep) > now:
                     stats.reused += 1
                     continue
-                for link in candidates:
+                # Second-hop fetches are additional, unplanned work discovered while already
+                # inside this episode's backup pass -- bound the TOTAL across the whole episode
+                # (not just per originally-discovered link, which with up to 50 candidates x 10
+                # sub-links each could otherwise reach ~500 sequential fetches for one episode)
+                # and gate every fetch -- primary candidates and second-hop alike -- on
+                # ctx.stop() so a long episode defers to a later run instead of overrunning the
+                # wall-clock budget.
+                second_hop_remaining = 20
+                for chapter_index, chapter_title, link in attributed:
                     if link.url == agenda_url:
                         continue
+                    if ctx.stop is not None and ctx.stop():
+                        break
+                    manifest_item = next(item for item in manifest if item["url"] == link.url)
                     try:
                         item_content, item_type = fetch(link.url)
-                        item_text, _ = extract_document(
+                        item_text, item_links = extract_document(
                             item_content, content_type=item_type, source_url=link.url
                         )
                         item_truncated = len(item_text) > 20_000
                         item_text = item_text[:20_000]
-                        manifest_item = next(item for item in manifest if item["url"] == link.url)
                         manifest_item.update(
                             {
                                 "text": item_text or None,
@@ -2030,8 +2087,57 @@ class AgendaTextStage:
                                 "source": "agenda-link",
                             }
                         )
+                        # Second hop: some agenda platforms (e.g. Legistar's MeetingDetail ->
+                        # LegislationDetail chain) link to a per-item page that itself only
+                        # *enumerates* further backup-document links rather than being a document
+                        # itself. Trigger only when this fetched page's own text confirms it
+                        # belongs to the same chapter (a content match, not a page-shape guess)
+                        # and it discovered further links -- a platform-agnostic signal, not
+                        # tuned to any one provider's page structure.
+                        if (
+                            chapter_title
+                            and item_links
+                            and second_hop_remaining > 0
+                            and chapter_text_matches(item_text, chapter_title)
+                        ):
+                            for sub_link in item_links[:10]:
+                                if second_hop_remaining <= 0:
+                                    break
+                                if not _is_valid_document_url(city, sub_link.url) or any(
+                                    m["url"] == sub_link.url for m in manifest
+                                ):
+                                    continue
+                                if ctx.stop is not None and ctx.stop():
+                                    break
+                                second_hop_remaining -= 1
+                                sub_entry = {
+                                    "url": sub_link.url,
+                                    "label": sub_link.label,
+                                    "source_url": link.url,
+                                    "kind": sub_link.kind,
+                                    "item_label": sub_link.item_label,
+                                    "chapter_index": chapter_index,
+                                    "chapter_title": chapter_title,
+                                }
+                                try:
+                                    sub_content, sub_type = fetch(sub_link.url)
+                                    sub_text, _ = extract_document(
+                                        sub_content, content_type=sub_type, source_url=sub_link.url
+                                    )
+                                    sub_truncated = len(sub_text) > 20_000
+                                    sub_entry.update(
+                                        {
+                                            "text": sub_text[:20_000] or None,
+                                            "truncated": sub_truncated,
+                                            "source": "agenda-link-second-hop",
+                                        }
+                                    )
+                                except Exception:
+                                    sub_entry.update(
+                                        {"text": None, "truncated": False, "source": "link-only"}
+                                    )
+                                manifest.append(sub_entry)
                     except Exception:
-                        manifest_item = next(item for item in manifest if item["url"] == link.url)
                         manifest_item.update(
                             {"text": None, "truncated": False, "source": "link-only"}
                         )
@@ -2282,7 +2388,8 @@ def _document_key(source: str, uid: str, kind: str, content: bytes) -> str:
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
 AGENDA_TEXT_PIPELINE_VERSION = "1"
-AGENDA_BACKUP_PIPELINE_VERSION = "1"
+# Bumped alongside AgendaTextStage.version -- see that class's comment.
+AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
 MINUTES_VOTES_PIPELINE_VERSION = "1"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
