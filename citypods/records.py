@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Literal
 
 from citypods.availability import MediaAvailability
-from citypods.bodies import body_key, canonical_body
+from citypods.bodies import body_key, canonical_body, rank_by_body
 from citypods.chapters import episode_served_chapters
 from citypods.durations import (
     episode_duration_hours,
@@ -719,14 +719,11 @@ def project_calendar_records(
     """
     if metadata_retention_episodes <= 0:
         raise ValueError("metadata_retention_episodes must be positive")
-    grouped: dict[str, list[tuple[str, AgendaRecord]]] = {}
-    for uid, record in records.items():
-        key = body_key(canonical_body(record.body or ""))
-        grouped.setdefault(key, []).append((uid, record))
     retained: dict[str, AgendaRecord] = {}
-    for values in grouped.values():
-        values.sort(key=lambda item: (item[1].published, item[0]), reverse=True)
-        retained.update(values[:metadata_retention_episodes])
+    for items in rank_by_body(
+        records.items(), body_of=lambda kv: kv[1].body, published_of=lambda kv: kv[1].published
+    ):
+        retained.update(items[:metadata_retention_episodes])
     return retained
 
 
@@ -1424,6 +1421,26 @@ def record_to_episode(rec: dict) -> Episode:
     )
 
 
+def _record_timestamp(rec: dict) -> float | None:
+    """Parse a record's ``published`` into a timestamp; ``None`` for missing/unparseable dates.
+
+    Shared by every age-based retention boundary (``prune_archive``,
+    ``project_body_retained_archive``) so "undated records are fail-safe, never aged out" stays
+    one rule instead of two independently maintained closures.
+    """
+    published = rec.get("published")
+    if not published:
+        return None
+    try:
+        return datetime.fromisoformat(published).timestamp()
+    except ValueError:
+        return None
+
+
+def _age_cutoff(max_age_years: float, now: datetime) -> float:
+    return now.timestamp() - max_age_years * 365.25 * 86400
+
+
 def merge_records(persisted: dict, fresh: dict) -> dict:
     """Append-only merge of the record store: keep every previously-known episode and let a
     freshly-fetched record win on a uid collision (fresh provider fields + re-enriched
@@ -1478,37 +1495,22 @@ def project_body_retained_archive(
     if not (0 < full_artifact_episodes <= metadata_retention_episodes):
         raise ValueError("require 0 < full_artifact_episodes <= metadata_retention_episodes")
     now = now or datetime.now(UTC)
-    cutoff = now.timestamp() - max_age_years * 365.25 * 86400
+    cutoff = _age_cutoff(max_age_years, now)
 
-    def _ts(rec: dict) -> float | None:
-        published = rec.get("published")
-        if not published:
-            return None
-        try:
-            return datetime.fromisoformat(published).timestamp()
-        except ValueError:
-            return None
-
-    grouped: dict[str, list[tuple[str, dict]]] = {}
-    for uid, record in merge_records(persisted, fresh).items():
-        timestamp = _ts(record)
+    survivors = [
+        (uid, record)
+        for uid, record in merge_records(persisted, fresh).items()
         # Match the existing fail-safe age semantics: undated records survive the age gate.
-        if timestamp is not None and timestamp < cutoff:
-            continue
-        key = body_key(canonical_body(str(record.get("body") or "")))
-        grouped.setdefault(key, []).append((uid, record))
+        if (timestamp := _record_timestamp(record)) is None or timestamp >= cutoff
+    ]
 
     retained: dict[str, dict] = {}
-    for records in grouped.values():
-        records.sort(
-            key=lambda item: (
-                _ts(item[1]) is not None,
-                _ts(item[1]) or 0.0,
-                item[0],
-            ),
-            reverse=True,
-        )
-        for rank, (uid, record) in enumerate(records):
+    for items in rank_by_body(
+        survivors,
+        body_of=lambda kv: kv[1].get("body"),
+        published_of=lambda kv: _record_timestamp(kv[1]),
+    ):
+        for rank, (uid, record) in enumerate(items):
             if rank >= metadata_retention_episodes:
                 break
             # Do not mutate an input record: the fresh episode mapping can be reused during
@@ -1776,23 +1778,20 @@ def prune_archive(records: dict, *, max_items: int, max_age_years: float, now=No
     an unparseable ``published`` are exempt from age pruning (fail safe — never age out content we
     can't date), but still participate in the source-wide item cap."""
     now = now or datetime.now(UTC)
-    cutoff = now.timestamp() - max_age_years * 365.25 * 86400
+    cutoff = _age_cutoff(max_age_years, now)
 
-    def _ts(rec: dict) -> float | None:
-        published = rec.get("published")
-        if not published:
-            return None
-        try:
-            return datetime.fromisoformat(published).timestamp()
-        except ValueError:
-            return None
-
-    kept = {uid: rec for uid, rec in records.items() if (_ts(rec) is None or _ts(rec) >= cutoff)}
+    kept = {
+        uid: rec
+        for uid, rec in records.items()
+        if (timestamp := _record_timestamp(rec)) is None or timestamp >= cutoff
+    }
     if len(kept) <= max_items:
         return kept
     # Keep the newest max_items; undated records sort last (kept only if room remains).
     ordered = sorted(
-        kept.items(), key=lambda kv: (_ts(kv[1]) is not None, _ts(kv[1]) or 0.0), reverse=True
+        kept.items(),
+        key=lambda kv: (_record_timestamp(kv[1]) is not None, _record_timestamp(kv[1]) or 0.0),
+        reverse=True,
     )
     return dict(ordered[:max_items])
 

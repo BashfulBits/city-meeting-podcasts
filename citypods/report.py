@@ -12,6 +12,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.durations import record_served_duration_seconds, record_source_duration_seconds
+from citypods.models import (
+    DEFAULT_FULL_ARTIFACT_EPISODES,
+    DEFAULT_MAX_EPISODES,
+    DEFAULT_METADATA_RETENTION_EPISODES,
+)
 from citypods.projection import (
     ModelInputs,
     archived_per_feed,
@@ -204,18 +209,28 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
     defaults = site_config.get("defaults", {})
     cap_raw = defaults.get("materialize_budget_per_run")
     base = ModelInputs(
-        episodes_per_feed=int(defaults.get("max_episodes", 500)),
-        archive_items=int(defaults.get("full_artifact_episodes", 2000)),
+        episodes_per_feed=int(defaults.get("max_episodes", DEFAULT_MAX_EPISODES)),
+        archive_items=int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)),
         kbps=int(defaults.get("audio_max_kbps", 96)),
         per_run_cap=int(cap_raw) if cap_raw is not None else None,
     )
     history = _load_run_history(state_dir) if state_dir else []
+    # Keep the actual retained-record count (matches build_status), but model hosted-audio cost
+    # only through the full-artifact tier: metadata-only records carry no audio to store.
+    archive_items = _measured_archive_items(cities, state_dir)
+    audio_archive_items = (
+        min(
+            archive_items,
+            int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)),
+        )
+        if archive_items is not None
+        else int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES))
+    )
     inputs = measured_inputs(
         cities,
         run_history=history,
         hosted_feeds=round(_hosted_fraction(cities) * len(cities)) if cities else None,
-        # The storage model estimates hosted-audio cost, not the much smaller metadata tier.
-        archive_items=int(defaults.get("full_artifact_episodes", 2000)),
+        archive_items=audio_archive_items,
         base=base,
     )
     current = project(inputs)
@@ -225,9 +240,13 @@ def build_report(cities: list, *, site_config: dict, state_dir: Path | None = No
     retained = archived_per_feed(inputs)
     candidates = [c for c in (50, 100, 250, 500, 1000, 2000) if c < retained]
     retention = {
-        "feed_visible_episodes": int(defaults.get("max_episodes", 500)),
-        "full_artifact_episodes": int(defaults.get("full_artifact_episodes", 2000)),
-        "metadata_retention_episodes": int(defaults.get("metadata_retention_episodes", 10000)),
+        "feed_visible_episodes": int(defaults.get("max_episodes", DEFAULT_MAX_EPISODES)),
+        "full_artifact_episodes": int(
+            defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)
+        ),
+        "metadata_retention_episodes": int(
+            defaults.get("metadata_retention_episodes", DEFAULT_METADATA_RETENTION_EPISODES)
+        ),
         "max_archive_age_years": int(defaults.get("max_archive_age_years", 1000)),
         "retained_per_feed": retained,
         "savings": [savings_if_capped(inputs, c) for c in candidates],
@@ -1322,8 +1341,8 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
 
     cap_raw = defaults.get("materialize_budget_per_run")
     base = ModelInputs(
-        episodes_per_feed=int(defaults.get("max_episodes", 500)),
-        archive_items=int(defaults.get("full_artifact_episodes", 2000)),
+        episodes_per_feed=int(defaults.get("max_episodes", DEFAULT_MAX_EPISODES)),
+        archive_items=int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)),
         kbps=max_kbps,
         per_run_cap=int(cap_raw) if cap_raw is not None else None,
     )
@@ -1333,9 +1352,12 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     # but model hosted-audio cost only through the full-artifact tier.
     archive_items = _measured_archive_items(cities, state_dir)
     audio_archive_items = (
-        min(archive_items, int(defaults.get("full_artifact_episodes", 2000)))
+        min(
+            archive_items,
+            int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)),
+        )
         if archive_items is not None
-        else int(defaults.get("full_artifact_episodes", 2000))
+        else int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES))
     )
     inputs = measured_inputs(
         cities,
@@ -1419,7 +1441,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
     retained = (
         archive_items
         if archive_items is not None
-        else int(defaults.get("full_artifact_episodes", 2000))
+        else int(defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES))
     )
     g_per_ep = gb_per_episode(max_kbps, avg_duration_h)
 
@@ -1541,6 +1563,7 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "provider_transcripts": provider_transcripts,
             "timeline_audio_repair": timeline_audio_repair,
             "work_pending": wc_counts.get("feed_visible_pending", 0),
+            "archive_backfill_pending": wc_counts.get("archive_backfill_pending", 0),
             "alignment_disabled": wc_counts.get("alignment_disabled", 0),
             "deep_archive_items": wc_counts.get("deep_archive_items", 0),
             "work_manifest": manifest_meta,
@@ -1561,8 +1584,12 @@ def build_status(cities: list, *, site_config: dict, state_dir: Path | None = No
             "gb_stored": gb_stored,
             "gb_exact": gb_exact,
             "monthly_cost_usd": monthly_cost,
-            "archive_cap": int(defaults.get("metadata_retention_episodes", 10000)),
-            "full_artifact_cap": int(defaults.get("full_artifact_episodes", 2000)),
+            "archive_cap": int(
+                defaults.get("metadata_retention_episodes", DEFAULT_METADATA_RETENTION_EPISODES)
+            ),
+            "full_artifact_cap": int(
+                defaults.get("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)
+            ),
             "archive_age_years": int(defaults.get("max_archive_age_years", 1000)),
             "retained_per_feed": retained,
             "gb_per_ep": round(g_per_ep, 5),

@@ -8,7 +8,13 @@ from pathlib import Path
 
 import yaml
 
-from citypods.models import City, FeedLifecycle
+from citypods.models import (
+    DEFAULT_FULL_ARTIFACT_EPISODES,
+    DEFAULT_MAX_EPISODES,
+    DEFAULT_METADATA_RETENTION_EPISODES,
+    City,
+    FeedLifecycle,
+)
 from citypods.ops.workqueue import BacklogPolicy
 from citypods.providers import get_provider
 from citypods.security import validate_city_sources, validate_source_url
@@ -161,9 +167,9 @@ def load_site_config(path: str | Path) -> dict:
     data.setdefault("defaults", {})
     # Compatibility defaults keep small/local site configs usable. The repository's production
     # policy is declared explicitly in config/site_config.yml; feed files can never override it.
-    data["defaults"].setdefault("max_episodes", 500)
-    data["defaults"].setdefault("full_artifact_episodes", 2000)
-    data["defaults"].setdefault("metadata_retention_episodes", 10000)
+    data["defaults"].setdefault("max_episodes", DEFAULT_MAX_EPISODES)
+    data["defaults"].setdefault("full_artifact_episodes", DEFAULT_FULL_ARTIFACT_EPISODES)
+    data["defaults"].setdefault("metadata_retention_episodes", DEFAULT_METADATA_RETENTION_EPISODES)
     # Search is a site-wide render feature, not a per-feed provider setting.  Keep the opt-out
     # explicit so a deployment that disables it also has a deterministic default.
     data["defaults"].setdefault("search", True)
@@ -362,9 +368,9 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
     # Direct library callers historically passed an empty defaults mapping. Preserve that API
     # while keeping the repository's actual policy explicit in site_config.yml.
     defaults = {
-        "max_episodes": 500,
-        "full_artifact_episodes": 2000,
-        "metadata_retention_episodes": 10000,
+        "max_episodes": DEFAULT_MAX_EPISODES,
+        "full_artifact_episodes": DEFAULT_FULL_ARTIFACT_EPISODES,
+        "metadata_retention_episodes": DEFAULT_METADATA_RETENTION_EPISODES,
         **defaults,
     }
     config_dir = Path(config_dir)

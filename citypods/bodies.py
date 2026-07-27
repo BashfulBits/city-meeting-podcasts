@@ -7,9 +7,15 @@ substring), so any provider can produce "one feed per board/commission".
 
 from __future__ import annotations
 
+import collections
 import re
+from collections.abc import Callable, Iterable
+from datetime import datetime
+from typing import TypeVar
 
 from citypods.models import Episode
+
+T = TypeVar("T")
 
 # Granicus titles embed the body in free-form text that varies by city, e.g.:
 #   "City Council on 2026-05-19 4:00 PM - May 19, 2026"   (Denton)
@@ -92,3 +98,31 @@ def filter_by_body(episodes: list[Episode], body: str | None) -> list[Episode]:
     if not body:
         return episodes
     return [e for e in episodes if matches(e.body, body)]
+
+
+def rank_by_body(
+    items: Iterable[T],
+    *,
+    body_of: Callable[[T], str | None],
+    published_of: Callable[[T], datetime | float | None],
+) -> list[list[T]]:
+    """Group ``items`` by canonical body and sort each group newest-first.
+
+    Shared by every retention/scheduling boundary that ranks episodes or records within a
+    body (materialize-set selection in ``stages.py``, priority buckets in ``ops/workqueue.py``,
+    body-aware archive projection in ``records.py``) so they cannot independently drift on tie
+    -breaking or the definition of "newest" for undated items. Undated items (``published_of``
+    returns ``None``) sort last within their body, never before a dated item. ``published_of`` may
+    return a ``datetime`` or a numeric timestamp — anything mutually orderable within one call.
+
+    Returns one sorted list per body, in no particular inter-body order; callers that need a
+    rank/bucket index just enumerate each group.
+    """
+    grouped: dict[str, list[T]] = collections.defaultdict(list)
+    for item in items:
+        grouped[body_key(canonical_body(body_of(item) or ""))].append(item)
+    for group in grouped.values():
+        group.sort(
+            key=lambda item: (published_of(item) is not None, published_of(item)), reverse=True
+        )
+    return list(grouped.values())

@@ -65,7 +65,13 @@ from citypods.media import (
     SourceCache,
     probe_hosted_audio_duration_seconds,
 )
-from citypods.models import AgendaRecord, City, Episode
+from citypods.models import (
+    DEFAULT_FULL_ARTIFACT_EPISODES,
+    DEFAULT_METADATA_RETENTION_EPISODES,
+    AgendaRecord,
+    City,
+    Episode,
+)
 from citypods.ops.workqueue import (
     build_manifest,
     load_manifest,
@@ -154,10 +160,9 @@ from citypods.statesync import (
 from citypods.storage import make_storage
 from citypods.transcript_quality import load_quality_config, load_quality_routes
 
-# Retention caps are supplied by config/site_config.yml.  This remains a code fallback only for
-# lightweight direct-call tests and temporary orchestration doubles.
-DEFAULT_FULL_ARTIFACT_EPISODES = 2000
-DEFAULT_METADATA_RETENTION_EPISODES = 10000
+# Retention caps are supplied by config/site_config.yml.  DEFAULT_FULL_ARTIFACT_EPISODES and
+# DEFAULT_METADATA_RETENTION_EPISODES (imported above from citypods.models, the single source of
+# truth) remain a code fallback only for lightweight direct-call tests and orchestration doubles.
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
 _SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}

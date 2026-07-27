@@ -21,7 +21,6 @@ Scope boundaries (see the "Decisions locked" block in review/12 §H5):
 
 from __future__ import annotations
 
-import collections
 import json
 import math
 from collections.abc import Callable, Mapping, Sequence
@@ -30,7 +29,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from citypods.bodies import body_key, canonical_body
+from citypods.bodies import body_key, canonical_body, rank_by_body
 from citypods.durations import episode_duration_hours, record_duration_hours
 from citypods.models import City, Episode
 from citypods.records import load_records
@@ -386,15 +385,13 @@ def _episode_buckets(
     recs: dict, feed_visible_per_body: int, full_artifact_per_body: int
 ) -> dict[str, str]:
     """Classify retained records into feed, full-artifact, and metadata-only cohorts."""
-    by_body: dict[str, list[tuple[str, datetime | None]]] = collections.defaultdict(list)
-    for uid, rec in recs.items():
-        by_body[body_key(canonical_body(rec.get("body") or ""))].append((uid, _published_of(rec)))
     buckets: dict[str, str] = {}
-    for items in by_body.values():
-        items.sort(
-            key=lambda t: (t[1] is not None, t[1] or datetime.min.replace(tzinfo=UTC)), reverse=True
-        )
-        for i, (uid, _) in enumerate(items):
+    for items in rank_by_body(
+        recs.items(),
+        body_of=lambda kv: kv[1].get("body"),
+        published_of=lambda kv: _published_of(kv[1]),
+    ):
+        for i, (uid, _rec) in enumerate(items):
             buckets[uid] = (
                 BUCKET_FEED_VISIBLE
                 if i < feed_visible_per_body
@@ -551,10 +548,19 @@ def build_manifest(
 
 
 def manifest_counts(items: Sequence[WorkItem]) -> dict:
-    """Aggregate actionable full-artifact work and the metadata-only archive total."""
+    """Aggregate actionable work — split by tier so the name matches the content — and the
+    metadata-only archive total.
+
+    ``feed_visible_pending`` is genuinely feed-visible (rank <= ``max_episodes`` per body);
+    ``archive_backfill_pending`` is the active but never-published 501–2,000 cohort. Keeping
+    these separate avoids the earlier drift where ``feed_visible_pending`` silently grew to
+    include backfill work once the archive-backfill tier went active (review/39).
+    """
     by_work_class: dict[str, dict[str, int]] = {}
     deep_archive = 0
     alignment_disabled = 0
+    feed_visible_pending = 0
+    archive_backfill_pending = 0
     for it in items:
         if it.priority_bucket == BUCKET_DEEP_ARCHIVE:
             deep_archive += 1
@@ -563,12 +569,15 @@ def manifest_counts(items: Sequence[WorkItem]) -> dict:
         states[it.state] = states.get(it.state, 0) + 1
         if it.state == "alignment-disabled":
             alignment_disabled += 1
-    feed_visible_pending = sum(
-        n for states in by_work_class.values() for state, n in states.items() if state == "queued"
-    )
+        if it.state == "queued":
+            if it.priority_bucket == BUCKET_RECENT_ARCHIVE:
+                archive_backfill_pending += 1
+            else:
+                feed_visible_pending += 1
     return {
         "by_work_class": by_work_class,
         "feed_visible_pending": feed_visible_pending,
+        "archive_backfill_pending": archive_backfill_pending,
         "alignment_disabled": alignment_disabled,
         "deep_archive_items": deep_archive,
     }

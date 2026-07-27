@@ -85,7 +85,7 @@ from typing import Any, Protocol
 
 from citypods import asr as asr_mod
 from citypods.asr import asr_initial_prompt
-from citypods.bodies import body_key, canonical_body
+from citypods.bodies import canonical_body, rank_by_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
 from citypods.durations import (
@@ -158,14 +158,10 @@ def _materialize_set(
     from a non-transcript stage's call. Defaults to ``"audio"``: every caller except
     ``TranscriptStage`` / ``ProviderTranscriptDiarizeStage`` processes audio-adjacent work that
     duration-based external-GPU prioritization should never reorder."""
-    by_body: dict[str, list[Episode]] = collections.defaultdict(list)
-    for ep in episodes:
-        by_body[body_key(canonical_body(ep.body or ""))].append(ep)
     out: list[Episode] = []
     ranked: list[tuple[Episode, str]] = []
     visible = max_per_body if feed_visible_per_body is None else feed_visible_per_body
-    for eps in by_body.values():
-        eps.sort(key=lambda e: e.published, reverse=True)
+    for eps in rank_by_body(episodes, body_of=lambda e: e.body, published_of=lambda e: e.published):
         selected = eps[:max_per_body]
         out.extend(selected)
         ranked.extend(

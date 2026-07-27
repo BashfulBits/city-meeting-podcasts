@@ -885,6 +885,7 @@ def test_manifest_counts():
     assert counts["alignment_disabled"] == 1
     # queued only — alignment-disabled is NOT counted as actionable backlog
     assert counts["feed_visible_pending"] == 2
+    assert counts["archive_backfill_pending"] == 0
     assert counts["deep_archive_items"] == 0
 
 
@@ -893,7 +894,10 @@ def test_manifest_counts_deep_archive_excluded_from_actionable():
     counts = manifest_counts(
         build_manifest([("s", _city("d", max_episodes=2, full_artifact_episodes=3), recs)])
     )
-    assert counts["feed_visible_pending"] == 3  # full-artifact backfill is actionable
+    # feed-visible (ranks 0-1) and archive backfill (rank 2) are both actionable, but counted
+    # separately so `feed_visible_pending` keeps meaning exactly what its name says.
+    assert counts["feed_visible_pending"] == 2
+    assert counts["archive_backfill_pending"] == 1
     assert counts["deep_archive_items"] == 1
 
 
