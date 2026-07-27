@@ -3,9 +3,14 @@
 #
 # Unlike prod.txt/asr.txt/dev.txt this file is hand-maintained -- gh isn't a pip package --
 # but follows the same review/22 pin policy: single source of truth, checked into git, bumped
-# only via an opened PR, never silently. Renovate tracks just the version below (custom regex
-# manager in .github/renovate.json5); the release's own gh_<version>_checksums.txt is fetched
-# and verified at install time, so there's no separate hash here to fall out of sync with it.
+# only via an opened PR, never silently. Renovate tracks the version below (custom regex manager
+# in .github/renovate.json5) and opens a PR bumping only GH_CLI_VERSION; it deliberately does not
+# touch GH_CLI_SHA256_LINUX_AMD64, so that PR's CI fails on a checksum mismatch until a human
+# fetches the new release's real hash and pins it here. That's the trust boundary: the hash is
+# verified once, out-of-band, at review time -- not re-derived at install time from whatever the
+# release host happens to be serving, since a same-release checksums.txt fetched over the wire
+# proves internal consistency (tarball matches its own manifest) but not that the release itself
+# wasn't tampered with.
 #
 # This exists because of the 2026-07-27 incident: an unannounced gh CLI bump on the runner
 # image changed `gh issue view --json subIssues` from a flat array to a `{nodes,totalCount}`
@@ -18,3 +23,6 @@
 #
 # renovate: datasource=github-releases depName=cli/cli
 GH_CLI_VERSION=2.96.0
+# sha256sum of gh_2.96.0_linux_amd64.tar.gz -- verified against the release's own
+# gh_2.96.0_checksums.txt out-of-band at pin time (2026-07-27), not re-fetched at install time.
+GH_CLI_SHA256_LINUX_AMD64=83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60

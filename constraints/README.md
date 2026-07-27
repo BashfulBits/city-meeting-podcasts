@@ -39,4 +39,6 @@ scripts/compile_constraints.sh          # requires Docker locally
 In CI this is the **`lock.yml`** workflow (manual dispatch, and on `pyproject.toml` change). The
 `deps` job in `ci.yml` enforces that these files are in sync (recompile → `git diff --exit-code`).
 
-> These files are generated. Do not hand-edit. Change `pyproject.toml`, then recompile.
+> `prod.txt`/`asr.txt`/`dev.txt` are generated. Do not hand-edit them — change `pyproject.toml`,
+> then recompile. `gh-cli.txt` is the one exception: it's hand-maintained (see its own header),
+> since `gh` isn't a Python package and has nothing for `pip-compile` to resolve.

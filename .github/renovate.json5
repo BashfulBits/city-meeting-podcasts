@@ -47,10 +47,13 @@
     // gh CLI pin (constraints/gh-cli.txt, see its header for the 2026-07-27 incident).
     // Same caveat as the SHA-pinned Actions above: never auto-merged, since a compromised
     // gh release is exactly the class of risk a rubber-stamped automerge would let through.
+    // Renovate bumps only GH_CLI_VERSION here -- it does not touch the adjacent
+    // GH_CLI_SHA256_LINUX_AMD64 pin, so this PR's CI fails on a checksum mismatch until a
+    // human fetches the new release's real hash and adds it, by design (see gh-cli.txt).
     {
       matchDepNames: ["cli/cli"],
       automerge: false,
-      groupName: "gh CLI (pinned, verified against release checksums)",
+      groupName: "gh CLI (pinned, hash verified against a human-reviewed pin)",
     },
     // ---- OUTPUT-AFFECTING LANE: one checkbox + one bot comment ----
     // Renovate lists these under "Pending Approval" on the Dashboard and opens no
@@ -101,9 +104,9 @@
     },
     {
       // Pinned gh CLI version (constraints/gh-cli.txt, installed by
-      // .github/actions/setup-gh-cli). Only the version is tracked here — the release's
-      // own checksums.txt is fetched and verified at install time, so there's no adjacent
-      // hash for this regex to keep in sync.
+      // .github/actions/setup-gh-cli). Only the version is tracked here — a human must also
+      // update the adjacent GH_CLI_SHA256_LINUX_AMD64 pin by hand (this regex intentionally
+      // doesn't touch it), or the resulting PR's CI fails on a checksum mismatch.
       customType: "regex",
       managerFilePatterns: ["/^constraints/gh-cli\\.txt$/"],
       matchStrings: [

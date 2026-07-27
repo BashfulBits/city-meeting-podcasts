@@ -28,11 +28,11 @@ jobs:
     # indefinitely (CR2-GH-05).
     timeout-minutes: 90
     steps:
-      - name: Install pinned gh CLI
-        uses: ./.github/actions/setup-gh-cli
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
