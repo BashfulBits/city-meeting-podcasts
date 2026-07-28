@@ -30,6 +30,7 @@ import json
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
+from datetime import date as Date
 from pathlib import Path
 from typing import Literal
 
@@ -50,6 +51,7 @@ from citypods.integrity import (
     REPAIR_TRANSCRIPT_REGENERATE,
     timeline_audio_repair_token,
 )
+from citypods.meeting_dates import title_meeting_date
 from citypods.models import AgendaRecord, City, Episode
 from citypods.providers.base import AgendaSource
 from citypods.timeline import Segment, SourceMedia, Timeline, timeline_digest
@@ -362,9 +364,14 @@ def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[Age
     additional same-day sessions (whose local identity sequence differs from
     the recording-only archive) and lets a persisted calendar restore its
     links after a temporary companion outage. Rows without a video identity
-    retain the original UID/date-body fallback. Primary links win on key
-    collision, so a companion cannot replace the primary provider's canonical
-    agenda or video reference.
+    retain the original UID/date-body fallback.  Next, an unambiguous same-body
+    calendar row matching the primary source date wins over title parsing.
+    Finally, an unmatched primary title with an explicit long-form date may join
+    one unambiguous same-body calendar row; this covers CivicMedia feeds where
+    ``pubDate`` is upload time and normalizes the episode date to the official
+    calendar date before UID assignment. Primary links win on key collision, so
+    a companion cannot replace the primary provider's canonical agenda or video
+    reference.
     """
     by_uid = {record.uid: record for record in aux_records if record.uid}
     by_video_guid = {
@@ -372,10 +379,24 @@ def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[Age
         for record in aux_records
         if isinstance(record, AgendaRecord) and record.video_guid
     }
+    by_body_date: dict[tuple[str, Date], AgendaSource | None] = {}
+    for record in aux_records:
+        marker = (body_key(record.body), record.published.date())
+        # Same-body, same-day sessions are ambiguous without an official video identity.  Do not
+        # silently choose one based on archive order.
+        by_body_date[marker] = record if marker not in by_body_date else None
     for episode in episodes:
         record = by_video_guid.get(episode.guid) or by_uid.get(episode.uid)
         if record is None:
+            record = by_body_date.get((body_key(episode.body), episode.published.date()))
+        title_matched = False
+        if record is None and (meeting_date := title_meeting_date(episode.title)) is not None:
+            record = by_body_date.get((body_key(episode.body), meeting_date))
+            title_matched = record is not None
+        if record is None:
             continue
+        if title_matched:
+            episode.published = record.published
         _fill_missing_links(episode.links, record.links)
 
 

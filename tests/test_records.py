@@ -185,6 +185,64 @@ def test_unmatched_auxiliary_agenda_record_is_dropped():
     assert primary[0].links == {}
 
 
+def test_auxiliary_agenda_links_fall_back_to_unambiguous_title_meeting_date():
+    """CivicMedia RSS dates uploads; title date safely joins its companion archive."""
+    primary = [
+        _ep("civicmedia-289", when=datetime(2026, 7, 23, 19, 39, tzinfo=UTC)),
+    ]
+    primary[0].title = "July 21 2026 Regular City Council Meeting"
+    calendar = AgendaRecord(
+        body="City Council",
+        title="July 21, 2026 Regular City Council Meeting",
+        published=datetime(2026, 7, 21, tzinfo=UTC),
+        links={"agenda": "https://agenda.example/july-21.pdf"},
+    )
+
+    attach_auxiliary_agenda_links(primary, [calendar])
+
+    assert primary[0].published.date().isoformat() == "2026-07-21"
+    assert primary[0].links == {"agenda": "https://agenda.example/july-21.pdf"}
+
+
+def test_auxiliary_source_date_match_wins_over_conflicting_title_date():
+    primary = [_ep("civicmedia-289", when=datetime(2026, 7, 22, 19, 39, tzinfo=UTC))]
+    primary[0].title = "July 21, 2026 Regular City Council Meeting"
+    calendar = AgendaRecord(
+        body="City Council",
+        title="July 22, 2026 Special City Council Meeting",
+        published=datetime(2026, 7, 22, 18, tzinfo=UTC),
+        links={"agenda": "https://agenda.example/july-22.pdf"},
+    )
+
+    attach_auxiliary_agenda_links(primary, [calendar])
+
+    assert primary[0].published.isoformat() == "2026-07-22T19:39:00+00:00"
+    assert primary[0].links == {"agenda": "https://agenda.example/july-22.pdf"}
+
+
+def test_title_date_fallback_rejects_ambiguous_same_day_calendar_rows():
+    primary = [_ep("civicmedia-289", when=datetime(2026, 7, 23, tzinfo=UTC))]
+    primary[0].title = "July 21, 2026 Regular City Council Meeting"
+    calendars = [
+        AgendaRecord(
+            body="City Council",
+            title="Morning session",
+            published=datetime(2026, 7, 21, 9, tzinfo=UTC),
+            links={"agenda": "https://agenda.example/morning.pdf"},
+        ),
+        AgendaRecord(
+            body="City Council",
+            title="Evening session",
+            published=datetime(2026, 7, 21, 18, tzinfo=UTC),
+            links={"agenda": "https://agenda.example/evening.pdf"},
+        ),
+    ]
+
+    attach_auxiliary_agenda_links(primary, calendars)
+
+    assert primary[0].links == {}
+
+
 def test_video_linked_calendar_record_joins_by_canonical_guid_before_uid():
     """Calendar sessions may have a different same-day sequence than archive rows."""
     primary = [

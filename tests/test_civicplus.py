@@ -76,6 +76,14 @@ def test_parse_feed_marks_hls_and_keeps_watch_link():
     assert ep.needs_materialization()
 
 
+def test_parse_feed_retains_rss_upload_date_until_companion_matching():
+    content = SAMPLE.replace(b"May 19 Meeting", b"May 19, 2026 Regular City Council Meeting")
+
+    episode = parse_civicmedia_feed(content)[0]
+
+    assert episode.published.isoformat() == "2026-05-22T09:41:00-06:00"
+
+
 def test_validate_requires_feed_url():
     with pytest.raises(ValueError):
         CivicPlusProvider().validate({})

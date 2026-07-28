@@ -405,6 +405,7 @@ class SourcePipeline:
             return provider, episodes, persisted, 0
 
         episodes = merge_seed_episodes(city, provider.fetch_episodes(city.source))
+        persisted_calendar = load_calendar_records(self.state_dir, key)
         fresh_calendar: list[AgendaRecord] = []
         if city.aux_provider and city.aux_source:
             try:
@@ -447,6 +448,15 @@ class SourcePipeline:
                     f"source={key} error={exc}",
                     flush=True,
                 )
+        assign_uids(city, fresh_calendar)
+        calendar = project_calendar_records(
+            merge_calendar_records(persisted_calendar, fresh_calendar),
+            metadata_retention_episodes=self.metadata_retention_episodes,
+        )
+        attach_auxiliary_agenda_links(episodes, list(calendar.values()))
+        if city.aux_provider or calendar:
+            self._calendar_store[key] = calendar
+            self._calendar_cache[key] = list(calendar.values())
         print(
             f"[enrich] source fetched slug={city.slug} provider={city.provider} "
             f"source={key} episodes={len(episodes)}",
@@ -482,16 +492,6 @@ class SourcePipeline:
                     f"[enrich] cross-feed reconciled slug={city.slug} duplicates={reconciled}",
                     flush=True,
                 )
-        persisted_calendar = load_calendar_records(self.state_dir, key)
-        assign_uids(city, fresh_calendar)
-        calendar = project_calendar_records(
-            merge_calendar_records(persisted_calendar, fresh_calendar),
-            metadata_retention_episodes=self.metadata_retention_episodes,
-        )
-        attach_auxiliary_agenda_links(episodes, list(calendar.values()))
-        if city.aux_provider or calendar:
-            self._calendar_store[key] = calendar
-            self._calendar_cache[key] = list(calendar.values())
         seeded = migrate_legacy_manifests(self.state_dir, episodes)
         self.h16_identity.capture(city, episodes)
         print(
