@@ -44,7 +44,7 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           AUDIT_PARTITION: ${{ inputs.partition }}
         run: |
-          args=(--pull-state --push-state --max-items 100)
+          args=(--pull-state --push-state --run-time-budget-minutes 300)
           if [[ -n "$AUDIT_PARTITION" ]]; then
             args+=(--partition "$AUDIT_PARTITION")
           fi

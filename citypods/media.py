@@ -2641,9 +2641,12 @@ class HostedKeysCache:
         with self._guard:
             lock = self._locks[source]
         with lock:
-            keys = self._keys.get(source)
-            if keys is not None:
-                return key in keys
+            if source in self._keys:
+                keys = self._keys[source]
+                # A cached ``None`` means this backend can't list (see ``_hosted_keys``), not
+                # "no keys" -- keep falling back to a direct probe rather than reporting every
+                # key absent, matching the un-cached no-list_objects branch below.
+                return key in keys if keys is not None else bool(storage.exists(key))
             self._probes[source] += 1
             if self._probes[source] < self._list_threshold or not hasattr(storage, "list_objects"):
                 return bool(storage.exists(key))
@@ -2664,14 +2667,21 @@ def audit_verified_audio(
     *,
     partition: int,
     partitions: int = 32,
-    max_items: int = 100,
+    max_workers: int = 8,
 ) -> tuple[int, int]:
-    """HEAD a bounded partition of trusted pointers and clear missing ones.
+    """HEAD every trusted pointer in one partition and clear missing ones.
 
     The caller owns persistence.  Clearing the pointer makes the normal AudioStage path enqueue
     repair while preserving the stable episode UID; no prefix listing is needed.
+
+    A partition is a stable ~1/``partitions`` hash slice of the catalog (see
+    :func:`audio_audit_partition`), not a fixed item count: the whole slice is checked every time
+    this partition comes up, so the full catalog gets one complete sweep every ``partitions`` runs
+    regardless of how large it grows. HEAD checks are dispatched concurrently (they're small,
+    unmetered-request I/O, not CPU work) so a run stays fast even as the per-partition slice
+    grows; the caller is responsible for bounding total run time (e.g. skipping remaining sources
+    once a wall-clock budget is spent) rather than this function bounding item count.
     """
-    checked = missing = 0
     selected = sorted(
         (
             ep
@@ -2679,23 +2689,46 @@ def audit_verified_audio(
             if ep.uid and audio_audit_partition(ep.uid, partitions=partitions) == partition
         ),
         key=lambda ep: ep.uid or "",
-    )[: max(0, int(max_items))]
+    )
+    candidates: list[tuple[Episode, str, str]] = []
     for ep in selected:
         marker = ep.audio_verification if isinstance(ep.audio_verification, dict) else {}
         key = marker.get("key")
         spec = marker.get("spec_hash")
+        # A "legacy" episode's audio_spec_hash is a sentinel for "recipe unknown", not the real
+        # spec: _mark_audio_verified still records the actually-computed spec in the marker (see
+        # materialize_audio's reuse path), so comparing spec_hash for exact equality here would
+        # reject every legacy marker on every run and never actually verify that whole class of
+        # pointer.
         if (
             not isinstance(key, str)
             or not key
             or key != ep.audio_key
             or not isinstance(spec, str)
-            or spec != ep.audio_spec_hash
+            or (spec != ep.audio_spec_hash and ep.audio_spec_hash != "legacy")
         ):
             if marker:
                 ep.audio_verification = {}
             continue
+        candidates.append((ep, key, spec))
+
+    if not candidates:
+        return 0, 0
+
+    def _probe(item: tuple[Episode, str, str]) -> bool:
+        _ep, key, _spec = item
+        return storage.exists(key)
+
+    if max_workers > 1 and len(candidates) > 1:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            results = list(pool.map(_probe, candidates))
+    else:
+        results = [_probe(item) for item in candidates]
+
+    checked = missing = 0
+    for (ep, key, spec), exists in zip(candidates, results, strict=True):
         checked += 1
-        if not storage.exists(key):
+        if not exists:
             ep.audio_verification = {}
             ep.stage_completion.pop("audio", None)
             ep.hosted_audio_url = None

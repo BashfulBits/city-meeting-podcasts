@@ -714,6 +714,42 @@ def test_hosted_keys_cache_is_per_source(tmp_path):
     assert len(store.list_objects_calls) == 0
 
 
+class _NoListingStorage:
+    """Wraps a real storage backend but hides ``list_objects`` (e.g. an unlistable backend)."""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.exists_calls = 0
+
+    def exists(self, key):
+        self.exists_calls += 1
+        return self._inner.exists(key)
+
+    def __getattr__(self, name):
+        if name == "list_objects":
+            raise AttributeError(name)
+        return getattr(self._inner, name)
+
+
+def test_hosted_keys_cache_present_falls_back_when_get_cached_none(tmp_path):
+    """A cached ``None`` (from ``get()``, on a backend that can't list) means "unknown," not
+    "no keys" -- ``present()`` must keep probing directly rather than reporting every key
+    absent (regression: a naive "not None means cached" check would treat cached ``None`` as a
+    real empty listing)."""
+    from citypods.media import HostedKeysCache
+
+    city = _city()
+    store = _NoListingStorage(_store(tmp_path))
+    key = f"{city.provider}/{source_key(city)}/present.m4a"
+    _seed_object(store, key)
+    cache = HostedKeysCache()
+
+    assert cache.get(city, store) is None
+    assert cache.present(city, store, key) is True
+    assert cache.present(city, store, "missing-key") is False
+    assert store.exists_calls == 2
+
+
 def test_verified_audio_pointer_bypasses_storage_probe(tmp_path):
     from citypods.media import _mark_audio_verified
 
@@ -748,12 +784,61 @@ def test_audio_integrity_audit_clears_missing_pointer_and_audio_completion(tmp_p
     ep.stage_completion["audio"] = {"state": "complete"}
     partition = audio_audit_partition(ep.uid)
 
-    checked, missing = audit_verified_audio([ep], store, partition=partition, max_items=1)
+    checked, missing = audit_verified_audio([ep], store, partition=partition)
 
     assert (checked, missing) == (1, 1)
     assert ep.audio_key is None
     assert ep.hosted_audio_url is None
     assert "audio" not in ep.stage_completion
+
+
+def test_audio_integrity_audit_sweeps_whole_partition_no_item_cap(tmp_path):
+    """A partition is a hash slice of the catalog, not a fixed item count: every trusted
+    pointer that falls in it gets checked in one run, however many there are."""
+    from citypods.media import _mark_audio_verified, audit_verified_audio
+
+    city = _city()
+    store = _store(tmp_path)
+    episodes = []
+    for i in range(20):
+        ep = _ep(f"audit-bulk-{i}")
+        spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+        key = audio_object_key(city, ep, spec)
+        ep.audio_key = key
+        ep.audio_spec_hash = spec
+        ep.hosted_audio_url = store.public_url(key)
+        if i % 2 == 0:
+            _seed_object(store, key)
+        _mark_audio_verified(ep, key, spec, store)
+        episodes.append(ep)
+
+    checked, missing = audit_verified_audio(episodes, store, partition=0, partitions=1)
+
+    assert checked == 20
+    assert missing == 10
+
+
+def test_audio_integrity_audit_verifies_legacy_spec_marker(tmp_path):
+    """A ``legacy`` episode's marker stores the real computed spec (the sentinel is unknowable),
+    so the audit must not reject it on spec mismatch and wipe the marker every single run."""
+    from citypods.media import _mark_audio_verified, audio_audit_partition, audit_verified_audio
+
+    city = _city()
+    store = _store(tmp_path)
+    ep = _ep("audit-legacy")
+    real_spec = audio_spec_hash(ep, max_kbps=MAX_KBPS)
+    key = audio_object_key(city, ep, real_spec)
+    _seed_object(store, key)
+    ep.audio_key = key
+    ep.audio_spec_hash = "legacy"
+    ep.hosted_audio_url = store.public_url(key)
+    _mark_audio_verified(ep, key, real_spec, store)
+    partition = audio_audit_partition(ep.uid)
+
+    checked, missing = audit_verified_audio([ep], store, partition=partition)
+
+    assert (checked, missing) == (1, 0)
+    assert ep.audio_verification.get("key") == key
 
 
 def test_audio_artifact_cache_encodes_duplicate_source_views_once(tmp_path):
