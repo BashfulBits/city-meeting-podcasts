@@ -1,0 +1,51 @@
+name: Audio integrity audit
+
+on:
+  schedule:
+    - cron: "15 7 * * *"
+  workflow_dispatch:
+    inputs:
+      partition:
+        description: "Optional audit partition (0-31); blank uses today's rotating partition"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audio-integrity
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+      - name: Audit trusted audio pointers
+        env:
+          AUDIO_STORAGE_BACKEND: routing
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          AUDIT_PARTITION: ${{ inputs.partition }}
+        run: |
+          args=(--pull-state --push-state --run-time-budget-minutes 300)
+          if [[ -n "$AUDIT_PARTITION" ]]; then
+            args+=(--partition "$AUDIT_PARTITION")
+          fi
+          python scripts/audit_audio_integrity.py "${args[@]}"
