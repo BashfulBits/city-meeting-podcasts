@@ -384,6 +384,30 @@ def test_build_status_retained_per_feed_preserves_measured_zero(tmp_path):
     assert status["storage"]["retained_per_feed"] == 0
 
 
+def test_retained_per_feed_reports_metadata_tier_not_audio_cap(tmp_path):
+    # CodeRabbit: retained_per_feed must reflect the real (metadata-tier) record count, not the
+    # audio-capped full_artifact_episodes value used for storage/cost modeling — a source keeping
+    # 10 metadata rows should not be reported as capped down to its 5-record full-artifact tier.
+    from citypods.records import save_records, source_key
+
+    site = {
+        "defaults": {
+            "max_episodes": 2,
+            "full_artifact_episodes": 5,
+            "metadata_retention_episodes": 20,
+            "audio_max_kbps": 96,
+        }
+    }
+    city = _hls_city("many-records")
+    save_records(tmp_path, source_key(city), {f"u{i}": _rec(f"u{i}") for i in range(10)})
+
+    status = build_status([city], site_config=site, state_dir=tmp_path)
+    assert status["storage"]["retained_per_feed"] == 10
+
+    report = build_report([city], site_config=site, state_dir=tmp_path)
+    assert report["retention"]["retained_per_feed"] == 10
+
+
 def test_build_status_direct_extract_audio_counts_as_pending_not_linked(tmp_path):
     """Direct providers become audio backlog when extract_audio is enabled."""
     from citypods.records import save_records, source_key
@@ -1718,3 +1742,80 @@ def test_projection_calibration_uses_encoded_not_materialized(tmp_path):
     inputs = measured_inputs([], run_history=history)
     # 100s / 10 encodes = 10.0 sec/ep; using materialized=100 would give 1.0
     assert inputs.sec_per_ep == pytest.approx(10.0)
+
+
+def test_deferred_work_card_surfaces_defer_reasons_and_backlog(tmp_path):
+    """The admin/status "Deferred Work" card (added for the tag-llm-oversized signal, but
+    generic across any stage's defer_reasons) must have real data to render: build_status()'s
+    run_history/backlog.stage_runs carry defer_reasons through, and to_status_html() embeds the
+    new card's markup/JS alongside the underlying JSON."""
+    import json
+
+    entries = [
+        {
+            "ts": "2026-07-27T10:00:00+00:00",
+            "built": 1,
+            "skipped": 3,
+            "errors": 0,
+            "materialized": 1,
+            "materialize_encoded": 0,
+            "materialize_seconds": 1.0,
+            "stages": {
+                "tags": {
+                    "ran": 1,
+                    "reused": 4,
+                    "backlog": 3,
+                    "defer_reasons": {"tag-llm-oversized": 2, "tag-llm-dispatch": 1},
+                    "seconds": 5.0,
+                    "bytes": 0,
+                    "errors": 0,
+                }
+            },
+            "github_run_id": "1",
+            "github_run_url": "https://github.com/example/repo/actions/runs/1",
+        },
+        {
+            "ts": "2026-07-27T11:00:00+00:00",
+            "built": 1,
+            "skipped": 1,
+            "errors": 0,
+            "materialized": 1,
+            "materialize_encoded": 0,
+            "materialize_seconds": 1.0,
+            "stages": {
+                "tags": {
+                    "ran": 3,
+                    "reused": 4,
+                    "backlog": 1,
+                    "defer_reasons": {"tag-llm-oversized": 1},
+                    "seconds": 5.0,
+                    "bytes": 0,
+                    "errors": 0,
+                }
+            },
+            "github_run_id": "2",
+            "github_run_url": "https://github.com/example/repo/actions/runs/2",
+        },
+    ]
+    path = tmp_path / "run_history.jsonl"
+    path.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+    status = build_status([], site_config=SITE, state_dir=tmp_path)
+    assert len(status["run_history"]) == 2
+    latest_tags = status["backlog"]["stage_runs"]["tags"]["totals"]
+    assert latest_tags["backlog"] == 1
+    assert latest_tags["defer_reasons"] == {"tag-llm-oversized": 1}
+
+    html = to_status_html(status)
+    assert "Deferred Work" in html
+    assert "function renderDeferred()" in html
+    assert "function renderBurndownChart(points)" in html
+    m = re.search(r'<script id="status-data" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    parsed = json.loads(m.group(1))
+    tag_reasons = {
+        reason
+        for row in parsed["run_history"]
+        for reason in (row.get("stages", {}).get("tags", {}).get("defer_reasons") or {})
+    }
+    assert "tag-llm-oversized" in tag_reasons

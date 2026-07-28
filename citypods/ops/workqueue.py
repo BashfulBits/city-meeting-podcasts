@@ -21,7 +21,6 @@ Scope boundaries (see the "Decisions locked" block in review/12 §H5):
 
 from __future__ import annotations
 
-import collections
 import json
 import math
 from collections.abc import Callable, Mapping, Sequence
@@ -30,7 +29,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from citypods.bodies import body_key, canonical_body
+from citypods.bodies import body_key, canonical_body, rank_by_body
 from citypods.durations import episode_duration_hours, record_duration_hours
 from citypods.models import City, Episode
 from citypods.records import load_records
@@ -67,8 +66,8 @@ DURATION_AWARE_WORK_CLASSES = (frozenset(WORK_CLASSES) - {"audio"}) | frozenset(
     RESERVED_WORK_CLASSES
 )
 
-# Priority buckets. feed-visible ≡ materialized today, so the archive buckets are
-# reserved-but-inert until the opt-in archive-backfill feature populates them (review/12 §H5).
+# Priority buckets.  The full-artifact archive tier is active: it is materialized after the
+# feed-visible cohort, under the existing wall-clock budget.  Deep archive is metadata-only.
 BUCKET_FEED_VISIBLE = "feed_visible"
 BUCKET_RECENT_ARCHIVE = "recent_archive"
 BUCKET_DEEP_ARCHIVE = "deep_archive"
@@ -238,11 +237,17 @@ def _build_body_order(params, *, city_order, now):
 
 
 def _build_feed_visible_first(params, *, city_order, now):
-    """`feed_visible_first` — rendered episodes before deep archive. **Inert today**: every
-    pending item is `feed_visible` until the opt-in archive-backfill feature lands."""
+    """`feed_visible_first` — publishable work before the active full-artifact backfill.
+
+    Metadata-only records are never scheduled, but retain the final rank for defensive callers.
+    """
 
     def key(wi: WorkItem):
-        return 0 if wi.priority_bucket == BUCKET_FEED_VISIBLE else 1
+        return {
+            BUCKET_FEED_VISIBLE: 0,
+            BUCKET_RECENT_ARCHIVE: 1,
+            BUCKET_DEEP_ARCHIVE: 2,
+        }.get(wi.priority_bucket, 2)
 
     return key
 
@@ -376,20 +381,24 @@ def _published_of(rec: dict) -> datetime | None:
         return None
 
 
-def _episode_buckets(recs: dict, max_per_body: int) -> dict[str, str]:
-    """Classify each episode uid as ``feed_visible`` (within the most-recent ``max_per_body``
-    of its body — what some feed can display / the pipeline materializes) or ``deep_archive``
-    (retained but never worked today). Mirrors ``_materialize_set``'s selection."""
-    by_body: dict[str, list[tuple[str, datetime | None]]] = collections.defaultdict(list)
-    for uid, rec in recs.items():
-        by_body[body_key(canonical_body(rec.get("body") or ""))].append((uid, _published_of(rec)))
+def _episode_buckets(
+    recs: dict, feed_visible_per_body: int, full_artifact_per_body: int
+) -> dict[str, str]:
+    """Classify retained records into feed, full-artifact, and metadata-only cohorts."""
     buckets: dict[str, str] = {}
-    for items in by_body.values():
-        items.sort(
-            key=lambda t: (t[1] is not None, t[1] or datetime.min.replace(tzinfo=UTC)), reverse=True
-        )
-        for i, (uid, _) in enumerate(items):
-            buckets[uid] = BUCKET_FEED_VISIBLE if i < max_per_body else BUCKET_DEEP_ARCHIVE
+    for items in rank_by_body(
+        recs.items(),
+        body_of=lambda kv: kv[1].get("body"),
+        published_of=lambda kv: _published_of(kv[1]),
+    ):
+        for i, (uid, _rec) in enumerate(items):
+            buckets[uid] = (
+                BUCKET_FEED_VISIBLE
+                if i < feed_visible_per_body
+                else BUCKET_RECENT_ARCHIVE
+                if i < full_artifact_per_body
+                else BUCKET_DEEP_ARCHIVE
+            )
     return buckets
 
 
@@ -520,7 +529,7 @@ def build_manifest(
     """
     items: list[WorkItem] = []
     for source_key, city, recs in sources:
-        buckets = _episode_buckets(recs, city.max_episodes)
+        buckets = _episode_buckets(recs, city.max_episodes, city.full_artifact_episodes)
         for uid, rec in recs.items():
             items.extend(
                 _episode_work_items(
@@ -539,26 +548,36 @@ def build_manifest(
 
 
 def manifest_counts(items: Sequence[WorkItem]) -> dict:
-    """Aggregate a manifest for the status surface: per-work-class state counts in the
-    *actionable* (feed_visible) backlog, plus the inert deep_archive total and the
-    alignment-disabled count (so re-enabling alignment is a visible backlog-drain decision)."""
+    """Aggregate actionable work — split by tier so the name matches the content — and the
+    metadata-only archive total.
+
+    ``feed_visible_pending`` is genuinely feed-visible (rank <= ``max_episodes`` per body);
+    ``archive_backfill_pending`` is the active but never-published 501–2,000 cohort. Keeping
+    these separate avoids the earlier drift where ``feed_visible_pending`` silently grew to
+    include backfill work once the archive-backfill tier went active (review/39).
+    """
     by_work_class: dict[str, dict[str, int]] = {}
     deep_archive = 0
     alignment_disabled = 0
+    feed_visible_pending = 0
+    archive_backfill_pending = 0
     for it in items:
-        if it.priority_bucket != BUCKET_FEED_VISIBLE:
+        if it.priority_bucket == BUCKET_DEEP_ARCHIVE:
             deep_archive += 1
             continue
         states = by_work_class.setdefault(it.work_class, {})
         states[it.state] = states.get(it.state, 0) + 1
         if it.state == "alignment-disabled":
             alignment_disabled += 1
-    feed_visible_pending = sum(
-        n for states in by_work_class.values() for state, n in states.items() if state == "queued"
-    )
+        if it.state == "queued":
+            if it.priority_bucket == BUCKET_RECENT_ARCHIVE:
+                archive_backfill_pending += 1
+            else:
+                feed_visible_pending += 1
     return {
         "by_work_class": by_work_class,
         "feed_visible_pending": feed_visible_pending,
+        "archive_backfill_pending": archive_backfill_pending,
         "alignment_disabled": alignment_disabled,
         "deep_archive_items": deep_archive,
     }

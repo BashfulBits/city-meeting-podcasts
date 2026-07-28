@@ -35,6 +35,15 @@ def test_default_projection_golden():
     assert p.full_backfill_days == 40.0
 
 
+def test_full_backfill_uses_full_artifact_tier_when_set():
+    # Body-aware tiered retention (review/39): a from-scratch backfill materializes through the
+    # full-artifact tier (2000/body), not just the feed-visible render cap (50/body) — unset
+    # falls back to episodes_per_feed so pre-review/39 numbers are unchanged (see golden test).
+    p = project(ModelInputs(full_artifact_episodes=2000))
+    assert p.full_backfill_episodes == 80 * 2000
+    assert p.full_backfill_episodes != project(ModelInputs()).full_backfill_episodes
+
+
 def test_scale_to_1000_cities():
     p = at_scale(ModelInputs(), 1000)
     assert round(p.storage_gb / 1000, 2) == 4.32  # TB

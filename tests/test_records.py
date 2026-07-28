@@ -27,6 +27,8 @@ from citypods.records import (
     merge_records,
     migrate_legacy_manifests,
     pending_transcribe_items,
+    project_body_retained_archive,
+    project_calendar_records,
     project_retained_archive,
     protected_blocks_for_lane,
     prune_archive,
@@ -1467,6 +1469,60 @@ def test_project_retained_archive_preserves_undated_fail_safe():
     )
 
     assert set(kept) == {"new", "undated"}
+
+
+def test_body_retention_is_independent_and_demotes_only_audio():
+    now = datetime(2026, 7, 24, tzinfo=UTC)
+    records = {
+        "c-new": {
+            "uid": "c-new",
+            "body": "Council",
+            "published": "2026-07-24T00:00:00+00:00",
+            "audio": {"key": "c-new.m4a"},
+            "transcript": {"key": "c-new.vtt"},
+        },
+        "c-old": {
+            "uid": "c-old",
+            "body": "Council",
+            "published": "2026-07-23T00:00:00+00:00",
+            "audio": {"key": "c-old.m4a"},
+            "transcript": {"key": "c-old.vtt"},
+        },
+        "c-drop": {
+            "uid": "c-drop",
+            "body": "Council",
+            "published": "2026-07-22T00:00:00+00:00",
+        },
+        "l-new": {
+            "uid": "l-new",
+            "body": "Library",
+            "published": "2026-07-24T00:00:00+00:00",
+            "audio": {"key": "l-new.m4a"},
+        },
+    }
+    kept = project_body_retained_archive(
+        records,
+        {},
+        full_artifact_episodes=1,
+        metadata_retention_episodes=2,
+        max_age_years=1000,
+        now=now,
+    )
+    assert set(kept) == {"c-new", "c-old", "l-new"}
+    assert kept["c-new"]["audio"]["key"] == "c-new.m4a"
+    assert "audio" not in kept["c-old"]
+    assert kept["c-old"]["transcript"]["key"] == "c-old.vtt"
+    assert kept["l-new"]["audio"]["key"] == "l-new.m4a"
+
+
+def test_calendar_retention_is_per_body():
+    when = datetime(2026, 7, 24, tzinfo=UTC)
+    records = {
+        "c1": AgendaRecord(body="Council", published=when),
+        "c2": AgendaRecord(body="Council", published=when - timedelta(days=1)),
+        "l1": AgendaRecord(body="Library", published=when),
+    }
+    assert set(project_calendar_records(records, metadata_retention_episodes=1)) == {"c1", "l1"}
 
 
 # --- cross-lane write isolation (review/12 §H6) ----------------------------------------

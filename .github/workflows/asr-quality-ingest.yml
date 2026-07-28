@@ -23,8 +23,9 @@ permissions: {}
 jobs:
   resolve:
     runs-on: ubuntu-latest
-    # Only reads issues (gh issue list) — no writes. The sparse checkout below is anonymous
-    # (token: "") so it needs no `contents` permission.
+    # Only reads issues (gh issue list) — no writes. The sparse checkout below uses the default
+    # `github.token`, already scoped down to `issues: read` by this job's own `permissions:`
+    # block below, with `persist-credentials: false` so nothing is written to disk/git config.
     permissions:
       issues: read
     outputs:
@@ -33,7 +34,6 @@ jobs:
       - name: Checkout setup-gh-cli action
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          token: ""
           persist-credentials: false
           sparse-checkout: |
             .github/actions/setup-gh-cli
@@ -155,15 +155,15 @@ jobs:
     needs: [resolve, ingest]
     if: always() && needs.resolve.result != 'failure' && needs.resolve.outputs.numbers != '[]'
     runs-on: ubuntu-latest
-    # Comments/closes parent issues. The sparse checkout below is anonymous (token: "") so it
-    # needs no `contents` permission.
+    # Comments/closes parent issues. The sparse checkout below uses the default `github.token`,
+    # already scoped down to `issues: write` by this job's own `permissions:` block below, with
+    # `persist-credentials: false` so nothing is written to disk/git config.
     permissions:
       issues: write
     steps:
       - name: Checkout setup-gh-cli action
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          token: ""
           persist-credentials: false
           sparse-checkout: |
             .github/actions/setup-gh-cli

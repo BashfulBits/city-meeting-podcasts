@@ -432,9 +432,8 @@ def test_render_does_not_advertise_an_incomplete_static_search_index(
 
 def test_archived_meeting_page_updates_even_when_feed_window_is_unchanged(tmp_path, fake_provider):
     cities = _setup(tmp_path)
-    (cities / "feeds" / "fake-city.yml").write_text(
-        (cities / "feeds" / "fake-city.yml").read_text() + "max_episodes: 1\n"
-    )
+    with (tmp_path / "site_config.yml").open("a") as config:
+        config.write("  max_episodes: 1\n")
     _build(tmp_path, cities)
 
     old_page = tmp_path / "docs" / "fake-city" / fake_provider.episodes[1].uid / "index.html"
@@ -1414,6 +1413,7 @@ def _retention_city(*, max_episodes=6000):
         podcast_email="",
         podcast_description="",
         max_episodes=max_episodes,
+        full_artifact_episodes=max_episodes,
         extract_audio=True,
     )
 
@@ -1435,7 +1435,8 @@ def test_retention_projection_suppresses_full_granicus_overflow_before_planning(
     episodes = _retention_episodes(5480)
 
     class _Pipeline:
-        max_archive_items = 5000
+        full_artifact_episodes = 5000
+        metadata_retention_episodes = 5000
         max_archive_age_years = 1000
 
     persisted = {ep.uid: episode_to_record(ep) for ep in episodes[:5000]}
@@ -1469,7 +1470,8 @@ def test_retention_projection_handles_cap_changes_repairs_and_missing_audio():
     episodes[0].hosted_audio_url = None
 
     class _Pipeline:
-        max_archive_items = 3
+        full_artifact_episodes = 3
+        metadata_retention_episodes = 3
         max_archive_age_years = 1000
 
     retained = run._retained_working_set(_Pipeline(), city, episodes, episodes, persisted)
@@ -1477,11 +1479,13 @@ def test_retention_projection_handles_cap_changes_repairs_and_missing_audio():
     assert retained[0].hosted_audio_url is None
     assert episodes[-1].uid not in {ep.uid for ep in retained}
 
-    _Pipeline.max_archive_items = 5
+    _Pipeline.full_artifact_episodes = 5
+    _Pipeline.metadata_retention_episodes = 5
     raised = run._retained_working_set(_Pipeline(), city, episodes, episodes, persisted)
     assert [ep.uid for ep in raised] == [ep.uid for ep in episodes[:5]]
 
-    _Pipeline.max_archive_items = 2
+    _Pipeline.full_artifact_episodes = 2
+    _Pipeline.metadata_retention_episodes = 2
     lowered = run._retained_working_set(_Pipeline(), city, episodes, episodes, persisted)
     assert [ep.uid for ep in lowered] == [ep.uid for ep in episodes[:2]]
 
@@ -1501,7 +1505,8 @@ def test_global_queue_never_runs_stages_for_rows_final_persistence_prunes(monkey
             self.name = name
 
     class _Pipeline:
-        max_archive_items = 2
+        full_artifact_episodes = 2
+        metadata_retention_episodes = 2
         max_archive_age_years = 1000
 
         def __init__(self):
@@ -1558,7 +1563,13 @@ def test_repeat_persist_source_is_idempotent(tmp_path):
 
     state_dir = tmp_path / "state"
     ctx = StageContext(storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None)
-    pipeline = run.SourcePipeline(state_dir=state_dir, stages=[], ctx=ctx)
+    pipeline = run.SourcePipeline(
+        state_dir=state_dir,
+        stages=[],
+        ctx=ctx,
+        full_artifact_episodes=2000,
+        metadata_retention_episodes=10000,
+    )
     episodes = [_ep("a"), _ep("b")]
     notes: list[str] = []
 

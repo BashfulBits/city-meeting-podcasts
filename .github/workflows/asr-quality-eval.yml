@@ -20,6 +20,16 @@ permissions:
 jobs:
   evaluate:
     runs-on: ubuntu-latest
+    env:
+      # H15 sample/evaluate clips candidate audio with ffmpeg before scoring -- without this the
+      # job silently "succeeds" while every sample fails with FileNotFoundError: 'ffmpeg' and
+      # evaluate_samples() catches it per-sample (by design, so one bad sample can't sink a whole
+      # batch), leaving the rollups ledger empty and the weekly review issue with nothing to
+      # show. That's exactly what happened here for 3 consecutive weeks (2026-07-13/20/27) before
+      # anyone noticed, since the job's own exit code stayed green throughout. Same
+      # checksum-pinned static ffmpeg as asr.yml/audio.yml, not the Ubuntu package mirror.
+      FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -35,6 +45,30 @@ jobs:
         # torch/torchaudio are already a transitive pin there via stable-ts[fw], so torchcodec is
         # the only incremental download this adds.
         run: pip install -e ".[asr,asr-align2,storage]" -c constraints/asr.txt
+
+      - name: Cache static ffmpeg
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ffmpeg-static-linux64-7.1.5-v2
+
+      - name: Install verified static ffmpeg
+        # Self-built (scripts/build_ffmpeg_static.sh), vendored to our own B2 bucket -- not an
+        # upstream/mirror host. FFMPEG_URL built from the B2 secret rather than hardcoded so it's
+        # not duplicated across the workflows that pin ffmpeg (review/22).
+        env:
+          FFMPEG_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+          timeout 300 python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${FFMPEG_DIR}"
+          "${FFMPEG_DIR}/bin/ffmpeg" -version >/dev/null
+          "${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null
+          echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
 
       - name: Cache L2 CTC aligner model (MMS_FA)
         # ~1.2 GB wav2vec2 checkpoint, downloaded once via torch.hub on first ctc_fit() call.

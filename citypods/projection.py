@@ -55,6 +55,10 @@ class ModelInputs:
     # archive retains far more than max_episodes. ``archive_items`` is the storage driver (retained
     # records per feed). None -> fall back to episodes_per_feed (keeps pre-#109 numbers unchanged).
     archive_items: int | None = None
+    # Body-aware tiered retention (review/39): a full backfill from empty state must materialize
+    # audio/artifacts through the full-artifact tier, not just the feed-visible render cap. None
+    # -> fall back to episodes_per_feed (keeps pre-review/39 full_backfill numbers unchanged).
+    full_artifact_episodes: int | None = None
     duration_hours: float = 2.0  # D: average meeting length
     kbps: int = 96
     host_frac: float = 1.0  # fraction of feeds whose audio we host (HLS=1; direct only if extract)
@@ -130,7 +134,12 @@ def project(inputs: ModelInputs, features: list[FeatureSpec] | None = None) -> P
     capacity_day = int(throughput * runs_per_day)
     inflow_day = inputs.feeds * inputs.meetings_per_week / 7.0
 
-    full_backfill = int(hosted_feeds * inputs.episodes_per_feed)
+    full_backfill_per_feed = (
+        inputs.full_artifact_episodes
+        if inputs.full_artifact_episodes is not None
+        else inputs.episodes_per_feed
+    )
+    full_backfill = int(hosted_feeds * full_backfill_per_feed)
     backfill_days = full_backfill / capacity_day if capacity_day else float("inf")
 
     feat_out: dict = {}
