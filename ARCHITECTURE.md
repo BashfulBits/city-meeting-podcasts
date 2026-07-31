@@ -270,7 +270,23 @@ total on `/admin/status`.
   supersession stops the killable local inference subprocess and abandons the claim back to the
   queue; the timed-out episode (not a merely-superseded one) records durable timeout backoff
   instead of becoming a terminal failure, and every worker's admission check refuses to re-claim
-  it until that backoff window lapses. Audio encodes are admitted by a
+  it until that backoff window lapses.
+- **Hosted-audio fetch reliability and cross-process decode-error quarantine** — `_download_audio_file`
+  (`citypods/stages.py`, shared by `TranscriptStage` and `external_worker.py`) retries a
+  `ChunkedEncodingError`/`ConnectionError` mid-stream (a transient storage/CDN connection drop while
+  reading the hosted M4A) up to 4 attempts with exponential backoff (2s/4s/8s), re-downloading the
+  whole file each attempt, and is capped at 1 GiB of streamed bytes per attempt (hosted audio is our
+  own ≤96 kbps mono AAC encode, so a legitimate file is well under that) to bound disk use if a
+  response is malformed or hangs open. Separately, `_is_deterministic_media_decode_error`
+  (`external_worker.py`) quarantines a recording whose audio a decoder can never parse
+  (`IndexError("tuple index out of range")`, `DecoderNotFoundError`, `InvalidDataError`,
+  `StreamNotFoundError`) instead of leaving it to fail and re-fail every run. The killable local
+  inference subprocess (`ProcessLocalBackend.run_inference`, `compute/local_process.py`) can't
+  propagate the worker's original exception object across the process boundary, so it re-raises a
+  `LocalInferenceWorkerError` carrying the worker exception's original name/message as attributes;
+  the classifier unwraps that wrapper instead of inspecting its own `RuntimeError` type, so the
+  quarantine also covers decode failures on the GitHub-internal ASR path, not just Modal/Beam.
+  Audio encodes are admitted by a
   **memory reservation** (`MemoryReservation`): production `podcast-speech-v2` encodes reserve a fixed
   768 MiB because both passes are streaming and the lossless intermediate lives on disk, so even an
   all-day meeting has bounded RSS. Monotonic silence timelines use one streaming selector with

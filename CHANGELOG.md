@@ -17,6 +17,39 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **ASR runs failing intermittently from two unrelated causes, mixed together in CI's "failure" verdict.**
+  Auditing recent `asr.yml` runs (workflow history + job logs, not just code review) showed the
+  reconcile-step `NotImplementedError: backend 'b2' is not cas_capable` crash was already fixed
+  (see the `work-leases-index/` routing entry below) but two other causes were still live and
+  distinct from it and from each other:
+  - **Hosted-audio download connection drops.** `ChunkedEncodingError`/`IncompleteRead` while
+    streaming the multi-hundred-MB audio file from B2/R2 killed the claim with zero retries —
+    `_download_audio_file()` (`citypods/stages.py`) did a single `requests` GET with no
+    retry around the `iter_content()` read loop. Now retries up to 4 attempts with exponential
+    backoff (2s/4s/8s) on `ChunkedEncodingError`/`ConnectionError`, re-downloading the whole file
+    from scratch each attempt. The stream is also capped at 1 GiB per attempt
+    (`HostedAudioTooLargeError`, not retried) — hosted audio is our own ≤96 kbps mono AAC encode,
+    so a legitimate file is well under that, and the cap bounds disk use if a response is
+    malformed or hangs open across the retry attempts.
+  - **Media-decode quarantine silently skipped on the GitHub Actions/local-subprocess ASR path.**
+    `_is_deterministic_media_decode_error()` (`citypods/compute/external_worker.py`) is supposed to
+    quarantine a recording whose audio can't be decoded (`IndexError: tuple index out of range`,
+    etc.) instead of leaving it to fail and re-fail every run. The killable local-subprocess ASR
+    backend (`ProcessLocalBackend.run_inference`, `citypods/compute/local_process.py`) re-raises
+    worker-side exceptions as a plain `RuntimeError` whose message embeds the original type name
+    (`"local inference worker IndexError: tuple index out of range"`), which the classifier's
+    `isinstance(exc, IndexError)`/`type(exc).__name__` checks never matched — so on-runner decode
+    failures kept hitting the generic failure path (and CI's exit code 1) forever instead of being
+    quarantined. Added `LocalInferenceWorkerError`, which preserves the worker's original exception
+    name/message as attributes, and taught the classifier to unwrap it.
+
+  Both were confirmed against real failed runs (workflow IDs 226/221/214 for the download drops,
+  227/213 for the decode errors) rather than reproduced synthetically. Neither one actually failed
+  the whole batch — GitHub Actions marks a job `failure` on exit code 1 even when e.g. 7 of 8
+  claimed episodes in that worker's batch succeeded — but both are worth fixing so a transient
+  network blip or an already-known-bad recording stop consuming a "failed" run and, in the decode
+  case, stop re-attempting a recording that can never succeed until its audio changes.
+
 - **`LLM Tag Calibration Ingest` / `ASR Quality Ingest` failed on every run, silently.** Both
   workflows' `resolve`/`finalize` jobs passed `token: ""` to `actions/checkout@v6` intending an
   anonymous, no-token sparse checkout; the pinned checkout version's bundled code calls
