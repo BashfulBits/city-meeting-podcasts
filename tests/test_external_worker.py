@@ -18,7 +18,7 @@ from citypods.compute.external_worker import (
     InternalTranscribeWorker,
     config_from_env,
 )
-from citypods.compute.local_process import ProcessLocalBackend
+from citypods.compute.local_process import LocalInferenceWorkerError, ProcessLocalBackend
 from citypods.ops.workqueue import (
     BUCKET_DEEP_ARCHIVE,
     BUCKET_FEED_VISIBLE,
@@ -702,6 +702,24 @@ def test_admit_claim_quarantines_same_audio_after_decode_failure(tmp_path):
 
     assert admitted is False
     assert "media-decode-quarantine" in str(reason)
+
+
+def test_decode_error_classifier_unwraps_local_inference_worker_error():
+    # ProcessLocalBackend (the killable local-subprocess ASR backend used on GitHub Actions)
+    # can't cross the process boundary with the worker's original exception object — it
+    # re-raises a LocalInferenceWorkerError instead. The classifier must look at that wrapper's
+    # preserved name/message, not the wrapper's own RuntimeError type, or on-runner decode
+    # failures never get quarantined and keep re-failing every run.
+    wrapped = LocalInferenceWorkerError("IndexError", "tuple index out of range", "Traceback...")
+    assert ew._is_deterministic_media_decode_error(wrapped) is True
+
+    other = LocalInferenceWorkerError("ValueError", "something unrelated", "Traceback...")
+    assert ew._is_deterministic_media_decode_error(other) is False
+
+
+def test_decode_error_classifier_still_matches_direct_exceptions():
+    assert ew._is_deterministic_media_decode_error(IndexError("tuple index out of range")) is True
+    assert ew._is_deterministic_media_decode_error(ValueError("nope")) is False
 
 
 def test_admit_claim_retries_when_audio_identity_changed(tmp_path):

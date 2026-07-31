@@ -22,6 +22,18 @@ class InferenceProcessTerminated(RuntimeError):
     """The local inference worker exited or was terminated before returning a result."""
 
 
+class LocalInferenceWorkerError(RuntimeError):
+    """An exception raised inside the killable local inference subprocess, re-raised in the
+    parent. Keeps the worker's original exception type/message as attributes (not just folded
+    into the message string) so callers can classify the failure, e.g. media-decode quarantine
+    (``external_worker._is_deterministic_media_decode_error``)."""
+
+    def __init__(self, name: str, message: str, traceback_text: str) -> None:
+        super().__init__(f"local inference worker {name}: {message}\n{traceback_text}")
+        self.worker_exception_name = name
+        self.worker_exception_message = message
+
+
 def _run_job(asr, job: InferenceJob) -> JobResult:
     inp = job.inputs
     model_name = inp["model"]
@@ -188,9 +200,10 @@ class ProcessLocalBackend:
                 from citypods import asr
 
                 raise asr.AlignmentQualityError(payload.get("message", "alignment failed"))
-            raise RuntimeError(
-                f"local inference worker {payload.get('name', 'error')}: "
-                f"{payload.get('message', '')}\n{payload.get('traceback', '')}"
+            raise LocalInferenceWorkerError(
+                payload.get("name", "error"),
+                payload.get("message", ""),
+                payload.get("traceback", ""),
             )
 
     def terminate_active(self) -> bool:

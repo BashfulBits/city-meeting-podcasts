@@ -992,6 +992,86 @@ def _fake_audio_download(_url, dest):
     Path(dest).write_bytes(b"fake audio")
 
 
+def test_download_audio_file_retries_chunked_encoding_error(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                raise requests.exceptions.ChunkedEncodingError("Connection broken: IncompleteRead")
+            yield b"fake audio bytes"
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    sleeps: list[float] = []
+    dest = tmp_path / "audio.m4a"
+    with patch("requests.Session", _FakeSession):
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a", dest, sleep=sleeps.append
+        )
+
+    assert attempts["n"] == 3
+    assert dest.read_bytes() == b"fake audio bytes"
+    assert sleeps == [2.0, 4.0]
+
+
+def test_download_audio_file_raises_after_exhausting_retries(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            attempts["n"] += 1
+            raise requests.exceptions.ChunkedEncodingError("Connection broken: IncompleteRead")
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", _FakeSession),
+        pytest.raises(requests.exceptions.ChunkedEncodingError),
+    ):
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a", dest, max_attempts=3, sleep=lambda _s: None
+        )
+
+    assert attempts["n"] == 3
+
+
 def _fresh_recipe(ep: Episode, city: City, version: str = ASR_PIPELINE_VERSION) -> str:
     return asr_spec_hash(
         transcript_media_hash(ep),

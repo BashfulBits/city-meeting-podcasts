@@ -2926,18 +2926,43 @@ def _download_audio(url: str):
 download_hosted_audio = _download_audio
 
 
-def _download_audio_file(url: str, dest: Path) -> None:
+# Mid-stream connection drops (observed as ChunkedEncodingError wrapping IncompleteRead) during
+# the multi-hundred-MB hosted-audio fetch — a transient blip on the CDN/storage side, not a bad
+# URL. ``make_session()``'s urllib3 Retry only covers the initial connect/response, not a read
+# that fails partway through ``iter_content()``, so retry the whole download here instead.
+_AUDIO_DOWNLOAD_MAX_ATTEMPTS = 4
+_AUDIO_DOWNLOAD_BACKOFF_SECONDS = 2.0
+
+
+def _download_audio_file(
+    url: str,
+    dest: Path,
+    *,
+    max_attempts: int = _AUDIO_DOWNLOAD_MAX_ATTEMPTS,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
     import requests as _req
 
     from citypods.http import USER_AGENT
 
-    with _req.Session() as sess:
-        sess.headers["User-Agent"] = USER_AGENT
-        r = sess.get(url, timeout=300, stream=True)
-        r.raise_for_status()
-        with open(dest, "wb") as f:
-            for chunk in r.iter_content(chunk_size=65536):
-                f.write(chunk)
+    last: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            with _req.Session() as sess:
+                sess.headers["User-Agent"] = USER_AGENT
+                r = sess.get(url, timeout=300, stream=True)
+                r.raise_for_status()
+                with open(dest, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=65536):
+                        f.write(chunk)
+            return
+        except (_req.exceptions.ChunkedEncodingError, _req.exceptions.ConnectionError) as exc:
+            last = exc
+            if attempt + 1 >= max_attempts:
+                break
+            sleep(_AUDIO_DOWNLOAD_BACKOFF_SECONDS * (2**attempt))
+    assert last is not None
+    raise last
 
 
 def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_binary: str) -> str:
