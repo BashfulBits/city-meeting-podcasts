@@ -27,7 +27,10 @@ Phase R (Research-Tool Surface)._
     `_download_audio_file()` (`citypods/stages.py`) did a single `requests` GET with no
     retry around the `iter_content()` read loop. Now retries up to 4 attempts with exponential
     backoff (2s/4s/8s) on `ChunkedEncodingError`/`ConnectionError`, re-downloading the whole file
-    from scratch each attempt.
+    from scratch each attempt. The stream is also capped at 1 GiB per attempt
+    (`HostedAudioTooLargeError`, not retried) — hosted audio is our own ≤96 kbps mono AAC encode,
+    so a legitimate file is well under that, and the cap bounds disk use if a response is
+    malformed or hangs open across the retry attempts.
   - **Media-decode quarantine silently skipped on the GitHub Actions/local-subprocess ASR path.**
     `_is_deterministic_media_decode_error()` (`citypods/compute/external_worker.py`) is supposed to
     quarantine a recording whose audio can't be decoded (`IndexError: tuple index out of range`,

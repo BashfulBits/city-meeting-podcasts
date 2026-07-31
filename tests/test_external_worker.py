@@ -716,6 +716,10 @@ def test_decode_error_classifier_unwraps_local_inference_worker_error():
     other = LocalInferenceWorkerError("ValueError", "something unrelated", "Traceback...")
     assert ew._is_deterministic_media_decode_error(other) is False
 
+    for name in ("DecoderNotFoundError", "InvalidDataError", "StreamNotFoundError"):
+        wrapped = LocalInferenceWorkerError(name, "decode failed", "Traceback...")
+        assert ew._is_deterministic_media_decode_error(wrapped) is True
+
 
 def test_decode_error_classifier_still_matches_direct_exceptions():
     assert ew._is_deterministic_media_decode_error(IndexError("tuple index out of range")) is True

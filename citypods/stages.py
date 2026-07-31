@@ -2933,6 +2933,19 @@ download_hosted_audio = _download_audio
 _AUDIO_DOWNLOAD_MAX_ATTEMPTS = 4
 _AUDIO_DOWNLOAD_BACKOFF_SECONDS = 2.0
 
+# Hosted audio is our own transcoded output (mono AAC, capped at 96 kbps — see media.py's
+# ``max_kbps=96`` default), not raw provider media, so a legitimate file is small: even an extreme
+# ~24h meeting tops out well under 1 GiB at that bitrate. Bound the stream so a malformed/hung
+# response can't fill disk across the retry attempts above (each attempt reopens ``dest`` in "wb",
+# so a capped attempt never leaves more than one over-cap file on disk).
+_MAX_HOSTED_AUDIO_BYTES = 1_073_741_824  # 1 GiB
+
+
+class HostedAudioTooLargeError(RuntimeError):
+    """Hosted-audio stream exceeded ``_MAX_HOSTED_AUDIO_BYTES``. Not retried: a legitimate hosted
+    file is well under this cap, so a bigger response means something is wrong upstream, not a
+    transient blip."""
+
 
 def _download_audio_file(
     url: str,
@@ -2952,8 +2965,14 @@ def _download_audio_file(
                 sess.headers["User-Agent"] = USER_AGENT
                 r = sess.get(url, timeout=300, stream=True)
                 r.raise_for_status()
+                received = 0
                 with open(dest, "wb") as f:
                     for chunk in r.iter_content(chunk_size=65536):
+                        received += len(chunk)
+                        if received > _MAX_HOSTED_AUDIO_BYTES:
+                            raise HostedAudioTooLargeError(
+                                f"hosted audio exceeded {_MAX_HOSTED_AUDIO_BYTES} bytes: {url}"
+                            )
                         f.write(chunk)
             return
         except (_req.exceptions.ChunkedEncodingError, _req.exceptions.ConnectionError) as exc:
