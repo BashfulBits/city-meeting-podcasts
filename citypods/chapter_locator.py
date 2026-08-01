@@ -58,10 +58,13 @@ class LocatorAnchor:
 
 @dataclass(frozen=True)
 class LocatorAgendaItem:
-    """The clean main-agenda title supplied to the locator for one candidate item."""
+    """One generated display label plus immutable agenda evidence for transcript retrieval."""
 
     index: int
     title: str
+    evidence_text: str
+    locator_cues: tuple[str, ...] = ()
+    display_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -305,12 +308,23 @@ def build_locator_request(
         raise ValueError("agenda item indices must be unique non-negative integers")
     if any(not item.title.strip() for item in agenda_items):
         raise ValueError("agenda item titles must be non-empty")
+    if any(not item.evidence_text.strip() for item in agenda_items):
+        raise ValueError("agenda item evidence text must be non-empty")
+    if any(any(not cue.strip() for cue in item.locator_cues) for item in agenda_items):
+        raise ValueError("agenda item locator cues must be non-empty when supplied")
     if len({unit.id for unit in units}) != len(units):
         raise ValueError("locator unit IDs must be unique")
 
     material = {
         "agenda_items": [
-            {"index": item.index, "title": item.title.strip()} for item in agenda_items
+            {
+                "index": item.index,
+                "title": item.title.strip(),
+                "display_ref": item.display_ref,
+                "evidence_text": item.evidence_text.strip(),
+                "locator_cues": [cue.strip() for cue in item.locator_cues],
+            }
+            for item in agenda_items
         ],
         "transcript_units": [
             {
@@ -331,7 +345,10 @@ def build_locator_request(
                 "from transcript_units; never invent a timestamp or ID. A transition quote must "
                 "be copied from the selected or immediately adjacent unit. Agenda order is only "
                 "a soft prior: items can be skipped, reordered, or revisited. Do not use the "
-                "agenda title as evidence unless it is spoken in the supplied transcript."
+                "generated agenda title as evidence unless it is spoken in the supplied "
+                "transcript. "
+                "Use each item's source-grounded evidence_text and locator_cues to recognize "
+                "announcements, including an item number or ID that is spoken without its summary."
             ),
         },
         {

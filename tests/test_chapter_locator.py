@@ -159,12 +159,31 @@ def test_response_rejects_request_specific_invalid_anchors(anchors, error):
 def test_request_contains_full_units_and_selects_mistral_by_default():
     units = locator_units_from_vtt(b"WEBVTT\n\n00:00:10.000 --> 00:00:12.000\nCall to order\n")
 
-    request = build_locator_request([LocatorAgendaItem(index=0, title="Call to order")], units)
+    request = build_locator_request(
+        [
+            LocatorAgendaItem(
+                index=0,
+                title="Call to order",
+                display_ref="1.",
+                evidence_text="1. Call to Order",
+                locator_cues=("1.", "Call to Order"),
+            )
+        ],
+        units,
+    )
 
     assert request.model == MISTRAL_LOCATOR_MODEL
     assert request.input_tokens > 0
     material = json.loads(request.messages[1]["content"])
-    assert material["agenda_items"] == [{"index": 0, "title": "Call to order"}]
+    assert material["agenda_items"] == [
+        {
+            "index": 0,
+            "title": "Call to order",
+            "display_ref": "1.",
+            "evidence_text": "1. Call to Order",
+            "locator_cues": ["1.", "Call to Order"],
+        }
+    ]
     assert material["transcript_units"] == [
         {"id": "u00001", "start": "00:00:10.000", "end": "00:00:12.000", "text": "Call to order"}
     ]
@@ -188,4 +207,8 @@ def test_request_rejects_ambiguous_or_empty_inputs():
     with pytest.raises(ValueError, match="at least one agenda"):
         build_locator_request([], [unit])
     with pytest.raises(ValueError, match="unit IDs"):
-        build_locator_request([LocatorAgendaItem(index=0, title="Item")], [unit, unit])
+        build_locator_request(
+            [LocatorAgendaItem(index=0, title="Item", evidence_text="1. Item")], [unit, unit]
+        )
+    with pytest.raises(ValueError, match="evidence text"):
+        build_locator_request([LocatorAgendaItem(index=0, title="Item", evidence_text="")], [unit])

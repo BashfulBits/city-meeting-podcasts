@@ -373,9 +373,11 @@ not be treated as an entitlement; activation updates its actual quota in the sam
 provider request/day allowance (it is a paid route), and that the deployed Mistral Large 3 alias
 (`mistral-large-2512`) is limited to 0.07 requests/second (about four requests/minute), not one
 request/second. `deepseek/deepseek-v4-flash` therefore has no artificial RPD or daily-cost ceiling;
-pricing/usage telemetry remains. Both Mistral aliases use `rpm=4` with no RPD cap. The local
-agenda-title runner retains a 15-second start-to-start interval, since a minute-bucket scheduler
-quota alone cannot prevent a synchronous caller from bursting above the upstream limit.
+pricing/usage telemetry remains. The deployed, one-model Mistral Worker deliberately claims only
+one queued request per Cron minute, so the production scheduler records that stricter `rpm=1`
+ceiling and reserves one upstream attempt for dispatch rather than the direct structured-output
+retry worst case. The local agenda-title runner retains a 15-second start-to-start interval, since
+a direct research caller must independently respect the upstream RPS ceiling.
 
 The complete account-specific Mistral model registry is in
 [`config/mistral_model_limits.yml`](../config/mistral_model_limits.yml). It intentionally records
