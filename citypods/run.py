@@ -453,7 +453,16 @@ class SourcePipeline:
             merge_calendar_records(persisted_calendar, fresh_calendar),
             metadata_retention_episodes=self.metadata_retention_episodes,
         )
-        attach_auxiliary_agenda_links(episodes, list(calendar.values()))
+        # Calendar rows and fetched episodes must share their provider-independent UIDs before
+        # UID-based matching. The later assignment remains intentional: an accepted, reviewed
+        # title-date correction can change the derived date while uid_overrides preserve identity.
+        assign_uids(city, episodes)
+        attach_auxiliary_agenda_links(
+            episodes,
+            list(calendar.values()),
+            allow_title_date_fallback=bool(city.source.get("published_is_upload_time")),
+            uid_overrides=city.uid_overrides,
+        )
         if city.aux_provider or calendar:
             self._calendar_store[key] = calendar
             self._calendar_cache[key] = list(calendar.values())

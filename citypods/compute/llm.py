@@ -401,6 +401,29 @@ def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     ]
 
 
+def _messages_with_schema(
+    messages: list[dict[str, Any]], model: ResponseModel
+) -> list[dict[str, Any]]:
+    """Add the response contract to a JSON-mode provider's prompt.
+
+    DeepSeek's ``json_object`` mode guarantees valid JSON syntax, not conformance to a schema.
+    Keeping the schema in the initial prompt makes that first attempt obey the same contract that
+    local Pydantic validation enforces, including when callers supplied a custom prompt.
+    """
+    schema = json.dumps(model.model_json_schema(), sort_keys=True)
+    instruction = (
+        "Return one JSON object only (no Markdown or commentary) matching this JSON Schema:\n"
+        f"{schema}"
+    )
+    enriched = [dict(message) for message in messages]
+    for message in enriched:
+        if message.get("role") == "system":
+            content = message.get("content", "")
+            message["content"] = f"{content}\n\n{instruction}"
+            return enriched
+    return [{"role": "system", "content": instruction}, *enriched]
+
+
 class LiteLLMBackend(Backend):
     """Run an :class:`InferenceJob` through LiteLLM or the R10 async Worker."""
 
@@ -529,7 +552,11 @@ class LiteLLMBackend(Backend):
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
         payload: dict[str, Any] = {
             "model": resolved_model,
-            "messages": _messages(job),
+            "messages": (
+                _messages_with_schema(_messages(job), model)
+                if model is not None and resolved_model.startswith("deepseek/")
+                else _messages(job)
+            ),
             "stream": False,
         }
         if model is not None:
@@ -639,6 +666,8 @@ class LiteLLMBackend(Backend):
         from pydantic import ValidationError
 
         messages = list(_messages(job))
+        if resolved_model.startswith("deepseek/"):
+            messages = _messages_with_schema(messages, model)
         options = self._provider_options(job, resolved_model)
         response_format = response_format or self._gemini_response_format(model)
         failed_attempts: list[_FailedAttempt] = []
