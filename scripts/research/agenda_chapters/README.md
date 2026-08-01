@@ -11,6 +11,8 @@ evidence for later admission decisions; an experiment result is not a runtime fe
 
 - `audit_chapters.py`, `pull_alignment_records.py`, and `build_chapter_alignment_dataset.py`
   establish chapter prevalence and a source-backed benchmark corpus.
+- `build_locator_benchmark.py` selects a UID-deduplicated, duration/body-stratified canonical
+  timing cohort and measures the existing word-sidecar/VTT locator request without model calls.
 - `select_*`, `run_agenda_llm_shadow.py`, `mistral_agenda_batch.py`, and `evaluate_*` create and
   score frozen shadow experiments.
 - `build_agenda_gold_review.py`, `compile_*`, `merge_*`, `prepare_*`, `refresh_*`, the HTML

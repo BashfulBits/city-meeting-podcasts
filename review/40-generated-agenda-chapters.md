@@ -797,26 +797,78 @@ version. LLM route selection is made later from that recorded length/context est
 evidence is never silently shortened to fit a model. A separately designed targeted migration will
 refresh only legacy sidecars at the old 50k boundary, not invalidate/re-fetch the full catalog.
 
+### Transcript-boundary locator Phase 0 (2026-08-01)
+
+The first locator slice is now implemented as the read-only research helper
+`scripts/research/agenda_chapters/build_locator_benchmark.py`, with fixture coverage in
+`tests/test_locator_benchmark.py`. It reuses `collect_benchmark_cohort`, the existing
+`build_locator_units` VTT/word-sidecar contract, `build_locator_request`, the shared token
+estimate, and the structural agenda-title matcher. It does not call a model, mutate episode state,
+or publish chapters. It UID-deduplicates shared feed projections before selection, normalizes body
+keys for diversity, then round-robins `under-2h`, `2-to-4h`, `4-to-8h`, and `8h-plus` meetings
+before filling remaining slots by recency. A row with no usable agenda candidates is retained as
+an explicit non-admission row with its transcript/agenda sizes and timing-unit count.
+
+Using the preserved local research snapshot (`chapter-alignment-records`) gives the following
+eligibility baseline before model calls:
+
+| Provider | Eligible feed rows | UID-deduplicated episodes | Canonicalized bodies | Under 2h | 2–4h | 4–8h | 8h+ |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Granicus | 10,870 | 1,191 | 88 | 1,012 | 140 | 38 | 1 |
+| Swagit | 4,706 | 1,070 | 176 | 760 | 244 | 25 | 10 |
+
+A bounded 12-per-provider public-artifact measurement was run without a model. All 24 selected
+rows had a usable word sidecar, so this pass measured the preferred `words` path; VTT fallback is
+covered by unit tests but still needs a deliberately selected sidecar-missing cohort. Granicus
+had seven rows with structural agenda candidates and five rows with none (including two very short
+sidecars and one zero-byte fetch); Swagit had candidates for all 12. Among rows with candidates,
+the deterministic canonical-title join was 104/180 chapters for Granicus and 73/133 for Swagit in
+this intentionally mixed, body-diverse sample. This is an eligibility/evidence signal, not a
+locator accuracy score: a chapter can be spoken without its printed summary, and the later
+source-evidence contract must still use complete agenda lines and IDs.
+
+The existing full-context request builder selected the route from measured input size, with no
+truncation:
+
+| Provider | Rows with a complete locator packet | Mistral route | Gemini overflow | Input-token range (median) |
+| --- | ---: | ---: | ---: | ---: |
+| Granicus | 7 | 6 | 1 | 41,880–254,861 (90,725) |
+| Swagit | 12 | 8 | 4 | 4,960–638,403 (117,396) |
+
+The largest observed packets were 254,861 tokens for Granicus and 638,403 for Swagit; the latter
+requires the Gemini overflow route under the current 256k Mistral budget. The five Granicus rows
+without structural candidates still had timed transcript units, so they are an agenda-extraction
+eligibility problem rather than a transcript-boundary problem. Before any locator model sweep,
+inspect those artifacts (placeholder/empty versus genuinely unnumbered agendas) and add a small
+sidecar-missing/VTT-fallback stratum. The next measurement should then freeze a larger
+provider × duration × agenda-eligibility cohort, record the exact request manifests, and only
+after that compare full-transcript baseline versus optional deterministic hints. No generated
+chapter is admitted from this Phase 0 report.
+
 ## Implementation sequence
 
-1. Add a pure locator-unit builder and offline benchmark selector/reporting. It reads existing
-   transcript/agenda/chapter artifacts and makes no model call or output mutation.
-2. Add fixture-backed tests for VTT and word-sidecar unit construction, stable IDs, and canonical
-   benchmark eligibility.
-3. Run and inspect the baseline's real artifact sizes, cohort stratification, and independent
-   title-candidate probe. Add a bounded title-selection/equivalence experiment only after its
-   contract and canonical acceptance criteria are approved.
+1. **Completed (Phase 0).** Add a pure locator-unit builder and offline benchmark
+   selector/reporting. It reads existing transcript/agenda/chapter artifacts and makes no model
+   call or output mutation.
+2. **Completed (Phase 0).** Add fixture-backed tests for VTT and word-sidecar unit construction,
+   stable IDs, and canonical benchmark eligibility.
+3. **In progress.** Run and inspect the baseline's real artifact sizes, cohort stratification, and
+   independent title-candidate probe. The next slice adds a deliberate VTT-fallback/sidecar-missing
+   stratum and investigates no-candidate agenda artifacts before any model calls. Add a bounded
+   title-selection/equivalence experiment only after its contract and canonical acceptance criteria
+   are approved.
 4. Select a model route only after that measurement. The existing structured-output LLM path and
    `summarize` task with `scope="agenda-chapter-locate"` will be reused rather than adding a task
    verb.
-4. Design admission/provenance storage and a pre-`AudioStage` persisted-artifact stage; then run a
+5. Design admission/provenance storage and a pre-`AudioStage` persisted-artifact stage; then run a
    shadow evaluation. No generated chapter is published until its measured gate and migration/
    backfill plan are approved.
 
 ## Open decisions
 
-- The initial route is likely Gemini 3.5 Flash because its 1M context can hold long meetings, but
-  this is not a dependency or product choice until real input-size measurements are available.
+- Mistral Large is the default locator route when the measured request plus output reserve fits its
+  256k context; Gemini Flash is the overflow route for larger measured packets. The Phase 0
+  measurements confirm both paths are needed, but do not yet select a production admission policy.
 - Confidence thresholds, tolerances, held-out sampling cadence, and the exact generated-chapter
   record shape are intentionally deferred to the shadow-evaluation slice.
 - Whether a generated chapter should be embedded in audio or exposed as a served-time overlay is

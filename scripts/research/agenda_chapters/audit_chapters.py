@@ -71,10 +71,13 @@ class BenchmarkSample:
     duration_seconds: float | None
     transcript_key: str
     words_key: str
+    words_url: str | None
     agenda_text_key: str
     transcript_url: str
     agenda_text_url: str
     agenda_url: str
+    canonical_starts: tuple[float, ...] = ()
+    canonical_ends: tuple[float, ...] = ()
 
 
 @dataclass
@@ -187,6 +190,7 @@ def _benchmark_sample(
         return None
     transcript_key = transcript.get("key")
     words_key = transcript.get("words_key")
+    words_url = transcript.get("words_url")
     agenda_text_key = links.get("agenda_text_artifact_key")
     transcript_url = transcript.get("url")
     agenda_text_url = links.get("agenda_text_artifact")
@@ -214,10 +218,23 @@ def _benchmark_sample(
         duration_seconds=float(duration) if isinstance(duration, int | float) else None,
         transcript_key=transcript_key,
         words_key=words_key,
+        words_url=words_url if isinstance(words_url, str) else None,
         agenda_text_key=agenda_text_key,
         transcript_url=transcript_url,
         agenda_text_url=agenda_text_url,
         agenda_url=agenda_url,
+        canonical_starts=tuple(
+            float(chapter["start"])
+            for chapter in chapters
+            if isinstance(chapter, Mapping)
+            and isinstance(chapter.get("start"), int | float)
+        ),
+        canonical_ends=tuple(
+            float(chapter["end"])
+            for chapter in chapters
+            if isinstance(chapter, Mapping)
+            and isinstance(chapter.get("end"), int | float)
+        ),
     )
 
 
@@ -454,7 +471,15 @@ def report_dict(
                     key: value
                     for key, value in asdict(sample).items()
                     if key
-                    not in {"transcript_url", "agenda_text_url", "agenda_url", "canonical_titles"}
+                    not in {
+                        "transcript_url",
+                        "words_url",
+                        "agenda_text_url",
+                        "agenda_url",
+                        "canonical_titles",
+                        "canonical_starts",
+                        "canonical_ends",
+                    }
                 }
                 for sample in row.samples
             ],
