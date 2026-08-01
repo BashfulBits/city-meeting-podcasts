@@ -53,18 +53,22 @@ def parse_civicmedia_feed(content: bytes) -> list[Episode]:
         link = _text(item, "link")
         if not link:
             continue  # without a watch page we can't resolve media
+        title = _text(item, "title") or "Untitled meeting"
         pub = _text(item, "pubDate")
         try:
-            published = parsedate_to_datetime(pub) if pub else None
+            source_published = parsedate_to_datetime(pub) if pub else None
         except (TypeError, ValueError):
-            published = None
-        if published is None:
+            source_published = None
+        if source_published is None:
             continue
         episodes.append(
             Episode(
                 guid=_text(item, "guid") or link,
-                title=_text(item, "title") or "Untitled meeting",
-                published=published,
+                title=title,
+                # CivicMedia publishes upload time here.  A configured companion calendar may
+                # later replace a conflicting date before UID assignment, but its own matching
+                # date takes precedence when the two official sources already agree.
+                published=source_published,
                 video_url=link,  # stable watch-page reference; real HLS resolved lazily
                 description=_text(item, "description"),
                 media_kind="hls",

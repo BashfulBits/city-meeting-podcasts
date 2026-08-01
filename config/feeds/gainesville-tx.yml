@@ -4,6 +4,16 @@ provider: civicplus
 source:
   # CivicMedia per-channel RSS (ModID=92 is the CivicMedia module).
   feed_url: https://www.gainesville.tx.us/RSSFeed.aspx?ModID=92&CID=City-Council-1
+# CivicMedia's RSS date is upload time.  The adapter now uses the explicit meeting date in each
+# title; retain the UIDs already published under the former upload-date identity.  VID=284's RSS
+# row joins the pre-existing seed record instead of creating a duplicate.
+uid_overrides:
+  https://www.gainesville.tx.us/CivicMedia?VID=284/639137501400000000: 333cbe69c1b14902
+  https://www.gainesville.tx.us/CivicMedia?VID=285/639150432600000000: 8906b00046990d7e
+  https://www.gainesville.tx.us/CivicMedia?VID=286/639173221800000000: 79608055dace68a8
+  https://www.gainesville.tx.us/CivicMedia?VID=287/639173221800000000: 1e6812c2b21b1686
+  https://www.gainesville.tx.us/CivicMedia?VID=288/639191137800000000: f5c3b009c9733a1e
+  https://www.gainesville.tx.us/CivicMedia?VID=289/639204359400000000: d9fee515ee3c6290
 seed_episodes:
   # The CivicMedia RSS currently exposes only the newest item, while the public video page
   # lists these older City Council recordings. Seed them once; future RSS items will be
