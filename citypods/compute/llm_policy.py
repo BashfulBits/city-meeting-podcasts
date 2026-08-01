@@ -15,6 +15,9 @@ DEFAULT_OUTPUT_TOKEN_MARGIN = 1024
 class LLMRequestPolicy:
     allowed_models: tuple[str, ...] | None = None
     allow_paid: bool = False
+    # Research-only routes are never selected by ordinary pipeline work, even when their
+    # transport credentials happen to be present on a runner.
+    allow_experimental: bool = False
     deadline_at: datetime | None = None
     purpose: str = ""
 
@@ -71,6 +74,11 @@ class LLMRoute:
     free: bool
     quota: QuotaPolicy
     pricing: PricingPolicy
+    experimental: bool = False
+    # Direct structured output may make one corrective retry. A queued dispatch Worker submits
+    # exactly one upstream request and must reserve only that one, even when the caller's
+    # structured-output contract is present.
+    max_provider_attempts: int | None = None
 
 
 _DEEPSEEK_WINDOW = PeakWindow("UTC", time(16, 30), time(0, 30), 0.5)
@@ -113,12 +121,14 @@ ROUTES: dict[str, LLMRoute] = {
         model="deepseek/deepseek-v4-flash",
         transport="direct",
         free=False,
-        quota=QuotaPolicy(rpd=20, reset_timezone="UTC"),
+        # Paid route: the maintainer confirmed there is no provider daily request allowance.
+        # Cost telemetry remains active, but a speculative calendar-day ceiling must not stall
+        # bounded research or later explicitly authorized paid work.
+        quota=QuotaPolicy(),
         pricing=PricingPolicy(
             input_per_token=0.14e-6,
             output_per_token=0.28e-6,
             windows=(_DEEPSEEK_WINDOW,),
-            daily_cost_cap=0.10,
         ),
     ),
     "deepseek/deepseek-v4-pro": LLMRoute(
@@ -136,15 +146,30 @@ ROUTES: dict[str, LLMRoute] = {
         model="mistral/mistral-large-latest",
         transport="mistral-dispatch",
         free=True,
-        quota=QuotaPolicy(rpm=2, rpd=20),
+        # The account's Mistral Large alias resolves to ``mistral-large-2512`` (0.07 RPS), but
+        # production does not call that API directly: the deployed one-model dispatch Worker
+        # claims exactly one request each minute.  The local ledger must represent that stricter
+        # end-to-end ceiling, not the upstream's theoretical four requests/minute.
+        quota=QuotaPolicy(rpm=1),
         pricing=PricingPolicy(),
+        max_provider_attempts=1,
     ),
     "mistral/mistral-large-3": LLMRoute(
         model="mistral/mistral-large-3",
         transport="mistral-dispatch",
         free=True,
-        quota=QuotaPolicy(rpm=2),
+        quota=QuotaPolicy(rpm=1),
         pricing=PricingPolicy(),
+        max_provider_attempts=1,
+    ),
+    "mistral/mistral-medium-2508": LLMRoute(
+        model="mistral/mistral-medium-2508",
+        # Evaluation-only direct route. It is not a default/overflow selection policy.
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=22, tpm=356_250),
+        pricing=PricingPolicy(),
+        experimental=True,
     ),
 }
 

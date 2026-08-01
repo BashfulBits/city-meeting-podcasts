@@ -79,6 +79,7 @@ SUPPORTED_MODELS = frozenset(
         "deepseek/deepseek-v4-pro",
         "mistral/mistral-large-latest",
         "mistral/mistral-large-3",
+        "mistral/mistral-medium-2508",
     }
 )
 
@@ -546,14 +547,22 @@ class LiteLLMBackend(Backend):
     ) -> JobResult:
         """Dispatch to whichever structured-output path this route actually works with.
 
-        Gemini uses its own native-schema path (bypasses Instructor entirely -- see
-        ``_run_gemini_structured_direct``); every other supported route (DeepSeek, Mistral) keeps
-        using Instructor for typed parsing and one validation-feedback retry, unchanged.
+        Gemini uses its native-schema path. DeepSeek uses the same local parse/validate/retry
+        mechanism with JSON-object mode because Instructor's compatibility registry does not
+        recognize this custom route; Mistral retains Instructor's typed parsing.
         """
         completion_fn = completion if completion is not None else self._completion_fn()
         if resolved_model.startswith("gemini/"):
-            return self._run_gemini_structured_direct(
+            return self._run_native_structured_direct(
                 job, model, resolved_model=resolved_model, completion=completion_fn
+            )
+        if resolved_model.startswith("deepseek/"):
+            return self._run_native_structured_direct(
+                job,
+                model,
+                resolved_model=resolved_model,
+                completion=completion_fn,
+                response_format={"type": "json_object"},
             )
         try:
             import instructor
@@ -595,15 +604,18 @@ class LiteLLMBackend(Backend):
             model=resolved_model,
         )
 
-    def _run_gemini_structured_direct(
+    def _run_native_structured_direct(
         self,
         job: InferenceJob,
         model: ResponseModel,
         *,
         resolved_model: str,
         completion: Callable[..., Any],
+        response_format: Mapping[str, Any] | None = None,
     ) -> JobResult:
-        """Gemini's REST API natively supports schema-constrained JSON output
+        """Use a provider-native structured response with local validation and one retry.
+
+        Gemini's REST API natively supports schema-constrained JSON output
         (``responseJsonSchema``) -- confirmed against the live API by
         ``citypods/llm_compat_probe.py``. Routing that through ``instructor.from_litellm()``
         doesn't reach it: Instructor's own (provider, mode) compatibility table (pinned
@@ -614,10 +626,10 @@ class LiteLLMBackend(Backend):
         identical error. Rather than switch away from native schema mode (Gemini genuinely
         supports it) or add runtime fallback/re-probing logic, this calls LiteLLM directly with
         the same OpenAI-shaped ``response_format`` LiteLLM already translates into Gemini's native
-        mechanism (``_gemini_response_format``, also used by the R10 dispatch payload), and
-        replicates Instructor's own contract for every other route: parse, validate against
-        ``model``, and on a first failure retry exactly once with the validation error fed back as
-        corrective feedback -- the same "one bounded corrective retry" every other provider gets.
+        mechanism (``_gemini_response_format``, also used by the R10 dispatch payload). DeepSeek
+        uses its documented JSON-object mode here because the installed Instructor registry treats
+        the custom DeepSeek route as OpenAI and rejects it before a request. Both routes parse and
+        validate against ``model``, then retry once with validation feedback.
         Both attempts' usage is billed: a first attempt that fails validation still reached
         Gemini and spent real tokens/quota, so on a retry-then-succeed outcome the returned
         ``output["usage"]`` is the *sum* of both responses' usage, not just the second's --
@@ -628,7 +640,7 @@ class LiteLLMBackend(Backend):
 
         messages = list(_messages(job))
         options = self._provider_options(job, resolved_model)
-        response_format = self._gemini_response_format(model)
+        response_format = response_format or self._gemini_response_format(model)
         failed_attempts: list[_FailedAttempt] = []
         first_attempt_usage: Any = None
         for attempt in range(2):  # original attempt + exactly one corrective retry

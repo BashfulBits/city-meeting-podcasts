@@ -140,6 +140,37 @@ def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
     assert ("mistral/mistral-large-latest", "transport gate") in result.rejected
 
 
+def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
+    """The Worker claims one Large request per Cron minute, below the upstream 0.07-RPS cap."""
+    route = ROUTES["mistral/mistral-large-latest"]
+    assert route.transport == "mistral-dispatch"
+    assert route.quota.rpm == 1
+
+
+def test_research_only_mistral_medium_is_not_an_implicit_pipeline_fallback():
+    model = "mistral/mistral-medium-2508"
+    excluded = select_route(
+        LLMRequestPolicy(allowed_models=(model,)),
+        routes=ROUTES,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert excluded.model is None
+    assert (model, "experimental route disallowed") in excluded.rejected
+
+    included = select_route(
+        LLMRequestPolicy(allowed_models=(model,), allow_experimental=True),
+        routes=ROUTES,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert included.model == model
+
+
 def test_retry_at_is_next_minute_when_only_the_per_minute_window_is_full():
     """Pacing signal: with the per-minute window full but the daily quota still open, `retry_at`
     is the next minute boundary -- the paced caller waits that out and keeps dispatching, draining
@@ -251,14 +282,20 @@ def test_retry_at_is_tomorrows_reset_when_only_the_daily_cost_cap_is_exhausted()
     too, not fall into the imprecise one-minute fallback reserved for axes it can't model
     (concurrency, the currently-unused monthly `cost_cap`)."""
     budget = LLMBudget()
-    model = "deepseek/deepseek-v4-flash"
-    route = ROUTES[model]
+    model = "test/daily-cost-cap"
+    route = LLMRoute(
+        model=model,
+        transport="direct",
+        free=False,
+        quota=QuotaPolicy(reset_timezone="UTC"),
+        pricing=PricingPolicy(input_per_token=1e-3, daily_cost_cap=0.25),
+    )
     led = budget._ledger(model, NOW, route=route)
     led.cost_day_used = route.pricing.daily_cost_cap  # today's $ cap is fully spent
 
     result = select_route(
         LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
-        routes=ROUTES,
+        routes={model: route},
         ledger=budget,
         available_transports=DIRECT,
         estimated_tokens=1024,
