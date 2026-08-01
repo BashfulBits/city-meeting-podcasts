@@ -107,7 +107,11 @@ def test_collect_benchmark_requires_every_persisted_locator_input(monkeypatch, t
         "eligible": _benchmark_record(published="2026-07-03"),
         "legacy-audio": _benchmark_record(audio=None, audio_key="audio/source/legacy.m4a"),
         "no-words": _benchmark_record(
-            transcript={"key": "transcripts/source/other.vtt", "synced": True}
+            transcript={
+                "key": "transcripts/source/other.vtt",
+                "url": "https://objects.test/transcript-other.vtt",
+                "synced": True,
+            }
         ),
         "no-audio": _benchmark_record(audio={}),
         "not-synced": _benchmark_record(
@@ -131,6 +135,30 @@ def test_collect_benchmark_requires_every_persisted_locator_input(monkeypatch, t
     assert "Canonical locator benchmark cohort" in report
     assert "`granicus` | 2 | City Council (2)" in report
     assert report_dict({}, cohort)["benchmark"]["providers"]["granicus"]["episodes"] == 2
+
+
+def test_collect_benchmark_can_opt_into_vtt_only_rows(monkeypatch, tmp_path):
+    city = SimpleNamespace(slug="city-a", provider="granicus", source={}, source_id="source-a")
+    records = {
+        "vtt-only": _benchmark_record(
+            transcript={
+                "key": "transcripts/source/other.vtt",
+                "url": "https://objects.test/transcript-other.vtt",
+                "synced": True,
+            }
+        )
+    }
+    monkeypatch.setattr(
+        "scripts.research.agenda_chapters.audit_chapters.load_records", lambda *_args: records
+    )
+
+    default = collect_benchmark_cohort([city], tmp_path, sample_size=5)
+    fallback = collect_benchmark_cohort(
+        [city], tmp_path, sample_size=5, allow_vtt_fallback=True
+    )
+
+    assert default == {}
+    assert fallback["granicus"].samples[0].words_key is None
 
 
 def test_measurement_is_bounded_stratified_and_uses_shared_token_estimate(monkeypatch, tmp_path):

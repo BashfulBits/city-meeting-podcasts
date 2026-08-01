@@ -70,7 +70,7 @@ class BenchmarkSample:
     canonical_titles: tuple[str, ...]
     duration_seconds: float | None
     transcript_key: str
-    words_key: str
+    words_key: str | None
     words_url: str | None
     agenda_text_key: str
     transcript_url: str
@@ -165,7 +165,7 @@ def _sample(record: Mapping[str, object], *, slug: str, uid: str, stage: str) ->
 
 
 def _benchmark_sample(
-    record: Mapping[str, object], *, slug: str, uid: str
+    record: Mapping[str, object], *, slug: str, uid: str, allow_vtt_fallback: bool = False
 ) -> BenchmarkSample | None:
     """Return a fully-persisted canonical example, or ``None`` without guessing artifacts.
 
@@ -195,12 +195,13 @@ def _benchmark_sample(
     transcript_url = transcript.get("url")
     agenda_text_url = links.get("agenda_text_artifact")
     agenda_url = links.get("agenda_portal") or links.get("agenda") or links.get("agenda_packet")
+    has_words = isinstance(words_key, str) or isinstance(words_url, str)
     if not (
         chapters
         and isinstance(audio_key, str)
         and isinstance(transcript_key, str)
         and transcript.get("synced") is True
-        and isinstance(words_key, str)
+        and (allow_vtt_fallback or has_words)
         and isinstance(agenda_text_key, str)
         and isinstance(transcript_url, str)
         and isinstance(agenda_text_url, str)
@@ -276,16 +277,30 @@ def collect_coverage(
 
 
 def collect_benchmark_cohort(
-    cities: Iterable, state_dir: Path, *, sample_size: int
+    cities: Iterable,
+    state_dir: Path,
+    *,
+    sample_size: int,
+    allow_vtt_fallback: bool = False,
 ) -> dict[str, ProviderBenchmark]:
-    """Select canonical examples with all persisted locator inputs, grouped by provider."""
+    """Select canonical examples with persisted locator inputs, grouped by provider.
+
+    The default preserves the original word-sidecar eligibility contract.  Research callers may
+    opt into ``allow_vtt_fallback`` to include synced VTT-only rows; production admission remains
+    out of scope for this helper.
+    """
     cohort: defaultdict[str, ProviderBenchmark] = defaultdict(ProviderBenchmark)
     for city in cities:
         records = load_records(state_dir, source_key(city))
         for uid, record in records.items():
             if not isinstance(record, Mapping):
                 continue
-            sample = _benchmark_sample(record, slug=city.slug, uid=str(uid))
+            sample = _benchmark_sample(
+                record,
+                slug=city.slug,
+                uid=str(uid),
+                allow_vtt_fallback=allow_vtt_fallback,
+            )
             if sample is None:
                 continue
             provider = _episode_provider(record, city.provider)

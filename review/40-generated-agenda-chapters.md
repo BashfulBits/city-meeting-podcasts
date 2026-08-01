@@ -845,6 +845,38 @@ provider × duration × agenda-eligibility cohort, record the exact request mani
 after that compare full-transcript baseline versus optional deterministic hints. No generated
 chapter is admitted from this Phase 0 report.
 
+### Transcript-boundary fallback and agenda-artifact diagnosis (2026-08-01)
+
+The next slice added an explicit research-only `allow_vtt_fallback` eligibility flag and
+`--include-vtt-fallback` CLI option. The default word-sidecar cohort is unchanged. With the flag,
+the preserved snapshot contains 6 CivicClerk, 57 Granicus, and 28 Swagit UID-deduplicated VTT-only
+rows. The selector forces one VTT-only row per provider when available, while retaining the same
+duration/body stratification.
+
+The bounded 12-per-provider fallback measurement selected 30 rows (CivicClerk has only six
+eligible rows):
+
+| Provider | Selected | VTT units | Complete packets | Mistral | Gemini overflow | Context range (median) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| CivicClerk | 6 | 6 | 6 | 3 | 3 | 79,270–286,709 (230,590) |
+| Granicus | 12 | 1 | 6 | 5 | 1 | 41,880–254,861 (98,520) |
+| Swagit | 12 | 1 | 12 | 8 | 4 | 4,960–638,403 (95,471) |
+
+All eight selected VTT rows parsed into timed units. The forced Granicus VTT row had no usable
+agenda candidates because it was a `DocumentViewer.php`/`Loading…` placeholder; the CivicClerk and
+Swagit VTT rows produced complete packets. This validates the VTT parser as a fallback input path,
+while confirming that agenda eligibility must be measured independently from transcript timing.
+
+The five original Granicus no-candidate artifacts were fetched read-only and classified as two
+`unpublished-placeholder` responses, two empty artifacts, and one `viewer-placeholder`. None was a
+genuine agenda with unnumbered action items. This evidence belongs with the existing OCR/placeholder
+remediation issue rather than weakening the locator benchmark's agenda-candidate gate.
+
+The next gate is now a larger frozen cohort with explicit strata for provider, duration, agenda
+artifact class, and timing source. It should include both complete packets and recorded
+non-admissions, then compare the full transcript packet against optional deterministic hints. No
+LLM call is warranted until that packet is frozen and its source/evidence manifest is reviewable.
+
 ## Implementation sequence
 
 1. **Completed (Phase 0).** Add a pure locator-unit builder and offline benchmark
@@ -853,10 +885,10 @@ chapter is admitted from this Phase 0 report.
 2. **Completed (Phase 0).** Add fixture-backed tests for VTT and word-sidecar unit construction,
    stable IDs, and canonical benchmark eligibility.
 3. **In progress.** Run and inspect the baseline's real artifact sizes, cohort stratification, and
-   independent title-candidate probe. The next slice adds a deliberate VTT-fallback/sidecar-missing
-   stratum and investigates no-candidate agenda artifacts before any model calls. Add a bounded
-   title-selection/equivalence experiment only after its contract and canonical acceptance criteria
-   are approved.
+   independent title-candidate probe. The bounded VTT-fallback and no-candidate artifact diagnosis
+   is complete; next freeze the larger provider × duration × agenda-eligibility × timing-source
+   packet and record its exact request manifests. Add a bounded title-selection/equivalence
+   experiment only after its contract and canonical acceptance criteria are approved.
 4. Select a model route only after that measurement. The existing structured-output LLM path and
    `summarize` task with `scope="agenda-chapter-locate"` will be reused rather than adding a task
    verb.

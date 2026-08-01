@@ -54,6 +54,7 @@ class LocatorBenchmarkMeasurement:
     agenda_candidate_count: int | None
     agenda_matched_count: int | None
     agenda_match_pct: float | None
+    agenda_artifact_class: str | None
     transcript_bytes: int | None
     words_bytes: int | None
     agenda_bytes: int | None
@@ -81,6 +82,18 @@ def duration_bucket(seconds: float | None) -> str:
     return "8h-plus"
 
 
+def classify_agenda_artifact(text: str, *, candidate_count: int) -> str:
+    """Classify a fetched agenda artifact for eligibility diagnostics, not admission."""
+    normalized = " ".join(text.casefold().split())
+    if not normalized:
+        return "empty"
+    if "not currently published" in normalized:
+        return "unpublished-placeholder"
+    if "documentviewer.php" in normalized or "loading" in normalized:
+        return "viewer-placeholder"
+    return "structural-candidates" if candidate_count else "no-structural-candidates"
+
+
 def _dedupe_candidates(
     benchmark: Mapping[str, object],
 ) -> dict[str, list[BenchmarkSample]]:
@@ -102,7 +115,7 @@ def _dedupe_candidates(
 
 
 def select_locator_samples(
-    benchmark: Mapping[str, object], *, per_provider: int
+    benchmark: Mapping[str, object], *, per_provider: int, vtt_per_provider: int = 0
 ) -> dict[str, list[BenchmarkSample]]:
     """Select a deterministic provider × duration × body-diverse locator cohort.
 
@@ -113,6 +126,8 @@ def select_locator_samples(
     """
     if per_provider < 1:
         raise ValueError("per_provider must be positive")
+    if vtt_per_provider < 0 or vtt_per_provider > per_provider:
+        raise ValueError("vtt_per_provider must be between zero and per_provider")
     deduped = _dedupe_candidates(benchmark)
     selected: dict[str, list[BenchmarkSample]] = {}
     for provider, candidates in deduped.items():
@@ -122,8 +137,13 @@ def select_locator_samples(
         for rows in buckets.values():
             rows.sort(key=lambda sample: (sample.body, sample.published, sample.uid), reverse=True)
 
-        chosen: list[BenchmarkSample] = []
-        chosen_uids: set[str] = set()
+        fallback_candidates = [
+            sample
+            for sample in candidates
+            if sample.words_key is None and sample.words_url is None
+        ]
+        chosen: list[BenchmarkSample] = fallback_candidates[:vtt_per_provider]
+        chosen_uids: set[str] = {sample.uid for sample in chosen}
         # Round-robin buckets so a provider with a long tail does not become a recent-short-only
         # benchmark.  Within each bucket, prefer a new body before a second meeting from a body.
         body_seen: set[tuple[str, str]] = set()
@@ -171,14 +191,19 @@ def cohort_summary(benchmark: Mapping[str, object]) -> dict[str, object]:
         unique = deduped.get(provider, [])
         body_counts: dict[str, int] = defaultdict(int)
         buckets: dict[str, int] = defaultdict(int)
+        timing_sources: dict[str, int] = defaultdict(int)
         for sample in unique:
             body_counts[body_key(canonical_body(sample.body))] += 1
             buckets[duration_bucket(sample.duration_seconds)] += 1
+            timing_sources["words" if sample.words_key or sample.words_url else "vtt"] += 1
         providers[provider] = {
             "eligible_feed_rows": len(candidates),
             "uid_deduplicated_episodes": len(unique),
             "body_count": len(body_counts),
             "duration_buckets": {bucket: buckets.get(bucket, 0) for bucket in DURATION_BUCKETS},
+            "timing_sources": {
+                source: timing_sources.get(source, 0) for source in ("words", "vtt")
+            },
             "bodies": dict(sorted(body_counts.items())),
         }
     return {"providers": providers}
@@ -249,6 +274,7 @@ def measure_locator_samples(
                         agenda_candidate_count=None,
                         agenda_matched_count=None,
                         agenda_match_pct=None,
+                        agenda_artifact_class=None,
                         transcript_bytes=None,
                         words_bytes=None,
                         agenda_bytes=None,
@@ -279,6 +305,7 @@ def measure_locator_samples(
             units, unit_source = build_locator_units(words_data=words, vtt_data=transcript)
             candidates, items = _structural_items(agenda_text)
             matches = match_title_candidates(sample.canonical_titles, candidates)
+            agenda_class = classify_agenda_artifact(agenda_text, candidate_count=len(candidates))
             request = build_locator_request(items, units) if units and items else None
             error = None
             if not units:
@@ -293,6 +320,7 @@ def measure_locator_samples(
                     agenda_match_pct=round(100 * len(matches) / sample.chapter_count, 1)
                     if sample.chapter_count
                     else None,
+                    agenda_artifact_class=agenda_class,
                     transcript_bytes=len(transcript),
                     words_bytes=len(words) if words is not None else None,
                     agenda_bytes=len(agenda),
@@ -314,13 +342,20 @@ def build_manifest(
     benchmark: Mapping[str, object],
     *,
     per_provider: int,
+    vtt_per_provider: int = 0,
     measurements: list[LocatorBenchmarkMeasurement],
 ) -> dict[str, object]:
-    selected = select_locator_samples(benchmark, per_provider=per_provider)
+    selected = select_locator_samples(
+        benchmark, per_provider=per_provider, vtt_per_provider=vtt_per_provider
+    )
     return {
         "version": DATASET_VERSION,
         "purpose": "offline transcript-boundary locator sizing and eligibility",
-        "selection": {"per_provider": per_provider, "duration_buckets": list(DURATION_BUCKETS)},
+        "selection": {
+            "per_provider": per_provider,
+            "vtt_per_provider": vtt_per_provider,
+            "duration_buckets": list(DURATION_BUCKETS),
+        },
         "cohort": cohort_summary(benchmark),
         "selected": {
             provider: [
@@ -347,6 +382,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--per-provider", type=int, default=12)
     parser.add_argument(
+        "--include-vtt-fallback",
+        action="store_true",
+        help="include synced VTT-only rows and force one per provider when available",
+    )
+    parser.add_argument(
         "--cohort-only",
         action="store_true",
         help="write the eligibility/selection manifest without fetching public artifacts",
@@ -357,8 +397,16 @@ def main(argv: list[str] | None = None) -> int:
 
     site = load_site_config("config/site_config.yml")
     cities = load_city_configs("config", site.get("defaults", {}))
-    benchmark = collect_benchmark_cohort(cities, args.state_dir, sample_size=999999)
-    selected = select_locator_samples(benchmark, per_provider=args.per_provider)
+    benchmark = collect_benchmark_cohort(
+        cities,
+        args.state_dir,
+        sample_size=999999,
+        allow_vtt_fallback=args.include_vtt_fallback,
+    )
+    vtt_per_provider = 1 if args.include_vtt_fallback else 0
+    selected = select_locator_samples(
+        benchmark, per_provider=args.per_provider, vtt_per_provider=vtt_per_provider
+    )
     measurements: list[LocatorBenchmarkMeasurement] = []
     if not args.cohort_only:
         session = make_session()
@@ -370,7 +418,10 @@ def main(argv: list[str] | None = None) -> int:
 
         measurements = measure_locator_samples(selected, fetch_bytes=fetch_bytes)
     manifest = build_manifest(
-        benchmark, per_provider=args.per_provider, measurements=measurements
+        benchmark,
+        per_provider=args.per_provider,
+        vtt_per_provider=vtt_per_provider,
+        measurements=measurements,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")

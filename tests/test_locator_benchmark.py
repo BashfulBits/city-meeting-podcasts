@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from scripts.research.agenda_chapters.audit_chapters import BenchmarkSample
 from scripts.research.agenda_chapters.build_locator_benchmark import (
+    classify_agenda_artifact,
     cohort_summary,
     duration_bucket,
     measure_locator_samples,
@@ -19,6 +20,7 @@ def _sample(
     body: str,
     duration: float | None,
     published: str = "2026-07-01T00:00:00+00:00",
+    vtt_only: bool = False,
 ) -> BenchmarkSample:
     return BenchmarkSample(
         slug="city-feed",
@@ -30,8 +32,8 @@ def _sample(
         canonical_titles=("1. Call to Order", "2. Budget"),
         duration_seconds=duration,
         transcript_key=f"transcripts/{uid}.vtt",
-        words_key=f"transcripts/{uid}.words.json",
-        words_url=f"https://objects.test/{uid}.words.json",
+        words_key=None if vtt_only else f"transcripts/{uid}.words.json",
+        words_url=None if vtt_only else f"https://objects.test/{uid}.words.json",
         agenda_text_key=f"documents/{uid}.txt",
         transcript_url=f"https://objects.test/{uid}.vtt",
         agenda_text_url=f"https://objects.test/{uid}.txt",
@@ -69,6 +71,42 @@ def test_selector_deduplicates_feed_projections_and_round_robins_buckets():
     assert summary["eligible_feed_rows"] == 4
     assert summary["uid_deduplicated_episodes"] == 3
     assert summary["body_count"] == 3
+
+
+def test_selector_can_force_a_vtt_fallback_row():
+    benchmark = {
+        "swagit": SimpleNamespace(
+            candidates=[
+                _sample("words", body="Council", duration=100),
+                _sample("vtt", body="Planning", duration=200, vtt_only=True),
+            ]
+        )
+    }
+
+    selected = select_locator_samples(benchmark, per_provider=1, vtt_per_provider=1)["swagit"]
+
+    assert [sample.uid for sample in selected] == ["vtt"]
+    assert cohort_summary(benchmark)["providers"]["swagit"]["timing_sources"] == {
+        "words": 1,
+        "vtt": 1,
+    }
+
+
+def test_agenda_artifact_classification_distinguishes_placeholders():
+    assert classify_agenda_artifact("", candidate_count=0) == "empty"
+    assert (
+        classify_agenda_artifact("Loading… DocumentViewer.php", candidate_count=0)
+        == "viewer-placeholder"
+    )
+    assert (
+        classify_agenda_artifact("This agenda is not currently published.", candidate_count=0)
+        == "unpublished-placeholder"
+    )
+    assert classify_agenda_artifact("A heading", candidate_count=0) == "no-structural-candidates"
+    assert (
+        classify_agenda_artifact("1. Call to Order", candidate_count=1)
+        == "structural-candidates"
+    )
 
 
 def test_measurement_uses_words_then_vtt_and_reports_source_join():
