@@ -1,0 +1,37 @@
+# Account-specific Mistral limits reported by the maintainer on 2026-07-28.
+#
+# This is an input registry for future LLM dispatch routes, not an automatically enforced route
+# table.  Add a model to citypods.compute.llm_policy.ROUTES only after its task fit, pricing, and
+# structured-output compatibility have been evaluated.  The Worker must translate `rps` into
+# per-request pacing as well as using the coarser TPM/minute buckets.
+source: maintainer-reported Mistral Console limits
+observed_on: 2026-07-28
+account:
+  # Reported as an assumption, not independently verified. Do not enforce until Mistral confirms
+  # whether this is shared by every model and how its reset boundary is defined.
+  assumed_shared_tokens_per_month: 1000000000
+  audio_seconds_per_minute: 3600
+  document_ocr_pages_per_minute: 625
+models:
+  codestral-2508: {tpm: 625000, rps: 2.08}
+  codestral-embed: {tpm: 50000, rps: 1.0}
+  devstral-2512: {tpm: 1000000, rps: 0.83}
+  labs-leanstral-1-5-1: {tpm: 5000000, rps: 0.63}
+  magistral-medium-2509: {tpm: 75000, rps: 0.08}
+  magistral-small-2509: {tpm: 25000, rps: 0.03}
+  ministral-14b-2512: {tpm: 937500, rps: 0.5}
+  ministral-3b-2512: {tpm: 1300000, rps: 12.5}
+  ministral-8b-2512: {tpm: 625000, rps: 3.13}
+  mistral-embed-2312: {tpm: 20000000, rps: 1.0}
+  mistral-large-2512: {tpm: 250000, rps: 0.07}
+  mistral-medium-2505: {tpm: 375000, rps: 0.42}
+  mistral-medium-2508: {tpm: 356250, rps: 0.38}
+  mistral-medium-latest: {tpm: 25000, rps: 0.83}
+  mistral-moderation-2603: {tpm: 50000, rps: 1.67}
+  mistral-small-2506: {tpm: 2250000, rps: 5.0}
+  mistral-small-2603: {tpm: 50000, rps: 0.83}
+  open-mistral-nemo: {tpm: 500000, rps: 0.5}
+  voxtral-mini-2602: {tpm: 50000, rps: 1.0}
+  voxtral-mini-transcribe-realtime-2602: {tpm: 50000, rps: 1.0}
+  voxtral-mini-tts-2603: {tpm: 50000, rps: 1.0}
+  voxtral-small-2507: {tpm: 50000, rps: 1.0}

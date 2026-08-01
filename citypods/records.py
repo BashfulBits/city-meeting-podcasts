@@ -356,7 +356,13 @@ def merge_calendar_backfill(episodes: list[Episode], calendar_records: list[Agen
         _fill_missing_links(existing.links, record.links)
 
 
-def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[AgendaSource]) -> None:
+def attach_auxiliary_agenda_links(
+    episodes: list[Episode],
+    aux_records: list[AgendaSource],
+    *,
+    allow_title_date_fallback: bool = False,
+    uid_overrides: Mapping[str, str] | None = None,
+) -> None:
     """Attach official auxiliary links to matching primary episodes in place.
 
     A video-linked calendar row joins its primary recording by the canonical
@@ -367,9 +373,10 @@ def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[Age
     retain the original UID/date-body fallback.  Next, an unambiguous same-body
     calendar row matching the primary source date wins over title parsing.
     Finally, an unmatched primary title with an explicit long-form date may join
-    one unambiguous same-body calendar row; this covers CivicMedia feeds where
-    ``pubDate`` is upload time and normalizes the episode date to the official
-    calendar date before UID assignment. Primary links win on key collision, so
+    one unambiguous same-body calendar row only when the source explicitly marks
+    its timestamp as upload time. The date is normalized only for a provider GUID
+    covered by a reviewed UID migration override; otherwise the link is attached
+    without changing the episode identity. Primary links win on key collision, so
     a companion cannot replace the primary provider's canonical agenda or video
     reference.
     """
@@ -390,12 +397,16 @@ def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[Age
         if record is None:
             record = by_body_date.get((body_key(episode.body), episode.published.date()))
         title_matched = False
-        if record is None and (meeting_date := title_meeting_date(episode.title)) is not None:
+        if (
+            allow_title_date_fallback
+            and record is None
+            and (meeting_date := title_meeting_date(episode.title)) is not None
+        ):
             record = by_body_date.get((body_key(episode.body), meeting_date))
             title_matched = record is not None
         if record is None:
             continue
-        if title_matched:
+        if title_matched and episode.guid in (uid_overrides or {}):
             episode.published = record.published
         _fill_missing_links(episode.links, record.links)
 

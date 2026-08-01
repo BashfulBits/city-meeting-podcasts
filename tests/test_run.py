@@ -593,6 +593,62 @@ def test_calendar_companion_backfills_video_and_persists_no_video_meetings(tmp_p
         _REGISTRY.pop(companion.name, None)
 
 
+def test_calendar_companion_matches_same_day_sessions_by_uid(tmp_path, fake_provider):
+    class _SameDayCalendar:
+        name = "faketestsamedaycalendar"
+        capabilities = frozenset()
+
+        def validate(self, source):
+            pass
+
+        def fetch_calendar_index(self, source):
+            return CalendarIndex(
+                records=[
+                    AgendaRecord(
+                        body="City Council",
+                        title="Morning session",
+                        published=datetime(2026, 5, 1, 9, tzinfo=UTC),
+                        links={"agenda": "https://calendar.example/morning.pdf"},
+                    ),
+                    AgendaRecord(
+                        body="City Council",
+                        title="Evening session",
+                        published=datetime(2026, 5, 1, 18, tzinfo=UTC),
+                        links={"agenda": "https://calendar.example/evening.pdf"},
+                    ),
+                ]
+            )
+
+    companion = _SameDayCalendar()
+    register(companion)
+    try:
+        fake_provider.episodes = [
+            _ep("morning"),
+            _ep("evening"),
+        ]
+        fake_provider.episodes[0].published = datetime(2026, 5, 1, 9, tzinfo=UTC)
+        fake_provider.episodes[1].published = datetime(2026, 5, 1, 18, tzinfo=UTC)
+        cities = _setup(tmp_path)
+        config = cities / "feeds" / "fake-city.yml"
+        config.write_text(
+            config.read_text()
+            + "aux_provider: faketestsamedaycalendar\n"
+            + "aux_source: {calendar_url: 'https://calendar.example'}\n"
+        )
+
+        _build(tmp_path, cities)
+
+        source_dir = next((tmp_path / "state" / "sources").iterdir())
+        records = json.loads((source_dir / "episodes.json").read_text())["episodes"].values()
+        by_guid = {record["provider_guid"]: record for record in records}
+        assert by_guid["morning"]["links"]["agenda"].endswith("morning.pdf")
+        assert by_guid["evening"]["links"]["agenda"].endswith("evening.pdf")
+    finally:
+        from citypods.providers import _REGISTRY
+
+        _REGISTRY.pop(companion.name, None)
+
+
 def test_calendar_companion_failure_keeps_primary_archive_available(tmp_path, fake_provider):
     class _FailingCalendarCompanion:
         name = "failingcalendar"

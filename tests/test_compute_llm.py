@@ -597,6 +597,25 @@ def test_structured_job_uses_native_json_schema_mode_for_gemini():
     assert sent["json_schema"]["schema"] == ExampleOutput.model_json_schema()
 
 
+def test_deepseek_structured_request_includes_schema_in_initial_prompt():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response('{"value":"ok"}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
+    )
+    backend.run_inference(job(content="meeting text", structured_output="test-output"))
+
+    sent = calls[0]
+    assert sent["response_format"] == {"type": "json_object"}
+    system = next(message for message in sent["messages"] if message["role"] == "system")
+    assert "JSON Schema" in system["content"]
+    assert json.dumps(ExampleOutput.model_json_schema(), sort_keys=True) in system["content"]
+
+
 def test_gemini_structured_request_relaxes_constraint_keywords_only():
     """Gemini's native schema mode 400s specifically on minLength/maxLength/minimum/maximum/
     minItems/maxItems (confirmed against the live API via citypods/llm_compat_probe.py's

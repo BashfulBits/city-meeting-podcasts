@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 import time
 import uuid
@@ -37,6 +38,22 @@ class SelectionResult:
     # future run, so a single run can drain its full daily quota across successive minute windows
     # rather than bursting one window's worth and stopping. `None` when a route *was* selected.
     retry_at: datetime | None = None
+    # Exact capacity reserved for the selected route. Direct structured calls reserve their
+    # potential corrective retry; a queued Worker route reserves its single upstream attempt.
+    reserved_requests: int | None = None
+    reserved_tokens: int | None = None
+
+
+def _reservation_size(route: LLMRoute, *, requests: int, tokens: int) -> tuple[int, int]:
+    """Return this route's bounded provider reservation from a caller-wide worst case.
+
+    ``tokens`` is the total for ``requests`` equal-sized possible attempts. A dispatch Worker
+    has no local corrective retry, so its route can safely reserve one attempt while direct
+    routes keep the caller's two-attempt structured-output reservation.
+    """
+    route_requests = min(requests, route.max_provider_attempts or requests)
+    per_attempt_tokens = max(1, math.ceil(tokens / requests))
+    return route_requests, per_attempt_tokens * route_requests
 
 
 def _window_bounds(window, now: datetime) -> tuple[datetime, datetime] | None:
@@ -215,7 +232,7 @@ def select_route(
     corrective retry can send a second request (see ``llm.py``'s ``run_inference``) -- not just 1.
     """
     rejected: list[tuple[str, str]] = []
-    candidates: list[tuple[LLMRoute, float, datetime, float]] = []
+    candidates: list[tuple[LLMRoute, float, datetime, float, int, int]] = []
     allowed = set(policy.allowed_models) if policy.allowed_models is not None else None
     # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
     # only *temporarily* unavailable -- per-minute window full, daily quota spent, or under a real
@@ -235,12 +252,18 @@ def select_route(
         if not policy.allow_paid and not route.free:
             rejected.append((model, "paid model disallowed"))
             continue
-        cost = _estimated_cost(route, estimated_tokens, now)
+        if route.experimental and not policy.allow_experimental:
+            rejected.append((model, "experimental route disallowed"))
+            continue
+        route_requests, route_tokens = _reservation_size(
+            route, requests=requests, tokens=estimated_tokens
+        )
+        cost = _estimated_cost(route, route_tokens, now)
         if not ledger.available(
             model,
             route=route,
-            requests=requests,
-            tokens=estimated_tokens,
+            requests=route_requests,
+            tokens=route_tokens,
             cost=cost,
             now=now,
         ):
@@ -248,7 +271,12 @@ def select_route(
             if route_ledger is None:
                 route_ledger = ledger._ledger(model, now, route=route)
             predicted = _next_quota_reset(
-                route, route_ledger, now, requests=requests, tokens=estimated_tokens, cost=cost
+                route,
+                route_ledger,
+                now,
+                requests=route_requests,
+                tokens=route_tokens,
+                cost=cost,
             )
             retry_ats.append(predicted)
             reason = "quota or budget exhausted"
@@ -271,23 +299,39 @@ def select_route(
         # Already fetched (and, if needed, window-rolled) by the `ledger.available(...)` check
         # above, which internally calls the same `_ledger()` -- this is that same entry, not a
         # second lookup.
-        candidates.append((route, cost, predicted, _utilization(route, ledger.routes[model])))
+        candidates.append(
+            (
+                route,
+                cost,
+                predicted,
+                _utilization(route, ledger.routes[model]),
+                route_requests,
+                route_tokens,
+            )
+        )
 
     if not candidates:
         reason = "no configured LLM route is eligible right now"
         return SelectionResult(
             None, None, reason, tuple(rejected), retry_at=min(retry_ats, default=None)
         )
-    route, _, predicted, _ = min(
+    route, _, predicted, _, route_requests, route_tokens = min(
         candidates,
         key=lambda item: (not item[0].free, item[1], item[3], item[2], item[0].model),
     )
     rejected.extend(
         (candidate.model, "lower-ranked eligible route")
-        for candidate, _, _, _ in candidates
+        for candidate, _, _, _, _, _ in candidates
         if candidate.model != route.model
     )
-    return SelectionResult(route.model, route, "selected eligible route", tuple(rejected))
+    return SelectionResult(
+        route.model,
+        route,
+        "selected eligible route",
+        tuple(rejected),
+        reserved_requests=route_requests,
+        reserved_tokens=route_tokens,
+    )
 
 
 def select_and_reserve(
@@ -354,13 +398,15 @@ def select_and_reserve(
         # No availability recheck here: `select_route` already confirmed `ledger.available(...)`
         # for this exact candidate against this same unmutated `ledger` snapshot when it built
         # `candidates` (§5 gate 3) -- a second check here would always pass and never fires.
-        cost = _estimated_cost(selection.route, estimated_tokens, attempt_now)
+        reserved_requests = selection.reserved_requests or requests
+        reserved_tokens = selection.reserved_tokens or estimated_tokens
+        cost = _estimated_cost(selection.route, reserved_tokens, attempt_now)
         ledger.reserve(
             owner,
             selection.model,
             route=selection.route,
-            requests=requests,
-            tokens=estimated_tokens,
+            requests=reserved_requests,
+            tokens=reserved_tokens,
             cost=cost,
             now=attempt_now,
         )
@@ -371,7 +417,13 @@ def select_and_reserve(
             else:
                 storage.put_cas(LLM_BUDGET_STATE_KEY, body, "application/json", if_match=etag)
             return SelectionResult(
-                selection.model, selection.route, selection.reason, selection.rejected, owner=owner
+                selection.model,
+                selection.route,
+                selection.reason,
+                selection.rejected,
+                owner=owner,
+                reserved_requests=reserved_requests,
+                reserved_tokens=reserved_tokens,
             )
         except CASConflict:
             sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
