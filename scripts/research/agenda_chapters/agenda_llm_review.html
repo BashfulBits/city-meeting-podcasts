@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Agenda title review</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 1.2rem auto; max-width: 1100px; color: #202124; }
+  header { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+  button, a { font: inherit; }
+  button { padding: .35rem .6rem; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .9fr); gap: 1rem; margin-top: 1rem; }
+  section { border: 1px solid #dadce0; border-radius: .5rem; padding: .8rem; }
+  .item { border-top: 1px solid #e8eaed; padding: .7rem 0; }
+  .item:first-child { border-top: 0; }
+  .quote { background: #fff3b0; padding: .35rem; white-space: pre-wrap; }
+  .context { background: #f8f9fa; max-height: 18rem; overflow: auto; padding: .45rem; white-space: pre-wrap; }
+  .active { font-weight: 700; outline: 3px solid #1a73e8; }
+  .correct { background: #d9ead3; } .incorrect { background: #f4cccc; } .unsure { background: #fff2cc; }
+  small { color: #5f6368; } ol { padding-left: 1.35rem; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+</style>
+<header>
+  <button id="previous">Previous</button><strong id="position"></strong><button id="next">Next</button>
+  <a id="official" target="_blank" rel="noreferrer">Open official agenda viewer</a>
+  <small>Mark each cited title/action as Correct, Incorrect, or Unsure. A/B are anonymous.</small>
+</header>
+<main>
+  <section><h2 id="meeting"></h2><div id="sets"></div></section>
+  <section><h2>Provider chapter titles</h2><ol id="canonical"></ol><h2>Highlighted agenda context</h2><div id="context"></div></section>
+</main>
+<script>
+let review, decisions = {}, index = 0;
+const esc = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const decisionId = (meeting, label, item) => `${meeting.adjudication_id}:${label}:${item}`;
+function context(text, start, end) {
+  if (!text) return '<p>Preserved source text was unavailable. Use the official agenda viewer.</p>';
+  const lines = text.split('\n'), first = Math.max(0, start - 3), last = Math.min(lines.length, end + 2);
+  return lines.slice(first, last).map((line, offset) => {
+    const number = first + offset + 1, chosen = number >= start && number <= end;
+    return `<div class="${chosen ? 'quote' : ''}">${number}: ${esc(line)}</div>`;
+  }).join('');
+}
+function save(id, decision, note = '') {
+  decisions[id] = {decision, note};
+  fetch('/api/decisions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision_id:id, decision, note})}).then(render);
+}
+function render() {
+  const meeting = review.meetings[index];
+  document.querySelector('#position').textContent = `${index + 1} / ${review.meetings.length}`;
+  document.querySelector('#meeting').textContent = `${meeting.provider} · ${meeting.coverage_bucket} coverage`;
+  document.querySelector('#official').href = meeting.official_agenda_url || '#';
+  document.querySelector('#canonical').innerHTML = meeting.canonical_titles.map(title => `<li>${esc(title)}</li>`).join('');
+  let selected = null;
+  document.querySelector('#sets').innerHTML = meeting.generated_title_sets.map(set => {
+    const items = set.items.map((item, itemIndex) => {
+      const id = decisionId(meeting, set.label, itemIndex), stored = decisions[id]?.decision || '';
+      const buttons = ['correct','incorrect','unsure'].map(value => `<button class="${stored === value ? `active ${value}` : value}" data-id="${id}" data-value="${value}">${value}</button>`).join(' ');
+      return `<div class="item"><strong>${esc(item.title)}</strong><br><small>Lines ${item.line_start}-${item.line_end}</small><p class="quote">${esc(item.evidence_quote)}</p>${buttons}<button class="show" data-start="${item.line_start}" data-end="${item.line_end}">Show context</button></div>`;
+    }).join('');
+    return `<h2>Set ${set.label}</h2>${items}`;
+  }).join('');
+  document.querySelector('#sets').querySelectorAll('[data-value]').forEach(button => button.onclick = () => save(button.dataset.id, button.dataset.value));
+  document.querySelector('#sets').querySelectorAll('.show').forEach(button => button.onclick = () => {
+    document.querySelector('#context').innerHTML = context(meeting.agenda_text, Number(button.dataset.start), Number(button.dataset.end));
+  });
+  document.querySelector('#context').innerHTML = meeting.retrieval_error ? `<p>${esc(meeting.retrieval_error)}</p>` : '<p>Select “Show context” for an item.</p>';
+}
+document.querySelector('#previous').onclick = () => { index = Math.max(0, index - 1); render(); };
+document.querySelector('#next').onclick = () => { index = Math.min(review.meetings.length - 1, index + 1); render(); };
+Promise.all([fetch('/api/review').then(response => response.json()), fetch('/api/decisions').then(response => response.json())]).then(([data, stored]) => { review = data; decisions = stored; render(); });
+</script>

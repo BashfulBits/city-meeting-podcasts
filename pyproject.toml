@@ -56,6 +56,9 @@ asr = [
 # separate from asr-bench/asr — those also pull in faster-whisper/stable-ts, which the weekly
 # asr-quality-review.yml workflow (this extra's only consumer) has no other reason to install.
 wer = ["jiwer>=3.0"]
+# Offline-only experiments for generated agenda chapters (GH#1078).  This is deliberately not
+# included by the production or Worker dependency profiles.
+chapter-research = ["scikit-learn>=1.5"]
 llm = [
     "pydantic>=2.8",                # task-owned structured-output contracts
     # gemini-3.5-flash-lite support (day-0 pricing/provider registration) landed in litellm main

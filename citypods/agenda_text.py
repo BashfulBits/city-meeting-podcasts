@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from urllib.parse import urljoin
 
 _MINUTES_RE = re.compile(r"\bminutes?\b", re.I)
@@ -34,6 +35,36 @@ class DocumentLink:
     source_url: str | None = None
     item_label: str | None = None
     kind: str = "backup"
+
+
+@dataclass(frozen=True)
+class AgendaTitleCandidate:
+    """A structural main-agenda title candidate, with its source line for auditability."""
+
+    title: str
+    line_number: int
+
+
+_BARE_NUMBER_RE = re.compile(r"^(?:\d+|[IVXLC]+)\.$", re.I)
+_BARE_LETTER_RE = re.compile(r"^[A-Z]\.$")
+_NUMBERED_TITLE_RE = re.compile(
+    r"^(?P<prefix>(?:\d+|[IVXLC]+)(?:\.\s*[A-Z])?\.)\s*(?P<title>\S.*)$", re.I
+)
+_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+(?P<title>\S.*?)(?:\s+#+)?$")
+_ALL_CAPS_TITLE_RE = re.compile(r"^[A-Z][A-Z0-9 &'’/,:;()\-]{2,}$")
+_AGENDA_MARKER_RE = re.compile(r"^AGENDA(?:\s+ITEMS?)?$", re.I)
+_NON_TITLE_LABELS = frozenset(
+    {
+        "AGENDA",
+        "AGENDA ITEM",
+        "AGENDA ITEMS",
+        "ATTACHMENT",
+        "EXECUTIVE SESSION",
+        "NOTICE OF PUBLIC MEETING",
+        "CURRENT COMMISSIONERS",
+        "EX-OFFICIO MEMBERS",
+    }
+)
 
 
 def _clean_url(url: str) -> str:
@@ -81,6 +112,26 @@ def _extract_pdf(
         pass
     text = "\n".join(texts)[:MAX_TEXT_CHARS]
     return text, _dedupe_links(links + _links_from_text(text, source_url))
+
+
+def extract_pdf_layout_text(content: bytes) -> str:
+    """Extract a PDF's visual reading layout using the existing pypdf dependency.
+
+    This is intentionally a lightweight representation rather than a lossy PDF-to-HTML or OCR
+    conversion. It preserves indentation/line separation for agenda heading experiments while the
+    normal text extractor remains the stable, bounded artifact used elsewhere.
+    """
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return content.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
+    try:
+        reader = PdfReader(io.BytesIO(content))
+        return "\n".join(
+            page.extract_text(extraction_mode="layout") or "" for page in reader.pages
+        )[:MAX_TEXT_CHARS]
+    except (TypeError, ValueError, KeyError):
+        return _extract_pdf(content)[0]
 
 
 def _links_from_text(text: str, source_url: str | None) -> list[DocumentLink]:
@@ -137,6 +188,52 @@ def extract_html(
     return soup.get_text("\n", strip=True)[:MAX_TEXT_CHARS], _dedupe_links(links)
 
 
+def extract_html_outline(content: bytes | str) -> str:
+    """Return a small Markdown-like outline from semantic HTML agenda headings.
+
+    Standard heading elements are retained, as are Granicus-style links carrying an ``Agenda``
+    CSS class. This supplements, rather than replaces, the full plain text: it deliberately does
+    not infer headings from typography such as arbitrary bold text.
+    """
+    raw = content.decode("utf-8", errors="ignore") if isinstance(content, bytes) else content
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return ""
+    soup = BeautifulSoup(raw, "html.parser")
+    lines: list[str] = []
+    seen: set[str] = set()
+    for node in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "a"]):
+        if node.name == "a":
+            classes = node.get("class") or []
+            if not any(str(css_class).casefold() == "agenda" for css_class in classes):
+                continue
+            level = 2
+        else:
+            level = int(node.name[1])
+        title = _normalize_ws(node.get_text(" ", strip=True))
+        key = title.casefold()
+        if len(title) < 3 or key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"{'#' * level} {title}")
+    return "\n".join(lines)[:MAX_TEXT_CHARS]
+
+
+def extract_agenda_outline(
+    content: bytes, *, content_type: str = "", source_url: str | None = None
+) -> str:
+    """Create a lightweight format-aware agenda outline for title-selection evaluation.
+
+    Callers preserve it separately from ``extract_document``'s full text so a future prompt can
+    use visual/semantic heading evidence without losing the original searchable agenda artifact.
+    """
+    is_pdf = "pdf" in content_type.lower() or (source_url or "").lower().split("?", 1)[0].endswith(
+        ".pdf"
+    )
+    return extract_pdf_layout_text(content) if is_pdf else extract_html_outline(content)
+
+
 def extract_agenda_pdf(content: bytes) -> str:
     return extract_pdf_text(content)
 
@@ -164,6 +261,95 @@ def extract_agenda_text(
         return text if len(text) >= 20 else None
     except Exception:
         return None
+
+
+def extract_agenda_title_candidates(
+    text: str, *, max_items: int = 200
+) -> list[AgendaTitleCandidate]:
+    """Return conservative, line-structured title candidates from a main agenda.
+
+    This is intentionally a *candidate* extractor, not a claim that every listed line was
+    discussed or deserves a chapter. It recognizes numbered items and all-caps section headings
+    after an ``AGENDA`` marker when present, while retaining source-line evidence for benchmark
+    review. Backup/packet text is never passed here.
+    """
+    if max_items < 1:
+        raise ValueError("max_items must be positive")
+    candidates: list[AgendaTitleCandidate] = []
+    seen: set[str] = set()
+    after_marker = False
+    pending_prefix: str | None = None
+    current_section_prefix: str | None = None
+
+    def add(title: str, line_number: int) -> None:
+        normalized = _normalize_ws(title)
+        key = normalized.casefold()
+        if (
+            len(normalized) < 3
+            or len(normalized) > 2_000
+            or key in {label.casefold() for label in _NON_TITLE_LABELS}
+            or key in seen
+            or len(candidates) >= max_items
+        ):
+            return
+        seen.add(key)
+        candidates.append(AgendaTitleCandidate(normalized, line_number))
+
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    for line_number, raw_line in enumerate(lines, start=1):
+        line = _normalize_ws(raw_line)
+        if not line:
+            continue
+        if _AGENDA_MARKER_RE.fullmatch(line):
+            after_marker = True
+            pending_prefix = None
+            current_section_prefix = None
+            continue
+        markdown_heading = _MARKDOWN_HEADING_RE.fullmatch(line)
+        if markdown_heading:
+            add(markdown_heading.group("title"), line_number)
+            continue
+        if _BARE_LETTER_RE.fullmatch(line) and (pending_prefix or current_section_prefix):
+            pending_prefix = f"{pending_prefix or current_section_prefix} {line}"
+            continue
+        if _BARE_NUMBER_RE.fullmatch(line):
+            pending_prefix = line
+            current_section_prefix = line
+            continue
+        numbered = _NUMBERED_TITLE_RE.fullmatch(line)
+        if numbered:
+            prefix = numbered.group("prefix")
+            section = re.match(r"^(?:\d+|[IVXLC]+)\.", prefix, re.I)
+            if section:
+                current_section_prefix = section.group(0)
+            add(f"{prefix} {numbered.group('title')}", line_number)
+            pending_prefix = None
+            continue
+        if pending_prefix:
+            # PDF extraction often puts an item's numeric prefix and its title on separate lines.
+            # Consume exactly the immediate meaningful continuation; attachment labels should not
+            # become titles and leave the prefix available for the actual following title.
+            if line.casefold() not in {"attachment:", "attachment"}:
+                add(f"{pending_prefix} {line}", line_number)
+                pending_prefix = None
+            continue
+        if after_marker and _ALL_CAPS_TITLE_RE.fullmatch(line):
+            add(line, line_number)
+    return candidates
+
+
+def agenda_title_similarity(left: str, right: str) -> float:
+    """Return tolerant title similarity for extraction evaluation, not an attribution claim."""
+
+    def normalize(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", _normalize_ws(value).casefold()).strip()
+
+    left_norm, right_norm = normalize(left), normalize(right)
+    if not left_norm or not right_norm:
+        return 0.0
+    if left_norm in right_norm or right_norm in left_norm:
+        return 1.0
+    return SequenceMatcher(a=left_norm, b=right_norm).ratio()
 
 
 def attribute_links_to_chapters(

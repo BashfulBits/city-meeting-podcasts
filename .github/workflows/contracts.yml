@@ -115,3 +115,11 @@ jobs:
         run: >-
           PYTHONPATH=. python scripts/check_endpoints.py --issues
           ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && '--all' || '' }}
+
+      - name: Verify known chapterless-source contracts
+        env:
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+          SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
+          SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
+        run: pytest -q -m live tests/live/test_chapter_contracts.py
