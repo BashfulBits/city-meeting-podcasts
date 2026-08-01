@@ -777,6 +777,10 @@ is intended to discard agenda candidates without a defensible boundary, **Mistra
 the provisionally preferred free candidate-generation route**, with no quality evidence here that
 would justify making paid DeepSeek the default. This is still not a production admission: the
 transcript-boundary locator and its independent canonical-chapter validation remain required.
+Medium's production use is also deferred until the GitHub chapter-extraction workflow is designed.
+At that point, extend the Cloudflare dispatch layer with a model-specific Medium queue/route and
+explicit TPM/RPS pacing; the current one-model Large Worker should not be repurposed by changing
+only its model variable.
 
 The source-gold packet deliberately was not an A/B model comparison. It labels each unique
 source-evidence span once, which is the right instrument for completeness and avoids asking a
