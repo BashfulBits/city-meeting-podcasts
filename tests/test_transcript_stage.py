@@ -992,6 +992,240 @@ def _fake_audio_download(_url, dest):
     Path(dest).write_bytes(b"fake audio")
 
 
+def test_download_audio_file_retries_chunked_encoding_error(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                raise requests.exceptions.ChunkedEncodingError("Connection broken: IncompleteRead")
+            yield b"fake audio bytes"
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    sleeps: list[float] = []
+    dest = tmp_path / "audio.m4a"
+    with patch("requests.Session", _FakeSession):
+        stages_mod._download_audio_file("https://example.com/audio.m4a", dest, sleep=sleeps.append)
+
+    assert attempts["n"] == 3
+    assert dest.read_bytes() == b"fake audio bytes"
+    assert sleeps == [2.0, 4.0]
+
+
+def test_download_audio_file_raises_after_exhausting_retries(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            attempts["n"] += 1
+            raise requests.exceptions.ChunkedEncodingError("Connection broken: IncompleteRead")
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", _FakeSession),
+        pytest.raises(requests.exceptions.ChunkedEncodingError),
+    ):
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a", dest, max_attempts=3, sleep=lambda _s: None
+        )
+
+    assert attempts["n"] == 3
+
+
+def test_download_audio_file_retries_connection_error(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            attempts["n"] += 1
+            if attempts["n"] < 2:
+                raise requests.exceptions.ConnectionError("Connection reset by peer")
+            yield b"fake audio bytes"
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    dest = tmp_path / "audio.m4a"
+    with patch("requests.Session", _FakeSession):
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a", dest, sleep=lambda _s: None
+        )
+
+    assert attempts["n"] == 2
+    assert dest.read_bytes() == b"fake audio bytes"
+
+
+def test_download_audio_file_retries_response_timeout(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise requests.exceptions.ReadTimeout("response timed out")
+
+            class _Response:
+                def raise_for_status(self):
+                    pass
+
+                def iter_content(self, chunk_size):
+                    yield b"fake audio bytes"
+
+            return _Response()
+
+    dest = tmp_path / "audio.m4a"
+    with patch("requests.Session", _FakeSession):
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a", dest, sleep=lambda _s: None
+        )
+
+    assert attempts["n"] == 2
+    assert dest.read_bytes() == b"fake audio bytes"
+
+
+def test_download_audio_file_exhausts_default_attempt_limit_with_backoff_schedule(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            attempts["n"] += 1
+            raise requests.exceptions.ConnectionError("Connection reset by peer")
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    sleeps: list[float] = []
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", _FakeSession),
+        pytest.raises(requests.exceptions.ConnectionError),
+    ):
+        # No max_attempts override: this pins the production default (4 attempts) and its
+        # backoff schedule so a regression that quietly shrinks either passes unnoticed.
+        stages_mod._download_audio_file("https://example.com/audio.m4a", dest, sleep=sleeps.append)
+
+    assert attempts["n"] == 4
+    assert sleeps == [2.0, 4.0, 8.0]
+
+
+def test_download_audio_file_aborts_when_stream_exceeds_size_cap(tmp_path):
+    import citypods.stages as stages_mod
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            # One chunk already over the cap: the loop must abort before writing more.
+            yield b"x" * (stages_mod._MAX_HOSTED_AUDIO_BYTES + 1)
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", _FakeSession),
+        pytest.raises(stages_mod.HostedAudioTooLargeError),
+    ):
+        # Oversized streams are not transient — assert this doesn't burn through retries.
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a",
+            dest,
+            sleep=lambda _s: pytest.fail("size cap breach must not be retried"),
+        )
+
+
 def _fresh_recipe(ep: Episode, city: City, version: str = ASR_PIPELINE_VERSION) -> str:
     return asr_spec_hash(
         transcript_media_hash(ep),

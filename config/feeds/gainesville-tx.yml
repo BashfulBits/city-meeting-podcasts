@@ -4,6 +4,7 @@ provider: civicplus
 source:
   # CivicMedia per-channel RSS (ModID=92 is the CivicMedia module).
   feed_url: https://www.gainesville.tx.us/RSSFeed.aspx?ModID=92&CID=City-Council-1
+  published_is_upload_time: true
 # CivicMedia's RSS date is upload time.  The adapter now uses the explicit meeting date in each
 # title; retain the UIDs already published under the former upload-date identity.  VID=284's RSS
 # row joins the pre-existing seed record instead of creating a duplicate.

@@ -63,7 +63,11 @@ from citypods.compute.budget import (
     reserve_if_available,
     settle_reservation,
 )
-from citypods.compute.local_process import InferenceProcessTerminated, ProcessLocalBackend
+from citypods.compute.local_process import (
+    InferenceProcessTerminated,
+    LocalInferenceWorkerError,
+    ProcessLocalBackend,
+)
 from citypods.compute.policy import backend_policy
 from citypods.compute.worker_telemetry import (
     ResourceTracker,
@@ -322,10 +326,20 @@ class ClaimDeferred(RuntimeError):
 
 
 def _is_deterministic_media_decode_error(exc: BaseException) -> bool:
-    """Identify decoder failures that should be quarantined until audio changes."""
-    name = type(exc).__name__
-    message = str(exc).lower()
-    return (isinstance(exc, IndexError) and message == "tuple index out of range") or name in {
+    """Identify decoder failures that should be quarantined until audio changes.
+
+    The killable local-subprocess backend (``local_process.ProcessLocalBackend``) can't propagate
+    the worker's original exception object across the process boundary — it re-raises a
+    ``LocalInferenceWorkerError`` in the parent — so check that wrapper's preserved
+    name/message instead of the wrapping exception's own type when present.
+    """
+    if isinstance(exc, LocalInferenceWorkerError):
+        name = exc.worker_exception_name
+        message = exc.worker_exception_message.lower()
+    else:
+        name = type(exc).__name__
+        message = str(exc).lower()
+    return (name == "IndexError" and message == "tuple index out of range") or name in {
         "DecoderNotFoundError",
         "InvalidDataError",
         "StreamNotFoundError",

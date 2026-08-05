@@ -17,6 +17,44 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Provider chapter starts inside removed silence now snap to the next kept served boundary.**
+  This preserves markers for the next agenda item after a removed recess/silence span while still
+  dropping markers with no later kept audio. Chapter/tag source-index alignment and remap regression
+  coverage were updated; canonical provider chapter records remain unchanged.
+
+- **ASR runs failing intermittently from two unrelated causes, mixed together in CI's "failure" verdict.**
+  Auditing recent `asr.yml` runs (workflow history + job logs, not just code review) showed the
+  reconcile-step `NotImplementedError: backend 'b2' is not cas_capable` crash was already fixed
+  (see the `work-leases-index/` routing entry below) but two other causes were still live and
+  distinct from it and from each other:
+  - **Hosted-audio download connection drops.** `ChunkedEncodingError`/`IncompleteRead` while
+    streaming the multi-hundred-MB audio file from B2/R2 killed the claim with zero retries —
+    `_download_audio_file()` (`citypods/stages.py`) did a single `requests` GET with no
+    retry around the `iter_content()` read loop. Now retries up to 4 attempts with exponential
+    backoff (2s/4s/8s) on `ChunkedEncodingError`/`ConnectionError`, re-downloading the whole file
+    from scratch each attempt. The stream is also capped at 1 GiB per attempt
+    (`HostedAudioTooLargeError`, not retried) — hosted audio is our own ≤96 kbps mono AAC encode,
+    so a legitimate file is well under that, and the cap bounds disk use if a response is
+    malformed or hangs open across the retry attempts.
+  - **Media-decode quarantine silently skipped on the GitHub Actions/local-subprocess ASR path.**
+    `_is_deterministic_media_decode_error()` (`citypods/compute/external_worker.py`) is supposed to
+    quarantine a recording whose audio can't be decoded (`IndexError: tuple index out of range`,
+    etc.) instead of leaving it to fail and re-fail every run. The killable local-subprocess ASR
+    backend (`ProcessLocalBackend.run_inference`, `citypods/compute/local_process.py`) re-raises
+    worker-side exceptions as a plain `RuntimeError` whose message embeds the original type name
+    (`"local inference worker IndexError: tuple index out of range"`), which the classifier's
+    `isinstance(exc, IndexError)`/`type(exc).__name__` checks never matched — so on-runner decode
+    failures kept hitting the generic failure path (and CI's exit code 1) forever instead of being
+    quarantined. Added `LocalInferenceWorkerError`, which preserves the worker's original exception
+    name/message as attributes, and taught the classifier to unwrap it.
+
+  Both were confirmed against real failed runs (workflow IDs 226/221/214 for the download drops,
+  227/213 for the decode errors) rather than reproduced synthetically. Neither one actually failed
+  the whole batch — GitHub Actions marks a job `failure` on exit code 1 even when e.g. 7 of 8
+  claimed episodes in that worker's batch succeeded — but both are worth fixing so a transient
+  network blip or an already-known-bad recording stop consuming a "failed" run and, in the decode
+  case, stop re-attempting a recording that can never succeed until its audio changes.
+
 - **`LLM Tag Calibration Ingest` / `ASR Quality Ingest` failed on every run, silently.** Both
   workflows' `resolve`/`finalize` jobs passed `token: ""` to `actions/checkout@v6` intending an
   anonymous, no-token sparse checkout; the pinned checkout version's bundled code calls
@@ -46,6 +84,14 @@ Phase R (Research-Tool Surface)._
   the agenda-text-preamble-stripping entry below.
 
 ### Added
+
+- **Source-grounded agenda chapter research contracts.** Agenda extraction now preserves immutable
+  source evidence and identifier references, with pure timed-transcript locator request contracts
+  and offline validation tests. These contracts are not wired into episode materialization yet.
+- **Reusable chapter-locator research toolkit.** The repository now contains read-only cohort
+  builders, retrieval/scorer evaluators, packet runners, and localhost adjudication tools under
+  `scripts/research/agenda_chapters/`, isolated behind the offline `chapter-research` dependency
+  profile. The tools never pass provider labels to models and never mutate episode records.
 
 - **Audio existence checks now use persisted trust with a bounded audit backstop** ([GH#1024](https://github.com/BashfulBits/city-meeting-podcasts/issues/1024), child of [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)). Successful audio reuse, credit, and upload paths persist the immutable key/spec verification marker, which is also invalidated by a storage-backend generation/epoch change (e.g. bucket replacement or restore), not just a key/spec mismatch. Matching trusted pointers skip routine storage probes; small dirty sets use direct existence checks and larger batches escalate to the existing single-prefix cache. A daily rotating audit sweeps every trusted pointer in one of 32 stable hash-based partitions (concurrent HEAD checks, no per-run item cap), so the whole catalog gets a full sweep monthly regardless of size; a wall-clock budget bounds run time instead, skipping (not failing) remaining sources once spent, and clears missing audio pointers and the Audio completion marker so the normal lane rebuilds them. Legacy, changed, and repaired pointers remain fail-closed. No audio pipeline-version bump or encoded-byte backfill is required.
 - **Body-aware three-tier retention and gradual archive backfill** ([review/39](review/39-body-aware-tiered-retention.md)). All feeds now inherit 500 RSS-visible episodes per body, retain hosted audio and every artifact through 2,000 per body, and retain metadata plus non-audio artifacts through 10,000 per body. The shared source record store contains the union of body windows, preventing active boards from evicting quieter ones; audio is removed only from the metadata-only tier and reclaimed through normal orphan GC. Feed-visible work is prioritized before bounded 501–2,000 backfill under the existing wall-clock budget. No pipeline-version bump or forced re-encode is introduced; pre-existing artifacts remain valid and the deeper cohort fills gradually.

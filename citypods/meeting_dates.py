@@ -18,10 +18,10 @@ def title_meeting_date(title: str) -> date | None:
     Deliberately does not guess from partial dates or numeric strings: consumers use this only
     when a provider's timestamp is known to describe publication rather than the meeting itself.
     """
-    match = _LONG_DATE_RE.search(title)
-    if not match:
-        return None
-    try:
-        return datetime.strptime(match.group(0).replace(",", ""), "%B %d %Y").date()
-    except ValueError:
-        return None
+    dates: set[date] = set()
+    for match in _LONG_DATE_RE.finditer(title):
+        try:
+            dates.add(datetime.strptime(match.group(0).replace(",", ""), "%B %d %Y").date())
+        except ValueError:
+            continue
+    return next(iter(dates)) if len(dates) == 1 else None

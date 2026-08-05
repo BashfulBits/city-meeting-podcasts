@@ -198,7 +198,12 @@ def test_auxiliary_agenda_links_fall_back_to_unambiguous_title_meeting_date():
         links={"agenda": "https://agenda.example/july-21.pdf"},
     )
 
-    attach_auxiliary_agenda_links(primary, [calendar])
+    attach_auxiliary_agenda_links(
+        primary,
+        [calendar],
+        allow_title_date_fallback=True,
+        uid_overrides={"civicmedia-289": "0123456789abcdef"},
+    )
 
     assert primary[0].published.date().isoformat() == "2026-07-21"
     assert primary[0].links == {"agenda": "https://agenda.example/july-21.pdf"}
@@ -238,7 +243,7 @@ def test_title_date_fallback_rejects_ambiguous_same_day_calendar_rows():
         ),
     ]
 
-    attach_auxiliary_agenda_links(primary, calendars)
+    attach_auxiliary_agenda_links(primary, calendars, allow_title_date_fallback=True)
 
     assert primary[0].links == {}
 
