@@ -211,12 +211,10 @@ def test_chapter_ids_use_source_data_and_rollup_is_taxonomy_ordered():
     assert [tag["id"] for tag in rollup_tags([], annotations, taxonomy)] == ["housing", "trees"]
 
 
-def test_chapter_id_survives_a_dropped_chapter():
-    """remap() drops any chapter whose start falls in a cut span, so the served list's index no
-    longer lines up with its position in source_chapters. chapter_id() must resolve each served
-    chapter's identity from its true source position (chapters.py's source_index stamp), not
-    from the served-list position — otherwise a later chapter picks up an earlier, dropped
-    chapter's title/start and gets the wrong "stable" id."""
+def test_chapter_id_survives_a_snapped_chapter():
+    """A chapter start in a cut span snaps to the next served boundary, so served position no
+    longer lines up with source position. chapter_id() must resolve each served chapter's identity
+    from its true source position (chapters.py's source_index stamp), not served-list position."""
     ep = Episode(
         "g1",
         "Meeting",
@@ -224,7 +222,7 @@ def test_chapter_id_survives_a_dropped_chapter():
         "https://example.test/video",
         source_chapters=[
             {"start": 0, "title": "Call to order"},
-            {"start": 450, "title": "Dropped item (falls in a cut span)"},
+            {"start": 450, "title": "Snapped item (falls in a cut span)"},
             {"start": 700, "title": "Housing plan"},
         ],
         timeline=Timeline(
@@ -250,21 +248,20 @@ def test_chapter_id_survives_a_dropped_chapter():
         ),
     )
     inputs = chapter_tag_inputs(ep)
-    assert len(inputs) == 2  # the middle chapter was dropped
+    assert len(inputs) == 3  # the middle chapter snaps to the next kept boundary
     assert inputs[0]["title"] == "Call to order"
-    assert inputs[1]["title"] == "Housing plan"
-    # The served chapter at index 1 must be identified using source_chapters[2] ("Housing
-    # plan"), not source_chapters[1] ("Dropped item") -- the bug this guards against.
-    assert inputs[1]["chapter_id"] == chapter_id(ep, ep.source_chapters[2], 2)
-    assert inputs[1]["chapter_id"] != chapter_id(ep, ep.source_chapters[1], 1)
+    assert inputs[1]["title"] == "Snapped item (falls in a cut span)"
+    assert inputs[2]["title"] == "Housing plan"
+    assert inputs[1]["chapter_id"] == chapter_id(ep, ep.source_chapters[1], 1)
+    assert inputs[2]["chapter_id"] == chapter_id(ep, ep.source_chapters[2], 2)
 
 
-def test_agenda_text_survives_a_dropped_chapter():
-    """Same desync test_chapter_id_survives_a_dropped_chapter guards against, but for
+def test_agenda_text_survives_a_snapped_chapter():
+    """Same desync test_chapter_id_survives_a_snapped_chapter guards against, but for
     agenda_item_context()'s lookup: that dict is keyed by SOURCE chapter_index (R3's manifest),
     not served-list position, so the agenda-text lookup in chapter_tag_inputs() needs the same
-    source_index resolution chapter_id() already has -- otherwise the surviving chapter after
-    "Housing plan" gets the dropped "Dropped item" chapter's agenda text instead of its own."""
+    source_index resolution chapter_id() already has -- otherwise the surviving chapters could
+    receive agenda evidence from the wrong source item instead of their own."""
 
     class Storage:
         def exists(self, key):
@@ -274,7 +271,7 @@ def test_agenda_text_survives_a_dropped_chapter():
             path.write_text(
                 '{"items": ['
                 '{"chapter_index": 0, "item_text": "Call to order text"},'
-                '{"chapter_index": 1, "item_text": "WRONG: dropped item text"},'
+                '{"chapter_index": 1, "item_text": "Snapped item text"},'
                 '{"chapter_index": 2, "item_text": "Housing plan text"}'
                 "]}"
             )
@@ -287,7 +284,7 @@ def test_agenda_text_survives_a_dropped_chapter():
         "https://example.test/video",
         source_chapters=[
             {"start": 0, "title": "Call to order"},
-            {"start": 450, "title": "Dropped item (falls in a cut span)"},
+            {"start": 450, "title": "Snapped item (falls in a cut span)"},
             {"start": 700, "title": "Housing plan"},
         ],
         links={"agenda_backup_artifact_key": "agenda-backup-key"},
@@ -314,9 +311,10 @@ def test_agenda_text_survives_a_dropped_chapter():
         ),
     )
     inputs = chapter_tag_inputs(ep, Storage())
-    assert len(inputs) == 2  # the middle chapter was dropped
+    assert len(inputs) == 3  # the middle chapter snaps to the next kept boundary
     assert inputs[0]["agenda_text"] == "Call to order text"
-    assert inputs[1]["agenda_text"] == "Housing plan text"
+    assert inputs[1]["agenda_text"] == "Snapped item text"
+    assert inputs[2]["agenda_text"] == "Housing plan text"
 
 
 def test_transcript_windows_are_the_reliable_chapter_association():

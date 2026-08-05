@@ -1737,8 +1737,9 @@ class RemapStage:
       - ``"served:<edl-version>"``: remapped to the served clock, tagged with the EDL
         version they were remapped against (so a later run can detect a stale remap).
 
-    Cut-span chapters (whose start falls in a removed silence gap) are dropped by
-    :func:`~citypods.timeline.remap` — they would scrub to nothing in the served file.
+    Cut-span chapter starts are snapped by :func:`~citypods.timeline.remap` to the next kept
+    served boundary, preserving provider markers that announce the next item after a removed
+    silence/recess span. A marker with no later kept audio is still dropped.
     A chapter whose ``end`` was cut keeps ``end=None``; the encoder's ``_ffmetadata`` derives
     its end from the next chapter's start (the INFRA-1 ``remap(clamp_to=…)`` primitive is for
     single-boundary consumers like the transcript/permalink renderers, not multi-chapter
@@ -1771,7 +1772,12 @@ class RemapStage:
             # chapter's start, which is correct for a chapter truncated by a removed span
             # (clamping to the served duration would overlap later chapters).
             ep.source_chapters = [dict(ch) for ch in raw_chapters]
-            ep.chapters = remap(ep.timeline, raw_chapters, source_id=source_id)
+            ep.chapters = remap(
+                ep.timeline,
+                raw_chapters,
+                source_id=source_id,
+                snap_cut_starts=True,
+            )
             # Stamp the EDL version so a later run can tell these served-time chapters were
             # remapped against *this* timeline (staleness — see _needs_chapter_remap).
             ep.chapters_basis = f"served:{ep.timeline.version}"
@@ -2061,8 +2067,9 @@ class AgendaTextStage:
                 # `with_source_index=True` and the resulting remap below matter because
                 # agenda_item_context()/chapter_tag_inputs() (citypods/tags.py) key this
                 # manifest's chapter_index by SOURCE chapter position, not served-list position --
-                # the same desync chapter_id() already guards against when remap() drops a chapter
-                # (see tests/test_agenda_text.py::test_agenda_text_survives_a_dropped_chapter).
+                # the same desync chapter_id() already guards against when remap() drops or snaps
+                # a chapter
+                # (see tests/test_tags.py::test_agenda_text_survives_a_snapped_chapter).
                 # Storing a raw served-list position here would silently misattribute a surviving
                 # chapter's backup text to whatever chapter now sits at that position after a drop.
                 served_chapters = [
@@ -2926,62 +2933,18 @@ def _download_audio(url: str):
 download_hosted_audio = _download_audio
 
 
-# Mid-stream connection drops (observed as ChunkedEncodingError wrapping IncompleteRead) during
-# the multi-hundred-MB hosted-audio fetch — a transient blip on the CDN/storage side, not a bad
-# URL. ``make_session()``'s urllib3 Retry only covers the initial connect/response, not a read
-# that fails partway through ``iter_content()``, so retry the whole download here instead.
-_AUDIO_DOWNLOAD_MAX_ATTEMPTS = 4
-_AUDIO_DOWNLOAD_BACKOFF_SECONDS = 2.0
-
-# Hosted audio is our own transcoded output (mono AAC, capped at 96 kbps — see media.py's
-# ``max_kbps=96`` default), not raw provider media, so a legitimate file is small: even an extreme
-# ~24h meeting tops out well under 1 GiB at that bitrate. Bound the stream so a malformed/hung
-# response can't fill disk across the retry attempts above (each attempt reopens ``dest`` in "wb",
-# so a capped attempt never leaves more than one over-cap file on disk).
-_MAX_HOSTED_AUDIO_BYTES = 1_073_741_824  # 1 GiB
-
-
-class HostedAudioTooLargeError(RuntimeError):
-    """Hosted-audio stream exceeded ``_MAX_HOSTED_AUDIO_BYTES``. Not retried: a legitimate hosted
-    file is well under this cap, so a bigger response means something is wrong upstream, not a
-    transient blip."""
-
-
-def _download_audio_file(
-    url: str,
-    dest: Path,
-    *,
-    max_attempts: int = _AUDIO_DOWNLOAD_MAX_ATTEMPTS,
-    sleep: Callable[[float], None] = time.sleep,
-) -> None:
+def _download_audio_file(url: str, dest: Path) -> None:
     import requests as _req
 
     from citypods.http import USER_AGENT
 
-    last: Exception | None = None
-    for attempt in range(max_attempts):
-        try:
-            with _req.Session() as sess:
-                sess.headers["User-Agent"] = USER_AGENT
-                r = sess.get(url, timeout=300, stream=True)
-                r.raise_for_status()
-                received = 0
-                with open(dest, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=65536):
-                        received += len(chunk)
-                        if received > _MAX_HOSTED_AUDIO_BYTES:
-                            raise HostedAudioTooLargeError(
-                                f"hosted audio exceeded {_MAX_HOSTED_AUDIO_BYTES} bytes: {url}"
-                            )
-                        f.write(chunk)
-            return
-        except (_req.exceptions.ChunkedEncodingError, _req.exceptions.ConnectionError) as exc:
-            last = exc
-            if attempt + 1 >= max_attempts:
-                break
-            sleep(_AUDIO_DOWNLOAD_BACKOFF_SECONDS * (2**attempt))
-    assert last is not None
-    raise last
+    with _req.Session() as sess:
+        sess.headers["User-Agent"] = USER_AGENT
+        r = sess.get(url, timeout=300, stream=True)
+        r.raise_for_status()
+        with open(dest, "wb") as f:
+            for chunk in r.iter_content(chunk_size=65536):
+                f.write(chunk)
 
 
 def _refresh_served_duration_from_audio(ep: Episode, audio_path: Path, ffmpeg_binary: str) -> str:

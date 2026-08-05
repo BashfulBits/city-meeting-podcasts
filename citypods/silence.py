@@ -644,9 +644,9 @@ class SilencePlanner:
                     )
                     return None
                 # Newly (or already) confirmed: force one chapter re-remap pass so any
-                # provider-agenda chapters beyond the real decoded length get dropped by
-                # RemapStage against the now-current (decoded-length) EDL, rather than staying
-                # stuck as already-"served" from an earlier, longer-seeming plan.
+                # provider-agenda chapters are remapped (or, when there is no later kept audio,
+                # dropped) by RemapStage against the now-current decoded-length EDL, rather than
+                # staying stuck as already-"served" from an earlier, longer-seeming plan.
                 if ep.chapters_basis.startswith("served"):
                     ep.chapters_basis = "source:s0"
             else:

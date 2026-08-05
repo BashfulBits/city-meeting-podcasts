@@ -299,16 +299,35 @@ def _nearest_cut_boundary(tl: Timeline, source_id: str, t: float) -> float | Non
     return boundary
 
 
+def _next_kept_boundary(tl: Timeline, source_id: str, t: float) -> float | None:
+    """Return the served start of the next kept source span after source time *t*.
+
+    This is intentionally separate from :func:`_nearest_cut_boundary`: the latter finds the
+    preceding served edge for an item whose *end* enters a cut, while chapter starts that fall in
+    a removed span should optionally snap forward to the first audio that remains.
+    """
+    source_segs = sorted(
+        (s for s in tl.segments if s.kind == "source" and s.source_id == source_id),
+        key=lambda s: s.source_start,  # type: ignore[arg-type]
+    )
+    for segment in source_segs:
+        if segment.source_start is not None and segment.source_start > t:
+            return segment.served_start
+    return None
+
+
 def remap(
     tl: Timeline,
     items: list[dict],
     *,
     source_id: str | None = None,
     clamp_to: float | None = None,
+    snap_cut_starts: bool = False,
 ) -> list[dict]:
     """Remap timestamped items (chapters, transcript cues) from source-time to served-time.
 
-    Items whose ``start`` falls in a cut span are dropped entirely. ``end`` is remapped
+    Items whose ``start`` falls in a cut span are dropped entirely unless ``snap_cut_starts`` is
+    true, in which case the start is moved to the next kept served boundary. ``end`` is remapped
     when present; if the end was cut it becomes ``None`` — *unless* ``clamp_to`` is given,
     in which case it is first snapped to the served-time edge of the nearest kept segment
     before the cut (so it never overlaps a later chapter/cue), falling back to ``clamp_to``
@@ -328,8 +347,10 @@ def remap(
     result = []
     for item in items:
         new_start = source_to_served(tl, source_id, item["start"])  # type: ignore[arg-type]
+        if new_start is None and snap_cut_starts:
+            new_start = _next_kept_boundary(tl, source_id, item["start"])  # type: ignore[arg-type]
         if new_start is None:
-            continue  # start is in a cut span — drop
+            continue  # start is in a cut span with no requested snap — drop
         new_item = dict(item)
         new_item["start"] = new_start
         if "end" in item and item["end"] is not None:

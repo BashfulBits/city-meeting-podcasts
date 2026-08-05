@@ -1,7 +1,8 @@
 """Tests for INFRA-5 (issue #146): artifact remap + served/source basis convention.
 
 Acceptance criteria:
-- Source-time chapters remap correctly onto a trimmed EDL; cut chapters drop.
+- Source-time chapters remap correctly onto a trimmed EDL; chapter starts in cut spans snap
+  forward while the generic remap primitive retains its drop-by-default behavior.
 - Untimed transcript content flagged (is_timed_transcript returns False for plain text/PDF).
 - chapters_basis field propagates through record round-trip.
 - RemapStage is a no-op for identity timelines.
@@ -165,7 +166,7 @@ class TestRemapStageIdentity:
 
 
 # ---------------------------------------------------------------------------
-# RemapStage — trimmed timeline (chapters remap + cut-span drop)
+# RemapStage — trimmed timeline (chapters remap + cut-span snap)
 # ---------------------------------------------------------------------------
 
 
@@ -195,19 +196,21 @@ class TestRemapStageTrimmed:
         assert ep.chapters[0]["start"] == 300.0
         assert ep.chapters[1]["start"] == 900.0
 
-    def test_cut_span_chapters_are_dropped(self, tmp_path):
+    def test_cut_span_chapters_snap_to_next_kept_boundary(self, tmp_path):
         ep = _ep(
             chapters=[
                 {"start": 0, "title": "Before cut"},
-                {"start": 350, "title": "IN CUT SPAN — should be dropped"},
+                {"start": 350, "title": "IN CUT SPAN — snap forward"},
                 {"start": 600, "title": "After cut"},
             ]
         )
         ep.timeline = _trimmed_timeline()
         RemapStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         titles = [c["title"] for c in ep.chapters]
-        assert "IN CUT SPAN — should be dropped" not in titles
-        assert len(ep.chapters) == 2
+        assert "IN CUT SPAN — snap forward" in titles
+        assert len(ep.chapters) == 3
+        assert ep.chapters[1]["start"] == 300.0
+        assert ep.chapters[2]["start"] == 300.0
 
     def test_chapters_basis_set_to_served(self, tmp_path):
         ep = _ep(chapters=[{"start": 0, "title": "A"}])
