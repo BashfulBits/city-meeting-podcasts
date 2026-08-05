@@ -355,8 +355,8 @@ def test_recovery_returns_complete_source_window_for_exact_global_match():
                             "Consider approval of appointing three members to the Committee "
                             "on the Environment."
                         ),
-                            "line_start": 7,
-                            "line_end": 8,
+                        "line_start": 7,
+                        "line_end": 8,
                     }
                 ]
             }
