@@ -118,6 +118,7 @@ def test_collect_benchmark_requires_every_persisted_locator_input(monkeypatch, t
         "not-synced": _benchmark_record(
             transcript={
                 "key": "transcripts/source/other.vtt",
+                "url": "https://objects.test/transcript-other.vtt",
                 "words_key": "transcripts/source/other.words.json",
                 "synced": False,
             }

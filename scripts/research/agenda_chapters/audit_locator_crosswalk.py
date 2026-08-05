@@ -123,7 +123,7 @@ def _pair_features(chapter_title: str, item: dict[str, Any]) -> dict[str, Any]:
     substring = bool(
         chapter_norm
         and ((chapter_norm in title_norm) or (chapter_norm in evidence_norm))
-        or bool(title_norm and title_norm in chapter_norm)
+        or bool(title_norm and title_norm in chapter_norm and len(title_tokens) >= 3)
     )
     score = max(title_ratio, evidence_ratio, containment)
     if substring:
@@ -350,19 +350,19 @@ def build_crosswalk(
     missing = sorted(set(rows_by_uid) - set(gold_by_uid))
     if missing:
         raise ValueError(f"gold is missing manifest UIDs: {missing[:5]}")
+
+    def cached_agenda_text(uid: str, slug: str) -> str | None:
+        if agenda_cache is None:
+            return None
+        path = agenda_cache / f"{slug}--{uid}.agenda.txt"
+        return path.read_text(encoding="utf-8", errors="replace") if path.exists() else None
+
     episodes = [
         _episode_crosswalk(
             rows_by_uid[uid],
             gold_by_uid[uid],
             model,
-            agenda_text=(
-                (agenda_cache / f"{rows_by_uid[uid]['slug']}--{uid}.agenda.txt").read_text(
-                    encoding="utf-8", errors="replace"
-                )
-                if agenda_cache is not None
-                and (agenda_cache / f"{rows_by_uid[uid]['slug']}--{uid}.agenda.txt").exists()
-                else None
-            ),
+            agenda_text=cached_agenda_text(uid, str(rows_by_uid[uid]["slug"])),
         )
         for uid in sorted(rows_by_uid)
     ]

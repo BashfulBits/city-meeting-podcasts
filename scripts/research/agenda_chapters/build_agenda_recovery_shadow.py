@@ -69,7 +69,7 @@ def build_shadow(raw_root: Path, agenda_cache: Path) -> dict[str, object]:
                     "agenda_error": "agenda cache missing",
                     "strict_items": [],
                     "recovered_items": [],
-                    "unrecovered": [],
+                    "unrecovered": payload.get("rejected") or [],
                 }
             )
             continue

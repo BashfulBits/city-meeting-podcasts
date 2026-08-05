@@ -109,7 +109,8 @@ def _episode_fields(manifest_row: dict[str, Any]) -> dict[str, object]:
 
 
 def _candidate_items(manifest_row: dict[str, Any], model: str) -> list[dict[str, object]]:
-    generated = manifest_row.get("generated_agenda", {}).get(model, {})
+    generated_root = manifest_row.get("generated_agenda") or {}
+    generated = generated_root.get(model, {}) if isinstance(generated_root, dict) else {}
     return list(generated.get("items", [])) if isinstance(generated, dict) else []
 
 
@@ -129,7 +130,7 @@ def _pick_category(
     seed: str,
 ) -> list[dict[str, Any]]:
     """Pick unique episodes while balancing providers, bodies, and duration buckets."""
-    available = _group_rows([row for row in rows if row["uid"] not in used_uids])
+    available = _group_rows([row for row in rows if str(row["uid"]) not in used_uids])
     by_provider: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for candidates in available.values():
         # One chapter per episode per packet.  Prefer a stable candidate within an episode.
@@ -171,7 +172,9 @@ def _pick_category(
             key=lambda row: _hash_key(seed, category, row["uid"], row["provider_chapter_index"])
         )
         for row in remaining:
-            if len(selected) >= target or row["uid"] in used_uids:
+            if len(selected) >= target:
+                break
+            if str(row["uid"]) in used_uids:
                 continue
             selected.append(row)
             used_uids.add(str(row["uid"]))

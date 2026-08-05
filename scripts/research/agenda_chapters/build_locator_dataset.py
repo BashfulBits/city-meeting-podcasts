@@ -94,7 +94,7 @@ def _is_valid_chapter_record(sample: BenchmarkSample) -> tuple[bool, str | None]
             return False, f"malformed_provider_chapter_{index}"
         if start < previous_end:
             return False, f"overlapping_provider_chapter_{index}"
-        previous_end = start
+        previous_end = sample.canonical_ends[index] if sample.canonical_ends else start
     return True, None
 
 
@@ -185,9 +185,9 @@ def assign_body_disjoint_splits(
 
 def _load_existing_outputs(
     output_root: Path, *, agenda_cache: Path | None
-) -> dict[tuple[str, str], dict[str, object]]:
+) -> dict[tuple[str, str, str], dict[str, object]]:
     """Load and current-code revalidate old extraction results by UID, without trusting metadata."""
-    found: dict[tuple[str, str], dict[str, object]] = {}
+    found: dict[tuple[str, str, str], dict[str, object]] = {}
     if not output_root.exists():
         return found
     # Prompt variants are part of the output path (for example
@@ -493,10 +493,8 @@ def build_dataset(
 
     rows.sort(key=lambda row: (row["split"], row["provider"], row["published"], row["uid"]))
     hidden_gold.sort(key=lambda row: row["uid"])
-    input_rows = []
-    for row in rows:
-        # The provider chapter section is intentionally written only to gold.json.
-        input_rows.append(row)
+    # The provider chapter section is intentionally written only to gold.json.
+    input_rows = rows
     manifest = {
         "version": DATASET_VERSION,
         "purpose": "GH#1078 provider-chapter retrieval benchmark inputs",

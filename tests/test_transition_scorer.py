@@ -17,6 +17,7 @@ from scripts.research.agenda_chapters.train_transition_scorer import (
     _strong_targets,
     build_episode_features,
     build_speech_rate_reference,
+    feature_names_for_mode,
     fit_transition_phrase_model,
     speech_rate_vector,
     transition_phrase_features,
@@ -136,6 +137,8 @@ def test_speech_rate_missing_word_timing_is_explicitly_masked():
     assert set(features[0][speech_start : speech_start + 61]) == {0.0}
     assert set(features[0][speech_start + 61 : speech_start + 122]) == {0.0}
     assert features[0][speech_start + 122] == 0.0
+    assert features[0][speech_start + 123] == 0.0
+    assert features[0][speech_start + 124] == 0.0
 
 
 def test_speech_rate_vector_features_integrate_with_episode_features():
@@ -171,6 +174,43 @@ def test_speech_rate_vector_features_integrate_with_episode_features():
     )
     assert len(features) == len(labels) == len(identities)
     assert len(features[0]) == len(FEATURE_NAMES) + 61 + 3
+
+
+def test_feature_names_match_combined_feature_row_width():
+    rows = [
+        (
+            {"uid": "train"},
+            {
+                "provider_chapters": [
+                    {"status": "strong", "best_generated_item_index": 0, "start": 10.0}
+                ]
+            },
+            _units(),
+        ),
+    ]
+    phrase_model = fit_transition_phrase_model(rows, window_seconds=1.0, min_positive_episodes=1)
+    features, _labels, _identities, _targets = build_episode_features(
+        {
+            "generated_agenda": {
+                "mistral/mistral-medium-2508": {
+                    "items": [{"title": "Proposed revision", "evidence_text": "next item"}]
+                }
+            }
+        },
+        rows[0][1],
+        _units(),
+        model="mistral/mistral-medium-2508",
+        label_tolerance=1.0,
+        hard_top_k=1,
+        neighbor_radius=1,
+        random_negatives=1,
+        randomizer=random.Random(1078),
+        speech_rate_mode="both",
+        word_times=tuple((float(i), float(i) + 0.2) for i in range(0, 40, 2)),
+        transition_phrase_mode="learned",
+        transition_phrase_model=phrase_model,
+    )
+    assert len(features[0]) == len(feature_names_for_mode("both", "learned"))
 
 
 def test_transition_phrase_model_learns_training_fold_cues():

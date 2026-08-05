@@ -70,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"index": position, "uid": uid, "status": "reused"}), flush=True)
             continue
         child_write = args.write.with_suffix(f".{uid}.json")
+        child_write.unlink(missing_ok=True)
         command = [
             sys.executable,
             "-m",
@@ -105,12 +106,16 @@ def main(argv: list[str] | None = None) -> int:
                     results.extend(child_results)
                 else:
                     results.append({"uid": uid, "status": "failed", "error": "empty child result"})
-            elif completed_process.returncode:
+            else:
                 results.append(
                     {
                         "uid": uid,
                         "status": "failed",
-                        "error": f"child exited {completed_process.returncode}",
+                        "error": (
+                            f"child exited {completed_process.returncode} without a result"
+                            if completed_process.returncode
+                            else "child produced no result file"
+                        ),
                     }
                 )
         except KeyboardInterrupt:

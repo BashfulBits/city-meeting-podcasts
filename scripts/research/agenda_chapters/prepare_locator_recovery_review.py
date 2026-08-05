@@ -38,7 +38,7 @@ def prepare_packet(
     *,
     model: str = DEFAULT_MODEL,
 ) -> dict[str, object]:
-    """Build a packet without changing the base packet's selected episodes."""
+    """Filter the base packet's fixed episode selection; do not resample it."""
 
     manifest_by_uid = {
         row["uid"]: row for row in recovered_manifest.get("episodes", []) if row.get("uid")
@@ -76,7 +76,7 @@ def prepare_packet(
         "purpose": "fixed-case human review of shadow agenda evidence recovery",
         "model": model,
         "split": base_packet.get("split"),
-        "source_packet": base_packet.get("seed"),
+        "source_packet_seed": base_packet.get("seed"),
         "timings_included": False,
         "unique_episodes": len({case["episode"]["uid"] for case in cases}),
         "cases": cases,

@@ -84,6 +84,7 @@ def build_hint_variants(
     hgb_only: dict[str, dict[str, Any]] = {}
     pooled: dict[str, dict[str, Any]] = {}
     candidate_counts: dict[str, dict[str, int]] = {}
+    unit_index_by_id = {unit.id: index for index, unit in enumerate(units)}
     for item in items:
         index = item.index
         current_methods: dict[str, list[dict[str, Any]]] = {}
@@ -97,11 +98,7 @@ def build_hint_variants(
             ]
         learned_entries = diagnostics.get(str(index), {}).get("learned_top_units", [])
         learned_indices = [
-            next(
-                (unit_index for unit_index, unit in enumerate(units) if unit.id == entry.get("id")),
-                None,
-            )
-            for entry in learned_entries[:top_k]
+            unit_index_by_id.get(entry.get("id")) for entry in learned_entries[:top_k]
         ]
         learned_indices = [index for index in learned_indices if index is not None]
         current_methods["learned:hist_gradient_boosting"] = [
@@ -198,7 +195,7 @@ def _load_hints(
         row = rows_by_uid.get(uid)
         if row is None:
             continue
-        words, vtt, _source = _artifact_bytes(session, row, cache_dir=cache_dir)
+        words, vtt, _source, _units = _artifact_bytes(session, row, cache_dir=cache_dir)
         units, _unit_source = build_locator_units(words_data=words, vtt_data=vtt)
         variants, packet_stats = build_hint_variants(
             row,
@@ -239,6 +236,8 @@ def run_ab(
     direct_mistral: bool,
     concurrency: int,
 ) -> dict[str, Any]:
+    if concurrency > 1 and locator_model.startswith("mistral/"):
+        raise ValueError("parallel hint runs are disabled for Mistral routes")
     hint_maps, hint_stats, selected_uids = _load_hints(
         packet_manifest,
         manifest,
@@ -272,8 +271,6 @@ def run_ab(
         )
         return variant, result
 
-    if concurrency > 1 and locator_model.startswith("mistral/"):
-        raise ValueError("parallel hint runs are disabled for Mistral routes")
     if concurrency <= 1:
         results = dict(run_variant(variant) for variant in variants)
     else:

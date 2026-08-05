@@ -30,3 +30,12 @@ def test_duplicate_unit_repair_names_conflicting_ids():
     content = '{"unit_id":"u00001"},{"unit_id":"u00001"},{"unit_id":"u00002"}'
 
     assert _duplicate_unit_ids(content) == ("u00001",)
+    request = LocatorRequest(
+        messages=({"role": "user", "content": "{}"},),
+        model="mistral/mistral-large-latest",
+        input_tokens=10,
+    )
+    repaired = _duplicate_unit_repair_request(
+        request, duplicate_unit_ids=_duplicate_unit_ids(content)
+    )
+    assert "u00001" in repaired.messages[-1]["content"]

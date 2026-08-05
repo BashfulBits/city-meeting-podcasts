@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import tempfile
+import threading
 from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -33,6 +36,7 @@ class LocatorReviewHandler(BaseHTTPRequestHandler):
     cases: dict[str, dict[str, Any]]
     decisions_path: Path
     page_path: Path
+    decisions_lock = threading.RLock()
 
     def _send_json(self, value: object, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(value, ensure_ascii=False).encode("utf-8")
@@ -47,9 +51,11 @@ class LocatorReviewHandler(BaseHTTPRequestHandler):
             return {}
         try:
             value = json.loads(self.decisions_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-        return value if isinstance(value, dict) else {}
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(f"unable to read decisions: {exc}") from exc
+        if not isinstance(value, dict):
+            raise RuntimeError("decisions file must contain an object")
+        return value
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/api/review":
@@ -69,6 +75,10 @@ class LocatorReviewHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
+        with self.decisions_lock:
+            self._do_POST()
+
+    def _do_POST(self) -> None:
         if self.path != "/api/decisions":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -78,16 +88,13 @@ class LocatorReviewHandler(BaseHTTPRequestHandler):
             case_id = payload["case_id"]
             if not isinstance(case_id, str) or case_id not in self.cases:
                 raise ValueError("unknown case_id")
-            decisions = self._load_decisions()
-            if payload.get("clear") is True:
-                decisions.pop(case_id, None)
-                self.decisions_path.parent.mkdir(parents=True, exist_ok=True)
-                self.decisions_path.write_text(
-                    json.dumps(decisions, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-                    encoding="utf-8",
-                )
-                self._send_json({"saved": True, "cleared": True, "case_id": case_id})
-                return
+            with self.decisions_lock:
+                decisions = self._load_decisions()
+                if payload.get("clear") is True:
+                    decisions.pop(case_id, None)
+                    self._write(decisions)
+                    self._send_json({"saved": True, "cleared": True, "case_id": case_id})
+                    return
             labels = payload.get("labels", [])
             candidate_ids = payload.get("candidate_ids", [])
             reason = payload.get("reason", "")
@@ -115,7 +122,7 @@ class LocatorReviewHandler(BaseHTTPRequestHandler):
                 raise ValueError("missing candidate requires a reason")
             if not isinstance(note, str):
                 raise ValueError("note must be text")
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, RuntimeError) as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
         decisions[case_id] = {
@@ -125,12 +132,19 @@ class LocatorReviewHandler(BaseHTTPRequestHandler):
             "note": note[:4_000],
             "updated_at": datetime.now(UTC).isoformat(),
         }
-        self.decisions_path.parent.mkdir(parents=True, exist_ok=True)
-        self.decisions_path.write_text(
-            json.dumps(decisions, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        with self.decisions_lock:
+            self._write(decisions)
         self._send_json({"saved": True, "case_id": case_id})
+
+    def _write(self, decisions: dict[str, Any]) -> None:
+        self.decisions_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=self.decisions_path.parent, delete=False
+        ) as handle:
+            json.dump(decisions, handle, indent=2, ensure_ascii=False, sort_keys=True)
+            handle.write("\n")
+            temporary = handle.name
+        os.replace(temporary, self.decisions_path)
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         return
@@ -150,7 +164,12 @@ def main(argv: list[str] | None = None) -> int:
     LocatorReviewHandler.page_path = Path(__file__).with_name("locator_crosswalk_review.html")
     server = ThreadingHTTPServer(("127.0.0.1", args.port), LocatorReviewHandler)
     print(f"Locator crosswalk review UI: http://127.0.0.1:{args.port}", flush=True)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
     return 0
 
 

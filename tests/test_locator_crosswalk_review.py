@@ -7,6 +7,35 @@ from scripts.research.agenda_chapters.prepare_locator_crosswalk_review import (
 )
 
 
+def test_crosswalk_ambiguity_threshold_and_plain_numbered_title():
+    assert (
+        _category({"status": "strong", "top_candidates": [{"score": 0.60}, {"score": 0.60}]})
+        == "ambiguous"
+    )
+    assert (
+        _category(
+            {
+                "status": "strong",
+                "provider_title": "Approve the contract",
+                "source_best": {"status": "strong"},
+                "top_candidates": [{"score": 0.59}, {"score": 0.59}],
+            }
+        )
+        == "clear_control"
+    )
+    assert (
+        _category(
+            {
+                "status": "strong",
+                "provider_title": "1. Approve the contract",
+                "source_best": {"status": "strong"},
+                "top_candidates": [],
+            }
+        )
+        == "clear_control"
+    )
+
+
 def test_crosswalk_strata_prioritize_ambiguity_and_source_gaps():
     assert _category({"status": "ambiguous", "top_candidates": []}) == "ambiguous"
     assert (
@@ -74,5 +103,13 @@ def test_episode_fields_do_not_copy_timing_or_transcript_pointers():
         }
     )
     assert result["uid"] == "u"
-    assert "transcript" not in result
-    assert "chapter_starts" not in result
+    assert set(result) == {
+        "uid",
+        "provider",
+        "slug",
+        "body",
+        "published",
+        "duration_bucket",
+        "agenda_url",
+        "agenda_bytes",
+    }

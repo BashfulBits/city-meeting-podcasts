@@ -446,7 +446,7 @@ def run(
             results.append({"uid": uid, "status": "failed", "error": "manifest row missing"})
             continue
         try:
-            words, vtt, source = _artifact_bytes(session, row, cache_dir=cache_dir)
+            words, vtt, source, _units = _artifact_bytes(session, row, cache_dir=cache_dir)
             units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
             # The packet manifest stores aggregate hidden scores, not the item mapping needed for
             # anchor scoring. Reconstruct that mapping only from the scoring source supplied by the

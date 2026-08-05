@@ -16,7 +16,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from citypods.chapter_locator import LocatorUnit, build_locator_units
+from citypods.chapter_locator import LocatorUnit
 from citypods.http import make_session
 from scripts.research.agenda_chapters.build_locator_packets import _agenda_items
 from scripts.research.agenda_chapters.train_transition_scorer import _artifact_bytes, _fetch
@@ -82,8 +82,9 @@ def build_review_packet(
                 errors.append({"uid": uid, "model": model, "error": "missing packet/manifest row"})
                 continue
             try:
-                words, vtt, unit_source = _artifact_bytes(session, row, cache_dir=cache_dir)
-                units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
+                _words, _vtt, unit_source, units = _artifact_bytes(
+                    session, row, cache_dir=cache_dir
+                )
             except Exception as exc:  # pragma: no cover - network failures are packet data
                 errors.append({"uid": uid, "model": model, "error": f"{type(exc).__name__}: {exc}"})
                 continue

@@ -396,8 +396,8 @@ def _speech_rate_features(
     values.extend(
         [
             float(reference.available),
-            float(reference.median),
-            float(reference.scale),
+            float(reference.median) if reference.available else 0.0,
+            float(reference.scale) if reference.available else 0.0,
         ]
     )
     return values
@@ -470,7 +470,7 @@ def _fetch(session: Any, url: str | None) -> bytes | None:
 
 def _artifact_bytes(
     session: Any, row: Mapping[str, Any], *, cache_dir: Path | None
-) -> tuple[bytes | None, bytes | None, str | None]:
+) -> tuple[bytes | None, bytes | None, str | None, list[LocatorUnit]]:
     """Load words/VTT, optionally caching public bytes in a temporary research directory."""
     uid = str(row.get("uid"))
     transcript = row.get("transcript") or {}
@@ -485,7 +485,7 @@ def _artifact_bytes(
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(values[kind])
     units, source = build_locator_units(words_data=values["words"], vtt_data=values["vtt"])
-    return values["words"], values["vtt"], source if units else None
+    return values["words"], values["vtt"], source if units else None, units
 
 
 def _strong_targets(crosswalk_row: Mapping[str, Any]) -> dict[int, list[float]]:
@@ -902,6 +902,19 @@ def _score_validation_episode(
     phrase_rows = _transition_phrase_feature_rows(
         units, model=transition_phrase_model, mode=transition_phrase_mode
     )
+    candidate_pools = {
+        item_index: (
+            list(range(len(units)))
+            if candidate_pool_top_k <= 0
+            else union_ranked_indices(
+                lexical_by_item[item_index],
+                tfidf_by_item[item_index],
+                top_k=candidate_pool_top_k,
+                neighbor_radius=neighbor_radius,
+            )
+        )
+        for item_index in range(len(items))
+    }
     scored_item_indices = range(len(items)) if score_all_items else targets
     for item_index in scored_item_indices:
         if item_index >= len(items):
@@ -926,16 +939,7 @@ def _score_validation_episode(
         )
         probabilities_by_item[item_index] = models[model_name].predict_proba(feature_matrix)[:, 1]
         probabilities = probabilities_by_item[item_index]
-        pool = (
-            list(range(len(units)))
-            if candidate_pool_top_k <= 0
-            else union_ranked_indices(
-                lexical_by_item[item_index],
-                tfidf_by_item[item_index],
-                top_k=candidate_pool_top_k,
-                neighbor_radius=neighbor_radius,
-            )
-        )
+        pool = candidate_pools[item_index]
         order = sorted(pool, key=lambda unit_index: (-probabilities[unit_index], unit_index))
         top = float(probabilities[order[0]]) if len(order) else 0.0
         second = float(probabilities[order[1]]) if len(order) > 1 else 0.0
@@ -990,16 +994,7 @@ def _score_validation_episode(
             probabilities = probabilities_by_item.get(item_index)
             if probabilities is None:
                 continue
-            pool = (
-                list(range(len(units)))
-                if candidate_pool_top_k <= 0
-                else union_ranked_indices(
-                    lexical_by_item[item_index],
-                    tfidf_by_item[item_index],
-                    top_k=candidate_pool_top_k,
-                    neighbor_radius=neighbor_radius,
-                )
-            )
+            pool = candidate_pools[item_index]
             indices = sorted(pool, key=lambda unit_index: (-probabilities[unit_index], unit_index))[
                 :top_k
             ]
@@ -1138,8 +1133,8 @@ def _load_episode_artifacts(
     errors: list[dict[str, Any]] = []
     for row in rows:
         try:
-            words, vtt, source = _artifact_bytes(session, row, cache_dir=cache_dir)
-            units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
+            words, vtt, source, units = _artifact_bytes(session, row, cache_dir=cache_dir)
+            unit_source = source
             if not units:
                 errors.append({"uid": row.get("uid"), "error": "no_timed_units"})
                 continue
@@ -1252,7 +1247,7 @@ def train_and_evaluate(
     groups = []
     usable_rows: list[tuple[Mapping[str, Any], Mapping[str, Any], list[LocatorUnit]]] = []
     for row in rows:
-        uid = row.get("uid")
+        uid = str(row.get("uid"))
         if uid not in artifacts or uid not in crosswalk_by_uid:
             continue
         _, units, _source, _word_times, _speech_rate_reference = artifacts[str(uid)]
@@ -1412,7 +1407,12 @@ def train_and_evaluate(
             "validation_average_precision": round(
                 float(average_precision_score(labels, scores)), 6
             ),
-            "validation_brier_score": round(float(brier_score_loss(labels, scores)), 6),
+            "validation_brier_score": (
+                None
+                if name == "pairwise_logistic"
+                else round(float(brier_score_loss(labels, scores)), 6)
+            ),
+            "probabilities_calibrated": name != "pairwise_logistic",
             "checkpoint_episode_details": [],
         }
     for name in classifiers:

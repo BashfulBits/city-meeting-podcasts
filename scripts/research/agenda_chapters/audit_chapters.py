@@ -252,14 +252,55 @@ def _benchmark_sample(
         and isinstance(chapter.get("start"), int | float)
         for chapter in chapters
     )
+    if not has_titled_served_chapters and isinstance(record.get("timeline"), Mapping):
+        # A raw source-clock list cannot be paired with served transcript duration.  Exclude the
+        # row rather than silently mixing clock bases in the benchmark.
+        return None
     if not has_titled_served_chapters:
-        chapters = _chapter_list(record, "source_chapters")
+        # Legacy records without a timeline have no competing clock basis; retain their persisted
+        # chapter list for the historical audit, subject to the normal pointer checks below.
+        chapters = _chapter_list(record, "source_chapters") or chapters
+        if not any(
+            isinstance(chapter, Mapping) and isinstance(chapter.get("start"), int | float)
+            for chapter in chapters
+        ):
+            served = _chapter_list(record, "chapters")
+            chapters = [
+                {**source, "start": served[index].get("start")}
+                for index, source in enumerate(chapters)
+                if isinstance(source, Mapping)
+                and index < len(served)
+                and isinstance(served[index], Mapping)
+                and isinstance(served[index].get("start"), int | float)
+            ]
+    eligible = [
+        chapter
+        for chapter in chapters
+        if isinstance(chapter, Mapping) and isinstance(chapter.get("start"), int | float)
+    ]
+    if not eligible:
+        return None
+    chapters = eligible
     canonical_titles = tuple(
         chapter["title"].strip()
         for chapter in chapters
+        if isinstance(chapter.get("title"), str) and chapter["title"].strip()
+    )
+    source_titles = tuple(
+        chapter["title"].strip()
+        for chapter in _chapter_list(record, "source_chapters")
         if isinstance(chapter, Mapping)
         and isinstance(chapter.get("title"), str)
         and chapter["title"].strip()
+    )
+    if len(source_titles) > len(canonical_titles):
+        canonical_titles = source_titles
+    canonical_starts = tuple(float(chapter["start"]) for chapter in chapters)
+    end_values = [chapter.get("end") for chapter in chapters]
+    canonical_ends = (
+        tuple(float(value) for value in end_values)
+        if all(isinstance(value, int | float) for value in end_values)
+        else ()
     )
     audio = record.get("audio")
     transcript = record.get("transcript")
@@ -294,7 +335,7 @@ def _benchmark_sample(
         published=str(record.get("published") or ""),
         body=str(record.get("body") or "(unclassified)"),
         title=str(record.get("title") or ""),
-        chapter_count=len(chapters),
+        chapter_count=len(canonical_titles),
         canonical_titles=canonical_titles,
         duration_seconds=float(duration) if isinstance(duration, int | float) else None,
         transcript_key=transcript_key,
@@ -304,16 +345,8 @@ def _benchmark_sample(
         transcript_url=transcript_url,
         agenda_text_url=agenda_text_url,
         agenda_url=agenda_url,
-        canonical_starts=tuple(
-            float(chapter["start"])
-            for chapter in chapters
-            if isinstance(chapter, Mapping) and isinstance(chapter.get("start"), int | float)
-        ),
-        canonical_ends=tuple(
-            float(chapter["end"])
-            for chapter in chapters
-            if isinstance(chapter, Mapping) and isinstance(chapter.get("end"), int | float)
-        ),
+        canonical_starts=canonical_starts,
+        canonical_ends=canonical_ends,
     )
 
 

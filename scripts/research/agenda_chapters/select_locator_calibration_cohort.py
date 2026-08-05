@@ -40,7 +40,7 @@ def select_rows(manifest: dict[str, Any], *, split: str = "test") -> list[dict[s
         and len(((row.get("generated_agenda") or {}).get(AGENDA_MODEL) or {}).get("items") or [])
         >= MIN_GENERATED_ITEMS
         and int(
-            ((row.get("generated_agenda") or {}).get(AGENDA_MODEL) or {}).get("rejected_count", 0)
+            ((row.get("generated_agenda") or {}).get(AGENDA_MODEL) or {}).get("rejected_count") or 0
         )
         <= MAX_REJECTED_ITEMS
     ]

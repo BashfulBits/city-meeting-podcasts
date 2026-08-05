@@ -20,7 +20,6 @@ from citypods.chapter_locator import (
     LocatorAgendaItem,
     LocatorUnit,
     build_locator_request,
-    build_locator_units,
 )
 from citypods.http import make_session
 from scripts.research.agenda_chapters.evaluate_locator_retrieval import (
@@ -277,23 +276,18 @@ def build_packet(
             unit_annotations=provenance,
         ),
     }
+    compact_union = {
+        item.index: sorted(
+            set(deterministic_by_item.get(item.index, ()))
+            | set(learned_by_item.get(item.index, ()))
+        )
+        for item in items
+    }
     selections = {
         "full": {item.index: full_indices for item in items},
         "deterministic_compact": deterministic_by_item,
-        "learned_compact": {
-            item.index: sorted(
-                set(deterministic_by_item.get(item.index, ()))
-                | set(learned_by_item.get(item.index, ()))
-            )
-            for item in items
-        },
-        "learned_compact_provenance": {
-            item.index: sorted(
-                set(deterministic_by_item.get(item.index, ()))
-                | set(learned_by_item.get(item.index, ()))
-            )
-            for item in items
-        },
+        "learned_compact": compact_union,
+        "learned_compact_provenance": compact_union,
     }
     result = {
         "uid": row.get("uid"),
@@ -354,8 +348,7 @@ def build_packets(
             continue
         uid = str(row.get("uid"))
         try:
-            words, vtt, source = _artifact_bytes(session, row, cache_dir=cache_dir)
-            units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
+            words, vtt, source, units = _artifact_bytes(session, row, cache_dir=cache_dir)
             packet = build_packet(
                 row,
                 units,
@@ -366,7 +359,7 @@ def build_packets(
                 crosswalk_row=crosswalk_by_uid.get(row.get("uid")),
                 tolerance=tolerance,
             )
-            packet["unit_source"] = unit_source or source
+            packet["unit_source"] = source
             packets.append(packet)
         except Exception as exc:
             errors.append({"uid": row.get("uid"), "error": f"{type(exc).__name__}: {exc}"})
