@@ -2,12 +2,17 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.agenda_text import (
+    AgendaTitleCandidate,
     _extract_pdf,
+    agenda_title_similarity,
     attribute_links_by_content,
     attribute_links_to_chapters,
     chapter_text_matches,
+    extract_agenda_outline,
     extract_agenda_text,
+    extract_agenda_title_candidates,
     extract_html,
+    extract_pdf_layout_text,
     item_identifiers,
     parse_roster,
     parse_votes,
@@ -229,3 +234,98 @@ def test_real_legistar_attachment_pdf_extracts_cleanly():
     content = (FIXTURES / "pflugerville_legistar_attachment.pdf").read_bytes()
     text, _ = _extract_pdf(content)
     assert "PARKS AND RECREATION MONTH" in text
+
+
+def test_extract_agenda_title_candidates_handles_numbered_and_split_pdf_lines():
+    text = """Denton County
+Agenda
+CALL TO ORDER
+2.
+CONSENT AGENDA
+6.
+A.
+Approval of annual purchase of tires, and any appropriate action.
+Attachment:
+Agenda Memo
+"""
+
+    assert extract_agenda_title_candidates(text) == [
+        AgendaTitleCandidate("CALL TO ORDER", 3),
+        AgendaTitleCandidate("2. CONSENT AGENDA", 5),
+        AgendaTitleCandidate(
+            "6. A. Approval of annual purchase of tires, and any appropriate action.", 8
+        ),
+    ]
+
+
+def test_extract_agenda_title_candidates_starts_all_caps_sections_at_agenda_marker():
+    text = """CITY OF EXAMPLE
+AGENDA
+CALL TO ORDER
+PUBLIC HEARINGS
+1. Rezoning: Example Case
+PERMANENT COMMITTEE UPDATES
+"""
+
+    assert [item.title for item in extract_agenda_title_candidates(text)] == [
+        "CALL TO ORDER",
+        "PUBLIC HEARINGS",
+        "1. Rezoning: Example Case",
+        "PERMANENT COMMITTEE UPDATES",
+    ]
+
+
+def test_agenda_title_similarity_tolerates_numbering_but_not_unrelated_items():
+    assert agenda_title_similarity("2. CONSENT AGENDA", "Consent Agenda") == 1.0
+    assert agenda_title_similarity("Approve zoning case", "Budget adoption") < 0.5
+
+
+def test_extract_agenda_title_candidates_carries_parent_number_to_lettered_siblings():
+    text = """AGENDA
+6. A. First purchase item
+C.
+Third purchase item
+"""
+
+    assert [item.title for item in extract_agenda_title_candidates(text)] == [
+        "6. A. First purchase item",
+        "6. C. Third purchase item",
+    ]
+
+
+def test_html_outline_preserves_semantic_and_granicus_agenda_headings():
+    outline = extract_agenda_outline(
+        b"""<h1>Commissioners Court</h1>
+        <div><a class='Agenda Agenda0'>CALL TO ORDER</a></div>
+        <div><a class='Document'>Agenda Memo</a></div>
+        <h2>Consent Agenda</h2>""",
+        content_type="text/html",
+        source_url="https://example.test/agenda",
+    )
+
+    assert outline.splitlines() == [
+        "# Commissioners Court",
+        "## CALL TO ORDER",
+        "## Consent Agenda",
+    ]
+    assert [item.title for item in extract_agenda_title_candidates(outline)] == [
+        "Commissioners Court",
+        "CALL TO ORDER",
+        "Consent Agenda",
+    ]
+
+
+def test_pdf_layout_outline_uses_existing_pypdf_layout_mode():
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+
+    plain, _ = _extract_pdf(content)
+    layout = extract_pdf_layout_text(content)
+    outline = extract_agenda_outline(
+        content,
+        content_type="application/pdf",
+        source_url="https://example.test/agenda.pdf",
+    )
+
+    assert "CALL TO ORDER" in layout
+    assert layout != plain
+    assert outline == layout
