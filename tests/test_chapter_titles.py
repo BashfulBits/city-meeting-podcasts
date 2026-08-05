@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from citypods.agenda_text import AgendaTitleCandidate
 from citypods.chapter_titles import (
     AGENDA_ITEM_EXTRACTOR_CONTRACT,
     TITLE_EQUIVALENCE_CONTRACT,
@@ -15,7 +16,9 @@ from citypods.chapter_titles import (
     build_title_equivalence_request,
     ensure_agenda_item_extractor_contract,
     ensure_title_equivalence_contract,
+    match_title_candidates,
     outline_adds_title_evidence,
+    recover_agenda_item_extractor_response,
     validate_agenda_item_extractor_response,
     validate_title_equivalence_response,
 )
@@ -338,6 +341,45 @@ def test_extractor_rejects_nonverbatim_or_invalid_source_evidence(item: dict, me
     items = [item, item] if message == "duplicate" else [item]
     with pytest.raises(ValueError, match=message):
         validate_agenda_item_extractor_response(json.dumps({"items": items}), agenda_text=AGENDA)
+
+
+def test_recovery_returns_complete_source_window_for_exact_global_match():
+    assessment = recover_agenda_item_extractor_response(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "display_ref": "ID 26-1108",
+                        "title": "Environment committee appointments",
+                        "evidence_quote": (
+                            "Consider approval of appointing three members to the Committee "
+                            "on the Environment."
+                        ),
+                            "line_start": 7,
+                            "line_end": 8,
+                    }
+                ]
+            }
+        ),
+        agenda_text=AGENDA,
+    )
+
+    assert not assessment.items
+    assert len(assessment.recovered) == 1
+    recovered = assessment.recovered[0]
+    assert recovered.recovery_method == "exact-global"
+    assert recovered.source_evidence == (
+        "A. ID 26-1108 Consider approval of appointing three members to the Committee "
+        "on the Environment."
+    )
+
+
+def test_match_title_candidates_keeps_short_substrings_below_perfect_match():
+    candidates = [AgendaTitleCandidate("1. A.", 1)]
+
+    scores = match_title_candidates(["1. A. Budget adoption"], candidates)
+
+    assert scores == []
 
 
 def test_evidence_assessment_retains_valid_items_and_reports_invalid_ones():

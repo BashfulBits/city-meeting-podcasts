@@ -170,6 +170,16 @@ def test_response_preserves_research_confidence_decomposition_and_alternative():
             "duplicate agenda",
         ),
         ([{"agenda_item_index": 0, "unit_id": "u99999"}], "unknown locator"),
+        (
+            [
+                {
+                    "agenda_item_index": 0,
+                    "unit_id": "u00001",
+                    "alternative_unit_id": "u99999",
+                }
+            ],
+            "unknown alternative locator",
+        ),
     ],
 )
 def test_response_rejects_request_specific_invalid_anchors(anchors, error):
@@ -189,6 +199,27 @@ def test_response_rejects_request_specific_invalid_anchors(anchors, error):
     }
 
     with pytest.raises(ValueError, match=error):
+        validate_locator_response(json.dumps(payload), agenda_item_count=2, units=units)
+
+
+def test_response_rejects_anchors_that_collide_on_one_timestamp():
+    units = locator_units_from_vtt(
+        b"WEBVTT\n\n00:00:10.000 --> 00:00:12.000\nOne\n\n00:00:10.000 --> 00:00:14.000\nTwo\n"
+    )
+    payload = {
+        "anchors": [
+            {
+                "agenda_item_index": index,
+                "unit_id": unit.id,
+                "transition_quote": "A sufficient quote",
+                "confidence": 0.8,
+                "rationale": "Evidence.",
+            }
+            for index, unit in enumerate(units)
+        ]
+    }
+
+    with pytest.raises(ValueError, match="strictly increasing"):
         validate_locator_response(json.dumps(payload), agenda_item_count=2, units=units)
 
 

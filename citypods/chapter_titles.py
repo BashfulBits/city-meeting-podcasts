@@ -21,17 +21,6 @@ from citypods.compute.llm_policy import estimate_tokens
 AGENDA_ITEM_EXTRACTOR_CONTRACT = "agenda-chapter-item-extract"
 TITLE_EQUIVALENCE_CONTRACT = "agenda-chapter-title-equivalence"
 
-AGENDA_EXTRACTION_PROMPT_VARIANTS = frozenset(
-    {
-        "standard",
-        "coverage-audit",
-        "transcript-anchor",
-        "hierarchy-first",
-        "ambiguity-inclusion",
-        "agenda-flow",
-    }
-)
-
 _PROMPT_VARIANT_INSTRUCTIONS = {
     "standard": "",
     "coverage-audit": (
@@ -69,6 +58,10 @@ _PROMPT_VARIANT_INSTRUCTIONS = {
         "business segment, subject to the Consent Agenda composite rule."
     ),
 }
+
+AGENDA_EXTRACTION_PROMPT_VARIANTS = frozenset(_PROMPT_VARIANT_INSTRUCTIONS)
+
+_MAX_EVIDENCE_SPAN_LINES = 200
 
 # Agenda layout extraction commonly separates a visible item/case reference from its action
 # wording.  Keep this deliberately narrow: the post-processor may absorb one immediately
@@ -428,6 +421,16 @@ def build_title_equivalence_request(
 
 def ensure_agenda_item_extractor_contract():
     """Register the structured direct-extraction response contract."""
+    cached = getattr(ensure_agenda_item_extractor_contract, "model", None)
+    if cached is not None:
+        from citypods.compute.structured import register_response_model, response_model
+
+        try:
+            response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT)
+        except ValueError:
+            register_response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT, cached)
+        return cached
+
     from pydantic import BaseModel, ConfigDict, Field
 
     from citypods.compute.structured import register_response_model, response_model
@@ -444,21 +447,24 @@ def ensure_agenda_item_extractor_contract():
         model_config = ConfigDict(extra="forbid")
         items: list[Item] = Field(default_factory=list, max_length=300)
 
-    model = getattr(ensure_agenda_item_extractor_contract, "model", None)
-    if model is None:
-        model = Response
-        register_response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT, model)
-        ensure_agenda_item_extractor_contract.model = model
-    else:
-        try:
-            response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT)
-        except ValueError:
-            register_response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT, model)
+    model = Response
+    register_response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT, model)
+    ensure_agenda_item_extractor_contract.model = model
     return model
 
 
 def ensure_title_equivalence_contract():
     """Register the benchmark-only semantic title-equivalence response contract."""
+    cached = getattr(ensure_title_equivalence_contract, "model", None)
+    if cached is not None:
+        from citypods.compute.structured import register_response_model, response_model
+
+        try:
+            response_model(TITLE_EQUIVALENCE_CONTRACT)
+        except ValueError:
+            register_response_model(TITLE_EQUIVALENCE_CONTRACT, cached)
+        return cached
+
     from pydantic import BaseModel, ConfigDict, Field
 
     from citypods.compute.structured import register_response_model, response_model
@@ -473,16 +479,9 @@ def ensure_title_equivalence_contract():
         canonical_action_indices: list[int] = Field(default_factory=list, max_length=300)
         matches: list[Match] = Field(default_factory=list, max_length=300)
 
-    model = getattr(ensure_title_equivalence_contract, "model", None)
-    if model is None:
-        model = Response
-        register_response_model(TITLE_EQUIVALENCE_CONTRACT, model)
-        ensure_title_equivalence_contract.model = model
-    else:
-        try:
-            response_model(TITLE_EQUIVALENCE_CONTRACT)
-        except ValueError:
-            register_response_model(TITLE_EQUIVALENCE_CONTRACT, model)
+    model = Response
+    register_response_model(TITLE_EQUIVALENCE_CONTRACT, model)
+    ensure_title_equivalence_contract.model = model
     return model
 
 
@@ -501,6 +500,8 @@ def assess_agenda_item_extractor_response(
         try:
             if item.line_end < item.line_start or item.line_end > len(lines):
                 raise ValueError("agenda item source line range is outside the supplied agenda")
+            if item.line_end - item.line_start > _MAX_EVIDENCE_SPAN_LINES:
+                raise ValueError("agenda item source line range is implausibly wide")
             title = _normalized_source_text(item.title)
             evidence_quote = _normalized_source_text(item.evidence_quote)
             if not title or not evidence_quote:
@@ -787,6 +788,8 @@ def recover_agenda_item_extractor_response(
         declared_start = max(1, int(raw_item.line_start))
         declared_end = min(len(lines), int(raw_item.line_end))
         if declared_start > declared_end or not lines:
+            continue
+        if declared_end - declared_start > _MAX_EVIDENCE_SPAN_LINES:
             continue
         exact = _recovery_tightest_spans(_recovery_exact_spans(lines, raw_item.evidence_quote))
         spans = exact

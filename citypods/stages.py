@@ -2980,7 +2980,11 @@ def _download_audio_file(
                             )
                         f.write(chunk)
             return
-        except (_req.exceptions.ChunkedEncodingError, _req.exceptions.ConnectionError) as exc:
+        except (
+            _req.exceptions.ChunkedEncodingError,
+            _req.exceptions.ConnectionError,
+            _req.exceptions.Timeout,
+        ) as exc:
             last = exc
             if attempt + 1 >= max_attempts:
                 break

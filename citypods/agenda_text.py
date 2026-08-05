@@ -123,6 +123,7 @@ def extract_pdf_layout_text(content: bytes) -> str:
     """
     try:
         from pypdf import PdfReader
+        from pypdf.errors import DependencyError, PdfReadError
     except ImportError:
         return content.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
     try:
@@ -130,8 +131,14 @@ def extract_pdf_layout_text(content: bytes) -> str:
         return "\n".join(
             page.extract_text(extraction_mode="layout") or "" for page in reader.pages
         )[:MAX_TEXT_CHARS]
-    except (TypeError, ValueError, KeyError):
+    except (DependencyError, PdfReadError, TypeError, ValueError, KeyError):
         return _extract_pdf(content)[0]
+
+
+def _is_pdf(content_type: str, source_url: str | None) -> bool:
+    return "pdf" in content_type.lower() or (source_url or "").lower().split("?", 1)[0].endswith(
+        ".pdf"
+    )
 
 
 def _links_from_text(text: str, source_url: str | None) -> list[DocumentLink]:
@@ -201,6 +208,8 @@ def extract_html_outline(content: bytes | str) -> str:
     except ImportError:
         return ""
     soup = BeautifulSoup(raw, "html.parser")
+    for node in soup.find_all(["script", "style", "nav", "footer", "noscript"]):
+        node.decompose()
     lines: list[str] = []
     seen: set[str] = set()
     for node in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "a"]):
@@ -228,10 +237,9 @@ def extract_agenda_outline(
     Callers preserve it separately from ``extract_document``'s full text so a future prompt can
     use visual/semantic heading evidence without losing the original searchable agenda artifact.
     """
-    is_pdf = "pdf" in content_type.lower() or (source_url or "").lower().split("?", 1)[0].endswith(
-        ".pdf"
-    )
-    return extract_pdf_layout_text(content) if is_pdf else extract_html_outline(content)
+    if _is_pdf(content_type, source_url):
+        return extract_pdf_layout_text(content)
+    return extract_html_outline(content)
 
 
 def extract_agenda_pdf(content: bytes) -> str:
@@ -347,7 +355,9 @@ def agenda_title_similarity(left: str, right: str) -> float:
     left_norm, right_norm = normalize(left), normalize(right)
     if not left_norm or not right_norm:
         return 0.0
-    if left_norm in right_norm or right_norm in left_norm:
+    if min(len(left_norm), len(right_norm)) >= 8 and (
+        left_norm in right_norm or right_norm in left_norm
+    ):
         return 1.0
     return SequenceMatcher(a=left_norm, b=right_norm).ratio()
 
@@ -483,9 +493,7 @@ def extract_backup_item(url: str, session) -> tuple[str | None, bool]:
 def extract_document(
     content: bytes, *, content_type: str = "", source_url: str | None = None
 ) -> tuple[str, list[DocumentLink]]:
-    is_pdf = "pdf" in content_type.lower() or (source_url or "").lower().split("?", 1)[0].endswith(
-        ".pdf"
-    )
+    is_pdf = _is_pdf(content_type, source_url)
     if is_pdf:
         return _extract_pdf(content, source_url=source_url)
     return extract_html(content, source_url)
