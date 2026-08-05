@@ -1109,6 +1109,46 @@ def test_download_audio_file_retries_connection_error(tmp_path):
     assert dest.read_bytes() == b"fake audio bytes"
 
 
+def test_download_audio_file_retries_response_timeout(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise requests.exceptions.ReadTimeout("response timed out")
+
+            class _Response:
+                def raise_for_status(self):
+                    pass
+
+                def iter_content(self, chunk_size):
+                    yield b"fake audio bytes"
+
+            return _Response()
+
+    dest = tmp_path / "audio.m4a"
+    with patch("requests.Session", _FakeSession):
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a", dest, sleep=lambda _s: None
+        )
+
+    assert attempts["n"] == 2
+    assert dest.read_bytes() == b"fake audio bytes"
+
+
 def test_download_audio_file_exhausts_default_attempt_limit_with_backoff_schedule(tmp_path):
     import requests
 
