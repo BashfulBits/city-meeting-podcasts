@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Provider chapter starts inside removed silence now snap to the next kept served boundary.**
+  This preserves markers for the next agenda item after a removed recess/silence span while still
+  dropping markers with no later kept audio. Chapter/tag source-index alignment and remap regression
+  coverage were updated; canonical provider chapter records remain unchanged.
+
 - **ASR runs failing intermittently from two unrelated causes, mixed together in CI's "failure" verdict.**
   Auditing recent `asr.yml` runs (workflow history + job logs, not just code review) showed the
   reconcile-step `NotImplementedError: backend 'b2' is not cas_capable` crash was already fixed

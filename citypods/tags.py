@@ -373,7 +373,7 @@ def chapter_id(ep: Any, chapter: dict[str, Any], index: int) -> str:
     """Stable identity based on source chapter data, never remapped served time.
 
     ``index`` is the chapter's position in the *served* list, which no longer matches its
-    position in ``ep.source_chapters`` once an earlier chapter has been dropped by
+    position in ``ep.source_chapters`` once an earlier chapter has been dropped or snapped by
     :func:`citypods.timeline.remap` (a chapter whose start falls in a cut span). When the
     served chapter carries a ``source_index`` (stamped by
     :func:`citypods.chapters.episode_served_chapters`), that true source position is used
@@ -431,9 +431,9 @@ def chapter_tag_inputs(ep: Any, storage: Any = None) -> list[dict[str, Any]]:
         ]
         # agenda_item_context() is keyed by source chapter_index (from R3's manifest), not served
         # position -- the same source_index vs. served-position desync chapter_id() already guards
-        # against below. Without this, a remap() that dropped an earlier chapter would attach a
-        # surviving chapter's agenda evidence/tags to whatever chapter now lands at its old served
-        # index instead of its own.
+        # against below. Without this, a remap() that dropped or snapped an earlier chapter would
+        # attach a surviving chapter's agenda evidence/tags to whatever chapter now lands at its
+        # old served index instead of its own.
         agenda_index = chapter.get("source_index")
         if not isinstance(agenda_index, int):
             agenda_index = index

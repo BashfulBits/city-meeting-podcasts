@@ -1737,8 +1737,9 @@ class RemapStage:
       - ``"served:<edl-version>"``: remapped to the served clock, tagged with the EDL
         version they were remapped against (so a later run can detect a stale remap).
 
-    Cut-span chapters (whose start falls in a removed silence gap) are dropped by
-    :func:`~citypods.timeline.remap` — they would scrub to nothing in the served file.
+    Cut-span chapter starts are snapped by :func:`~citypods.timeline.remap` to the next kept
+    served boundary, preserving provider markers that announce the next item after a removed
+    silence/recess span. A marker with no later kept audio is still dropped.
     A chapter whose ``end`` was cut keeps ``end=None``; the encoder's ``_ffmetadata`` derives
     its end from the next chapter's start (the INFRA-1 ``remap(clamp_to=…)`` primitive is for
     single-boundary consumers like the transcript/permalink renderers, not multi-chapter
@@ -1771,7 +1772,12 @@ class RemapStage:
             # chapter's start, which is correct for a chapter truncated by a removed span
             # (clamping to the served duration would overlap later chapters).
             ep.source_chapters = [dict(ch) for ch in raw_chapters]
-            ep.chapters = remap(ep.timeline, raw_chapters, source_id=source_id)
+            ep.chapters = remap(
+                ep.timeline,
+                raw_chapters,
+                source_id=source_id,
+                snap_cut_starts=True,
+            )
             # Stamp the EDL version so a later run can tell these served-time chapters were
             # remapped against *this* timeline (staleness — see _needs_chapter_remap).
             ep.chapters_basis = f"served:{ep.timeline.version}"
@@ -2061,8 +2067,9 @@ class AgendaTextStage:
                 # `with_source_index=True` and the resulting remap below matter because
                 # agenda_item_context()/chapter_tag_inputs() (citypods/tags.py) key this
                 # manifest's chapter_index by SOURCE chapter position, not served-list position --
-                # the same desync chapter_id() already guards against when remap() drops a chapter
-                # (see tests/test_agenda_text.py::test_agenda_text_survives_a_dropped_chapter).
+                # the same desync chapter_id() already guards against when remap() drops or snaps
+                # a chapter
+                # (see tests/test_tags.py::test_agenda_text_survives_a_snapped_chapter).
                 # Storing a raw served-list position here would silently misattribute a surviving
                 # chapter's backup text to whatever chapter now sits at that position after a drop.
                 served_chapters = [
@@ -2942,9 +2949,7 @@ _MAX_HOSTED_AUDIO_BYTES = 1_073_741_824  # 1 GiB
 
 
 class HostedAudioTooLargeError(RuntimeError):
-    """Hosted-audio stream exceeded ``_MAX_HOSTED_AUDIO_BYTES``. Not retried: a legitimate hosted
-    file is well under this cap, so a bigger response means something is wrong upstream, not a
-    transient blip."""
+    """Hosted-audio stream exceeded the configured cap; this is not retried."""
 
 
 def _download_audio_file(
