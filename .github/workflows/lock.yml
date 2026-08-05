@@ -34,13 +34,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet -- constraints/; then
+          # `git diff --quiet` ignores a newly-created, untracked lockfile. Use porcelain status
+          # so adding a new optional dependency profile (for example chapter-research) is pushed.
+          if [ -z "$(git status --porcelain -- constraints/)" ]; then
             echo "constraints already up to date"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add constraints/
+          git add -A constraints/
           git commit -m "chore(deps): recompile constraints (lock.yml)"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" \
             "HEAD:${{ github.ref_name }}"
