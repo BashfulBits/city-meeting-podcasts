@@ -75,6 +75,10 @@ SUPPORTED_MODELS = frozenset(
         "gemini/gemini-3-flash-preview",
         "gemini/gemini-3.1-flash-lite",
         "gemini/gemini-3.5-flash-lite",
+        "gemini/gemini-3.5-flash",
+        "gemini/gemini-3.6-flash",
+        "zai/glm-4.7-flash",
+        "openrouter/qwen/qwen3.7-flash",
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4-pro",
         "mistral/mistral-large-latest",
@@ -504,13 +508,17 @@ class LiteLLMBackend(Backend):
         for field in ("temperature", "max_tokens", "tools", "tool_choice"):
             if field in job.inputs:
                 options[field] = job.inputs[field]
+        # Preserve provider-specific OpenAI-compatible extensions for direct research routes.
+        # This is intentionally opt-in; ordinary jobs keep the existing payload unchanged.
+        if "extra_body" in job.inputs:
+            options["extra_body"] = job.inputs["extra_body"]
         return options
 
     def _dispatch_response_format(
         self, model: ResponseModel, resolved_model: str
     ) -> Mapping[str, Any]:
         """Serialize the request-format contract used by the direct transports for the R10 queue."""
-        if resolved_model.startswith("deepseek/"):
+        if resolved_model.startswith("deepseek/") or resolved_model.startswith("zai/"):
             return {"type": "json_object"}
         if resolved_model.startswith("gemini/"):
             return self._gemini_response_format(model)
@@ -557,6 +565,14 @@ class LiteLLMBackend(Backend):
                 job, model, resolved_model=resolved_model, completion=completion_fn
             )
         if resolved_model.startswith("deepseek/"):
+            return self._run_native_structured_direct(
+                job,
+                model,
+                resolved_model=resolved_model,
+                completion=completion_fn,
+                response_format={"type": "json_object"},
+            )
+        if resolved_model.startswith("zai/"):
             return self._run_native_structured_direct(
                 job,
                 model,
@@ -627,9 +643,10 @@ class LiteLLMBackend(Backend):
         supports it) or add runtime fallback/re-probing logic, this calls LiteLLM directly with
         the same OpenAI-shaped ``response_format`` LiteLLM already translates into Gemini's native
         mechanism (``_gemini_response_format``, also used by the R10 dispatch payload). DeepSeek
-        uses its documented JSON-object mode here because the installed Instructor registry treats
-        the custom DeepSeek route as OpenAI and rejects it before a request. Both routes parse and
-        validate against ``model``, then retry once with validation feedback.
+        and Z.AI use their documented JSON-object modes here because the installed Instructor
+        registry does not provide the provider-specific structured-output path needed by these
+        custom routes. Both routes parse and validate against ``model``, then retry once with
+        validation feedback.
         Both attempts' usage is billed: a first attempt that fails validation still reached
         Gemini and spent real tokens/quota, so on a retry-then-succeed outcome the returned
         ``output["usage"]`` is the *sum* of both responses' usage, not just the second's --

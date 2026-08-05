@@ -70,6 +70,43 @@ _PROMPT_VARIANT_INSTRUCTIONS = {
     ),
 }
 
+# Agenda layout extraction commonly separates a visible item/case reference from its action
+# wording.  Keep this deliberately narrow: the post-processor may absorb one immediately
+# preceding identifier-only line, but must not swallow a preceding prose heading or an arbitrary
+# neighboring agenda item.
+_IDENTIFIER_ONLY_LINE_RE = re.compile(
+    r"^\s*(?:(?:id|item|case|no\.?|ref(?:erence)?)\s*[:#\-]?\s*"
+    r"[a-z0-9][a-z0-9._/\-]*|"
+    r"(?:[a-z]?\d+(?:[./\-][a-z0-9]+)*|[a-z])\s*[.)]?)\s*$",
+    re.IGNORECASE,
+)
+
+_EXPLICIT_REFERENCE_RE = re.compile(
+    r"\b(?:id|item|case|no\.?|ref(?:erence)?)\s*[:#\-]?\s*"
+    r"[a-z0-9][a-z0-9._/\-]*",
+    re.IGNORECASE,
+)
+
+_LEADING_REFERENCE_RE = re.compile(
+    r"^\s*((?:[a-z]?\d+(?:[./\-][a-z0-9]+)*|[a-z])\s*[.)]?)\s+(?=\S)",
+    re.IGNORECASE,
+)
+
+_RECOVERY_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+_RECOVERY_MARKER_LINE_RE = re.compile(
+    r"^(?:(?:[a-z]?\d+(?:[./\-][a-z0-9]+)*|[ivxlcdm]{1,8}|[a-z])[.)]?|"
+    r"(?:id|item|case|no\.?|ref(?:erence)?)\s*[:#\-]?\s*[a-z0-9][a-z0-9._/\-]*)$",
+    re.IGNORECASE,
+)
+_RECOVERY_FORMAL_REFERENCE_RE = re.compile(
+    r"^(?:(?:id|item|case|no\.?|ref(?:erence)?)\s*[:#\-]?\s*[a-z0-9][a-z0-9._/\-]*|"
+    r"[a-z]{1,8}\d+[a-z0-9]*(?:[./\-][a-z0-9]+)*[.)]?|"
+    r"[a-z]?\d+(?:[./\-][a-z0-9]+)*[.)]?|"
+    r"[ivxlcdm]+(?:\.[a-z0-9]+)+[.)]?|"
+    r"[ivxlcdm]+[.)]?)$",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class ExtractedAgendaItem:
@@ -108,6 +145,32 @@ class AgendaItemEvidenceAssessment:
 
     items: tuple[ExtractedAgendaItem, ...]
     rejected: tuple[RejectedAgendaItem, ...]
+
+
+@dataclass(frozen=True)
+class RecoveredAgendaItem:
+    """A rejected raw item recovered by a source-only shadow repair."""
+
+    raw_index: int
+    display_ref: str | None
+    original_display_ref: str | None
+    title: str
+    evidence_quote: str
+    source_evidence: str
+    line_start: int
+    line_end: int
+    recovery_method: str
+    evidence_span_repaired: bool = True
+
+
+@dataclass(frozen=True)
+class AgendaItemRecoveryAssessment:
+    """Strict accepted items plus separately labeled, source-only recovery candidates."""
+
+    items: tuple[ExtractedAgendaItem, ...]
+    recovered: tuple[RecoveredAgendaItem, ...]
+    rejected: tuple[RejectedAgendaItem, ...]
+    unrecovered: tuple[RejectedAgendaItem, ...]
 
 
 @dataclass(frozen=True)
@@ -187,6 +250,46 @@ def _evidence_span(
     if len(tightest) != 1:
         raise ValueError("agenda item evidence quote has ambiguous nearby source span")
     return *tightest[0], True
+
+
+def _is_identifier_only_line(line: str) -> bool:
+    """Return whether *line* is only a visible agenda number, letter, or ID."""
+    return bool(_IDENTIFIER_ONLY_LINE_RE.fullmatch(line))
+
+
+def _expand_identifier_prefix(
+    lines: Sequence[str], *, line_start: int, line_end: int
+) -> tuple[int, int, bool]:
+    """Absorb one immediately preceding identifier-only line into an evidence span."""
+    if line_start <= 1 or not _is_identifier_only_line(lines[line_start - 2]):
+        return line_start, line_end, False
+    return line_start - 1, line_end, True
+
+
+def _reference_in_span(
+    display_ref: str, lines: Sequence[str], *, line_start: int, line_end: int
+) -> bool:
+    """Compare a model reference with immutable source text after layout normalization."""
+    reference = _evidence_comparison_text(display_ref).casefold()
+    source = _evidence_comparison_text(" ".join(lines[line_start - 1 : line_end])).casefold()
+    return bool(reference) and reference in source
+
+
+def _derive_display_ref(lines: Sequence[str], *, line_start: int, line_end: int) -> str | None:
+    """Derive the first explicit or leading visible reference from an expanded source span."""
+    source_lines = lines[line_start - 1 : line_end]
+    for line in source_lines:
+        if _is_identifier_only_line(line):
+            return _normalized_source_text(line)
+    for line in source_lines:
+        explicit = _EXPLICIT_REFERENCE_RE.search(line)
+        if explicit:
+            return _normalized_source_text(explicit.group(0))
+    for line in source_lines:
+        leading = _LEADING_REFERENCE_RE.match(line)
+        if leading:
+            return _normalized_source_text(leading.group(1))
+    return None
 
 
 def outline_adds_title_evidence(*, agenda_text: str, outline_text: str | None) -> bool:
@@ -270,8 +373,7 @@ def build_agenda_item_extraction_request(
                 "deterministic and weak-label methods. Inspect the cited source lines yourself: "
                 "return a hint only when it is genuinely chapterable, and do not omit a "
                 "source-grounded item merely because it is absent from the hints. Hint priority "
-                "does not change the output rules."
-                + _PROMPT_VARIANT_INSTRUCTIONS[prompt_variant]
+                "does not change the output rules." + _PROMPT_VARIANT_INSTRUCTIONS[prompt_variant]
             ),
         },
         {
@@ -409,6 +511,19 @@ def assess_agenda_item_extractor_response(
                 line_end=item.line_end,
                 evidence_quote=evidence_quote,
             )
+            evidence_start, evidence_end, prefix_expanded = _expand_identifier_prefix(
+                lines, line_start=evidence_start, line_end=evidence_end
+            )
+            evidence_span_repaired = evidence_span_repaired or prefix_expanded
+            if display_ref is not None:
+                if not _reference_in_span(
+                    display_ref, lines, line_start=evidence_start, line_end=evidence_end
+                ):
+                    raise ValueError("display reference is absent from expanded evidence span")
+            else:
+                display_ref = _derive_display_ref(
+                    lines, line_start=evidence_start, line_end=evidence_end
+                )
             evidence_key = (
                 evidence_start,
                 evidence_end,
@@ -433,6 +548,318 @@ def assess_agenda_item_extractor_response(
             )
         )
     return AgendaItemEvidenceAssessment(items=tuple(items), rejected=tuple(rejected))
+
+
+def _recovery_tokens(value: str) -> list[str]:
+    return _RECOVERY_TOKEN_RE.findall(value.casefold())
+
+
+def _recovery_line_offsets(lines: Sequence[str]) -> tuple[list[str], list[int]]:
+    normalized_lines = [_evidence_comparison_text(line).casefold() for line in lines]
+    offsets: list[int] = []
+    cursor = 0
+    for index, line in enumerate(normalized_lines):
+        offsets.append(cursor)
+        cursor += len(line)
+        if index + 1 < len(normalized_lines):
+            cursor += 1
+    return normalized_lines, offsets
+
+
+def _recovery_line_for_offset(offsets: Sequence[int], offset: int) -> int:
+    result = 0
+    for index, start in enumerate(offsets):
+        if start > offset:
+            break
+        result = index
+    return result
+
+
+def _recovery_exact_spans(lines: Sequence[str], quote: str) -> list[tuple[int, int]]:
+    """Find all exact normalized source line spans containing *quote*."""
+    normalized_lines, offsets = _recovery_line_offsets(lines)
+    source = " ".join(normalized_lines)
+    needle = _evidence_comparison_text(quote).casefold()
+    if not needle:
+        return []
+    spans: list[tuple[int, int]] = []
+    position = source.find(needle)
+    while position >= 0:
+        end_position = position + len(needle) - 1
+        start_line = _recovery_line_for_offset(offsets, position)
+        end_line = _recovery_line_for_offset(offsets, end_position)
+        spans.append((start_line + 1, end_line + 1))
+        position = source.find(needle, position + 1)
+    return spans
+
+
+def _recovery_tightest_spans(spans: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+    if not spans:
+        return []
+    width = min(end - start for start, end in spans)
+    return sorted({span for span in spans if span[1] - span[0] == width})
+
+
+def _recovery_subsequence_spans(
+    lines: Sequence[str],
+    quote: str,
+    *,
+    line_start: int,
+    line_end: int,
+    radius: int = 8,
+) -> list[tuple[int, int]]:
+    """Find bounded source windows with quote tokens in order, for layout-only recovery."""
+    quote_tokens = _recovery_tokens(_evidence_comparison_text(quote))
+    if len(quote_tokens) < 6:
+        return []
+    lower = max(1, line_start - radius)
+    upper = min(len(lines), line_end + radius)
+    token_lines = [_recovery_tokens(_evidence_comparison_text(line)) for line in lines]
+    candidates: list[tuple[int, int, int]] = []
+    for start in range(lower, upper + 1):
+        source_tokens: list[str] = []
+        for end in range(start, upper + 1):
+            source_tokens.extend(token_lines[end - 1])
+            cursor = 0
+            first = None
+            last = None
+            for token in quote_tokens:
+                try:
+                    found = source_tokens.index(token, cursor)
+                except ValueError:
+                    break
+                if first is None:
+                    first = found
+                last = found
+                cursor = found + 1
+            else:
+                assert first is not None and last is not None
+                extra_tokens = (last - first + 1) - len(quote_tokens)
+                if extra_tokens <= max(24, len(quote_tokens) // 2):
+                    candidates.append((start, end, extra_tokens))
+    if not candidates:
+        return []
+    minimum_width = min(end - start for start, end, _ in candidates)
+    minimum_extra = min(extra for start, end, extra in candidates if end - start == minimum_width)
+    return sorted(
+        {
+            (start, end)
+            for start, end, extra in candidates
+            if end - start == minimum_width and extra == minimum_extra
+        }
+    )
+
+
+def _recovery_reference_kind(reference: object) -> str:
+    if not isinstance(reference, str) or not reference.strip():
+        return "absent"
+    return (
+        "formal"
+        if _RECOVERY_FORMAL_REFERENCE_RE.fullmatch(reference.strip())
+        else "descriptive_label"
+    )
+
+
+def _recovery_reference_parts(reference: str) -> list[str]:
+    normalized = _evidence_comparison_text(reference).casefold()
+    normalized = re.sub(r"^(?:id|item|case|no|reference)\s+", "", normalized)
+    if "." in normalized:
+        return [part for part in re.split(r"\s*\.\s*", normalized) if part]
+    return _recovery_tokens(normalized)
+
+
+def _recovery_marker_line(line: str, part: str) -> bool:
+    tokens = _recovery_tokens(line)
+    part_tokens = _recovery_tokens(part)
+    return len(tokens) <= 3 and bool(part_tokens) and part_tokens[-1] in tokens
+
+
+def _recovery_identifier_prefix_start(lines: Sequence[str], line_start: int) -> int:
+    """Return the first immediately preceding standalone identifier/marker line."""
+    start = line_start
+    while start > 1 and _RECOVERY_MARKER_LINE_RE.fullmatch(lines[start - 2].strip()):
+        start -= 1
+    return start
+
+
+def _recovery_trailing_reference_line(line: str) -> bool:
+    """Return whether *line* is a standalone formal ID suitable for forward expansion."""
+    normalized = _normalized_source_text(line)
+    if not normalized or not _RECOVERY_FORMAL_REFERENCE_RE.fullmatch(normalized):
+        return False
+    # Do not absorb a bare ``A.``/``3.`` continuation marker or the next numbered item. A
+    # trailing recovery line must look like a formal ID (e.g. DCA26-0002B., SUP14-6) or use an
+    # explicit ID/Item/Case/Reference label.
+    return bool(re.search(r"\d", normalized)) and bool(
+        re.search(r"[a-z]", normalized, re.IGNORECASE)
+        or re.match(r"(?i)^(?:id|item|case|no\.?|ref(?:erence)?)\b", normalized)
+    )
+
+
+def _recovery_expand_trailing_reference(
+    lines: Sequence[str], *, line_end: int, forward_lines: int = 16
+) -> tuple[int, bool]:
+    """Expand through one nearby formal ID line when the source paragraph continues to it."""
+    upper = min(len(lines), line_end + forward_lines)
+    for candidate in range(line_end + 1, upper + 1):
+        # A blank line or page/layout break ends the paragraph. This prevents absorbing the next
+        # agenda item's reference when the extractor put adjacent items in separate blocks.
+        if any(
+            not _normalized_source_text(lines[index - 1])
+            for index in range(line_end + 1, candidate)
+        ):
+            break
+        if _recovery_trailing_reference_line(lines[candidate - 1]):
+            return candidate, True
+    return line_end, False
+
+
+def _recovery_resolve_reference(
+    reference: object,
+    lines: Sequence[str],
+    *,
+    line_start: int,
+    line_end: int,
+    prefix_lines: int = 12,
+) -> tuple[str, bool, list[int]]:
+    """Resolve a formal reference without treating descriptive labels as identifiers."""
+    kind = _recovery_reference_kind(reference)
+    if kind == "absent":
+        return kind, True, []
+    assert isinstance(reference, str)
+    normalized_reference = _evidence_comparison_text(reference).casefold()
+    span_source = _evidence_comparison_text(" ".join(lines[line_start - 1 : line_end])).casefold()
+    if normalized_reference in span_source:
+        return kind, True, []
+    if kind == "descriptive_label":
+        return kind, True, []
+    parts = _recovery_reference_parts(reference)
+    envelope_start = max(1, line_start - prefix_lines)
+    cursor = 0
+    matched_lines: list[int] = []
+    for part in parts:
+        part_norm = _evidence_comparison_text(part).casefold()
+        found = None
+        for index in range(cursor, line_end - envelope_start + 1):
+            line = _evidence_comparison_text(lines[envelope_start - 1 + index]).casefold()
+            if _recovery_marker_line(line, part_norm) and re.search(
+                rf"(?<![a-z0-9]){re.escape(part_norm)}(?![a-z0-9])", line
+            ):
+                found = index
+                break
+        if found is None:
+            return kind, False, []
+        matched_lines.append(envelope_start + found)
+        cursor = found + 1
+    return kind, True, matched_lines
+
+
+def recover_agenda_item_extractor_response(
+    content: str | bytes, *, agenda_text: str
+) -> AgendaItemRecoveryAssessment:
+    """Return strict items plus source-only recovery candidates without changing strict behavior.
+
+    Exact recovery searches the complete source. Token-subsequence recovery is deliberately
+    shadow-only: its returned ``source_evidence`` is the complete source window, never the model's
+    potentially discontinuous quote. Ambiguous spans and unresolved formal references remain
+    rejected for a later retry/OCR decision.
+    """
+    model = ensure_agenda_item_extractor_contract()
+    response = model.model_validate_json(content)
+    strict = assess_agenda_item_extractor_response(content, agenda_text=agenda_text)
+    lines = tuple(agenda_text.splitlines())
+    rejected_by_index = {item.index: item for item in strict.rejected}
+    accepted_keys = {
+        (
+            item.line_start,
+            item.line_end,
+            _evidence_comparison_text(item.evidence_quote).casefold(),
+        )
+        for item in strict.items
+    }
+    recovered_keys: set[tuple[int, int, str]] = set()
+    recovered: list[RecoveredAgendaItem] = []
+    recovered_indices: set[int] = set()
+    for index, raw_item in enumerate(response.items):
+        rejection = rejected_by_index.get(index)
+        if rejection is None:
+            continue
+        declared_start = max(1, int(raw_item.line_start))
+        declared_end = min(len(lines), int(raw_item.line_end))
+        if declared_start > declared_end or not lines:
+            continue
+        exact = _recovery_tightest_spans(_recovery_exact_spans(lines, raw_item.evidence_quote))
+        spans = exact
+        method = ""
+        if len(exact) == 1:
+            method = "exact-global"
+        elif not exact:
+            subsequence = _recovery_subsequence_spans(
+                lines,
+                raw_item.evidence_quote,
+                line_start=declared_start,
+                line_end=declared_end,
+            )
+            if len(subsequence) == 1:
+                spans = subsequence
+                method = "token-subsequence-window"
+        if len(spans) != 1:
+            continue
+        line_start, line_end = spans[0]
+        line_end, trailing_expanded = _recovery_expand_trailing_reference(
+            lines, line_end=line_end
+        )
+        if trailing_expanded:
+            method += "+trailing-reference"
+        kind, resolved, matched_prefix_lines = _recovery_resolve_reference(
+            raw_item.display_ref,
+            lines,
+            line_start=line_start,
+            line_end=line_end,
+        )
+        if not resolved:
+            continue
+        if matched_prefix_lines:
+            line_start = min(line_start, *matched_prefix_lines)
+            method += "+hierarchical-prefix"
+        else:
+            prefix_start = _recovery_identifier_prefix_start(lines, line_start)
+            if prefix_start < line_start:
+                line_start = prefix_start
+                method += "+identifier-prefix"
+        display_ref = (
+            _normalized_source_text(raw_item.display_ref or "") if kind == "formal" else None
+        )
+        source_evidence = "\n".join(lines[line_start - 1 : line_end])
+        key = (
+            line_start,
+            line_end,
+            _evidence_comparison_text(raw_item.evidence_quote).casefold(),
+        )
+        if key in accepted_keys or key in recovered_keys:
+            continue
+        recovered.append(
+            RecoveredAgendaItem(
+                raw_index=index,
+                display_ref=display_ref,
+                original_display_ref=(_normalized_source_text(raw_item.display_ref or "") or None),
+                title=_normalized_source_text(raw_item.title),
+                evidence_quote=_normalized_source_text(raw_item.evidence_quote),
+                source_evidence=source_evidence,
+                line_start=line_start,
+                line_end=line_end,
+                recovery_method=method,
+            )
+        )
+        recovered_indices.add(index)
+        recovered_keys.add(key)
+    unrecovered = tuple(item for item in strict.rejected if item.index not in recovered_indices)
+    return AgendaItemRecoveryAssessment(
+        items=strict.items,
+        recovered=tuple(recovered),
+        rejected=strict.rejected,
+        unrecovered=unrecovered,
+    )
 
 
 def validate_agenda_item_extractor_response(
@@ -533,7 +960,9 @@ __all__ = [
     "TITLE_EQUIVALENCE_CONTRACT",
     "AgendaItemEvidenceAssessment",
     "AgendaItemExtractionRequest",
+    "AgendaItemRecoveryAssessment",
     "ExtractedAgendaItem",
+    "RecoveredAgendaItem",
     "RejectedAgendaItem",
     "TitleEquivalenceMatch",
     "TitleEquivalenceRequest",
@@ -545,6 +974,7 @@ __all__ = [
     "ensure_title_equivalence_contract",
     "match_title_candidates",
     "outline_adds_title_evidence",
+    "recover_agenda_item_extractor_response",
     "validate_agenda_item_extractor_response",
     "validate_title_equivalence_response",
 ]

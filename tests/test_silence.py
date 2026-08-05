@@ -1145,8 +1145,9 @@ class TestSilencePlannerAvailability:
 
     def test_confirmed_partial_forces_a_chapters_remap_reset(self):
         """A confirmed transition must force RemapStage to re-run against the (short) confirmed
-        EDL, so any provider-agenda chapters beyond the real decoded length get dropped rather
-        than staying stuck as already-"served" from an earlier, longer-seeming plan."""
+        EDL, so any provider-agenda chapters beyond the real decoded length are remapped (or
+        dropped when no later kept audio exists) rather than staying stuck as already-"served"
+        from an earlier, longer-seeming plan."""
         planner = SilencePlanner()
         ctx = _make_ctx()
         provider = MagicMock()

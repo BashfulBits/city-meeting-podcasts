@@ -13,12 +13,12 @@ def episode_served_chapters(ep: Episode, *, with_source_index: bool = False) -> 
     list is derived from it plus the current timeline. Synthetic served-only chapter producers leave
     ``source_chapters`` empty and fall back to the stored ``ep.chapters`` list.
 
-    ``remap()`` can drop a chapter outright when its start falls in a cut span, so the served
-    list's position no longer lines up with that chapter's position in ``ep.source_chapters``.
-    Passing ``with_source_index=True`` stamps each surviving chapter with its true source
-    position under ``source_index``, for callers (``chapter_id()``) that must look up the
-    untouched source chapter rather than assume position == position. Off by default so
-    unrelated consumers (e.g. ffmpeg chapter-marker embedding) keep their existing dict shape.
+    Provider chapter starts that fall in a removed source span are snapped to the next kept served
+    boundary. The served list's position therefore no longer necessarily lines up with its source
+    position. Passing ``with_source_index=True`` stamps each surviving chapter with its true source
+    position under ``source_index``, for callers (``chapter_id()``) that must look up the untouched
+    source chapter rather than assume position == position. Off by default so unrelated consumers
+    keep their existing dict shape.
     """
     if not ep.source_chapters:
         return [dict(ch) for ch in ep.chapters]
@@ -39,4 +39,9 @@ def episode_served_chapters(ep: Episode, *, with_source_index: bool = False) -> 
         if with_source_index
         else [dict(ch) for ch in ep.source_chapters]
     )
-    return remap(ep.timeline, items, source_id=next(iter(source_ids)))
+    return remap(
+        ep.timeline,
+        items,
+        source_id=next(iter(source_ids)),
+        snap_cut_starts=True,
+    )

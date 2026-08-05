@@ -485,6 +485,23 @@ class TestRemap:
         assert out[1]["start"] == 200.0
         assert out[2]["start"] == 300.0
 
+    def test_cut_span_items_can_snap_to_next_kept_boundary(self):
+        tl = _trimmed_timeline()
+        items = [
+            {"start": 350, "title": "After removed recess"},
+            {"start": 600, "title": "First kept source frame"},
+            {"start": 3700, "title": "No later kept audio"},
+        ]
+
+        out = remap(tl, items, snap_cut_starts=True)
+
+        assert [item["title"] for item in out] == [
+            "After removed recess",
+            "First kept source frame",
+        ]
+        assert out[0]["start"] == 300.0
+        assert out[1]["start"] == 300.0
+
     def test_remap_end_for_kept_item(self):
         tl = _trimmed_timeline()
         items = [{"start": 0, "end": 200, "title": "A"}]

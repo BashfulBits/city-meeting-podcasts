@@ -122,6 +122,42 @@ def test_response_maps_only_supplied_units_and_preserves_reordering():
     assert [anchor.unit.start for anchor in anchors] == [10.0, 30.0]
 
 
+def test_response_preserves_research_confidence_decomposition_and_alternative():
+    units = locator_units_from_vtt(
+        b"WEBVTT\n\n00:00:10.000 --> 00:00:12.000\nFirst item\n\n"
+        b"00:00:30.000 --> 00:00:34.000\nSecond item\n"
+    )
+    content = json.dumps(
+        {
+            "anchors": [
+                {
+                    "agenda_item_index": 0,
+                    "unit_id": "u00001",
+                    "transition_quote": "First item",
+                    "confidence": 0.72,
+                    "item_confidence": 0.9,
+                    "boundary_confidence": 0.8,
+                    "rationale": "The item number is announced.",
+                    "evidence_type": "direct_item_number_or_id",
+                    "alternative_agenda_item_index": 1,
+                    "alternative_unit_id": "u00002",
+                    "uncertainty_reason": "The second item follows shortly afterward.",
+                }
+            ]
+        }
+    )
+
+    anchor = validate_locator_response(content, agenda_item_count=2, units=units)[0]
+
+    assert anchor.confidence == 0.72
+    assert anchor.item_confidence == 0.9
+    assert anchor.boundary_confidence == 0.8
+    assert anchor.evidence_type == "direct_item_number_or_id"
+    assert anchor.alternative_agenda_item_index == 1
+    assert anchor.alternative_unit_id == "u00002"
+    assert anchor.uncertainty_reason.startswith("The second item")
+
+
 @pytest.mark.parametrize(
     "anchors, error",
     [
@@ -187,6 +223,23 @@ def test_request_contains_full_units_and_selects_mistral_by_default():
     assert material["transcript_units"] == [
         {"id": "u00001", "start": "00:00:10.000", "end": "00:00:12.000", "text": "Call to order"}
     ]
+
+
+def test_request_can_carry_research_only_unit_provenance():
+    units = locator_units_from_vtt(b"WEBVTT\n\n00:00:10.000 --> 00:00:12.000\nCall to order\n")
+    request = build_locator_request(
+        [LocatorAgendaItem(index=0, title="Call to order", evidence_text="1. Call to order")],
+        units,
+        unit_annotations={"u00001": {"candidate_for": [[0, {"L": 1}, "L"]]}},
+    )
+
+    material = json.loads(request.messages[1]["content"])
+    assert material["transcript_units"][0]["retrieval_provenance"]["candidate_for"][0] == [
+        0,
+        {"L": 1},
+        "L",
+    ]
+    assert "retrieval_provenance" in request.messages[0]["content"]
 
 
 def test_context_routing_escalates_only_after_mistral_budget():

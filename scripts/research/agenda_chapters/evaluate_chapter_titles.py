@@ -17,7 +17,10 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from audit_chapters import BenchmarkSample, collect_benchmark_cohort
+try:  # Support both ``python script.py`` and ``python -m scripts...`` research invocations.
+    from audit_chapters import BenchmarkSample, collect_benchmark_cohort
+except ImportError:  # pragma: no cover - package invocation path
+    from .audit_chapters import BenchmarkSample, collect_benchmark_cohort
 
 from citypods.agenda_text import extract_agenda_outline, extract_pdf_layout_text
 from citypods.chapter_titles import (

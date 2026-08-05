@@ -98,6 +98,24 @@ def test_direct_litellm_call_is_normalized():
     assert calls[0]["stream"] is False
 
 
+def test_direct_provider_extra_body_is_forwarded():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(model_dump=lambda: {"choices": [{"message": {"content": "ok"}}]})
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
+    )
+    result = backend.run_inference(
+        job(content="meeting text", extra_body={"thinking": {"type": "disabled"}})
+    )
+
+    assert isinstance(result, JobResult)
+    assert calls[0]["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
 def test_policy_route_is_resolved_and_settled_in_cas_ledger():
     calls = []
 

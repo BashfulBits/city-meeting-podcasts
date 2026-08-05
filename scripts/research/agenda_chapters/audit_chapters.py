@@ -29,6 +29,7 @@ from citypods.config import load_city_configs, load_site_config
 from citypods.http import make_session
 from citypods.records import load_records, source_key
 from citypods.state import pull_canonical_state, resolve_state_dir
+from citypods.timeline import Segment, Timeline, remap
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,70 @@ def _chapter_list(record: Mapping[str, object], field_name: str) -> list[object]
     return value if isinstance(value, list) else []
 
 
+def _served_chapters_for_benchmark(record: Mapping[str, object]) -> list[object]:
+    """Return chapter labels on the served clock using the current chapter remap policy.
+
+    A pulled state snapshot may contain both the provider's raw ``source_chapters`` and a served
+    ``chapters`` copy materialized before a timeline-policy change.  Rebuilding from the raw
+    source labels when a persisted timeline is available keeps the research benchmark aligned
+    with production: chapter starts inside removed spans snap to the next kept served boundary.
+    Records without enough timeline data retain their persisted served list, then fall back to
+    legacy source labels.
+    """
+    source_chapters = _chapter_list(record, "source_chapters")
+    timeline_data = record.get("timeline")
+    if source_chapters and isinstance(timeline_data, Mapping):
+        try:
+            segments = tuple(
+                Segment(
+                    **{
+                        key: segment[key]
+                        for key in (
+                            "served_start",
+                            "served_end",
+                            "kind",
+                            "source_id",
+                            "source_start",
+                            "source_end",
+                            "insert",
+                            "asset_id",
+                            "asset_version",
+                        )
+                        if key in segment
+                    }
+                )
+                for segment in timeline_data.get("segments", [])
+                if isinstance(segment, Mapping)
+            )
+            timeline = Timeline(
+                version=str(timeline_data.get("version") or ""),
+                segments=segments,
+                basis=str(timeline_data.get("basis") or "served"),
+            )
+            sources = record.get("sources")
+            source_id = "s0"
+            if isinstance(sources, list) and sources:
+                first_source = sources[0]
+                if isinstance(first_source, Mapping) and isinstance(first_source.get("id"), str):
+                    source_id = first_source["id"]
+            remapped = remap(
+                timeline,
+                [chapter for chapter in source_chapters if isinstance(chapter, Mapping)],
+                source_id=source_id,
+                snap_cut_starts=True,
+            )
+            if remapped:
+                return remapped
+        except (KeyError, TypeError, ValueError):
+            # A malformed/legacy timeline should not make an otherwise eligible research row
+            # disappear.  The persisted served copy remains the safer fallback.
+            pass
+    served_chapters = _chapter_list(record, "chapters")
+    if served_chapters:
+        return served_chapters
+    return source_chapters
+
+
 def _chapter_stage(record: Mapping[str, object]) -> str:
     completion = record.get("stage_completion")
     if not isinstance(completion, Mapping):
@@ -173,7 +238,22 @@ def _benchmark_sample(
     these immutable artifact keys later; the audit remains safe to run against production state
     without network credentials or model access.
     """
-    chapters = _chapter_list(record, "source_chapters") or _chapter_list(record, "chapters")
+    # The transcript and ``audio.duration_served`` are on the served clock.  When a timeline
+    # exists, ``source_chapters`` contains the provider's raw source-clock values and must never
+    # be compared directly with those artifacts (for example, a source 9035s marker can remap to
+    # served 4656s after silence removal).  Rebuild from source chapters through the current
+    # snap-aware remap policy when possible; otherwise use the persisted served copy and only then
+    # the legacy source list.
+    chapters = _served_chapters_for_benchmark(record)
+    has_titled_served_chapters = any(
+        isinstance(chapter, Mapping)
+        and isinstance(chapter.get("title"), str)
+        and chapter["title"].strip()
+        and isinstance(chapter.get("start"), int | float)
+        for chapter in chapters
+    )
+    if not has_titled_served_chapters:
+        chapters = _chapter_list(record, "source_chapters")
     canonical_titles = tuple(
         chapter["title"].strip()
         for chapter in chapters

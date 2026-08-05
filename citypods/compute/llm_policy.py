@@ -117,6 +117,47 @@ ROUTES: dict[str, LLMRoute] = {
         quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
         pricing=PricingPolicy(),
     ),
+    "gemini/gemini-3.5-flash": LLMRoute(
+        model="gemini/gemini-3.5-flash",
+        transport="direct",
+        free=True,
+        # Bounded research route: the maintainer's AI Studio account currently exposes 20
+        # requests/day. It is experimental so ordinary pipeline work cannot consume that pool.
+        quota=QuotaPolicy(rpm=10, rpd=20, tpm=1_000_000, reset_timezone="America/Los_Angeles"),
+        pricing=PricingPolicy(),
+        experimental=True,
+    ),
+    "gemini/gemini-3.6-flash": LLMRoute(
+        model="gemini/gemini-3.6-flash",
+        transport="direct",
+        free=True,
+        # Same bounded AI Studio research allowance as Gemini 3.5 Flash; keep this opt-in until
+        # the locator benchmark establishes that the quality justifies spending the scarce pool.
+        quota=QuotaPolicy(rpm=10, rpd=20, tpm=1_000_000, reset_timezone="America/Los_Angeles"),
+        pricing=PricingPolicy(),
+        experimental=True,
+    ),
+    "zai/glm-4.7-flash": LLMRoute(
+        model="zai/glm-4.7-flash",
+        transport="direct",
+        free=True,
+        # Z.AI documents this route as free and limits the account to one concurrent request.
+        # Keep it experimental until the locator benchmark establishes quality and response
+        # behavior on our meeting packets.
+        quota=QuotaPolicy(concurrency=1),
+        pricing=PricingPolicy(),
+        experimental=True,
+    ),
+    "openrouter/qwen/qwen3.7-flash": LLMRoute(
+        model="openrouter/qwen/qwen3.7-flash",
+        transport="direct",
+        free=False,
+        # OpenRouter currently lists this 1M-context route at $0.03/M input and $0.13/M
+        # output. Keep it research-only; the provider catalog and pricing can change.
+        quota=QuotaPolicy(concurrency=1),
+        pricing=PricingPolicy(input_per_token=0.03e-6, output_per_token=0.13e-6),
+        experimental=True,
+    ),
     "deepseek/deepseek-v4-flash": LLMRoute(
         model="deepseek/deepseek-v4-flash",
         transport="direct",

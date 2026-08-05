@@ -201,6 +201,77 @@ def test_extractor_tolerates_number_letter_reference_spacing_from_layout_extract
     assert items[0].display_ref == "2.A"
 
 
+def test_extractor_expands_prefix_before_validating_display_ref():
+    agenda_text = "ID 26-2002\nConsider approval of an appointment to the Committee on Parks.\n"
+    items = validate_agenda_item_extractor_response(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "display_ref": "ID 26-2002",
+                        "title": "Parks committee appointment",
+                        "evidence_quote": (
+                            "Consider approval of an appointment to the Committee on Parks."
+                        ),
+                        "line_start": 2,
+                        "line_end": 2,
+                    }
+                ]
+            }
+        ),
+        agenda_text=agenda_text,
+    )
+
+    assert (items[0].line_start, items[0].line_end) == (1, 2)
+    assert items[0].display_ref == "ID 26-2002"
+    assert items[0].evidence_span_repaired
+
+
+def test_extractor_derives_display_ref_after_prefix_expansion_when_model_omits_it():
+    agenda_text = "B.\nApprove the revised mobility agreement.\n"
+    items = validate_agenda_item_extractor_response(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "display_ref": None,
+                        "title": "Approve revised mobility agreement",
+                        "evidence_quote": "Approve the revised mobility agreement.",
+                        "line_start": 2,
+                        "line_end": 2,
+                    }
+                ]
+            }
+        ),
+        agenda_text=agenda_text,
+    )
+
+    assert (items[0].line_start, items[0].line_end) == (1, 2)
+    assert items[0].display_ref == "B."
+    assert items[0].evidence_span_repaired
+
+
+def test_extractor_rejects_display_ref_only_after_expanded_span_is_checked():
+    agenda_text = "ID 26-2003\nApprove the revised mobility agreement.\n"
+    with pytest.raises(ValueError, match="display reference is absent"):
+        validate_agenda_item_extractor_response(
+            json.dumps(
+                {
+                    "items": [
+                        {
+                            "display_ref": "ID 26-9999",
+                            "title": "Approve revised mobility agreement",
+                            "evidence_quote": "Approve the revised mobility agreement.",
+                            "line_start": 2,
+                            "line_end": 2,
+                        }
+                    ]
+                }
+            ),
+            agenda_text=agenda_text,
+        )
+
+
 def test_extractor_repairs_a_uniquely_exact_nearby_evidence_span():
     items = validate_agenda_item_extractor_response(
         json.dumps(

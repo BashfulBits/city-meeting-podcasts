@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -54,6 +54,12 @@ class LocatorAnchor:
     transition_quote: str
     confidence: float
     rationale: str
+    item_confidence: float | None = None
+    boundary_confidence: float | None = None
+    evidence_type: str | None = None
+    alternative_agenda_item_index: int | None = None
+    alternative_unit_id: str | None = None
+    uncertainty_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +199,14 @@ def ensure_locator_contract():
         transition_quote: str = Field(min_length=3, max_length=500)
         confidence: float = Field(ge=0.0, le=1.0)
         rationale: str = Field(min_length=1, max_length=500)
+        # Research-only calibration fields. Existing callers may omit them; calibrated shadow
+        # prompts request all of them and preserve the values in the normalized artifact.
+        item_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+        boundary_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+        evidence_type: str | None = Field(default=None, min_length=1, max_length=40)
+        alternative_agenda_item_index: int | None = Field(default=None, ge=0)
+        alternative_unit_id: str | None = Field(default=None, pattern=r"^u\d{5}$")
+        uncertainty_reason: str | None = Field(default=None, max_length=300)
 
     class Response(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -235,11 +249,20 @@ def validate_locator_response(
     for item in response.anchors:
         if item.agenda_item_index >= agenda_item_count:
             raise ValueError(f"agenda item index out of range: {item.agenda_item_index}")
+        if (
+            item.alternative_agenda_item_index is not None
+            and item.alternative_agenda_item_index >= agenda_item_count
+        ):
+            raise ValueError(
+                f"alternative agenda item index out of range: {item.alternative_agenda_item_index}"
+            )
         if item.agenda_item_index in seen_agenda:
             raise ValueError(f"duplicate agenda item index: {item.agenda_item_index}")
         unit = units_by_id.get(item.unit_id)
         if unit is None:
             raise ValueError(f"unknown locator unit: {item.unit_id}")
+        if item.alternative_unit_id is not None and item.alternative_unit_id not in units_by_id:
+            raise ValueError(f"unknown alternative locator unit: {item.alternative_unit_id}")
         if item.unit_id in seen_units:
             raise ValueError(f"duplicate locator unit: {item.unit_id}")
         seen_agenda.add(item.agenda_item_index)
@@ -251,6 +274,12 @@ def validate_locator_response(
                 transition_quote=item.transition_quote,
                 confidence=item.confidence,
                 rationale=item.rationale,
+                item_confidence=item.item_confidence,
+                boundary_confidence=item.boundary_confidence,
+                evidence_type=item.evidence_type,
+                alternative_agenda_item_index=item.alternative_agenda_item_index,
+                alternative_unit_id=item.alternative_unit_id,
+                uncertainty_reason=item.uncertainty_reason,
             )
         )
     anchors.sort(key=lambda anchor: (anchor.unit.start, anchor.unit.id))
@@ -291,13 +320,18 @@ def select_locator_model(input_tokens: int) -> str:
 
 
 def build_locator_request(
-    agenda_items: Sequence[LocatorAgendaItem], units: Sequence[LocatorUnit]
+    agenda_items: Sequence[LocatorAgendaItem],
+    units: Sequence[LocatorUnit],
+    *,
+    unit_annotations: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> LocatorRequest:
     """Build the full-context, main-agenda-only shadow request and select its route.
 
     This keeps deterministic candidate scoring out of the admission path: all supplied units are
     visible to the model. The caller passes titles already extracted from the main agenda; backup
-    materials are intentionally excluded.
+    materials are intentionally excluded. ``unit_annotations`` is an optional research aid for
+    comparing pooled candidate packets with packets that retain per-unit retrieval provenance; it
+    is omitted from ordinary requests.
     """
     if not agenda_items:
         raise ValueError("locator requires at least one agenda item")
@@ -315,6 +349,20 @@ def build_locator_request(
     if len({unit.id for unit in units}) != len(units):
         raise ValueError("locator unit IDs must be unique")
 
+    transcript_units = []
+    for unit in units:
+        payload: dict[str, Any] = {
+            "id": unit.id,
+            "start": _format_timestamp(unit.start),
+            "end": _format_timestamp(unit.end),
+            "text": unit.text,
+        }
+        if unit_annotations is not None:
+            annotation = unit_annotations.get(unit.id)
+            if annotation:
+                payload["retrieval_provenance"] = annotation
+        transcript_units.append(payload)
+
     material = {
         "agenda_items": [
             {
@@ -326,30 +374,32 @@ def build_locator_request(
             }
             for item in agenda_items
         ],
-        "transcript_units": [
-            {
-                "id": unit.id,
-                "start": _format_timestamp(unit.start),
-                "end": _format_timestamp(unit.end),
-                "text": unit.text,
-            }
-            for unit in units
-        ],
+        "transcript_units": transcript_units,
     }
+    system_content = (
+        "Locate agenda-item discussion starts in this public meeting transcript. "
+        "Return an anchor only for an item actually discussed. Select unit_id exactly "
+        "from transcript_units; never invent a timestamp or ID. A transition quote must "
+        "be copied from the selected or immediately adjacent unit. Agenda order is only "
+        "a soft prior: items can be skipped, reordered, or revisited. Do not use the "
+        "generated agenda title as evidence unless it is spoken in the supplied "
+        "transcript. "
+        "Use each item's source-grounded evidence_text and locator_cues to recognize "
+        "announcements, including an item number or ID that is spoken without its summary."
+    )
+    if unit_annotations:
+        system_content += (
+            " Some transcript units include retrieval_provenance. Its candidate_for entries "
+            "are [agenda_item_index, ranks, signals]; rank keys L/T/H mean lexical, TF-IDF, "
+            "and learned retrieval, while signals L/T/H mean direct top candidates and l/t "
+            "mean neighboring candidates. Treat these as retrieval hints, not proof: use them "
+            "to preserve item-to-unit associations while checking transcript text and timing."
+        )
+
     messages = (
         {
             "role": "system",
-            "content": (
-                "Locate agenda-item discussion starts in this public meeting transcript. "
-                "Return an anchor only for an item actually discussed. Select unit_id exactly "
-                "from transcript_units; never invent a timestamp or ID. A transition quote must "
-                "be copied from the selected or immediately adjacent unit. Agenda order is only "
-                "a soft prior: items can be skipped, reordered, or revisited. Do not use the "
-                "generated agenda title as evidence unless it is spoken in the supplied "
-                "transcript. "
-                "Use each item's source-grounded evidence_text and locator_cues to recognize "
-                "announcements, including an item number or ID that is spoken without its summary."
-            ),
+            "content": system_content,
         },
         {
             "role": "user",

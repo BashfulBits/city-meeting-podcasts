@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from citypods.agenda_text import AgendaTitleCandidate
 from scripts.research.agenda_chapters.audit_chapters import (
     ProviderBenchmark,
+    _benchmark_sample,
     collect_benchmark_cohort,
     collect_coverage,
     match_agenda_titles,
@@ -135,6 +136,64 @@ def test_collect_benchmark_requires_every_persisted_locator_input(monkeypatch, t
     assert "Canonical locator benchmark cohort" in report
     assert "`granicus` | 2 | City Council (2)" in report
     assert report_dict({}, cohort)["benchmark"]["providers"]["granicus"]["episodes"] == 2
+
+
+def test_benchmark_uses_served_chapters_when_source_copy_is_present():
+    record = _benchmark_record(
+        source_chapters=[{"start": 9035, "title": "Work session"}],
+        chapters=[{"start": 4656.3, "title": "Work session"}],
+        audio={"key": "audio/source/uid.m4a", "duration_served": 8692.4},
+    )
+
+    sample = _benchmark_sample(record, slug="arlington-tx", uid="uid")
+
+    assert sample is not None
+    assert sample.canonical_starts == (4656.3,)
+
+
+def test_benchmark_rebuilds_cut_span_chapter_using_snap_policy():
+    record = _benchmark_record(
+        source_chapters=[
+            {"start": 0, "title": "Before"},
+            {"start": 350, "title": "Inside removed span"},
+            {"start": 600, "title": "After"},
+        ],
+        # This is the old drop-policy served copy; the research selector must not reuse it when
+        # the raw source labels and timeline are available.
+        chapters=[
+            {"start": 0.0, "title": "Before"},
+            {"start": 300.0, "title": "After"},
+        ],
+        sources=[{"id": "s0", "provider": "swagit"}],
+        timeline={
+            "basis": "served",
+            "version": "silence:3",
+            "segments": [
+                {
+                    "kind": "source",
+                    "source_id": "s0",
+                    "source_start": 0.0,
+                    "source_end": 300.0,
+                    "served_start": 0.0,
+                    "served_end": 300.0,
+                },
+                {
+                    "kind": "source",
+                    "source_id": "s0",
+                    "source_start": 600.0,
+                    "source_end": 900.0,
+                    "served_start": 300.0,
+                    "served_end": 600.0,
+                },
+            ],
+        },
+    )
+
+    sample = _benchmark_sample(record, slug="city", uid="uid")
+
+    assert sample is not None
+    assert sample.canonical_titles == ("Before", "Inside removed span", "After")
+    assert sample.canonical_starts == (0.0, 300.0, 300.0)
 
 
 def test_collect_benchmark_can_opt_into_vtt_only_rows(monkeypatch, tmp_path):

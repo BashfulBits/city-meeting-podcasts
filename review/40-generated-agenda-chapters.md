@@ -576,12 +576,13 @@ evidence_text      code-derived complete text of line_start..line_end (locator i
 locator_cues       code-derived visible references and normalized source phrases
 ```
 
-The model must cite a span that includes its visible item/section prefix and ID. Validation keeps
-the current exact-quote rule, validates a supplied `display_ref` against the cited span, and
-deterministically expands an immediately preceding identifier-only line (for example `4.1.`, `B.`,
-or `ID 26-1108`) into the durable evidence span where layout extraction split it from its action
-line. It does not prepend that reference to `title`. `evidence_text` and `locator_cues` are built
-from immutable source lines, not trusted model prose.
+The model must cite an exact quote from its action evidence, but it need not repeat a visibly
+separate item/section prefix or ID in that quote. Post-processing first expands the cited span by
+one immediately preceding identifier-only line (for example `4.1.`, `B.`, or `ID 26-1108`) when
+layout extraction split it from the action line. Only after that expansion does validation check a
+supplied `display_ref`; when the model omits it, code derives the first visible reference from the
+expanded immutable source span. It does not prepend that reference to `title`. `evidence_text` and
+`locator_cues` are built from immutable source lines, not trusted model prose.
 
 #### Next implementation slices
 
@@ -873,39 +874,1570 @@ genuine agenda with unnumbered action items. This evidence belongs with the exis
 remediation issue rather than weakening the locator benchmark's agenda-candidate gate.
 
 The next gate is now a larger frozen cohort with explicit strata for provider, duration, agenda
-artifact class, and timing source. It should include both complete packets and recorded
+artifact class, and transcript timing artifact (word sidecar versus VTT fallback). It should include both complete packets and recorded
 non-admissions, then compare the full transcript packet against optional deterministic hints. No
 LLM call is warranted until that packet is frozen and its source/evidence manifest is reviewable.
 
+### Provider-chapter retrieval benchmark (approved next slice, 2026-08-01)
+
+The next benchmark will use episodes that already have provider-supplied chapters as the primary
+ground-truth cohort. The generated agenda-item records for an episode (concise title, complete
+`evidence_text`, visible references, and source span) become the only agenda-side input to the
+chapter-finding process. Provider chapter records remain hidden from retrieval and verification;
+they are joined only by the scoring harness. This prevents canonical chapter text from leaking
+into either deterministic retrieval or an LLM prompt.
+
+The initial frozen design is **96 development episodes plus 96 held-out test episodes** (192
+unique episode UIDs total), with a larger cohort allowed only if it preserves the same split and
+artifact-quality rules. The split is stratified by provider, normalized body, meeting duration,
+agenda-artifact representation, and transcript timing artifact (word sidecar versus VTT fallback).
+Where the catalog permits, recurring bodies
+are kept entirely on one side of the split, and test episodes are later in time or body-disjoint;
+random episode splits are not acceptable because agenda templates and item phrases otherwise leak
+across the boundary. Shared feed projections are UID-deduplicated before sampling.
+
+Each row stores an immutable research manifest containing:
+
+1. episode UID, provider, normalized body, date, duration, and source chapter provenance;
+2. the exact agenda artifact hash/class and complete generated agenda-item records;
+3. the timed transcript/word-sidecar or VTT source and its artifact hash;
+4. provider chapter start markers, any explicit ends, and titles in a hidden scoring section; and
+5. exclusion/non-admission reasons for rows that cannot be scored.
+
+Known-bad agenda artifacts are excluded from the scored set rather than silently treated as recall
+failures: empty or viewer/loading placeholders, OCR-minimal PDFs already identified by the agenda
+OCR issue, failed fetches, incomplete transcript timing, duplicate UIDs, and malformed provider
+chapter records. A valid agenda with a genuinely skipped, withdrawn, or consent-subsumed item is
+retained; the process must be allowed to return `not_found` for that item. Such rows are important
+for measuring false chapter creation. Excluded rows remain in a separate artifact-diagnosis
+manifest so they are not forgotten or counted as successes.
+
+The first restored-state inventory found that the provider chapter records used by this catalog are
+normally **start-only**: titles and `start` offsets are present, while provider `end` offsets are
+absent. The dataset builder therefore treats monotonic provider starts as the canonical timing
+labels and derives an end only for local diagnostics (the next provider start, or the served audio
+duration for the final chapter). A future scorer must use the provider start as the primary
+boundary label and must not mistake absent provider ends for malformed chapters. Rows with missing
+titles, missing starts, non-monotonic starts, or invalid explicit ends remain excluded.
+
+The initial 192-row manifest requires a synced word sidecar for every episode, so its transcript
+timing-artifact stratum is currently constant (`words`). The field remains in the manifest because
+the later VTT-fallback cohort will need the same split and scoring distinction; it is not a second
+provider-chapter ground-truth source.
+
+The benchmark reports three separate layers, with provider-chapter inclusion as the chief
+end-to-end metric:
+
+- **Agenda extraction coverage:** whether a provider chapter has an independently source-grounded
+  generated agenda item whose evidence plausibly covers it. This is scored before transcript
+  retrieval and prevents a locator from being blamed for a missing agenda item.
+- **Retrieval coverage:** for each covered provider chapter, whether the deterministic candidate
+  union contains a timed transcript window within the boundary tolerance. This is measured at
+  several top-k values and at the final compact packet size.
+- **Verification/boundary quality:** whether the compact LLM verifier chooses the correct anchor,
+  rejects a skipped item, and avoids duplicate or out-of-order chapters. Precision, recall, F1,
+  boundary error, candidate token count, and full-context escalation rate are all retained.
+
+The first comparison is deliberately empirical and paired on the same episodes:
+
+1. full-transcript locator baseline;
+2. sparse lexical retrieval using normalized rare terms, IDs, phrases, and transition cues;
+3. agenda-to-transcript embedding similarity, following the agenda-vector/sentence-vector
+   approach in [TalkTraces](https://vis.cs.ucdavis.edu/papers/TalkTraces_CHI2019.pdf); and
+4. the high-recall union of lexical, embedding, neighboring-window, and transition-cue hits.
+
+The agenda-aware attention design described in [Dynamic agenda-aware real-time meeting
+summarization](https://link.springer.com/article/10.1007/s44443-025-00304-y) is an architectural
+reference for the per-item verifier, not a dependency or an assumed production model. The first
+sparse implementation should reuse the existing optional scikit-learn research dependency and
+timed-artifact builders. Dense embeddings, rerankers, or a new runtime library are admitted only
+if the held-out development results show a material recall/cost benefit and their operational
+burden is acceptable.
+
+Development episodes may tune token windows, top-k, neighbor expansion, confidence thresholds,
+and prompt wording. The test manifest, provider-chapter section, and all thresholds are frozen
+before the test run. No provider chapter title, timestamp, or canonical count may be supplied to
+the retrieval or verifier process. The full-context baseline remains a required canary and
+fallback; a cheaper retrieval path is admitted only when its provider-chapter recall is not
+materially worse and its false-publication safeguards remain intact.
+
+### Frozen final agenda extraction for the locator cohort (2026-08-01)
+
+The 192-row locator cohort now has one authoritative agenda extraction pass. It used the frozen
+`agenda-flow` prompt and `mistral-medium-2508`; the earlier Large/DeepSeek shadow outputs are not
+substituted into this dataset because they predate the final prompt decision. The run submitted
+all 192 episodes, completed the two transient failures sequentially, and produced 192 terminal
+responses. The 192 public agenda sidecars were then fetched into a temporary read-only cache and
+each raw response was re-run through the current source validator. This explicitly verifies that
+evidence expansion to a preceding item-number/ID line happens before `display_ref` validation.
+
+The result was 192/192 revalidated responses, 2,969 accepted generated agenda items, and 190 rows
+with at least one accepted item. Two rows have zero accepted items: one response returned an empty
+list for a source whose extracted text is not useful for action-item discovery; the other contained
+hierarchical Fort Worth references whose declared evidence spans did not
+contain the cited reference or quote. Those rows remain in the research manifest and are not
+counted as provider-chapter recall failures. The joined temporary artifacts are:
+
+`/private/tmp/locator-dataset-final-medium-agenda-flow/manifest.json`,
+`/private/tmp/locator-dataset-final-medium-agenda-flow/gold.json`, and
+`/private/tmp/locator-dataset-final-medium-agenda-flow/diagnostics.json`.
+
+The runner and dataset loader preserve the prompt variant and support the nested
+`<prompt-variant>/<model>/` output layout. No transcript boundary locator or provider chapter
+title/timing was supplied to the agenda extractor.
+
+### Initial provider-chapter crosswalk audit (2026-08-02)
+
+Before building transcript retrieval, a scoring-only crosswalk compared the hidden provider chapter
+titles with the final Medium-generated agenda titles/evidence. When available, it also compared
+each provider title with the structural candidates in the original agenda sidecar. This is a
+diagnostic, not a gold label and none of its relationships are passed to retrieval.
+
+Across 2,564 provider chapters, the source-level comparison found 2,117 strong matches, 23 possible
+matches, 407 unmatched titles, and 17 episodes whose sidecars produced no structural candidates.
+The generated-agenda comparison found 1,758 strong matches, 72 possible matches, 113 ambiguous
+matches, and 621 unmatched titles. There were 1,589 chapters that were strong in both comparisons.
+Another 541 chapters had a strong/possible source match but no strong generated match; these are
+agenda-extraction or crosswalk gaps, not locator failures. Ninety-eight chapters had multiple
+plausible generated-item candidates, concentrated in repeated procedural language, consent-style
+entries, and hierarchical references.
+
+This confirms that retrieval scoring needs an explicit scoring-only crosswalk with role and
+ambiguity states. Provider section headings, consent composites, skipped items, and genuinely
+unmapped chapters must not be silently converted into ordinary action-item retrieval negatives.
+The crosswalk implementation is `audit_locator_crosswalk.py`; its output remains outside the
+repository with the other benchmark artifacts.
+
+### Development crosswalk review packet (2026-08-02)
+
+The heuristic crosswalk is useful for finding edge cases, but it is not a gold label.  The next
+gate is a small human adjudication packet built only from the **development** half of the frozen
+192-episode cohort.  `prepare_locator_crosswalk_review.py` selects 48 chapter-level cases from 48
+unique development episodes (24 Granicus and 24 Swagit), with deterministic strata:
+
+| Stratum | Cases |
+| --- | ---: |
+| ambiguous candidate relationships | 12 |
+| source-strong/generated-gap | 12 |
+| procedural, section, or consent-shaped | 8 |
+| unmatched, no-structural-source, or hierarchical-reference | 8 |
+| clear strong controls | 8 |
+
+The packet carries the provider chapter title and index, episode/body metadata, the complete
+generated agenda-candidate list (title, display reference, evidence text, and agenda line range),
+and the extracted agenda source lines.  It deliberately carries no provider chapter start/end,
+transcript, word-sidecar, or timing-source fields.  The reviewer labels each case as a matched
+candidate, consent/composite chapter (with two or more selected candidates), section/procedural,
+missing generated candidate, source/extraction problem, or unsure.  A missing-candidate reason and
+free-text note are optional/required as appropriate.  These labels are for scoring-only crosswalk
+calibration; they must not enter retrieval prompts or production decisions.
+
+Build and serve it with:
+
+```bash
+PYTHONPATH=.:scripts/research/agenda_chapters \
+python scripts/research/agenda_chapters/prepare_locator_crosswalk_review.py \
+  --manifest /private/tmp/locator-dataset-final-medium-agenda-flow/manifest.json \
+  --crosswalk /private/tmp/locator-crosswalk-audit.json \
+  --agenda-cache /private/tmp/locator-agenda-medium-192-final-cache \
+  --write /private/tmp/locator-crosswalk-review-packet.json
+
+PYTHONPATH=.:scripts/research/agenda_chapters \
+python scripts/research/agenda_chapters/serve_locator_crosswalk_review.py \
+  --packet /private/tmp/locator-crosswalk-review-packet.json \
+  --decisions /private/tmp/locator-crosswalk-review-decisions.json
+```
+
+The UI is localhost-only.  It shows all generated candidates for the meeting so a heuristic
+miss does not become an apparent retrieval miss; the held-out test split remains untouched.
+
+### Human crosswalk adjudication result (2026-08-03)
+
+The 48-case development packet is now labeled.  Its raw label counts are:
+
+| Human label | Cases | Interpretation for extraction quality |
+| --- | ---: | --- |
+| matched candidate | 30 | usable one-to-one agenda/candidate relationship |
+| consent/composite | 1 | usable relationship, but not one provider chapter per child item |
+| section/procedural | 5 | not ordinary action-item extraction negatives |
+| unsure | 2 | provider title/source does not establish a reliable relationship |
+| missing generated candidate | 10 | requires reason-level adjudication; not all are extractor failures |
+
+The packet must not be read as a prevalence sample.  Forty of its 48 cases were deliberately
+selected from ambiguity/gap/unmatched strata; only eight were clear controls.  In the full
+development half of the cohort, the selector's diagnostic strata are 251 clear controls, 182
+source-strong/generated-gap, 332 ambiguous, 231 procedural/consent, and 511 unmatched/
+structural/hierarchical chapters.  Thus the packet intentionally over-samples source gaps and
+edge cases, and under-samples unmatched chapters.  The 10/48 missing-candidate label rate is not a
+catalog-wide recall estimate.
+
+The reason labels separate the apparent misses further.  Of the ten missing-candidate cases, seven
+were marked `extraction_missed_item`, one was an agenda-absent item, one was a provider-only section,
+and one was a broad/composite mismatch.  The comments identify a smaller set of genuine problems:
+multiline/hierarchical agenda entries can be omitted, a nested child action can be hidden under a
+parent evidence span, and one Fort Worth Building Standards response appeared to contain only two
+accepted candidates for an agenda with roughly 35 raw items.  Other cases are expected section
+headings, a provider-only future-agenda entry, or a feed/body metadata mismatch rather than a model
+recall failure.
+
+There is an important measurement trap here: the packet displayed **post-validated accepted items**,
+not the raw LLM list.  Across the 192 final Medium responses, the raw responses contained 3,476
+items; 2,969 survived source revalidation and 507 were rejected (288 quote-span failures and 219
+display-reference-span failures).  The Fort Worth Building Standards row contained all of its
+case entries in the raw response, but 32 were rejected because the current validator could not find
+the hierarchical display reference in the expanded evidence span.  Another long Fort Worth row had
+17 raw items and zero accepted items.  Therefore the packet demonstrates a real evidence-repair /
+postprocessor weakness in addition to genuine extraction misses; it does not demonstrate that the
+Medium model simply failed to read the agendas.
+
+Before using this crosswalk as the retrieval gold gate, preserve the raw/rejected distinction and
+run a recovery audit for hierarchical references, multiple preceding identifier lines, and
+multiline evidence spans.  Then re-adjudicate only the recovered/changed cases (or rebuild the
+development packet) before estimating agenda-item recall.  The current evidence supports: “the
+agenda path has a meaningful long-tail evidence/validation failure mode that must be fixed,” not
+“the average agenda extraction is only 79% complete.”
+
+### Rejected-item recovery audit (2026-08-03)
+
+The first read-only recovery audit is implemented as `audit_agenda_recovery.py` and ran against all
+507 rejected raw items.  It does not accept or rewrite any item.  Its diagnostic classes were:
+
+| Audit class | Items | Meaning |
+| --- | ---: | --- |
+| exact quote, source reference resolved | 107 | safe candidate for conservative span repair |
+| exact quote, descriptive display label | 43 | source evidence is exact; the label is not a formal reference and must not be a hard gate |
+| token-subsequence source window | 206 | quote omits layout/parenthetical text but source tokens remain ordered; store the complete source window if repaired |
+| token-subsequence, formal reference unresolved | 18 | source window is plausible but hierarchical/reference repair still needs review |
+| exact quote, formal reference unresolved | 52 | reference resolver needs a broader/typed hierarchy pass |
+| quote ambiguous | 11 | repeated source text; do not auto-accept |
+| quote not found | 70 | remains a genuine recovery or source/LLM problem |
+
+Thus 356 of 507 rejected items have an exact or source-token-ordered recovery path, but the
+token-subsequence class is only an audit signal—not permission to accept a discontinuous model
+quote.  A repair must retain the complete immutable source span and record its recovery method.
+The shadow implementation adds typed formal-reference parsing, multi-line hierarchy prefix
+expansion, and complete-source-window recovery while retaining ambiguous/not-found items in
+diagnostics.  Only after reviewing that shadow should we rerun the crosswalk review or spend LLM
+calls on the remaining irrecoverable/ambiguous items.
+
+### Shadow recovery implementation result (2026-08-03)
+
+The reusable shadow function `recover_agenda_item_extractor_response` now lives in
+`citypods/chapter_titles.py`; `build_agenda_recovery_shadow.py` applies it without model calls or
+durable writes.  Across the 192 raw responses it produced 350 separately marked recovered items
+across 54 rows, leaving 157 raw rejections unresolved.  Recovery methods preserve complete source
+line windows and record whether the repair was exact, token-subsequence, identifier-prefix, or
+hierarchical-prefix recovery.  Strict accepted items remain unchanged.
+
+For a temporary recovered-manifest comparison only, the scoring-only crosswalk changed as follows:
+
+| Measure | Strict candidates | Strict + recovered shadow |
+| --- | ---: | ---: |
+| provider chapters with strong generated match | 1,758 | 1,885 |
+| provider chapters with source-strong/possible but no strong generated match | 541 | 432 |
+| generated items | 2,969 | 3,319 |
+
+The human packet examples behaved as expected: Arlington SUP14-6 and Denton DCA26-0002 moved to
+strong recovered matches, while the Fort Worth “Changes in Membership” item (absent from the raw
+LLM list) and several Austin case/discussion items remained unresolved.  The recovered manifest is
+diagnostic only; it is not yet the frozen agenda input, production output, or locator gold.
+
+### Fixed-case recovery review packet (2026-08-03)
+
+Because recovery changes the crosswalk strata, regenerating the original 48-case packet would
+confound recovery quality with a new sample.  `prepare_locator_recovery_review.py` therefore keeps
+the original packet's selected episodes and provider chapters fixed, and emits a fresh `RXR-*`
+packet containing only its 15 cases with shadow-recovered items.  It contains 128 recovered
+candidates (including the long Fort Worth and Denton rows), marks each recovery method in the UI,
+and uses a separate decision namespace so the original labels and comments remain untouched.  It
+omits provider timings and makes no model calls.  This packet is the next human gate before any
+recovered item is admitted to the agenda input or locator gold.
+
+### Fixed-case recovery adjudication (2026-08-03)
+
+The recovery packet was completed.  The 15 cases were labeled as 12 direct matches, one
+consent/composite relationship, one section/provider-only case, and one unsure case.  Four
+recovered candidates were selected: three as direct matches (Arlington SUP14-6, Fort Worth
+HS-23-134, and Denton DCA26-0002) and one as part of a consent/composite relationship.  The other
+selected matches were already present in the strict candidate set, so recovery was unnecessary
+for those provider chapters.  This is evidence that the reviewed recovery additions are useful,
+but it is not a precision estimate for all 350 recovered items because the packet contains one
+provider chapter per episode and does not adjudicate every recovered candidate.
+
+The DCA26-0002 review also exposed a span-completeness defect: the matched agenda paragraph's
+formal ID (`DCA26-0002B.`) appears on a line after the descriptive paragraph, while the recovered
+source span stopped at the paragraph's last descriptive line.  The candidate is semantically
+correct, but the recovery layer must expand forward to a trailing formal-reference line before
+it can be used for downstream transcript matching.  The next bounded repair is therefore a
+forward identifier/reference expansion pass, followed by a focused re-review of affected cases;
+the current shadow manifest remains non-authoritative.
+
+### Forward formal-reference repair result (2026-08-03)
+
+The recovery layer now performs one conservative forward pass after locating a source span.  It
+may include a nearby standalone formal ID line when the intervening source lines are contiguous;
+blank lines stop the search, and bare section markers such as `A.` or `3.` are not treated as
+trailing IDs.  This addresses IDs printed after a long wrapped paragraph without absorbing the
+next agenda item.
+
+The v2 shadow run recovered 377 items across 60 rows and left 130 unresolved, compared with 350
+and 157 in the prior shadow run.  The scoring-only crosswalk changed to 1,907 strong provider
+matches, 79 possible, 155 ambiguous, and 423 unmatched chapters; the source-strong/possible gap
+fell to 431 (from 432 in the prior shadow and 541 under strict validation).  The generated-item
+count is 3,346.  In the reported DCA26-0002 case, the recovered span now extends through the
+trailing `DCA26-0002B.` line.  These figures remain diagnostic: the v2 recovered manifest is not
+the frozen agenda input, production output, or locator gold.
+
+The five-row forward-expansion spot-check is complete.  The two previously validated recovered
+matches (SUP14-6 and DCA26-0002) retained correct relationships and complete trailing-reference
+spans; no expansion crossing into a later item was reported.  The remaining rows likewise had no
+span defect; the City Council Español row was correctly treated as a provider-only/procedural
+chapter rather than forced into an agenda candidate.  The forward rule is therefore accepted for
+the shadow layer, while the broader recovered candidate set remains diagnostic until its admission
+policy is decided.
+
+### First deterministic locator retrieval slice (2026-08-03)
+
+The first read-only evaluator is `evaluate_locator_retrieval.py`.  Its “full-context” path only
+measures the request that would be sent to the locator; it does not call a model.  The lexical and
+TF-IDF paths rank timed transcript units, and the union adds neighboring units.  Provider chapter
+starts and the agenda/provider crosswalk are used only after ranking to score candidate recall.
+The TF-IDF path is explicitly a lightweight scikit-learn proxy for an embedding path, not a
+semantic-model result.
+
+A four-episode development smoke slice (two Granicus and two Swagit) completed with public
+transcript/word-sidecar fetches.  Under strict candidates there were 46 scoreable strong chapters;
+strict-plus-recovered had 48.  At top-10, lexical/union recall was 42/46 (0.913) strict and 44/48
+(0.917) recovered.  Swagit top-1 union recall was 6/9 in both variants; the recovered improvement
+came from the long Fort Worth row, whose full-context request grew from 84,699 to 89,840 tokens
+and whose top-1 union hits rose from 2/3 to 4/5.  This is a smoke result only, not a model-quality
+estimate; the full development run is recorded below.
+
+### Full deterministic locator development run (2026-08-03)
+
+The paired development run used all 96 frozen episodes (48 Granicus and 48 Swagit), the current
+v2 recovered agenda manifest, and public transcript/word-sidecar artifacts.  The retrieval
+evaluator is `evaluate_locator_retrieval.py`; it makes no model call.  It ranks timed transcript
+units from each agenda candidate, while provider chapter starts remain hidden until scoring.
+`union` is the lexical-plus-TF-IDF top-k set with one neighboring unit on each side.  The TF-IDF
+path is a lightweight scikit-learn proxy for an embedding retriever, not a semantic embedding
+model.
+
+The strict crosswalk supplied 1,165 strong provider chapters.  The recovered crosswalk supplied
+1,225 strong chapters: 1,165 from the strict set plus 60 newly scoreable recovered relationships.
+The paired result below is the fair comparison because it holds the 1,165 strict-covered targets
+constant:
+
+| Candidate path | Top-1 | Top-3 | Top-5 | Top-10 |
+| --- | ---: | ---: | ---: | ---: |
+| Lexical (strict-covered targets) | 655/1,165 (0.562) | 795/1,165 (0.682) | 843/1,165 (0.724) | 918/1,165 (0.788) |
+| TF-IDF proxy (strict-covered targets) | 663/1,165 (0.569) | 796/1,165 (0.683) | 842/1,165 (0.723) | 907/1,165 (0.779) |
+| Union (strict-covered targets) | **752/1,165 (0.646)** | **866/1,165 (0.743)** | **908/1,165 (0.779)** | **977/1,165 (0.839)** |
+
+These percentages are **not** calculated over every generated agenda candidate.  They are
+provider-chapter recall: the denominator is a provider chapter whose hidden title was linked to a
+generated agenda item with `status=strong`.  To answer the candidate-side question separately, the
+same run grouped strong provider starts by unique generated item.  In the recovered development
+manifest there were 1,957 generated candidates; 1,185 (60.6%) were linked to at least one strong
+provider chapter, leaving 772 with no strong provider-chapter relationship.  The latter group is
+not automatically false: it includes legitimate skipped/withdrawn items, consent children,
+procedural or section candidates, and crosswalk failures.
+
+On only those 1,185 strong-linked generated candidates, candidate-side recall was:
+
+| Candidate path | Top-1 | Top-3 | Top-5 | Top-10 |
+| --- | ---: | ---: | ---: | ---: |
+| Lexical | 55.1% | 66.8% | 70.9% | 77.4% |
+| TF-IDF proxy | 55.5% | 66.8% | 71.0% | 76.3% |
+| Union | **63.4%** | **73.1%** | **76.8%** | **82.7%** |
+
+The paired strict candidate set was 1,127 unique candidates; union top-10 recall was 944/1,127
+(0.838), essentially the same as the provider-chapter view.  Therefore the current result is not
+primarily an artifact of counting many unmatched agenda candidates in the denominator: among
+agenda candidates that do have a strong provider-chapter relationship, the deterministic union
+still misses roughly 17% at top-10.  Conversely, the 39.4% of recovered candidates without a
+strong crosswalk relationship is a separate agenda/crosswalk coverage problem and cannot be
+called either a retrieval success or a retrieval failure without adjudication.
+
+This candidate-side metric is still a heuristic diagnostic because the strong crosswalk itself is
+not the final human gold set.  The next review slice should sample both kinds of cases: retrieval
+misses among strong-linked candidates, and unlinked candidates to determine how many are expected
+skips/consent/procedural entries versus agenda-extraction or crosswalk misses.
+
+#### Sensitivity to the local retrieval window
+
+The 82.7% headline uses the union's top ten lexical/TF-IDF units plus one adjacent timed unit on
+each side, with a 60-second provider-start tolerance.  A development sweep on the same 1,185
+strong-linked candidates shows that widening the **candidate packet** helps, but only modestly:
+
+| Union neighbor radius | Candidate-side recall | Paired strict candidate recall |
+| ---: | ---: | ---: |
+| 0 units | 967/1,185 (0.816) | 933/1,127 (0.828) |
+| 1 unit (current) | 980/1,185 (0.827) | 944/1,127 (0.838) |
+| 2 units | 989/1,185 (0.835) | 952/1,127 (0.845) |
+| 4 units | 1,005/1,185 (0.848) | 968/1,127 (0.859) |
+
+These are adjacent ASR/word-sidecar units, not fixed seconds; their durations vary.  The gain from
+one to four neighbors is about two percentage points, so simply sending a wider local packet will
+not close the entire gap to 100% and will increase verifier input size.
+
+For comparison, changing only the **scoring tolerance** (still one neighbor) produced 71.8% at
+30 seconds, 82.7% at 60 seconds, and 89.7% at 120 seconds on the candidate side.  The 120-second
+number is not a better locator—it permits a selected clue to be two minutes from the canonical
+start.  We should keep tolerance fixed for the benchmark and treat local-window width as the
+actual packet-design variable.
+
+This confirms the concern that deterministic retrieval alone is not sufficiently complete for
+publication.  The next experiment should compare the full-context locator with compact union
+packets (likely radius 2 or 4) on development; the LLM can use the wider evidence to resolve
+transition language that lexical similarity misses, while provider chapters remain scoring-only.
+
+### Learned transition scoring and escalation policy (research phase, 2026-08-04)
+
+The deterministic score should not be treated as the final transition detector.  The literature
+supports a learned, agenda-aware reranker, but not an end-to-end deep model trained directly on our
+current 96-episode development half:
+
+- Georgescul, Clarck, and Armstrong's meeting-segmentation study used a supervised SVM with
+  lexical, acoustic, and syntactic/conversational features for boundary classification.  This is
+  directly relevant to a small scikit-learn prototype, especially because our timed artifacts
+  expose pause/gap and unit-duration features even before diarization:
+  [ACL paper](https://aclanthology.org/2007.jeptalnrecital-long.1/).
+- TalkTraces used agenda-vector/utterance-vector cosine similarity and an “unknown topic”
+  probability threshold.  That supports both a semantic candidate scorer and an explicit
+  `not_found` state rather than forcing every agenda item onto a transcript window:
+  [CHI 2019 paper](https://vis.cs.ucdavis.edu/papers/TalkTraces_CHI2019.pdf).
+- Solbiati et al. report a 15.5% error reduction from BERT-based unsupervised meeting topic
+  segmentation over earlier unsupervised methods, while noting that meeting ground truth is hard
+  to collect.  This is evidence for testing a dense-similarity/change-point feature, not for
+  importing a large runtime model:
+  [paper](https://arxiv.org/abs/2106.12978).
+- A recent agenda-aware meeting summarization design tracks the current agenda item by comparing
+  each utterance with agenda items, allows forward skips, and treats revisits separately.  Its
+  stateful tracking pattern is useful for our reranker, but its training/evaluation assumptions do
+  not replace our provider-chapter benchmark:
+  [Springer paper](https://link.springer.com/article/10.1007/s44443-025-00304-y).
+
+The bounded experiment should proceed in four layers:
+
+1. **Feature rows.** For each agenda item and timed transcript unit/window, retain the current
+   lexical and TF-IDF scores, identifier/phrase overlap, dense-similarity score if tested,
+   similarity to the previous and next local windows, local maxima/score slope, transition cue
+   phrases (“next item”, “move to”, “item number”, “motion”, “public hearing”), timestamp gap and
+   unit duration, meeting-relative position, and a soft agenda-order distance.  Agenda order must
+   remain a prior: skipped and revisited items are legal.
+2. **Small learned rerankers.** Train a calibrated LogisticRegression baseline, then a small
+   HistGradientBoostingClassifier; optionally compare a calibrated LinearSVC because it already
+   exists in the research tools.  Fit only on development episodes with grouped folds by episode
+   and body family.  Evaluate candidate-side recall, provider-chapter recall, boundary error,
+   packet token count, and precision of the `not_found` decision.  Do not use provider titles or
+   provider starts as runtime features.
+3. **Temporal reconciliation.** Re-rank local maxima rather than independently selecting every
+   agenda item's highest-scoring unit.  A small dynamic-programming/HMM-style pass may prefer
+   staying on the current item, allow a forward skip, and allow a revisit at a penalty.  It must
+   not hard-code monotonic agenda order or collapse a consent composite into child items.
+4. **Gold-label discipline.** Strong crosswalk relationships provide positive boundary labels.
+   Provider-only/section/procedural chapters, consent children, skipped/withdrawn items, ambiguous
+   relationships, and unlinked agenda candidates are not all interchangeable negatives.  Keep
+   them as separate roles or unlabeled cases; add targeted human labels before estimating
+   candidate precision.  The held-out 96 episodes remain untouched until the feature/model family
+   and thresholds are frozen.
+
+#### Escalation policy for compact versus full-context locator calls
+
+The compact call should return a structured result per agenda item: `found`, `not_found`, or
+`ambiguous`; a supplied unit ID; a copied transition quote; and a confidence/rationale.  The
+validator rejects invented unit IDs and timestamps.  The confidence is not trusted blindly; it is
+calibrated against the provider-chapter benchmark and combined with retrieval signals.
+
+The development run should call both routes on the same episodes (provider data still hidden from
+the requests) and construct a risk/coverage curve:
+
+- **Coverage:** fraction of meetings handled by the compact route.
+- **Conditional quality:** provider-chapter recall, candidate precision, F1, boundary error, and
+  false `found`/`not_found` rates for those compact meetings.
+- **Escalation risk features:** best and second-best score, lexical/TF-IDF disagreement, score
+  margin, local transition-cue strength, number of agenda items without a plausible candidate,
+  artifact/timing quality, agenda size, and measured full-context token budget.
+- **Policy:** escalate the entire meeting when calibrated compact-failure risk exceeds the chosen
+  threshold, when the compact packet has too many unresolved items, or when the full-context route
+  is unavailable for a packet that exceeds Mistral's budget.  No packet is truncated to avoid an
+  escalation.
+
+The threshold should be selected from development to meet an explicit quality target (for example,
+compact recall within a small, predeclared margin of full-context recall with a bounded upper
+confidence limit on failure risk), then confirmed once on the held-out set.  Periodic full-context
+canaries from meetings that would otherwise use compact retrieval are required to detect provider,
+ASR, prompt, or agenda-template drift.  Until this curve exists, a deterministic “low score means
+full context” rule would be guesswork and should remain research-only.  This is the standard
+selective-prediction/reject-option framing: report quality as a risk-versus-coverage curve and
+calibrate the abstention/escalation threshold rather than treating a raw model score as a universal
+confidence value.  A recent context-adaptive abstention study is useful methodological background,
+but its guarantees assume exchangeable calibration data and must not be claimed automatically for
+our changing provider catalog:
+[CAP](https://proceedings.mlr.press/v304/tayebati26a.html).
+
+#### First supervised all-unit development result (2026-08-04)
+
+The first bounded implementation is now in
+[`scripts/research/agenda_chapters/train_transition_scorer.py`](../scripts/research/agenda_chapters/train_transition_scorer.py).
+This run uses strong provider-chapter crosswalk relationships only as development labels: for a
+linked agenda item, timed units within 30 seconds of the provider-supplied chapter start are
+positive examples, and sampled units are negatives. Provider starts, provider titles, and the
+crosswalk status are never model features. At evaluation time the model scores **all** timed
+transcript units, not only the lexical/TF-IDF candidate union. That is the required test of whether
+a learned scorer can recover transitions that deterministic retrieval did not propose. The
+deterministic union is retained only as a separately measured baseline and as an optional combined
+source of candidates.
+
+The run used the 90 usable development episodes, with grouped validation stratified by provider
+and body family (15 validation episodes, 75 training episodes), 104 strong provider chapters, and
+102 unique strongly linked agenda candidates in validation. The validation slice is intentionally
+hard and is not the held-out estimate. At top-10 selection, with a 60-second scoring tolerance:
+
+| Selection | Provider chapters | Linked candidates | Chapters found outside deterministic union |
+| --- | ---: | ---: | ---: |
+| Existing lexical/TF-IDF union (radius 2) | 69/104 (66.4%) | 68/102 (66.7%) | — |
+| LogisticRegression, all timed units | 57/104 (54.8%) | 56/102 (54.9%) | 9 |
+| HistGradientBoosting, all timed units | 60/104 (57.7%) | 59/102 (57.8%) | 9 |
+| Existing union **plus** HistGradientBoosting | 78/104 (75.0%) | 77/102 (75.5%) | 9 |
+
+The learned models are not a replacement for the deterministic union on this first slice, but the
+combined result demonstrates the intended recovery shape: the all-unit scorer found nine chapter
+transitions outside the deterministic top-10 union, and adding those selections raised validation
+recall from 66.4% to 75.0%. This is preliminary evidence only; it is one grouped validation slice,
+uses crosswalk-derived labels rather than a fully adjudicated gold set, and has not touched the
+96-episode held-out test.
+
+#### Ranking and local-change follow-up (2026-08-04)
+
+The next comparison was run on the same 15-episode provider-stratified validation slice, with the
+same 104 provider chapters and 102 linked candidates. It added adjacent-unit token novelty and
+local-change features (`previous_unit_novelty`, `next_unit_novelty`, and their peak/mean), and
+trained a pairwise LogisticRegression ranker from positive-versus-negative unit comparisons for
+each agenda item. The pairwise experiment used at most ten sampled comparisons per item so it
+would remain a bounded research run.
+
+| Selection | Provider chapters | Chapters found outside deterministic union |
+| --- | ---: | ---: |
+| Existing lexical/TF-IDF union (radius 2) | 69/104 (66.4%) | — |
+| Original-feature HistGradientBoosting | 60/104 (57.7%); union 78/104 (75.0%) | 9 |
+| + adjacent-unit novelty features, HistGradientBoosting | 59/104 (56.7%); union 77/104 (74.0%) | 8 |
+| Pairwise LogisticRegression + novelty features | 52/104 (50.0%); union 70/104 (67.3%) | 1 |
+
+This is a negative result for the added complexity on the current cohort: local token novelty did
+not improve the learned scorer, and the simple pairwise objective was not competitive with the
+pointwise HistGradientBoosting model. Keep the pairwise implementation as a reproducible research
+option, but do not include either variant in the candidate admission path yet. The current best
+research combination remains the original-feature HistGradientBoosting scorer unioned with the
+deterministic candidates. No held-out episode was read.
+
+#### First development risk/coverage diagnostic (2026-08-04)
+
+`analyze_transition_risk.py` now consumes the scorer's per-item diagnostics instead of reducing the
+validation slice to one aggregate. On the same 15 validation episodes, the novelty-feature
+HistGradientBoosting run had 102 linked candidates and 58 top-10 candidate hits. Margin is a useful
+ordering signal but not a production confidence value:
+
+| Minimum top-vs-second margin | Items retained | Item coverage | Conditional hit rate | Whole episodes with every item retained |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.000 | 102/102 | 100.0% | 56.9% | 15/15 |
+| 0.001 | 91/102 | 89.2% | 61.5% | 8/15 |
+| 0.005 | 72/102 | 70.6% | 66.7% | 4/15 |
+| 0.010 | 53/102 | 52.0% | 71.7% | 3/15 |
+| 0.050 | 19/102 | 18.6% | 94.7% | 2/15 |
+
+Using top probability instead, a threshold of 0.7 retained 95/102 items, all 58 hits in this slice,
+and all items in 9/15 episodes; that apparent stability is only one development split and is not
+calibration evidence. The diagnostic supports a reject/escalate design, but it also exposes a
+separate problem: the all-unit scorer sometimes assigns the same late transcript unit to many
+agenda items. Thresholding alone cannot repair that temporal collapse. We therefore need a temporal
+reconciliation/change-point pass and per-meeting unresolved-item policy before selecting a compact
+versus full-context route threshold. No held-out episode was read.
+
+#### Distinct-unit reconciliation result (2026-08-04)
+
+To test whether the repeated-late-unit failure could be repaired cheaply, the scorer now has an
+order-neutral greedy assignment diagnostic. It considers each item's top 50 learned units and gives
+each unit to at most one item; it does **not** force agenda order, forbid skips, or assume revisits
+are impossible. On the same validation slice, HistGradientBoosting's distinct assignment found
+51/104 provider chapters (49.0%) and 50/102 linked candidates (49.0%). This is effectively its
+top-1 result and is below the independent top-10 learned result (59/104 chapters, 58/102
+candidates) and the deterministic-plus-learned union (77/104 chapters, 76/102 candidates).
+
+The diversity constraint can prevent duplicate anchors, but it does not recover the missing
+transitions. Keep it as a diagnostic for future temporal decoders, not as the current locator
+policy. A useful temporal model will need local transition evidence or a stateful agenda tracker,
+not only one-to-one assignment. No held-out episode was read.
+
+#### Word-timed speech-rate vector extension (implemented research-only, 2026-08-04)
+
+The scorer now has an opt-in speech-rate feature family in
+[`train_transition_scorer.py`](../scripts/research/agenda_chapters/train_transition_scorer.py). It
+uses the existing ASR word sidecar only; VTT-only rows receive an explicit unavailable mask and
+zero-valued vectors. For every candidate unit it samples words-per-second in one-second bins over
+the fixed `-30..+30` second window, applies a light five-bin moving-average smoother, and robustly
+normalizes the vector using the episode's positive-bin median and MAD-derived scale. The optional
+finite-difference vector is computed after smoothing. The serialized feature family also retains
+`speech_rate_available`, the reference median, and the reference scale so normalization does not
+hide whether a meeting is intrinsically fast or slow. The CLI modes are `none` (the unchanged
+default), `vector`, `derivative`, and `both`; no provider timestamp or title is a runtime feature.
+
+This representation deliberately avoids hand-selected pre/post intervals. The fixed window and
+binning are experimental representation choices, while the classifier learns which rate shapes
+and derivatives are useful. Provider starts remain development-only labels: the feature is never
+given the marker around which the vector was measured at runtime. The implementation precomputes
+one vector per timed unit so the all-unit research sweep remains practical.
+
+The first ablation used the corrected served-v3 development manifest: 83 usable episodes (68
+training, 15 grouped validation), 95 strong provider chapters, and 94 linked agenda candidates in
+validation. The held-out 96 episodes were not read. HistGradientBoosting results below are
+provider-chapter recall at a 60-second scoring tolerance; the deterministic union is the existing
+top-k baseline, and the learned rows score all timed units.
+
+| Selection | Top-1 | Top-3 | Top-5 | Top-10 |
+| --- | ---: | ---: | ---: | ---: |
+| Deterministic lexical/TF-IDF union | .674 | .779 | .811 | .842 |
+| Existing-feature HistGradientBoosting | .621 | .695 | .705 | .737 |
+| + normalized rate vector | .611 | .695 | .715 | .726 |
+| + rate derivative | .632 | .684 | .695 | .737 |
+| + vector and derivative | **.642** | **.716** | **.726** | .737 |
+
+The vector-plus-derivative family improves the existing learned scorer by roughly two percentage
+points at top-1, top-3, and top-5, while tying it at top-10. It still does not replace the
+deterministic union, and this is one grouped development split rather than a held-out estimate.
+The deterministic-plus-learned union scores higher because it increases the candidate set; those
+figures are retained in the artifacts but are not treated as an equal-budget improvement. The
+current result supports keeping the feature family for further development, especially in a
+future temporal/change-point model, but does not justify production admission.
+
+Research outputs:
+
+- `/private/tmp/transition-scorer-speech-vector-v1.json`
+- `/private/tmp/transition-scorer-speech-derivative-v1.json`
+- `/private/tmp/transition-scorer-speech-both-v1.json`
+
+Next evaluation should freeze the representation and compare its candidate-side recall and
+false-positive behavior against the same development baseline before any final retraining. The
+held-out cohort remains untouched until the feature family and compact/full escalation policy are
+frozen.
+
+#### Learned transition-word/phrase map extension (research-only, 2026-08-04)
+
+The scorer now has a separate `--transition-phrase-mode learned` feature family. It learns
+1--3-gram terms from the timed transcript around strong provider chapter starts in the training
+fold only; agenda titles and hidden provider labels are not runtime inputs. To avoid the obvious
+failure mode where the text of the newly opened item overwhelms reusable transition language, a
+timed unit's positive contribution decays exponentially with distance from the nearest known
+start (default decay constant: 8 seconds), and evidence after the start is weighted at 0.35. Each
+term's positive and background rates are then aggregated per episode before log-odds fitting. A
+minimum number of training episodes containing a term (`--transition-phrase-min-positive-episodes`)
+and a bounded vocabulary prevent a single verbose or topic-specific meeting from defining the map.
+The per-unit features are compact statistics (mean/max log odds, positive/negative mass, matched
+term count, and availability), not the provider timestamp itself. This is the word/phrase
+optimizer discussed after the unweighted ±30-second prototype; the prototype's content-heavy
+phrases confirmed why distance and per-episode weighting are necessary.
+
+The matched ablation below used the corrected served-v3 **development** manifest with the Austin
+Electric Utility Commission checkpoint episode `e5afbf9795c9f4b2` excluded before artifact loading,
+folding, and validation. It therefore has 82 usable episodes (68 training, 14 grouped validation),
+88 strong provider chapters, and 87 linked generated candidates in validation. The held-out 96
+episodes and the Austin checkpoint were not read by the learner. HistGradientBoosting values are
+provider-chapter recall at the existing 60-second scoring tolerance; learned rows score all timed
+units, while the deterministic row is the existing lexical/TF-IDF union at the same top-k.
+
+| Selection | Top-1 | Top-3 | Top-5 | Top-10 |
+| --- | ---: | ---: | ---: | ---: |
+| Deterministic lexical/TF-IDF union | .705 | .807 | .818 | .852 |
+| Existing-feature HistGradientBoosting | .659 | .727 | .727 | .750 |
+| + normalized speech-rate vector | .659 | .716 | .739 | .739 |
+| + vector and derivative | .693 | .739 | .739 | .750 |
+| + weighted phrase map | .659 | .705 | .727 | .739 |
+| + weighted phrase map and vector+derivative | .670 | .727 | **.761** | **.773** |
+| + same, phrase support ≥5 training episodes | **.705** | **.750** | **.761** | **.773** |
+
+The phrase map by itself does not beat the existing learned scorer. When combined with the speech
+vector and derivative, it improves top-5/top-10 learned recall by about 2.3 points over the exact
+speech-vector-plus-derivative control; requiring a term to appear near a boundary in at least five
+training episodes improves top-1/top-3 as well. At the larger deterministic-plus-learned union
+budget, the support-5 combination reaches .841/.932/.932/.955 at top-1/3/5/10 versus
+.818/.932/.932/.955 for speech vector+derivative without phrase features. These union figures are
+candidate-set coverage, not equal-budget classifier improvements.
+
+The learned map's strongest terms include reusable cues such as `next item`, `agenda`, `go item`,
+`approval`, and `consent agenda`, but also a few source/procedural or identifier-like terms (for
+example recording notices and numbered subitems). Those are retained as diagnostics rather than
+accepted production vocabulary; a later map cleanup can require body/provider diversity or remove
+numeric terms without changing the frozen test. The result supports carrying the weighted phrase
+family into the next development ablation, but does not justify production admission or a blind
+held-out run yet.
+
+Research outputs (all Austin-excluded):
+
+- `/private/tmp/transition-scorer-excl-baseline-v1.json`
+- `/private/tmp/transition-scorer-excl-speech-vector-v1.json`
+- `/private/tmp/transition-scorer-excl-speech-both-v1.json`
+- `/private/tmp/transition-scorer-excl-phrase-weighted-v1.json`
+- `/private/tmp/transition-scorer-excl-phrase-weighted-speech-both-v1.json`
+- `/private/tmp/transition-scorer-excl-phrase-weighted-min5-speech-both-v1.json`
+
+The Austin UID exclusion is recorded in each artifact's `excluded_uids` field. The next checkpoint
+can therefore reuse the Austin episode with a selected model/prompt without training leakage.
+
+#### Development compact/full packet construction (2026-08-04)
+
+`build_locator_packets.py` now constructs paired requests for the 15 provider-stratified validation
+episodes. Each route receives the same source-grounded agenda items and the same locator contract;
+only the supplied timed transcript units differ:
+
+| Route | Median input tokens | P90 input tokens | Maximum input tokens | Hidden provider-chapter recall |
+| --- | ---: | ---: | ---: | ---: |
+| Full transcript | 50,121 | 185,087 | 224,527 | 98/104 (94.2%) |
+| Deterministic compact union | 12,608 | 18,379 | 30,558 | 68/104 (65.4%) |
+| Deterministic + learned compact union | 13,356 | 19,038 | 31,707 | 76/104 (73.1%) |
+
+The learned supplement raises hidden retrieval recall by eight chapters over the deterministic
+compact route while reducing median input tokens by about 73% versus full context. This is still
+only retrieval coverage; it does not predict what an LLM will recover from the packets. The packet
+manifest explicitly records `provider_labels_in_requests: false`, and the hidden score section is
+not serialized into any request message. One long meeting remains a deliberate escalation case:
+both compact routes have zero hidden retrieval hits while its full packet has non-zero coverage.
+
+`run_locator_packet_shadow.py` is ready to submit paired full/learned-compact requests and validate
+the returned unit IDs. Held-out episodes remain untouched.
+
+#### First paired locator shadow call (2026-08-04; clock-corrected rerun)
+
+After elevated Keychain access was restored, one representative validation episode was run through
+both routes. Both requests used `mistral/mistral-large-latest`; the agenda items had been extracted
+earlier with Mistral Medium 2508, and the learned compact supplement came from the development-only
+HistGradientBoosting scorer. Neither route used Gemini because both packets fit the Mistral budget.
+
+The meeting had seven strongly linked provider chapters. On the clock-corrected packet, the full
+route returned six anchors and matched one of those seven starts within the 60-second scoring
+tolerance. The compact retry returned a duplicate unit ID (`u00302`) and was rejected by the
+structured-output validator, so it has no valid score in this rerun; the earlier 2/7 compact score
+was from the source/served-mixed version-2 packet and is retired. Additional returned anchors in
+the full route referred to agenda items with no strong provider crosswalk, so they are **unmatched**,
+not confirmed false positives, until a separate human adjudication establishes whether they
+represent legitimate provider omissions.
+
+This is an important first warning, not a route verdict: full context did not automatically win, and
+both routes sometimes followed a repeated spoken item number to the wrong occurrence. The sample is
+one meeting, so it is insufficient for prompt or threshold decisions. The next run should expand
+the paired calls across the validation strata and retain the same distinction between confirmed
+timing misses and unmatched/unlabeled agenda items. Held-out episodes remain untouched.
+
+#### Single-meeting compact repair and DeepSeek comparison (2026-08-03)
+
+The first Mistral compact response was rejected because it assigned unit `u00302` to more than one
+agenda item. The packet itself was valid. The research runner now makes one explicit corrective
+request when this occurs: use each supplied unit at most once, retain the strongest-supported item,
+and omit an item rather than inventing a timestamp or silently deduplicating the answer. The
+repaired Mistral response returned seven validated anchors and matched 2/7 hidden served-clock
+provider starts within 60 seconds. Its 18,799-token compact request remains directly comparable to
+the original 18,825-token compact packet; the score is now valid rather than a failed run.
+
+The same full and learned-compact packets were then sent to `deepseek/deepseek-v4-flash`. DeepSeek's
+normal structured-output path failed its provider/Pydantic retry because the model used alternate
+field names (`agenda_index`, `display_ref`) and omitted required fields. For this research-only
+comparison, the runner therefore used plain JSON text plus the unchanged local strict validator,
+with one exact-schema repair instruction. This does not relax the contract or change production
+routing.
+
+| Model / packet | Input tokens | Valid anchors | Provider-start hits (7) | Result |
+| --- | ---: | ---: | ---: | --- |
+| Mistral Large / full | 50,121 | 6 | 1/7 | baseline full route |
+| Mistral Large / learned compact | 18,799 | 7 | 2/7 | one duplicate-unit repair |
+| DeepSeek V4 Flash / full | 50,233 | 9 | 6/7 | one schema repair |
+| DeepSeek V4 Flash / learned compact | 18,797 | 6 | 4/7 | one schema repair |
+
+DeepSeek was materially slower on both packet sizes, but its corrected outputs were substantially
+better on this one Austin meeting. The full route's six hits were the opening/public-comment,
+contract, battery, overhead-study, and budget-related transitions plus one additional served-clock
+boundary; the remaining miss was the late budget/adjournment mismatch. This is one meeting only and
+does not justify replacing Mistral for production, but it is strong enough to warrant a larger
+paired comparison before closing the model question. The DeepSeek shadow artifacts remain under
+`/private/tmp` and are not production episode data.
+
+As a separate reasoning ceiling, an independent Codex agent was given the same agenda and timed
+transcript without the hidden scoring section and asked to select distinct starts manually. It
+identified all seven strong target boundaries (7/7 within 60 seconds): call to order, public
+communication, NewGen contract, battery agreement, annual review, overhead-resilience briefing,
+and FY25/26 budget briefing. It intentionally omitted the minutes, HDR contract, easement, Mastec,
+and adjournment as chapter starts. This is not an automated API route—the agent had time to inspect
+the transcript and produce a reasoned adjudication—but it demonstrates that the ambiguity is not
+intrinsic to the source. The production-shaped question remains whether a bounded model prompt and
+validator can approach this reasoning quality without the agent's unrestricted review time.
+
+#### Pooled versus retrieval-provenance compact packet A/B (2026-08-03)
+
+The Austin meeting was rerun with the same 454 learned-compact transcript units, but the second
+packet retained the item-to-unit retrieval associations that are lost when deterministic windows
+are pooled. The first provenance encoding was needlessly verbose: 844 unit/item associations
+serialized to 113,060 bytes because every association repeated long field names, null ranks, and
+verbose reason strings. The research packet was corrected to compact entries of the form
+`[agenda_item_index, {L/T/H: rank}, signals]`, omitting null and out-of-window ranks. The final
+annotated request was 26,487 tokens versus 18,799 for the pooled Mistral control.
+
+| Model / packet | Input tokens | Valid anchors | Provider-start hits (7) | Repair |
+| --- | ---: | ---: | ---: | --- |
+| Mistral Large / pooled compact control | 18,799 | 7 | 2/7 | duplicate-unit repair |
+| Mistral Large / provenance compact | 26,487 | 7 | 1/7 | none |
+| DeepSeek V4 Flash / pooled compact control | 18,797 | 6 | 4/7 | schema repair |
+| DeepSeek V4 Flash / provenance compact | 26,599 | 7 | 5/7 | schema repair |
+
+The deterministic compact pool itself covered 5/7 provider starts item-by-item, and the learned
+plus deterministic pool covered 6/7. All seven target neighborhoods were present somewhere in the
+pooled learned packet, so this A/B tests selection and item-to-unit association rather than merely
+retrieval admission. Provenance helped DeepSeek by one hit but hurt Mistral by one; therefore the
+metadata is not a universal fix and does not yet justify production prompt changes. The result does
+confirm that the pooled packet is a harder selector task than the deterministic scorer: the model
+does not receive the deterministic per-item score ordering unless we explicitly preserve it, and
+even then it may over-trust noisy associations. The provenance representation and calls remain
+research-only.
+
+#### Direct top-k compact packet sweep (2026-08-03)
+
+To test whether the packet was carrying unnecessary low-ranked alternatives, the same Austin
+meeting was rerun with no neighbor expansion and a single direct-candidate cap applied consistently
+to lexical, TF-IDF, and learned candidates. The earlier top-5 artifact had accidentally capped only
+the lexical/TF-IDF routes while retaining ten learned candidates; that artifact is superseded and is
+not included below.
+
+| Model / packet | Units | Input tokens | Valid anchors | Provider-start hits (7) | Repair |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Deterministic learned compact / top-5 | 82 | 5,337 | — | 6/7 hidden coverage | — |
+| Deterministic learned compact / top-10 | 155 | 7,964 | — | 6/7 hidden coverage | — |
+| Mistral Large / top-5 | 82 | 5,337 | 6 | 3/7 | none |
+| Mistral Large / top-10 | 155 | 7,964 | 7 | 2/7 | none |
+| DeepSeek V4 Flash / top-5 | 82 | 5,598 | 8 | 4/7 | schema repair |
+| DeepSeek V4 Flash / top-10 | 155 | 8,226 | 8 | 4/7 | schema repair |
+
+On this meeting, top-5 retained the same deterministic learned coverage as top-10 while cutting the
+bounded packet from 155 to 82 transcript units. It also did not reduce DeepSeek's result and improved
+Mistral by one hit, although the latter is ordinary single-meeting variance rather than evidence that
+top-5 is generally more accurate. The result supports top-5 as the cheaper default candidate packet
+for the next paired cohort, with top-10 retained as a held-out comparison until broader coverage and
+false-positive measurements are available. These are research-only shadow calls; neither the packet
+cap nor the model scores change production behavior.
+
+#### Full-context Gemini Flash trial (2026-08-03)
+
+The compact experiments establish a cost-saving retrieval hint, not a reliable semantic locator:
+the hidden learned packet retained 6/7 target neighborhoods on the Austin meeting, while the
+bounded models still assigned several neighborhoods to the wrong agenda item or omitted them. The
+remaining non-full-context options—larger neighbor windows, more lexical/TF-IDF variants, and a
+second local verifier—can improve admission or abstention, but none has yet shown that it resolves
+the item-to-transition ambiguity. They remain useful only as soft hints until the full-context
+benchmark establishes a safe precision gate.
+
+Two explicitly experimental direct routes were added for that benchmark:
+`gemini/gemini-3.5-flash` and `gemini/gemini-3.6-flash`. The local policy caps each at the currently
+available 20 requests/day and marks them `experimental`, so ordinary pipeline scheduling cannot
+consume the scarce pools. Google documents both model IDs with 1M-token input limits, so the
+existing untruncated full-transcript-plus-agenda request is the intended comparison route.
+
+The first Austin full-context smoke call was attempted before the AI Studio credential was
+corrected, and Google's API rejected it with HTTP 401 (`ACCESS_TOKEN_TYPE_UNSUPPORTED`). The
+corrected-key rerun and its confidence/error analysis are recorded below. The benchmark reports
+both provider-start recall and the false-positive/abstention curve from returned confidence values,
+with publication gated to the threshold whose confirmed wrong-match rate is below 5%.
+
+#### Corrected-key Austin full-context rerun (2026-08-03)
+
+The corrected local credentials were used to rerun the identical Austin Electric Utility
+Commission packet (`e5afbf9795c9f4b2`) through all four requested full-context routes. The packet
+contains the same 1,433 served-clock word units, the same Medium-generated agenda items, and the
+same hidden scoring-only provider markers. No provider titles, starts, or hidden scores were sent
+to any model.
+
+| Model | Input tokens | Valid anchors | Strict strong-item hits (7) | Explicit item-reference errors | Provider-start timing disagreements |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mistral Large | 50,121 | 7 | 1/7 | **at least 3** | 2 strong-item selections |
+| DeepSeek V4 Flash | 50,233 | 7 | 5/7 | 0 observed | 1 strong-item selection |
+| Gemini 3.5 Flash | 50,121 | 9 | 6/7 | 0 observed | 1 strong-item selection |
+| Gemini 3.6 Flash | 50,121 | 9 | 6/7 | 0 observed | 1 strong-item selection |
+
+The strict strong-item score is not a false-positive rate. It counts only the seven agenda items
+that the source crosswalk independently labeled `strong`; it excludes the provider's separate
+minutes and `Items 2, 4, & 6` markers because those relationships remain unmatched/composite. A
+model selecting the minutes marker can therefore be a valid chapter even though it is absent from
+the 7-item denominator.
+
+Mistral produced three unambiguous item-reference errors: it selected the agenda item for number
+four while quoting “number five,” selected the annual-review item while quoting number eight/the
+overhead briefing, and selected the overhead item while quoting number nine/the budget briefing.
+Its confidence values for those errors were 0.98, 0.98, and 0.98. At a `confidence >= 0.98`
+threshold, four Mistral anchors remain and at least three are wrong by explicit reference (at
+least 75% error among retained anchors); lowering the threshold retains more errors. This single
+case provides no defensible Mistral publication threshold below 5%.
+
+DeepSeek and both Gemini routes did not make an explicit item-reference error in this rerun. All
+three selected the budget item at approximately 3,546 seconds, while the provider marker is at
+3,831 seconds after a short technical recess. The transcript itself announces “number nine” at
+3,546 seconds, so this is a provider-timing disagreement, not yet a confirmed wrong chapter. It
+must be adjudicated as either an earlier legitimate transition or a timing error before it enters
+the false-publication denominator. Gemini 3.5 also returned plausible call-to-order and adjournment
+anchors that have no corresponding strong provider marker; these are likewise unconfirmed, not
+automatic false positives.
+
+The confidence outputs are not calibrated on this evidence: Mistral assigned 0.98 to explicit
+reference errors, DeepSeek used 0.95/1.00 for both correct and timing-disputed anchors, Gemini 3.5
+reported 0.95 for every anchor, and Gemini 3.6 reported 0.95/0.98. The next threshold experiment
+therefore needs independently adjudicated `wrong`, `valid provider-omitted`, `composite`, and
+`timing-disputed` labels. Until that set exists, raw model confidence and strict provider-start
+misses must not be used to claim the under-5% publication-error requirement is met.
+
+#### Corrected-key Z.AI GLM-4.7-Flash Austin rerun (2026-08-04)
+
+The identical full-context Austin packet was submitted to Z.AI's OpenAI-compatible
+`zai/glm-4.7-flash` route using the locally stored `ZAI_API_KEY`. The route is research-only,
+free, and declares `concurrency=1`; it uses JSON-object mode plus the same local locator-schema
+validation and one corrective retry. The request contained 1,433 transcript units and 50,237
+estimated input tokens.
+
+GLM-4.7-Flash returned 8 valid anchors after one schema repair and had a strict strong-item score
+of **2/7**. It selected the valid call-to-order and annual-review neighborhoods, and also selected
+the provider's minutes neighborhood (which is outside the seven-item strong denominator). The
+remaining output showed several clear reference/timing problems: a public-communication quote was
+paired with a unit at the end of public comment rather than its transition start; `number five`
+was assigned to the easement agenda record instead of the battery item; `number three` was assigned
+to the zero-based record for display item 2 instead of display item 3; `number seven` was assigned
+to display item 6 instead of display item 7; and `number eight` was assigned to display item 7
+instead of display item 8. The budget anchor again landed at the transcript's `number nine`
+announcement around 3,546 seconds while the provider marker is at 3,831 seconds, so that remains a
+timing disagreement rather than a confirmed semantic false positive.
+
+Every returned confidence value was `1.0`, including the explicit reference errors. This single
+case therefore provides no usable confidence threshold and is materially weaker than the
+corrected-key DeepSeek and Gemini full-context runs on this meeting. The temporary artifact is
+`/private/tmp/locator-packet-shadow-one-served-v4-zai-glm47flash-full.json`.
+
+Temporary rerun artifacts:
+
+- `/private/tmp/locator-packet-shadow-one-served-v4-mistral-full.json`
+- `/private/tmp/locator-packet-shadow-one-served-v4-deepseek-full.json`
+- `/private/tmp/locator-packet-shadow-one-served-v4-gemini35-full.json`
+- `/private/tmp/locator-packet-shadow-one-served-v4-gemini36-full.json`
+
+#### Additional Gemini route Austin reruns (2026-08-04)
+
+The same full-context packet was submitted sequentially to the two existing lower-tier Gemini
+routes so their results could be compared without concurrent account traffic.
+
+`gemini/gemini-3-flash-preview` returned 9 valid anchors from 1,433 units and 50,270 estimated
+input tokens after one duplicate-unit repair (`u00269`). It scored **6/7** on strict strong-item
+provider starts. Its item assignments matched the transcript's display-number references for the
+strong items; it also returned plausible call-order and adjournment anchors that are not in the
+strong provider denominator. As with the other Gemini full-context runs, every returned confidence
+was `1.0`, so confidence is not calibrated by this case.
+
+`gemini/gemini-3.1-flash-lite` returned 7 valid anchors from 1,433 units and 50,121 estimated
+input tokens with no repair, but scored only **1/7**. It selected the valid minutes neighborhood
+(outside the strict denominator) and the overhead-distribution neighborhood. It assigned the
+transcript's display item 3/5/7 announcements to the zero-based agenda records for display items
+2/4/6, respectively—three explicit item-reference errors. Its budget selection again landed at
+the transcript announcement near 3,546 seconds instead of the provider marker at 3,831 seconds,
+which remains a timing disagreement. All seven confidences were `1.0`, including the explicit
+reference errors.
+
+Temporary artifacts:
+
+- `/private/tmp/locator-packet-shadow-one-served-v4-gemini3-full.json`
+- `/private/tmp/locator-packet-shadow-one-served-v4-gemini31lite-full.json`
+
+#### OpenRouter Qwen Flash Austin rerun (2026-08-04)
+
+The OpenRouter API catalog was queried before submission. It exposes `qwen/qwen3.7-flash` with a
+1M-token context, but it does not expose either `qwen/qwen-flash` or `qwen-flash`; those are
+QwenCloud/DashScope model names rather than OpenRouter routes. The exact `qwen-flash` request was
+therefore not submitted through this key. A separate DashScope credential would be required to
+test that model directly.
+
+The identical Austin full-context packet was submitted to `openrouter/qwen/qwen3.7-flash` using
+the new `OPENROUTER_API_KEY`. OpenRouter's Alibaba provider required the prompt to contain the
+word `JSON` when using JSON-object response mode, so the research runner adds that provider-local
+instruction and still validates the returned object against the existing locator contract.
+
+Qwen3.7 Flash returned one valid anchor from 1,433 units and 50,165 estimated input tokens, with
+no repair, scoring **0/7** on strict strong-item provider starts. The sole anchor was assigned to
+the zero-based agenda record for display item 4 while quoting `number five`, another item-number
+alignment error. Its confidence was `0.95`; this single case provides no usable confidence gate.
+
+The temporary artifact is
+`/private/tmp/locator-packet-shadow-one-served-v4-openrouter-qwen37flash-full.json`.
+
+#### Gemini 2.5 Flash availability check (2026-08-03)
+
+The same Austin full-context packet was also attempted with `gemini/gemini-2.5-flash`, because
+its pricing is materially lower than the newer full-Flash routes. The local research runner first
+rejected the route because it was not in the repository's supported-model table; that temporary
+evaluation-only entry was removed after the live check. With the direct Gemini credential, the
+request reached Google's API but returned HTTP 404:
+
+`This model models/gemini-2.5-flash is no longer available to new users.`
+
+The account's read-only model catalogue still lists `models/gemini-2.5-flash` and its generation
+methods, so catalogue visibility does not imply that this account may generate with it. No locator
+anchors or quality score were produced, and there is no Gemini 2.5 result to compare with the four
+completed routes. The failed response is retained at
+`/private/tmp/locator-packet-shadow-one-served-v4-gemini25-full.json`; this route should be retried
+only if AI Studio changes the account's eligibility or exposes a versioned replacement.
+
+#### Provider timestamp duration audit (2026-08-04)
+
+The apparent out-of-duration starts were traced to a **research benchmark clock mismatch**, not a
+provider timestamp defect. The dataset builder selected raw `source_chapters` (provider/source
+clock) while comparing them with word-sidecar transcript units and `audio.duration_served` (served
+clock). For example, Arlington UID `5661e9f07650d353` has a provider/source chapter at `9035s`,
+but its persisted served chapter is `4656.31s` after the silence/consolidation timeline. The same
+pattern maps Arlington `8d51…` source starts `9827/9836s` to served starts `9263.42/9272.42s`.
+Those timestamps are valid on their respective clocks; they are not chapters after the meeting.
+
+Therefore the six apparent full-packet misses, the 12-start out-of-duration count in the 104-start
+slice, the broader 206-start audit, and the resulting 94.2% representation figure are **invalid
+benchmark measurements** and must not be used as provider-quality or locator-quality findings.
+`audit_chapters.py` now rebuilds from raw `source_chapters` plus the persisted timeline when both
+are available, applying the same snap-aware policy; it falls back to the persisted served
+`chapters` view for legacy records without enough timeline data. The confirmed chapter-specific
+policy snaps a provider chapter start inside a removed source gap to the served start of the next
+kept source span. A marker with no later kept audio is still dropped. Generic transcript/cue
+remapping retains its existing drop-by-default behavior; only provider chapters opt into the
+forward snap. The remap preserves the source chapter index for chapter identity and agenda
+evidence, even when multiple source markers collapse onto one served boundary. Held-out data
+remains untouched.
+
+The policy-corrected research artifacts are version 3 of the frozen 192-episode cohort (96
+development / 96 test). Rebuilding the served labels from raw source chapters plus each record's
+timeline changed 45 rows and increased the provider-marker denominator from 2,499 to 2,554. The
+corrected crosswalk has 1,752 strong, 113 ambiguous, 72 possible, and 617 unmatched provider
+markers. The prior version-2 retrieval numbers must not be compared as if the denominator were
+fixed: the new snap policy intentionally restores markers that the old drop policy discarded.
+
+On the corrected 96-episode development split (1,161 strong provider markers), the high-recall
+lexical/TF-IDF union reaches 81.9% at top-1, 89.1% at top-3, 90.9% at top-5, and 93.8% at top-10
+(60-second tolerance). Lexical alone reaches 73.9% / 84.1% / 87.3% / 91.6%; TF-IDF reaches
+76.3% / 85.9% / 87.6% / 90.3%. These are candidate-window recall figures before any LLM call,
+not final chapter accuracy and not held-out results.
+
+The phrase “near the known provider boundary” continues to mean an absolute difference of at most
+**60 seconds between the served provider chapter start and the nearest timed transcript unit start**.
+That is the evaluation scoring tolerance only; it is not a 60-second packet width or an assertion
+that the locator is accurate to one minute. Training positive labels use a narrower 30-second
+window, while packet representation and evaluation metrics use 60 seconds.
+
+The earlier recovered-candidate comparison (24/60, 33/60, 36/60, and 37/60 union hits at top-1,
+top-3, top-5, and top-10) was also run against the pre-snap labels and is retired with the other
+version-2 metrics. The corrected crosswalk and retrieval output above are the only current
+development measurements. Any newly recovered relationship still requires human adjudication
+before it can be treated as a gold locator target.
+
+The run also measured the untruncated full-context request.  Of 95 rows with at least one agenda
+item, the recovered request had a median of 54,536 input tokens, a 90th percentile of 185,119,
+and a maximum of 627,010.  Four rows exceeded the Mistral 256k input-plus-16,384-output reserve
+and therefore select the existing Gemini overflow route; no text was cut to fit.  One valid
+zero-yield episode had no full-context request.  These measurements validate the route-selection
+mechanism but do not yet establish that full-context LLM anchors outperform deterministic
+retrieval.
+
+This is still development evidence, not a production threshold or gold set.  The next gate is to
+inspect the per-episode misses, choose the candidate packet size/neighbor policy on development,
+then freeze those choices and run the 96-episode held-out test without changing the retrieval
+rules.
+
+#### Full-context retrieval-hint experiment (2026-08-03)
+
+To test whether deterministic/scikit-learn work can improve a capable full-context locator without
+hard-gating it, the identical Austin Electric Utility Commission packet was rerun with an optional
+retrieval index appended to the request. The packet still contained all 1,433 served transcript
+units and the complete agenda. For each agenda item, the index supplied up to three candidates from
+each independent method: lexical, TF-IDF, logistic, HistGradientBoosting, and pairwise-logistic.
+Each candidate contained only its supplied unit ID, served start, rank, and transcript text; it
+contained no provider chapter labels, hidden scores, or claim that it was correct. The prompt told
+the model to inspect these as optional checks, independently search the full transcript, reject
+false candidates, select unsuggested units when appropriate, and omit undiscussed items.
+
+This follows the useful part of retrieval-augmented-generation practice without turning retrieval
+into a hard gate. [Corrective RAG](https://arxiv.org/abs/2401.15884) recommends evaluating and
+filtering retrieved material before generation, while [Yoran et al.](https://arxiv.org/abs/2310.01558)
+show that irrelevant retrieved passages can reduce accuracy unless the model is trained or prompted
+to treat them as distractors. The [Lost in the Middle](https://arxiv.org/abs/2307.03172) results
+also caution that a long transcript is not uniformly accessible; placing a small, clearly labeled
+retrieval index at the end may exploit recency, but is not evidence that the model can reliably
+search the middle of a meeting. We therefore retain the full transcript as the source of truth and
+measure hint runs only as an A/B research variant.
+
+The strict score below is provider-start recall for the seven independently `strong` provider
+chapters in this one episode. It is not precision or a production error rate. `off-window` counts
+anchors assigned to one of those seven agenda items whose selected unit is more than 60 seconds
+from the provider marker. `verified wrong` is narrower: a manual check found an explicit wrong
+item/section assignment or an unmistakable continuation rather than a transition. The recurring
+budget anchor at 3,546 seconds is **timing-disputed**, not counted as wrong: the transcript clearly
+says “number nine” there, while the provider marker is at 3,831 seconds after a technical recess.
+
+| Model | Control hits | Hint hits | Hint off-window | Hint verified wrong | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Mistral Large | 1/7 | 1/7 | 2 | 3 | no gain; composite item-six, overhead/annual, and number-nine assignment errors |
+| Mistral Medium 2508 | 3/7 | 3/7 | 2 | 2 | no gain; overhead/annual and number-nine assignment errors |
+| Ministral 8B | 1/7 | 2/7 | 2 | 2 | small recall gain, but overhead/annual and number-nine errors |
+| Mistral Small 4 (OpenRouter fallback) | 0/7 | 0/7 | 2 | 2 | unusable on this packet; direct Mistral API hit its rate limit |
+| DeepSeek V4 Flash | 5/7 | **6/7** | 1 | 0 | best hint gain; budget remains timing-disputed |
+| Gemini 3 Flash Preview | 6/7 | 6/7 | 1 | 0 | unchanged |
+| Gemini 3.1 Flash-Lite | 1/7 | 4/7 | 2 | 0 | substantial recall gain, no confirmed wrong item in this run |
+| Gemini 3.5 Flash | 6/7 | 6/7 | 1 | 0 | unchanged after one transient 503 retry |
+| Gemini 3.6 Flash | 6/7 | 6/7 | 1 | 0 | unchanged after transient 503 retries |
+| Z.AI GLM-4.7 Flash | 2/7 | 4/7 | 1 | 1 | recall gain; duplicated overhead evidence assigned to annual item |
+| OpenRouter Qwen3.7 Flash | 0/7 | 4/7 | 1 | 0 | large recall gain; one local JSON/schema repair |
+
+The additional routes used these research-only artifacts:
+
+- Mistral Medium control: `/private/tmp/locator-austin-mistral-medium-full-control.json`
+- Ministral 8B control/hint: `/private/tmp/locator-austin-ministral8-full-control.json` and
+  `/private/tmp/locator-austin-ministral8-full-hints.json`
+- Small 4 fallback control/hint: `/private/tmp/locator-austin-mistralsmall4-openrouter-full-control.json`
+  and `/private/tmp/locator-austin-mistralsmall4-openrouter-full-hints.json`
+- Hint reruns for the existing routes: `/private/tmp/locator-austin-*-full-hints*.json`
+
+The result supports retaining retrieval hints as an optional full-context variant, especially for
+DeepSeek and lower-tier Gemini/Qwen routes. It does **not** justify replacing full-context search
+with the hints, exposing classifier scores to the model, or lowering the independent wrong-match
+gate. The next model decision must be made on the frozen held-out cohort, with verified semantic
+wrong matches and timing-disputed cases adjudicated separately.
+
+#### Updated phrase-plus-speech classifier Austin checkpoint (2026-08-04)
+
+To test whether the new transition features improve the LLM path, the Austin checkpoint was scored
+after fitting on the other 82 usable development episodes. The checkpoint UID
+`e5afbf9795c9f4b2` was excluded from fitting and validation, then scored only after the classifier
+was frozen. The hint map contained the existing lexical and TF-IDF top-three candidates plus the
+top-three candidates from the support-5 HistGradientBoosting scorer using both the weighted
+transition-word/phrase map and the normalized speech-rate vector/derivative. The full transcript
+remained in every request; hints were optional checks, not a gate. The packet had 1,433 units and
+458 pooled hint units, with hidden retrieval coverage of 6/7 strong provider starts.
+
+This is a targeted comparison against the previous hint experiment, not a new cohort estimate. It
+uses only the updated HGB hint source rather than all of the earlier classifier variants, so it
+isolates whether the new phrase-plus-speech scorer adds useful suggestions. The same seven strong
+provider starts and 60-second scoring tolerance were used.
+
+| Model | Valid anchors | Updated-hint hits | Repair | Notes |
+| --- | ---: | ---: | --- | --- |
+| DeepSeek V4 Flash | 10 | 5/7 | schema repair | below prior 6/7 hint result; no clear recall gain |
+| Gemini 3.1 Flash Lite | 10 | 4/7 | none | same 4/7 as prior hint result |
+| Z.AI GLM-4.7 Flash | 10 | 4/7 | schema repair | same 4/7 as prior hint result |
+| OpenRouter GPT-OSS-120B | 6 | 1/7 | JSON/schema repair | first run; weak on this meeting |
+
+The updated classifier therefore did not improve this single-meeting LLM checkpoint. DeepSeek's
+output still found five strong starts, Gemini and GLM found four, and GPT-OSS found only one. The
+responses continued to show the known ambiguity: repeated item-number announcements, composite
+items, and the budget transition at approximately 3,546 seconds versus the provider marker at
+3,831 seconds. Several Gemini/GLM assignments also paired a correct spoken number with the wrong
+agenda record, so confidence remains uncalibrated and this must not be treated as a false-positive
+rate. The result is useful as an anecdotal checkpoint only; it does not justify discarding the
+new features or changing the production route.
+
+Research artifacts:
+
+- `/private/tmp/transition-scorer-austin-checkpoint-phrase-speech-v1.json`
+- `/private/tmp/locator-packets-austin-phrase-speech-v1.json`
+- `/private/tmp/locator-austin-phrase-speech-deepseek-full-hints.json`
+- `/private/tmp/locator-austin-phrase-speech-gemini31lite-full-hints.json`
+- `/private/tmp/locator-austin-phrase-speech-glm47flash-full-hints.json`
+- `/private/tmp/locator-austin-phrase-speech-gptoss120b-full-hints.json`
+
+The OpenRouter catalog verified `openai/gpt-oss-120b` with a 131,072-token context window; its
+request fit without truncation. No provider labels or hidden scores were sent to any route.
+
+#### Multi-episode hint-encoding comparison (2026-08-04)
+
+The Austin-only hint result was too sparse to decide whether the three method-specific candidate
+lists were helping or confusing the locator. A read-only follow-up therefore used eight additional
+validation episodes from the same frozen provider-chapter cohort (three Granicus/Arlington, four
+Swagit/Austin bodies, and one Swagit/Waco body; 38 strong provider starts total). Every request
+contained the complete transcript and agenda. Provider starts remained hidden and were used only
+after the response for scoring. The four full-context variants were:
+
+1. **Control:** full transcript with no retrieval hints.
+2. **Current buckets:** independent lexical, TF-IDF, and HGB top-three lists, each with a local
+   rank. This is the prior experimental presentation.
+3. **HGB-only:** one candidate list containing the classifier's top ten units.
+4. **Pooled:** one deduplicated candidate list per agenda item containing direct lexical top ten,
+   TF-IDF top ten, and HGB top ten units. Each entry carried only provenance (`learned`, `lexical`,
+   or `tfidf`); it exposed no score or incomparable method rank. Neighbor expansion was set to
+   zero for this full-transcript test because the transcript itself supplies surrounding context;
+   the compact packet route continues to use neighbor expansion.
+
+The pooled list was intentionally not a hard gate. Its prompt explicitly said that provenance is
+not a vote or confidence score, that a unit can be selected at most once globally, and that the
+complete transcript remains authoritative. The aggregate results below include successful retries
+of duplicate-unit/schema responses.
+
+The earlier draft of this table called one column **Verified wrong**. That label was too strong:
+these were generated by an automated comparison to hidden provider starts, not by manual semantic
+adjudication. The old count combined two different signals, so it is split here:
+
+* **Same-item off-window** — the model assigned an anchor to an agenda item that has a known
+  provider start, but the returned time was more than 60 seconds away. This is evidence of a
+  timing disagreement, not proof that the chapter is semantically wrong; provider markers may
+  use a different boundary convention, and served/source timing or recesses can matter.
+* **Wrong-item near provider** — the returned anchor was assigned to a different agenda item but
+  landed within 60 seconds of a known provider start. This is the stronger automated signal of a
+  bad item assignment, but it still needs review when adjacent items or agenda indexing are
+  ambiguous. Where both conditions applied, the anchor is counted in this stronger category.
+* **Unverified** — the assigned item has no known strong provider start nearby. It is not counted
+  as wrong: it may be a valid provider chapter outside the strong subset, a procedural item, or
+  an item that was skipped/withdrawn.
+
+| Variant | Provider-start hits | Candidate hits | Returned anchors | Same-item off-window | Wrong-item near provider | Unverified |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Control | 29/38 (76.3%) | 28/37 (75.7%) | 76 | 4 | 16 | 28 |
+| Current method buckets | 32/38 (84.2%) | 31/37 (83.8%) | 72 | 3 | 10 | 28 |
+| HGB-only | 27/38 (71.1%) | 26/37 (70.3%) | 59 | 4 | 18 | 11 |
+| **Pooled deduplicated** | **34/38 (89.5%)** | **33/37 (89.2%)** | 77 | 2 | 13 | 29 |
+
+For continuity, the former “verified wrong” totals were simply the sum of the two middle
+categories: 20, 13, 22, and 15 respectively. They should be read as **provider-discordant
+proxy counts**, not publication false-positive counts. No confidence threshold was applied, and
+the provider's strong-chapter subset is not a complete gold set. A final publication error rate
+still requires manual adjudication of the suspected assignments plus a held-out confidence
+threshold evaluation.
+
+The locator does return a numeric `confidence` in the validated anchor contract, and the research
+artifact preserves it. It is a self-reported model score, not a calibrated probability. In the
+pooled slice the median was 0.98 and 36 of 77 anchors were exactly 1.0; seven of the 13
+wrong-item-near-provider anchors scored at least 0.90 (six scored at least 0.98), and both
+same-item off-window anchors scored at least 0.93. The other full-context probes show the same
+saturation: Mistral gave 0.98 to explicit item-reference errors, GLM gave 1.0 to its explicit
+errors, and Gemini routes commonly gave 0.95 or 1.0 to every returned anchor. Confidence can be
+used as an input to a later, model/prompt-specific calibration fitted on adjudicated development
+episodes, but a raw cutoff is not currently a safe publication filter.
+
+This slice favors the pooled representation for recall and rejects HGB-only hints as too narrow.
+The current buckets did improve over control, but the pooled list found two more provider starts
+without a material verified-precision advantage. The result supports removing incomparable
+method-specific rank lists from the prompt and using a deduplicated provenance-only shortlist.
+It remains development evidence: the sample is provider/body concentrated, the provider-discordant
+proxy rate is far above the eventual publication target before downstream confidence filtering,
+and the 96-episode held-out test is still required.
+
+The implementation is research-only in `run_locator_hint_ab.py`; `run_locator_packet_shadow.py`
+now supports the grouped and merged hint instruction styles and passes an opt-in DeepSeek V4
+non-thinking request body ([DeepSeek thinking-mode API documentation](https://api-docs.deepseek.com/guides/thinking_mode)). DeepSeek V4 Flash defaults to thinking mode; without the documented
+toggle, its output budget was consumed by `reasoning_content` and no locator JSON was emitted.
+The direct API probe also showed that `mistral-medium-2508` currently rejects prompts above
+131,072 tokens, despite the earlier 256k planning assumption. The Mistral multi-episode attempt
+was therefore stopped after a context-safe request remained in the synchronous transport for
+more than six minutes; it contributes no quality measurements here and must be rerun only with a
+provider-verified context budget/latency plan.
+
+Research artifacts:
+
+- `/private/tmp/locator-hint-ab-8-deepseek-v4-flash-combined-v1.json`
+- `/private/tmp/locator-hint-ab-8-deepseek-v4-flash-v2.json`
+- `/private/tmp/locator-hint-ab-retry-1e-hgb-v1.json`
+- `/private/tmp/locator-hint-ab-retry-3edef-v1.json`
+- `/private/tmp/locator-hint-ab-retry-e5-pooled-v1.json`
+- `/private/tmp/locator-hint-ab-retry-f272-pooled-v1.json`
+
 ## Implementation sequence
+
+### 2026-08-04 confidence-calibration and manual-adjudication slice
+
+The next evaluation slice uses the frozen 96-episode test split, not the development rows used to
+fit retrieval features. We selected 16 episodes (eight Granicus and eight Swagit), one distinct
+body per provider, stratified across the available under-2-hour, 2-to-4-hour, and 4-to-8-hour
+duration buckets. Every selected row has provider-supplied chapter starts in the hidden crosswalk,
+the current Mistral Medium 2508 agenda extraction, and a usable transcript unit artifact. The
+provider starts remain scoring-only labels and are never placed in model requests.
+
+The locator prompt now asks for a decomposed, research-only confidence record: overall confidence,
+item confidence, boundary confidence, evidence type, strongest alternative agenda item/unit, and a
+short uncertainty reason. These are self-reports rather than probabilities; missing fields are
+recorded explicitly and do not get silently filled. The calibration prompt does not request hidden
+chain-of-thought. The four-model comparison is:
+
+* DeepSeek V4 Flash;
+* Gemini 3.1 Flash Lite;
+* Gemini 3.5 Flash Lite; and
+* Z.AI GLM-4.7 Flash (one-at-a-time route).
+
+The Gemini Lite models have the maintainer's 500-request/day AI Studio allowance. That daily quota
+is separate from the live free-tier input-token-per-minute ceiling observed during this run: the
+route returned a 250,000-input-token/minute limit for both models. Requests were therefore started
+about 65 seconds apart and automatic schema retries were disabled for this comparison. This is a
+throughput guard, not a claim that the daily request quota is 20; Google documents that project
+limits are model- and tier-specific at [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
+
+For adjudication, proposals are deduplicated by the source evidence reference (episode, generated
+agenda item index, and timed transcript unit ID), not by the model's summarized title. The final
+four-model packet contains 201 such evidence-reference cases. A single row can therefore show
+several model proposals while the reviewer labels the evidence once. The
+reviewer must first choose `supported`, `no_evidence`, or `ambiguous`. For `supported` evidence,
+the two independent fields are required:
+
+* `item_correctness`: `correct` or `incorrect`;
+* `boundary_validity`: `valid`, `invalid`, or `no_boundary`.
+
+This preserves all four useful combinations (correct/valid, correct/invalid, incorrect/valid,
+incorrect/invalid or no-boundary) and does not force a false item/boundary judgment when there is no
+usable evidence. Comments are retained per evidence reference. The packet intentionally hides
+provider targets, model identities, and confidence scores in the review UI to avoid anchoring; the
+raw proposal diagnostics remain in the packet for later model-specific calibration analysis.
+
+Research artifacts for this slice are kept under `/private/tmp`:
+
+* `locator-calibration-cohort-16.json` — selection and strata;
+* `locator-calibration-results-deepseek-v1.json`;
+* `locator-calibration-results-gemini31-flash-lite-v2.json`;
+* `locator-calibration-results-gemini35-flash-lite-v1.json`;
+* `locator-calibration-glm-probe.json` — initial bounded route-availability probe;
+* `locator-calibration-results-glm47-flash-patient.json` — completed slow serial GLM cohort; and
+* `locator-calibration-review-packet-v2.json` — final four-model review packet.
+
+The localhost review tool is `serve_locator_calibration_review.py`. It writes only a separate
+decision JSON file and has no production or episode-record side effects. After manual review, the
+adjudicated rows are retained as a held-out benchmark for model/prompt-specific confidence
+calibration and publication false-positive estimation. Fit any calibration mapping on a separate
+development adjudication set; raw self-reported confidence will not be used as a cutoff.
+
+Run status at this checkpoint: DeepSeek returned 119 anchors, Gemini 3.1 Flash Lite returned 81,
+Gemini 3.5 Flash Lite returned 116, and GLM-4.7 Flash returned 51, with all 16 episodes completed
+for each. Gemini 3.1 omitted the optional boundary field on all returned anchors and the evidence
+type on 46; Gemini 3.5 omitted the boundary field on 52 and evidence type on 19. Those omissions
+are recorded as missing rather than inferred. GLM required the patient one-at-a-time runner, with
+some full-context requests taking several minutes; no parallel requests or retries were used.
+
+#### Initial adjudication result
+
+The 201-case packet was fully adjudicated. All rows were marked `supported`; 188 were `correct`
+item + `valid` boundary, seven were `correct` item + `invalid` boundary, four were `incorrect`
+item + `valid` boundary, and two were `incorrect` item + `invalid` boundary. Thus, using the
+strict provisional admission rule of publishing only `correct` + `valid`, 188/201 (93.5%) of the
+deduplicated evidence references were publishable in this slice. The 13 rejected rows are not all
+the same failure: reviewer comments identify late/early boundaries, a boundary in the middle of
+an item, and adjacent-item or pre-item assignments.
+
+Because rows are deduplicated by evidence reference, model counts overlap and are not independent
+samples. Per-model proposal outcomes were:
+
+| Model | Proposals | Correct + valid | Non-admitted | Non-admitted rate |
+| --- | ---: | ---: | ---: | ---: |
+| DeepSeek V4 Flash | 119 | 111 | 8 | 6.7% |
+| Gemini 3.1 Flash Lite | 81 | 80 | 1 | 1.2% |
+| Gemini 3.5 Flash Lite | 116 | 115 | 1 | 0.9% |
+| GLM-4.7 Flash | 51 | 47 | 4 | 7.8% |
+
+These are human-adjudicated evidence/item/boundary outcomes, not provider-chapter recall. They
+also are not a production precision estimate: the cohort has only 16 meetings, model proposals
+overlap, and the packet was selected for a locator stress slice. The comments reinforce that
+timing placement—not title faithfulness—is the dominant remaining error mode. Several notes also
+flag body/title metadata mismatches in the source rows; those are dataset/provider diagnostics and
+not locator judgments.
+
+Exploratory confidence thresholding is informative but not yet a gate. On this small slice, a
+joint-confidence cutoff of 0.90 left 4.0% non-admitted DeepSeek proposals and 0% non-admitted
+Gemini 3.1 proposals, while Gemini 3.5's one bad row was still scored 0.98 and GLM retained one bad
+row at 1.0. This confirms that raw self-reported confidence is model-specific and can remain
+overconfident; fit calibration on a separate development adjudication set and validate it on a
+new blinded cohort before using it to target the under-5% publication-error requirement. This
+16-meeting held-out result should remain an evaluation checkpoint, not a tuning set.
 
 1. **Completed (Phase 0).** Add a pure locator-unit builder and offline benchmark
    selector/reporting. It reads existing transcript/agenda/chapter artifacts and makes no model
    call or output mutation.
 2. **Completed (Phase 0).** Add fixture-backed tests for VTT and word-sidecar unit construction,
    stable IDs, and canonical benchmark eligibility.
-3. **In progress.** Run and inspect the baseline's real artifact sizes, cohort stratification, and
-   independent title-candidate probe. The bounded VTT-fallback and no-candidate artifact diagnosis
-   is complete; next freeze the larger provider × duration × agenda-eligibility × timing-source
-   packet and record its exact request manifests. Add a bounded title-selection/equivalence
-   experiment only after its contract and canonical acceptance criteria are approved.
-4. Select a model route only after that measurement. The existing structured-output LLM path and
-   `summarize` task with `scope="agenda-chapter-locate"` will be reused rather than adding a task
-   verb.
-5. Design admission/provenance storage and a pre-`AudioStage` persisted-artifact stage; then run a
-   shadow evaluation. No generated chapter is published until its measured gate and migration/
-   backfill plan are approved.
+3. **Completed (Phase 0).** Run and inspect the baseline's real artifact sizes, cohort
+   stratification, VTT fallback, and no-candidate artifact diagnosis.
+4. **Completed (Phase 1 dataset freeze).** `build_locator_dataset.py` freezes the immutable
+   96-development/96-test provider-chapter manifest as separate input, hidden-gold, and
+   diagnostics artifacts. The first public-URL inventory found 157 complete artifacts and 35
+   non-admissions in the initial 192-row pool. A larger read-only pool was then used to replace
+   those rows, producing a clean 192-row candidate manifest: 48 Granicus + 48 Swagit episodes on
+   each side, with normalized body families kept on one side and 192 agenda hashes recorded. The
+   larger pool excluded 39 viewer/loading placeholders, 17 empty artifacts, 6 unpublished
+   placeholders, and 5 cap-suspected artifacts; it had no fetch failures. The earlier 20-row
+   Mistral Large and 19-row DeepSeek outputs were from the pre-freeze shadow run and are retained
+   only as diagnostic history; they are not the agenda input for this benchmark. The frozen
+   extraction pass then ran **Mistral Medium 2508 with the final `agenda-flow` prompt on all 192
+   rows**. All 192 raw requests completed; current-code source revalidation isolated rejected
+   items after the post-processing step that expands evidence to a preceding identifier line
+   before validating `display_ref`. 190 rows produced at least one accepted agenda item. Two rows
+   produced no accepted items (one returned an empty item list; one returned hierarchical
+   references whose evidence spans failed the source contract); both remain in the manifest as
+   valid zero-yield diagnostics rather than being silently dropped. No locator model has been
+   called.
+5. **Completed (Phase 1 research).** Implemented and ran the read-only paired benchmark for the
+   full-context request sizing, sparse lexical retrieval, episode-level TF-IDF similarity, and
+   their high-recall union. The 96-episode development result is above; it scores candidate
+   recall before any compact packet is sent to an LLM.
+5a. **In progress (Phase 1).** Added `train_transition_scorer.py` and completed its first
+   provider-stratified all-unit validation slice plus a bounded pairwise/local-change comparison.
+   Provider chapter starts are labels only; the learned scorer ranks every timed unit and is
+   measured both alone and as a union with deterministic candidates. The added variants did not
+   improve the original-feature HistGradientBoosting baseline, so they remain research-only.
+5b. **Completed (Phase 1 clock contract).** Provider chapter starts inside removed source spans
+   now snap to the next kept served boundary; generic transcript/cue remapping still drops such
+   starts by default. The change preserves source-index identity and has focused regression tests
+   in `tests/test_timeline.py`, `tests/test_remap_stage.py`, `tests/test_tags.py`, and
+   `tests/test_audit_chapters.py`. The benchmark gold builder is versioned with this policy so
+   source-clock labels cannot be paired with served transcript units again.
+5c. **Completed (Phase 1 research extension).** Added the opt-in word-timed speech-rate vector
+   and derivative features described above. The default scorer mode remains unchanged; the
+   corrected development ablation is recorded in the speech-rate section, and no held-out row or
+   production artifact was changed.
+5d. **Completed (Phase 1 research extension).** Added the opt-in training-fold transition
+   word/phrase map with distance decay, post-boundary downweighting, and per-episode aggregation.
+   Re-ran the speech-only, phrase-only, and combined ablations after excluding the Austin
+   checkpoint UID `e5afbf9795c9f4b2` from both fitting and validation. The support-5 combined result
+   is the current development candidate; no held-out row, Austin checkpoint result, or production
+   artifact was changed.
+5e. **Completed (Phase 1 checkpoint tooling).** Added scorer checkpoint diagnostics and packet
+   selection so an excluded episode can be scored only after training. Re-ran the Austin full-
+   transcript hint pass through DeepSeek V4 Flash, Gemini 3.1 Flash Lite, Z.AI GLM-4.7 Flash, and
+   OpenRouter GPT-OSS-120B. This was a single anecdotal model check; no held-out row or production
+   artifact was changed.
+5f. **Completed (Phase 1 evaluation).** The 16-episode held-out confidence slice was run through
+   DeepSeek V4 Flash, Gemini 3.1/3.5 Flash Lite, and GLM-4.7 Flash with the decomposed confidence
+   prompt. The manual packet was deduplicated by source evidence reference and used independent
+   evidence-status, item-correctness, and boundary-validity labels. Gemini 3.5 Flash Lite produced
+   115 correct-item + valid-boundary proposals out of 116 (99.1% in this slice). Its one invalid
+   boundary had confidence 0.98/0.98/0.95, and an adjacent valid proposal had the same complete
+   feature signature. Raw self-reported confidence and the optional fields therefore do not show
+   enough separation to justify fitting a calibration classifier from this one-error sample. No
+   provider target was shown to the reviewer and no production artifact was changed.
+### Approved production implementation plan (2026-08-05)
+
+The 16-episode Gemini 3.5 Flash Lite result is sufficient to move from confidence research to
+implementation. The one observed failure has the same complete diagnostic signature as a valid
+neighboring proposal, so we will not fit a confidence classifier to this slice. Confidence remains
+useful for diagnostics and routing, but structural validation and explicit provenance are the
+publication safeguards.
+
+The current mixed worktree will be preserved locally on `wip/1078-research-full`. That branch is a
+research archive and source of selectively reviewed changes; it is not a production dependency and
+will not be pushed or used as the base of the four public PRs. Each implementation step below must
+port only the relevant, tested pieces onto a clean branch. Temporary packets, model responses,
+adjudication JSON, logs, and credentials remain outside Git.
+
+1. **Define the generated-chapter record and provenance contract.** Add a versioned, generated-only
+   record containing the stable episode UID; generated agenda-item index; concise title; optional
+   display reference; immutable agenda source hash/line span and expanded `evidence_text`; selected
+   transcript unit ID and start; served/source time basis; model/route and prompt versions; raw
+   confidence diagnostics; and an admission status/reason. Generated records must be visibly
+   distinct from provider chapters and must never overwrite canonical titles, dates, links, or
+   provider timings. Use the locator contracts and tests in `wip/1078-research-full` as design
+   references, then port only the stable schema to the production branch. Add schema, round-trip,
+   missing-evidence, and provenance tests before wiring the pipeline.
+
+2. **Implement an idempotent pre-`AudioStage` chapter stage.** The stage runs only after agenda
+   extraction and transcription are complete, consumes their content-addressed artifacts, and
+   persists a generated-chapter artifact before any audio bytes are rendered. It must preserve the
+   served/source timeline basis, use the existing stage hashing/version conventions, be restartable
+   under the wall-clock stop budget, and leave canonical/provider chapter records untouched. A
+   re-run with identical inputs must produce the same request manifest and stable generated record
+   identity. The WIP branch may contain packet runners and stage-shaped experiments, but the
+   production stage must be implemented and reviewed independently on a clean branch.
+
+3. **Implement structural admission, deduplication, and fallback behavior.** Reject or abstain when
+   the model cites unavailable evidence, an invalid/expanded agenda span, a missing transcript unit,
+   an invalid time basis, a non-monotonic or duplicate start, or an unusable title. Preserve valid
+   `not_found` outcomes for skipped, withdrawn, or consent-subsumed agenda items rather than
+   inventing chapters. Run the post-processing evidence expansion before `display_ref` validation.
+   Treat raw confidence, missing optional fields, evidence type, alternatives, and retrieval scores
+   as diagnostic/routing signals only; they are not a standalone publication gate. Route malformed,
+   over-limit, or provider-failed requests to the documented fallback/abstention path and record the
+   reason. Add focused tests for public hearings, consent agendas, hierarchical references,
+   duplicate anchors, and source/served timestamp conversion. Reuse source-validation and recovery
+   experiments from WIP only after each behavior is promoted explicitly; research shadow recovery
+   must not silently become production acceptance.
+
+4. **Run a no-publish shadow and blind validation.** Start with the full-context Gemini 3.5 Flash
+   Lite route and the frozen provider-chapter test manifest; keep compact retrieval/hint variants
+   research-only until they demonstrate comparable provider-chapter recall. Compare generated
+   starts against hidden provider starts using separate agenda coverage, locator recall, strict
+   correct-item + valid-boundary precision, boundary error, skipped-item false-creation, duplicate
+   rate, abstention rate, token/cost, latency, and route-failure metrics. Run the benchmark tools
+   from WIP against the clean production branches, with provider labels remaining scoring-only. Do
+   not expose provider targets to the locator. The shadow report is the go/no-go gate for publication,
+   not a confidence
+   score selected after looking at the test results.
+
+5. **Roll out gradually with provenance, monitoring, and backfill controls.** After the shadow gate,
+   enable generated chapters for a bounded stream, retain the full request/response and admission
+   audit trail, and periodically sample results across providers, bodies, duration, agenda quality,
+   and meeting types. Track model/prompt drift, invalid-boundary rate, abstentions, cost, and route
+   quotas; trigger review or fallback on regressions. Decide the embedded-marker versus served-time
+   overlay representation before enabling any audio materialization, and document the pipeline
+   version/backfill story. Backfill only after the rollout is reversible and canonical chapters are
+   protected. Tagging remains a later stage that may consume admitted generated chapters. After
+   rollout, WIP remains the place for backfill experiments and prompt/model comparisons; only a
+   separately reviewed production PR may move a result into the pipeline.
+
+After these five steps, the remaining decisions are limited to the shadow results and operational
+choices below; none requires another one-error confidence-calibration experiment.
+
+After the four cleanup PRs land on `main`, the repository will contain only: (a) the vetted timeline
+and chapter-remapping correctness fix, (b) source-grounded agenda evidence validation/expansion,
+(c) clearly labeled reusable research benchmark tooling and its tests, and (d) this durable plan and
+README documentation. `main` will not yet contain the generated-chapter stage, Gemini 3.5 production
+routing, compact-route admission policy, generated-chapter materialization, backfill, or research
+outputs. Those are later implementation PRs that may use `wip/1078-research-full` for experiments but
+must start from the cleaned `main` history.
 
 ## Open decisions
 
-- Mistral Large is the default locator route when the measured request plus output reserve fits its
-  256k context; Gemini Flash is the overflow route for larger measured packets. The Phase 0
-  measurements confirm both paths are needed, but do not yet select a production admission policy.
+- **Routing intent:** Gemini 3.5 Flash Lite is the preferred chapter-timing selection model. It had
+  the strongest result in the 16-meeting adjudicated slice (115/116 proposals were correct-item +
+  valid-boundary). We will proceed with it as the preferred chapter-timing route. A normal fresh
+  validation/shadow run is still required before publication, but a separate confidence-calibration
+  classifier is not a prerequisite: the one observed failure has no distinct confidence/evidence
+  signature and further fitting would overfit this slice. Mistral Large, DeepSeek V4 Flash, and
+  GLM-4.7 Flash remain comparison/fallback routes.
+- Tagging should not permanently consume Gemini 3.5 Flash Lite's free-tier pool merely as a
+  throughput spillover. The current configuration still uses Gemini 3.1 Flash Lite as primary and
+  Gemini 3.5 Flash Lite as spillover for compatibility; run a bounded tagging-quality comparison
+  of GLM-4.7 Flash and smaller candidates before removing 3.5 from that lane.
 - Confidence thresholds, tolerances, held-out sampling cadence, and the exact generated-chapter
-  record shape are intentionally deferred to the shadow-evaluation slice.
+  record shape are intentionally deferred to the shadow-evaluation slice. Confidence is a
+  diagnostic/routing hint, not a calibrated probability or a standalone publication gate; the
+  first implementation should rely on structural validation, evidence preservation, and a
+  conservative fallback/abstention path.
 - Whether a generated chapter should be embedded in audio or exposed as a served-time overlay is
   decided with the storage/admission design; the current pipeline invariant requires any embedded
   marker to be known before `AudioStage`.
+
+### Remaining issues after the implementation plan
+
+These are the remaining issues after the five implementation steps above; they are sequencing and
+operational decisions, not reasons to reopen the one-error confidence study:
+
+1. **Shadow go/no-go:** run the frozen provider-chapter test and set the boundary tolerance,
+   admission rule, and publication-error target from its predeclared metrics. This is the final
+   quality gate before generated chapters are exposed.
+2. **Full versus compact routing:** full-context Gemini 3.5 is the initial production-shaped path.
+   The compact retrieval/escalation curve remains a cost-reduction project; it must demonstrate
+   comparable provider-chapter recall before replacing or screening the full route.
+3. **Dispatch and quota wiring:** add or verify the production dispatch route for the pinned Gemini
+   3.5 Flash Lite model, including model-specific rate limits, retries, request accounting, and a
+   documented fallback when the route or context budget is unavailable.
+4. **Tagging route:** complete the bounded GLM-4.7/smaller-model tagging comparison before moving
+   tagging traffic off Gemini 3.1/3.5 Lite. This is independent of chapter-timing admission.
+5. **Materialization and backfill:** choose embedded audio markers versus served-time chapter
+   overlays, define the pipeline-version/backfill story, and make rollout reversible without
+   touching canonical provider chapters.
+6. **Source-quality dependency:** resolve the known AgendaViewer/OCR placeholder problem tracked
+   in [GH#1092](https://github.com/BashfulBits/city-meeting-podcasts/issues/1092). It is not a locator
+   model failure, but production agenda extraction must classify those artifacts before chaptering.
+7. **Ongoing monitoring:** define the periodic human-QA sample, drift/invalid-boundary alert, quota
+   budget, and rollback trigger for model or prompt changes. These can be finalized alongside the
+   shadow rollout rather than through another calibration experiment.
+
+The local WIP branch is intentionally the handoff mechanism for these remaining issues: it retains
+the full benchmark runners, adjudication UIs, scorer variants, and exploratory route adapters, while
+the public history receives only the pieces that have a clear reusable contract or a production
+correctness justification.
 
 ## Open-source landscape check (2026-07-27)
 

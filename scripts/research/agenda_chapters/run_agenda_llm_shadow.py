@@ -96,6 +96,8 @@ def run_one(
         "episode": row,
         "model": model,
         "source_artifact": sample.agenda_text_key,
+        "prompt_variant": prompt_variant,
+        "variant": variant,
         "status": "failed",
     }
     try:
@@ -272,9 +274,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--prompt-variants",
         nargs="+",
-        choices=sorted(AGENDA_EXTRACTION_PROMPT_VARIANTS - {"standard"}),
+        choices=sorted(AGENDA_EXTRACTION_PROMPT_VARIANTS),
         required=True,
-        help="non-standard prompt variants; each writes under its own output directory",
+        help="prompt variants; each writes under its own output directory",
     )
     parser.add_argument(
         "--candidate-hints",

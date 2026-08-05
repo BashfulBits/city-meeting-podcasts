@@ -26,8 +26,11 @@ tagging:
   llm_model: "gemini/gemini-3.1-flash-lite"
   # Routes the scheduler may draw on, primary (== llm_model) first. The extra models are
   # independent free-tier quota pools the run spills onto for throughput once the primary's
-  # per-minute/daily window fills (~1000 tags/day, 30 rpm combined). llm_model stays the stable
-  # recipe/calibration route; each candidate still records the model that actually answered.
+  # per-minute/daily window fills (~1000 tags/day, 30 rpm combined). Gemini 3.5 Flash Lite is
+  # currently retained here only as a temporary tagging fallback; the chapter-timing plan prefers
+  # reserving that route, so replace this spillover only after a GLM/smaller-model tagging test.
+  # llm_model stays the stable recipe/calibration route; each candidate still records the model
+  # that actually answered.
   llm_models:
     - "gemini/gemini-3.1-flash-lite"
     - "gemini/gemini-3.5-flash-lite"
