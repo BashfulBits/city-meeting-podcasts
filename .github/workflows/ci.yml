@@ -37,13 +37,7 @@ jobs:
           cache: pip
 
       - name: Install
-        # The chapter-research extra is optional for production, but its read-only research
-        # tests are part of the repository and must be importable in CI. Install the two locked
-        # profiles separately: their transitive base pins (notably soupsieve) are independently
-        # generated and must not be presented as contradictory constraints to one resolver.
-        run: |
-          pip install -e ".[dev,wer,llm]" -c constraints/dev.txt
-          pip install "scikit-learn>=1.5" -c constraints/chapter-research.txt
+        run: pip install -e ".[dev,wer,llm]" -c constraints/dev.txt
 
       - name: Cache pinned ffmpeg
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5

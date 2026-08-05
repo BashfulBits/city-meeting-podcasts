@@ -500,7 +500,7 @@ def assess_agenda_item_extractor_response(
         try:
             if item.line_end < item.line_start or item.line_end > len(lines):
                 raise ValueError("agenda item source line range is outside the supplied agenda")
-            if item.line_end - item.line_start > _MAX_EVIDENCE_SPAN_LINES:
+            if item.line_end - item.line_start + 1 > _MAX_EVIDENCE_SPAN_LINES:
                 raise ValueError("agenda item source line range is implausibly wide")
             title = _normalized_source_text(item.title)
             evidence_quote = _normalized_source_text(item.evidence_quote)
@@ -789,14 +789,14 @@ def recover_agenda_item_extractor_response(
         declared_end = min(len(lines), int(raw_item.line_end))
         if declared_start > declared_end or not lines:
             continue
-        if declared_end - declared_start > _MAX_EVIDENCE_SPAN_LINES:
-            continue
         exact = _recovery_tightest_spans(_recovery_exact_spans(lines, raw_item.evidence_quote))
         spans = exact
         method = ""
         if len(exact) == 1:
             method = "exact-global"
         elif not exact:
+            if declared_end - declared_start + 1 > _MAX_EVIDENCE_SPAN_LINES:
+                continue
             subsequence = _recovery_subsequence_spans(
                 lines,
                 raw_item.evidence_quote,
