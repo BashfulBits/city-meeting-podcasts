@@ -85,7 +85,7 @@ jobs:
             && printf '%s\n' "$EVENT_ISSUE_LABELS" | jq -e 'index("llm-calibration-review")' >/dev/null; then
             n=$(printf '%s' "$EVENT_COMMENT_ISSUE_URL" | awk -F/ '{print $NF}')
             numbers=$(jq -nc --arg n "$n" '[$n | tonumber]')
-          elif [ "$EVENT_NAME" = "schedule" ]; then
+          elif [ "$EVENT_NAME" = "schedule" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             numbers=$(gh issue list --state open --label llm-calibration-review \
               --search 'in:title "R5 LLM tag sample "' --json number --jq '[.[].number]')
           fi
