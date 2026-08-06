@@ -17,6 +17,9 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Manually triggered tag calibration ingest silently skipped all open issues.**
+  The `llm-tag-review-ingest.yml` workflow was configured to ingest all open calibration issues on its scheduled run, but if triggered manually (`workflow_dispatch`) without an explicit issue number, it skipped the ingest block entirely instead of falling back to the same open-issue sweep. It now performs the full open-issue sweep on manual runs when no issue number is provided.
+
 - **Tag calibration ingest failed when marking checkboxes on the digest issue.**
   The `llm-tag-review-ingest.yml` workflow was missing a title check for the `issues` (edited) trigger. When a maintainer checked a progress-tracking checkbox on the parent digest issue (`R5 LLM tag calibration digest`), the workflow attempted to parse it as a review decision, failing with `ValueError` and exiting without commenting or closing anything. Added a `grep -q '^R5 LLM tag sample '` check to the `issues` event branch so the workflow only processes edits to the child issues where the actual review decisions live.
 
