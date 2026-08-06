@@ -74,6 +74,7 @@ jobs:
             numbers=$(jq -nc --arg n "$ISSUE_NUMBER_INPUT" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "issues" ] && [ -n "$EVENT_ISSUE_NUMBER" ] \
             && [ "$EVENT_ISSUE_STATE" = "open" ] \
+            && printf '%s\n' "$EVENT_ISSUE_TITLE" | grep -q '^R5 LLM tag sample ' \
             && printf '%s\n' "$EVENT_ISSUE_LABELS" | jq -e 'index("llm-calibration-review")' >/dev/null; then
             numbers=$(jq -nc --arg n "$EVENT_ISSUE_NUMBER" '[$n | tonumber]')
           elif [ -n "$EVENT_COMMENT_ISSUE_URL" ] \
