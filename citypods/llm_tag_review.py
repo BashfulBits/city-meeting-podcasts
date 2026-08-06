@@ -92,7 +92,7 @@ def package(args: argparse.Namespace) -> int:
         json.dumps({"version": 1, "children": children}, indent=2) + "\n", encoding="utf-8"
     )
     save_state(state_path, state)
-    push_state(storage, state_dir, only_paths=[config.state_path])
+    push_state(storage, state_dir, only_paths=[config.state_path], log=_log)
     print(f"packaged {len(children)} LLM tag review issue(s)")
     return 0
 
@@ -122,7 +122,7 @@ def ingest(args: argparse.Namespace) -> int:
     _log(f"ingest: decision recorded — {review['decision']} for {review['candidate_id']}")
     save_state(state_path, state)
     _log("ingest: pushing evaluation state")
-    push_state(storage, state_dir, only_paths=[config.state_path])
+    push_state(storage, state_dir, only_paths=[config.state_path], log=_log)
     _log("ingest: push complete")
     print(
         json.dumps(
