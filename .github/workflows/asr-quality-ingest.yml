@@ -73,6 +73,9 @@ jobs:
           echo "numbers=$numbers" >> "$GITHUB_OUTPUT"
 
   ingest:
+    strategy:
+      matrix:
+        issue_number: ${{ fromJson(needs.resolve.outputs.numbers) }}
     needs: resolve
     if: needs.resolve.outputs.numbers != '[]'
     runs-on: ubuntu-latest
@@ -94,6 +97,9 @@ jobs:
 
       - name: Install
         run: pip install -e ".[storage]" -c constraints/prod.txt
+
+      - name: Download issue body
+        run: gh issue view "$NUMBER" --repo "${{ github.repository }}" --json body,url,number,author
 
       - name: Ingest decisions in a loop
         env:
@@ -132,6 +138,10 @@ jobs:
               echo "Successfully ingested issue #$number"
             ) || echo "::error::Failed to process issue #$number"
           done
+
+      - name: Comment and close child issue
+        run: gh issue close "$NUMBER"
+
 
   finalize:
     # Runs once per workflow run (not once per matrix leg) so N children closing in the same
