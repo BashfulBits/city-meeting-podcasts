@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from citypods.config import load_city_configs, load_site_config
@@ -28,12 +29,18 @@ from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
 
 
-def _paths(args: argparse.Namespace):
+def _log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
+
+
+def _paths(args: argparse.Namespace, *, pull_only_paths=None):
     site_config = load_site_config(args.site_config)
     output_dir = Path(args.output_dir)
     state_dir = resolve_state_dir(site_config, output_dir)
     storage = make_storage(site_config, site_config.get("base_url", ""), output_dir)
-    pull_state(storage, state_dir)
+    _log("ingest: pulling state from storage…")
+    restored = pull_state(storage, state_dir, only_paths=pull_only_paths, log=_log)
+    _log(f"ingest: pull_state done ({restored} file(s) restored)")
     raw = (site_config.get("tagging") or {}).get("evaluation") or {}
     return site_config, output_dir, state_dir, storage, config_from_mapping(raw)
 
@@ -59,6 +66,7 @@ def collect_candidates(state_dir: Path, config_dir: str, site_config: dict) -> l
 
 
 def package(args: argparse.Namespace) -> int:
+    # Full pull: package needs all source episode records to collect candidates.
     site_config, output_dir, state_dir, storage, config = _paths(args)
     state_path = state_dir / config.state_path
     state = load_state(state_path)
@@ -90,10 +98,19 @@ def package(args: argparse.Namespace) -> int:
 
 
 def ingest(args: argparse.Namespace) -> int:
-    site_config, output_dir, state_dir, storage, config = _paths(args)
+    _log(f"ingest: starting issue #{args.issue_number}")
+    # Resolve config first so we can scope the pull to just the evaluation state file.
+    site_config = load_site_config(args.site_config)
+    raw = (site_config.get("tagging") or {}).get("evaluation") or {}
+    config = config_from_mapping(raw)
+    site_config, output_dir, state_dir, storage, config = _paths(
+        args, pull_only_paths=[config.state_path]
+    )
     state_path = state_dir / config.state_path
+    _log("ingest: loading evaluation state")
     state = load_state(state_path)
     body = Path(args.issue_body_file).read_text(encoding="utf-8")
+    _log("ingest: parsing and recording review decision")
     review = ingest_review_body(
         state,
         body,
@@ -102,8 +119,11 @@ def ingest(args: argparse.Namespace) -> int:
         issue_number=args.issue_number,
         issue_url=args.issue_url,
     )
+    _log(f"ingest: decision recorded — {review['decision']} for {review['candidate_id']}")
     save_state(state_path, state)
+    _log("ingest: pushing evaluation state")
     push_state(storage, state_dir, only_paths=[config.state_path])
+    _log("ingest: push complete")
     print(
         json.dumps(
             {

@@ -240,9 +240,13 @@ def _full_state_keys(storage):
     ]
 
 
-def pull_state(storage, state_dir: Path, *, log=None) -> int:
+def pull_state(storage, state_dir: Path, *, only_paths=None, log=None) -> int:
     """Download the durable state snapshot from the bucket into ``state_dir`` (bucket wins).
     Returns the number of files restored. No-op for backends without sync support.
+
+    ``only_paths`` (optional): when given, restrict the pull to the listed relative paths (e.g.
+    ``["llm_evaluation.json"]``). Useful for commands that only need one file and do not want to
+    pay the cost of downloading the full snapshot.
 
     A single key that keeps failing with a transient storage read error (timeout, dropped
     connection, transient S3 response, or known botocore parser failure — see
@@ -274,6 +278,12 @@ def pull_state(storage, state_dir: Path, *, log=None) -> int:
             (state_dir / rel).unlink(missing_ok=True)
     else:
         keys = _full_state_keys(storage)
+
+    # When only specific files are requested, filter the key list before checking freshness or
+    # spawning the thread pool — we don't need to download or even stat any other files.
+    if only_paths is not None:
+        wanted = {f"{STATE_PREFIX}/{rel}" for rel in only_paths}
+        keys = [k for k in keys if k in wanted]
 
     # Materialize the key list first (a single paginated LIST on fallback), then fan the per-object
     # GETs out
