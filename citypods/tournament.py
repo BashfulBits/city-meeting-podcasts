@@ -258,11 +258,11 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
         )
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
-        push_state(storage, state_dir)
+        push_state(storage, state_dir, only_paths=[STATE])
         completed += 1
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
-    push_state(storage, state_dir)
+    push_state(storage, state_dir, only_paths=[STATE])
     print(f"llm-tournament: completed {completed} sample(s)")
     return 0
 

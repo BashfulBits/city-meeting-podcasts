@@ -20,8 +20,14 @@ Phase R (Research-Tool Surface)._
 - **Manually triggered tag calibration ingest silently skipped all open issues.**
   The `llm-tag-review-ingest.yml` workflow was configured to ingest all open calibration issues on its scheduled run, but if triggered manually (`workflow_dispatch`) without an explicit issue number, it skipped the ingest block entirely instead of falling back to the same open-issue sweep. It now performs the full open-issue sweep on manual runs when no issue number is provided.
 
-- **Calibration ingest job stuck per-issue due to full state snapshot re-upload.**
-  `llm_tag_review.py` `ingest()` (and `package()`) called `push_state()` with no scope, causing a full upload of the entire state snapshot — all source records for all cities — after recording each single review decision. With `max-parallel: 1` and 20 open issues, this queued 20 sequential full-catalog uploads. Both calls now pass `only_paths=[config.state_path]`, restricting the push to `llm_evaluation.json`, the only file either command actually modifies.
+- **Calibration ingest job stuck per-issue due to full state snapshot sync.**
+  `llm_tag_review.py` `ingest()` (and `package()`) called `push_state()` with no scope, causing a full upload of the entire state snapshot after recording each single review decision. Additionally, `ingest()` called `pull_state()` with no scope, downloading all episode records for all cities despite only needing `llm_evaluation.json`. `tournament.py` had the same bug — it called `push_state()` unscoped inside the per-episode loop (one full catalog upload per episode processed) and again at the end.
+
+  Fixed by:
+  - Adding `only_paths` support to `pull_state()` (mirroring `push_state()`'s existing API), so callers can fetch a single file instead of the full snapshot.
+  - Scoping `ingest()`'s `pull_state()` call to `only_paths=[config.state_path]` (i.e. just `llm_evaluation.json`).
+  - Scoping `ingest()`, `package()`, and both `tournament.py` `push_state()` calls to `only_paths=[<state file>]`.
+  - Adding per-stage `stderr` progress logging to `ingest()` so each stage (pull, parse, push) is visible in GitHub Actions logs even though stdout is redirected to `ingest.json`.
 
 - **Tag calibration ingest failed when marking checkboxes on the digest issue.**
   The `llm-tag-review-ingest.yml` workflow was missing a title check for the `issues` (edited) trigger. When a maintainer checked a progress-tracking checkbox on the parent digest issue (`R5 LLM tag calibration digest`), the workflow attempted to parse it as a review decision, failing with `ValueError` and exiting without commenting or closing anything. Added a `grep -q '^R5 LLM tag sample '` check to the `issues` event branch so the workflow only processes edits to the child issues where the actual review decisions live.
