@@ -20,6 +20,9 @@ class LLMRequestPolicy:
     allow_experimental: bool = False
     deadline_at: datetime | None = None
     purpose: str = ""
+    require_direct: bool = False
+    submit_next: bool = False
+    allow_batch: bool = True
 
 
 @dataclass(frozen=True)
@@ -70,7 +73,7 @@ class QuotaPolicy:
 @dataclass(frozen=True)
 class LLMRoute:
     model: str
-    transport: Literal["direct", "mistral-dispatch"]
+    transport: Literal["direct", "mistral-dispatch", "llm-dispatch"]
     free: bool
     quota: QuotaPolicy
     pricing: PricingPolicy
@@ -79,6 +82,7 @@ class LLMRoute:
     # exactly one upstream request and must reserve only that one, even when the caller's
     # structured-output contract is present.
     max_provider_attempts: int | None = None
+    transports: tuple[Literal["direct", "mistral-dispatch", "llm-dispatch"], ...] = ("direct",)
 
 
 _DEEPSEEK_WINDOW = PeakWindow("UTC", time(16, 30), time(0, 30), 0.5)
@@ -87,6 +91,7 @@ ROUTES: dict[str, LLMRoute] = {
     "gemini/gemini-3-flash-preview": LLMRoute(
         model="gemini/gemini-3-flash-preview",
         transport="direct",
+        transports=("direct", "llm-dispatch"),
         free=True,
         quota=QuotaPolicy(
             rpm=10,
@@ -99,6 +104,7 @@ ROUTES: dict[str, LLMRoute] = {
     "gemini/gemini-3.1-flash-lite": LLMRoute(
         model="gemini/gemini-3.1-flash-lite",
         transport="direct",
+        transports=("direct", "llm-dispatch"),
         free=True,
         # Real free-tier allowance for this route (raised from the initial rpd=20 safety ceiling
         # now that the tag lane paces within its per-minute budget rather than bursting and
@@ -110,6 +116,7 @@ ROUTES: dict[str, LLMRoute] = {
     "gemini/gemini-3.5-flash-lite": LLMRoute(
         model="gemini/gemini-3.5-flash-lite",
         transport="direct",
+        transports=("direct", "llm-dispatch"),
         free=True,
         # Independent free-tier pool from 3.1-flash-lite (separate model = separate provider quota),
         # so the tag lane can spill onto it once 3.1's per-minute/day window fills -- ~1000 tags/day
@@ -120,6 +127,7 @@ ROUTES: dict[str, LLMRoute] = {
     "deepseek/deepseek-v4-flash": LLMRoute(
         model="deepseek/deepseek-v4-flash",
         transport="direct",
+        transports=("direct",),
         free=False,
         # Paid route: the maintainer confirmed there is no provider daily request allowance.
         # Cost telemetry remains active, but a speculative calendar-day ceiling must not stall
@@ -134,6 +142,7 @@ ROUTES: dict[str, LLMRoute] = {
     "deepseek/deepseek-v4-pro": LLMRoute(
         model="deepseek/deepseek-v4-pro",
         transport="direct",
+        transports=("direct",),
         free=False,
         quota=QuotaPolicy(),
         pricing=PricingPolicy(
@@ -142,9 +151,10 @@ ROUTES: dict[str, LLMRoute] = {
             windows=(_DEEPSEEK_WINDOW,),
         ),
     ),
-    "mistral/mistral-large-latest": LLMRoute(
-        model="mistral/mistral-large-latest",
-        transport="mistral-dispatch",
+    "mistral/mistral-large-2512": LLMRoute(
+        model="mistral/mistral-large-2512",
+        transport="llm-dispatch",
+        transports=("llm-dispatch",),
         free=True,
         # The account's Mistral Large alias resolves to ``mistral-large-2512`` (0.07 RPS), but
         # production does not call that API directly: the deployed one-model dispatch Worker
@@ -156,7 +166,8 @@ ROUTES: dict[str, LLMRoute] = {
     ),
     "mistral/mistral-large-3": LLMRoute(
         model="mistral/mistral-large-3",
-        transport="mistral-dispatch",
+        transport="llm-dispatch",
+        transports=("llm-dispatch",),
         free=True,
         quota=QuotaPolicy(rpm=1),
         pricing=PricingPolicy(),
@@ -166,6 +177,7 @@ ROUTES: dict[str, LLMRoute] = {
         model="mistral/mistral-medium-2508",
         # Evaluation-only direct route. It is not a default/overflow selection policy.
         transport="direct",
+        transports=("direct",),
         free=True,
         quota=QuotaPolicy(rpm=22, tpm=356_250),
         pricing=PricingPolicy(),

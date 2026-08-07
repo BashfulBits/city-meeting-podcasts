@@ -37,7 +37,7 @@ B. ID 26-1109 Consider approval of appointing three members to the Mobility Comm
 def test_direct_request_contains_numbered_full_source_lines_and_no_candidate_gate():
     request = build_agenda_item_extraction_request(agenda_text=AGENDA)
 
-    assert request.model == "mistral/mistral-large-latest"
+    assert request.model == "mistral/mistral-large-2512"
     assert request.source_line_count == 7
     assert '"line":4' in request.messages[1]["content"]
     assert '"candidates"' not in request.messages[1]["content"]
@@ -421,7 +421,7 @@ def test_title_equivalence_contract_requires_one_to_one_action_matches():
         canonical_titles=["CONSENT AGENDA", "Approval of bridge agreement"],
         generated_titles=["Approve bridge agreement"],
     )
-    assert request.model == "mistral/mistral-large-latest"
+    assert request.model == "mistral/mistral-large-2512"
     assert "semantic equivalence" in request.messages[0]["content"]
     assert "zero-based" in request.messages[0]["content"]
     result = validate_title_equivalence_response(

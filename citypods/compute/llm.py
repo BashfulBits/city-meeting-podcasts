@@ -77,7 +77,7 @@ SUPPORTED_MODELS = frozenset(
         "gemini/gemini-3.5-flash-lite",
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4-pro",
-        "mistral/mistral-large-latest",
+        "mistral/mistral-large-2512",
         "mistral/mistral-large-3",
         "mistral/mistral-medium-2508",
     }
@@ -456,13 +456,15 @@ class LiteLLMBackend(Backend):
 
         Independent of ``self.config.mode``, which only governs the legacy static-model path
         (``_run_without_policy``): ``direct`` needs nothing beyond a provider API key (already in
-        env), so it's always reachable; ``mistral-dispatch`` needs a configured dispatch Worker.
+        env), so it's always reachable; ``mistral-dispatch`` / ``llm-dispatch`` needs a
+        configured dispatch Worker.
         A backend built with both configured (as the deferred-request sweep's is) can select
         freely across every route regardless of which transport backs it.
         """
         transports = {"direct"}
         if self.config.dispatch_url:
             transports.add("mistral-dispatch")
+            transports.add("llm-dispatch")
         return frozenset(transports)
 
     def _completion_fn(self) -> Callable[..., Any]:
@@ -548,6 +550,8 @@ class LiteLLMBackend(Backend):
         model: ResponseModel | None = None,
         *,
         resolved_model: str,
+        policy: LLMRequestPolicy | None = None,
+        estimated_tokens: int | None = None,
     ) -> dict[str, Any]:
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
         payload: dict[str, Any] = {
@@ -561,6 +565,14 @@ class LiteLLMBackend(Backend):
         }
         if model is not None:
             payload["response_format"] = self._dispatch_response_format(model, resolved_model)
+        if policy is not None:
+            payload["allow_paid"] = policy.allow_paid
+            payload["allow_batch"] = policy.allow_batch
+            payload["submit_next"] = policy.submit_next
+            if policy.deadline_at is not None:
+                payload["deadline_at"] = policy.deadline_at.isoformat()
+        if estimated_tokens is not None:
+            payload["estimated_tokens"] = estimated_tokens
         payload.update(self._provider_options(job, resolved_model))
         return payload
 
@@ -833,6 +845,8 @@ class LiteLLMBackend(Backend):
         a retry re-evaluates every gate fresh, exactly like a first attempt, rather than polling
         something already submitted."""
         available_transports = self._available_transports()
+        if policy.require_direct:
+            available_transports = available_transports & {"direct"}
         # Instructor's `max_retries=1` (see `_run_structured_direct`) can send up to two real
         # provider requests for one logical dispatch. Reserve the worst case up front so RPM/RPD/
         # TPM can never be breached even when both attempts happen; settling afterwards to the
@@ -897,8 +911,13 @@ class LiteLLMBackend(Backend):
             )
             return self._deferred_handle(job, structured, messages, policy)
 
+        is_dispatch = (
+            bool(self.config.dispatch_url)
+            and not policy.require_direct
+            and any(t in {"mistral-dispatch", "llm-dispatch"} for t in route.transports)
+        )
         try:
-            if route.transport == "direct":
+            if not is_dispatch:
                 if structured:
                     completion_fn = self._completion_fn()
 
@@ -915,7 +934,7 @@ class LiteLLMBackend(Backend):
                         completion=guarded_completion,
                     )
                 else:
-                    payload = self._payload(job, resolved_model=resolved_model)
+                    payload = self._payload(job, resolved_model=resolved_model, policy=policy)
                     completion_fn = self._completion_fn()
                     attempted = True
                     attempted_requests += 1
@@ -928,7 +947,13 @@ class LiteLLMBackend(Backend):
                     )
             else:
                 structured_name, model = structured if structured else (None, None)
-                payload = self._payload(job, model, resolved_model=resolved_model)
+                payload = self._payload(
+                    job,
+                    model,
+                    resolved_model=resolved_model,
+                    policy=policy,
+                    estimated_tokens=per_attempt_tokens * max_provider_attempts,
+                )
                 headers = {"content-type": "application/json"}
                 if self.config.dispatch_auth_token:
                     headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"

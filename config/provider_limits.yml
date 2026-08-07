@@ -1,0 +1,130 @@
+# Centralized Provider & Model Rate Limits Configuration
+# Replaces config/mistral_model_limits.yml.
+# Used by scripts/compile_llm_limits.py to generate workers/llm-dispatch-proxy/src/dispatch_limits.json
+
+source: Centralized provider limits registry
+observed_on: 2026-08-06
+
+providers:
+  mistral:
+    monthly_tpm: 1000000000
+    reset_day: 1
+    accounts:
+      - id: primary
+        api_key_env: MISTRAL_API_KEY
+  gemini:
+    reset_timezone: America/Los_Angeles
+    accounts:
+      - id: project_primary
+        api_key_env: GEMINI_API_KEY
+      - id: project_secondary
+        api_key_env: GEMINI_API_KEY_SECONDARY
+  deepseek:
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: DEEPSEEK_API_KEY
+  openrouter:
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: OPENROUTER_API_KEY
+
+routes:
+  - route_id: gemini_3_flash_preview_primary
+    model: gemini/gemini-3-flash-preview
+    provider: gemini
+    upstream_model: gemini-3-flash-preview
+    account_id: project_primary
+    rpm: 10
+    rpd: 1500
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_3_flash_preview_secondary
+    model: gemini/gemini-3-flash-preview
+    provider: gemini
+    upstream_model: gemini-3-flash-preview
+    account_id: project_secondary
+    rpm: 10
+    rpd: 1500
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_3_1_flash_lite_primary
+    model: gemini/gemini-3.1-flash-lite
+    provider: gemini
+    upstream_model: gemini-3.1-flash-lite
+    account_id: project_primary
+    rpm: 15
+    rpd: 500
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_3_1_flash_lite_secondary
+    model: gemini/gemini-3.1-flash-lite
+    provider: gemini
+    upstream_model: gemini-3.1-flash-lite
+    account_id: project_secondary
+    rpm: 15
+    rpd: 500
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_3_5_flash_lite_primary
+    model: gemini/gemini-3.5-flash-lite
+    provider: gemini
+    upstream_model: gemini-3.5-flash-lite
+    account_id: project_primary
+    rpm: 15
+    rpd: 500
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_3_5_flash_lite_secondary
+    model: gemini/gemini-3.5-flash-lite
+    provider: gemini
+    upstream_model: gemini-3.5-flash-lite
+    account_id: project_secondary
+    rpm: 15
+    rpd: 500
+    tpm: 250000
+    free: true
+
+  - route_id: mistral_large_2512_primary
+    model: mistral/mistral-large-2512
+    provider: mistral
+    upstream_model: mistral-large-2512
+    account_id: primary
+    rpm: 1
+    tpm: 250000
+    free: true
+
+  - route_id: mistral_large_3_primary
+    model: mistral/mistral-large-3
+    provider: mistral
+    upstream_model: mistral-large-3
+    account_id: primary
+    rpm: 1
+    tpm: 250000
+    free: true
+
+  - route_id: deepseek_v4_flash_primary
+    model: deepseek/deepseek-v4-flash
+    provider: deepseek
+    upstream_model: deepseek-v4-flash
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000014
+    output_per_token: 0.00000028
+
+  - route_id: deepseek_v4_pro_primary
+    model: deepseek/deepseek-v4-pro
+    provider: deepseek
+    upstream_model: deepseek-v4-pro
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.000000435
+    output_per_token: 0.00000087

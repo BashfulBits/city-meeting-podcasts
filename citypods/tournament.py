@@ -31,12 +31,12 @@ from citypods.tags import (
 MODELS = (
     "gemini/gemini-3.1-flash-lite",
     "deepseek/deepseek-v4-flash",
-    "mistral/mistral-large-latest",
+    "mistral/mistral-large-2512",
 )
 CONTESTS = (
-    ("deepseek/deepseek-v4-flash", "gemini/gemini-3.1-flash-lite", "mistral/mistral-large-latest"),
-    ("deepseek/deepseek-v4-flash", "mistral/mistral-large-latest", "gemini/gemini-3.1-flash-lite"),
-    ("gemini/gemini-3.1-flash-lite", "mistral/mistral-large-latest", "deepseek/deepseek-v4-flash"),
+    ("deepseek/deepseek-v4-flash", "gemini/gemini-3.1-flash-lite", "mistral/mistral-large-2512"),
+    ("deepseek/deepseek-v4-flash", "mistral/mistral-large-2512", "gemini/gemini-3.1-flash-lite"),
+    ("gemini/gemini-3.1-flash-lite", "mistral/mistral-large-2512", "deepseek/deepseek-v4-flash"),
 )
 STATE = "llm_tournament.json"
 JUDGE_CONTRACT = "tournament-tag-judge"

@@ -196,15 +196,15 @@ def _utilization(route: LLMRoute, ledger_entry) -> float:
 
 def _owner_for(recipe_hash: str, route: LLMRoute) -> str:
     """Owner uniqueness depends on the *selected* route's transport, not a single rule for both:
-    - `mistral-dispatch`: the Worker dedupes on `idempotency-key: recipe_hash`, so a retry before
-      this reservation settles is the *same* underlying provider request -- owner must be that
-      same deterministic recipe_hash, or it would double-reserve quota for a call the Worker
-      itself never repeats.
+    - dispatch (`mistral-dispatch`/`llm-dispatch`): the Worker dedupes on
+      `idempotency-key: recipe_hash`, so a retry before this reservation settles is the *same*
+      underlying provider request -- owner must be that same deterministic recipe_hash, or it would
+      double-reserve quota for a call the Worker holds.
     - `direct`: there is no server-side dedup at all. Every attempt -- the first, a concurrent
       call, or a later `reconcile()` retry of a deferred handle -- is a genuinely new request and
       must reserve its own independent slot.
     """
-    if route.transport == "mistral-dispatch":
+    if route.transport in {"mistral-dispatch", "llm-dispatch"}:
         return recipe_hash
     return f"{recipe_hash}:{uuid.uuid4().hex}"
 
@@ -243,7 +243,7 @@ def select_route(
     retry_ats: list[datetime] = []
 
     for model, route in sorted(routes.items()):
-        if route.transport not in available_transports:
+        if not any(t in available_transports for t in route.transports):
             rejected.append((model, "transport gate"))
             continue
         if allowed is not None and model not in allowed:

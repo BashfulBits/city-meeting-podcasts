@@ -15,7 +15,7 @@ from tests._cas_fake import MemCAS
 
 NOW = datetime(2026, 7, 16, 12, tzinfo=UTC)
 DIRECT = frozenset({"direct"})
-BOTH_TRANSPORTS = frozenset({"direct", "mistral-dispatch"})
+BOTH_TRANSPORTS = frozenset({"direct", "mistral-dispatch", "llm-dispatch"})
 
 
 def _gemini_exhausted() -> LLMBudget:
@@ -129,7 +129,7 @@ def test_deepseek_off_peak_preference_and_deadline_override():
 
 def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
     result = select_route(
-        LLMRequestPolicy(allowed_models=("mistral/mistral-large-latest",), allow_paid=True),
+        LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=DIRECT,
@@ -137,13 +137,13 @@ def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
         now=NOW,
     )
     assert result.model is None
-    assert ("mistral/mistral-large-latest", "transport gate") in result.rejected
+    assert ("mistral/mistral-large-2512", "transport gate") in result.rejected
 
 
 def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
     """The Worker claims one Large request per Cron minute, below the upstream 0.07-RPS cap."""
-    route = ROUTES["mistral/mistral-large-latest"]
-    assert route.transport == "mistral-dispatch"
+    route = ROUTES["mistral/mistral-large-2512"]
+    assert route.transport in {"mistral-dispatch", "llm-dispatch"}
     assert route.quota.rpm == 1
 
 
@@ -390,14 +390,14 @@ def test_a_caller_reaching_both_transports_can_select_either():
     what lets a single backend instance service pending records regardless of which provider
     originally claimed them."""
     result = select_route(
-        LLMRequestPolicy(allowed_models=("mistral/mistral-large-latest",), allow_paid=True),
+        LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=BOTH_TRANSPORTS,
         estimated_tokens=1024,
         now=NOW,
     )
-    assert result.model == "mistral/mistral-large-latest"
+    assert result.model == "mistral/mistral-large-2512"
 
 
 def test_select_and_reserve_retries_after_one_cas_conflict():
@@ -500,7 +500,7 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
     updated ledger state, would now pick differently (e.g. a previously-exhausted free route
     recovering)."""
     gemini = ROUTES["gemini/gemini-3-flash-preview"]
-    mistral = ROUTES["mistral/mistral-large-latest"]
+    mistral = ROUTES["mistral/mistral-large-2512"]
     routes = {gemini.model: gemini, mistral.model: mistral}
     storage = MemCAS()
     # Seed an existing in-flight dispatch reservation for "recipe-1" (the deterministic dispatch

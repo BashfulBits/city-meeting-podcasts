@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+import requests
 from pydantic import BaseModel, ConfigDict, Field
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
@@ -277,7 +278,7 @@ def test_dispatch_mode_429_defers_and_blocks_the_route_reactively():
     storage = MemStorage()
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -287,14 +288,14 @@ def test_dispatch_mode_429_defers_and_blocks_the_route_reactively():
     result = backend.run_inference(
         job(
             content="meeting text",
-            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-latest",)),
+            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",)),
         )
     )
 
     assert isinstance(result, JobHandle)
     assert result.deferred_request is not None
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["mistral/mistral-large-latest"]
+    ledger = budget.routes["mistral/mistral-large-2512"]
     assert ledger.inflight == {}
     assert ledger.requests_minute == 0
     assert ledger.blocked_until != ""
@@ -365,7 +366,7 @@ def test_reconcile_settles_actual_requests_after_a_202_dispatch():
     storage = MemStorage()
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -376,7 +377,7 @@ def test_reconcile_settles_actual_requests_after_a_202_dispatch():
         job(
             content="meeting text",
             structured_output="test-output",
-            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-latest",)),
+            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",)),
         )
     )
     assert isinstance(handle, JobHandle)
@@ -386,7 +387,7 @@ def test_reconcile_settles_actual_requests_after_a_202_dispatch():
 
     assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["mistral/mistral-large-latest"]
+    ledger = budget.routes["mistral/mistral-large-2512"]
     assert ledger.inflight == {}
     assert ledger.requests_minute == 1
 
@@ -492,7 +493,7 @@ def test_policy_bearing_call_requires_non_empty_recipe_hash():
     storage = MemStorage()
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -514,7 +515,7 @@ def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
     those captured rates, not whatever ROUTES says at poll time (Mistral is $0 in ROUTES today,
     so if reconcile() used live config instead of the handle, cost_used would stay zero here)."""
     storage = MemStorage()
-    route = ROUTES["mistral/mistral-large-latest"]
+    route = ROUTES["mistral/mistral-large-2512"]
     now = datetime.now(UTC)
     mutate_llm_budget(
         storage,
@@ -544,7 +545,7 @@ def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -887,7 +888,7 @@ def test_dispatch_enqueues_pydantic_schema_and_validates_completed_response():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
             dispatch_auth_token="secret",
@@ -931,7 +932,7 @@ def test_dispatch_consumes_completed_idempotent_resubmit():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -961,7 +962,7 @@ def test_dispatch_rejects_invalid_structured_result():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -991,7 +992,7 @@ def test_dispatch_unknown_response_contract_remains_a_version_skew_error():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -1027,7 +1028,7 @@ def test_dispatch_rejects_malformed_body_and_cross_host_location():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -1045,7 +1046,7 @@ def test_dispatch_rejects_malformed_body_and_cross_host_location():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -1061,3 +1062,95 @@ def test_rejects_gpu_and_unknown_routes():
     backend = LiteLLMBackend(LLMBackendConfig(), completion=lambda **_: {})
     with pytest.raises(ValueError):
         backend.run_inference(InferenceJob(task="transcribe", inputs={}))
+
+
+def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
+    post_json = None
+
+    class CaptureSession(requests.Session):
+        def post(self, url, json=None, headers=None, timeout=None):
+            nonlocal post_json
+            post_json = json
+            res = requests.Response()
+            res.status_code = 200
+            res._content = b'{"id":"resp-1","choices":[{"message":{"content":"ok"}}]}'
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=CaptureSession(),
+        storage=storage,
+    )
+
+    deadline = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    pol = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3-flash-preview",),
+        allow_paid=True,
+        allow_batch=True,
+        submit_next=True,
+        deadline_at=deadline,
+    )
+
+    res = backend.run_inference(
+        InferenceJob(
+            task="summarize",
+            recipe_hash="test-recipe-1",
+            inputs={"content": "hello test content", "llm_policy": pol},
+        )
+    )
+
+    assert isinstance(res, JobResult)
+    assert post_json is not None
+    assert post_json["allow_paid"] is True
+    assert post_json["allow_batch"] is True
+    assert post_json["submit_next"] is True
+    assert post_json["deadline_at"] == "2026-08-07T12:00:00+00:00"
+    assert "estimated_tokens" in post_json
+    assert post_json["estimated_tokens"] > 0
+
+
+def test_require_direct_policy_bypasses_dispatch():
+    posted = False
+
+    class NoPostSession(requests.Session):
+        def post(self, *_args, **_kwargs):
+            nonlocal posted
+            posted = True
+            res = requests.Response()
+            res.status_code = 200
+            res._content = b"{}"
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        completion=lambda **_: {"choices": [{"message": {"content": "direct response"}}]},
+        http_session=NoPostSession(),
+        storage=storage,
+    )
+
+    pol = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3-flash-preview",),
+        require_direct=True,
+    )
+
+    res = backend.run_inference(
+        InferenceJob(
+            task="summarize",
+            recipe_hash="test-recipe-direct",
+            inputs={"content": "hello direct test", "llm_policy": pol},
+        )
+    )
+
+    assert isinstance(res, JobResult)
+    assert res.output["choices"][0]["message"]["content"] == "direct response"
+    assert not posted

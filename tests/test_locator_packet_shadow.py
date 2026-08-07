@@ -13,7 +13,7 @@ def test_duplicate_unit_repair_keeps_contract_and_adds_one_instruction():
             {"role": "system", "content": "Locate starts."},
             {"role": "user", "content": "{}"},
         ),
-        model="mistral/mistral-large-latest",
+        model="mistral/mistral-large-2512",
         input_tokens=10,
     )
 
@@ -32,7 +32,7 @@ def test_duplicate_unit_repair_names_conflicting_ids():
     assert _duplicate_unit_ids(content) == ("u00001",)
     request = LocatorRequest(
         messages=({"role": "user", "content": "{}"},),
-        model="mistral/mistral-large-latest",
+        model="mistral/mistral-large-2512",
         input_tokens=10,
     )
     repaired = _duplicate_unit_repair_request(

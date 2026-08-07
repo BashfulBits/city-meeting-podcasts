@@ -69,6 +69,10 @@ class FakeBucket {
       cursor: next < all.length ? String(next) : undefined,
     };
   }
+
+  async delete(key) {
+    this.objects.delete(key);
+  }
 }
 
 const ENV = {

@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Multi-Provider Cloudflare Worker Dispatch Proxy & Unified Rate Limits Registry.**
+  Extended the Cloudflare Worker dispatch proxy and Python compute layer to support all LLM sources (Gemini, Mistral, DeepSeek, OpenRouter) with unified rate-limit enforcement and multi-account API key rotation (e.g. primary & secondary Gemini keys):
+  - Created `config/provider_limits.yml` replacing `config/mistral_model_limits.yml`.
+  - Built `scripts/compile_llm_limits.py` with static validation and best-effort OpenRouter API model auto-discovery (`GET https://openrouter.ai/api/v1/models`) emitting $O(1)$ pre-indexed `workers/llm-dispatch-proxy/src/dispatch_limits.json`.
+  - Upgraded `workers/llm-dispatch-proxy/src/index.js` with sub-10ms CPU execution, single-cron lease locking (`locks/cron.json`), key rotation, and `GET /v1/queue/estimate`.
+  - Extended `LLMRequestPolicy` with `allow_paid`, `allow_batch`, `submit_next`, `deadline_at`, and `require_direct` (allowing developer CLI/scratch scripts in `scripts/` to bypass dispatch queue).
+  - Refactored `mistral/mistral-large-latest` alias to canonical `mistral/mistral-large-2512`.
+
 ### Fixed
 
 - **Manually triggered tag calibration ingest silently skipped all open issues.**

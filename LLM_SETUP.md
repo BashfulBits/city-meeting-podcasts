@@ -7,7 +7,7 @@ LiteLLM routes:
 | --- | --- |
 | `gemini/gemini-3-flash-preview` | `GEMINI_API_KEY` |
 | `deepseek/deepseek-v4-flash` / `deepseek/deepseek-v4-pro` | `DEEPSEEK_API_KEY` |
-| `mistral/mistral-large-latest` | `MISTRAL_API_KEY` |
+| `mistral/mistral-large-2512` | `MISTRAL_API_KEY` |
 
 Install the optional dependency with `pip install -e ".[llm]"`. Select a direct route with
 `LLM_MODEL=gemini/gemini-3-flash-preview` and `LLM_MODE=direct`. LiteLLM reads the provider key from the
