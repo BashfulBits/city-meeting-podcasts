@@ -118,15 +118,31 @@ function config(env) {
     ),
     retryBaseSeconds: positiveNumber(env.RETRY_BASE_SECONDS, DEFAULT_RETRY_BASE_SECONDS),
     retryMaxSeconds: positiveNumber(env.RETRY_MAX_SECONDS, DEFAULT_RETRY_MAX_SECONDS),
-    leaseDurationSeconds: positiveNumber(
-      env.LEASE_DURATION_SECONDS,
-      DEFAULT_LEASE_DURATION_SECONDS,
-    ),
-    upstreamTimeoutSeconds: positiveNumber(
-      env.UPSTREAM_TIMEOUT_SECONDS,
-      DEFAULT_UPSTREAM_TIMEOUT_SECONDS,
-    ),
+    ...leaseAndTimeoutConfig(env),
   };
+}
+
+/** `upstreamTimeoutSeconds` must stay below `leaseDurationSeconds`, or a normal-speed call that
+ * simply runs long can have its lease stolen mid-flight by the next tick and get dispatched a
+ * second time for the same still-pending record. Both are independently overridable via env, so
+ * this was previously only a comment -- CodeRabbit correctly flagged that as unenforced (review/41):
+ * one env tweak could silently reinstate the exact double-dispatch failure mode it warns about. */
+function leaseAndTimeoutConfig(env) {
+  const leaseDurationSeconds = positiveNumber(
+    env.LEASE_DURATION_SECONDS,
+    DEFAULT_LEASE_DURATION_SECONDS,
+  );
+  const upstreamTimeoutSeconds = positiveNumber(
+    env.UPSTREAM_TIMEOUT_SECONDS,
+    DEFAULT_UPSTREAM_TIMEOUT_SECONDS,
+  );
+  if (upstreamTimeoutSeconds >= leaseDurationSeconds) {
+    throw new Error(
+      `UPSTREAM_TIMEOUT_SECONDS (${upstreamTimeoutSeconds}) must be less than ` +
+        `LEASE_DURATION_SECONDS (${leaseDurationSeconds})`,
+    );
+  }
+  return { leaseDurationSeconds, upstreamTimeoutSeconds };
 }
 
 async function hasValidBearer(request, env) {
@@ -246,15 +262,22 @@ function normalizeChatRequest(body, cfg) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new HttpError(400, "request body must be a JSON object");
   }
-  const requestedModel = String(body.model || cfg?.model || "").trim();
-  if (!requestedModel) {
+  const rawModel = String(body.model || cfg?.model || "").trim();
+  if (!rawModel) {
     throw new HttpError(400, "model is required");
   }
   if (body.stream === true) {
     throw new HttpError(400, "streaming is not supported");
   }
 
-  if (cfg && requestedModel !== cfg.model && requestedModel !== cfg.upstreamModel) {
+  // A request naming the Worker's own bare `UPSTREAM_MODEL` string (e.g. "mistral-large-2512",
+  // not the canonical "mistral/mistral-large-2512") is accepted as a convenience alias for the
+  // Worker's default route -- but it must be *canonicalized* to that route's model here, not
+  // stored as-is: the bare string has no entry in `model_routes_map`, so a record persisted under
+  // it would always resolve to "no_configured_route" at dispatch time and fail permanently no
+  // matter how many times it's retried (CodeRabbit, review/41).
+  const requestedModel = cfg && rawModel === cfg.upstreamModel ? cfg.model : rawModel;
+  if (cfg && requestedModel !== cfg.model) {
     const allowedModels = DISPATCH_LIMITS.model_routes_map || {};
     if (!allowedModels[requestedModel]) {
       throw new HttpError(400, `request model must match ${cfg.model}`);
@@ -664,7 +687,15 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
     throw new Error(`no provider config compiled for provider ${route.provider}`);
   }
   const accounts = providerCfg.accounts || [];
-  const account = accounts.find((candidate) => candidate.id === route.account_id) || accounts[0];
+  // Fail closed on a malformed route: `accounts[0]` is only a fallback for a route that
+  // intentionally omits `account_id` altogether. A route that *names* an account_id must match it
+  // exactly -- falling back to the first configured account otherwise would reserve capacity
+  // against the intended (e.g. secondary) route's ledger entry while silently sending the
+  // *primary* account's key, a real account-confusion bug for a hand-authored YAML typo
+  // (CodeRabbit, review/41).
+  const account = route.account_id
+    ? accounts.find((candidate) => candidate.id === route.account_id)
+    : accounts[0];
   if (!account?.api_key_env) {
     throw new Error(`no account configured for provider ${route.provider} route ${route.route_id}`);
   }
@@ -831,8 +862,8 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
     claimed.record.attempts = (claimed.record.attempts || 0) + 1;
     claimed.record.processing_started_at = now.toISOString();
 
-    const budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
-    const budget = (budgetLoaded && budgetLoaded.value) || { routes: {} };
+    let budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
+    let budget = (budgetLoaded && budgetLoaded.value) || { routes: {} };
     const selection = selectRoute(budget, claimed.record.model, claimed.record.policy, now);
 
     if (!selection.chosenRoute) {
@@ -847,25 +878,13 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
       return { status: "failed", requestId: claimed.record.id, reason: selection.reason };
     }
 
-    const { chosenRoute, entry } = selection;
-    reserveRouteCapacity(entry, chosenRoute, {
-      requests: 1,
-      tokens: claimed.record.policy?.estimated_tokens || 1024,
-    });
-    const ledgerSaved = await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
-      onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
-    });
-    if (!ledgerSaved) {
-      // The cron lease makes this invocation the sole writer, so a conflict here means something
-      // outside the normal flow touched the ledger between our read and write. Log and dispatch
-      // anyway rather than failing the request over a soft-accounting write race -- the provider's
-      // own rate limit response remains the real backstop (matches the "advisory ledger" framing
-      // used throughout `llm_budget.py`/`llm_scheduler.py`).
-      console.error(
-        JSON.stringify({ event: "llm_dispatch_ledger_conflict", route_id: chosenRoute.route_id }),
-      );
-    }
+    const { chosenRoute } = selection;
 
+    // Resolve credentials *before* touching the ledger: a missing secret or malformed provider
+    // config must never spend a route's RPM/RPD/TPM window, or a persistent config error would
+    // consume real capacity every tick until the window resets, potentially starving a healthy
+    // account (CodeRabbit, review/41). Nothing here has side effects yet, so simply failing the
+    // record and returning is enough -- there is no reservation to release.
     let creds;
     try {
       creds = resolveProviderCredentials(env, chosenRoute);
@@ -875,6 +894,41 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
         JSON.stringify({ event: "llm_dispatch_credentials_error", error: error?.message }),
       );
       return { status: "failed", requestId: claimed.record.id };
+    }
+
+    // Reserve the chosen route's capacity durably before dispatching. The cron lease makes this
+    // invocation the ledger's sole writer under normal operation, so a conflict here means a
+    // sibling write raced us anyway (should not happen, but must not be trusted blindly) -- retry
+    // a bounded number of times against a freshly reloaded ledger rather than dispatching without
+    // ever durably recording the reservation, which would let a later tick spend the same capacity
+    // again (CodeRabbit, review/41: "do not dispatch after a failed ledger CAS write").
+    let ledgerSaved = false;
+    for (let attempt = 0; attempt < 3 && !ledgerSaved; attempt += 1) {
+      if (attempt > 0) {
+        budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
+        budget = (budgetLoaded && budgetLoaded.value) || { routes: {} };
+      }
+      const entry = ledgerEntry(budget, chosenRoute.route_id);
+      rollLedgerWindows(entry, chosenRoute, now);
+      reserveRouteCapacity(entry, chosenRoute, {
+        requests: 1,
+        tokens: claimed.record.policy?.estimated_tokens || 1024,
+      });
+      ledgerSaved = Boolean(
+        await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
+          onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
+        }),
+      );
+    }
+    if (!ledgerSaved) {
+      // Exhausted retries -- leave the record claimable again rather than dispatch with no
+      // durable reservation. `attempts` is decremented by `requeue` (mirrors `no_capacity`), since
+      // nothing was actually sent to a provider.
+      console.error(
+        JSON.stringify({ event: "llm_dispatch_ledger_conflict", route_id: chosenRoute.route_id }),
+      );
+      await requeue(bucket, claimed, now);
+      return { status: "no_capacity", requestId: claimed.record.id };
     }
 
     const upstreamPayload = {

@@ -70,9 +70,21 @@ called synchronously from inside the calling Stage's normal run.
 `LLMBackendConfig.mode` (`"direct"` or `"dispatch"`) only governs the legacy static-model path
 (`_run_without_policy`, unchanged from before R13). A policy-bearing call instead asks
 `LiteLLMBackend._available_transports()`, computed independently of `mode`: `direct` is always
-reachable (it needs nothing beyond a provider API key, already in env); `mistral-dispatch` is
-reachable whenever `dispatch_url` is configured, regardless of `mode`. The scheduler then selects
-freely among every route whose transport is in that set.
+reachable (it needs nothing beyond a provider API key, already in env); `mistral-dispatch`/
+`llm-dispatch` are reachable whenever `dispatch_url` is configured, regardless of `mode`. Gate 0
+(admission) keeps every route with *any* transport in that reachable set as a candidate.
+
+**2026-08-06 correction (review/41):** gate 0's *admission* is still "freely among every route whose
+transport is reachable" as originally written, but that is not the same as *which* transport a
+selected dual-transport route actually dispatches over — a distinction this section originally
+elided and a real bug shipped from eliding it (a dual-transport route defaulted to the Worker
+whenever `dispatch_url` was merely configured, not because it was the caller's actual choice). Once
+admitted, a route offering both `direct` and a dispatch transport (today only Gemini) resolves to
+`direct` by default; the dispatch transport is used only when the caller explicitly sets
+`LLMRequestPolicy.allow_dispatch_overflow=True` (`_selected_transport`, `citypods/compute/
+llm_scheduler.py`). A route with no `direct` alternative (Mistral) is unaffected — it always
+resolves to its one dispatch transport regardless of this flag. See review/41 §3.3 and §2 (the
+city-discovery incident this fixed) for the full account.
 
 This matters concretely for the deferred-request sweep (§10.7): it services a mixed bag of pending
 records from whatever callers originally submitted them, regardless of which transport backs each

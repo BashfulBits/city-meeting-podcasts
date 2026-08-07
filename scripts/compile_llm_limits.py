@@ -41,6 +41,12 @@ def fetch_openrouter_models(provider_cfg: dict[str, Any]) -> list[dict[str, Any]
     endpoint = (provider_cfg.get("discovery") or {}).get("endpoint")
     if not endpoint:
         raise ValueError("openrouter has no discovery.endpoint configured")
+    # `endpoint` comes from committed YAML, not user input, so this isn't the SSRF gate
+    # (`validate_source_url`) applies to -- but `urlopen` honors `file://`/`http://` just as
+    # readily as `https://`, so a one-line scheme check closes that class of surprise for free
+    # (CodeRabbit, review/41).
+    if not str(endpoint).startswith("https://"):
+        raise ValueError(f"openrouter discovery.endpoint must be https://, got {endpoint!r}")
     req = Request(endpoint, headers={"User-Agent": "citypods-limits-compiler/1.0"})
     try:
         with urlopen(req, timeout=5) as resp:  # noqa: S310 -- fixed maintainer-configured endpoint
@@ -153,6 +159,13 @@ def _validated_routes(routes: list[Any]) -> tuple[dict[str, dict[str, Any]], dic
             c_model = route["model"]
         except (KeyError, TypeError) as exc:
             raise ValueError(f"route #{index} is missing 'route_id' or 'model': {route!r}") from exc
+        if r_id in routes_by_id:
+            # Same class of bug already fixed for discovery (`_openrouter_routes`'s
+            # `existing_route_ids` dedup): two hand-authored routes sharing a route_id would
+            # otherwise silently collapse in `routes_by_id` while both stay in `routes` and
+            # `model_routes_map`, overcounting `_metadata.routes_count` and making one route
+            # unreachable (CodeRabbit, review/41).
+            raise ValueError(f"route #{index} redeclares route_id {r_id!r}")
         routes_by_id[r_id] = route
         model_routes_map.setdefault(c_model, []).append(r_id)
     return routes_by_id, model_routes_map

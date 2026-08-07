@@ -47,6 +47,22 @@ def test_validated_routes_reports_the_offending_index_not_a_bare_keyerror():
         compile_llm_limits._validated_routes(routes)
 
 
+def test_validated_routes_rejects_a_duplicate_hand_authored_route_id():
+    routes = [
+        {"route_id": "dup", "model": "gemini/gemini-3-flash-preview"},
+        {"route_id": "dup", "model": "mistral/mistral-large-2512"},
+    ]
+    with pytest.raises(ValueError, match=r"route #1 redeclares route_id 'dup'"):
+        compile_llm_limits._validated_routes(routes)
+
+
+def test_fetch_openrouter_models_rejects_a_non_https_discovery_endpoint():
+    with pytest.raises(ValueError, match="https://"):
+        compile_llm_limits.fetch_openrouter_models(
+            {"discovery": {"endpoint": "http://openrouter.ai/api/v1/models"}}
+        )
+
+
 def test_run_discovery_rejects_a_provider_with_no_discovery_endpoint():
     raw = {"providers": {"mistral": {"api_base": "https://api.mistral.ai"}}, "routes": []}
     with pytest.raises(ValueError, match="mistral"):

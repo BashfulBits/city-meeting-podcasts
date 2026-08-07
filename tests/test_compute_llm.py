@@ -1105,7 +1105,12 @@ def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
         storage=storage,
     )
 
-    deadline = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    # Relative to "now", not a fixed calendar timestamp: a hardcoded absolute deadline that was
+    # comfortably in the future when this test was written silently becomes a past deadline (and
+    # a spurious "deadline gate" rejection -> JobHandle instead of JobResult) once real time
+    # passes it -- exactly what broke this test in CI after this file's own authoring date caught
+    # up to a hardcoded "2026-08-07T12:00:00Z" (review/41).
+    deadline = datetime.now(UTC) + timedelta(hours=1)
     pol = LLMRequestPolicy(
         allowed_models=("gemini/gemini-3-flash-preview",),
         allow_paid=True,
@@ -1131,7 +1136,7 @@ def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
     assert post_json["allow_paid"] is True
     assert post_json["allow_batch"] is True
     assert post_json["submit_next"] is True
-    assert post_json["deadline_at"] == "2026-08-07T12:00:00+00:00"
+    assert post_json["deadline_at"] == deadline.isoformat()
     assert "estimated_tokens" in post_json
     assert post_json["estimated_tokens"] > 0
 

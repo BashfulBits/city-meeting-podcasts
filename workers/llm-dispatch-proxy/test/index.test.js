@@ -251,11 +251,18 @@ test("a non-Mistral route resolves its own provider's URL and API key, not Mistr
   assert.equal(calls[0].body.model, "gemini-3-flash-preview");
 });
 
-test("per-route ledger exhaustion rotates onto a second account instead of blocking the model", async () => {
+test("per-route ledger exhaustion rotates onto a second account instead of blocking the model", async (t) => {
   // Mistral has one account (rpm=1) -- a second immediate request stays pending, never rotates
   // (there's nothing to rotate onto). Gemini has two accounts (project_primary/project_secondary);
   // once primary's rpm=10 window is spent, a further Gemini request must resolve to the secondary
   // account's own key -- this is what "multi-account key rotation" actually requires (review/41).
+  //
+  // The clock is frozen for the whole test (CodeRabbit, review/41): `enqueue()` stamps its own
+  // `new Date()` independently of what the test passes to `dispatchOne`, so an unmocked clock
+  // could straddle a real minute boundary across eleven awaited round-trips, reset
+  // `requests_minute`, and make this flake on primary capacity that was never actually exhausted.
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-06T12:00:00.000Z") });
+
   const env = isolatedEnv();
   const calls = [];
   const upstream = async (url, init) => {
@@ -268,9 +275,6 @@ test("per-route ledger exhaustion rotates onto a second account instead of block
       chatRequest(undefined, `gemini-burst-${i}`, "gemini/gemini-3-flash-preview"),
       env,
     );
-    // Fresh `new Date()` each call, same as the enqueue side -- a shared, stale timestamp can
-    // drift behind real wall-clock time across ten awaited round-trips and make a freshly
-    // enqueued record's `available_at` look like it's still in the future.
     const result = await dispatchOne(env, upstream, new Date());
     assert.equal(result.status, "completed");
   }
@@ -731,4 +735,90 @@ test("resolveProviderCredentials rejects an http:// api_base and a route with no
 test("config() fails fast on a missing required var instead of defaulting to Mistral", () => {
   const { PROVIDER_NAME, ...withoutProvider } = isolatedEnv();
   assert.throws(() => config(withoutProvider), /PROVIDER_NAME is required/);
+});
+
+test("config() rejects an upstream timeout that is not comfortably under the lease duration", () => {
+  const env = { ...isolatedEnv(), UPSTREAM_TIMEOUT_SECONDS: "90", LEASE_DURATION_SECONDS: "90" };
+  assert.throws(() => config(env), /must be less than/);
+});
+
+test("resolveProviderCredentials fails closed on a route naming an unknown account_id", () => {
+  // CodeRabbit, review/41: falling back to accounts[0] for a *named-but-unmatched* account_id
+  // would reserve the intended (e.g. secondary) route's ledger entry while silently sending the
+  // primary account's key -- a real credential-confusion bug for a hand-authored YAML typo.
+  const dispatchLimits = {
+    providers: {
+      gemini: {
+        api_base: "https://generativelanguage.googleapis.com/v1beta/openai",
+        chat_path: "/chat/completions",
+        accounts: [{ id: "project_primary", api_key_env: "GEMINI_API_KEY" }],
+      },
+    },
+  };
+  assert.throws(
+    () =>
+      resolveProviderCredentials(
+        { GEMINI_API_KEY: "primary-secret" },
+        { provider: "gemini", account_id: "project_typo" },
+        dispatchLimits,
+      ),
+    /no account configured/,
+  );
+});
+
+test("a bare UPSTREAM_MODEL request is canonicalized before it can ever reach dispatch", async () => {
+  // CodeRabbit, review/41: the bare upstream string (e.g. "mistral-large-2512") was accepted at
+  // enqueue time but has no entry in model_routes_map, so a record stored under it would always
+  // fail permanently at dispatch with no way to retry into success.
+  const env = isolatedEnv();
+  const bareModelRequest = request("https://dispatch.example/v1/chat/completions", {
+    method: "POST",
+    headers: { "idempotency-key": "bare-model" },
+    body: JSON.stringify({
+      model: "mistral-large-2512",
+      messages: [{ role: "user", content: "hi" }],
+    }),
+  });
+  const queued = await handleRequest(bareModelRequest, env);
+  assert.equal(queued.status, 202);
+  const body = await queued.json();
+  const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
+  const record = await stored.json();
+  assert.equal(record.model, "mistral/mistral-large-2512");
+
+  const result = await dispatchOne(env, okUpstream(), new Date());
+  assert.equal(result.status, "completed");
+});
+
+test("credential-resolution failure never touches the ledger, and a persistent ledger-write failure requeues instead of dispatching unreserved", async () => {
+  const env = isolatedEnv();
+  await handleRequest(chatRequest(undefined, "cred-then-ledger-failure"), env);
+
+  // First: a missing secret must fail the record without ever writing to the ledger.
+  const { MISTRAL_API_KEY, ...withoutMistralKey } = env;
+  const credFailure = await dispatchOne(withoutMistralKey, okUpstream(), new Date());
+  assert.equal(credFailure.status, "failed");
+  assert.equal(await env.LLM_QUEUE.get("state/dispatch_budget.json"), null);
+
+  // A fresh record + a bucket whose ledger writes always lose the CAS race: proves a
+  // never-successful reservation requeues the record instead of dispatching with no durable
+  // reservation (CodeRabbit, review/41: "do not dispatch after a failed ledger CAS write").
+  class WriteBlockedBucket extends FakeBucket {
+    async put(key, value, options = {}) {
+      if (key === "state/dispatch_budget.json") {
+        return null; // simulate every conditional write losing the CAS race
+      }
+      return super.put(key, value, options);
+    }
+  }
+  const blockedEnv = { ...env, LLM_QUEUE: new WriteBlockedBucket() };
+  await handleRequest(chatRequest(undefined, "ledger-write-always-fails"), blockedEnv);
+  const posted = { count: 0 };
+  const countingUpstream = async () => {
+    posted.count += 1;
+    return new Response(JSON.stringify({ id: "should-not-happen", choices: [] }), { status: 200 });
+  };
+  const result = await dispatchOne(blockedEnv, countingUpstream, new Date());
+  assert.equal(result.status, "no_capacity");
+  assert.equal(posted.count, 0);
 });

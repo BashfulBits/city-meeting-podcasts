@@ -92,7 +92,13 @@ for this route — review/27 §3's "may point at a provider's own OpenAI-compati
 applied. `resolveProviderCredentials(env, route)` resolves `api_key_env`/`api_base`/`chat_path` purely
 from the *chosen route's* provider config; there is no fallback to any other provider's shape, and a
 missing secret/URL is a hard, loud failure (`saveFailure(..., "credential_resolution_failed")`), never
-a silent default.
+a silent default. Account resolution also **fails closed** on a route naming an unknown `account_id`:
+a route that declares one must match it exactly, never silently fall back to the provider's first
+configured account — a hand-authored YAML typo on a secondary route must not send that account's
+requests under a *different* (e.g. primary) account's key while still charging the secondary route's
+ledger entry. The `accounts[0]` fallback applies only to a route that omits `account_id` altogether.
+Credentials are resolved **before** any ledger reservation is made — a missing secret or malformed
+provider config must never spend a route's RPM/RPD/TPM window, since nothing was actually attempted.
 
 ### §3.2 A real per-route/per-account R2 ledger supersedes the global pacing gate
 
@@ -126,6 +132,12 @@ by unit tests against synthetic route fixtures today, not live traffic — forwa
 (`selectRoute`'s Worker-side ranking and per-route/account rotation are exercised by real traffic; only
 the free/paid-elevation *branch specifically* awaits a mixed-tier model).
 
+The reservation write itself is retried (a bounded 3 attempts, reloading the ledger fresh each time)
+before giving up — the cron lease makes this invocation the ledger's sole writer under normal
+operation, so a conflict should not happen, but **the record is never dispatched without a durable
+reservation**: exhausting the retries requeues it (`no_capacity`) rather than proceeding unreserved,
+which would let a later tick spend the same capacity again.
+
 ### §3.3 Direct-first: a dual-transport route only dispatches on explicit opt-in
 
 `LLMRequestPolicy.allow_dispatch_overflow: bool = False` (new). A route that offers only dispatch
@@ -143,6 +155,24 @@ workflow never needed dispatch reachability, and its presence was what let §2 i
 `allow_dispatch_overflow` is the sanctioned lever for a *future* caller that wants Gemini's secondary-
 account capacity once the primary direct route's own ledger is exhausted — nothing production sets it
 yet.
+
+**Correction (same pass, caught by a second CodeRabbit review of this fix):** the first version of
+this fix computed `is_dispatch` directly in `llm.py`, re-deriving a transport preference from
+`route.transports`/`policy.allow_dispatch_overflow`/`self.config.dispatch_url` independently of what
+`llm_scheduler.py::_owner_for` used for the ledger-owner decision — the same two-places-deciding-
+the-same-thing shape that caused the original double-reservation bug (§2 item 2). Concretely: a
+version of `_owner_for` keyed on `route.transports` (the route's *capability*, e.g. Gemini always has
+`"llm-dispatch"` in it) rather than the transport *actually selected for this call* still reserved
+every dual-transport route as if it always dispatched — including a call that correctly went
+`direct`. That deduped two genuinely concurrent direct Gemini calls sharing a `recipe_hash` into one
+ledger reservation, undercounting real API calls — the mirror-image of the original bug.
+
+The fix: `select_route` (`llm_scheduler.py`) now resolves the transport **once**, as
+`SelectionResult.transport`, using the same rule (`_selected_transport`: `direct` wins unless a
+dispatch alternative exists *and* `allow_dispatch_overflow=True`, or there's no `direct` alternative
+at all). Both `_owner_for` and `llm.py`'s dispatch-vs-direct branch (`is_dispatch = selection.transport
+in {"mistral-dispatch", "llm-dispatch"}`) read that same resolved value — they cannot disagree because
+there is only one place the decision is made.
 
 ### §3.4 Discovery is opt-in and generalized, never live in deploy
 
@@ -180,6 +210,24 @@ plugs in the same way, gated identically.
   string become unreachable after deploy — both are already documented as loss-tolerant
   (review/33 §10.4/§10.6: re-initializes to zero, worst case is one over-count window before the
   provider's own throttling corrects it, never a lost artifact).
+- **`GET /v1/queue/estimate` and the cron claim scan still page through every object under
+  `requests/`, forever.** `customMetadata` (§3.2's sibling optimization) removes the per-object body
+  fetch for a terminal record and the cursor loop removes the old 1000-object truncation, but neither
+  prunes anything — a bucket holding months of `completed`/`failed` records still costs one full
+  authenticated listing scan per estimate call and per cron tick, on a Worker with a CPU budget, to
+  find a backlog that in practice is a handful of items. A real fix (CodeRabbit, review/41) is either
+  a bounded per-tick retention step under the existing cron lease, or a small R2 counter object
+  `enqueue`/the terminal writes adjust directly instead of re-deriving the count by listing. Not built
+  in this pass — flagged here rather than silently left undocumented.
+- **The two ingest workflows (`asr-quality-ingest.yml`, `llm-tag-review-ingest.yml`) are not
+  replay-safe.** Both persist a decision (`citypods transcript-quality ingest-review` /
+  `citypods llm-evaluation ingest`) and then comment on and close the source issue as two separate,
+  non-atomic steps; a GitHub API failure between the two leaves a persisted decision with no comment/
+  close, and a subsequent retry of the same issue re-runs the persist step. This predates the
+  multi-provider work (the persist-then-comment-then-close shape is unchanged by this pass) and is a
+  real, if unlikely, "heavy lift" fix (CodeRabbit) — deduplicating the persisted decision and detecting
+  an already-completed confirmation action needs its own design, not a quick patch bundled into this
+  redesign's scope.
 
 ## §5. Tests
 

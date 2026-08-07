@@ -911,28 +911,26 @@ class LiteLLMBackend(Backend):
             )
             return self._deferred_handle(job, structured, messages, policy)
 
+        # `selection.transport` is the single source of truth for which transport *this call*
+        # actually uses -- resolved once, in `select_route` (`llm_scheduler.py`), from the same
+        # inputs (`route.transports`, `available_transports`, `policy.allow_dispatch_overflow`)
+        # this branch used to re-derive independently. That duplication was itself a bug
+        # (CodeRabbit, review/41): `_owner_for` and this branch could disagree about which
+        # transport a given call used, since one read `route.transports` (the route's
+        # *capability*) while the other combined it with policy/config afresh -- a direct call
+        # under `allow_dispatch_overflow=False` still keyed its ledger reservation as if it always
+        # dispatched, silently deduping two genuinely concurrent direct calls sharing a
+        # `recipe_hash` into one reservation. Reading the same resolved value here, rather than
+        # recomputing it, makes the two impossible to disagree.
+        #
         # A route that offers *only* dispatch transports (Mistral -- no direct route exists at
         # all) always dispatches: there is no alternative. A route that also offers `direct`
         # (today only Gemini) dispatches only when the caller explicitly opted in via
-        # `allow_dispatch_overflow` -- direct is otherwise always preferred. This is deliberate,
-        # not an oversight: a prior version of this condition used `any(...)` unconditionally,
-        # so *any* caller whose backend had `dispatch_url` configured at all silently routed
-        # Gemini calls through the Worker instead of calling Gemini directly -- throttling
-        # Gemini's real 10 RPM down to the Worker's shared per-route pacing, and turning a
-        # same-run synchronous completion into an always-async 202 for callers (city discovery,
-        # `citypods/discovery/classify.py`) that depend on finishing within the current run. See
-        # review/41 for the incident and review/33 §7 for the original "Gemini needs no Worker"
-        # decision this restores by default.
-        has_dispatch_transport = any(
-            t in {"mistral-dispatch", "llm-dispatch"} for t in route.transports
-        )
-        direct_available = "direct" in route.transports
-        is_dispatch = (
-            bool(self.config.dispatch_url)
-            and not policy.require_direct
-            and has_dispatch_transport
-            and (not direct_available or policy.allow_dispatch_overflow)
-        )
+        # `allow_dispatch_overflow` -- direct is otherwise always preferred, restoring
+        # review/33 §7's "Gemini needs no Worker" decision as the default (see review/41 for the
+        # incident this fixes: any caller whose backend had `dispatch_url` configured at all used
+        # to silently route Gemini through the Worker instead of calling it directly).
+        is_dispatch = selection.transport in {"mistral-dispatch", "llm-dispatch"}
         try:
             if not is_dispatch:
                 if structured:

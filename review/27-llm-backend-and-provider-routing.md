@@ -474,8 +474,13 @@ single-`MODEL_ID`/single-Mistral shape described in this subsection was the Work
 implementation; review/41 replaces the fixed `UPSTREAM_*` Wrangler vars with a compiled
 `config/provider_limits.yml` registry (per-provider `api_base`/multiple accounts) and the "durable
 one-request-per-interval gate" mentioned below with a per-route/per-account R2 ledger, so a route's own
-`rpm`/`rpd`/`tpm` is what paces it, not one global interval sized for Mistral. The async queue
-boundary itself (`202`/poll, `stream: true` rejected, R2 conditional writes) is unchanged.
+`rpm`/`rpd`/`tpm` *ceiling* is enforced per route rather than one global interval sized for Mistral.
+**This is quota enforcement, not a throughput guarantee** — the ledger stops a route from ever being
+over-dispatched, but the Cron Trigger still claims and dispatches at most one request per tick
+regardless of any route's `rpm`, so real throughput for a route is `min(its own rpm, one/tick)` until a
+future pass loops dispatch within a tick (review/41 §4's explicitly accepted limitation). A 10-RPM
+route does not receive 10 Worker calls/minute today. The async queue boundary itself (`202`/poll,
+`stream: true` rejected, R2 conditional writes) is unchanged.
 
 The first Worker implementation keeps the queue boundary explicit: `POST /v1/chat/completions` returns
 `202` with a `Location` for `GET /v1/requests/{id}`, which returns the upstream OpenAI-shaped response
