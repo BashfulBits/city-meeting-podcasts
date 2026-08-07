@@ -128,28 +128,36 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           NUMBERS: ${{ needs.resolve.outputs.numbers }}
         run: |
+          failed=0
           for number in $(echo "$NUMBERS" | jq -r '.[]'); do
             (
               set -e
               echo "=================================================="
               echo "Processing issue #$number..."
               echo "=================================================="
-              
+
               gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json body,url,number,author > issue.json
               jq -r '.body' issue.json > issue-body.md
-              
+
               citypods llm-evaluation ingest \
                 --issue-number "$number" \
                 --issue-body-file issue-body.md \
                 --issue-url "$(jq -r '.url' issue.json)" \
                 --actor "$(jq -r '.author.login // empty' issue.json)" > ingest.json
-              
+
               comment=$(jq -r '.comment' ingest.json)
               gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
               gh issue close "$number" --repo "$GITHUB_REPOSITORY"
               echo "Successfully ingested issue #$number"
-            ) || echo "::error::Failed to process issue #$number"
+            ) || { echo "::error::Failed to process issue #$number"; failed=1; }
           done
+          # `::error::` only annotates -- continue through every resolved issue above (one bad
+          # issue must not block the rest), but the job itself must not report success when any
+          # issue failed, or a fully-broken ingest run (every issue failing) would look green.
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::One or more issues failed to ingest; see annotations above."
+            exit 1
+          fi
 
   finalize:
     # Run once after the serialized child ingests so a completed native batch is closed before

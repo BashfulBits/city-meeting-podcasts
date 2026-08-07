@@ -348,6 +348,15 @@ other gate rejection, completed later by a caller asking again or by the sweep (
 cron cadence is too coarse relative to Gemini's RPD reset window** — that's an empirical question to
 answer with ledger telemetry (§11.5), not a day-one design commitment.
 
+**2026-08-06 addendum:** [`review/41`](41-multi-provider-llm-dispatch.md) did later add Gemini as a
+Worker-reachable route (`transports=("direct","llm-dispatch")`) — not to replace this section's
+decision, but to reach a *second configured account*'s capacity (`GEMINI_API_KEY_SECONDARY`) that a
+single-account direct-only ledger entry can't see. That extension shipped once already, briefly, with
+a bug that made the Worker the *default* for any dispatch-capable backend rather than an explicit
+overflow — silently breaking city discovery's synchronous design, the concrete incident review/41
+records. The fix restores this section's decision as the actual default: a dual-transport route goes
+direct unless a caller explicitly opts in (`LLMRequestPolicy.allow_dispatch_overflow`).
+
 ### §7.1 Reactive rate-limiting (new, 2026-07-17)
 
 The whole design above is *proactive*: the ledger predicts availability from what R13 itself has

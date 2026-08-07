@@ -1,8 +1,8 @@
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 
 const REQUEST_PREFIX = "requests/";
-const DISPATCH_CONTROL_KEY = "control/dispatch.json";
 const CRON_LOCK_KEY = "locks/cron.json";
+const DISPATCH_BUDGET_KEY = "state/dispatch_budget.json";
 const DEFAULT_MAX_REQUEST_BYTES = 512 * 1024;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_QUEUE_SCAN = 1000;
@@ -10,7 +10,13 @@ const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_PROCESSING_TIMEOUT_SECONDS = 15 * 60;
 const DEFAULT_RETRY_BASE_SECONDS = 60;
 const DEFAULT_RETRY_MAX_SECONDS = 60 * 60;
-const DEFAULT_DISPATCH_INTERVAL_SECONDS = 60;
+// The cron lease bounds how long one invocation holds exclusive dispatch rights before a dead/
+// stuck invocation stops blocking new attempts. The upstream fetch timeout must stay comfortably
+// under this, or a normal-speed call that simply runs long can have its lease stolen mid-flight by
+// the next tick while it's still in-flight upstream -- the same claimed-but-still-pending record
+// then gets claimed and dispatched a second time (review/41 / CodeRabbit).
+const DEFAULT_LEASE_DURATION_SECONDS = 90;
+const DEFAULT_UPSTREAM_TIMEOUT_SECONDS = 60;
 
 const COPY_FIELDS = [
   "temperature",
@@ -78,33 +84,23 @@ function modelName(model) {
   return model.split("/").pop() || model;
 }
 
+// `PROVIDER_NAME`/`UPSTREAM_MODEL`/`MODEL_ID` describe the Worker's own advertised default route
+// (used by `GET /v1/models` and as the fallback when a request omits `model`). They are no longer
+// used to resolve *credentials* or an upstream URL for a real dispatch -- that is entirely
+// `DISPATCH_LIMITS.providers[route.provider]`'s job now (`resolveProviderCredentials` below), keyed
+// by the route the ranked-selection step in `dispatchOne` actually chose. Deliberately no
+// fallback default here: a missing var fails the deploy instead of silently resolving to whatever
+// provider happened to be configured last (the credential-disclosure bug this replaced -- a Gemini
+// request's key reaching `api.mistral.ai`, review/41).
 function config(env) {
-  const provider = requiredString(env.PROVIDER_NAME || "mistral", "PROVIDER_NAME");
-  const upstreamModel = requiredString(env.UPSTREAM_MODEL || "mistral-large-2512", "UPSTREAM_MODEL");
+  const provider = requiredString(env.PROVIDER_NAME, "PROVIDER_NAME");
+  const upstreamModel = requiredString(env.UPSTREAM_MODEL, "UPSTREAM_MODEL");
   const model = String(env.MODEL_ID || `${provider}/${modelName(upstreamModel)}`).trim();
-  const base = requiredString(env.UPSTREAM_BASE_URL || "https://api.mistral.ai", "UPSTREAM_BASE_URL").replace(/\/+$/, "");
-
-  let parsed;
-  try {
-    parsed = new URL(base);
-  } catch {
-    throw new Error("UPSTREAM_BASE_URL is not a valid URL");
-  }
-  if (parsed.protocol !== "https:") {
-    throw new Error("UPSTREAM_BASE_URL must use HTTPS");
-  }
-
-  const upstreamRequestModel = String(
-    env.UPSTREAM_REQUEST_MODEL || modelName(upstreamModel),
-  ).trim();
 
   return {
-    upstreamUrl: `${base}${String(env.UPSTREAM_CHAT_PATH || "/v1/chat/completions")}`,
-    upstreamApiKey: String(env.UPSTREAM_API_KEY || ""),
     provider,
     model,
     upstreamModel,
-    upstreamRequestModel,
     maxRequestBytes: positiveNumber(env.MAX_REQUEST_BYTES, DEFAULT_MAX_REQUEST_BYTES, {
       integer: true,
     }),
@@ -122,9 +118,13 @@ function config(env) {
     ),
     retryBaseSeconds: positiveNumber(env.RETRY_BASE_SECONDS, DEFAULT_RETRY_BASE_SECONDS),
     retryMaxSeconds: positiveNumber(env.RETRY_MAX_SECONDS, DEFAULT_RETRY_MAX_SECONDS),
-    dispatchIntervalSeconds: positiveNumber(
-      env.DISPATCH_INTERVAL_SECONDS,
-      DEFAULT_DISPATCH_INTERVAL_SECONDS,
+    leaseDurationSeconds: positiveNumber(
+      env.LEASE_DURATION_SECONDS,
+      DEFAULT_LEASE_DURATION_SECONDS,
+    ),
+    upstreamTimeoutSeconds: positiveNumber(
+      env.UPSTREAM_TIMEOUT_SECONDS,
+      DEFAULT_UPSTREAM_TIMEOUT_SECONDS,
     ),
   };
 }
@@ -215,9 +215,25 @@ async function getJson(bucket, key) {
   return { object, etag: object.etag, value: await object.json() };
 }
 
-async function putJson(bucket, key, value, { etagMatches, onlyIf } = {}) {
+/** `status`/`model`/`available_at` mirrored into R2 `customMetadata` for every request record --
+ * `bucket.list()` already returns `customMetadata` per object, so both the cron claim scan and
+ * `/v1/queue/estimate` can filter from the listing alone and reserve a real `getJson` body fetch
+ * for the one record they actually go on to process, instead of fetching every listed object's
+ * body just to inspect its status (CodeRabbit, review/41). */
+function requestMetadata(record) {
+  return {
+    status: String(record.status || ""),
+    model: String(record.model || ""),
+    available_at: String(record.available_at || ""),
+  };
+}
+
+async function putJson(bucket, key, value, { etagMatches, onlyIf, customMetadata } = {}) {
   const body = JSON.stringify(value);
   const options = {};
+  if (customMetadata) {
+    options.customMetadata = customMetadata;
+  }
   if (onlyIf) {
     options.onlyIf = onlyIf;
   } else if (etagMatches !== undefined) {
@@ -238,12 +254,10 @@ function normalizeChatRequest(body, cfg) {
     throw new HttpError(400, "streaming is not supported");
   }
 
-  if (cfg) {
-    if (requestedModel !== cfg.model && requestedModel !== cfg.upstreamModel) {
-      const allowedModels = DISPATCH_LIMITS.model_routes_map || {};
-      if (!allowedModels[requestedModel]) {
-        throw new HttpError(400, `request model must match ${cfg.model}`);
-      }
+  if (cfg && requestedModel !== cfg.model && requestedModel !== cfg.upstreamModel) {
+    const allowedModels = DISPATCH_LIMITS.model_routes_map || {};
+    if (!allowedModels[requestedModel]) {
+      throw new HttpError(400, `request model must match ${cfg.model}`);
     }
   }
 
@@ -252,9 +266,15 @@ function normalizeChatRequest(body, cfg) {
     throw new HttpError(400, "messages must be a non-empty array");
   }
 
-  const payloadModel = cfg ? cfg.upstreamRequestModel : modelName(requestedModel);
+  // Store the *canonical* requested model, never a provider-specific upstream string -- which
+  // physical route/account actually serves this request isn't decided until `dispatchOne` ranks
+  // candidates against live ledger state, so nothing at enqueue time can know it yet. `dispatchOne`
+  // substitutes the resolved route's own `upstream_model` when it builds the real upstream payload.
+  // Storing an upstream-shaped value here was the CodeRabbit-flagged bug: it happened to be
+  // harmless only because `dispatchOne` already overwrote it before this fix, and would have
+  // become load-bearing (and wrong) the moment the credential-routing fix landed (review/41).
   const payload = {
-    model: payloadModel,
+    model: requestedModel,
     messages,
     stream: false,
   };
@@ -316,12 +336,21 @@ async function enqueue(bucket, normalized, cfg, now, idempotencyKey) {
     },
   };
 
-  const saved = await putJson(bucket, key, record, { onlyIf: { etagDoesNotMatch: "*" } });
+  const saved = await putJson(bucket, key, record, {
+    onlyIf: { etagDoesNotMatch: "*" },
+    customMetadata: requestMetadata(record),
+  });
   if (!saved) {
     const reloaded = await getJson(bucket, key);
-    if (reloaded) {
-      return reloaded.value;
+    if (!reloaded) {
+      // The conditional create lost the race (someone else is writing this exact idempotency
+      // key right now) *and* the reload came up empty -- returning the in-memory `record` here
+      // would answer 202 with a request id that was never actually persisted; the caller would
+      // poll it forever and get 404 (CodeRabbit, review/41). Ask the caller to retry instead of
+      // silently losing the request.
+      throw new HttpError(503, "request could not be queued, retry");
     }
+    return reloaded.value;
   }
   return record;
 }
@@ -343,33 +372,6 @@ function retryDelaySeconds(response, attempts, cfg) {
   return Math.min(exponential, cfg.retryMaxSeconds);
 }
 
-async function reserveDispatchSlot(bucket, cfg, now, requestId) {
-  const intervalMs = cfg.dispatchIntervalSeconds * 1000;
-  const existingControl = await getJson(bucket, DISPATCH_CONTROL_KEY);
-
-  let lastDispatchedMs = 0;
-  if (existingControl && existingControl.value && existingControl.value.last_dispatched_at) {
-    lastDispatchedMs = parseTime(existingControl.value.last_dispatched_at);
-  }
-
-  if (lastDispatchedMs > 0 && now.getTime() - lastDispatchedMs < intervalMs) {
-    return false;
-  }
-
-  const updatedControl = {
-    schema: 1,
-    updated_at: now.toISOString(),
-    last_dispatched_at: now.toISOString(),
-    last_dispatched_request_id: requestId,
-  };
-
-  const saved = await putJson(bucket, DISPATCH_CONTROL_KEY, updatedControl, {
-    onlyIf: existingControl ? { etagMatches: existingControl.etag } : { etagDoesNotMatch: "*" },
-  });
-
-  return Boolean(saved);
-}
-
 async function saveRetry(bucket, claimed, response, cfg, now) {
   const delay = retryDelaySeconds(response, claimed.record.attempts, cfg);
   const availableAt = new Date(now.getTime() + delay * 1000).toISOString();
@@ -384,7 +386,10 @@ async function saveRetry(bucket, claimed, response, cfg, now) {
       timestamp: now.toISOString(),
     },
   };
-  await putJson(bucket, claimed.key, updated, { etagMatches: claimed.object.etag });
+  await putJson(bucket, claimed.key, updated, {
+    etagMatches: claimed.object.etag,
+    customMetadata: requestMetadata(updated),
+  });
 }
 
 async function saveFailure(bucket, claimed, status, now, code = "upstream_error") {
@@ -399,10 +404,38 @@ async function saveFailure(bucket, claimed, status, now, code = "upstream_error"
       timestamp: now.toISOString(),
     },
   };
-  await putJson(bucket, claimed.key, updated, { etagMatches: claimed.object.etag });
+  await putJson(bucket, claimed.key, updated, {
+    etagMatches: claimed.object.etag,
+    customMetadata: requestMetadata(updated),
+  });
 }
 
-async function acquireCronLease(bucket, now) {
+/** Return a claimed-but-not-dispatched record to `pending` without counting it as an attempt --
+ * used both when a concurrent tick beat us to the dispatch slot and when no route currently has
+ * capacity for this record's model (temporary, not a failure -- a later tick retries it). */
+async function requeue(bucket, claimed, now) {
+  const released = {
+    ...claimed.record,
+    status: "pending",
+    attempts: Math.max(0, claimed.record.attempts - 1),
+    updated_at: now.toISOString(),
+    available_at: now.toISOString(),
+    processing_started_at: undefined,
+  };
+  await putJson(bucket, claimed.key, released, {
+    etagMatches: claimed.object.etag,
+    customMetadata: requestMetadata(released),
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cron lease -- single-runner guarantee for dispatchOne. `owner` (new) closes the CodeRabbit-
+// flagged unconditional-release race: without it, an invocation whose own upstream call outlives
+// `leaseDurationSeconds` can delete a *different*, later invocation's lease out from under it,
+// letting a third tick acquire immediately while the second is still running unprotected.
+// ---------------------------------------------------------------------------------------------
+
+async function acquireCronLease(bucket, now, owner, leaseDurationSeconds) {
   const existing = await getJson(bucket, CRON_LOCK_KEY);
   if (existing && existing.value && existing.value.expires_at) {
     if (parseTime(existing.value.expires_at) > now.getTime()) {
@@ -410,8 +443,9 @@ async function acquireCronLease(bucket, now) {
     }
   }
   const lease = {
+    owner,
     acquired_at: now.toISOString(),
-    expires_at: new Date(now.getTime() + 30000).toISOString(),
+    expires_at: new Date(now.getTime() + leaseDurationSeconds * 1000).toISOString(),
   };
   try {
     const putRes = await putJson(bucket, CRON_LOCK_KEY, lease, {
@@ -423,34 +457,307 @@ async function acquireCronLease(bucket, now) {
   }
 }
 
-async function releaseCronLease(bucket) {
+async function releaseCronLease(bucket, owner) {
   try {
-    if (bucket && typeof bucket.delete === "function") {
+    const current = await getJson(bucket, CRON_LOCK_KEY);
+    if (current?.value?.owner === owner && typeof bucket.delete === "function") {
       await bucket.delete(CRON_LOCK_KEY);
     }
   } catch {
-    // Best-effort release
+    // Best-effort release; the lease's own expiry is the real backstop.
   }
 }
 
-function resolveProviderCredentials(env, route, cfg) {
-  const provider = route ? route.provider : cfg.provider;
-  const accounts = (DISPATCH_LIMITS.providers[provider]?.accounts) || [];
-  const account = (route ? accounts.find((a) => a.id === route.account_id) : null) || accounts[0];
+// ---------------------------------------------------------------------------------------------
+// Per-route/per-account ledger (`state/dispatch_budget.json`) -- mirrors
+// `citypods/compute/llm_budget.py`'s `RouteLedger` shape (minute/day window keys, `blocked_until`),
+// keyed by `route_id` rather than canonical model. Keying by `route_id` is what makes multi-account
+// rotation real: `gemini_3_flash_preview_primary` and `..._secondary` are separate route_ids with
+// independent ledger entries, so once primary's window is full, ranking naturally falls through to
+// secondary's still-fresh one (review/41). Single-writer by construction: only the cron-lease
+// holder ever mutates this object, so a conditional put with no CAS-retry loop is sufficient --
+// unlike the Python-side ledger, which is written by many concurrent GitHub Actions runners.
+// ---------------------------------------------------------------------------------------------
 
-  const envKeyName = account?.api_key_env || `${provider.toUpperCase()}_API_KEY`;
-  const apiKey = env[envKeyName] || cfg?.upstreamApiKey || env.UPSTREAM_API_KEY || "";
+function minuteKey(date) {
+  return date.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM", UTC
+}
 
-  let url = cfg?.upstreamUrl;
-  if (!url) {
-    let baseUrl = env[`${provider.toUpperCase()}_BASE_URL`] || env.UPSTREAM_BASE_URL || "https://api.mistral.ai";
-    baseUrl = baseUrl.replace(/\/+$/, "");
-    let chatPath = env[`${provider.toUpperCase()}_CHAT_PATH`] || env.UPSTREAM_CHAT_PATH || "/v1/chat/completions";
-    url = `${baseUrl}${chatPath}`;
+/** The local calendar date (YYYY-MM-DD) `date` falls on in the given IANA zone. */
+function zonedDateKey(date, tzName) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tzName,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/** This zone's current UTC offset in milliseconds, derived by round-tripping `date`'s wall-clock
+ * numbers through the zone (there is no direct zone->UTC-offset API in the Workers runtime).
+ * Advisory precision only -- accurate to the minute away from a DST transition instant, which is
+ * acceptable here (this only ever feeds a soft scheduling preference, review/33 §8's own
+ * "advisory, provider's real response is the backstop" precedent, never a billing or quota
+ * enforcement decision -- `routeAvailable` below enforces off stored counters, not this offset). */
+function zoneOffsetMs(date, tzName) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: tzName,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  const hour = parts.hour === "24" ? "00" : parts.hour;
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return asUtc - date.getTime();
+}
+
+/** The next local midnight in `tzName`, as a UTC instant. */
+function nextLocalMidnightUTC(date, tzName) {
+  const offsetMs = zoneOffsetMs(date, tzName);
+  const key = zonedDateKey(date, tzName);
+  const [year, month, day] = key.split("-").map(Number);
+  const tomorrowWallClockAsUtc = Date.UTC(year, month - 1, day + 1, 0, 0, 0);
+  return new Date(tomorrowWallClockAsUtc - offsetMs);
+}
+
+function nextMinuteBoundaryUTC(date) {
+  const next = new Date(date);
+  next.setUTCSeconds(0, 0);
+  next.setUTCMinutes(next.getUTCMinutes() + 1);
+  return next;
+}
+
+function ledgerEntry(budget, routeId) {
+  if (!budget.routes) {
+    budget.routes = {};
+  }
+  if (!budget.routes[routeId]) {
+    budget.routes[routeId] = {
+      requests_minute: 0,
+      requests_minute_key: "",
+      requests_day: 0,
+      requests_day_key: "",
+      tokens_minute: 0,
+      blocked_until: "",
+    };
+  }
+  return budget.routes[routeId];
+}
+
+function routeResetTimezone(route) {
+  const providerCfg = DISPATCH_LIMITS.providers?.[route.provider];
+  return route.reset_timezone || providerCfg?.reset_timezone || "UTC";
+}
+
+/** Roll each window independently against its own key -- rolling the minute window must never
+ * also zero the day counter or vice versa (mirrors `LLMBudget._ledger` in `llm_budget.py`). */
+function rollLedgerWindows(entry, route, now) {
+  const mk = minuteKey(now);
+  if (entry.requests_minute_key !== mk) {
+    entry.requests_minute = 0;
+    entry.tokens_minute = 0;
+    entry.requests_minute_key = mk;
+  }
+  if (route.rpd != null) {
+    const dk = zonedDateKey(now, routeResetTimezone(route));
+    if (entry.requests_day_key !== dk) {
+      entry.requests_day = 0;
+      entry.requests_day_key = dk;
+    }
+  }
+}
+
+function routeAvailable(entry, route, { requests, tokens }, now) {
+  if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
+    return false;
+  }
+  if (route.rpm != null && entry.requests_minute + requests > route.rpm) {
+    return false;
+  }
+  if (route.rpd != null && entry.requests_day + requests > route.rpd) {
+    return false;
+  }
+  if (route.tpm != null && entry.tokens_minute + tokens > route.tpm) {
+    return false;
+  }
+  return true;
+}
+
+function reserveRouteCapacity(entry, route, { requests, tokens }) {
+  entry.requests_minute += requests;
+  entry.tokens_minute += tokens;
+  if (route.rpd != null) {
+    entry.requests_day += requests;
+  }
+}
+
+/** The soonest UTC instant this route is predicted to free up, given only the axis(es) actually
+ * keeping it unavailable right now -- mirrors `_next_quota_reset` in
+ * `citypods/compute/llm_scheduler.py`, including that function's own documented fix: only offer
+ * "next minute" as a candidate when the per-minute window is the *actual* binding constraint
+ * (not unconditionally whenever the route merely declares an `rpm`/`tpm`), and likewise for
+ * "next local midnight" against `rpd`. Unconditionally including every configured axis was a real
+ * bug caught while porting this from the Python reference: a route blocked by a real 429 until
+ * 12:30 but merely one request away from its per-minute cap would otherwise report "free at
+ * 12:01" -- `min()` picking the bogus near-immediate minute rollover over the real, later block
+ * -- exactly the busy-retry failure mode the Python docstring warns about. `blocked_until` is
+ * always a candidate on its own (it only ever moves later, `LLMBudget.block`'s semantics) since it
+ * holds the route back regardless of what any window counter says. Precision is advisory-level,
+ * not exact -- see `zoneOffsetMs`'s docstring. */
+function nextRouteReset(entry, route, now, { requests = 1, tokens = 0 } = {}) {
+  const candidates = [];
+  if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
+    candidates.push(new Date(entry.blocked_until));
+  }
+  const perMinuteBinding =
+    (route.rpm != null && (entry.requests_minute || 0) + requests > route.rpm) ||
+    (route.tpm != null && (entry.tokens_minute || 0) + tokens > route.tpm);
+  if (perMinuteBinding) {
+    candidates.push(nextMinuteBoundaryUTC(now));
+  }
+  if (route.rpd != null && (entry.requests_day || 0) + requests > route.rpd) {
+    candidates.push(nextLocalMidnightUTC(now, routeResetTimezone(route)));
+  }
+  if (candidates.length === 0) {
+    // `routeAvailable` rejected this route on an axis this function doesn't model a precise
+    // reset for (e.g. a future `concurrency` field) -- fall back to the one-minute guess rather
+    // than `now`, matching the Python reference's identical fallback.
+    return nextMinuteBoundaryUTC(now);
+  }
+  return new Date(Math.min(...candidates.map((d) => d.getTime())));
+}
+
+/** Free before paid, then lowest declared per-token cost, then route_id for determinism --
+ * mirrors `select_route`'s ranking in `citypods/compute/llm_scheduler.py` (§5 gate 6). */
+function rankRoutes(routes) {
+  return routes.slice().sort((a, b) => {
+    if (Boolean(a.free) !== Boolean(b.free)) {
+      return a.free ? -1 : 1;
+    }
+    const costA = (a.input_per_token || 0) + (a.output_per_token || 0);
+    const costB = (b.input_per_token || 0) + (b.output_per_token || 0);
+    if (costA !== costB) {
+      return costA - costB;
+    }
+    return String(a.route_id).localeCompare(String(b.route_id));
+  });
+}
+
+function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS) {
+  const providerCfg = dispatchLimits.providers?.[route.provider];
+  if (!providerCfg) {
+    throw new Error(`no provider config compiled for provider ${route.provider}`);
+  }
+  const accounts = providerCfg.accounts || [];
+  const account = accounts.find((candidate) => candidate.id === route.account_id) || accounts[0];
+  if (!account?.api_key_env) {
+    throw new Error(`no account configured for provider ${route.provider} route ${route.route_id}`);
+  }
+  const apiKey = env[account.api_key_env];
+  if (!apiKey) {
+    throw new Error(`missing secret ${account.api_key_env} for provider ${route.provider}`);
   }
 
-  const upstreamModel = cfg?.upstreamRequestModel || (route ? route.upstream_model : cfg.upstreamModel);
-  return { apiKey, url, upstreamModel };
+  const apiBase = String(providerCfg.api_base || "").replace(/\/+$/, "");
+  if (!apiBase) {
+    throw new Error(`no api_base configured for provider ${route.provider}`);
+  }
+  const chatPath = providerCfg.chat_path || "/v1/chat/completions";
+  const url = `${apiBase}${chatPath}`;
+
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`provider ${route.provider} api_base/chat_path is not a valid URL`);
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error(`provider ${route.provider} api_base must use HTTPS`);
+  }
+
+  return { apiKey, url, upstreamModel: route.upstream_model };
+}
+
+/** Rank candidate routes for `canonicalModel`, reserve the first one with real capacity right now
+ * (free before paid), and elevate to paid only when free capacity genuinely can't help -- either no
+ * free route exists for this model at all, or the soonest free route would reset at/after the
+ * record's `deadline_at`. Returns `{chosenRoute, entry}` or a `{reason}` explaining why nothing was
+ * selected: `"no_configured_route"`/`"no_eligible_route"` are permanent (the caller should fail the
+ * record -- it will never resolve), `"no_capacity"` is temporary (leave it pending for a later
+ * tick). This is the piece that makes the compiled `rpm`/`rpd`/`tpm`/`account_id` data in
+ * `dispatch_limits.json` actually enforce anything, superseding the single global
+ * one-request-per-interval gate this replaced (review/41). */
+function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+  const routeIds = dispatchLimits.model_routes_map?.[canonicalModel] || [];
+  const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
+  const freeRanked = rankRoutes(candidates.filter((route) => route.free));
+  const paidRanked = rankRoutes(candidates.filter((route) => !route.free));
+  const allowPaid = Boolean(policy?.allow_paid);
+  const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
+  const tokens = policy?.estimated_tokens || 1024;
+  const reservationSize = { requests: 1, tokens };
+
+  const tryRoutes = (ranked) => {
+    for (const route of ranked) {
+      const entry = ledgerEntry(budget, route.route_id);
+      rollLedgerWindows(entry, route, now);
+      if (routeAvailable(entry, route, reservationSize, now)) {
+        return { chosenRoute: route, entry };
+      }
+    }
+    return null;
+  };
+
+  const freeHit = tryRoutes(freeRanked);
+  if (freeHit) {
+    return freeHit;
+  }
+
+  if (candidates.length === 0) {
+    return { reason: "no_configured_route" };
+  }
+  if (freeRanked.length === 0 && !allowPaid) {
+    return { reason: "no_eligible_route" };
+  }
+  if (!allowPaid) {
+    return { reason: "no_capacity" };
+  }
+
+  const earliestFreeReset =
+    freeRanked.length > 0
+      ? Math.min(
+          ...freeRanked.map((route) => {
+            const entry = ledgerEntry(budget, route.route_id);
+            rollLedgerWindows(entry, route, now);
+            return nextRouteReset(entry, route, now, reservationSize).getTime();
+          }),
+        )
+      : null;
+  const shouldElevateNow =
+    earliestFreeReset === null || (deadlineAt !== null && earliestFreeReset >= deadlineAt);
+
+  if (shouldElevateNow) {
+    const paidHit = tryRoutes(paidRanked);
+    if (paidHit) {
+      return paidHit;
+    }
+  }
+  return { reason: "no_capacity" };
 }
 
 export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
@@ -460,7 +767,8 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
   }
 
   const cfg = config(env);
-  const acquiredLock = await acquireCronLease(bucket, now);
+  const leaseOwner = crypto.randomUUID();
+  const acquiredLock = await acquireCronLease(bucket, now, leaseOwner, cfg.leaseDurationSeconds);
   if (!acquiredLock) {
     return { status: "lease_busy" };
   }
@@ -480,6 +788,20 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
 
       for (const obj of objects) {
         if (claimable.length >= cfg.maxQueueScan) break;
+        scanned += 1;
+        // `bucket.list()` already returns `customMetadata` per object -- skip a terminal
+        // (completed/failed) or still-delayed record straight from the listing, with no body
+        // fetch at all. A record with no `customMetadata` (written before this optimization
+        // shipped) falls through to the real body fetch below, same as before.
+        const meta = obj.customMetadata || {};
+        if (meta.status && meta.status !== "pending") continue;
+        if (
+          meta.status === "pending" &&
+          meta.available_at &&
+          parseTime(meta.available_at) > now.getTime()
+        ) {
+          continue;
+        }
         const loaded = await getJson(bucket, obj.key);
         if (!loaded || !loaded.value) continue;
         const rec = loaded.value;
@@ -509,32 +831,52 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
     claimed.record.attempts = (claimed.record.attempts || 0) + 1;
     claimed.record.processing_started_at = now.toISOString();
 
-    if (!(await reserveDispatchSlot(bucket, cfg, now, claimed.record.id))) {
-      const released = {
-        ...claimed.record,
-        status: "pending",
-        attempts: Math.max(0, claimed.record.attempts - 1),
-        updated_at: now.toISOString(),
-        available_at: now.toISOString(),
-        processing_started_at: undefined,
-      };
-      await putJson(bucket, claimed.key, released, { etagMatches: claimed.object.etag });
-      return { status: "rate_limited", requestId: claimed.record.id };
-    }
+    const budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
+    const budget = (budgetLoaded && budgetLoaded.value) || { routes: {} };
+    const selection = selectRoute(budget, claimed.record.model, claimed.record.policy, now);
 
-    const canonicalModel = claimed.record.model;
-    const routeIds = DISPATCH_LIMITS.model_routes_map[canonicalModel] || [];
-    let chosenRoute = null;
-    for (const rId of routeIds) {
-      const r = DISPATCH_LIMITS.routes_by_id[rId];
-      if (r) {
-        if (!r.free && !claimed.record.policy?.allow_paid) continue;
-        chosenRoute = r;
-        break;
+    if (!selection.chosenRoute) {
+      if (selection.reason === "no_capacity") {
+        await requeue(bucket, claimed, now);
+        return { status: "no_capacity", requestId: claimed.record.id };
       }
+      // "no_configured_route" (nothing in dispatch_limits.json serves this canonical model at
+      // all) or "no_eligible_route" (only paid routes exist and the caller disallowed paid) --
+      // both permanent: no future tick will make this resolve differently.
+      await saveFailure(bucket, claimed, 400, now, selection.reason);
+      return { status: "failed", requestId: claimed.record.id, reason: selection.reason };
     }
 
-    const creds = resolveProviderCredentials(env, chosenRoute, cfg);
+    const { chosenRoute, entry } = selection;
+    reserveRouteCapacity(entry, chosenRoute, {
+      requests: 1,
+      tokens: claimed.record.policy?.estimated_tokens || 1024,
+    });
+    const ledgerSaved = await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
+      onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
+    });
+    if (!ledgerSaved) {
+      // The cron lease makes this invocation the sole writer, so a conflict here means something
+      // outside the normal flow touched the ledger between our read and write. Log and dispatch
+      // anyway rather than failing the request over a soft-accounting write race -- the provider's
+      // own rate limit response remains the real backstop (matches the "advisory ledger" framing
+      // used throughout `llm_budget.py`/`llm_scheduler.py`).
+      console.error(
+        JSON.stringify({ event: "llm_dispatch_ledger_conflict", route_id: chosenRoute.route_id }),
+      );
+    }
+
+    let creds;
+    try {
+      creds = resolveProviderCredentials(env, chosenRoute);
+    } catch (error) {
+      await saveFailure(bucket, claimed, 500, now, "credential_resolution_failed");
+      console.error(
+        JSON.stringify({ event: "llm_dispatch_credentials_error", error: error?.message }),
+      );
+      return { status: "failed", requestId: claimed.record.id };
+    }
+
     const upstreamPayload = {
       ...claimed.record.request,
       model: creds.upstreamModel,
@@ -551,6 +893,7 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
         headers,
         body: JSON.stringify(upstreamPayload),
         redirect: "manual",
+        signal: AbortSignal.timeout(cfg.upstreamTimeoutSeconds * 1000),
       });
     } catch {
       if (claimed.record.attempts < cfg.maxAttempts) {
@@ -599,10 +942,13 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
       completed_at: now.toISOString(),
       response: responseJson,
     };
-    await putJson(bucket, claimed.key, completed, { etagMatches: claimed.object.etag });
+    await putJson(bucket, claimed.key, completed, {
+      etagMatches: claimed.object.etag,
+      customMetadata: requestMetadata(completed),
+    });
     return { status: "completed", requestId: claimed.record.id, upstreamStatus: response.status };
   } finally {
-    await releaseCronLease(bucket);
+    await releaseCronLease(bucket, leaseOwner);
   }
 }
 
@@ -695,18 +1041,38 @@ export async function handleRequest(request, env) {
 
   if (url.pathname === "/v1/queue/estimate" && request.method === "GET") {
     const model = url.searchParams.get("model") || cfg.model;
-    const listRes = await env.LLM_QUEUE.list({ prefix: REQUEST_PREFIX, limit: 1000 });
-    const objects = listRes ? listRes.objects || [] : [];
+    // Counts straight from `customMetadata` (no body fetch) whenever it's present; paginates the
+    // full bucket via the list cursor rather than stopping at a fixed `limit: 1000`, so backlog
+    // accuracy doesn't quietly degrade once the queue -- including terminal records, which are
+    // never pruned -- grows past one page (CodeRabbit, review/41).
     let count = 0;
-    for (const obj of objects) {
-      const loaded = await getJson(env.LLM_QUEUE, obj.key);
-      if (loaded && loaded.value && loaded.value.status === "pending") {
-        if (!model || loaded.value.model === model) {
-          count += 1;
+    let cursor = undefined;
+    do {
+      const listRes = await env.LLM_QUEUE.list({ prefix: REQUEST_PREFIX, cursor, limit: 1000 });
+      const objects = listRes ? listRes.objects || [] : [];
+      for (const obj of objects) {
+        const meta = obj.customMetadata || {};
+        if (meta.status) {
+          if (meta.status === "pending" && (!model || meta.model === model)) {
+            count += 1;
+          }
+          continue;
+        }
+        const loaded = await getJson(env.LLM_QUEUE, obj.key);
+        if (loaded && loaded.value && loaded.value.status === "pending") {
+          if (!model || loaded.value.model === model) {
+            count += 1;
+          }
         }
       }
-    }
-    const estSeconds = Math.ceil(count * cfg.dispatchIntervalSeconds);
+      cursor = listRes && listRes.truncated ? listRes.cursor : undefined;
+    } while (cursor);
+    const routeIds = DISPATCH_LIMITS.model_routes_map?.[model] || [];
+    const fastestRpm = routeIds
+      .map((id) => DISPATCH_LIMITS.routes_by_id[id]?.rpm)
+      .filter((rpm) => typeof rpm === "number" && rpm > 0);
+    const perRequestSeconds = fastestRpm.length > 0 ? 60 / Math.max(...fastestRpm) : 60;
+    const estSeconds = Math.ceil(count * perRequestSeconds);
     return jsonResponse({
       model,
       backlog_count: count,
@@ -747,4 +1113,16 @@ export default {
   },
 };
 
-export { config, normalizeChatRequest, requestKey };
+export {
+  acquireCronLease,
+  config,
+  nextLocalMidnightUTC,
+  nextRouteReset,
+  normalizeChatRequest,
+  rankRoutes,
+  releaseCronLease,
+  requestKey,
+  resolveProviderCredentials,
+  routeAvailable,
+  selectRoute,
+};

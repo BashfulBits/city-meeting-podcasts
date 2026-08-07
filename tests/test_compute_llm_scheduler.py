@@ -143,8 +143,31 @@ def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
 def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
     """The Worker claims one Large request per Cron minute, below the upstream 0.07-RPS cap."""
     route = ROUTES["mistral/mistral-large-2512"]
-    assert route.transport in {"mistral-dispatch", "llm-dispatch"}
+    assert route.transport == "llm-dispatch"
+    assert route.transports == ("llm-dispatch",)
     assert route.quota.rpm == 1
+
+
+def test_owner_for_dual_transport_route_uses_recipe_hash_not_scalar_transport():
+    """A dual-transport route's owner must key off `transports` (what `is_dispatch` actually
+    checks), not the scalar `transport` -- a Gemini route's scalar is `"direct"` even when a call
+    dispatches over `llm-dispatch`, and using the scalar here would derive a fresh UUID owner that
+    never matches the Worker's `idempotency-key: recipe_hash` dedup (review/41)."""
+    from citypods.compute.llm_scheduler import _owner_for
+
+    gemini_route = ROUTES["gemini/gemini-3-flash-preview"]
+    assert gemini_route.transport == "direct"
+    assert "llm-dispatch" in gemini_route.transports
+    assert _owner_for("abc123", gemini_route) == "abc123"
+
+    mistral_route = ROUTES["mistral/mistral-large-2512"]
+    assert _owner_for("abc123", mistral_route) == "abc123"
+
+    direct_only_route = ROUTES["deepseek/deepseek-v4-flash"]
+    assert direct_only_route.transports == ("direct",)
+    owner = _owner_for("abc123", direct_only_route)
+    assert owner != "abc123"
+    assert owner.startswith("abc123:")
 
 
 def test_research_only_mistral_medium_is_not_an_implicit_pipeline_fallback():

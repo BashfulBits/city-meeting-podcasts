@@ -34,7 +34,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install pyyaml -c constraints/prod.txt
 
       - name: Compile LLM limits
         run: python scripts/compile_llm_limits.py

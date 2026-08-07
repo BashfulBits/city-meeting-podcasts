@@ -911,10 +911,27 @@ class LiteLLMBackend(Backend):
             )
             return self._deferred_handle(job, structured, messages, policy)
 
+        # A route that offers *only* dispatch transports (Mistral -- no direct route exists at
+        # all) always dispatches: there is no alternative. A route that also offers `direct`
+        # (today only Gemini) dispatches only when the caller explicitly opted in via
+        # `allow_dispatch_overflow` -- direct is otherwise always preferred. This is deliberate,
+        # not an oversight: a prior version of this condition used `any(...)` unconditionally,
+        # so *any* caller whose backend had `dispatch_url` configured at all silently routed
+        # Gemini calls through the Worker instead of calling Gemini directly -- throttling
+        # Gemini's real 10 RPM down to the Worker's shared per-route pacing, and turning a
+        # same-run synchronous completion into an always-async 202 for callers (city discovery,
+        # `citypods/discovery/classify.py`) that depend on finishing within the current run. See
+        # review/41 for the incident and review/33 §7 for the original "Gemini needs no Worker"
+        # decision this restores by default.
+        has_dispatch_transport = any(
+            t in {"mistral-dispatch", "llm-dispatch"} for t in route.transports
+        )
+        direct_available = "direct" in route.transports
         is_dispatch = (
             bool(self.config.dispatch_url)
             and not policy.require_direct
-            and any(t in {"mistral-dispatch", "llm-dispatch"} for t in route.transports)
+            and has_dispatch_transport
+            and (not direct_available or policy.allow_dispatch_overflow)
         )
         try:
             if not is_dispatch:
@@ -934,7 +951,14 @@ class LiteLLMBackend(Backend):
                         completion=guarded_completion,
                     )
                 else:
-                    payload = self._payload(job, resolved_model=resolved_model, policy=policy)
+                    # `policy` is intentionally omitted here: `_payload()` attaches
+                    # allow_paid/allow_batch/submit_next/deadline_at only for the Worker's
+                    # dispatch payload (see the `is_dispatch` branch below) -- they are scheduler-
+                    # internal fields the direct LiteLLM `completion()` call does not accept.
+                    # Passing `policy=policy` on this branch was a real bug (CodeRabbit,
+                    # review/41): those keys reached `completion_fn(**payload)` on every direct
+                    # policy-bearing call.
+                    payload = self._payload(job, resolved_model=resolved_model)
                     completion_fn = self._completion_fn()
                     attempted = True
                     attempted_requests += 1

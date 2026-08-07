@@ -194,6 +194,15 @@ def _utilization(route: LLMRoute, ledger_entry) -> float:
     return max(fractions, default=0.0)
 
 
+# Transports that dedupe server-side on `idempotency-key: recipe_hash` -- shared with `llm.py`'s
+# `is_dispatch` computation, which decides *whether* a call actually goes over one of these
+# transports. Both must agree on this same set, or a dual-transport route (one whose `transports`
+# tuple includes one of these alongside `"direct"`) can be dispatched over the Worker while its
+# ledger reservation is keyed as if it were a `direct` call, double-reserving quota for one
+# underlying provider request (see the docstring below).
+_DISPATCH_TRANSPORTS = frozenset({"mistral-dispatch", "llm-dispatch"})
+
+
 def _owner_for(recipe_hash: str, route: LLMRoute) -> str:
     """Owner uniqueness depends on the *selected* route's transport, not a single rule for both:
     - dispatch (`mistral-dispatch`/`llm-dispatch`): the Worker dedupes on
@@ -203,8 +212,16 @@ def _owner_for(recipe_hash: str, route: LLMRoute) -> str:
     - `direct`: there is no server-side dedup at all. Every attempt -- the first, a concurrent
       call, or a later `reconcile()` retry of a deferred handle -- is a genuinely new request and
       must reserve its own independent slot.
+
+    Checked against `route.transports` (the tuple), not the scalar `route.transport` -- a
+    dual-transport route (e.g. Gemini, `transport="direct"`, `transports=("direct","llm-dispatch")`)
+    can still be *dispatched* over `llm-dispatch` when `is_dispatch` (`llm.py`) picks that transport
+    for this call, and the owner must match whichever transport was actually used, not the route's
+    scalar default. Using the scalar here was a real bug: it always returned a fresh UUID owner for
+    a Gemini route even when the call went over `llm-dispatch`, so a retry before settlement missed
+    `find_inflight_owner(recipe_hash)` and reserved a second time for one Worker request.
     """
-    if route.transport in {"mistral-dispatch", "llm-dispatch"}:
+    if _DISPATCH_TRANSPORTS & set(route.transports):
         return recipe_hash
     return f"{recipe_hash}:{uuid.uuid4().hex}"
 

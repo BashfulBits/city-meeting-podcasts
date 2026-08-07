@@ -6,6 +6,8 @@
   },
   "providers": {
     "mistral": {
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
       "monthly_tpm": 1000000000,
       "reset_day": 1,
       "accounts": [
@@ -16,6 +18,8 @@
       ]
     },
     "gemini": {
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
       "reset_timezone": "America/Los_Angeles",
       "accounts": [
         {
@@ -29,6 +33,8 @@
       ]
     },
     "deepseek": {
+      "api_base": "https://api.deepseek.com",
+      "chat_path": "/v1/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
         {
@@ -38,7 +44,12 @@
       ]
     },
     "openrouter": {
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
       "reset_timezone": "UTC",
+      "discovery": {
+        "endpoint": "https://openrouter.ai/api/v1/models"
+      },
       "accounts": [
         {
           "id": "primary",

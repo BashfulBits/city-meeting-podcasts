@@ -272,18 +272,29 @@ def classify(
 
     City discovery acts on the result immediately (continuing an issue-comment cycle) rather than
     tolerating a later async completion, so this asks only for a *free* route -- `allow_paid=False`
-    -- with no `deadline_at`: there is nothing to wait out or fall back to paid for. If nothing
-    free is eligible right now (today that's just Gemini; a future free+direct route would also
-    qualify with no code change here), `run_inference` returns a `JobHandle` the same as it would
-    for a genuinely in-flight dispatch -- this defers the *whole* discovery cycle to the next
-    scheduled run, exactly as it already did before R13.
+    -- with no `deadline_at`: there is nothing to wait out or fall back to paid for.
+    `require_direct=True` is explicit and load-bearing, not redundant with the default: the
+    Worker's dispatch transport is *always* asynchronous (a 202 plus a later poll, by design --
+    review/27 §9.3), so a policy that let this call dispatch could never complete within this same
+    process even when the target route has ample quota. A prior version of this code relied on
+    `allow_dispatch_overflow` defaulting to False rather than stating the requirement here
+    directly; that left the workflow's `LLM_DISPATCH_URL` env var (set for a different reason) free
+    to silently flip this call onto the Worker the moment a future change made overflow opt-in the
+    default somewhere upstream. Stating `require_direct=True` here means this call can never
+    dispatch regardless of what the backend's transport configuration or global defaults do. If
+    nothing free is eligible right now (today that's just Gemini; a future free+direct route
+    would also qualify with no code change here), `run_inference` returns a `JobHandle` the same
+    as it would for a genuinely in-flight dispatch -- this defers the *whole* discovery cycle to
+    the next scheduled run, exactly as it already did before R13.
     """
     job = InferenceJob(
         task="classify-civic-platforms",
         inputs={
             "messages": _prompt(request, results),
             "structured_output": STRUCTURED_OUTPUT,
-            "llm_policy": LLMRequestPolicy(allow_paid=False, purpose="city-onboarding"),
+            "llm_policy": LLMRequestPolicy(
+                allow_paid=False, require_direct=True, purpose="city-onboarding"
+            ),
         },
         recipe_hash=recipe_hash(request, results),
     )

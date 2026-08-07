@@ -22,7 +22,23 @@ class LLMRequestPolicy:
     purpose: str = ""
     require_direct: bool = False
     submit_next: bool = False
+    # Inert pending a real provider batch-submission API (review/33 §9 -- no route in ROUTES has
+    # a confirmed server-side batch endpoint as of this field's addition). Plumbed through the
+    # dispatch payload for forward compatibility only; nothing currently reads it to change
+    # routing behavior.
     allow_batch: bool = True
+    # Explicit, caller-opted-in permission to dispatch a route that also offers `direct` (today
+    # only Gemini) over the Worker's `llm-dispatch` transport instead of calling the provider
+    # directly. Default False: a route that can be reached directly always is, matching
+    # review/33 §7's decision that Gemini's own free tier needs no Worker ("only build a
+    # dedicated Gemini Worker later, and only if real usage shows it's needed"). This flag is the
+    # sanctioned way for a future caller to reach *additional* capacity a direct call can't see --
+    # concretely, a second configured account (`GEMINI_API_KEY_SECONDARY`) the Worker's per-route
+    # ledger rotates onto once the direct route's own ledger entry is exhausted. See
+    # review/41 for the incident (city discovery was silently routed through the Worker, breaking
+    # its documented same-run-completion design) that motivated making this opt-in rather than
+    # "dispatch whenever a Worker happens to be configured."
+    allow_dispatch_overflow: bool = False
 
 
 @dataclass(frozen=True)

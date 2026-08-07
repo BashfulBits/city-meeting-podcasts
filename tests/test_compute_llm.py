@@ -53,6 +53,24 @@ def job(task="tag", **inputs):
     return InferenceJob(task=task, inputs=inputs, recipe_hash="recipe-1")
 
 
+_DISPATCH_ONLY_KEYS = {
+    "allow_paid",
+    "allow_batch",
+    "submit_next",
+    "deadline_at",
+    "estimated_tokens",
+}
+
+
+def _strict_direct_completion(**kwargs):
+    """A direct-path completion double that fails loudly if a dispatch-only payload key leaks
+    into the direct LiteLLM call (`_payload()` should never attach these outside the dispatch
+    branch -- see `citypods/compute/llm.py` line ~937)."""
+    leaked = _DISPATCH_ONLY_KEYS & set(kwargs)
+    assert not leaked, f"dispatch-only keys reached the direct LiteLLM call: {sorted(leaked)}"
+    return {"choices": [{"message": {"content": "direct response"}}]}
+
+
 def structured_response(content: str, *, usage: dict | None = None):
     message = SimpleNamespace(content=content)
     choice = SimpleNamespace(message=message, finish_reason="stop")
@@ -1094,6 +1112,10 @@ def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
         allow_batch=True,
         submit_next=True,
         deadline_at=deadline,
+        # Gemini also offers `direct`; without this the call would go direct by default
+        # (review/41 -- a dual-transport route only dispatches when a caller opts in), and this
+        # test is specifically exercising the dispatch payload.
+        allow_dispatch_overflow=True,
     )
 
     res = backend.run_inference(
@@ -1112,6 +1134,95 @@ def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
     assert post_json["deadline_at"] == "2026-08-07T12:00:00+00:00"
     assert "estimated_tokens" in post_json
     assert post_json["estimated_tokens"] > 0
+
+
+def test_dual_transport_route_prefers_direct_without_opt_in():
+    """A route offering both `direct` and `llm-dispatch` (Gemini) must not dispatch just because
+    the backend has `dispatch_url` configured -- only when the caller explicitly sets
+    `allow_dispatch_overflow`. This is the regression this test guards: a prior version routed
+    every such call over the Worker whenever `dispatch_url` was set at all, which silently broke
+    city discovery's same-run-completion requirement (review/41)."""
+    posted = False
+
+    class NoPostSession(requests.Session):
+        def post(self, *_args, **_kwargs):
+            nonlocal posted
+            posted = True
+            res = requests.Response()
+            res.status_code = 200
+            res._content = b"{}"
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        completion=_strict_direct_completion,
+        http_session=NoPostSession(),
+        storage=storage,
+    )
+
+    pol = LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",), allow_paid=False)
+
+    res = backend.run_inference(
+        InferenceJob(
+            task="summarize",
+            recipe_hash="test-recipe-direct-default",
+            inputs={"content": "hello test content", "llm_policy": pol},
+        )
+    )
+
+    assert isinstance(res, JobResult)
+    assert posted is False
+
+
+def test_dual_transport_route_dispatches_with_explicit_overflow_and_reserves_by_recipe_hash():
+    """The Gemini/`allow_dispatch_overflow=True` opt-in path, asserting the ledger reservation
+    owner is the deterministic `recipe_hash` -- not a fresh UUID -- so a retry before settlement
+    resolves to the Worker's own `idempotency-key: recipe_hash` dedup instead of double-reserving
+    (the bug CodeRabbit flagged against `llm_scheduler.py::_owner_for`, review/41)."""
+
+    class PendingSession(requests.Session):
+        def post(self, url, json=None, headers=None, timeout=None):
+            res = requests.Response()
+            res.status_code = 202
+            res._content = b'{"id":"chatcmpl-pending"}'
+            res.headers["location"] = "/v1/requests/chatcmpl-pending"
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=PendingSession(),
+        storage=storage,
+    )
+
+    pol = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3-flash-preview",),
+        allow_paid=False,
+        allow_dispatch_overflow=True,
+    )
+    recipe_hash = "test-recipe-overflow-owner"
+
+    res = backend.run_inference(
+        InferenceJob(
+            task="summarize",
+            recipe_hash=recipe_hash,
+            inputs={"content": "hello test content", "llm_policy": pol},
+        )
+    )
+
+    assert isinstance(res, JobHandle)
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    assert recipe_hash in ledger.inflight
 
 
 def test_require_direct_policy_bypasses_dispatch():
@@ -1133,7 +1244,7 @@ def test_require_direct_policy_bypasses_dispatch():
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
-        completion=lambda **_: {"choices": [{"message": {"content": "direct response"}}]},
+        completion=_strict_direct_completion,
         http_session=NoPostSession(),
         storage=storage,
     )

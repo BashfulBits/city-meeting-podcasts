@@ -5,27 +5,54 @@
 source: Centralized provider limits registry
 observed_on: 2026-08-06
 
+# `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
+# through -- required for every provider, not just Mistral. This is what let a bug ship where an
+# unresolved provider's request silently fell back to Mistral's endpoint (review/41): the Worker
+# used to have no per-provider URL of its own to fall back to instead.
+# `discovery.endpoint`, when present, is only ever fetched by
+# `scripts/compile_llm_limits.py --discover <provider>`, a maintainer-run, opt-in step -- never by
+# the deploy workflow. Add a `discovery` block here (and a matching fetcher function in that
+# script) for any future provider that gets a models/pricing discovery endpoint; nothing about the
+# opt-in gate is specific to OpenRouter.
 providers:
   mistral:
+    api_base: https://api.mistral.ai
+    chat_path: /v1/chat/completions
     monthly_tpm: 1000000000
     reset_day: 1
     accounts:
       - id: primary
         api_key_env: MISTRAL_API_KEY
   gemini:
+    # Google's own OpenAI-compatibility endpoint -- confirmed real, no LiteLLM Proxy hop needed
+    # for this route (review/27 §3's "may point at a provider's own OpenAI-compatible endpoint").
+    api_base: https://generativelanguage.googleapis.com/v1beta/openai
+    chat_path: /chat/completions
     reset_timezone: America/Los_Angeles
     accounts:
       - id: project_primary
         api_key_env: GEMINI_API_KEY
+      # Second Gemini account/project, same free-tier shape as primary. Reachable only through
+      # the dispatch Worker's `llm-dispatch` transport -- the Python scheduler only ever sees one
+      # canonical `gemini/...` route per model and calls it directly by default (review/41); a
+      # caller must opt in with `LLMRequestPolicy(allow_dispatch_overflow=True)` to let the
+      # Worker's per-route ledger rotate onto this account once `project_primary`'s own window is
+      # exhausted.
       - id: project_secondary
         api_key_env: GEMINI_API_KEY_SECONDARY
   deepseek:
+    api_base: https://api.deepseek.com
+    chat_path: /v1/chat/completions
     reset_timezone: UTC
     accounts:
       - id: primary
         api_key_env: DEEPSEEK_API_KEY
   openrouter:
+    api_base: https://openrouter.ai/api
+    chat_path: /v1/chat/completions
     reset_timezone: UTC
+    discovery:
+      endpoint: https://openrouter.ai/api/v1/models
     accounts:
       - id: primary
         api_key_env: OPENROUTER_API_KEY

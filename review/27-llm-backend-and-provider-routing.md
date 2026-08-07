@@ -469,6 +469,14 @@ semantics and existing operational familiarity.
 
 ### §9.4 Current implementation contract
 
+**2026-08-06: extended multi-provider, see [`review/41`](41-multi-provider-llm-dispatch.md).** The
+single-`MODEL_ID`/single-Mistral shape described in this subsection was the Worker's *first*
+implementation; review/41 replaces the fixed `UPSTREAM_*` Wrangler vars with a compiled
+`config/provider_limits.yml` registry (per-provider `api_base`/multiple accounts) and the "durable
+one-request-per-interval gate" mentioned below with a per-route/per-account R2 ledger, so a route's own
+`rpm`/`rpd`/`tpm` is what paces it, not one global interval sized for Mistral. The async queue
+boundary itself (`202`/poll, `stream: true` rejected, R2 conditional writes) is unchanged.
+
 The first Worker implementation keeps the queue boundary explicit: `POST /v1/chat/completions` returns
 `202` with a `Location` for `GET /v1/requests/{id}`, which returns the upstream OpenAI-shaped response
 once the Cron dispatcher has completed it. This is the asynchronous form required by the durable

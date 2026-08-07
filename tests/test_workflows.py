@@ -374,23 +374,24 @@ def test_asr_quality_ingest_workflow_is_event_driven():
     ingest_job = wf["jobs"]["ingest"]
     assert ingest_job["needs"] == "resolve"
     assert ingest_job["permissions"] == {"contents": "read", "issues": "write"}
-    assert ingest_job["strategy"]["matrix"]["issue_number"] == (
-        "${{ fromJson(needs.resolve.outputs.numbers) }}"
-    )
-    download = next(
-        step for step in ingest_job["steps"] if step.get("name") == "Download issue body"
-    )
-    assert "gh issue view" in download["run"]
+    # A single job processing the full resolved list sequentially -- not a matrix leg per issue.
+    # A matrix here previously gave each leg the *complete* NUMBERS list (every leg reran the
+    # whole loop), duplicating comments/closes/record writes across N concurrent legs for N
+    # resolved issues.
+    assert "strategy" not in ingest_job
     ingest = next(
         step
         for step in ingest_job["steps"]
         if "transcript-quality ingest-review" in str(step.get("run", ""))
     )
     assert "--issue-body-file issue-body.md" in ingest["run"]
-    close = next(
-        step for step in ingest_job["steps"] if step.get("name") == "Comment and close child issue"
-    )
-    assert "gh issue close" in close["run"]
+    assert "for number in" in ingest["run"]
+    assert "gh issue comment" in ingest["run"]
+    assert "gh issue close" in ingest["run"]
+    # `::error::` only annotates -- the loop must still fail the job when any issue errored, or a
+    # fully-broken ingest run (every issue failing) reports success.
+    assert "failed=1" in ingest["run"]
+    assert "exit 1" in ingest["run"]
 
 
 def test_asr_quality_ingest_schedule_fallback_scans_open_children():
