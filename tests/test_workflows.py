@@ -383,8 +383,9 @@ def test_asr_quality_ingest_workflow_is_event_driven():
     assert "--issue-body-file issue-body.md" in ingest["run"]
     assert "gh issue view" in ingest["run"]
     assert ".stored == true" in ingest["run"]
-    assert "gh issue comment" in ingest["run"]
-    assert "gh issue close" in ingest["run"]
+    stored_branch = ingest["run"].split(".stored == true")[1].split("else")[0]
+    assert "gh issue comment" in stored_branch
+    assert "gh issue close" in stored_branch
 
 
 def test_llm_tag_review_ingest_workflow_is_event_driven_and_guards_stored():
@@ -409,8 +410,9 @@ def test_llm_tag_review_ingest_workflow_is_event_driven_and_guards_stored():
     assert "--issue-body-file issue-body.md" in ingest["run"]
     assert "gh issue view" in ingest["run"]
     assert ".stored == true" in ingest["run"]
-    assert "gh issue comment" in ingest["run"]
-    assert "gh issue close" in ingest["run"]
+    stored_branch = ingest["run"].split(".stored == true")[1].split("else")[0]
+    assert "gh issue comment" in stored_branch
+    assert "gh issue close" in stored_branch
 
 
 def test_asr_quality_ingest_schedule_fallback_scans_open_children():

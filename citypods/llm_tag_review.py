@@ -121,7 +121,7 @@ def ingest(args: argparse.Namespace) -> int:
             issue_url=args.issue_url,
         )
     except ValueError as exc:
-        if "choose exactly one LLM review decision" in str(exc):
+        if "no LLM review decision checked" in str(exc):
             _log("ingest: no decision checked; skipping")
             print(json.dumps({"stored": False, "reason": "no_decision_checked"}, indent=2))
             return 0

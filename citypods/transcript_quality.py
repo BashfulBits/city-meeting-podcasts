@@ -2081,7 +2081,9 @@ def parse_issue_decision(body: str) -> dict:
         for label, active in checked
         if active and label in _PRIMARY_OUTCOMES
     ]
-    if len(primaries) != 1:
+    if not primaries:
+        raise ValueError("no primary outcome checked")
+    if len(primaries) > 1:
         raise ValueError("issue must have exactly one checked primary outcome")
     timing_flags = [
         _TIMING_FLAGS[label] for label, active in checked if active and label in _TIMING_FLAGS
@@ -2825,7 +2827,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0
         except ValueError as exc:
-            if "issue must have exactly one checked primary outcome" in str(exc):
+            if "no primary outcome checked" in str(exc):
                 print(json.dumps({"stored": False, "reason": "no_decision_checked"}, indent=2))
                 return 0
             raise
