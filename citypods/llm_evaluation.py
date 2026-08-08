@@ -457,7 +457,9 @@ def parse_review(body: str) -> tuple[dict[str, Any], str]:
         for m in _DECISION_RE.finditer(body[header_at:])
         if m.group("checked").lower() == "x"
     ]
-    if len(checked) != 1:
+    if not checked:
+        raise ValueError("no LLM review decision checked")
+    if len(checked) > 1:
         raise ValueError("choose exactly one LLM review decision")
     return metadata, checked[0]
 

@@ -111,14 +111,21 @@ def ingest(args: argparse.Namespace) -> int:
     state = load_state(state_path)
     body = Path(args.issue_body_file).read_text(encoding="utf-8")
     _log("ingest: parsing and recording review decision")
-    review = ingest_review_body(
-        state,
-        body,
-        config=config,
-        actor=args.actor,
-        issue_number=args.issue_number,
-        issue_url=args.issue_url,
-    )
+    try:
+        review = ingest_review_body(
+            state,
+            body,
+            config=config,
+            actor=args.actor,
+            issue_number=args.issue_number,
+            issue_url=args.issue_url,
+        )
+    except ValueError as exc:
+        if "no LLM review decision checked" in str(exc):
+            _log("ingest: no decision checked; skipping")
+            print(json.dumps({"stored": False, "reason": "no_decision_checked"}, indent=2))
+            return 0
+        raise
     _log(f"ingest: decision recorded — {review['decision']} for {review['candidate_id']}")
     save_state(state_path, state)
     _log("ingest: pushing evaluation state")

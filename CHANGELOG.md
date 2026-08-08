@@ -17,7 +17,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
-- **Manually triggered tag calibration ingest silently skipped all open issues.**
+- **Ingest workflows failed on scheduled runs and unreviewed issues.**
+  The `asr-quality-ingest.yml` and `llm-tag-review-ingest.yml` workflows unconditionally ran `gh issue comment` and `gh issue close` inside a subshell with error trapping. When processing unreviewed open issues on scheduled fallback sweeps, `parse_issue_decision` and `parse_review` raised `ValueError`, causing subshells to fail with exit code 1, which marked `failed=1` and failed the entire scheduled workflow run in GitHub Actions.
+  Fixed by:
+  - Returning `{"stored": false, "reason": "no_decision_checked"}` with exit code 0 from `citypods transcript-quality ingest-review` and `citypods llm-evaluation ingest` when no decision checkbox is selected.
+  - Adding `"stored": true` to `ingest_review_decision` results in `transcript_quality.py`.
+  - Guarding `gh issue comment` and `gh issue close` behind `if jq -e '.stored == true' ingest.json` in both ingest workflows so unreviewed open issues are cleanly skipped without failing CI.
+
   The `llm-tag-review-ingest.yml` workflow was configured to ingest all open calibration issues on its scheduled run, but if triggered manually (`workflow_dispatch`) without an explicit issue number, it skipped the ingest block entirely instead of falling back to the same open-issue sweep. It now performs the full open-issue sweep on manual runs when no issue number is provided.
 
 - **Calibration ingest job stuck per-issue due to full state snapshot sync.**
