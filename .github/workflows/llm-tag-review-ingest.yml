@@ -128,6 +128,7 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           NUMBERS: ${{ needs.resolve.outputs.numbers }}
         run: |
+          failed=0
           for number in $(echo "$NUMBERS" | jq -r '.[]'); do
             (
               set -e
@@ -148,8 +149,12 @@ jobs:
               gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
               gh issue close "$number" --repo "$GITHUB_REPOSITORY"
               echo "Successfully ingested issue #$number"
-            ) || echo "::error::Failed to process issue #$number"
+            ) || {
+              echo "::error::Failed to process issue #$number"
+              failed=1
+            }
           done
+          exit "$failed"
 
   finalize:
     # Run once after the serialized child ingests so a completed native batch is closed before

@@ -64,7 +64,7 @@ jobs:
             numbers=$(jq -nc --arg n "$n" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "schedule" ]; then
             # Fallback safety net for missed issues.edited / issue_comment webhooks: scan every
-            # open H15 child issue and let the matrix job below attempt ingestion on each one.
+            # open H15 child issue and let the ingest job below attempt ingestion on each one.
             # Issues without a checked primary box simply fail parse_issue_decision and are
             # skipped (matches the per-issue "stored=false -> no-op" behavior below).
             numbers=$(gh issue list --state open --search 'in:title "H15 sample "' \
@@ -73,9 +73,6 @@ jobs:
           echo "numbers=$numbers" >> "$GITHUB_OUTPUT"
 
   ingest:
-    strategy:
-      matrix:
-        issue_number: ${{ fromJson(needs.resolve.outputs.numbers) }}
     needs: resolve
     if: needs.resolve.outputs.numbers != '[]'
     runs-on: ubuntu-latest
@@ -98,9 +95,6 @@ jobs:
       - name: Install
         run: pip install -e ".[storage]" -c constraints/prod.txt
 
-      - name: Download issue body
-        run: gh issue view "$NUMBER" --repo "${{ github.repository }}" --json body,url,number,author
-
       - name: Ingest decisions in a loop
         env:
           GH_TOKEN: ${{ github.token }}
@@ -116,6 +110,7 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           NUMBERS: ${{ needs.resolve.outputs.numbers }}
         run: |
+          failed=0
           for number in $(echo "$NUMBERS" | jq -r '.[]'); do
             (
               set -e
@@ -136,11 +131,12 @@ jobs:
               gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
               gh issue close "$number" --repo "$GITHUB_REPOSITORY"
               echo "Successfully ingested issue #$number"
-            ) || echo "::error::Failed to process issue #$number"
+            ) || {
+              echo "::error::Failed to process issue #$number"
+              failed=1
+            }
           done
-
-      - name: Comment and close child issue
-        run: gh issue close "$NUMBER"
+          exit "$failed"
 
 
   finalize:
