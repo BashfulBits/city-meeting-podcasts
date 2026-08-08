@@ -62,7 +62,7 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     monkeypatch.setattr(
         llm_deferred_sweep,
         "prune_expired_deferred_snapshot",
-        lambda _storage, _snapshot: 2,
+        lambda _storage, _snapshot, **_kw: 2,
     )
 
     results = {
@@ -98,7 +98,7 @@ def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
     monkeypatch.setattr(
         llm_deferred_sweep,
         "prune_expired_deferred_snapshot",
-        lambda _storage, _snapshot: 0,
+        lambda _storage, _snapshot, **_kw: 0,
     )
 
     policy = LLMRequestPolicy(
@@ -151,7 +151,7 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
     monkeypatch.setattr(
         llm_deferred_sweep,
         "prune_expired_deferred_snapshot",
-        lambda _storage, _snapshot: 0,
+        lambda _storage, _snapshot, **_kw: 0,
     )
 
     shared_models = ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")

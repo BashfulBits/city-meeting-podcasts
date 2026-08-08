@@ -384,7 +384,7 @@ def test_asr_quality_ingest_workflow_is_event_driven():
         for step in ingest_job["steps"]
         if "transcript-quality ingest-review" in str(step.get("run", ""))
     )
-    assert "--issue-body-file issue-body.md" in ingest["run"]
+    assert "--issue-body-file" in ingest["run"]
     assert "for number in" in ingest["run"]
     assert "gh issue comment" in ingest["run"]
     assert "gh issue close" in ingest["run"]

@@ -115,26 +115,42 @@ jobs:
         run: |
           failed=0
           for number in $(echo "$NUMBERS" | jq -r '.[]'); do
+            tmp_dir=$(mktemp -d)
             (
               set -e
               echo "=================================================="
               echo "Processing issue #$number..."
               echo "=================================================="
 
-              gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json body,url,number,author > issue.json
-              jq -r '.body' issue.json > issue-body.md
+              gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json body,url,number,author > "$tmp_dir/issue.json"
+              jq -r '.body' "$tmp_dir/issue.json" > "$tmp_dir/issue-body.md"
 
+              set +e
               citypods transcript-quality ingest-review \
                 --issue-number "$number" \
-                --issue-body-file issue-body.md \
-                --issue-url "$(jq -r '.url' issue.json)" \
-                --actor "$(jq -r '.author.login // empty' issue.json)" > ingest.json
+                --issue-body-file "$tmp_dir/issue-body.md" \
+                --issue-url "$(jq -r '.url' "$tmp_dir/issue.json")" \
+                --actor "$(jq -r '.author.login // empty' "$tmp_dir/issue.json")" > "$tmp_dir/ingest.json" 2> "$tmp_dir/ingest.err"
+              code=$?
+              set -e
+              if [ "$code" -ne 0 ]; then
+                if grep -q "issue must have exactly one checked primary outcome" "$tmp_dir/ingest.err"; then
+                  echo "Issue #$number has no checked review decision yet — skipping"
+                  exit 0
+                fi
+                cat "$tmp_dir/ingest.err" >&2
+                echo "::error::Failed to process issue #$number"
+                exit 1
+              fi
 
-              comment=$(jq -r '.comment' ingest.json)
-              gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
+              comment=$(jq -r '.comment // empty' "$tmp_dir/ingest.json")
+              if [ -n "$comment" ]; then
+                gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
+              fi
               gh issue close "$number" --repo "$GITHUB_REPOSITORY"
               echo "Successfully ingested issue #$number"
             ) || { echo "::error::Failed to process issue #$number"; failed=1; }
+            rm -rf "$tmp_dir"
           done
           # `::error::` only annotates -- continue through every resolved issue above (one bad
           # issue must not block the rest), but the job itself must not report success when any

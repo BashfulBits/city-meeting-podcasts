@@ -1251,13 +1251,23 @@ class LiteLLMBackend(Backend):
                 return None
             if response.status_code != 200:
                 raise LLMBackendError(f"LLM dispatch poll returned HTTP {response.status_code}")
-            result = self._completed_dispatch_result(
-                task=handle.task,
-                recipe_hash=handle.recipe_hash,
-                output=response.json(),
-                structured_output=handle.structured_output,
-                model=handle.model,
-            )
+            try:
+                result = self._completed_dispatch_result(
+                    task=handle.task,
+                    recipe_hash=handle.recipe_hash,
+                    output=response.json(),
+                    structured_output=handle.structured_output,
+                    model=handle.model,
+                )
+            except LLMStructuredOutputError:
+                # Layer 2 active purge: delete malformed response to unblock clean re-submission
+                try:
+                    self._session.delete(
+                        candidate, headers=headers, timeout=self.config.timeout_seconds
+                    )
+                except Exception:
+                    pass
+                raise
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch poll failed") from exc
 
@@ -1294,7 +1304,36 @@ class LiteLLMBackend(Backend):
                     actual_requests=handle.attempted_requests,
                 )
                 write_deferred(self.storage, handle.recipe_hash, result)
+                # Layer 1 Verified Consumption: purge R2 object only after B2 write succeeds
+                try:
+                    self._session.delete(
+                        candidate, headers=headers, timeout=self.config.timeout_seconds
+                    )
+                except Exception:
+                    pass
+        elif self.storage is not None and getattr(self.storage, "cas_capable", False):
+            write_deferred(self.storage, handle.recipe_hash, result)
+            try:
+                self._session.delete(
+                    candidate, headers=headers, timeout=self.config.timeout_seconds
+                )
+            except Exception:
+                pass
         return result
+
+    def delete_dispatched_ref(self, ref: str) -> None:
+        """Best-effort deletion of a remote dispatched request from R2."""
+        if not ref or not ref.startswith("chatcmpl-") or not self.config.dispatch_url:
+            return
+        base = self.config.dispatch_url.rstrip("/") + "/"
+        url = urljoin(base, f"v1/requests/{ref}")
+        headers = {}
+        if self.config.dispatch_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
+        try:
+            self._session.delete(url, headers=headers, timeout=self.config.timeout_seconds)
+        except Exception:
+            pass
 
     poll = reconcile
 
