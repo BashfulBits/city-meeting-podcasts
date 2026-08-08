@@ -128,9 +128,18 @@ jobs:
                 --actor "$(jq -r '.author.login // empty' issue.json)" > ingest.json
               
               if jq -e '.stored == true' ingest.json >/dev/null 2>&1; then
-                comment=$(jq -r '.comment' ingest.json)
-                gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
-                gh issue close "$number" --repo "$GITHUB_REPOSITORY"
+                marker="<!-- h15-ingest:${number} -->"
+                gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json state,comments > issue-state.json
+                has_comment=$(jq -r --arg m "$marker" '[.comments[] | select((.author.login | test("^(github-actions(\\[bot\\])?|app/github-actions)$")) and (.body | startswith($m)))] | length > 0' issue-state.json)
+                if [ "$has_comment" = "false" ]; then
+                  comment=$(jq -r '.comment' ingest.json)
+                  printf '%s\n%s\n' "$marker" "$comment" > comment-body.md
+                  gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body-file comment-body.md
+                fi
+                is_open=$(gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json state --jq '.state == "OPEN"')
+                if [ "$is_open" = "true" ]; then
+                  gh issue close "$number" --repo "$GITHUB_REPOSITORY"
+                fi
                 echo "Successfully ingested issue #$number"
               else
                 echo "Skipping issue #$number: no decision stored"
