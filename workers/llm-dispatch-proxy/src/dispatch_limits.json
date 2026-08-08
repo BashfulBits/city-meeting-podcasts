@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 10,
+    "routes_count": 11,
     "providers_count": 4
   },
   "providers": {
@@ -146,6 +146,16 @@
       "free": true
     },
     {
+      "route_id": "mistral_medium_2508_primary",
+      "model": "mistral/mistral-medium-2508",
+      "provider": "mistral",
+      "upstream_model": "mistral-medium-2508",
+      "account_id": "primary",
+      "rpm": 22,
+      "tpm": 356250,
+      "free": true
+    },
+    {
       "route_id": "deepseek_v4_flash_primary",
       "model": "deepseek/deepseek-v4-flash",
       "provider": "deepseek",
@@ -255,6 +265,16 @@
       "tpm": 250000,
       "free": true
     },
+    "mistral_medium_2508_primary": {
+      "route_id": "mistral_medium_2508_primary",
+      "model": "mistral/mistral-medium-2508",
+      "provider": "mistral",
+      "upstream_model": "mistral-medium-2508",
+      "account_id": "primary",
+      "rpm": 22,
+      "tpm": 356250,
+      "free": true
+    },
     "deepseek_v4_flash_primary": {
       "route_id": "deepseek_v4_flash_primary",
       "model": "deepseek/deepseek-v4-flash",
@@ -296,6 +316,9 @@
     ],
     "mistral/mistral-large-3": [
       "mistral_large_3_primary"
+    ],
+    "mistral/mistral-medium-2508": [
+      "mistral_medium_2508_primary"
     ],
     "deepseek/deepseek-v4-flash": [
       "deepseek_v4_flash_primary"

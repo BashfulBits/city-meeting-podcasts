@@ -136,6 +136,15 @@ routes:
     tpm: 250000
     free: true
 
+  - route_id: mistral_medium_2508_primary
+    model: mistral/mistral-medium-2508
+    provider: mistral
+    upstream_model: mistral-medium-2508
+    account_id: primary
+    rpm: 22
+    tpm: 356250
+    free: true
+
   - route_id: deepseek_v4_flash_primary
     model: deepseek/deepseek-v4-flash
     provider: deepseek

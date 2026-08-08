@@ -191,13 +191,15 @@ ROUTES: dict[str, LLMRoute] = {
     ),
     "mistral/mistral-medium-2508": LLMRoute(
         model="mistral/mistral-medium-2508",
-        # Evaluation-only direct route. It is not a default/overflow selection policy.
-        transport="direct",
-        transports=("direct",),
+        # Production agenda extraction is submitted through the shared deferred Worker so a
+        # GitHub runner never holds an Mistral pacing sleep and the same job registry can retry or
+        # finalize it later.
+        transport="llm-dispatch",
+        transports=("llm-dispatch",),
         free=True,
         quota=QuotaPolicy(rpm=22, tpm=356_250),
         pricing=PricingPolicy(),
-        experimental=True,
+        max_provider_attempts=1,
     ),
 }
 
