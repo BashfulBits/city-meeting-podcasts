@@ -127,10 +127,14 @@ jobs:
                 --issue-url "$(jq -r '.url' issue.json)" \
                 --actor "$(jq -r '.author.login // empty' issue.json)" > ingest.json
               
-              comment=$(jq -r '.comment' ingest.json)
-              gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
-              gh issue close "$number" --repo "$GITHUB_REPOSITORY"
-              echo "Successfully ingested issue #$number"
+              if jq -e '.stored == true' ingest.json >/dev/null 2>&1; then
+                comment=$(jq -r '.comment' ingest.json)
+                gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
+                gh issue close "$number" --repo "$GITHUB_REPOSITORY"
+                echo "Successfully ingested issue #$number"
+              else
+                echo "Skipping issue #$number: no decision stored"
+              fi
             ) || {
               echo "::error::Failed to process issue #$number"
               failed=1

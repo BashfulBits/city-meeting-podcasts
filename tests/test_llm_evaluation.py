@@ -1,10 +1,10 @@
-from __future__ import annotations
-
+import json
 import subprocess
 import sys
 
 import pytest
 
+from citypods import llm_tag_review
 from citypods.llm_evaluation import (
     EvaluationConfig,
     apply_admission,
@@ -206,3 +206,35 @@ def test_review_packaging_prioritizes_unqualified_candidates_and_ingests_decisio
     body = body.replace("- [ ] Correct", "- [x] Correct")
     ingest_review_body(state, body, config=config, actor="reviewer", issue_number=12)
     assert state["reviews"][item["candidate_id"]]["decision"] == "correct"
+
+
+def test_llm_tag_review_ingest_cli_skips_unreviewed_issue_cleanly(tmp_path, capsys):
+    state_path = tmp_path / "llm_evaluation.json"
+    state_path.write_text(json.dumps({"version": 1, "reviews": {}, "matrix": [], "trend": []}))
+    item = candidate(0.8)
+    config = EvaluationConfig()
+    body = render_review_body(item, config=config, state={"reviews": {}, "matrix": []})
+    body_file = tmp_path / "unreviewed.md"
+    body_file.write_text(body)
+
+    site_config = tmp_path / "site.yml"
+    site_config.write_text(
+        f"state:\n  local_path: {tmp_path}\n"
+        "tagging:\n  evaluation:\n    state_path: llm_evaluation.json\n"
+    )
+
+    rc = llm_tag_review.main(
+        [
+            "ingest",
+            "--site-config",
+            str(site_config),
+            "--issue-number",
+            "42",
+            "--issue-body-file",
+            str(body_file),
+        ]
+    )
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["stored"] is False
+    assert out["reason"] == "no_decision_checked"

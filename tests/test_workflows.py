@@ -382,6 +382,33 @@ def test_asr_quality_ingest_workflow_is_event_driven():
     )
     assert "--issue-body-file issue-body.md" in ingest["run"]
     assert "gh issue view" in ingest["run"]
+    assert ".stored == true" in ingest["run"]
+    assert "gh issue comment" in ingest["run"]
+    assert "gh issue close" in ingest["run"]
+
+
+def test_llm_tag_review_ingest_workflow_is_event_driven_and_guards_stored():
+    wf, resolve_job = _job("llm-tag-review-ingest.yml", job_name="resolve")
+    triggers = _on(wf)
+    assert set(triggers) >= {"issues", "issue_comment", "schedule", "workflow_dispatch"}
+    assert wf["permissions"] == {}
+    assert resolve_job["permissions"] == {"issues": "read"}
+    resolve = next(
+        step for step in resolve_job["steps"] if step.get("name") == "Resolve review issues"
+    )
+    assert "EVENT_COMMENT_BODY" in resolve.get("env", {})
+    assert "/llm-ingest" in resolve["run"]
+
+    ingest_job = wf["jobs"]["ingest"]
+    assert ingest_job["needs"] == "resolve"
+    assert ingest_job["permissions"] == {"contents": "read", "issues": "write"}
+    assert "strategy" not in ingest_job
+    ingest = next(
+        step for step in ingest_job["steps"] if "llm-evaluation ingest" in str(step.get("run", ""))
+    )
+    assert "--issue-body-file issue-body.md" in ingest["run"]
+    assert "gh issue view" in ingest["run"]
+    assert ".stored == true" in ingest["run"]
     assert "gh issue comment" in ingest["run"]
     assert "gh issue close" in ingest["run"]
 

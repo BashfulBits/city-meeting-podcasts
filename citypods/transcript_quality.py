@@ -2233,6 +2233,7 @@ def ingest_review_decision(
     )
     save_raw_log(state_dir, raw_log, max_events=config.raw_log_cap)
     return {
+        "stored": True,
         "sample_id": metadata["sample_id"],
         "manual_decision": parsed["manual_decision"],
         "timing_flags": parsed["timing_flags"],
@@ -2805,23 +2806,29 @@ def main(argv: list[str] | None = None) -> int:
         print(f"packaged {len(manifest['children'])} H15 review issue(s)")
         return 0
     if args.command == "ingest-review":
-        result = ingest_review_decision(
-            state_dir,
-            issue_number=args.issue_number,
-            issue_body=Path(args.issue_body_file).read_text(),
-            actor=args.actor,
-            issue_url=args.issue_url,
-            storage=storage,
-            config=config,
-        )
-        _maybe_push_durable_state(
-            site_config,
-            output_dir,
-            state_dir,
-            raw_log_cap=config.raw_log_cap,
-        )
-        print(json.dumps(result, indent=2, sort_keys=True))
-        return 0
+        try:
+            result = ingest_review_decision(
+                state_dir,
+                issue_number=args.issue_number,
+                issue_body=Path(args.issue_body_file).read_text(),
+                actor=args.actor,
+                issue_url=args.issue_url,
+                storage=storage,
+                config=config,
+            )
+            _maybe_push_durable_state(
+                site_config,
+                output_dir,
+                state_dir,
+                raw_log_cap=config.raw_log_cap,
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
+        except ValueError as exc:
+            if "issue must have exactly one checked primary outcome" in str(exc):
+                print(json.dumps({"stored": False, "reason": "no_decision_checked"}, indent=2))
+                return 0
+            raise
     if args.command == "calibrate":
         report = run_calibration(state_dir, config=config, storage=storage)
         write_calibration_report(report, Path(args.out_dir))
