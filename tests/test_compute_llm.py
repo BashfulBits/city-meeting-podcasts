@@ -1134,10 +1134,12 @@ def test_reconcile_purges_r2_after_deferred_write():
         def get(self, url, **_kwargs):
             res = requests.Response()
             res.status_code = 200
-            res._content = json.dumps({
-                "id": "chatcmpl-purge1",
-                "choices": [{"message": {"content": "ok"}}],
-            }).encode()
+            res._content = json.dumps(
+                {
+                    "id": "chatcmpl-purge1",
+                    "choices": [{"message": {"content": "ok"}}],
+                }
+            ).encode()
             return res
 
         def delete(self, url, **_kwargs):

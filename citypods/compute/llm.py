@@ -1331,7 +1331,9 @@ class LiteLLMBackend(Backend):
                 # (no route to price against), but we must release the inflight reservation
                 # to avoid leaking quota until the ledger entry ages out.
                 release_route_reservation(
-                    self.storage, handle.owner, handle.model,
+                    self.storage,
+                    handle.owner,
+                    handle.model,
                 )
                 write_deferred(self.storage, handle.recipe_hash, result)
                 try:
