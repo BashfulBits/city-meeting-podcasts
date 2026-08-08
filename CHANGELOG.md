@@ -17,6 +17,9 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **H15/R5 ingest workflows could double-comment or leave a persisted decision unconfirmed on retry.**
+  `asr-quality-ingest.yml` and `llm-tag-review-ingest.yml` each persist a review decision, then separately `gh issue comment` and `gh issue close` the source issue. A GitHub API failure between those steps left a durable decision recorded with no confirmation posted, and a retry re-ran the comment/close pair unconditionally — double-posting the comment if it had actually succeeded before the close call failed. The persist step was already safe to re-run (`record_review()` / `ingest_review_decision()` overwrite by candidate/sample identity, not append), so the fix is confined to the comment/close step: check existing comments for a stable `<!-- h15-ingest:N -->` / `<!-- llm-ingest:N -->` marker before commenting, and check the issue's current state before closing, mirroring the find-or-update comment pattern already used in `dep-bump-smoke.yml`.
+
 - **Ingest workflows failed on scheduled runs and unreviewed issues.**
   The `asr-quality-ingest.yml` and `llm-tag-review-ingest.yml` workflows unconditionally ran `gh issue comment` and `gh issue close` inside a subshell with error trapping. When processing unreviewed open issues on scheduled fallback sweeps, `parse_issue_decision` and `parse_review` raised `ValueError`, causing subshells to fail with exit code 1, which marked `failed=1` and failed the entire scheduled workflow run in GitHub Actions.
   Fixed by:
