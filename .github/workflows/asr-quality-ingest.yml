@@ -64,7 +64,7 @@ jobs:
             numbers=$(jq -nc --arg n "$n" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "schedule" ]; then
             # Fallback safety net for missed issues.edited / issue_comment webhooks: scan every
-            # open H15 child issue and let the matrix job below attempt ingestion on each one.
+            # open H15 child issue and let the ingest job below attempt ingestion on each one.
             # Issues without a checked primary box simply fail parse_issue_decision and are
             # skipped (matches the per-issue "stored=false -> no-op" behavior below).
             numbers=$(gh issue list --state open --search 'in:title "H15 sample "' \
@@ -80,10 +80,6 @@ jobs:
     permissions:
       contents: read
       issues: write
-    strategy:
-      fail-fast: false
-      matrix:
-        issue_number: ${{ fromJson(needs.resolve.outputs.numbers) }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -99,17 +95,9 @@ jobs:
       - name: Install
         run: pip install -e ".[storage]" -c constraints/prod.txt
 
-      - name: Download issue body
+      - name: Ingest decisions in a loop
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ matrix.issue_number }}
-        run: |
-          gh issue view "$ISSUE_NUMBER" --json body,url,number,author > issue.json
-          jq -r '.body' issue.json > issue-body.md
-
-      - name: Ingest H15 decision
-        id: ingest
-        env:
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
@@ -120,34 +108,36 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-          ISSUE_NUMBER: ${{ matrix.issue_number }}
+          NUMBERS: ${{ needs.resolve.outputs.numbers }}
         run: |
-          set +e
-          citypods transcript-quality ingest-review \
-            --issue-number "$ISSUE_NUMBER" \
-            --issue-body-file issue-body.md \
-            --issue-url "$(jq -r '.url' issue.json)" \
-            --actor "$(jq -r '.author.login // empty' issue.json)" > ingest.json
-          code=$?
-          set -e
-          if [ "$code" -ne 0 ]; then
-            echo "stored=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "stored=true" >> "$GITHUB_OUTPUT"
-          echo "comment<<EOF" >> "$GITHUB_OUTPUT"
-          jq -r '.comment' ingest.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          failed=0
+          for number in $(echo "$NUMBERS" | jq -r '.[]'); do
+            (
+              set -e
+              echo "=================================================="
+              echo "Processing issue #$number..."
+              echo "=================================================="
+              
+              gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json body,url,number,author > issue.json
+              jq -r '.body' issue.json > issue-body.md
+              
+              citypods transcript-quality ingest-review \
+                --issue-number "$number" \
+                --issue-body-file issue-body.md \
+                --issue-url "$(jq -r '.url' issue.json)" \
+                --actor "$(jq -r '.author.login // empty' issue.json)" > ingest.json
+              
+              comment=$(jq -r '.comment' ingest.json)
+              gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
+              gh issue close "$number" --repo "$GITHUB_REPOSITORY"
+              echo "Successfully ingested issue #$number"
+            ) || {
+              echo "::error::Failed to process issue #$number"
+              failed=1
+            }
+          done
+          exit "$failed"
 
-      - name: Comment and close child issue
-        if: steps.ingest.outputs.stored == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ matrix.issue_number }}
-          COMMENT: ${{ steps.ingest.outputs.comment }}
-        run: |
-          gh issue comment "$ISSUE_NUMBER" --body "$COMMENT"
-          gh issue close "$ISSUE_NUMBER"
 
   finalize:
     # Runs once per workflow run (not once per matrix leg) so N children closing in the same
