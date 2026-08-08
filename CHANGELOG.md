@@ -42,6 +42,21 @@ Phase R (Research-Tool Surface)._
     (`state/llm_budget.json` inflight rows, `state/llm_deferred/*.json`) keyed on the old model string
     become unreachable post-deploy, which is already documented as loss-tolerant (review/33 §10.4/§10.6).
 
+- **Multi-provider dispatch follow-up corrections** (same PR, review pass):
+  - Worker `routeAvailable` now fails closed for paid routes declaring only `concurrency` and no
+    `rpm`/`rpd`/`tpm`, preventing unmetered DeepSeek dispatches.
+  - `delete_dispatched_ref` now normalises path-style refs (`/v1/requests/chatcmpl-…`) and full URLs,
+    not just bare `chatcmpl-…` IDs — handles store the `location` header, which is always a path.
+  - Worker CAS-retry loop re-checks `routeAvailable` against the freshly loaded ledger before
+    reserving, preventing oversubscription after a concurrent write.
+  - Idempotency collision check now compares policy fields (`allow_paid`, `deadline_at`, …) alongside
+    the chat payload, catching policy-only mismatches that were previously silent.
+  - `reconcile` releases the inflight reservation when a handle's model has been removed from `ROUTES`,
+    instead of silently leaking quota until the ledger entry ages out.
+  - `select_and_reserve` guards against returning a `None` transport when reusing an in-flight
+    reservation whose dispatch transport has been removed from the backend config.
+  - Deploy workflow gains a `dispatch_limits.json` drift check to catch uncommitted recompilations.
+
 ### Fixed
 
 - **H15/R5 ingest workflows could double-comment or leave a persisted decision unconfirmed on retry.**

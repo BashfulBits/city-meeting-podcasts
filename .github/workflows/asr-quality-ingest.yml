@@ -168,8 +168,6 @@ jobs:
           done
           exit "$failed"
 
-
-
   finalize:
     # Runs once per workflow run (not once per matrix leg) so N children closing in the same
     # run can't race each other into double-commenting/closing the same parent.

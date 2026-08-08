@@ -237,17 +237,20 @@ def test_research_only_mistral_medium_is_not_an_implicit_pipeline_fallback():
         now=NOW,
     )
     assert excluded.model is None
-    assert (model, "experimental route disallowed") in excluded.rejected
+    # Medium is now the pinned production agenda route, but it is dispatch-only. A direct-only
+    # caller must still be rejected rather than silently bypassing the shared Worker pacing.
+    assert (model, "transport gate") in excluded.rejected
 
     included = select_route(
         LLMRequestPolicy(allowed_models=(model,), allow_experimental=True),
         routes=ROUTES,
         ledger=LLMBudget(),
-        available_transports=DIRECT,
+        available_transports=BOTH_TRANSPORTS,
         estimated_tokens=1024,
         now=NOW,
     )
     assert included.model == model
+    assert included.transport == "llm-dispatch"
 
 
 def test_retry_at_is_next_minute_when_only_the_per_minute_window_is_full():

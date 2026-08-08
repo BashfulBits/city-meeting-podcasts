@@ -59,10 +59,16 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     monkeypatch.setattr(
         llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
     )
+    prune_kwargs = {}
+
+    def _capturing_prune(_storage, _snapshot, **kw):
+        prune_kwargs.update(kw)
+        return 2
+
     monkeypatch.setattr(
         llm_deferred_sweep,
         "prune_expired_deferred_snapshot",
-        lambda _storage, _snapshot, **_kw: 2,
+        _capturing_prune,
     )
 
     results = {
@@ -89,6 +95,9 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     assert "1 failed" in out.out
     assert "2 pruned" in out.out
     assert "recipe-3" in out.err
+    # Verify the active backend was propagated to prune_expired_deferred_snapshot.
+    assert "backend" in prune_kwargs
+    assert isinstance(prune_kwargs["backend"], FakeBackend)
 
 
 def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):

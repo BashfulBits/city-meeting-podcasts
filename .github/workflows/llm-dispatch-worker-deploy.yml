@@ -39,6 +39,13 @@ jobs:
       - name: Compile LLM limits
         run: python scripts/compile_llm_limits.py
 
+      - name: Check for dispatch_limits.json drift
+        run: |
+          if ! git diff --exit-code workers/llm-dispatch-proxy/src/dispatch_limits.json; then
+            echo "::error::dispatch_limits.json is out of date — recompile with 'python scripts/compile_llm_limits.py' and commit both the YAML and the JSON together."
+            exit 1
+          fi
+
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "24"

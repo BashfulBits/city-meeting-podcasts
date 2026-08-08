@@ -1082,6 +1082,93 @@ def test_rejects_gpu_and_unknown_routes():
         backend.run_inference(InferenceJob(task="transcribe", inputs={}))
 
 
+def test_delete_dispatched_ref_normalizes_ref_formats():
+    """delete_dispatched_ref must accept bare IDs, path-style refs, and full URLs --
+    handles store the `location` header (path-style), not a bare ID."""
+    deleted_urls = []
+
+    class RecordingSession(requests.Session):
+        def delete(self, url, **_kwargs):
+            deleted_urls.append(url)
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+            dispatch_auth_token="test-token",
+        ),
+        http_session=RecordingSession(),
+    )
+
+    # Bare ID
+    backend.delete_dispatched_ref("chatcmpl-abc12345678")
+    assert len(deleted_urls) == 1
+    assert deleted_urls[-1] == "https://dispatch.example/v1/requests/chatcmpl-abc12345678"
+
+    # Path-style ref (what handles actually store from the Worker's location header)
+    backend.delete_dispatched_ref("/v1/requests/chatcmpl-xyz99999999")
+    assert len(deleted_urls) == 2
+    assert deleted_urls[-1] == "https://dispatch.example/v1/requests/chatcmpl-xyz99999999"
+
+    # Full URL ref
+    backend.delete_dispatched_ref("https://dispatch.example/v1/requests/chatcmpl-full00000001")
+    assert len(deleted_urls) == 3
+    assert deleted_urls[-1] == "https://dispatch.example/v1/requests/chatcmpl-full00000001"
+
+    # No-op for non-chatcmpl refs
+    backend.delete_dispatched_ref("something-else")
+    assert len(deleted_urls) == 3
+
+    # No-op for empty ref
+    backend.delete_dispatched_ref("")
+    assert len(deleted_urls) == 3
+
+
+def test_reconcile_purges_r2_after_deferred_write():
+    """reconcile() must DELETE the R2 object after a successful deferred write (the post-persist
+    purge path), including when the handle ref is a path-style location."""
+    deleted_urls = []
+
+    class TrackingSession(requests.Session):
+        def get(self, url, **_kwargs):
+            res = requests.Response()
+            res.status_code = 200
+            res._content = json.dumps({
+                "id": "chatcmpl-purge1",
+                "choices": [{"message": {"content": "ok"}}],
+            }).encode()
+            return res
+
+        def delete(self, url, **_kwargs):
+            deleted_urls.append(url)
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=TrackingSession(),
+        storage=storage,
+    )
+
+    handle = JobHandle(
+        task="summarize",
+        recipe_hash="purge-test-recipe",
+        backend="litellm",
+        ref="/v1/requests/chatcmpl-purge1",
+        model="mistral/mistral-large-2512",
+    )
+
+    result = backend.reconcile(handle)
+    assert result is not None
+    # Should have issued a DELETE for the R2 object
+    assert len(deleted_urls) == 1
+    assert "chatcmpl-purge1" in deleted_urls[0]
+
+
 def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
     post_json = None
 

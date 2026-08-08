@@ -584,6 +584,7 @@ test("deadline-based paid elevation only fires when waiting for free capacity wo
         route_id: "paid_route",
         provider: "paid_co",
         free: false,
+        rpm: 10,
         input_per_token: 0.001,
         output_per_token: 0.002,
       },
@@ -821,4 +822,62 @@ test("credential-resolution failure never touches the ledger, and a persistent l
   const result = await dispatchOne(blockedEnv, countingUpstream, new Date());
   assert.equal(result.status, "no_capacity");
   assert.equal(posted.count, 0);
+});
+
+test("routeAvailable fails closed for a paid route with only concurrency and no rpm/rpd/tpm", () => {
+  const now = new Date("2026-08-06T12:00:00Z");
+  // A paid route declaring only concurrency: no rpm, rpd, or tpm.
+  const paidConcurrencyOnly = { free: false, concurrency: 5 };
+  const entry = { requests_minute: 0, requests_day: 0, tokens_minute: 0, blocked_until: "" };
+  assert.equal(
+    routeAvailable(entry, paidConcurrencyOnly, { requests: 1, tokens: 10 }, now),
+    false,
+    "paid route with no rpm/rpd/tpm must be rejected (fail-closed)",
+  );
+
+  // A free route with no rpm/rpd/tpm should still pass (free routes are not gated).
+  const freeConcurrencyOnly = { free: true, concurrency: 5 };
+  assert.equal(
+    routeAvailable(entry, freeConcurrencyOnly, { requests: 1, tokens: 10 }, now),
+    true,
+    "free route with no rpm/rpd/tpm should pass",
+  );
+
+  // A paid route with rpm should be checked normally, not fail-closed.
+  const paidWithRpm = { free: false, rpm: 10 };
+  assert.equal(
+    routeAvailable(entry, paidWithRpm, { requests: 1, tokens: 10 }, now),
+    true,
+    "paid route with rpm should be checked normally",
+  );
+});
+
+test("idempotency collision detects policy field differences, not just payload", async () => {
+  const env = isolatedEnv();
+
+  // First request with allow_paid: true
+  const firstReq = request("https://dispatch.example/v1/chat/completions", {
+    method: "POST",
+    headers: { "idempotency-key": "policy-test-1" },
+    body: JSON.stringify({
+      model: "mistral/mistral-large-2512",
+      messages: [{ role: "user", content: "hello" }],
+      allow_paid: true,
+    }),
+  });
+  const first = await handleRequest(firstReq, env);
+  assert.equal(first.status, 202);
+
+  // Same payload, same key, but different allow_paid
+  const conflictReq = request("https://dispatch.example/v1/chat/completions", {
+    method: "POST",
+    headers: { "idempotency-key": "policy-test-1" },
+    body: JSON.stringify({
+      model: "mistral/mistral-large-2512",
+      messages: [{ role: "user", content: "hello" }],
+      allow_paid: false,
+    }),
+  });
+  const conflict = await handleRequest(conflictReq, env);
+  assert.equal(conflict.status, 409, "different allow_paid with same idem key must 409");
 });

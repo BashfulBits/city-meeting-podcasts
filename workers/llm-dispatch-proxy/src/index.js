@@ -333,7 +333,18 @@ async function enqueue(bucket, normalized, cfg, now, idempotencyKey) {
   const existing = await getJson(bucket, key);
   if (existing) {
     const existingReq = existing.value.request;
-    if (JSON.stringify(existingReq) !== JSON.stringify(normalized.payload)) {
+    const existingPolicy = existing.value.policy || {};
+    const incomingPolicy = {
+      estimated_tokens: normalized.estimated_tokens,
+      allow_paid: normalized.allow_paid,
+      allow_batch: normalized.allow_batch,
+      deadline_at: normalized.deadline_at,
+      submit_next: normalized.submit_next,
+    };
+    if (
+      JSON.stringify(existingReq) !== JSON.stringify(normalized.payload) ||
+      JSON.stringify(existingPolicy) !== JSON.stringify(incomingPolicy)
+    ) {
       throw new HttpError(409, "Idempotency key collision with different request payload");
     }
     return existing.value;
@@ -607,6 +618,13 @@ function rollLedgerWindows(entry, route, now) {
 
 function routeAvailable(entry, route, { requests, tokens }, now) {
   if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
+    return false;
+  }
+  // A paid route that declares no enforceable per-window limit (only `concurrency`, which this
+  // ledger does not model -- see `nextRouteReset`) must not be treated as unlimited: it would
+  // bypass the sole cost-control gate for the only paid provider in the compiled set (DeepSeek).
+  // Fail closed until a real concurrency enforcement path is implemented (CodeRabbit, review/41).
+  if (!route.free && route.rpm == null && route.rpd == null && route.tpm == null) {
     return false;
   }
   if (route.rpm != null && entry.requests_minute + requests > route.rpm) {
@@ -903,6 +921,10 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
     // ever durably recording the reservation, which would let a later tick spend the same capacity
     // again (CodeRabbit, review/41: "do not dispatch after a failed ledger CAS write").
     let ledgerSaved = false;
+    const reservationSize = {
+      requests: 1,
+      tokens: claimed.record.policy?.estimated_tokens || 1024,
+    };
     for (let attempt = 0; attempt < 3 && !ledgerSaved; attempt += 1) {
       if (attempt > 0) {
         budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
@@ -910,10 +932,13 @@ export async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
       }
       const entry = ledgerEntry(budget, chosenRoute.route_id);
       rollLedgerWindows(entry, chosenRoute, now);
-      reserveRouteCapacity(entry, chosenRoute, {
-        requests: 1,
-        tokens: claimed.record.policy?.estimated_tokens || 1024,
-      });
+      // Re-check availability against the (potentially reloaded) ledger before reserving: a
+      // concurrent write may have exhausted this route's capacity, and reserving unconditionally
+      // would oversubscribe it.
+      if (!routeAvailable(entry, chosenRoute, reservationSize, now)) {
+        break;
+      }
+      reserveRouteCapacity(entry, chosenRoute, reservationSize);
       ledgerSaved = Boolean(
         await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
           onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },

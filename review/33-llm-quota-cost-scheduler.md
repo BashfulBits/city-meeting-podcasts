@@ -94,6 +94,14 @@ old single-transport behavior. The original draft treated "one backend, one tran
 request switching" as a hard scoping constraint deferred to a hypothetical future caller (see the
 original §14); the sweep turned out to be exactly that caller, so it shipped now rather than later.
 
+**2026-08-08 correction (PR review pass):** `select_and_reserve`'s inflight-reservation reuse path
+(§10.3) matched the in-flight owner and returned the original route's dispatch transport without
+checking whether that transport was still in `available_transports`. If the Worker was removed from
+the backend config between the original reservation and the retry, the returned `SelectionResult`
+had `transport=None`, which would propagate to `_owner_for` and the dispatch-vs-direct branch in
+`llm.py`. Fixed by falling through to fresh selection when the reused transport is no longer
+reachable.
+
 ## §3. Request contract
 
 `InferenceJob` (`citypods/compute/base.py`) is pre-1.0-locked and stays unchanged. Scheduler metadata

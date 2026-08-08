@@ -48,13 +48,22 @@ from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
 
 LLM_TASKS: frozenset[Task] = frozenset(
-    {"summarize", "tag", "soundbite-select", "classify-civic-platforms"}
+    {
+        "summarize",
+        "tag",
+        "soundbite-select",
+        "classify-civic-platforms",
+        "agenda-item-extract",
+        "agenda-chapter-locate",
+    }
 )
 TASK_VERSIONS: dict[Task, str] = {
     "summarize": "1",
     "tag": "1",
     "soundbite-select": "1",
     "classify-civic-platforms": "6",
+    "agenda-item-extract": "1",
+    "agenda-chapter-locate": "1",
 }
 
 TASK_PROMPTS: dict[Task, str] = {
@@ -67,6 +76,12 @@ TASK_PROMPTS: dict[Task, str] = {
         "Classify civic meeting platforms only from the supplied retrieved evidence. "
         "Never invent a URL or a platform not supported by that evidence, and reject evidence for "
         "a different municipality."
+    ),
+    "agenda-item-extract": (
+        "Extract source-grounded agenda action items with exact line evidence and concise titles."
+    ),
+    "agenda-chapter-locate": (
+        "Locate agenda items in a complete timed transcript using only supplied unit IDs."
     ),
 }
 
@@ -1311,6 +1326,20 @@ class LiteLLMBackend(Backend):
                     )
                 except Exception:
                     pass
+            elif getattr(self.storage, "cas_capable", False):
+                # Route removed from ROUTES since the handle was created: we can't settle
+                # (no route to price against), but we must release the inflight reservation
+                # to avoid leaking quota until the ledger entry ages out.
+                release_route_reservation(
+                    self.storage, handle.owner, handle.model,
+                )
+                write_deferred(self.storage, handle.recipe_hash, result)
+                try:
+                    self._session.delete(
+                        candidate, headers=headers, timeout=self.config.timeout_seconds
+                    )
+                except Exception:
+                    pass
         elif self.storage is not None and getattr(self.storage, "cas_capable", False):
             write_deferred(self.storage, handle.recipe_hash, result)
             try:
@@ -1323,10 +1352,18 @@ class LiteLLMBackend(Backend):
 
     def delete_dispatched_ref(self, ref: str) -> None:
         """Best-effort deletion of a remote dispatched request from R2."""
-        if not ref or not ref.startswith("chatcmpl-") or not self.config.dispatch_url:
+        if not ref or not self.config.dispatch_url:
             return
+        # Normalize the ref: handles store either a bare ID ("chatcmpl-..."), a path
+        # ("/v1/requests/chatcmpl-..."), or a full URL. Extract the bare ID for all cases.
+        import re
+
+        match = re.search(r"(chatcmpl-[A-Za-z0-9-]{8,96})", ref)
+        if not match:
+            return
+        bare_id = match.group(1)
         base = self.config.dispatch_url.rstrip("/") + "/"
-        url = urljoin(base, f"v1/requests/{ref}")
+        url = urljoin(base, f"v1/requests/{bare_id}")
         headers = {}
         if self.config.dispatch_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"

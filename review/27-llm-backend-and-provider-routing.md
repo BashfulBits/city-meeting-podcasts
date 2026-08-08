@@ -479,7 +479,11 @@ one-request-per-interval gate" mentioned below with a per-route/per-account R2 l
 over-dispatched, but the Cron Trigger still claims and dispatches at most one request per tick
 regardless of any route's `rpm`, so real throughput for a route is `min(its own rpm, one/tick)` until a
 future pass loops dispatch within a tick (review/41 §4's explicitly accepted limitation). A 10-RPM
-route does not receive 10 Worker calls/minute today. The async queue boundary itself (`202`/poll,
+route does not receive 10 Worker calls/minute today. Routes that declare only `concurrency` (no
+`rpm`/`rpd`/`tpm` — today the DeepSeek paid routes) are fail-closed in `routeAvailable`: the Worker's
+R2 ledger does not model real-time concurrency, so these routes are rejected outright rather than
+treated as unlimited; they are available only to the Python scheduler's direct path, which can enforce
+its own concurrency tracking. The async queue boundary itself (`202`/poll,
 `stream: true` rejected, R2 conditional writes) is unchanged.
 
 The first Worker implementation keeps the queue boundary explicit: `POST /v1/chat/completions` returns

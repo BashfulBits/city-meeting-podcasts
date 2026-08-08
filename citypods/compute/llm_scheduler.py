@@ -426,14 +426,19 @@ def select_and_reserve(
             reused_transport = next(
                 (t for t in existing_route.transports if t in _DISPATCH_TRANSPORTS), None
             )
-            return SelectionResult(
-                existing_model,
-                existing_route,
-                "reusing in-flight reservation",
-                (),
-                owner=recipe_hash,
-                transport=reused_transport,
-            )
+            # If the route's dispatch transport is no longer in `available_transports` (e.g.
+            # the Worker was removed from the backend's config since the original reservation),
+            # don't return a result with `transport=None` -- fall through to fresh selection
+            # which will re-evaluate transport availability normally.
+            if reused_transport is not None and reused_transport in available_transports:
+                return SelectionResult(
+                    existing_model,
+                    existing_route,
+                    "reusing in-flight reservation",
+                    (),
+                    owner=recipe_hash,
+                    transport=reused_transport,
+                )
         selection = select_route(
             policy,
             routes=routes,
