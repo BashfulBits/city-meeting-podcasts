@@ -694,7 +694,7 @@ def _issue_body() -> str:
 
 
 def test_parse_issue_decision_rejects_zero_checked_primary_outcomes():
-    with pytest.raises(ValueError, match="exactly one"):
+    with pytest.raises(ValueError, match="no primary outcome checked"):
         parse_issue_decision(_issue_body())
 
 
@@ -768,10 +768,65 @@ def test_package_and_ingest_review(tmp_path):
         issue_url="https://example.invalid/issues/12",
     )
     assert result["manual_decision"] == "both_correct"
+    assert result["stored"] is True
     rollups = load_rollups(state_dir)
     evidence = rollups["rows"][0]["evidence"]["sample-1"]
     assert evidence["manual_decision"] == "both_correct"
     assert evidence["reviewed_by"] == "tester"
+
+
+def test_ingest_review_cli_skips_unreviewed_issue_cleanly(tmp_path, capsys):
+    state_dir = tmp_path / "state"
+    save_rollups(state_dir, {"version": 1, "rows": []})
+    body_file = tmp_path / "unreviewed.md"
+    body_file.write_text(_issue_body())
+    site_config = tmp_path / "site.yml"
+    site_config.write_text("state:\n  local_path: " + str(state_dir) + "\n")
+    from citypods.transcript_quality import main
+
+    rc = main(
+        [
+            "ingest-review",
+            "--site-config",
+            str(site_config),
+            "--issue-number",
+            "42",
+            "--issue-body-file",
+            str(body_file),
+        ]
+    )
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["stored"] is False
+    assert out["reason"] == "no_decision_checked"
+
+
+def test_ingest_review_cli_fails_on_multiple_checked_boxes(tmp_path):
+    state_dir = tmp_path / "state"
+    save_rollups(state_dir, {"version": 1, "rows": []})
+    body = (
+        _issue_body()
+        .replace("- [ ] A is better", "- [x] A is better")
+        .replace("- [ ] B is better", "- [x] B is better")
+    )
+    body_file = tmp_path / "multiple.md"
+    body_file.write_text(body)
+    site_config = tmp_path / "site.yml"
+    site_config.write_text("state:\n  local_path: " + str(state_dir) + "\n")
+    from citypods.transcript_quality import main
+
+    with pytest.raises(ValueError, match="exactly one"):
+        main(
+            [
+                "ingest-review",
+                "--site-config",
+                str(site_config),
+                "--issue-number",
+                "42",
+                "--issue-body-file",
+                str(body_file),
+            ]
+        )
 
 
 def test_rollup_ledger_uses_cas_and_writes_b2_mirror(tmp_path):

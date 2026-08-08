@@ -158,22 +158,32 @@ jobs:
                 exit 1
               fi
 
-              comment=$(jq -r '.comment // empty' "$tmp_dir/ingest.json")
-              if [ -n "$comment" ]; then
-                gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$comment"
+              if jq -e '.stored == true' "$tmp_dir/ingest.json" > /dev/null 2>&1; then
+                marker="<!-- llm-ingest:${number} -->"
+                gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json state,comments > "$tmp_dir/issue-state.json"
+                has_comment=$(jq -r --arg m "$marker" '[.comments[] | select((.author.login | test("^(github-actions(\\[bot\\])?|app/github-actions)$")) and (.body | startswith($m)))] | length > 0' "$tmp_dir/issue-state.json")
+                if [ "$has_comment" = "false" ]; then
+                  comment=$(jq -r '.comment' "$tmp_dir/ingest.json")
+                  printf '%s\n%s\n' "$marker" "$comment" > "$tmp_dir/comment-body.md"
+                  gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body-file "$tmp_dir/comment-body.md"
+                fi
+                is_open=$(gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json state --jq '.state == "OPEN"')
+                if [ "$is_open" = "true" ]; then
+                  gh issue close "$number" --repo "$GITHUB_REPOSITORY"
+                fi
+                echo "Successfully ingested issue #$number"
+              else
+                echo "Skipping issue #$number: no decision stored"
               fi
-              gh issue close "$number" --repo "$GITHUB_REPOSITORY"
-              echo "Successfully ingested issue #$number"
-            ) || { echo "::error::Failed to process issue #$number"; failed=1; }
+            ) || {
+              echo "::error::Failed to process issue #$number"
+              failed=1
+            }
             rm -rf "$tmp_dir"
           done
-          # `::error::` only annotates -- continue through every resolved issue above (one bad
-          # issue must not block the rest), but the job itself must not report success when any
-          # issue failed, or a fully-broken ingest run (every issue failing) would look green.
-          if [ "$failed" -ne 0 ]; then
-            echo "::error::One or more issues failed to ingest; see annotations above."
-            exit 1
-          fi
+          exit "$failed"
+
+
 
   finalize:
     # Run once after the serialized child ingests so a completed native batch is closed before

@@ -385,13 +385,46 @@ def test_asr_quality_ingest_workflow_is_event_driven():
         if "transcript-quality ingest-review" in str(step.get("run", ""))
     )
     assert "--issue-body-file" in ingest["run"]
-    assert "for number in" in ingest["run"]
-    assert "gh issue comment" in ingest["run"]
-    assert "gh issue close" in ingest["run"]
-    # `::error::` only annotates -- the loop must still fail the job when any issue errored, or a
-    # fully-broken ingest run (every issue failing) reports success.
-    assert "failed=1" in ingest["run"]
-    assert "exit 1" in ingest["run"]
+    assert "gh issue view" in ingest["run"]
+    assert ".stored == true" in ingest["run"]
+    stored_branch = ingest["run"].split(".stored == true")[1].split("else")[0]
+    assert "<!-- h15-ingest:" in stored_branch
+    assert "state,comments" in stored_branch
+    assert "--body-file" in stored_branch
+    assert '.state == "OPEN"' in stored_branch
+    assert "gh issue comment" in stored_branch
+    assert "gh issue close" in stored_branch
+
+
+def test_llm_tag_review_ingest_workflow_is_event_driven_and_guards_stored():
+    wf, resolve_job = _job("llm-tag-review-ingest.yml", job_name="resolve")
+    triggers = _on(wf)
+    assert set(triggers) >= {"issues", "issue_comment", "schedule", "workflow_dispatch"}
+    assert wf["permissions"] == {}
+    assert resolve_job["permissions"] == {"issues": "read"}
+    resolve = next(
+        step for step in resolve_job["steps"] if step.get("name") == "Resolve review issues"
+    )
+    assert "EVENT_COMMENT_BODY" in resolve.get("env", {})
+    assert "/llm-ingest" in resolve["run"]
+
+    ingest_job = wf["jobs"]["ingest"]
+    assert ingest_job["needs"] == "resolve"
+    assert ingest_job["permissions"] == {"contents": "read", "issues": "write"}
+    assert "strategy" not in ingest_job
+    ingest = next(
+        step for step in ingest_job["steps"] if "llm-evaluation ingest" in str(step.get("run", ""))
+    )
+    assert "--issue-body-file" in ingest["run"]
+    assert "gh issue view" in ingest["run"]
+    assert ".stored == true" in ingest["run"]
+    stored_branch = ingest["run"].split(".stored == true")[1].split("else")[0]
+    assert "<!-- llm-ingest:" in stored_branch
+    assert "state,comments" in stored_branch
+    assert "--body-file" in stored_branch
+    assert '.state == "OPEN"' in stored_branch
+    assert "gh issue comment" in stored_branch
+    assert "gh issue close" in stored_branch
 
 
 def test_asr_quality_ingest_schedule_fallback_scans_open_children():

@@ -44,7 +44,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
-- **Manually triggered tag calibration ingest silently skipped all open issues.**
+- **H15/R5 ingest workflows could double-comment or leave a persisted decision unconfirmed on retry.**
+  `asr-quality-ingest.yml` and `llm-tag-review-ingest.yml` each persist a review decision, then separately `gh issue comment` and `gh issue close` the source issue. A GitHub API failure between those steps left a durable decision recorded with no confirmation posted, and a retry re-ran the comment/close pair unconditionally — double-posting the comment if it had actually succeeded before the close call failed. The persist step was already safe to re-run (`record_review()` / `ingest_review_decision()` overwrite by candidate/sample identity, not append), so the fix is confined to the comment/close step: check existing comments for a stable `<!-- h15-ingest:N -->` / `<!-- llm-ingest:N -->` marker before commenting, and check the issue's current state before closing, mirroring the find-or-update comment pattern already used in `dep-bump-smoke.yml`.
+
+- **Ingest workflows failed on scheduled runs and unreviewed issues.**
+  The `asr-quality-ingest.yml` and `llm-tag-review-ingest.yml` workflows unconditionally ran `gh issue comment` and `gh issue close` inside a subshell with error trapping. When processing unreviewed open issues on scheduled fallback sweeps, `parse_issue_decision` and `parse_review` raised `ValueError`, causing subshells to fail with exit code 1, which marked `failed=1` and failed the entire scheduled workflow run in GitHub Actions.
+  Fixed by:
+  - Returning `{"stored": false, "reason": "no_decision_checked"}` with exit code 0 from `citypods transcript-quality ingest-review` and `citypods llm-evaluation ingest` when no decision checkbox is selected.
+  - Adding `"stored": true` to `ingest_review_decision` results in `transcript_quality.py`.
+  - Guarding `gh issue comment` and `gh issue close` behind `if jq -e '.stored == true' ingest.json` in both ingest workflows so unreviewed open issues are cleanly skipped without failing CI.
+
   The `llm-tag-review-ingest.yml` workflow was configured to ingest all open calibration issues on its scheduled run, but if triggered manually (`workflow_dispatch`) without an explicit issue number, it skipped the ingest block entirely instead of falling back to the same open-issue sweep. It now performs the full open-issue sweep on manual runs when no issue number is provided.
 
 - **Calibration ingest job stuck per-issue due to full state snapshot sync.**
@@ -54,7 +63,7 @@ Phase R (Research-Tool Surface)._
   - Adding `only_paths` support to `pull_state()` (mirroring `push_state()`'s existing API), so callers can fetch a single file instead of the full snapshot.
   - Scoping `ingest()`'s `pull_state()` call to `only_paths=[config.state_path]` (i.e. just `llm_evaluation.json`).
   - Scoping `ingest()`, `package()`, and both `tournament.py` `push_state()` calls to `only_paths=[<state file>]`.
-  - Adding per-stage `stderr` progress logging to `ingest()` so each stage (pull, parse, push) is visible in GitHub Actions logs even though stdout is redirected to `ingest.json`.
+  - Redirecting `pull_state` and `push_state` logging to `stderr` in `ingest()` (and `package()`) so each stage (pull, parse, push) is visible in Actions logs without polluting `stdout` (which is redirected to `ingest.json` and parsed as JSON by `jq`).
 
 - **Tag calibration ingest failed when marking checkboxes on the digest issue.**
   The `llm-tag-review-ingest.yml` workflow was missing a title check for the `issues` (edited) trigger. When a maintainer checked a progress-tracking checkbox on the parent digest issue (`R5 LLM tag calibration digest`), the workflow attempted to parse it as a review decision, failing with `ValueError` and exiting without commenting or closing anything. Added a `grep -q '^R5 LLM tag sample '` check to the `issues` event branch so the workflow only processes edits to the child issues where the actual review decisions live.
