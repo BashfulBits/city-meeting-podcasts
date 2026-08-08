@@ -334,13 +334,28 @@ total on `/admin/status`.
   same native `response_format` and replicate Instructor's parse/validate/retry contract by hand
   (`_run_gemini_structured_direct`).
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
-  private R2 queue. Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending
-  requests; a per-minute Cron Trigger claims one ready request with an R2 conditional write, reserves a
-  durable dispatch interval slot, calls the configured OpenAI-shaped HTTPS route, and persists either
-  the response or a bounded retry/failure state. The implemented Python LLM backend uses this as its
-  `JobHandle` path; direct provider translation remains LiteLLM's responsibility, either in Python or
-  in an explicitly configured LiteLLM Proxy upstream. The queue is ephemeral/derivable and is not part
-  of the B2-backed catalog records or the Python `RoutingStorage` control-plane prefixes.
+  private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
+  design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests; a
+  per-minute Cron Trigger claims one ready request with an R2 conditional write, ranks that request's
+  canonical model's candidate routes (free before paid, then cheapest) against a **per-route/per-account
+  ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s minute/day window-key shape),
+  reserves capacity on the first route with room, resolves that route's own provider config
+  (`config/provider_limits.yml` → compiled `dispatch_limits.json`: `api_base`/`chat_path`/account
+  `api_key_env`) for the upstream call, and persists either the response or a bounded retry/failure
+  state. Multiple accounts of one provider (e.g. `GEMINI_API_KEY`/`GEMINI_API_KEY_SECONDARY`) compile to
+  separate `route_id`s with independent ledger entries, so exhausting one account's window rolls
+  selection onto the next rather than blocking the model — this is what makes "key rotation" real rather
+  than a first-match static pick. A caller may only dispatch a route that also offers `direct` (today
+  only Gemini) when it explicitly opts in via `LLMRequestPolicy.allow_dispatch_overflow`; the Worker's
+  transport is inherently always-asynchronous, and defaulting to it whenever a backend merely had
+  `dispatch_url` configured previously broke city discovery's same-run-completion requirement (review/41
+  §incident). The implemented Python LLM backend uses this as its `JobHandle` path; direct provider
+  translation remains LiteLLM's responsibility, either in Python or in an explicitly configured LiteLLM
+  Proxy upstream. `scripts/compile_llm_limits.py`'s default invocation (used by the deploy workflow) is a
+  pure, network-free YAML→JSON compile; a provider's live model/pricing discovery endpoint (OpenRouter
+  today) is fetched only via an explicit, maintainer-run `--discover` flag, never in CI. The queue and
+  ledger are ephemeral/derivable and are not part of the B2-backed catalog records or the Python
+  `RoutingStorage` control-plane prefixes.
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
   downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron;
   retries `actions/deploy-pages` up to 3× with backoff on GitHub's own transient deploy failures),

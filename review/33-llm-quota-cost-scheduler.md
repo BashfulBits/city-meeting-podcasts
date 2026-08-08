@@ -70,9 +70,21 @@ called synchronously from inside the calling Stage's normal run.
 `LLMBackendConfig.mode` (`"direct"` or `"dispatch"`) only governs the legacy static-model path
 (`_run_without_policy`, unchanged from before R13). A policy-bearing call instead asks
 `LiteLLMBackend._available_transports()`, computed independently of `mode`: `direct` is always
-reachable (it needs nothing beyond a provider API key, already in env); `mistral-dispatch` is
-reachable whenever `dispatch_url` is configured, regardless of `mode`. The scheduler then selects
-freely among every route whose transport is in that set.
+reachable (it needs nothing beyond a provider API key, already in env); `mistral-dispatch`/
+`llm-dispatch` are reachable whenever `dispatch_url` is configured, regardless of `mode`. Gate 0
+(admission) keeps every route with *any* transport in that reachable set as a candidate.
+
+**2026-08-06 correction (review/41):** gate 0's *admission* is still "freely among every route whose
+transport is reachable" as originally written, but that is not the same as *which* transport a
+selected dual-transport route actually dispatches over — a distinction this section originally
+elided and a real bug shipped from eliding it (a dual-transport route defaulted to the Worker
+whenever `dispatch_url` was merely configured, not because it was the caller's actual choice). Once
+admitted, a route offering both `direct` and a dispatch transport (today only Gemini) resolves to
+`direct` by default; the dispatch transport is used only when the caller explicitly sets
+`LLMRequestPolicy.allow_dispatch_overflow=True` (`_selected_transport`, `citypods/compute/
+llm_scheduler.py`). A route with no `direct` alternative (Mistral) is unaffected — it always
+resolves to its one dispatch transport regardless of this flag. See review/41 §3.3 and §2 (the
+city-discovery incident this fixed) for the full account.
 
 This matters concretely for the deferred-request sweep (§10.7): it services a mixed bag of pending
 records from whatever callers originally submitted them, regardless of which transport backs each
@@ -81,6 +93,14 @@ only ever needs direct routes (most of them) simply doesn't set `dispatch_url` a
 old single-transport behavior. The original draft treated "one backend, one transport, no mid-
 request switching" as a hard scoping constraint deferred to a hypothetical future caller (see the
 original §14); the sweep turned out to be exactly that caller, so it shipped now rather than later.
+
+**2026-08-08 correction (PR review pass):** `select_and_reserve`'s inflight-reservation reuse path
+(§10.3) matched the in-flight owner and returned the original route's dispatch transport without
+checking whether that transport was still in `available_transports`. If the Worker was removed from
+the backend config between the original reservation and the retry, the returned `SelectionResult`
+had `transport=None`, which would propagate to `_owner_for` and the dispatch-vs-direct branch in
+`llm.py`. Fixed by falling through to fresh selection when the reused transport is no longer
+reachable.
 
 ## §3. Request contract
 
@@ -347,6 +367,15 @@ other gate rejection, completed later by a caller asking again or by the sweep (
 **Only build a dedicated Gemini Worker later, and only if real usage shows the calling workflows'
 cron cadence is too coarse relative to Gemini's RPD reset window** — that's an empirical question to
 answer with ledger telemetry (§11.5), not a day-one design commitment.
+
+**2026-08-06 addendum:** [`review/41`](41-multi-provider-llm-dispatch.md) did later add Gemini as a
+Worker-reachable route (`transports=("direct","llm-dispatch")`) — not to replace this section's
+decision, but to reach a *second configured account*'s capacity (`GEMINI_API_KEY_SECONDARY`) that a
+single-account direct-only ledger entry can't see. That extension shipped once already, briefly, with
+a bug that made the Worker the *default* for any dispatch-capable backend rather than an explicit
+overflow — silently breaking city discovery's synchronous design, the concrete incident review/41
+records. The fix restores this section's decision as the actual default: a dual-transport route goes
+direct unless a caller explicitly opts in (`LLMRequestPolicy.allow_dispatch_overflow`).
 
 ### §7.1 Reactive rate-limiting (new, 2026-07-17)
 

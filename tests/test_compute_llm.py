@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+import requests
 from pydantic import BaseModel, ConfigDict, Field
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
@@ -50,6 +51,24 @@ register_response_model("constrained-output", ConstrainedOutput)
 
 def job(task="tag", **inputs):
     return InferenceJob(task=task, inputs=inputs, recipe_hash="recipe-1")
+
+
+_DISPATCH_ONLY_KEYS = {
+    "allow_paid",
+    "allow_batch",
+    "submit_next",
+    "deadline_at",
+    "estimated_tokens",
+}
+
+
+def _strict_direct_completion(**kwargs):
+    """A direct-path completion double that fails loudly if a dispatch-only payload key leaks
+    into the direct LiteLLM call (`_payload()` should never attach these outside the dispatch
+    branch -- see `citypods/compute/llm.py` line ~937)."""
+    leaked = _DISPATCH_ONLY_KEYS & set(kwargs)
+    assert not leaked, f"dispatch-only keys reached the direct LiteLLM call: {sorted(leaked)}"
+    return {"choices": [{"message": {"content": "direct response"}}]}
 
 
 def structured_response(content: str, *, usage: dict | None = None):
@@ -277,7 +296,7 @@ def test_dispatch_mode_429_defers_and_blocks_the_route_reactively():
     storage = MemStorage()
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -287,14 +306,14 @@ def test_dispatch_mode_429_defers_and_blocks_the_route_reactively():
     result = backend.run_inference(
         job(
             content="meeting text",
-            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-latest",)),
+            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",)),
         )
     )
 
     assert isinstance(result, JobHandle)
     assert result.deferred_request is not None
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["mistral/mistral-large-latest"]
+    ledger = budget.routes["mistral/mistral-large-2512"]
     assert ledger.inflight == {}
     assert ledger.requests_minute == 0
     assert ledger.blocked_until != ""
@@ -365,7 +384,7 @@ def test_reconcile_settles_actual_requests_after_a_202_dispatch():
     storage = MemStorage()
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -376,7 +395,7 @@ def test_reconcile_settles_actual_requests_after_a_202_dispatch():
         job(
             content="meeting text",
             structured_output="test-output",
-            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-latest",)),
+            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",)),
         )
     )
     assert isinstance(handle, JobHandle)
@@ -386,7 +405,7 @@ def test_reconcile_settles_actual_requests_after_a_202_dispatch():
 
     assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["mistral/mistral-large-latest"]
+    ledger = budget.routes["mistral/mistral-large-2512"]
     assert ledger.inflight == {}
     assert ledger.requests_minute == 1
 
@@ -492,7 +511,7 @@ def test_policy_bearing_call_requires_non_empty_recipe_hash():
     storage = MemStorage()
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -514,7 +533,7 @@ def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
     those captured rates, not whatever ROUTES says at poll time (Mistral is $0 in ROUTES today,
     so if reconcile() used live config instead of the handle, cost_used would stay zero here)."""
     storage = MemStorage()
-    route = ROUTES["mistral/mistral-large-latest"]
+    route = ROUTES["mistral/mistral-large-2512"]
     now = datetime.now(UTC)
     mutate_llm_budget(
         storage,
@@ -544,7 +563,7 @@ def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -887,7 +906,7 @@ def test_dispatch_enqueues_pydantic_schema_and_validates_completed_response():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
             dispatch_auth_token="secret",
@@ -931,7 +950,7 @@ def test_dispatch_consumes_completed_idempotent_resubmit():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -961,7 +980,7 @@ def test_dispatch_rejects_invalid_structured_result():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -991,7 +1010,7 @@ def test_dispatch_unknown_response_contract_remains_a_version_skew_error():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -1027,7 +1046,7 @@ def test_dispatch_rejects_malformed_body_and_cross_host_location():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -1045,7 +1064,7 @@ def test_dispatch_rejects_malformed_body_and_cross_host_location():
 
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-latest",
+            model="mistral/mistral-large-2512",
             mode="dispatch",
             dispatch_url="https://dispatch.example",
         ),
@@ -1061,3 +1080,282 @@ def test_rejects_gpu_and_unknown_routes():
     backend = LiteLLMBackend(LLMBackendConfig(), completion=lambda **_: {})
     with pytest.raises(ValueError):
         backend.run_inference(InferenceJob(task="transcribe", inputs={}))
+
+
+def test_delete_dispatched_ref_normalizes_ref_formats():
+    """delete_dispatched_ref must accept bare IDs, path-style refs, and full URLs --
+    handles store the `location` header (path-style), not a bare ID."""
+    deleted_urls = []
+
+    class RecordingSession(requests.Session):
+        def delete(self, url, **_kwargs):
+            deleted_urls.append(url)
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+            dispatch_auth_token="test-token",
+        ),
+        http_session=RecordingSession(),
+    )
+
+    # Bare ID
+    backend.delete_dispatched_ref("chatcmpl-abc12345678")
+    assert len(deleted_urls) == 1
+    assert deleted_urls[-1] == "https://dispatch.example/v1/requests/chatcmpl-abc12345678"
+
+    # Path-style ref (what handles actually store from the Worker's location header)
+    backend.delete_dispatched_ref("/v1/requests/chatcmpl-xyz99999999")
+    assert len(deleted_urls) == 2
+    assert deleted_urls[-1] == "https://dispatch.example/v1/requests/chatcmpl-xyz99999999"
+
+    # Full URL ref
+    backend.delete_dispatched_ref("https://dispatch.example/v1/requests/chatcmpl-full00000001")
+    assert len(deleted_urls) == 3
+    assert deleted_urls[-1] == "https://dispatch.example/v1/requests/chatcmpl-full00000001"
+
+    # No-op for non-chatcmpl refs
+    backend.delete_dispatched_ref("something-else")
+    assert len(deleted_urls) == 3
+
+    # No-op for empty ref
+    backend.delete_dispatched_ref("")
+    assert len(deleted_urls) == 3
+
+
+def test_reconcile_purges_r2_after_deferred_write():
+    """reconcile() must DELETE the R2 object after a successful deferred write (the post-persist
+    purge path), including when the handle ref is a path-style location."""
+    deleted_urls = []
+
+    class TrackingSession(requests.Session):
+        def get(self, url, **_kwargs):
+            res = requests.Response()
+            res.status_code = 200
+            res._content = json.dumps(
+                {
+                    "id": "chatcmpl-purge1",
+                    "choices": [{"message": {"content": "ok"}}],
+                }
+            ).encode()
+            return res
+
+        def delete(self, url, **_kwargs):
+            deleted_urls.append(url)
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=TrackingSession(),
+        storage=storage,
+    )
+
+    handle = JobHandle(
+        task="summarize",
+        recipe_hash="purge-test-recipe",
+        backend="litellm",
+        ref="/v1/requests/chatcmpl-purge1",
+        model="mistral/mistral-large-2512",
+    )
+
+    result = backend.reconcile(handle)
+    assert result is not None
+    # Should have issued a DELETE for the R2 object
+    assert len(deleted_urls) == 1
+    assert "chatcmpl-purge1" in deleted_urls[0]
+
+
+def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
+    post_json = None
+
+    class CaptureSession(requests.Session):
+        def post(self, url, json=None, headers=None, timeout=None):
+            nonlocal post_json
+            post_json = json
+            res = requests.Response()
+            res.status_code = 200
+            res._content = b'{"id":"resp-1","choices":[{"message":{"content":"ok"}}]}'
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=CaptureSession(),
+        storage=storage,
+    )
+
+    # Relative to "now", not a fixed calendar timestamp: a hardcoded absolute deadline that was
+    # comfortably in the future when this test was written silently becomes a past deadline (and
+    # a spurious "deadline gate" rejection -> JobHandle instead of JobResult) once real time
+    # passes it -- exactly what broke this test in CI after this file's own authoring date caught
+    # up to a hardcoded "2026-08-07T12:00:00Z" (review/41).
+    deadline = datetime.now(UTC) + timedelta(hours=1)
+    pol = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3-flash-preview",),
+        allow_paid=True,
+        allow_batch=True,
+        submit_next=True,
+        deadline_at=deadline,
+        # Gemini also offers `direct`; without this the call would go direct by default
+        # (review/41 -- a dual-transport route only dispatches when a caller opts in), and this
+        # test is specifically exercising the dispatch payload.
+        allow_dispatch_overflow=True,
+    )
+
+    res = backend.run_inference(
+        InferenceJob(
+            task="summarize",
+            recipe_hash="test-recipe-1",
+            inputs={"content": "hello test content", "llm_policy": pol},
+        )
+    )
+
+    assert isinstance(res, JobResult)
+    assert post_json is not None
+    assert post_json["allow_paid"] is True
+    assert post_json["allow_batch"] is True
+    assert post_json["submit_next"] is True
+    assert post_json["deadline_at"] == deadline.isoformat()
+    assert "estimated_tokens" in post_json
+    assert post_json["estimated_tokens"] > 0
+
+
+def test_dual_transport_route_prefers_direct_without_opt_in():
+    """A route offering both `direct` and `llm-dispatch` (Gemini) must not dispatch just because
+    the backend has `dispatch_url` configured -- only when the caller explicitly sets
+    `allow_dispatch_overflow`. This is the regression this test guards: a prior version routed
+    every such call over the Worker whenever `dispatch_url` was set at all, which silently broke
+    city discovery's same-run-completion requirement (review/41)."""
+    posted = False
+
+    class NoPostSession(requests.Session):
+        def post(self, *_args, **_kwargs):
+            nonlocal posted
+            posted = True
+            res = requests.Response()
+            res.status_code = 200
+            res._content = b"{}"
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        completion=_strict_direct_completion,
+        http_session=NoPostSession(),
+        storage=storage,
+    )
+
+    pol = LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",), allow_paid=False)
+
+    res = backend.run_inference(
+        InferenceJob(
+            task="summarize",
+            recipe_hash="test-recipe-direct-default",
+            inputs={"content": "hello test content", "llm_policy": pol},
+        )
+    )
+
+    assert isinstance(res, JobResult)
+    assert posted is False
+
+
+def test_dual_transport_route_dispatches_with_explicit_overflow_and_reserves_by_recipe_hash():
+    """The Gemini/`allow_dispatch_overflow=True` opt-in path, asserting the ledger reservation
+    owner is the deterministic `recipe_hash` -- not a fresh UUID -- so a retry before settlement
+    resolves to the Worker's own `idempotency-key: recipe_hash` dedup instead of double-reserving
+    (the bug CodeRabbit flagged against `llm_scheduler.py::_owner_for`, review/41)."""
+
+    class PendingSession(requests.Session):
+        def post(self, url, json=None, headers=None, timeout=None):
+            res = requests.Response()
+            res.status_code = 202
+            res._content = b'{"id":"chatcmpl-pending"}'
+            res.headers["location"] = "/v1/requests/chatcmpl-pending"
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=PendingSession(),
+        storage=storage,
+    )
+
+    pol = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3-flash-preview",),
+        allow_paid=False,
+        allow_dispatch_overflow=True,
+    )
+    recipe_hash = "test-recipe-overflow-owner"
+
+    res = backend.run_inference(
+        InferenceJob(
+            task="summarize",
+            recipe_hash=recipe_hash,
+            inputs={"content": "hello test content", "llm_policy": pol},
+        )
+    )
+
+    assert isinstance(res, JobHandle)
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    assert recipe_hash in ledger.inflight
+
+
+def test_require_direct_policy_bypasses_dispatch():
+    posted = False
+
+    class NoPostSession(requests.Session):
+        def post(self, *_args, **_kwargs):
+            nonlocal posted
+            posted = True
+            res = requests.Response()
+            res.status_code = 200
+            res._content = b"{}"
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        completion=_strict_direct_completion,
+        http_session=NoPostSession(),
+        storage=storage,
+    )
+
+    pol = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3-flash-preview",),
+        require_direct=True,
+    )
+
+    res = backend.run_inference(
+        InferenceJob(
+            task="summarize",
+            recipe_hash="test-recipe-direct",
+            inputs={"content": "hello direct test", "llm_policy": pol},
+        )
+    )
+
+    assert isinstance(res, JobResult)
+    assert res.output["choices"][0]["message"]["content"] == "direct response"
+    assert not posted

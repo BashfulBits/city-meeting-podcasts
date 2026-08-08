@@ -14,21 +14,28 @@
     }
   ],
   "vars": {
+    // The Worker's advertised default route (GET /v1/models, and the fallback when a request
+    // omits `model`) -- no longer used to resolve credentials or an upstream URL for a real
+    // dispatch. That is entirely `dispatch_limits.json`'s `providers`/`routes_by_id` (compiled
+    // from config/provider_limits.yml), keyed by whichever route `dispatchOne`'s ranked selection
+    // actually chose for a given request's canonical model (review/41).
     "PROVIDER_NAME": "mistral",
-    "UPSTREAM_BASE_URL": "https://api.mistral.ai",
-    "UPSTREAM_CHAT_PATH": "/v1/chat/completions",
-    "UPSTREAM_MODEL": "mistral-large-latest",
-    "MODEL_ID": "mistral/mistral-large-latest",
-    "DISPATCH_INTERVAL_SECONDS": "60",
+    "UPSTREAM_MODEL": "mistral-large-2512",
+    "MODEL_ID": "mistral/mistral-large-2512",
     "MAX_REQUEST_BYTES": "524288",
     "MAX_RESPONSE_BYTES": "2097152",
     "MAX_QUEUE_SCAN": "1000",
     // A dispatch request is one model attempt. Retries would make the caller's CAS-backed
-    // 20-attempt/day cap undercount real Mistral API calls during the cautious rollout.
+    // 20-attempt/day cap undercount real provider API calls during the cautious rollout.
     "MAX_ATTEMPTS": "1",
     "PROCESSING_TIMEOUT_SECONDS": "900",
     "RETRY_BASE_SECONDS": "60",
-    "RETRY_MAX_SECONDS": "3600"
+    "RETRY_MAX_SECONDS": "3600",
+    // The upstream fetch timeout must stay comfortably under the cron lease duration, or a
+    // normal-speed call that simply runs long can have its lease stolen mid-flight by the next
+    // tick and get dispatched a second time for the same still-pending record (review/41).
+    "LEASE_DURATION_SECONDS": "90",
+    "UPSTREAM_TIMEOUT_SECONDS": "60"
   },
   "observability": {
     "enabled": true,

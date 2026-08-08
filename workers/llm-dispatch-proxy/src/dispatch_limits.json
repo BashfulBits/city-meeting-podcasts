@@ -1,0 +1,330 @@
+{
+  "_metadata": {
+    "source": "config/provider_limits.yml",
+    "routes_count": 11,
+    "providers_count": 4
+  },
+  "providers": {
+    "mistral": {
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
+      "monthly_tpm": 1000000000,
+      "reset_day": 1,
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "MISTRAL_API_KEY"
+        }
+      ]
+    },
+    "gemini": {
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "America/Los_Angeles",
+      "accounts": [
+        {
+          "id": "project_primary",
+          "api_key_env": "GEMINI_API_KEY"
+        },
+        {
+          "id": "project_secondary",
+          "api_key_env": "GEMINI_API_KEY_SECONDARY"
+        }
+      ]
+    },
+    "deepseek": {
+      "api_base": "https://api.deepseek.com",
+      "chat_path": "/v1/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "DEEPSEEK_API_KEY"
+        }
+      ]
+    },
+    "openrouter": {
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
+      "reset_timezone": "UTC",
+      "discovery": {
+        "endpoint": "https://openrouter.ai/api/v1/models"
+      },
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "OPENROUTER_API_KEY"
+        }
+      ]
+    }
+  },
+  "routes": [
+    {
+      "route_id": "gemini_3_flash_preview_primary",
+      "model": "gemini/gemini-3-flash-preview",
+      "provider": "gemini",
+      "upstream_model": "gemini-3-flash-preview",
+      "account_id": "project_primary",
+      "rpm": 10,
+      "rpd": 1500,
+      "tpm": 250000,
+      "free": true
+    },
+    {
+      "route_id": "gemini_3_flash_preview_secondary",
+      "model": "gemini/gemini-3-flash-preview",
+      "provider": "gemini",
+      "upstream_model": "gemini-3-flash-preview",
+      "account_id": "project_secondary",
+      "rpm": 10,
+      "rpd": 1500,
+      "tpm": 250000,
+      "free": true
+    },
+    {
+      "route_id": "gemini_3_1_flash_lite_primary",
+      "model": "gemini/gemini-3.1-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.1-flash-lite",
+      "account_id": "project_primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true
+    },
+    {
+      "route_id": "gemini_3_1_flash_lite_secondary",
+      "model": "gemini/gemini-3.1-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.1-flash-lite",
+      "account_id": "project_secondary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true
+    },
+    {
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "account_id": "project_primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true
+    },
+    {
+      "route_id": "gemini_3_5_flash_lite_secondary",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "account_id": "project_secondary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true
+    },
+    {
+      "route_id": "mistral_large_2512_primary",
+      "model": "mistral/mistral-large-2512",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-2512",
+      "account_id": "primary",
+      "rpm": 1,
+      "tpm": 250000,
+      "free": true
+    },
+    {
+      "route_id": "mistral_large_3_primary",
+      "model": "mistral/mistral-large-3",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-3",
+      "account_id": "primary",
+      "rpm": 1,
+      "tpm": 250000,
+      "free": true
+    },
+    {
+      "route_id": "mistral_medium_2508_primary",
+      "model": "mistral/mistral-medium-2508",
+      "provider": "mistral",
+      "upstream_model": "mistral-medium-2508",
+      "account_id": "primary",
+      "rpm": 22,
+      "tpm": 356250,
+      "free": true
+    },
+    {
+      "route_id": "deepseek_v4_flash_primary",
+      "model": "deepseek/deepseek-v4-flash",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-flash",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1.4e-07,
+      "output_per_token": 2.8e-07
+    },
+    {
+      "route_id": "deepseek_v4_pro_primary",
+      "model": "deepseek/deepseek-v4-pro",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-pro",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 4.35e-07,
+      "output_per_token": 8.7e-07
+    }
+  ],
+  "routes_by_id": {
+    "gemini_3_flash_preview_primary": {
+      "route_id": "gemini_3_flash_preview_primary",
+      "model": "gemini/gemini-3-flash-preview",
+      "provider": "gemini",
+      "upstream_model": "gemini-3-flash-preview",
+      "account_id": "project_primary",
+      "rpm": 10,
+      "rpd": 1500,
+      "tpm": 250000,
+      "free": true
+    },
+    "gemini_3_flash_preview_secondary": {
+      "route_id": "gemini_3_flash_preview_secondary",
+      "model": "gemini/gemini-3-flash-preview",
+      "provider": "gemini",
+      "upstream_model": "gemini-3-flash-preview",
+      "account_id": "project_secondary",
+      "rpm": 10,
+      "rpd": 1500,
+      "tpm": 250000,
+      "free": true
+    },
+    "gemini_3_1_flash_lite_primary": {
+      "route_id": "gemini_3_1_flash_lite_primary",
+      "model": "gemini/gemini-3.1-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.1-flash-lite",
+      "account_id": "project_primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true
+    },
+    "gemini_3_1_flash_lite_secondary": {
+      "route_id": "gemini_3_1_flash_lite_secondary",
+      "model": "gemini/gemini-3.1-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.1-flash-lite",
+      "account_id": "project_secondary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true
+    },
+    "gemini_3_5_flash_lite_primary": {
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "account_id": "project_primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true
+    },
+    "gemini_3_5_flash_lite_secondary": {
+      "route_id": "gemini_3_5_flash_lite_secondary",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "account_id": "project_secondary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true
+    },
+    "mistral_large_2512_primary": {
+      "route_id": "mistral_large_2512_primary",
+      "model": "mistral/mistral-large-2512",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-2512",
+      "account_id": "primary",
+      "rpm": 1,
+      "tpm": 250000,
+      "free": true
+    },
+    "mistral_large_3_primary": {
+      "route_id": "mistral_large_3_primary",
+      "model": "mistral/mistral-large-3",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-3",
+      "account_id": "primary",
+      "rpm": 1,
+      "tpm": 250000,
+      "free": true
+    },
+    "mistral_medium_2508_primary": {
+      "route_id": "mistral_medium_2508_primary",
+      "model": "mistral/mistral-medium-2508",
+      "provider": "mistral",
+      "upstream_model": "mistral-medium-2508",
+      "account_id": "primary",
+      "rpm": 22,
+      "tpm": 356250,
+      "free": true
+    },
+    "deepseek_v4_flash_primary": {
+      "route_id": "deepseek_v4_flash_primary",
+      "model": "deepseek/deepseek-v4-flash",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-flash",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1.4e-07,
+      "output_per_token": 2.8e-07
+    },
+    "deepseek_v4_pro_primary": {
+      "route_id": "deepseek_v4_pro_primary",
+      "model": "deepseek/deepseek-v4-pro",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-pro",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 4.35e-07,
+      "output_per_token": 8.7e-07
+    }
+  },
+  "model_routes_map": {
+    "gemini/gemini-3-flash-preview": [
+      "gemini_3_flash_preview_primary",
+      "gemini_3_flash_preview_secondary"
+    ],
+    "gemini/gemini-3.1-flash-lite": [
+      "gemini_3_1_flash_lite_primary",
+      "gemini_3_1_flash_lite_secondary"
+    ],
+    "gemini/gemini-3.5-flash-lite": [
+      "gemini_3_5_flash_lite_primary",
+      "gemini_3_5_flash_lite_secondary"
+    ],
+    "mistral/mistral-large-2512": [
+      "mistral_large_2512_primary"
+    ],
+    "mistral/mistral-large-3": [
+      "mistral_large_3_primary"
+    ],
+    "mistral/mistral-medium-2508": [
+      "mistral_medium_2508_primary"
+    ],
+    "deepseek/deepseek-v4-flash": [
+      "deepseek_v4_flash_primary"
+    ],
+    "deepseek/deepseek-v4-pro": [
+      "deepseek_v4_pro_primary"
+    ]
+  }
+}

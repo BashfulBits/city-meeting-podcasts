@@ -367,7 +367,7 @@ def test_list_pending_deferred_returns_only_pending_records():
         recipe_hash="pending-2",
         backend="litellm",
         ref="/v1/requests/chatcmpl-1",
-        model="mistral/mistral-large-latest",
+        model="mistral/mistral-large-2512",
         owner="pending-2",
         input_per_token=0.0,
         output_per_token=0.0,
@@ -380,7 +380,7 @@ def test_list_pending_deferred_returns_only_pending_records():
     # A genuine in-flight dispatch handle has no deferred_request -- reconcile() must route it
     # through the real URL-polling path, not re-run selection.
     assert pending["pending-2"].deferred_request is None
-    assert pending["pending-2"].model == "mistral/mistral-large-latest"
+    assert pending["pending-2"].model == "mistral/mistral-large-2512"
     assert pending["pending-2"].owner == "pending-2"
 
 
@@ -467,7 +467,7 @@ def test_prune_releases_the_ledger_reservation_of_an_abandoned_dispatch_handle()
     from citypods.compute.llm_policy import ROUTES
 
     storage = MemStorage()
-    route = ROUTES["mistral/mistral-large-latest"]
+    route = ROUTES["mistral/mistral-large-2512"]
     mutate_llm_budget(
         storage,
         lambda budget, attempt_now: budget.reserve(

@@ -42,6 +42,13 @@ class SelectionResult:
     # potential corrective retry; a queued Worker route reserves its single upstream attempt.
     reserved_requests: int | None = None
     reserved_tokens: int | None = None
+    # The single transport this call will actually use for the selected route, resolved once here
+    # -- the sole source of truth `_owner_for` (below) and `llm.py`'s dispatch-vs-direct branch
+    # both read, rather than each independently re-deriving it from `route.transports` and the
+    # caller's policy/config. A route offering only dispatch transports (Mistral) always resolves
+    # to that transport; a route that also offers `direct` (Gemini) resolves to `direct` unless
+    # the caller set `allow_dispatch_overflow=True`. `None` when nothing was selected.
+    transport: str | None = None
 
 
 def _reservation_size(route: LLMRoute, *, requests: int, tokens: int) -> tuple[int, int]:
@@ -194,17 +201,51 @@ def _utilization(route: LLMRoute, ledger_entry) -> float:
     return max(fractions, default=0.0)
 
 
-def _owner_for(recipe_hash: str, route: LLMRoute) -> str:
-    """Owner uniqueness depends on the *selected* route's transport, not a single rule for both:
-    - `mistral-dispatch`: the Worker dedupes on `idempotency-key: recipe_hash`, so a retry before
-      this reservation settles is the *same* underlying provider request -- owner must be that
-      same deterministic recipe_hash, or it would double-reserve quota for a call the Worker
-      itself never repeats.
-    - `direct`: there is no server-side dedup at all. Every attempt -- the first, a concurrent
-      call, or a later `reconcile()` retry of a deferred handle -- is a genuinely new request and
-      must reserve its own independent slot.
+# Transports that dedupe server-side on `idempotency-key: recipe_hash`.
+_DISPATCH_TRANSPORTS = frozenset({"mistral-dispatch", "llm-dispatch"})
+
+
+def _selected_transport(
+    route: LLMRoute, available_transports: Set[str], *, allow_dispatch_overflow: bool
+) -> str | None:
+    """The single transport this call will actually use for ``route`` -- computed once, here, so
+    `_owner_for` and `llm.py`'s dispatch-vs-direct branch can both read the *same* resolved value
+    instead of each independently re-deriving a preference from `route.transports` and the
+    caller's policy/config. Two callers computing this separately was a real bug (CodeRabbit,
+    review/41): a fix that made `_owner_for` key off `route.transports` (the route's *capability*)
+    rather than the *actually selected* transport still reserved every dual-transport route as if
+    it always dispatched, even on a call that (correctly, per `allow_dispatch_overflow=False`)
+    went direct -- silently deduping two genuinely concurrent direct Gemini calls that happened to
+    share a `recipe_hash` into one reservation, undercounting real API calls.
+
+    `direct` wins whenever it's reachable, *unless* a dispatch transport is also reachable and the
+    caller explicitly opted into overflow (`allow_dispatch_overflow=True`) -- in which case the
+    dispatch transport wins, since that opt-in's whole purpose is reaching Worker-only capacity a
+    direct call can't see (matching `LLMRequestPolicy.allow_dispatch_overflow` §3.3 in review/41).
+    Returns `None` if no transport in `route.transports` is reachable at all (the caller's gate 0
+    already filters this route out in that case).
     """
-    if route.transport == "mistral-dispatch":
+    reachable = set(route.transports) & set(available_transports)
+    if not reachable:
+        return None
+    dispatch_reachable = reachable & _DISPATCH_TRANSPORTS
+    if dispatch_reachable and (allow_dispatch_overflow or "direct" not in reachable):
+        return next(iter(sorted(dispatch_reachable)))
+    return "direct"
+
+
+def _owner_for(recipe_hash: str, transport: str | None) -> str:
+    """Owner uniqueness depends on the *selected* transport for this call, not a route's
+    capabilities:
+    - dispatch (`mistral-dispatch`/`llm-dispatch`): the Worker dedupes on
+      `idempotency-key: recipe_hash`, so a retry before this reservation settles is the *same*
+      underlying provider request -- owner must be that same deterministic recipe_hash, or it would
+      double-reserve quota for a call the Worker holds.
+    - `direct` (or `None`, defensively): there is no server-side dedup at all. Every attempt --
+      the first, a concurrent call, or a later `reconcile()` retry of a deferred handle -- is a
+      genuinely new request and must reserve its own independent slot.
+    """
+    if transport in _DISPATCH_TRANSPORTS:
         return recipe_hash
     return f"{recipe_hash}:{uuid.uuid4().hex}"
 
@@ -243,7 +284,7 @@ def select_route(
     retry_ats: list[datetime] = []
 
     for model, route in sorted(routes.items()):
-        if route.transport not in available_transports:
+        if not any(t in available_transports for t in route.transports):
             rejected.append((model, "transport gate"))
             continue
         if allowed is not None and model not in allowed:
@@ -331,6 +372,9 @@ def select_route(
         tuple(rejected),
         reserved_requests=route_requests,
         reserved_tokens=route_tokens,
+        transport=_selected_transport(
+            route, available_transports, allow_dispatch_overflow=policy.allow_dispatch_overflow
+        ),
     )
 
 
@@ -375,13 +419,26 @@ def select_and_reserve(
         # resolves to the original request regardless of what a fresh pass would pick now.
         existing_model = ledger.find_inflight_owner(recipe_hash)
         if existing_model is not None and existing_model in routes:
-            return SelectionResult(
-                existing_model,
-                routes[existing_model],
-                "reusing in-flight reservation",
-                (),
-                owner=recipe_hash,
+            # `owner == recipe_hash` only ever happens for a dispatch reservation (`_owner_for`
+            # returns a fresh UUID for direct) -- so the transport being reused here is, by
+            # construction, one of this route's own dispatch transports.
+            existing_route = routes[existing_model]
+            reused_transport = next(
+                (t for t in existing_route.transports if t in _DISPATCH_TRANSPORTS), None
             )
+            # If the route's dispatch transport is no longer in `available_transports` (e.g.
+            # the Worker was removed from the backend's config since the original reservation),
+            # don't return a result with `transport=None` -- fall through to fresh selection
+            # which will re-evaluate transport availability normally.
+            if reused_transport is not None and reused_transport in available_transports:
+                return SelectionResult(
+                    existing_model,
+                    existing_route,
+                    "reusing in-flight reservation",
+                    (),
+                    owner=recipe_hash,
+                    transport=reused_transport,
+                )
         selection = select_route(
             policy,
             routes=routes,
@@ -394,7 +451,7 @@ def select_and_reserve(
         last_selection = selection
         if selection.route is None:
             return selection
-        owner = _owner_for(recipe_hash, selection.route)
+        owner = _owner_for(recipe_hash, selection.transport)
         # No availability recheck here: `select_route` already confirmed `ledger.available(...)`
         # for this exact candidate against this same unmutated `ledger` snapshot when it built
         # `candidates` (§5 gate 3) -- a second check here would always pass and never fires.
@@ -424,6 +481,7 @@ def select_and_reserve(
                 owner=owner,
                 reserved_requests=reserved_requests,
                 reserved_tokens=reserved_tokens,
+                transport=selection.transport,
             )
         except CASConflict:
             sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))

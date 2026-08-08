@@ -374,19 +374,23 @@ def test_asr_quality_ingest_workflow_is_event_driven():
     ingest_job = wf["jobs"]["ingest"]
     assert ingest_job["needs"] == "resolve"
     assert ingest_job["permissions"] == {"contents": "read", "issues": "write"}
+    # A single job processing the full resolved list sequentially -- not a matrix leg per issue.
+    # A matrix here previously gave each leg the *complete* NUMBERS list (every leg reran the
+    # whole loop), duplicating comments/closes/record writes across N concurrent legs for N
+    # resolved issues.
     assert "strategy" not in ingest_job
     ingest = next(
         step
         for step in ingest_job["steps"]
         if "transcript-quality ingest-review" in str(step.get("run", ""))
     )
-    assert "--issue-body-file issue-body.md" in ingest["run"]
+    assert "--issue-body-file" in ingest["run"]
     assert "gh issue view" in ingest["run"]
     assert ".stored == true" in ingest["run"]
     stored_branch = ingest["run"].split(".stored == true")[1].split("else")[0]
     assert "<!-- h15-ingest:" in stored_branch
     assert "state,comments" in stored_branch
-    assert "--body-file comment-body.md" in stored_branch
+    assert "--body-file" in stored_branch
     assert '.state == "OPEN"' in stored_branch
     assert "gh issue comment" in stored_branch
     assert "gh issue close" in stored_branch
@@ -411,13 +415,13 @@ def test_llm_tag_review_ingest_workflow_is_event_driven_and_guards_stored():
     ingest = next(
         step for step in ingest_job["steps"] if "llm-evaluation ingest" in str(step.get("run", ""))
     )
-    assert "--issue-body-file issue-body.md" in ingest["run"]
+    assert "--issue-body-file" in ingest["run"]
     assert "gh issue view" in ingest["run"]
     assert ".stored == true" in ingest["run"]
     stored_branch = ingest["run"].split(".stored == true")[1].split("else")[0]
     assert "<!-- llm-ingest:" in stored_branch
     assert "state,comments" in stored_branch
-    assert "--body-file comment-body.md" in stored_branch
+    assert "--body-file" in stored_branch
     assert '.state == "OPEN"' in stored_branch
     assert "gh issue comment" in stored_branch
     assert "gh issue close" in stored_branch

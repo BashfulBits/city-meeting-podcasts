@@ -48,13 +48,22 @@ from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
 
 LLM_TASKS: frozenset[Task] = frozenset(
-    {"summarize", "tag", "soundbite-select", "classify-civic-platforms"}
+    {
+        "summarize",
+        "tag",
+        "soundbite-select",
+        "classify-civic-platforms",
+        "agenda-item-extract",
+        "agenda-chapter-locate",
+    }
 )
 TASK_VERSIONS: dict[Task, str] = {
     "summarize": "1",
     "tag": "1",
     "soundbite-select": "1",
     "classify-civic-platforms": "6",
+    "agenda-item-extract": "1",
+    "agenda-chapter-locate": "1",
 }
 
 TASK_PROMPTS: dict[Task, str] = {
@@ -68,6 +77,12 @@ TASK_PROMPTS: dict[Task, str] = {
         "Never invent a URL or a platform not supported by that evidence, and reject evidence for "
         "a different municipality."
     ),
+    "agenda-item-extract": (
+        "Extract source-grounded agenda action items with exact line evidence and concise titles."
+    ),
+    "agenda-chapter-locate": (
+        "Locate agenda items in a complete timed transcript using only supplied unit IDs."
+    ),
 }
 
 SUPPORTED_MODELS = frozenset(
@@ -77,7 +92,7 @@ SUPPORTED_MODELS = frozenset(
         "gemini/gemini-3.5-flash-lite",
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4-pro",
-        "mistral/mistral-large-latest",
+        "mistral/mistral-large-2512",
         "mistral/mistral-large-3",
         "mistral/mistral-medium-2508",
     }
@@ -456,13 +471,15 @@ class LiteLLMBackend(Backend):
 
         Independent of ``self.config.mode``, which only governs the legacy static-model path
         (``_run_without_policy``): ``direct`` needs nothing beyond a provider API key (already in
-        env), so it's always reachable; ``mistral-dispatch`` needs a configured dispatch Worker.
+        env), so it's always reachable; ``mistral-dispatch`` / ``llm-dispatch`` needs a
+        configured dispatch Worker.
         A backend built with both configured (as the deferred-request sweep's is) can select
         freely across every route regardless of which transport backs it.
         """
         transports = {"direct"}
         if self.config.dispatch_url:
             transports.add("mistral-dispatch")
+            transports.add("llm-dispatch")
         return frozenset(transports)
 
     def _completion_fn(self) -> Callable[..., Any]:
@@ -548,6 +565,8 @@ class LiteLLMBackend(Backend):
         model: ResponseModel | None = None,
         *,
         resolved_model: str,
+        policy: LLMRequestPolicy | None = None,
+        estimated_tokens: int | None = None,
     ) -> dict[str, Any]:
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
         payload: dict[str, Any] = {
@@ -561,6 +580,14 @@ class LiteLLMBackend(Backend):
         }
         if model is not None:
             payload["response_format"] = self._dispatch_response_format(model, resolved_model)
+        if policy is not None:
+            payload["allow_paid"] = policy.allow_paid
+            payload["allow_batch"] = policy.allow_batch
+            payload["submit_next"] = policy.submit_next
+            if policy.deadline_at is not None:
+                payload["deadline_at"] = policy.deadline_at.isoformat()
+        if estimated_tokens is not None:
+            payload["estimated_tokens"] = estimated_tokens
         payload.update(self._provider_options(job, resolved_model))
         return payload
 
@@ -833,6 +860,8 @@ class LiteLLMBackend(Backend):
         a retry re-evaluates every gate fresh, exactly like a first attempt, rather than polling
         something already submitted."""
         available_transports = self._available_transports()
+        if policy.require_direct:
+            available_transports = available_transports & {"direct"}
         # Instructor's `max_retries=1` (see `_run_structured_direct`) can send up to two real
         # provider requests for one logical dispatch. Reserve the worst case up front so RPM/RPD/
         # TPM can never be breached even when both attempts happen; settling afterwards to the
@@ -897,8 +926,28 @@ class LiteLLMBackend(Backend):
             )
             return self._deferred_handle(job, structured, messages, policy)
 
+        # `selection.transport` is the single source of truth for which transport *this call*
+        # actually uses -- resolved once, in `select_route` (`llm_scheduler.py`), from the same
+        # inputs (`route.transports`, `available_transports`, `policy.allow_dispatch_overflow`)
+        # this branch used to re-derive independently. That duplication was itself a bug
+        # (CodeRabbit, review/41): `_owner_for` and this branch could disagree about which
+        # transport a given call used, since one read `route.transports` (the route's
+        # *capability*) while the other combined it with policy/config afresh -- a direct call
+        # under `allow_dispatch_overflow=False` still keyed its ledger reservation as if it always
+        # dispatched, silently deduping two genuinely concurrent direct calls sharing a
+        # `recipe_hash` into one reservation. Reading the same resolved value here, rather than
+        # recomputing it, makes the two impossible to disagree.
+        #
+        # A route that offers *only* dispatch transports (Mistral -- no direct route exists at
+        # all) always dispatches: there is no alternative. A route that also offers `direct`
+        # (today only Gemini) dispatches only when the caller explicitly opted in via
+        # `allow_dispatch_overflow` -- direct is otherwise always preferred, restoring
+        # review/33 §7's "Gemini needs no Worker" decision as the default (see review/41 for the
+        # incident this fixes: any caller whose backend had `dispatch_url` configured at all used
+        # to silently route Gemini through the Worker instead of calling it directly).
+        is_dispatch = selection.transport in {"mistral-dispatch", "llm-dispatch"}
         try:
-            if route.transport == "direct":
+            if not is_dispatch:
                 if structured:
                     completion_fn = self._completion_fn()
 
@@ -915,6 +964,13 @@ class LiteLLMBackend(Backend):
                         completion=guarded_completion,
                     )
                 else:
+                    # `policy` is intentionally omitted here: `_payload()` attaches
+                    # allow_paid/allow_batch/submit_next/deadline_at only for the Worker's
+                    # dispatch payload (see the `is_dispatch` branch below) -- they are scheduler-
+                    # internal fields the direct LiteLLM `completion()` call does not accept.
+                    # Passing `policy=policy` on this branch was a real bug (CodeRabbit,
+                    # review/41): those keys reached `completion_fn(**payload)` on every direct
+                    # policy-bearing call.
                     payload = self._payload(job, resolved_model=resolved_model)
                     completion_fn = self._completion_fn()
                     attempted = True
@@ -928,7 +984,13 @@ class LiteLLMBackend(Backend):
                     )
             else:
                 structured_name, model = structured if structured else (None, None)
-                payload = self._payload(job, model, resolved_model=resolved_model)
+                payload = self._payload(
+                    job,
+                    model,
+                    resolved_model=resolved_model,
+                    policy=policy,
+                    estimated_tokens=per_attempt_tokens * max_provider_attempts,
+                )
                 headers = {"content-type": "application/json"}
                 if self.config.dispatch_auth_token:
                     headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
@@ -1204,13 +1266,23 @@ class LiteLLMBackend(Backend):
                 return None
             if response.status_code != 200:
                 raise LLMBackendError(f"LLM dispatch poll returned HTTP {response.status_code}")
-            result = self._completed_dispatch_result(
-                task=handle.task,
-                recipe_hash=handle.recipe_hash,
-                output=response.json(),
-                structured_output=handle.structured_output,
-                model=handle.model,
-            )
+            try:
+                result = self._completed_dispatch_result(
+                    task=handle.task,
+                    recipe_hash=handle.recipe_hash,
+                    output=response.json(),
+                    structured_output=handle.structured_output,
+                    model=handle.model,
+                )
+            except LLMStructuredOutputError:
+                # Layer 2 active purge: delete malformed response to unblock clean re-submission
+                try:
+                    self._session.delete(
+                        candidate, headers=headers, timeout=self.config.timeout_seconds
+                    )
+                except Exception:
+                    pass
+                raise
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch poll failed") from exc
 
@@ -1247,7 +1319,60 @@ class LiteLLMBackend(Backend):
                     actual_requests=handle.attempted_requests,
                 )
                 write_deferred(self.storage, handle.recipe_hash, result)
+                # Layer 1 Verified Consumption: purge R2 object only after B2 write succeeds
+                try:
+                    self._session.delete(
+                        candidate, headers=headers, timeout=self.config.timeout_seconds
+                    )
+                except Exception:
+                    pass
+            elif getattr(self.storage, "cas_capable", False):
+                # Route removed from ROUTES since the handle was created: we can't settle
+                # (no route to price against), but we must release the inflight reservation
+                # to avoid leaking quota until the ledger entry ages out.
+                release_route_reservation(
+                    self.storage,
+                    handle.owner,
+                    handle.model,
+                )
+                write_deferred(self.storage, handle.recipe_hash, result)
+                try:
+                    self._session.delete(
+                        candidate, headers=headers, timeout=self.config.timeout_seconds
+                    )
+                except Exception:
+                    pass
+        elif self.storage is not None and getattr(self.storage, "cas_capable", False):
+            write_deferred(self.storage, handle.recipe_hash, result)
+            try:
+                self._session.delete(
+                    candidate, headers=headers, timeout=self.config.timeout_seconds
+                )
+            except Exception:
+                pass
         return result
+
+    def delete_dispatched_ref(self, ref: str) -> None:
+        """Best-effort deletion of a remote dispatched request from R2."""
+        if not ref or not self.config.dispatch_url:
+            return
+        # Normalize the ref: handles store either a bare ID ("chatcmpl-..."), a path
+        # ("/v1/requests/chatcmpl-..."), or a full URL. Extract the bare ID for all cases.
+        import re
+
+        match = re.search(r"(chatcmpl-[A-Za-z0-9-]{8,96})", ref)
+        if not match:
+            return
+        bare_id = match.group(1)
+        base = self.config.dispatch_url.rstrip("/") + "/"
+        url = urljoin(base, f"v1/requests/{bare_id}")
+        headers = {}
+        if self.config.dispatch_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
+        try:
+            self._session.delete(url, headers=headers, timeout=self.config.timeout_seconds)
+        except Exception:
+            pass
 
     poll = reconcile
 

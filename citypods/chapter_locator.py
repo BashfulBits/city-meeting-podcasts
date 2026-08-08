@@ -17,7 +17,7 @@ LOCATOR_CONTRACT = "agenda-chapter-locate"
 # Mistral's current API/dispatch alias for Mistral Large 3. The dated API ID
 # ``mistral-large-2512`` is useful for external audit, but the paced Worker advertises this
 # maintained alias and accepts the provider-qualified form below.
-MISTRAL_LOCATOR_MODEL = "mistral/mistral-large-latest"
+MISTRAL_LOCATOR_MODEL = "mistral/mistral-large-2512"
 GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
 # Mistral Large 3 accepts 256k total tokens. Reserve enough output room for a long chapter list
 # plus one structured-output repair. Gemini's documented 1M input window has the same reserve.

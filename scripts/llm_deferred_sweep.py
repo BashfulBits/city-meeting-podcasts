@@ -206,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     # immediate pass would only re-poll/re-log the same remaining handles; the next scheduled run
     # gets a fresh registry snapshot.
 
-    pruned = prune_expired_deferred_snapshot(storage, snapshot)
+    pruned = prune_expired_deferred_snapshot(storage, snapshot, backend=backend)
     remaining = sum(
         1
         for entry in snapshot.entries

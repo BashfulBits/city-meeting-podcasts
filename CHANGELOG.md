@@ -15,6 +15,48 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Multi-Provider Cloudflare Worker Dispatch Proxy & Per-Route Ledger.** ([`review/41`](review/41-multi-provider-llm-dispatch.md))
+  Extended `workers/llm-dispatch-proxy/` and the Python compute layer to route Gemini/Mistral/DeepSeek/
+  OpenRouter through one Worker with real multi-account API key rotation, replacing R10's original
+  single-Mistral design. An initial pass of this work shipped with several bugs (a credential-disclosure
+  risk, a double-reservation bug, and a silent default that routed Gemini through the Worker instead of
+  calling it directly, breaking city discovery's synchronous design) — all fixed in this same change; see
+  review/41 §2 for the full account and §3 for the corrected design:
+  - `config/provider_limits.yml` (replacing `config/mistral_model_limits.yml`) gives every provider its
+    own `api_base`/`chat_path`/accounts, compiled by `scripts/compile_llm_limits.py` into
+    `workers/llm-dispatch-proxy/src/dispatch_limits.json`. The default compile is pure YAML→JSON, no
+    network call; a provider's live model/pricing discovery endpoint (OpenRouter today) is fetched only
+    via an explicit, maintainer-run `--discover` flag, never from the deploy workflow.
+  - `workers/llm-dispatch-proxy/src/index.js` gained a per-route/per-account R2 ledger
+    (`state/dispatch_budget.json`) that actually enforces each route's compiled `rpm`/`rpd`/`tpm` and
+    rotates onto a sibling account once one is exhausted, a `GET /v1/queue/estimate` endpoint, an
+    owner-tokened cron lease, and an upstream fetch timeout sized under the lease duration.
+  - `LLMRequestPolicy` gained `allow_paid`, `allow_batch` (plumbed through, currently inert — no provider
+    batch endpoint exists yet), `submit_next`, `deadline_at`, `require_direct`, and
+    `allow_dispatch_overflow` (a dual-transport route like Gemini only dispatches over the Worker on this
+    explicit opt-in; it otherwise always goes direct).
+  - Refactored `mistral/mistral-large-latest` alias to canonical `mistral/mistral-large-2512`. **Backfill:**
+    no durable artifact is invalidated — only ephemeral coordination-state entries
+    (`state/llm_budget.json` inflight rows, `state/llm_deferred/*.json`) keyed on the old model string
+    become unreachable post-deploy, which is already documented as loss-tolerant (review/33 §10.4/§10.6).
+
+- **Multi-provider dispatch follow-up corrections** (same PR, review pass):
+  - Worker `routeAvailable` now fails closed for paid routes declaring only `concurrency` and no
+    `rpm`/`rpd`/`tpm`, preventing unmetered DeepSeek dispatches.
+  - `delete_dispatched_ref` now normalises path-style refs (`/v1/requests/chatcmpl-…`) and full URLs,
+    not just bare `chatcmpl-…` IDs — handles store the `location` header, which is always a path.
+  - Worker CAS-retry loop re-checks `routeAvailable` against the freshly loaded ledger before
+    reserving, preventing oversubscription after a concurrent write.
+  - Idempotency collision check now compares policy fields (`allow_paid`, `deadline_at`, …) alongside
+    the chat payload, catching policy-only mismatches that were previously silent.
+  - `reconcile` releases the inflight reservation when a handle's model has been removed from `ROUTES`,
+    instead of silently leaking quota until the ledger entry ages out.
+  - `select_and_reserve` guards against returning a `None` transport when reusing an in-flight
+    reservation whose dispatch transport has been removed from the backend config.
+  - Deploy workflow gains a `dispatch_limits.json` drift check to catch uncommitted recompilations.
+
 ### Fixed
 
 - **H15/R5 ingest workflows could double-comment or leave a persisted decision unconfirmed on retry.**
