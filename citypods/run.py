@@ -133,6 +133,7 @@ from citypods.site import (
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
     LANE_STAGES,
+    AgendaChapterCandidatesStage,
     StageContext,
     _materialize_set,
     default_stages,
@@ -1873,7 +1874,13 @@ def _build_impl(
     empty feed, not an error."""
     if phase not in ("all", "render", "enrich"):
         raise ValueError(f"unknown build phase {phase!r}")
-    if lane is not None and lane not in ("audio", "transcribe", "align", "tag"):
+    if lane is not None and lane not in (
+        "audio",
+        "transcribe",
+        "align",
+        "tag",
+        "chapter-agenda",
+    ):
         raise ValueError(f"unknown lane {lane!r}")
     if shard_plan_path is not None and shard is None:
         raise ValueError("shard_plan_path requires shard=(K, N)")
@@ -2050,6 +2057,8 @@ def _build_impl(
     # render-only deploy split would otherwise open — review/12 §H6/H11b).
     persist_records = phase != "render"
     stages = {"render": render_stages, "enrich": enrich_stages, "all": default_stages}[phase]()
+    if lane == "chapter-agenda":
+        stages = [AgendaChapterCandidatesStage()]
 
     # A time-bounded phase processes recordings (encode, chapter scrape) until a shared ``stop``
     # predicate goes True: the wall-clock window is spent, or a newer Build & Deploy run is queued
@@ -2060,6 +2069,7 @@ def _build_impl(
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
     tag_llm_deadline = None  # UTC datetime; set for the `tag` lane so the LLM scheduler can pace
+    chapter_llm_deadline = None  # UTC datetime for deferred chapter submission
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
         window_min = float(defaults.get("run_time_budget_minutes", 0))
@@ -2119,6 +2129,16 @@ def _build_impl(
                     f"budget: tag wall-clock window {tag_window_min:.0f}m × {safety} "
                     "(+ yield if superseded)"
                 )
+        elif lane == "chapter-agenda":
+            chapter_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
+            remaining_secs = max(
+                0.0, chapter_window_min * 60 * safety - (time.monotonic() - enrich_phase_start)
+            )
+            deadline = (time.monotonic() + remaining_secs) if chapter_window_min > 0 else None
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            from datetime import UTC, datetime, timedelta
+
+            chapter_llm_deadline = datetime.now(UTC) + timedelta(seconds=remaining_secs)
         else:
             deadline = (time.monotonic() + window_min * 60 * safety) if window_min > 0 else None
             stop = StopSignal(
@@ -2315,6 +2335,7 @@ def _build_impl(
         ),
         lane=lane,
         tag_llm_deadline=tag_llm_deadline,
+        chapter_llm_deadline=chapter_llm_deadline,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
