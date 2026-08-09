@@ -507,6 +507,8 @@ _STAGE_EMPTY_OK = frozenset(
         "minutes_text",
         "tags",
         "chapter_agenda",
+        "chapter_locator",
+        "generated_chapters",
     }
 )
 
@@ -522,6 +524,9 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
     if name == "chapter_agenda":
         artifact = ep.generated_agenda_candidates or {}
         return artifact.get("artifact_key") or artifact.get("recipe")
+    if name in {"chapter_locator", "generated_chapters"}:
+        artifact = ep.generated_agenda_candidates or {}
+        return artifact.get("boundary_artifact_key") or ep.generated_chapters_spec_hash
     return None
 
 
@@ -592,6 +597,15 @@ def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: Cit
             "agenda_artifact": (ep.links or {}).get("agenda_text_artifact_key"),
             "recipe": recipe,
         }
+    elif name in {"chapter_locator", "generated_chapters"}:
+        payload = {
+            **common,
+            "agenda_recipe": (ep.generated_agenda_candidates or {}).get("recipe"),
+            "agenda_artifact": (ep.generated_agenda_candidates or {}).get("artifact_key"),
+            "transcript": ep.transcript_key,
+            "transcript_words": ep.transcript_words_key,
+            "recipe": "locator-v1:gemini-3.5-flash-lite:1",
+        }
     elif name == "tags":
         payload = {
             **common,
@@ -640,6 +654,12 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
             "not_found",
             "rejected",
         }
+    if name in {"chapter_locator", "generated_chapters"}:
+        return bool(
+            (ep.generated_agenda_candidates or {}).get("locator_status")
+            in {"completed", "rejected", "not_found"}
+            or ep.generated_chapters_spec_hash
+        )
     return False
 
 
@@ -4454,6 +4474,118 @@ class AgendaChapterCandidatesStage:
         return stats
 
 
+class ChapterBoundaryLocatorStage:
+    """Locate agenda candidates in the complete timed transcript."""
+
+    name = "chapter_locator"
+    version = "1"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.chapter_artifacts import AgendaCandidatesArtifact, artifact_key
+        from citypods.chapter_jobs import build_locator_job, finalize_locator_job
+        from citypods.chapter_locator import build_locator_units
+
+        stats = StageStats(self.name)
+        if ctx.dry_run or ctx.storage is None:
+            return stats
+        for ep in _materialize_set(
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+            work_class="chapter-locator",
+        ):
+            uid = ep.uid or ep.guid
+            raw_agenda = ep.generated_agenda_candidates or {}
+            if not uid or raw_agenda.get("status") not in {"completed", "accepted"}:
+                stats.defer("agenda-not-complete")
+                continue
+            words = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+            vtt = _read_storage_bytes(ctx.storage, ep.transcript_key)
+            units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
+            if not units:
+                stats.defer("missing-timed-transcript")
+                continue
+            try:
+                agenda = AgendaCandidatesArtifact.from_dict(raw_agenda)
+                transcript_hash = hashlib.sha256(words or vtt or b"").hexdigest()
+                job = build_locator_job(
+                    episode_uid=uid,
+                    agenda=agenda,
+                    transcript_hash=transcript_hash,
+                    units=units,
+                    deadline_at=getattr(ctx, "chapter_llm_deadline", None),
+                )
+                if ctx.stop is not None and ctx.stop():
+                    stats.defer("stop-signal")
+                    continue
+                result = _chapter_job_result(_chapter_llm_backend(ctx), job)
+                from citypods.compute.base import JobHandle, JobResult
+
+                if isinstance(result, JobHandle):
+                    raw_agenda = dict(raw_agenda)
+                    raw_agenda.update(
+                        {
+                            "locator_status": "pending",
+                            "locator_recipe": job.recipe_hash,
+                            "locator_job_ref": result.ref,
+                        }
+                    )
+                    ep.generated_agenda_candidates = raw_agenda
+                    stats.defer("llm-pending")
+                    continue
+                if not isinstance(result, JobResult):
+                    stats.errors.append(f"{uid}: unexpected locator job result")
+                    continue
+                boundary = finalize_locator_job(
+                    result,
+                    episode_uid=uid,
+                    agenda=agenda,
+                    transcript_hash=transcript_hash,
+                    units=units,
+                )
+                boundary_key = artifact_key("boundary", uid, boundary.recipe)
+                boundary_url = _write_chapter_json(ctx.storage, boundary_key, boundary.to_dict())
+                items = {item.index: item for item in agenda.items}
+                generated = []
+                for anchor in boundary.anchors:
+                    item = items.get(anchor.get("agenda_item_index"))
+                    if item is None:
+                        continue
+                    generated.append(
+                        {
+                            "start": anchor.get("start"),
+                            "title": item.title,
+                            "agenda_item_index": item.index,
+                            "display_ref": item.display_ref,
+                            "evidence_text": item.evidence_text,
+                            "unit_id": anchor.get("unit_id"),
+                            "transition_quote": anchor.get("transition_quote"),
+                            "basis": anchor.get("basis", "served"),
+                            "generated": True,
+                            "model": boundary.model,
+                            "prompt_version": boundary.prompt_version,
+                            "artifact_key": boundary_key,
+                        }
+                    )
+                ep.generated_chapters = generated
+                ep.generated_chapters_spec_hash = boundary.recipe
+                ep.generated_agenda_candidates = {
+                    **dict(raw_agenda),
+                    "locator_status": "completed",
+                    "boundary_artifact_key": boundary_key,
+                    "boundary_artifact_url": boundary_url,
+                    "transcript_unit_source": unit_source,
+                }
+                stats.ran += 1
+            except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort lane
+                stats.errors.append(f"{uid}: chapter locator: {exc}")
+        return stats
+
+
 def default_stages() -> list[EnrichmentStage]:
     """Ordered: audio-affecting stages must precede ``audio`` so a change re-encodes;
     feed-only stages (``links``) follow it. This is the full list — used by a one-shot
@@ -4539,6 +4671,8 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     "diarize": frozenset({"diarize"}),
     "tag": frozenset({"tags"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
+    "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
+    "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
 }
 
 

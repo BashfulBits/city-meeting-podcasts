@@ -134,6 +134,7 @@ from citypods.stages import (
     ASR_PIPELINE_VERSION,
     LANE_STAGES,
     AgendaChapterCandidatesStage,
+    ChapterBoundaryLocatorStage,
     StageContext,
     _materialize_set,
     default_stages,
@@ -1880,6 +1881,8 @@ def _build_impl(
         "align",
         "tag",
         "chapter-agenda",
+        "chapter-locator",
+        "chapter",
     ):
         raise ValueError(f"unknown lane {lane!r}")
     if shard_plan_path is not None and shard is None:
@@ -2061,6 +2064,10 @@ def _build_impl(
     stages = {"render": render_stages, "enrich": enrich_stages, "all": default_stages}[phase]()
     if lane == "chapter-agenda":
         stages = [AgendaChapterCandidatesStage()]
+    elif lane == "chapter-locator":
+        stages = [ChapterBoundaryLocatorStage()]
+    elif lane == "chapter":
+        stages = [AgendaChapterCandidatesStage(), ChapterBoundaryLocatorStage()]
 
     # A time-bounded phase processes recordings (encode, chapter scrape) until a shared ``stop``
     # predicate goes True: the wall-clock window is spent, or a newer Build & Deploy run is queued
@@ -2131,7 +2138,7 @@ def _build_impl(
                     f"budget: tag wall-clock window {tag_window_min:.0f}m × {safety} "
                     "(+ yield if superseded)"
                 )
-        elif lane == "chapter-agenda":
+        elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
             chapter_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             remaining_secs = max(
                 0.0, chapter_window_min * 60 * safety - (time.monotonic() - enrich_phase_start)
