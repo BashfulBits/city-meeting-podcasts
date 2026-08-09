@@ -99,6 +99,9 @@ class JobHandle:
     # ``reconcile()`` uses ``owner`` to settle that reservation to actual usage once the Worker's
     # terminal response is available; both are ``None`` for every non-LLM dispatch backend.
     model: str | None = None
+    # Physical LLM route identity, when a logical model was selected from a multi-provider pool.
+    # It is deliberately optional so non-LLM dispatch backends and legacy handles remain valid.
+    route_id: str | None = None
     owner: str | None = None
     # ``input_per_token`` / ``output_per_token`` (R13, additive/optional): the route's per-token
     # $ rates *at reservation time*, snapshotted onto the handle so a later ``reconcile()`` prices

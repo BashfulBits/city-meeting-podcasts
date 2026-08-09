@@ -31,11 +31,16 @@
     "PROCESSING_TIMEOUT_SECONDS": "900",
     "RETRY_BASE_SECONDS": "60",
     "RETRY_MAX_SECONDS": "3600",
-    // The upstream fetch timeout must stay comfortably under the cron lease duration, or a
-    // normal-speed call that simply runs long can have its lease stolen mid-flight by the next
-    // tick and get dispatched a second time for the same still-pending record (review/41).
-    "LEASE_DURATION_SECONDS": "90",
-    "UPSTREAM_TIMEOUT_SECONDS": "60"
+    // Effective deadline: 13m40s of execution, a 14-minute renewable lease, and a 20-second
+    // finalization reserve. Fast requests use the separate 90-second lane; long requests use the
+    // 12-minute upstream timeout. The Worker refuses to start a candidate that cannot fit.
+    "LEASE_DURATION_SECONDS": "840",
+    "MAX_EXECUTION_SECONDS": "820",
+    "FAST_UPSTREAM_TIMEOUT_SECONDS": "90",
+    "UPSTREAM_TIMEOUT_SECONDS": "720",
+    "FINALIZATION_RESERVE_SECONDS": "20",
+    "BATCH_CONCURRENCY": "4",
+    "MAX_TOTAL_REQUESTS": "16"
   },
   "observability": {
     "enabled": true,

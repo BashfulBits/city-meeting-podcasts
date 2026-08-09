@@ -60,6 +60,73 @@ def test_reserve_settle_and_release_round_trip():
     assert ledger.cost_used == pytest.approx(0.1)
 
 
+def test_serialized_ledger_matches_worker_shape():
+    budget = LLMBudget()
+    budget.reserve("owner", ROUTE.model, route=ROUTE, requests=1, tokens=10, cost=0.1, now=NOW)
+    data = budget.to_dict()
+    entry = data["routes"][ROUTE.model]
+    assert data["version"] == 1
+    assert set(entry) == {
+        "cost_used",
+        "cost_cycle_key",
+        "cost_day_used",
+        "cost_day_key",
+        "requests_minute",
+        "tokens_minute",
+        "requests_minute_key",
+        "requests_day",
+        "requests_day_key",
+        "blocked_until",
+        "inflight",
+    }
+    assert entry["inflight"]["owner"]["requests"] == 1
+    assert entry["inflight"]["owner"]["reserved_at"]
+    assert entry["inflight"]["owner"]["expires_at"]
+
+
+def test_expired_reservation_releases_all_charged_quota_dimensions():
+    budget = LLMBudget()
+    budget.reserve("owner", ROUTE.model, route=ROUTE, requests=1, tokens=10, cost=0.1, now=NOW)
+
+    # Expiry is checked whenever the physical route is read; it must undo the reservation, not
+    # merely remove the inflight marker and leave a paid/capped route wedged.
+    assert budget.available(
+        ROUTE.model,
+        route=ROUTE,
+        requests=1,
+        tokens=1,
+        cost=0.1,
+        now=NOW + timedelta(minutes=21),
+    )
+    ledger = budget.routes[ROUTE.model]
+    assert ledger.inflight == {}
+    assert ledger.requests_minute == 0
+    assert ledger.tokens_minute == 0
+    assert ledger.cost_used == 0.0
+
+
+def test_legacy_logical_ledger_is_promoted_to_the_physical_route_key():
+    route = LLMRoute(
+        model=ROUTE.model,
+        transport=ROUTE.transport,
+        free=ROUTE.free,
+        quota=ROUTE.quota,
+        pricing=ROUTE.pricing,
+        route_id="physical-test-route",
+    )
+    budget = LLMBudget(
+        routes={
+            route.model: RouteLedger(
+                requests_minute=3,
+                requests_minute_key="2026-07-16T12:00",
+            )
+        }
+    )
+    budget.available(route.model, route=route, requests=1, tokens=1, cost=0, now=NOW)
+    assert route.model not in budget.routes
+    assert budget.routes[route.route_id].requests_minute == 3
+
+
 def test_settle_corrects_unused_worst_case_request_reservation():
     budget = LLMBudget()
     budget.reserve(

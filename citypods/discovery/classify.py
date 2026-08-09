@@ -293,7 +293,10 @@ def classify(
             "messages": _prompt(request, results),
             "structured_output": STRUCTURED_OUTPUT,
             "llm_policy": LLMRequestPolicy(
-                allow_paid=False, require_direct=True, purpose="city-onboarding"
+                allow_paid=False,
+                require_direct=True,
+                purpose="city-onboarding",
+                timeout_class="fast",
             ),
         },
         recipe_hash=recipe_hash(request, results),

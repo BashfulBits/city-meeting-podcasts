@@ -806,6 +806,7 @@ def llm_tag_suggestions(
             allow_paid=allow_paid,
             purpose=purpose,
             deadline_at=deadline_at,
+            timeout_class="fast",
         )
     outcome = backend.run_inference(
         InferenceJob(

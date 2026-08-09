@@ -1,8 +1,15 @@
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from citypods.compute.llm_budget import LLMBudget, load_llm_budget_cas, mutate_llm_budget
+from citypods.compute.llm_budget import (
+    LLMBudget,
+    LLMReservation,
+    load_llm_budget_cas,
+    mutate_llm_budget,
+)
 from citypods.compute.llm_policy import (
+    ROUTE_CANDIDATES,
+    ROUTE_REGISTRY,
     ROUTES,
     LLMRequestPolicy,
     LLMRoute,
@@ -18,21 +25,36 @@ DIRECT = frozenset({"direct"})
 BOTH_TRANSPORTS = frozenset({"direct", "mistral-dispatch", "llm-dispatch"})
 
 
-def _gemini_exhausted() -> LLMBudget:
+def _all_free_direct_routes_exhausted() -> LLMBudget:
     budget = LLMBudget()
-    for model, route in ROUTES.items():
-        if not route.free or route.transport != "direct" or route.quota.rpd is None:
+
+    for route_id, route in ROUTE_REGISTRY.items():
+        if not route.free or "direct" not in route.transports:
             continue
-        ledger = budget._ledger(model, NOW, route=route)
-        ledger.requests_day = route.quota.rpd
+        ledger = budget._ledger(route_id, NOW, route=route)
+        if route.quota.rpm is not None:
+            ledger.requests_minute = route.quota.rpm
+        if route.quota.rpd is not None:
+            ledger.requests_day = route.quota.rpd
+        if route.quota.tpm is not None:
+            ledger.tokens_minute = route.quota.tpm
+        if route.quota.concurrency is not None:
+            ledger.inflight = {
+                f"owner-{n}": LLMReservation(cost=0, requests=1, tokens=1)
+                for n in range(route.quota.concurrency)
+            }
     return budget
+
+
+def _deepseek_direct_route(model: str) -> LLMRoute:
+    return next(route for route in ROUTE_CANDIDATES[model] if route.provider == "deepseek")
 
 
 def test_paid_route_wins_when_free_quota_cannot_reset_before_deadline():
     result = select_route(
         LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=1)),
         routes=ROUTES,
-        ledger=_gemini_exhausted(),
+        ledger=_all_free_direct_routes_exhausted(),
         available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
@@ -50,7 +72,14 @@ def test_ranking_prefers_free_route_over_a_simultaneously_eligible_paid_route():
     ranking (§5 gate 6) must still pick the free route over an equally-eligible paid one."""
     inside_deepseek_window = datetime(2026, 7, 16, 18, tzinfo=UTC)
     result = select_route(
-        LLMRequestPolicy(allow_paid=True),
+        LLMRequestPolicy(
+            allow_paid=True,
+            allowed_models=(
+                "gemini/gemini-3-flash-preview",
+                "deepseek/deepseek-v4-flash",
+                "deepseek/deepseek-v4-pro",
+            ),
+        ),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=DIRECT,
@@ -65,17 +94,17 @@ def test_ranking_prefers_free_route_over_a_simultaneously_eligible_paid_route():
     )
 
 
-def test_free_route_is_not_replaced_by_paid_route_when_off_peak_wait_is_safe():
+def test_no_route_is_selected_when_free_routes_are_exhausted_and_paid_is_disallowed():
     result = select_route(
-        LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=24)),
+        LLMRequestPolicy(allow_paid=False, deadline_at=NOW + timedelta(hours=24)),
         routes=ROUTES,
-        ledger=_gemini_exhausted(),
+        ledger=_all_free_direct_routes_exhausted(),
         available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
     )
     assert result.model is None
-    assert any("off-peak" in reason for _, reason in result.rejected)
+    assert any("paid model disallowed" in reason for _, reason in result.rejected)
 
 
 def test_allowlist_can_force_one_paid_evaluation_model():
@@ -93,9 +122,11 @@ def test_allowlist_can_force_one_paid_evaluation_model():
 
 def test_deepseek_off_peak_preference_and_deadline_override():
     model = "deepseek/deepseek-v4-flash"
+    route = _deepseek_direct_route(model)
+    routes = {route.route_id or route.model: route}
     outside = select_route(
         LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
-        routes=ROUTES,
+        routes=routes,
         ledger=LLMBudget(),
         available_transports=DIRECT,
         estimated_tokens=1024,
@@ -106,7 +137,7 @@ def test_deepseek_off_peak_preference_and_deadline_override():
 
     inside = select_route(
         LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
-        routes=ROUTES,
+        routes=routes,
         ledger=LLMBudget(),
         available_transports=DIRECT,
         estimated_tokens=1024,
@@ -118,7 +149,7 @@ def test_deepseek_off_peak_preference_and_deadline_override():
         LLMRequestPolicy(
             allowed_models=(model,), allow_paid=True, deadline_at=NOW + timedelta(hours=1)
         ),
-        routes=ROUTES,
+        routes=routes,
         ledger=LLMBudget(),
         available_transports=DIRECT,
         estimated_tokens=1024,
@@ -127,7 +158,7 @@ def test_deepseek_off_peak_preference_and_deadline_override():
     assert urgent.model == model
 
 
-def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
+def test_direct_transport_selects_a_direct_capable_route():
     result = select_route(
         LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",), allow_paid=True),
         routes=ROUTES,
@@ -136,16 +167,37 @@ def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
         estimated_tokens=1024,
         now=NOW,
     )
+    assert result.model == "mistral/mistral-large-2512"
+    assert result.transport == "direct"
+
+
+def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
+    route = LLMRoute(
+        model="example/dispatch-only",
+        transport="llm-dispatch",
+        transports=("llm-dispatch",),
+        free=True,
+        quota=QuotaPolicy(rpm=1),
+        pricing=PricingPolicy(),
+    )
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(route.model,)),
+        routes={route.model: route},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
     assert result.model is None
-    assert ("mistral/mistral-large-2512", "transport gate") in result.rejected
+    assert (route.model, "transport gate") in result.rejected
 
 
 def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
-    """The Worker claims one Large request per Cron minute, below the upstream 0.07-RPS cap."""
+    """Mistral Large route matches the upstream 0.07-RPS (4 RPM) ceiling."""
     route = ROUTES["mistral/mistral-large-2512"]
-    assert route.transport == "llm-dispatch"
-    assert route.transports == ("llm-dispatch",)
-    assert route.quota.rpm == 1
+    assert route.transport == "direct"
+    assert set(route.transports) == {"direct", "llm-dispatch"}
+    assert route.quota.rpm == 4
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():
@@ -179,10 +231,8 @@ def test_selected_transport_prefers_direct_unless_overflow_is_explicit():
 
     mistral_route = ROUTES["mistral/mistral-large-2512"]
     dispatch_only = frozenset({"llm-dispatch"})
-    # Mistral has no direct alternative -- always dispatches regardless of the overflow flag.
-    assert (
-        _selected_transport(mistral_route, dispatch_only, allow_dispatch_overflow=False)
-        == "llm-dispatch"
+    assert _selected_transport(mistral_route, dispatch_only, allow_dispatch_overflow=False) == (
+        "llm-dispatch"
     )
 
     direct_only_route = ROUTES["deepseek/deepseek-v4-flash"]
@@ -226,9 +276,9 @@ def test_select_and_reserve_dual_transport_direct_vs_overflow_owner():
     assert overflow_selection.owner == "recipe-overflow"
 
 
-def test_research_only_mistral_medium_is_not_an_implicit_pipeline_fallback():
+def test_production_mistral_medium_is_available_directly_after_catalog_expansion():
     model = "mistral/mistral-medium-2508"
-    excluded = select_route(
+    direct = select_route(
         LLMRequestPolicy(allowed_models=(model,)),
         routes=ROUTES,
         ledger=LLMBudget(),
@@ -236,13 +286,11 @@ def test_research_only_mistral_medium_is_not_an_implicit_pipeline_fallback():
         estimated_tokens=1024,
         now=NOW,
     )
-    assert excluded.model is None
-    # Medium is now the pinned production agenda route, but it is dispatch-only. A direct-only
-    # caller must still be rejected rather than silently bypassing the shared Worker pacing.
-    assert (model, "transport gate") in excluded.rejected
+    assert direct.model == model
+    assert direct.transport == "direct"
 
     included = select_route(
-        LLMRequestPolicy(allowed_models=(model,), allow_experimental=True),
+        LLMRequestPolicy(allowed_models=(model,)),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=BOTH_TRANSPORTS,
@@ -250,7 +298,7 @@ def test_research_only_mistral_medium_is_not_an_implicit_pipeline_fallback():
         now=NOW,
     )
     assert included.model == model
-    assert included.transport == "llm-dispatch"
+    assert included.transport == "direct"
 
 
 def test_retry_at_is_next_minute_when_only_the_per_minute_window_is_full():
@@ -583,7 +631,10 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
     recovering)."""
     gemini = ROUTES["gemini/gemini-3-flash-preview"]
     mistral = ROUTES["mistral/mistral-large-2512"]
-    routes = {gemini.model: gemini, mistral.model: mistral}
+    routes = {
+        gemini.route_id or gemini.model: gemini,
+        mistral.route_id or mistral.model: mistral,
+    }
     storage = MemCAS()
     # Seed an existing in-flight dispatch reservation for "recipe-1" (the deterministic dispatch
     # owner), simulating a prior attempt that got a 202 and hasn't settled yet.
@@ -616,5 +667,7 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
     assert result.owner == "recipe-1"
     budget, _ = load_llm_budget_cas(storage)
     # No new reservation was created -- still exactly the one seeded above.
-    assert budget.routes[mistral.model].inflight_count == 1
-    assert gemini.model not in budget.routes or budget.routes[gemini.model].inflight_count == 0
+    assert budget.routes[mistral.route_id or mistral.model].inflight_count == 1
+    assert (gemini.route_id or gemini.model) not in budget.routes or budget.routes[
+        gemini.route_id or gemini.model
+    ].inflight_count == 0

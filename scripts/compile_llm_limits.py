@@ -28,6 +28,65 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INPUT_YAML = REPO_ROOT / "config" / "provider_limits.yml"
 OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-proxy" / "src" / "dispatch_limits.json"
+PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
+
+
+def _direct_model(provider: str, upstream_model: str) -> str:
+    """Return the LiteLLM model selector for a compiled provider route.
+
+    Kilo, OpenCode, and SiliconFlow expose OpenAI-compatible gateways rather than stable LiteLLM
+    provider adapters. Selecting the OpenAI adapter and supplying the compiled ``api_base`` keeps
+    those routes usable directly without teaching the scheduler provider-specific URL logic.
+    """
+    if provider in {"kilo", "opencode", "siliconflow"}:
+        return f"openai/{upstream_model}"
+    return f"{provider}/{upstream_model}"
+
+
+def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
+    """Build the Python-side catalog from the exact data sent to the Worker.
+
+    The Worker keeps the full route/account list because it must select a physical credential.
+    Python receives the same list plus direct-adapter fields; it must not maintain a second list of
+    logical models that can silently drift from the dispatch registry.
+    """
+    providers = compiled.get("providers", {})
+    routes = []
+    for source in compiled.get("routes", []):
+        provider_cfg = providers.get(source.get("provider"), {})
+        requested_account_id = source.get("account_id")
+        account = next(
+            (
+                account
+                for account in provider_cfg.get("accounts", [])
+                if account.get("id") == requested_account_id
+            ),
+            None,
+        )
+        if requested_account_id and account is None:
+            raise ValueError(
+                f"route {source.get('route_id', source.get('model'))!r} references unknown "
+                f"account_id {requested_account_id!r} for provider {source.get('provider')!r}"
+            )
+        if account is None and provider_cfg.get("accounts"):
+            account = provider_cfg["accounts"][0]
+        route = dict(source)
+        route.update(
+            {
+                "transports": ["direct", "llm-dispatch"],
+                "direct_model": _direct_model(
+                    str(source.get("provider", "")), str(source.get("upstream_model", ""))
+                ),
+                "api_base": provider_cfg.get("api_base", ""),
+                "chat_path": provider_cfg.get("chat_path", "/v1/chat/completions"),
+                "api_key_env": (account or {}).get("api_key_env", ""),
+                "reset_timezone": source.get(
+                    "reset_timezone", provider_cfg.get("reset_timezone", "UTC")
+                ),
+            }
+        )
+        routes.append(route)
+    return {"_metadata": compiled["_metadata"], "routes": routes}
 
 
 def fetch_openrouter_models(provider_cfg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -228,10 +287,13 @@ def main(argv: list[str] | None = None) -> None:
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT_JSON.open("w", encoding="utf-8") as f:
         json.dump(compiled, f, indent=2)
+    with PYTHON_OUTPUT_JSON.open("w", encoding="utf-8") as f:
+        json.dump(_python_routes(compiled), f, indent=2)
     rel_out = OUTPUT_JSON.relative_to(REPO_ROOT)
     print(
         f"Successfully compiled {compiled['_metadata']['routes_count']} routes "
-        f"across {compiled['_metadata']['providers_count']} providers to {rel_out}"
+        f"across {compiled['_metadata']['providers_count']} providers to {rel_out} and "
+        f"{PYTHON_OUTPUT_JSON.relative_to(REPO_ROOT)}"
     )
 
 

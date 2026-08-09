@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, time
+from pathlib import Path
 from typing import Any, Literal
 
 DEFAULT_OUTPUT_TOKEN_MARGIN = 1024
@@ -39,6 +41,9 @@ class LLMRequestPolicy:
     # its documented same-run-completion design) that motivated making this opt-in rather than
     # "dispatch whenever a Worker happens to be configured."
     allow_dispatch_overflow: bool = False
+    # Worker dispatch lane.  ``fast`` drains short requests before a scheduled invocation risks
+    # starting work it cannot finish; ``long`` opts into the bounded long-context timeout lane.
+    timeout_class: Literal["fast", "long"] = "long"
 
 
 @dataclass(frozen=True)
@@ -99,109 +104,248 @@ class LLMRoute:
     # structured-output contract is present.
     max_provider_attempts: int | None = None
     transports: tuple[Literal["direct", "mistral-dispatch", "llm-dispatch"], ...] = ("direct",)
+    # Physical route identity and direct LiteLLM adapter metadata.  Empty defaults preserve the
+    # small hand-built routes used by unit tests and old callers; generated routes always fill all
+    # fields and use ``route_id`` as their shared-ledger key.
+    route_id: str = ""
+    provider: str = ""
+    upstream_model: str = ""
+    direct_model: str = ""
+    api_base: str = ""
+    chat_path: str = "/v1/chat/completions"
+    api_key_env: str = ""
+    account_id: str = ""
+
+    def __post_init__(self) -> None:
+        # Hand-built fallback and test routes intentionally omit provider adapter metadata.  They
+        # still need to be valid direct LiteLLM routes, so preserve their canonical model rather
+        # than making every consumer remember an empty-string fallback.
+        if not self.direct_model:
+            object.__setattr__(self, "direct_model", self.model)
 
 
 _DEEPSEEK_WINDOW = PeakWindow("UTC", time(16, 30), time(0, 30), 0.5)
 
-ROUTES: dict[str, LLMRoute] = {
-    "gemini/gemini-3-flash-preview": LLMRoute(
-        model="gemini/gemini-3-flash-preview",
-        transport="direct",
-        transports=("direct", "llm-dispatch"),
-        free=True,
-        quota=QuotaPolicy(
-            rpm=10,
-            rpd=1500,
-            tpm=250_000,
-            reset_timezone="America/Los_Angeles",
-        ),
-        pricing=PricingPolicy(),
-    ),
-    "gemini/gemini-3.1-flash-lite": LLMRoute(
-        model="gemini/gemini-3.1-flash-lite",
-        transport="direct",
-        transports=("direct", "llm-dispatch"),
-        free=True,
-        # Real free-tier allowance for this route (raised from the initial rpd=20 safety ceiling
-        # now that the tag lane paces within its per-minute budget rather than bursting and
-        # stopping). Paired with `gemini-3.5-flash-lite` below, which has its own independent
-        # free-tier pool, so tagging can draw on ~2x these numbers across the two routes.
-        quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
-        pricing=PricingPolicy(),
-    ),
-    "gemini/gemini-3.5-flash-lite": LLMRoute(
-        model="gemini/gemini-3.5-flash-lite",
-        transport="direct",
-        transports=("direct", "llm-dispatch"),
-        free=True,
-        # Independent free-tier pool from 3.1-flash-lite (separate model = separate provider quota),
-        # so the tag lane can spill onto it once 3.1's per-minute/day window fills -- ~1000 tags/day
-        # combined at 30 rpm across the two.
-        quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
-        pricing=PricingPolicy(),
-    ),
-    "deepseek/deepseek-v4-flash": LLMRoute(
-        model="deepseek/deepseek-v4-flash",
-        transport="direct",
-        transports=("direct",),
-        free=False,
-        # Paid route: the maintainer confirmed there is no provider daily request allowance.
-        # Cost telemetry remains active, but a speculative calendar-day ceiling must not stall
-        # bounded research or later explicitly authorized paid work.
-        quota=QuotaPolicy(),
-        pricing=PricingPolicy(
-            input_per_token=0.14e-6,
-            output_per_token=0.28e-6,
-            windows=(_DEEPSEEK_WINDOW,),
-        ),
-    ),
-    "deepseek/deepseek-v4-pro": LLMRoute(
-        model="deepseek/deepseek-v4-pro",
-        transport="direct",
-        transports=("direct",),
-        free=False,
-        quota=QuotaPolicy(),
-        pricing=PricingPolicy(
-            input_per_token=0.435e-6,
-            output_per_token=0.87e-6,
-            windows=(_DEEPSEEK_WINDOW,),
-        ),
-    ),
-    "mistral/mistral-large-2512": LLMRoute(
-        model="mistral/mistral-large-2512",
-        transport="llm-dispatch",
-        transports=("llm-dispatch",),
-        free=True,
-        # The account's Mistral Large alias resolves to ``mistral-large-2512`` (0.07 RPS), but
-        # production does not call that API directly: the deployed one-model dispatch Worker
-        # claims exactly one request each minute.  The local ledger must represent that stricter
-        # end-to-end ceiling, not the upstream's theoretical four requests/minute.
-        quota=QuotaPolicy(rpm=1),
-        pricing=PricingPolicy(),
-        max_provider_attempts=1,
-    ),
-    "mistral/mistral-large-3": LLMRoute(
-        model="mistral/mistral-large-3",
-        transport="llm-dispatch",
-        transports=("llm-dispatch",),
-        free=True,
-        quota=QuotaPolicy(rpm=1),
-        pricing=PricingPolicy(),
-        max_provider_attempts=1,
-    ),
-    "mistral/mistral-medium-2508": LLMRoute(
-        model="mistral/mistral-medium-2508",
-        # Production agenda extraction is submitted through the shared deferred Worker so a
-        # GitHub runner never holds an Mistral pacing sleep and the same job registry can retry or
-        # finalize it later.
-        transport="llm-dispatch",
-        transports=("llm-dispatch",),
-        free=True,
-        quota=QuotaPolicy(rpm=22, tpm=356_250),
-        pricing=PricingPolicy(),
-        max_provider_attempts=1,
-    ),
+
+def _load_generated_routes() -> list[LLMRoute]:
+    path = Path(__file__).with_name("llm_routes.json")
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"Invalid generated LLM route catalog at {path}; rerun scripts/compile_llm_limits.py"
+        ) from exc
+    result = []
+    for item in raw.get("routes", []):
+        provider = str(item.get("provider", ""))
+        result.append(
+            LLMRoute(
+                model=str(item["model"]),
+                transport="direct",
+                transports=tuple(item.get("transports", ("direct",))),
+                free=bool(item.get("free", False)),
+                quota=QuotaPolicy(
+                    rpm=item.get("rpm"),
+                    rpd=item.get("rpd"),
+                    tpm=item.get("tpm"),
+                    concurrency=item.get("concurrency"),
+                    reset_timezone=str(item.get("reset_timezone", "UTC")),
+                ),
+                pricing=PricingPolicy(
+                    input_per_token=float(item.get("input_per_token", 0) or 0),
+                    output_per_token=float(item.get("output_per_token", 0) or 0),
+                    windows=(_DEEPSEEK_WINDOW,) if provider == "deepseek" else (),
+                ),
+                max_provider_attempts=None,
+                route_id=str(item.get("route_id", item["model"])),
+                provider=provider,
+                upstream_model=str(item.get("upstream_model", "")),
+                direct_model=str(item.get("direct_model", "")),
+                api_base=str(item.get("api_base", "")),
+                chat_path=str(item.get("chat_path", "/v1/chat/completions")),
+                api_key_env=str(item.get("api_key_env", "")),
+                account_id=str(item.get("account_id", "")),
+            )
+        )
+    return result
+
+
+_GENERATED_ROUTES = _load_generated_routes()
+
+# Physical route registry used for selection and the shared ledger.  ``ROUTES`` remains the
+# stable logical-model compatibility view: one deterministic primary route per model for callers
+# that only need to inspect capabilities.  ``ROUTE_CANDIDATES`` retains every provider/account
+# route, so a logical model can spill across providers and accounts without a second config table.
+ROUTE_REGISTRY: dict[str, LLMRoute] = {
+    route.route_id or route.model: route for route in _GENERATED_ROUTES
 }
+ROUTE_CANDIDATES: dict[str, tuple[LLMRoute, ...]] = {}
+for _route in _GENERATED_ROUTES:
+    ROUTE_CANDIDATES.setdefault(_route.model, tuple())
+    ROUTE_CANDIDATES[_route.model] += (_route,)
+
+ROUTES: dict[str, LLMRoute] = {
+    model: candidates[0] for model, candidates in ROUTE_CANDIDATES.items()
+}
+
+# Source fallback for a checkout that has not run the compiler yet.  This is intentionally kept
+# below the generated catalog and only supplies the original 14 routes during local development;
+# CI and packaging always compile and commit ``llm_routes.json``.
+if not _GENERATED_ROUTES:
+    ROUTES = {
+        "gemini/gemini-3-flash-preview": LLMRoute(
+            model="gemini/gemini-3-flash-preview",
+            transport="direct",
+            transports=("direct", "llm-dispatch"),
+            free=True,
+            quota=QuotaPolicy(
+                rpm=5,
+                rpd=20,
+                tpm=250_000,
+                reset_timezone="America/Los_Angeles",
+            ),
+            pricing=PricingPolicy(),
+        ),
+        "gemini/gemini-3.1-flash-lite": LLMRoute(
+            model="gemini/gemini-3.1-flash-lite",
+            transport="direct",
+            transports=("direct", "llm-dispatch"),
+            free=True,
+            # Real free-tier allowance for this route (raised from the initial rpd=20 safety ceiling
+            # now that the tag lane paces within its per-minute budget rather than bursting and
+            # stopping). Paired with `gemini-3.5-flash-lite` below, which has its own independent
+            # free-tier pool, so tagging can draw on ~2x these numbers across the two routes.
+            quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
+            pricing=PricingPolicy(),
+        ),
+        "gemini/gemini-3.5-flash-lite": LLMRoute(
+            model="gemini/gemini-3.5-flash-lite",
+            transport="direct",
+            transports=("direct", "llm-dispatch"),
+            free=True,
+            # Independent free-tier pool from 3.1-flash-lite (separate model = separate provider
+            # quota), so the tag lane can spill onto it once 3.1's per-minute/day window fills --
+            # ~1000 tags/day
+            # combined at 30 rpm across the two.
+            quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
+            pricing=PricingPolicy(),
+        ),
+        "deepseek/deepseek-v4-flash": LLMRoute(
+            model="deepseek/deepseek-v4-flash",
+            transport="direct",
+            transports=("direct",),
+            free=False,
+            # Paid route: the maintainer confirmed there is no provider daily request allowance.
+            # Cost telemetry remains active, but a speculative calendar-day ceiling must not stall
+            # bounded research or later explicitly authorized paid work.
+            quota=QuotaPolicy(),
+            pricing=PricingPolicy(
+                input_per_token=0.14e-6,
+                output_per_token=0.28e-6,
+                windows=(_DEEPSEEK_WINDOW,),
+            ),
+        ),
+        "deepseek/deepseek-v4-pro": LLMRoute(
+            model="deepseek/deepseek-v4-pro",
+            transport="direct",
+            transports=("direct",),
+            free=False,
+            quota=QuotaPolicy(),
+            pricing=PricingPolicy(
+                input_per_token=0.435e-6,
+                output_per_token=0.87e-6,
+                windows=(_DEEPSEEK_WINDOW,),
+            ),
+        ),
+        "mistral/mistral-large-2512": LLMRoute(
+            model="mistral/mistral-large-2512",
+            transport="llm-dispatch",
+            transports=("llm-dispatch",),
+            free=True,
+            quota=QuotaPolicy(rpm=4, tpm=250_000),
+            pricing=PricingPolicy(),
+            max_provider_attempts=1,
+        ),
+        "mistral/mistral-large-3": LLMRoute(
+            model="mistral/mistral-large-3",
+            transport="llm-dispatch",
+            transports=("llm-dispatch",),
+            free=True,
+            quota=QuotaPolicy(rpm=4, tpm=250_000),
+            pricing=PricingPolicy(),
+            max_provider_attempts=1,
+        ),
+        "mistral/mistral-medium-2508": LLMRoute(
+            model="mistral/mistral-medium-2508",
+            # Production agenda extraction is submitted through the shared deferred Worker so a
+            # GitHub runner never holds an Mistral pacing sleep and the same job registry can
+            # retry or finalize it later.
+            transport="llm-dispatch",
+            transports=("llm-dispatch",),
+            free=True,
+            quota=QuotaPolicy(rpm=22, tpm=356_250),
+            pricing=PricingPolicy(),
+            max_provider_attempts=1,
+        ),
+        "kilo/stepfun/step-3.7-flash:free": LLMRoute(
+            model="kilo/stepfun/step-3.7-flash:free",
+            transport="llm-dispatch",
+            transports=("llm-dispatch",),
+            free=True,
+            quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
+            pricing=PricingPolicy(),
+            max_provider_attempts=1,
+        ),
+        "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": LLMRoute(
+            model="kilo/nvidia/nemotron-3-ultra-550b-a55b:free",
+            transport="llm-dispatch",
+            transports=("llm-dispatch",),
+            free=True,
+            quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
+            pricing=PricingPolicy(),
+            max_provider_attempts=1,
+        ),
+        "opencode/deepseek-v4-flash-free": LLMRoute(
+            model="opencode/deepseek-v4-flash-free",
+            transport="llm-dispatch",
+            transports=("llm-dispatch",),
+            free=True,
+            quota=QuotaPolicy(rpm=30, rpd=500, tpm=250_000),
+            pricing=PricingPolicy(),
+            max_provider_attempts=1,
+        ),
+        "opencode/mimo-v2.5-free": LLMRoute(
+            model="opencode/mimo-v2.5-free",
+            transport="llm-dispatch",
+            transports=("llm-dispatch",),
+            free=True,
+            quota=QuotaPolicy(rpm=30, rpd=500, tpm=100_000),
+            pricing=PricingPolicy(),
+            max_provider_attempts=1,
+        ),
+        "opencode/longcat-2.0-free": LLMRoute(
+            model="opencode/longcat-2.0-free",
+            transport="llm-dispatch",
+            transports=("llm-dispatch",),
+            free=True,
+            quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
+            pricing=PricingPolicy(),
+            max_provider_attempts=1,
+        ),
+        "opencode/nemotron-3-ultra-free": LLMRoute(
+            model="opencode/nemotron-3-ultra-free",
+            transport="llm-dispatch",
+            transports=("llm-dispatch",),
+            free=True,
+            quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
+            pricing=PricingPolicy(),
+            max_provider_attempts=1,
+        ),
+    }
+    ROUTE_REGISTRY = {route.model: route for route in ROUTES.values()}
+    ROUTE_CANDIDATES = {model: (route,) for model, route in ROUTES.items()}
 
 
 def estimate_tokens(messages: list[Mapping[str, Any]]) -> int:
@@ -219,5 +363,7 @@ __all__ = [
     "PricingPolicy",
     "QuotaPolicy",
     "ROUTES",
+    "ROUTE_CANDIDATES",
+    "ROUTE_REGISTRY",
     "estimate_tokens",
 ]

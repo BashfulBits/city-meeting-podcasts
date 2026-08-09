@@ -85,6 +85,9 @@ citypods = "citypods.cli:main"
 [tool.setuptools.packages.find]
 include = ["citypods*"]
 
+[tool.setuptools.package-data]
+"citypods.compute" = ["llm_routes.json"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

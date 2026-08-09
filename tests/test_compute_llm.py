@@ -24,7 +24,7 @@ from citypods.compute.llm import (
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
-from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy
+from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTES, LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 from tests._cas_fake import MemStorage
 
@@ -51,6 +51,11 @@ register_response_model("constrained-output", ConstrainedOutput)
 
 def job(task="tag", **inputs):
     return InferenceJob(task=task, inputs=inputs, recipe_hash="recipe-1")
+
+
+def _ledger_for(budget, model):
+    route = ROUTES[model]
+    return budget.routes[route.route_id or model]
 
 
 _DISPATCH_ONLY_KEYS = {
@@ -148,7 +153,7 @@ def test_policy_route_is_resolved_and_settled_in_cas_ledger():
     assert isinstance(result, JobResult)
     assert calls[0]["model"] == "gemini/gemini-3-flash-preview"
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.inflight == {}
     assert ledger.requests_minute == 1
     assert ledger.tokens_minute == 12
@@ -163,10 +168,19 @@ def test_policy_no_eligible_route_returns_a_deferred_handle_without_reservation(
 
     def exhaust(budget, _now):
         model = "gemini/gemini-3-flash-preview"
-        route = ROUTES[model]
-        ledger = budget._ledger(model, now, route=route)
-        ledger.requests_day = route.quota.rpd
-        ledger.requests_day_key = daily_reset_key(now, "America/Los_Angeles")
+        for route in ROUTE_CANDIDATES[model]:
+            ledger = budget._ledger(model, now, route=route)
+            if route.quota.rpm is not None:
+                ledger.requests_minute = route.quota.rpm
+            if route.quota.tpm is not None:
+                ledger.tokens_minute = route.quota.tpm
+            if route.quota.rpd is not None:
+                ledger.requests_day = route.quota.rpd
+                ledger.requests_day_key = daily_reset_key(now, route.quota.reset_timezone)
+            if route.quota.concurrency is not None:
+                ledger.inflight = {
+                    f"owner-{index}": None for index in range(route.quota.concurrency)
+                }
 
     mutate_llm_budget(storage, exhaust, now=now)
     backend = LiteLLMBackend(
@@ -188,9 +202,9 @@ def test_policy_no_eligible_route_returns_a_deferred_handle_without_reservation(
     assert len(result.deferred_request.messages) == 2  # the default system + user prompt
 
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.inflight == {}
-    assert ledger.requests_day == 1500
+    assert ledger.requests_day == ROUTES["gemini/gemini-3-flash-preview"].quota.rpd
 
     # And it's persisted: a second ask with the same job finds the pending record instead of
     # re-running selection from scratch.
@@ -231,7 +245,7 @@ def test_policy_post_network_failure_settles_reservation():
 
     assert calls
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.inflight == {}
     assert ledger.requests_minute == 1
 
@@ -270,7 +284,7 @@ def test_direct_mode_429_defers_and_blocks_the_route_reactively():
     assert isinstance(result, JobHandle)
     assert result.deferred_request is not None
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.inflight == {}
     # The rejected attempt never reached the model -- it doesn't count against our own
     # proactive ledger. `blocked_until` (not the request counters) is what stops an immediate
@@ -313,7 +327,7 @@ def test_dispatch_mode_429_defers_and_blocks_the_route_reactively():
     assert isinstance(result, JobHandle)
     assert result.deferred_request is not None
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["mistral/mistral-large-2512"]
+    ledger = _ledger_for(budget, "mistral/mistral-large-2512")
     assert ledger.inflight == {}
     assert ledger.requests_minute == 0
     assert ledger.blocked_until != ""
@@ -405,7 +419,7 @@ def test_reconcile_settles_actual_requests_after_a_202_dispatch():
 
     assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["mistral/mistral-large-2512"]
+    ledger = _ledger_for(budget, "mistral/mistral-large-2512")
     assert ledger.inflight == {}
     assert ledger.requests_minute == 1
 
@@ -471,7 +485,7 @@ def test_structured_policy_call_reserves_worst_case_two_requests():
     )
 
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.inflight == {}
     assert ledger.requests_minute == 1
 
@@ -500,7 +514,7 @@ def test_second_call_with_the_same_recipe_hash_returns_the_cached_result():
     assert isinstance(first, JobResult) and isinstance(second, JobResult)
     assert second.output == first.output
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.inflight == {}
     assert ledger.requests_minute == 1
 
@@ -584,7 +598,7 @@ def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
 
     assert result.output["choices"][0]["message"]["content"] == "ok"
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes[route.model]
+    ledger = budget.routes[route.route_id or route.model]
     assert ledger.inflight == {}
     assert ledger.cost_used == pytest.approx(80 * 0.14e-6 + 20 * 0.28e-6)
 
@@ -758,7 +772,7 @@ def test_gemini_structured_retry_settles_combined_usage_from_both_attempts():
         "completion_tokens": 20,
     }
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.inflight == {}
     assert ledger.tokens_minute == 80
 
@@ -798,7 +812,7 @@ def test_gemini_structured_429_on_retry_still_bills_the_real_first_attempt():
     assert len(calls) == 2
     assert isinstance(result, JobHandle)
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     # The first attempt reached the provider and got a real (if invalid) response -- it stays
     # charged. Only the second, rejected-as-429 attempt is excluded.
     assert ledger.requests_minute == 1
@@ -1251,7 +1265,7 @@ def test_dual_transport_route_prefers_direct_without_opt_in():
     backend = LiteLLMBackend(
         LLMBackendConfig(
             model="gemini/gemini-3-flash-preview",
-            mode="dispatch",
+            mode="direct",
             dispatch_url="https://dispatch.example",
         ),
         completion=_strict_direct_completion,
@@ -1315,7 +1329,7 @@ def test_dual_transport_route_dispatches_with_explicit_overflow_and_reserves_by_
 
     assert isinstance(res, JobHandle)
     budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes["gemini/gemini-3-flash-preview"]
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert recipe_hash in ledger.inflight
 
 
@@ -1359,3 +1373,98 @@ def test_require_direct_policy_bypasses_dispatch():
     assert isinstance(res, JobResult)
     assert res.output["choices"][0]["message"]["content"] == "direct response"
     assert not posted
+
+
+def test_reconcile_emits_warning_on_retrying_upstream_timeout(capsys):
+    class TimeoutRetrySession(requests.Session):
+        def get(self, *_args, **_kwargs):
+            res = requests.Response()
+            res.status_code = 202
+            res._content = json.dumps(
+                {
+                    "id": "chatcmpl-test-1",
+                    "status": "pending",
+                    "attempts": 2,
+                    "available_at": "2026-08-09T06:00:00Z",
+                    "last_error": {
+                        "code": "upstream_timeout",
+                        "duration_seconds": 720,
+                        "model": "deepseek/deepseek-v4-pro",
+                        "route_id": "deepseek_v4_pro_primary",
+                    },
+                }
+            ).encode()
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="deepseek/deepseek-v4-pro",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=TimeoutRetrySession(),
+        storage=storage,
+    )
+
+    handle = JobHandle(
+        backend="litellm",
+        task="summarize",
+        recipe_hash="recipe-timeout-retry",
+        ref="chatcmpl-test-1",
+        model="deepseek/deepseek-v4-pro",
+    )
+
+    result = backend.reconcile(handle)
+    assert result is None
+    captured = capsys.readouterr()
+    assert "::warning title=LLM Upstream Timeout Warning::" in captured.out
+    assert "timed out after 720s" in captured.out
+    assert "deepseek_v4_pro_primary" in captured.out
+
+
+def test_reconcile_emits_error_on_terminal_upstream_timeout(capsys):
+    class TimeoutFailedSession(requests.Session):
+        def get(self, *_args, **_kwargs):
+            res = requests.Response()
+            res.status_code = 502
+            res._content = json.dumps(
+                {
+                    "error": {
+                        "code": "upstream_timeout",
+                        "message": (
+                            "Upstream LLM provider timed out after 720s without completing response"
+                        ),
+                        "duration_seconds": 720,
+                        "attempts": 5,
+                        "route_id": "deepseek_v4_pro_primary",
+                    }
+                }
+            ).encode()
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="deepseek/deepseek-v4-pro",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=TimeoutFailedSession(),
+        storage=storage,
+    )
+
+    handle = JobHandle(
+        backend="litellm",
+        task="summarize",
+        recipe_hash="recipe-terminal-timeout",
+        ref="chatcmpl-test-terminal",
+        model="deepseek/deepseek-v4-pro",
+    )
+
+    with pytest.raises(LLMBackendError, match="timed out after 720s"):
+        backend.reconcile(handle)
+
+    captured = capsys.readouterr()
+    assert "::error title=LLM Terminal Timeout Failure::" in captured.out
+    assert "failed permanently after 5 attempts exceeding 720s timeout" in captured.out

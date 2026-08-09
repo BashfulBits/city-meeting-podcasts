@@ -3,7 +3,7 @@
 `citypods-llm-dispatch-proxy` is the Phase R/R10 rate-limited LLM dispatch Worker, extended
 (review/41) to route multiple providers/accounts through one Worker. It accepts OpenAI-shaped
 chat-completion requests, persists them in a private R2 bucket, and a per-minute Cron Trigger claims
-at most one ready request, ranks that request's canonical model's candidate routes against a
+a bounded batch of ready requests, ranks each request's canonical model's candidate routes against a
 **per-route/per-account R2 ledger**, and calls the chosen route's own provider endpoint. The upstream
 response is persisted beside the request, so the caller can pick it up on a later scheduled run
 without a GitHub Actions runner waiting for provider pacing.
@@ -41,8 +41,9 @@ separate `route_id`s with **independent ledger entries** — this is what makes 
 exhausting one account's window rolls dispatch onto the other rather than blocking the model.
 
 `dispatchOne`'s route selection ranks a request's candidate routes free-before-paid, then cheapest,
-checks each against `state/dispatch_budget.json` (R2, per-`route_id` minute/day counters + a reactive
-`blocked_until`, mirroring `citypods/compute/llm_budget.py`'s shape), and reserves the first with real
+checks each against `state/dispatch_budget.json` (R2, per-`route_id` minute/day counters, optional
+cost fields, `inflight` reservations, and a reactive `blocked_until`, mirroring
+`citypods/compute/llm_budget.py`'s shape), and reserves the first with real
 capacity. A request whose caller disallowed paid and whose model has no free route left fails
 permanently; one that's merely temporarily out of capacity is left `pending` for a later tick — never
 silently dispatched on a fallback default.
@@ -74,24 +75,32 @@ longer resolve credentials or an upstream URL for a real dispatch; that is entir
 missing/invalid value here fails fast rather than silently defaulting to Mistral's shape (a real
 credential-disclosure bug fixed in review/41 — see its §2 for the incident).
 
-`LEASE_DURATION_SECONDS`/`UPSTREAM_TIMEOUT_SECONDS` bound the cron lease and the real upstream fetch;
-the timeout must stay comfortably under the lease duration, or a normal-speed call that simply runs
-long can have its lease stolen mid-flight by the next tick and get dispatched a second time for the
-same still-pending record. The cron lease (`locks/cron.json`) carries a per-invocation owner token, so
-a slow invocation's eventual (delayed) release can never delete a different, later invocation's lease.
-A stale `processing_started_at` marker is *not* currently reclaimed by a separate mechanism — the
-Worker's dispatch flow is synchronous end-to-end within one invocation, so a crashed invocation simply
-leaves its claimed record `status: "pending"` for the next tick to pick up normally.
+`FAST_UPSTREAM_TIMEOUT_SECONDS` and `UPSTREAM_TIMEOUT_SECONDS` define the fast and long request lanes.
+`MAX_EXECUTION_SECONDS` is the invocation deadline, `FINALIZATION_RESERVE_SECONDS` is held back for
+terminal request/ledger writes, `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS` bound per-run parallelism
+and volume, and `LEASE_DURATION_SECONDS` is the renewable single-runner lock.
+Before dispatching, the Worker checks the candidate's lane timeout against the effective deadline and
+requeues work that cannot fit; timeout telemetry reports `unknown duration` when the provider did not
+provide a trustworthy duration. A timeout is therefore a loud, retryable signal rather than a silent
+loss of a long-context result. The cron lease (`locks/cron.json`) carries a per-invocation owner token,
+and every batch renews it with CAS, so a slow invocation's eventual release can never delete a later
+invocation's lease.
+The Worker marks a record pending before its upstream call and retains a matching `inflight`
+reservation in `state/dispatch_budget.json`. If an invocation crashes, the request stays pending for
+the next tick and the reservation reaper removes its expiring concurrency claim, so either artifact
+cannot permanently block work.
 
 Deployment is path-scoped by `.github/workflows/llm-dispatch-worker-deploy.yml` and uses the same
 Cloudflare deployment secrets as the existing media proxy.
 
-## Known limitation: one dispatch per cron tick
+## Scheduling lanes
 
-The Worker still claims and dispatches at most one request per invocation, regardless of a route's own
-`rpm` — a route that could genuinely sustain more (Gemini's 10 RPM) is still bottlenecked at one
-request/minute through this Worker. The per-route ledger (above) fixes *correctness* — a route's real
-limit is never exceeded, and account rotation is meaningful at RPD scale — but not *burst throughput*.
-Looping dispatch of multiple ready/eligible records within one invocation, bounded by each route's
-remaining per-minute capacity, is a real follow-up (Cloudflare's CPU-time-excludes-`fetch()`-await
-property, review/27 §9.2, makes this feasible) not built in this pass.
+Each scheduled invocation claims up to `MAX_TOTAL_REQUESTS` records in batches of
+`BATCH_CONCURRENCY`, subject to the route ledger and the effective deadline. Fast-lane requests are
+ordered before long-lane requests so a backlog of quick calls drains first, except that a fresh run
+reserves one first-batch slot for a long request that can fit. With the deployed values, the long-lane
+start window is `820 - 720 - 20 = 80` seconds: starting it in that first batch lets the remaining
+batch slots drain fast work concurrently, while a later start is requeued with the loud
+`deadline_guard` scheduler status for the next invocation. This keeps the Worker from starting work
+it cannot finish before the 15-minute Cron Trigger ceiling without allowing fast backlog to starve
+long-context work indefinitely.

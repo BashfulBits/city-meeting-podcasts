@@ -6,13 +6,17 @@ import json
 import random
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from citypods.compute.budget import cycle_key
 from citypods.compute.llm_policy import LLMRoute
 
 LLM_BUDGET_STATE_KEY = "state/llm_budget.json"
+# Dispatch records are reaped by the Worker after its 20-minute processing timeout.  Use the
+# same horizon locally: a lost handle must eventually free its physical-route reservation, but a
+# normal queued request has ample time to be reconciled before that happens.
+LLM_RESERVATION_TTL_SECONDS = 20 * 60
 
 
 @dataclass
@@ -28,6 +32,8 @@ class LLMReservation:
     day_key: str = ""
     cost_cycle_key: str = ""
     cost_day_key: str = ""
+    reserved_at: str = ""
+    expires_at: str = ""
 
 
 @dataclass
@@ -58,8 +64,31 @@ class RouteLedger:
 class LLMBudget:
     routes: dict[str, RouteLedger] = field(default_factory=dict)
 
-    def _ledger(self, model: str, now: datetime, *, route: LLMRoute) -> RouteLedger:
-        led = self.routes.setdefault(model, RouteLedger())
+    @staticmethod
+    def route_key(model: str, route: LLMRoute) -> str:
+        """Physical route key shared with the Worker ledger; old hand-built routes use model."""
+        return route.route_id or model
+
+    def _ledger(
+        self, model: str, now: datetime, *, route: LLMRoute, create: bool = True
+    ) -> RouteLedger | None:
+        physical_key = self.route_key(model, route)
+        # A prior Python ledger used logical model names before the provider/account catalog
+        # gained physical route IDs. Promote that one legacy entry in-memory on first access so
+        # old ephemeral state remains usable without maintaining two accounting shapes.
+        legacy_key = route.model
+        if (
+            physical_key != legacy_key
+            and physical_key not in self.routes
+            and legacy_key in self.routes
+        ):
+            self.routes[physical_key] = self.routes.pop(legacy_key)
+        led = self.routes.get(physical_key)
+        if led is None:
+            if not create:
+                return None
+            led = RouteLedger()
+            self.routes[physical_key] = led
         mk = minute_key(now)
         if led.requests_minute_key != mk:
             led.requests_minute = 0
@@ -81,7 +110,37 @@ class LLMBudget:
             if led.cost_day_key != cost_day_key:
                 led.cost_day_used = 0.0
                 led.cost_day_key = cost_day_key
+        for owner, reservation in list(led.inflight.items()):
+            if not reservation.expires_at:
+                continue
+            try:
+                expiry = datetime.fromisoformat(reservation.expires_at)
+                expired = expiry.tzinfo is None or expiry <= now.astimezone(UTC)
+            except (TypeError, ValueError):
+                expired = True
+            if expired:
+                del led.inflight[owner]
+                self._unwind_reservation(led, reservation)
         return led
+
+    @staticmethod
+    def _unwind_reservation(led: RouteLedger, reservation: LLMReservation) -> None:
+        """Undo a reservation without applying usage.
+
+        This is shared by explicit release and expiry reaping.  The reservation's recorded
+        window keys, rather than today's route configuration, determine which counters were
+        originally charged.  That also makes cleanup safe after a route's quota is edited or the
+        route is retired between dispatch and reconciliation.
+        """
+        if led.cost_cycle_key == reservation.cost_cycle_key:
+            led.cost_used = max(0.0, led.cost_used - reservation.cost)
+        if reservation.cost_day_key and led.cost_day_key == reservation.cost_day_key:
+            led.cost_day_used = max(0.0, led.cost_day_used - reservation.cost)
+        if led.requests_minute_key == reservation.minute_key:
+            led.requests_minute = max(0, led.requests_minute - reservation.requests)
+            led.tokens_minute = max(0, led.tokens_minute - reservation.tokens)
+        if reservation.day_key and led.requests_day_key == reservation.day_key:
+            led.requests_day = max(0, led.requests_day - reservation.requests)
 
     def available(
         self,
@@ -93,7 +152,9 @@ class LLMBudget:
         cost: float,
         now: datetime,
     ) -> bool:
-        led = self._ledger(model, now, route=route)
+        led = self._ledger(model, now, route=route, create=False)
+        if led is None:
+            return True
         if led.blocked_until and now.astimezone(UTC) < datetime.fromisoformat(led.blocked_until):
             return False
         quota = route.quota
@@ -115,15 +176,17 @@ class LLMBudget:
         same error. Never moves an existing block *earlier* (the longer of the two wins), since a
         second 429 arriving after the first block was already set is itself new information."""
         led = self._ledger(model, now, route=route)
+        assert led is not None
         current = datetime.fromisoformat(led.blocked_until) if led.blocked_until else None
         if current is None or until > current:
             led.blocked_until = until.astimezone(UTC).isoformat()
 
     def find_inflight_owner(self, owner: str) -> str | None:
-        """The model ``owner`` currently has a reservation under, if any. A dispatch-mode retry
-        under the same (deterministic, recipe_hash-derived) owner must resolve to the *same*
-        model it originally reserved -- the Worker's own idempotency-key dedup still resolves to
-        that original request regardless of what a fresh selection pass would pick this time."""
+        """The physical route key ``owner`` currently has a reservation under, if any.
+        A dispatch-mode retry under the same (deterministic, recipe_hash-derived) owner must
+        resolve to the *same* model it originally reserved -- the Worker's own idempotency-key
+        dedup still resolves to that original request regardless of what a fresh selection pass
+        would pick this time."""
         for model, ledger in self.routes.items():
             if owner in ledger.inflight:
                 return model
@@ -145,6 +208,7 @@ class LLMBudget:
         R13) before its first reservation settles must not have that retry double-counted against
         quota — the provider-facing request has not actually been sent twice."""
         led = self._ledger(model, now, route=route)
+        assert led is not None
         if owner in led.inflight:
             return
         led.cost_used += cost
@@ -154,6 +218,7 @@ class LLMBudget:
         led.tokens_minute += tokens
         if route.quota.rpd is not None:
             led.requests_day += requests
+        reserved_at = now.astimezone(UTC)
         led.inflight[owner] = LLMReservation(
             cost=cost,
             requests=requests,
@@ -162,6 +227,8 @@ class LLMBudget:
             day_key=led.requests_day_key,
             cost_cycle_key=led.cost_cycle_key,
             cost_day_key=led.cost_day_key,
+            reserved_at=reserved_at.isoformat(),
+            expires_at=(reserved_at + timedelta(seconds=LLM_RESERVATION_TTL_SECONDS)).isoformat(),
         )
 
     def settle(
@@ -176,6 +243,7 @@ class LLMBudget:
         actual_cost: float | None = None,
     ) -> None:
         led = self._ledger(model, now, route=route)
+        assert led is not None
         reservation = led.inflight.pop(owner, None)
         if reservation is None:
             return
@@ -185,7 +253,7 @@ class LLMBudget:
             )
         if (
             actual_requests is not None
-            and route.quota.rpd is not None
+            and reservation.day_key
             and led.requests_day_key == reservation.day_key
         ):
             led.requests_day = max(0, led.requests_day + actual_requests - reservation.requests)
@@ -195,31 +263,22 @@ class LLMBudget:
             led.cost_used = max(0.0, led.cost_used + actual_cost - reservation.cost)
         if (
             actual_cost is not None
-            and route.pricing.daily_cost_cap is not None
+            and reservation.cost_day_key
             and led.cost_day_key == reservation.cost_day_key
         ):
             led.cost_day_used = max(0.0, led.cost_day_used + actual_cost - reservation.cost)
 
     def release(self, owner: str, model: str, *, route: LLMRoute, now: datetime) -> None:
         led = self._ledger(model, now, route=route)
+        assert led is not None
         reservation = led.inflight.pop(owner, None)
         if reservation is None:
             return
-        if led.cost_cycle_key == reservation.cost_cycle_key:
-            led.cost_used = max(0.0, led.cost_used - reservation.cost)
-        if (
-            route.pricing.daily_cost_cap is not None
-            and led.cost_day_key == reservation.cost_day_key
-        ):
-            led.cost_day_used = max(0.0, led.cost_day_used - reservation.cost)
-        if led.requests_minute_key == reservation.minute_key:
-            led.requests_minute = max(0, led.requests_minute - reservation.requests)
-            led.tokens_minute = max(0, led.tokens_minute - reservation.tokens)
-        if route.quota.rpd is not None and led.requests_day_key == reservation.day_key:
-            led.requests_day = max(0, led.requests_day - reservation.requests)
+        self._unwind_reservation(led, reservation)
 
     def to_dict(self) -> dict:
         return {
+            "version": 1,
             "routes": {
                 model: {
                     "cost_used": ledger.cost_used,
@@ -231,7 +290,7 @@ class LLMBudget:
                     "requests_day": ledger.requests_day,
                     "requests_day_key": ledger.requests_day_key,
                     "tokens_minute": ledger.tokens_minute,
-                    "blocked_until": ledger.blocked_until,
+                    "blocked_until": ledger.blocked_until or None,
                     "inflight": {
                         owner: {
                             "cost": reservation.cost,
@@ -241,12 +300,14 @@ class LLMBudget:
                             "day_key": reservation.day_key,
                             "cost_cycle_key": reservation.cost_cycle_key,
                             "cost_day_key": reservation.cost_day_key,
+                            "reserved_at": reservation.reserved_at or None,
+                            "expires_at": reservation.expires_at or None,
                         }
                         for owner, reservation in ledger.inflight.items()
                     },
                 }
                 for model, ledger in self.routes.items()
-            }
+            },
         }
 
     @classmethod
@@ -266,6 +327,8 @@ class LLMBudget:
                         day_key=str(value.get("day_key") or ""),
                         cost_cycle_key=str(value.get("cost_cycle_key") or ""),
                         cost_day_key=str(value.get("cost_day_key") or ""),
+                        reserved_at=str(value.get("reserved_at") or ""),
+                        expires_at=str(value.get("expires_at") or ""),
                     )
             routes[str(model)] = RouteLedger(
                 cost_used=float(raw.get("cost_used", 0.0)),

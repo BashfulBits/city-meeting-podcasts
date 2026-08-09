@@ -4,14 +4,17 @@ import test from "node:test";
 import {
   acquireCronLease,
   config,
+  dispatchBatch,
   dispatchOne,
   handleRequest,
   nextLocalMidnightUTC,
   nextRouteReset,
   rankRoutes,
   releaseCronLease,
+  renewCronLease,
   resolveProviderCredentials,
   routeAvailable,
+  runScheduled,
   selectRoute,
 } from "../src/index.js";
 
@@ -98,6 +101,13 @@ const ENV = {
   GEMINI_API_KEY: "gemini-primary-secret",
   GEMINI_API_KEY_SECONDARY: "gemini-secondary-secret",
   DEEPSEEK_API_KEY: "deepseek-secret",
+  SILICONFLOW_API_KEY: "siliconflow-secret",
+  GROQ_API_KEY: "groq-secret",
+  SAMBANOVA_API_KEY: "sambanova-secret",
+  ZAI_API_KEY: "zai-secret",
+  OPENROUTER_API_KEY: "openrouter-secret",
+  KILO_API_KEY: "kilo-secret",
+  OPENCODE_API_KEY: "opencode-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),
@@ -110,7 +120,7 @@ function request(url, options = {}) {
   return new Request(url, { ...options, headers });
 }
 
-function chatRequest(body, idempotencyKey, model) {
+function chatRequest(body, idempotencyKey, model, policy = {}) {
   const headers = idempotencyKey ? { "idempotency-key": idempotencyKey } : {};
   return request("https://dispatch.example/v1/chat/completions", {
     method: "POST",
@@ -118,6 +128,7 @@ function chatRequest(body, idempotencyKey, model) {
     body: JSON.stringify({
       model: model || "mistral/mistral-large-2512",
       messages: body || [{ role: "user", content: "Summarize this meeting." }],
+      ...policy,
     }),
   });
 }
@@ -270,7 +281,7 @@ test("per-route ledger exhaustion rotates onto a second account instead of block
     return new Response(JSON.stringify({ id: `c-${calls.length}`, choices: [] }), { status: 200 });
   };
 
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < 5; i += 1) {
     await handleRequest(
       chatRequest(undefined, `gemini-burst-${i}`, "gemini/gemini-3-flash-preview"),
       env,
@@ -278,32 +289,36 @@ test("per-route ledger exhaustion rotates onto a second account instead of block
     const result = await dispatchOne(env, upstream, new Date());
     assert.equal(result.status, "completed");
   }
-  assert.equal(calls.length, 10);
+  assert.equal(calls.length, 5);
   assert.ok(calls.every((call) => call.init.headers.authorization === "Bearer gemini-primary-secret"));
 
-  // The 11th request within the same minute window must roll onto the secondary account.
-  await handleRequest(chatRequest(undefined, "gemini-burst-11", "gemini/gemini-3-flash-preview"), env);
-  const eleventh = await dispatchOne(env, upstream, new Date());
-  assert.equal(eleventh.status, "completed");
-  assert.equal(calls[10].init.headers.authorization, "Bearer gemini-secondary-secret");
+  // The 6th request within the same minute window must roll onto the secondary account (rpm=5).
+  await handleRequest(chatRequest(undefined, "gemini-burst-6", "gemini/gemini-3-flash-preview"), env);
+  const sixth = await dispatchOne(env, upstream, new Date());
+  assert.equal(sixth.status, "completed");
+  assert.equal(calls[5].init.headers.authorization, "Bearer gemini-secondary-secret");
 });
 
 test("a route with no capacity anywhere is requeued (no_capacity), not permanently failed", async () => {
   const env = isolatedEnv();
-  await handleRequest(chatRequest(undefined, "first"), env);
-  await handleRequest(chatRequest(undefined, "second"), env);
+  for (let i = 0; i < 4; i += 1) {
+    await handleRequest(chatRequest(undefined, `req-${i}`), env);
+  }
+  await handleRequest(chatRequest(undefined, "fifth"), env);
   const now = new Date();
 
-  const first = await dispatchOne(env, okUpstream(), now);
-  assert.equal(first.status, "completed");
-  const exhausted = await dispatchOne(env, okUpstream(), now); // Mistral rpm=1, same minute
+  for (let i = 0; i < 4; i += 1) {
+    const res = await dispatchOne(env, okUpstream(), now);
+    assert.equal(res.status, "completed");
+  }
+  const exhausted = await dispatchOne(env, okUpstream(), now); // Mistral Large rpm=4, same minute
   assert.equal(exhausted.status, "no_capacity");
   const stored = await env.LLM_QUEUE.get(`requests/${exhausted.requestId}.json`);
   const record = await stored.json();
   assert.equal(record.status, "pending");
   assert.equal(record.attempts, 0); // not counted as a real attempt
 
-  // The next minute's window frees Mistral's single slot back up.
+  // The next minute's window frees Mistral's capacity back up.
   const nextMinute = new Date(now.getTime() + 61_000);
   const recovered = await dispatchOne(env, okUpstream(), nextMinute);
   assert.equal(recovered.status, "completed");
@@ -523,7 +538,33 @@ test("releasing the cron lease only deletes it if the owner still matches", asyn
   assert.equal((await stillThere.json()).owner, "invocation-b");
 
   await releaseCronLease(bucket, "invocation-b"); // B's own, matching release
-  assert.equal(await bucket.get("locks/cron.json"), null);
+  const released = await bucket.get("locks/cron.json");
+  assert.equal((await released.json()).owner, "invocation-b");
+  assert.equal(Date.parse((await released.json()).expires_at) <= Date.now(), true);
+});
+
+test("renewing the cron lease is owner-checked and CAS-safe", async () => {
+  const bucket = new FakeBucket();
+  const first = new Date("2026-08-06T12:00:00Z");
+  assert.equal(await acquireCronLease(bucket, first, "invocation-a", 30), true);
+
+  const renewed = new Date(first.getTime() + 10_000);
+  assert.equal(await renewCronLease(bucket, renewed, "invocation-a", 30), true);
+  const current = await bucket.get("locks/cron.json");
+  const lease = await current.json();
+  assert.equal(lease.owner, "invocation-a");
+  assert.equal(lease.renewed_at, renewed.toISOString());
+  assert.equal(lease.expires_at, new Date(renewed.getTime() + 30_000).toISOString());
+
+  assert.equal(await renewCronLease(bucket, renewed, "wrong-owner", 30), false);
+  const later = new Date(renewed.getTime() + 31_000);
+  assert.equal(
+    await renewCronLease(bucket, later, "invocation-a", 30),
+    false,
+    "the original owner must not resurrect an expired lease",
+  );
+  assert.equal(await acquireCronLease(bucket, later, "invocation-b", 30), true);
+  assert.equal(await renewCronLease(bucket, later, "invocation-a", 30), false);
 });
 
 test("GET /v1/queue/estimate reports backlog_count for pending records of the requested model only", async () => {
@@ -743,6 +784,11 @@ test("config() rejects an upstream timeout that is not comfortably under the lea
   assert.throws(() => config(env), /must be less than/);
 });
 
+test("config() rejects a lane that cannot finish before the run deadline", () => {
+  const env = { ...isolatedEnv(), FINALIZATION_RESERVE_SECONDS: "101" };
+  assert.throws(() => config(env), /must fit within MAX_EXECUTION_SECONDS/);
+});
+
 test("resolveProviderCredentials fails closed on a route naming an unknown account_id", () => {
   // CodeRabbit, review/41: falling back to accounts[0] for a *named-but-unmatched* account_id
   // would reserve the intended (e.g. secondary) route's ledger entry while silently sending the
@@ -824,19 +870,24 @@ test("credential-resolution failure never touches the ledger, and a persistent l
   assert.equal(posted.count, 0);
 });
 
-test("routeAvailable fails closed for a paid route with only concurrency and no rpm/rpd/tpm", () => {
+test("routeAvailable supports concurrency-only routes and enforces the slot", () => {
   const now = new Date("2026-08-06T12:00:00Z");
   // A paid route declaring only concurrency: no rpm, rpd, or tpm.
   const paidConcurrencyOnly = { free: false, concurrency: 5 };
   const entry = { requests_minute: 0, requests_day: 0, tokens_minute: 0, blocked_until: "" };
+  assert.equal(routeAvailable(entry, paidConcurrencyOnly, { requests: 1, tokens: 10 }, now), true);
+  entry.inflight = Object.fromEntries(
+    Array.from({ length: 5 }, (_, index) => [`existing-${index}`, { requests: 1, tokens: 10 }]),
+  );
   assert.equal(
     routeAvailable(entry, paidConcurrencyOnly, { requests: 1, tokens: 10 }, now),
     false,
-    "paid route with no rpm/rpd/tpm must be rejected (fail-closed)",
+    "a concurrency-only route must reject once all slots are occupied",
   );
 
-  // A free route with no rpm/rpd/tpm should still pass (free routes are not gated).
+  // A free route with no rpm/rpd/tpm should still pass when its slots are empty.
   const freeConcurrencyOnly = { free: true, concurrency: 5 };
+  entry.inflight = {};
   assert.equal(
     routeAvailable(entry, freeConcurrencyOnly, { requests: 1, tokens: 10 }, now),
     true,
@@ -880,4 +931,241 @@ test("idempotency collision detects policy field differences, not just payload",
   });
   const conflict = await handleRequest(conflictReq, env);
   assert.equal(conflict.status, 409, "different allow_paid with same idem key must 409");
+});
+
+test("dispatchBatch executes multiple requests concurrently in a single batch", async () => {
+  const env = isolatedEnv();
+  for (let i = 0; i < 4; i += 1) {
+    await handleRequest(
+      chatRequest([{ role: "user", content: `batch item ${i}` }], `item-${i}`, "mistral/mistral-large-2512"),
+      env,
+    );
+  }
+
+  const calls = [];
+  const parallelUpstream = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push({ url, body });
+    return new Response(
+      JSON.stringify({
+        id: `completion-${calls.length}`,
+        choices: [{ message: { role: "assistant", content: `Response ${calls.length}` } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  const now = new Date();
+  const batchResult = await dispatchBatch(env, parallelUpstream, now, 4);
+  assert.equal(batchResult.status, "completed");
+  assert.equal(batchResult.count, 4);
+  assert.equal(batchResult.completedCount, 4);
+  assert.equal(calls.length, 4);
+
+  const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
+  const completedObjects = listRes.objects.filter((o) => o.customMetadata?.status === "completed");
+  assert.equal(completedObjects.length, 4);
+});
+
+test("a batch retains sibling success when one task rejects during finalization", async () => {
+  class FinalizationFailureBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.failKey = null;
+    }
+
+    async put(key, value, options = {}) {
+      if (
+        key === this.failKey &&
+        typeof value === "string" &&
+        value.includes('"status":"completed"')
+      ) {
+        throw new Error("injected finalization failure");
+      }
+      return super.put(key, value, options);
+    }
+  }
+
+  const bucket = new FinalizationFailureBucket();
+  const env = { ...ENV, LLM_QUEUE: bucket };
+  for (let i = 0; i < 2; i += 1) {
+    await handleRequest(
+      chatRequest([{ role: "user", content: `sibling ${i}` }], `sibling-${i}`),
+      env,
+    );
+  }
+  bucket.failKey = [...bucket.objects.keys()].find((key) => key.startsWith("requests/"));
+
+  const result = await dispatchBatch(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+    2,
+  );
+  assert.equal(result.status, "completed");
+  assert.deepEqual(
+    result.results.map((item) => item.status).sort(),
+    ["completed", "failed"],
+  );
+  const failed = await bucket.get(bucket.failKey);
+  assert.equal((await failed.json()).status, "failed");
+  const ledger = await bucket.get("state/dispatch_budget.json");
+  for (const entry of Object.values((await ledger.json()).routes || {})) {
+    assert.deepEqual(entry.inflight || {}, {});
+  }
+});
+
+test("a fresh invocation gives one long request a batch slot despite a fast backlog", async () => {
+  const env = isolatedEnv();
+  for (let index = 0; index < 4; index += 1) {
+    await handleRequest(chatRequest(undefined, `fast-${index}`), env);
+  }
+  await handleRequest(
+    chatRequest(undefined, "long", undefined, { timeout_class: "long" }),
+    env,
+  );
+
+  const selected = [];
+  const now = new Date();
+  await dispatchBatch(
+    env,
+    async (_url, init) => {
+      selected.push(JSON.parse(init.body).messages[0].content);
+      return new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 });
+    },
+    now,
+    4,
+    null,
+    now.getTime() + 820_000,
+  );
+  assert.equal(selected.length, 4);
+  const records = await env.LLM_QUEUE.list({ prefix: "requests/" });
+  const completed = await Promise.all(
+    records.objects.map(async (object) => ({ key: object.key, record: await (await env.LLM_QUEUE.get(object.key)).json() })),
+  );
+  assert.ok(
+    completed.some(
+      ({ record }) => record.policy?.timeout_class === "long" && record.status === "completed",
+    ),
+  );
+});
+
+test("scheduled dispatch stops at MAX_TOTAL_REQUESTS after acquiring and renewing its lease", async () => {
+  const env = { ...isolatedEnv(), MAX_TOTAL_REQUESTS: "1", BATCH_CONCURRENCY: "1" };
+  const ids = [];
+  for (let index = 0; index < 2; index += 1) {
+    const queued = await handleRequest(chatRequest(undefined, `scheduled-${index}`), env);
+    ids.push((await queued.json()).id);
+  }
+
+  const clock = Date.now();
+  const result = await runScheduled(env, { fetchImpl: okUpstream(), nowMs: () => clock });
+  assert.equal(result.status, "dispatched");
+  assert.equal(result.totalDispatched, 1);
+  const records = await Promise.all(
+    ids.map(async (id) => (await env.LLM_QUEUE.get(`requests/${id}.json`)).json()),
+  );
+  assert.equal(records.filter((record) => record.status === "completed").length, 1);
+  assert.equal(records.filter((record) => record.status === "pending").length, 1);
+});
+
+test("scheduled dispatch does not start a batch after its execution deadline", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "scheduled-deadline"), env);
+  const { id } = await queued.json();
+  const ticks = [0, 0, 820_000];
+  let upstreamCalls = 0;
+  const result = await runScheduled(env, {
+    fetchImpl: async () => {
+      upstreamCalls += 1;
+      return new Response(JSON.stringify({ id: "unexpected", choices: [] }), { status: 200 });
+    },
+    nowMs: () => ticks.shift() ?? 820_000,
+  });
+  assert.equal(result.status, "idle");
+  assert.equal(result.totalDispatched, 0);
+  assert.equal(upstreamCalls, 0);
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${id}.json`)).json()).status, "pending");
+});
+
+test("deadline guard requeues work that cannot finish with finalization reserve", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "deadline-guard"), env);
+  const body = await queued.json();
+  const calls = [];
+  const now = new Date();
+  const result = await dispatchBatch(
+    env,
+    async () => {
+      calls.push(true);
+      return new Response(JSON.stringify({ choices: [] }), { status: 200 });
+    },
+    now,
+    1,
+    null,
+    now.getTime() + 100_000,
+  );
+  assert.equal(result.status, "deadline_guard");
+  assert.equal(calls.length, 0);
+  const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
+  assert.equal((await stored.json()).status, "pending");
+});
+
+test("upstream LLM timeout tags last_error with upstream_timeout, duration, and route metadata", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "timeout-check"), env);
+  const queuedBody = await queued.json();
+
+  const timingOutUpstream = async () => {
+    const error = new Error("The operation was aborted due to timeout");
+    error.name = "TimeoutError";
+    throw error;
+  };
+
+  const now = new Date();
+  const result = await dispatchOne(env, timingOutUpstream, now);
+  assert.equal(result.status, "retrying");
+  assert.equal(result.error, "upstream_timeout");
+
+  const stored = await env.LLM_QUEUE.get(`requests/${queuedBody.id}.json`);
+  const record = await stored.json();
+  assert.equal(record.status, "pending");
+  assert.equal(record.attempts, 1);
+  assert.equal(record.last_error?.code, "upstream_timeout");
+  assert.equal(record.last_error?.model, "mistral/mistral-large-2512");
+  assert.equal(record.last_error?.route_id, "mistral_large_2512_primary");
+  assert.ok(record.last_error?.duration_seconds >= 0);
+  assert.match(record.last_error?.message, /timed out/);
+});
+
+test("exhausting retry attempts on timeout fails permanently with upstream_timeout", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "terminal-timeout-check"), env);
+  const queuedBody = await queued.json();
+
+  // Pre-seed attempts to 4 so 5th attempt triggers terminal failure
+  const key = `requests/${queuedBody.id}.json`;
+  const existing = await env.LLM_QUEUE.get(key);
+  const data = await existing.json();
+  data.attempts = 4;
+  await env.LLM_QUEUE.put(key, JSON.stringify(data));
+
+  const timingOutUpstream = async () => {
+    const error = new Error("The operation was aborted due to timeout");
+    error.name = "TimeoutError";
+    throw error;
+  };
+
+  const now = new Date();
+  const result = await dispatchOne(env, timingOutUpstream, now);
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "upstream_timeout");
+
+  const stored = await env.LLM_QUEUE.get(key);
+  const record = await stored.json();
+  assert.equal(record.status, "failed");
+  assert.equal(record.attempts, 5);
+  assert.equal(record.error?.code, "upstream_timeout");
+  assert.equal(record.error?.route_id, "mistral_large_2512_primary");
+  assert.match(record.error?.message, /timed out/);
 });

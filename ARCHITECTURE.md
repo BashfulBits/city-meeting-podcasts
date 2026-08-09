@@ -336,17 +336,20 @@ total on `/admin/status`.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
   design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests; a
-  per-minute Cron Trigger claims one ready request with an R2 conditional write, ranks that request's
+  per-minute Cron Trigger claims a bounded batch of ready requests with an R2 conditional write, ranks each request's
   canonical model's candidate routes (free before paid, then cheapest) against a **per-route/per-account
-  ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s minute/day window-key shape),
+  ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s versioned minute/day
+  window, cost, `blocked_until`, and `inflight` shape),
   reserves capacity on the first route with room, resolves that route's own provider config
   (`config/provider_limits.yml` → compiled `dispatch_limits.json`: `api_base`/`chat_path`/account
   `api_key_env`) for the upstream call, and persists either the response or a bounded retry/failure
   state. Multiple accounts of one provider (e.g. `GEMINI_API_KEY`/`GEMINI_API_KEY_SECONDARY`) compile to
   separate `route_id`s with independent ledger entries, so exhausting one account's window rolls
   selection onto the next rather than blocking the model — this is what makes "key rotation" real rather
-  than a first-match static pick. A caller may only dispatch a route that also offers `direct` (today
-  only Gemini) when it explicitly opts in via `LLMRequestPolicy.allow_dispatch_overflow`; the Worker's
+  than a first-match static pick. Every compiled route exposes both direct LiteLLM and Worker
+  transports; `LLM_MODE=direct` is the synchronous GH Actions path, while `LLM_MODE=dispatch` is the
+  asynchronous Worker path. A direct-capable caller may explicitly opt into Worker overflow with
+  `LLMRequestPolicy.allow_dispatch_overflow`; the Worker's
   transport is inherently always-asynchronous, and defaulting to it whenever a backend merely had
   `dispatch_url` configured previously broke city discovery's same-run-completion requirement (review/41
   §incident). The implemented Python LLM backend uses this as its `JobHandle` path; direct provider
@@ -356,6 +359,49 @@ total on `/admin/status`.
   today) is fetched only via an explicit, maintainer-run `--discover` flag, never in CI. The queue and
   ledger are ephemeral/derivable and are not part of the B2-backed catalog records or the Python
   `RoutingStorage` control-plane prefixes.
+
+### LLM Model Catalog & Decision Matrix
+
+The pipeline routes LLM jobs across 10 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python `citypods/compute/llm_routes.json`). The generated catalog contains 52 physical provider/account routes representing 38 deduplicated logical models; every route supports direct LiteLLM and asynchronous dispatch. The pool starts at the 22B Codestral structured-output specialist and otherwise favors 24B+ or frontier-capacity models appropriate to the documented task tier.
+
+| Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Context Window | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
+|---|---|---|---|---|---|---|
+| **`mistral/mistral-large-2512`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B Dense | Mistral AI | 128k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Direct or dispatch | Complex meeting synthesis, policy dispute resolution, high-stakes soundbite selection |
+| **`mistral/mistral-large-3`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B+ Frontier | Mistral AI | 128k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Available in pool | Frontier civic reasoning, ordinance comparison, multi-speaker attribution |
+| **`mistral/mistral-small-2603`** | ⭐ **Tier 2 (Advanced MoE)**<br>119B MoE (128 experts) | Mistral AI | 256k tokens | 49 RPM<br>50k TPM (1B Mo pool) | Available in pool | Full 3-hour meeting ingestion, narrative chapter summaries, legislative amendments |
+| **`mistral/codestral-2508`** | ⭐ **Tier 2 (Structured Specialist)**<br>22B–32B Dense | Mistral AI | 256k tokens | 124 RPM<br>625k TPM (1B Mo pool) | Available in pool | Strict JSON schema extraction, table/ordinance parsing, agenda crosswalk recovery |
+| **`mistral/devstral-2512`** | ⭐ **Tier 2 (Agentic Reasoner)**<br>Agentic Fine-tuned | Mistral AI | 128k tokens | 49 RPM<br>1M TPM (1B Mo pool) | Available in pool | Multi-pass transcript cleanup, meeting action item tracking, tool calling |
+| **`mistral/mistral-medium-2508`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 22 RPM<br>356.25k TPM | Agenda chapter extraction (`chapter_titles.py`) | Production agenda extraction, civic topic indexing, structured meeting summaries |
+| **`mistral/mistral-medium-2505`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 25 RPM<br>375k TPM | Available in pool | Fast enterprise chaptering, zoning case digest, secondary agenda verification |
+| **`meta-llama/llama-3.3-70b-instruct`** | ⭐ **Tier 2 (Open Frontier 70B)**<br>70B Dense | Groq + SambaNova + OpenRouter | 128k tokens | 50 RPM<br>2,000 Free RPD | Available in pool | Low-latency meeting digests, civic discourse classification, speaker stance analysis |
+| **`qwen/qwen-2.5-72b-instruct`** | ⭐ **Tier 2 (Open Frontier 72B)**<br>72B Dense | SambaNova + SiliconFlow | 128k tokens | 20 RPM<br>1,000 Free RPD (+ Paid) | Available in pool | Detailed municipal ordinance analysis, multi-lingual transcripts, budgeting review |
+| **`google/gemma-4-31b-it`** | ⚡ **Tier 3 (High-Capacity Core)**<br>31B Dense | Google AI Studio (2x) + OpenRouter | 128k tokens | 70 RPM<br>29,000 Free RPD | Available in pool | Core civic topic tagging, high-volume batch categorization, episode title refinement |
+| **`google/gemma-4-26b-it`** | ⚡ **Tier 3 (High-Capacity Core)**<br>26B Mixture-of-Agents | Google AI Studio (2x) | 128k tokens | 60 RPM<br>28,800 Free RPD | Available in pool | High-throughput metadata tagging, soundbite candidate pre-filtering |
+| **`google/gemma-4-26b-a4b-it`** | ⚡ **Tier 3 (Sparse Variant)**<br>26B A4B sparse variant | OpenRouter | 128k tokens | 10 RPM<br>200 Free RPD | Available in pool | Independent free fallback where sparse-variant behavior is acceptable |
+| **`gemini/gemini-3.5-flash-lite`** | ⚡ **Tier 3 (High-Throughput)**<br>High-Speed Flash | Google AI Studio (2x) | 1,000k tokens | 30 RPM<br>1,000 Free RPD | Available in pool | Ultra-long context full-day hearings (1M tokens), fast transcript chunking & indexing |
+| **`gemini/gemini-3.1-flash-lite`** | ⚡ **Tier 3 (High-Throughput)**<br>High-Speed Flash | Google AI Studio (2x) | 1,000k tokens | 30 RPM<br>1,000 Free RPD | Available in pool | High-volume batch transcription refinement, metadata generation |
+| **`zai/glm-4.7-flash`** | ⚡ **Tier 3 (Permanent Free MoE)**<br>Flash MoE | Z.AI (Zhipu AI) | 128k tokens | 15 RPM<br>500 Free RPD | Available in pool | Independent geo-redundant fallback for tagging, chaptering, and summarization |
+| **`gemini/gemini-3-flash-preview`** | 🚀 **Tier 4 (Flash Burst Pool)**<br>Flagship Flash | Google AI Studio (2x) | 1,000k tokens | 10 RPM<br>40 Free RPD | Direct default (`summarize`, `tag`) | Primary direct synchronous summarization & categorization |
+| **`gemini/gemini-3.6-flash` / `3.5-flash`** | 🚀 **Tier 4 (Flash Burst Pool)**<br>Flash Workhorses | Google AI Studio (2x) | 1,000k tokens | 10 RPM<br>40 Free RPD each | Direct fallback pool | Synchronous burst overflow for direct pipeline runs |
+| **`deepseek/deepseek-v4-flash`** | 💰 **Tier 5 (Ultra Low-Cost Paid)**<br>MoE Workhorse | SiliconFlow ($0.049/M) + DeepSeek Direct ($0.14/M, $0.0028 Cache) | 128k tokens | 10 Concurrency<br>(Pay-per-token) | Direct paid fallback (off-peak routed) | Overnight batch reprocessing, massive backfill runs, cost-capped emergency overflow |
+| **`deepseek/deepseek-v4-pro`** | 💰 **Tier 5 (Frontier Paid)**<br>Pro MoE Flagship | DeepSeek Direct ($0.435/M) | 128k tokens | 5 Concurrency | Direct paid fallback | Deep reasoning evaluation benchmark runs |
+| **`openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`** | 🏆 **Tier 1 (Frontier Open Free)**<br>550B MoE (55B active) | OpenRouter | 128k tokens | 10 RPM<br>200 Free RPD | Available in pool | Elite reasoning verification and complex cross-examination validation |
+
+#### Task-to-Model Selection Matrix for New Verbs
+
+When implementing or tuning LLM pipeline verbs, select candidate models based on task characteristics:
+
+1. **Full-Meeting Summarization (`summarize`):** Requires massive context ($\ge 128\text{k}$) and high narrative coherence.
+   - *Primary Candidates:* `mistral/mistral-small-2603` (256k context, 119B MoE), `gemini/gemini-3.5-flash-lite` (1M context), `meta-llama/llama-3.3-70b-instruct`.
+2. **Civic & Topic Classification (`tag`):** High-volume, short prompt with rigid ontology outputs.
+   - *Primary Candidates:* `google/gemma-4-31b-it` (29k RPD free capacity), `google/gemma-4-26b-it`, `gemini/gemini-3.1-flash-lite`.
+3. **Structured Agenda Extraction & Crosswalk (`chapter_titles` / `agenda_crosswalk`):** Requires 100% strict JSON schema compliance and zero table-structure hallucination.
+   - *Primary Candidates:* `mistral/codestral-2508` (124 RPM, 256k context), `mistral/devstral-2512`, `mistral/mistral-medium-2508`.
+4. **Key Soundbite & Quote Selection (`soundbite-select`):** Requires speaker intent nuance, context bounding, and editorial judgment.
+   - *Primary Candidates:* `mistral/mistral-large-2512`, `meta-llama/llama-3.3-70b-instruct`, `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`.
+5. **High-Volume Backfills & Reprocessing:** Requires sub-cent token pricing or massive free quotas.
+   - *Primary Candidates:* `google/gemma-4-31b-it` (Free), `deepseek/deepseek-v4-flash` via SiliconFlow ($0.049/M input) or DeepSeek Prompt Cache ($0.0028/M input).
+
 - **Workflows** (`.github/workflows/`): `ci.yml` (ruff + pytest on PR/push), `preview.yml` (per-PR
   downloadable site preview), `deploy.yml` (**render-only** Pages publish on `main` push + 4h cron;
   retries `actions/deploy-pages` up to 3× with backoff on GitHub's own transient deploy failures),

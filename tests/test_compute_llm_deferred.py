@@ -476,7 +476,7 @@ def test_prune_releases_the_ledger_reservation_of_an_abandoned_dispatch_handle()
         now=NOW,
     )
     budget, _ = load_llm_budget_cas(storage)
-    assert "owner-1" in budget.routes[route.model].inflight
+    assert "owner-1" in budget.routes[route.route_id or route.model].inflight
 
     dispatch_handle = JobHandle(
         task="tag",
@@ -495,7 +495,7 @@ def test_prune_releases_the_ledger_reservation_of_an_abandoned_dispatch_handle()
     assert look_up_deferred(storage, "recipe-1") is None
 
     budget, _ = load_llm_budget_cas(storage)
-    assert "owner-1" not in budget.routes[route.model].inflight
+    assert "owner-1" not in budget.routes[route.route_id or route.model].inflight
 
 
 def test_look_up_deferred_tolerates_a_malformed_record_instead_of_raising():

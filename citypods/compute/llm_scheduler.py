@@ -14,10 +14,11 @@ from zoneinfo import ZoneInfo
 from citypods.compute.llm_budget import (
     LLM_BUDGET_STATE_KEY,
     LLMBudget,
+    RouteLedger,
     load_llm_budget_cas,
     serialize_llm_budget,
 )
-from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy, LLMRoute
+from citypods.compute.llm_policy import ROUTE_REGISTRY, LLMRequestPolicy, LLMRoute
 
 
 @dataclass(frozen=True)
@@ -51,14 +52,19 @@ class SelectionResult:
     transport: str | None = None
 
 
-def _reservation_size(route: LLMRoute, *, requests: int, tokens: int) -> tuple[int, int]:
+def _reservation_size(
+    route: LLMRoute, *, requests: int, tokens: int, transport: str | None = None
+) -> tuple[int, int]:
     """Return this route's bounded provider reservation from a caller-wide worst case.
 
     ``tokens`` is the total for ``requests`` equal-sized possible attempts. A dispatch Worker
     has no local corrective retry, so its route can safely reserve one attempt while direct
     routes keep the caller's two-attempt structured-output reservation.
     """
-    route_requests = min(requests, route.max_provider_attempts or requests)
+    max_attempts = (
+        1 if transport in _DISPATCH_TRANSPORTS else (route.max_provider_attempts or requests)
+    )
+    route_requests = min(requests, max_attempts)
     per_attempt_tokens = max(1, math.ceil(tokens / requests))
     return route_requests, per_attempt_tokens * route_requests
 
@@ -273,7 +279,7 @@ def select_route(
     corrective retry can send a second request (see ``llm.py``'s ``run_inference``) -- not just 1.
     """
     rejected: list[tuple[str, str]] = []
-    candidates: list[tuple[LLMRoute, float, datetime, float, int, int]] = []
+    candidates: list[tuple[LLMRoute, str, float, datetime, float, int, int, str]] = []
     allowed = set(policy.allowed_models) if policy.allowed_models is not None else None
     # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
     # only *temporarily* unavailable -- per-minute window full, daily quota spent, or under a real
@@ -283,7 +289,8 @@ def select_route(
     # against it would stall a free request for a discount it doesn't need.
     retry_ats: list[datetime] = []
 
-    for model, route in sorted(routes.items()):
+    for route_key, route in sorted(routes.items()):
+        model = route.model
         if not any(t in available_transports for t in route.transports):
             rejected.append((model, "transport gate"))
             continue
@@ -296,21 +303,25 @@ def select_route(
         if route.experimental and not policy.allow_experimental:
             rejected.append((model, "experimental route disallowed"))
             continue
+        transport = _selected_transport(
+            route, available_transports, allow_dispatch_overflow=policy.allow_dispatch_overflow
+        )
         route_requests, route_tokens = _reservation_size(
-            route, requests=requests, tokens=estimated_tokens
+            route, requests=requests, tokens=estimated_tokens, transport=transport
         )
         cost = _estimated_cost(route, route_tokens, now)
         if not ledger.available(
-            model,
+            route_key,
             route=route,
             requests=route_requests,
             tokens=route_tokens,
             cost=cost,
             now=now,
         ):
-            route_ledger = ledger.routes.get(model)
-            if route_ledger is None:
-                route_ledger = ledger._ledger(model, now, route=route)
+            route_ledger = ledger._ledger(route_key, now, route=route, create=False)
+            # A missing ledger is unspent and therefore available. Reaching this branch means
+            # `available()` observed a real exhausted or blocked physical route.
+            assert route_ledger is not None
             predicted = _next_quota_reset(
                 route,
                 route_ledger,
@@ -343,11 +354,16 @@ def select_route(
         candidates.append(
             (
                 route,
+                route_key,
                 cost,
                 predicted,
-                _utilization(route, ledger.routes[model]),
+                _utilization(
+                    route,
+                    ledger._ledger(route_key, now, route=route, create=False) or RouteLedger(),
+                ),
                 route_requests,
                 route_tokens,
+                transport,
             )
         )
 
@@ -356,14 +372,14 @@ def select_route(
         return SelectionResult(
             None, None, reason, tuple(rejected), retry_at=min(retry_ats, default=None)
         )
-    route, _, predicted, _, route_requests, route_tokens = min(
+    route, route_key, _, predicted, _, route_requests, route_tokens, transport = min(
         candidates,
-        key=lambda item: (not item[0].free, item[1], item[3], item[2], item[0].model),
+        key=lambda item: (not item[0].free, item[2], item[4], item[3], item[0].model, item[1]),
     )
     rejected.extend(
         (candidate.model, "lower-ranked eligible route")
-        for candidate, _, _, _, _, _ in candidates
-        if candidate.model != route.model
+        for candidate, candidate_key, _, _, _, _, _, _ in candidates
+        if candidate_key != route_key
     )
     return SelectionResult(
         route.model,
@@ -372,9 +388,7 @@ def select_route(
         tuple(rejected),
         reserved_requests=route_requests,
         reserved_tokens=route_tokens,
-        transport=_selected_transport(
-            route, available_transports, allow_dispatch_overflow=policy.allow_dispatch_overflow
-        ),
+        transport=transport,
     )
 
 
@@ -383,7 +397,7 @@ def select_and_reserve(
     recipe_hash: str,
     policy: LLMRequestPolicy,
     *,
-    routes: Mapping[str, LLMRoute] = ROUTES,
+    routes: Mapping[str, LLMRoute] = ROUTE_REGISTRY,
     available_transports: Set[str],
     estimated_tokens: int,
     requests: int = 1,
@@ -417,12 +431,12 @@ def select_and_reserve(
         # `_owner_for`); if that's still inflight from an earlier attempt that hasn't settled,
         # reuse the same route rather than reselecting -- the Worker's idempotency key still
         # resolves to the original request regardless of what a fresh pass would pick now.
-        existing_model = ledger.find_inflight_owner(recipe_hash)
-        if existing_model is not None and existing_model in routes:
+        existing_route_id = ledger.find_inflight_owner(recipe_hash)
+        if existing_route_id is not None and existing_route_id in routes:
             # `owner == recipe_hash` only ever happens for a dispatch reservation (`_owner_for`
             # returns a fresh UUID for direct) -- so the transport being reused here is, by
             # construction, one of this route's own dispatch transports.
-            existing_route = routes[existing_model]
+            existing_route = routes[existing_route_id]
             reused_transport = next(
                 (t for t in existing_route.transports if t in _DISPATCH_TRANSPORTS), None
             )
@@ -432,7 +446,7 @@ def select_and_reserve(
             # which will re-evaluate transport availability normally.
             if reused_transport is not None and reused_transport in available_transports:
                 return SelectionResult(
-                    existing_model,
+                    existing_route.model,
                     existing_route,
                     "reusing in-flight reservation",
                     (),
@@ -460,7 +474,7 @@ def select_and_reserve(
         cost = _estimated_cost(selection.route, reserved_tokens, attempt_now)
         ledger.reserve(
             owner,
-            selection.model,
+            selection.route.route_id or selection.model,
             route=selection.route,
             requests=reserved_requests,
             tokens=reserved_tokens,
