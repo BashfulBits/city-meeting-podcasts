@@ -581,10 +581,16 @@ def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: Cit
             "recipe": PROVIDER_DIARIZE_PIPELINE_VERSION,
         }
     elif name == "chapter_agenda":
+        from citypods.chapter_jobs import AGENDA_PROMPT_VERSION
+        from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
+
+        recipe = (
+            f"{AGENDA_PROMPT_VERSION}:{AGENDA_PRODUCTION_MODEL}:{CHAPTER_AGENDA_PIPELINE_VERSION}"
+        )
         payload = {
             **common,
             "agenda_artifact": (ep.links or {}).get("agenda_text_artifact_key"),
-            "recipe": "agenda-flow:mistral-medium-2508:1",
+            "recipe": recipe,
         }
     elif name == "tags":
         payload = {
@@ -2471,6 +2477,7 @@ MINUTES_ROSTER_PIPELINE_VERSION = "1"
 PROVIDER_ALIGN_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
+CHAPTER_AGENDA_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
 # Public (imported by citypods.feeds) so the feed tag and the stored object never disagree.
@@ -4371,13 +4378,14 @@ class AgendaChapterCandidatesStage:
     """Extract source-grounded agenda candidates through the production Mistral route."""
 
     name = "chapter_agenda"
-    version = "1"
+    version = CHAPTER_AGENDA_PIPELINE_VERSION
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         from citypods.chapter_artifacts import artifact_key
         from citypods.chapter_jobs import build_agenda_job, finalize_agenda_job
+        from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
@@ -4418,7 +4426,7 @@ class AgendaChapterCandidatesStage:
                     ep.generated_agenda_candidates = {
                         "status": "pending",
                         "recipe": job.recipe_hash,
-                        "model": "mistral/mistral-medium-2508",
+                        "model": AGENDA_PRODUCTION_MODEL,
                         "source_hash": source_hash,
                         "job_ref": result.ref,
                     }
