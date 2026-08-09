@@ -2491,21 +2491,25 @@ overwritten. Raw transcripts/model payloads and credentials stay in B2/private j
 GitHub artifacts.
 
 The recipe hash covers episode UID, agenda/transcript hashes, prompt and schema versions, pinned
-model route, hint mode, and unit-builder version. Identical recipes are idempotent: reruns retrieve
-and finalize existing jobs rather than submitting duplicates.
+model route, context strategy / fallback identifier, hint mode, and unit-builder version. Identical
+recipes are idempotent: reruns retrieve and finalize existing jobs rather than submitting duplicates.
 
 ### 2. Agenda extraction workflow
 
 `.github/workflows/chapter-agenda.yml` discovers stable episodes with source-quality-approved agenda
-artifacts and no completed/pending artifact for the same recipe. It submits the final `agenda-flow`
-request through the shared deferred scheduler using pinned `mistral/mistral-medium-2508`. Existing
-agenda evidence validation/postprocessing is reused in this order: validate the cited source span,
-expand an immediately preceding identifier-only line, derive `display_ref` and `locator_cues`, then
-validate the expanded evidence contract. Public hearings and multiline/hierarchical references are
+artifacts and no completed/pending artifact for the same recipe. Workflow concurrency groups enforce
+single-flight execution. It submits the final `agenda-flow` request through the shared deferred
+scheduler using pinned `mistral/mistral-medium-2508`. Existing agenda evidence
+validation/postprocessing is reused in this order: validate the cited source span, expand an
+immediately preceding identifier-only line, derive `display_ref` and `locator_cues`, then validate
+the expanded evidence contract. Public hearings and multiline/hierarchical references are
 preserved. Consent agendas remain one composite action unless the agenda explicitly schedules a
 child separately; backup attachments support their numbered parent and are not independent items.
 OCR placeholders and suspiciously short artifacts are rejected for the OCR-repair path. Completed,
-pending, rejected, not-found, withdrawn, and consent-subsumed states are persisted.
+pending, rejected, not-found, withdrawn, and consent-subsumed states are persisted. Deferrals
+(budget, quota, retry, or graceful stop via `ctx.stop()`) are recorded as restartable deferred
+states distinct from failures; `ctx.stop()` gates only expensive per-item inference while cheap
+idempotent bookkeeping runs to completion.
 
 ### 3. Boundary locator workflow
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -150,12 +151,32 @@ class LocatorUnitArtifact:
     text: str
 
     def __post_init__(self) -> None:
-        if not self.id or self.start < 0 or self.end < self.start:
+        if (
+            not self.id
+            or not math.isfinite(self.start)
+            or not math.isfinite(self.end)
+            or self.start < 0
+            or self.end < self.start
+        ):
             raise ValueError("invalid locator unit")
         _non_empty(self.text, "locator unit text")
 
     def to_dict(self) -> dict[str, Any]:
         return {"id": self.id, "start": self.start, "end": self.end, "text": self.text}
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> LocatorUnitArtifact:
+        try:
+            start = float(value.get("start", 0.0))
+            end = float(value.get("end", 0.0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid locator unit timestamps: {exc}") from exc
+        return cls(
+            id=str(value.get("id") or ""),
+            start=start,
+            end=end,
+            text=str(value.get("text") or ""),
+        )
 
 
 @dataclass(frozen=True)
@@ -215,11 +236,16 @@ class BoundaryResultArtifact:
 
 
 def artifact_key(kind: str, episode_uid: str, recipe: str) -> str:
-    """Return the stable B2 key for one generated chapter artifact."""
+    """Return the stable B2 key for one generated chapter artifact.
+
+    The recipe suffix uses only the first 12 hex characters (48 bits), which is far more than
+    enough collision resistance for a per-episode namespace.  Truncating keeps B2 paths readable
+    and avoids excessively long object keys in logs and dashboards.
+    """
 
     kind = _non_empty(kind, "artifact kind").replace("/", "-")
     uid = _non_empty(episode_uid, "episode_uid").replace("/", "-")
-    recipe = _non_empty(recipe, "recipe")
+    recipe = _non_empty(recipe, "recipe")[:12]
     return f"state/generated_chapters/{kind}/{uid}-{recipe}.json"
 
 

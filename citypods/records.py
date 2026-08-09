@@ -1838,7 +1838,7 @@ def merge_preserving_foreign(
                         merged_status[stage_name] = status
                 rec["stage_completion"] = merged_status
             for block in protected:
-                if remote_rec.get(block):
+                if block in remote_rec:
                     rec[block] = remote_rec[block]
             _preserve_remote_served_duration_if_protected(rec, remote_rec, protected)
             _preserve_remote_planning_if_better(rec, remote_rec, protected)

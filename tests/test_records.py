@@ -1905,6 +1905,37 @@ def test_merge_preserving_foreign_never_drops_a_block_remote_lacks():
     assert merged["u1"]["audio"]["url"] == "OLD"  # audio not protected here → local value
 
 
+def test_merge_preserving_foreign_preserves_remote_cleared_protected_blocks():
+    # When remote explicitly clears or empties a protected block (None, [], {}), that
+    # cleared state must be preserved over a stale local runner's snapshot value.
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_chapters": None,
+            "generated_chapters_spec_hash": "hash_new",
+            "tags": [],
+            "llm_tag_candidates": None,
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "generated_chapters": [{"start": 10.0, "title": "Stale"}],
+            "generated_chapters_spec_hash": "hash_old",
+            "tags": ["stale_tag"],
+            "llm_tag_candidates": [{"tag": "candidate"}],
+            "audio": {"url": "AUDIO_FRESH"},
+        }
+    }
+    protected = protected_blocks_for_lane("audio")
+    merged = merge_preserving_foreign(remote, local, protected)
+    assert merged["u1"]["generated_chapters"] is None
+    assert merged["u1"]["generated_chapters_spec_hash"] == "hash_new"
+    assert merged["u1"]["tags"] == []
+    assert merged["u1"]["llm_tag_candidates"] is None
+    assert merged["u1"]["audio"] == {"url": "AUDIO_FRESH"}
+
+
 def test_merge_preserving_foreign_owned_uids_none_is_unchanged_behavior():
     # owned_uids=None must reproduce today's source-atomic merge byte-for-byte (audio/align/full).
     remote = {"u1": {"uid": "u1", "audio": {"url": "R"}, "transcript": {"key": "tR"}}}
