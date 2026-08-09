@@ -330,6 +330,29 @@ def test_chapters_json_and_podcast_chapters_tag(tmp_path):
     )
 
 
+def test_generated_chapter_overlay_only_fills_an_unchaptered_episode():
+    from datetime import UTC, datetime
+
+    from citypods.chapters import episode_public_chapters
+    from citypods.feeds import chapters_json
+    from citypods.models import Episode
+
+    ep = Episode(
+        guid="generated",
+        uid="generated",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://v.mp4",
+        generated_chapters=[{"start": 20, "title": "Generated", "generated": True}],
+    )
+    assert episode_public_chapters(ep) == []
+    assert episode_public_chapters(ep, include_generated=True)[0]["title"] == "Generated"
+    assert '"Generated"' in chapters_json(ep, include_generated=True)
+
+    ep.chapters = [{"start": 5, "title": "Provider"}]
+    assert [c["title"] for c in episode_public_chapters(ep, include_generated=True)] == ["Provider"]
+
+
 def test_chapters_json_prefers_source_chapters_when_timeline_changes():
     from datetime import UTC, datetime
 

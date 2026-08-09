@@ -122,6 +122,12 @@ class Episode:
     # reproject them onto a new served clock. Empty for synthetic served-only planners like concat.
     source_chapters: list = field(default_factory=list)
     chapters: list = field(default_factory=list)  # [{"start": secs, "title": str}, ...]
+    # Generated agenda chapters are additive and provenance-bearing.  They are intentionally
+    # separate from ``source_chapters``/``chapters`` so provider markers remain canonical and
+    # audio materialization cannot accidentally consume an unreviewed LLM result.
+    generated_agenda_candidates: dict = field(default_factory=dict)
+    generated_chapters: list[dict] = field(default_factory=list)
+    generated_chapters_spec_hash: str | None = None
     summary: str = ""
     # Versioned catalog taxonomy output.  ``tags_spec_hash`` prevents an enabled LLM path from
     # repeating the same inference when its inputs and taxonomy have not changed.

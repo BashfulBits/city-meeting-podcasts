@@ -45,3 +45,28 @@ def episode_served_chapters(ep: Episode, *, with_source_index: bool = False) -> 
         source_id=next(iter(source_ids)),
         snap_cut_starts=True,
     )
+
+
+def episode_public_chapters(
+    ep: Episode, *, include_generated: bool = False, with_source_index: bool = False
+) -> list[dict]:
+    """Return the publication view without replacing canonical provider chapters.
+
+    Generated chapters are an additive fallback for episodes that have no provider markers.  This
+    keeps the canonical provider block authoritative while allowing a reversible served-time
+    overlay for otherwise unchaptered episodes.  Generated starts are already in served time and
+    therefore are not passed through the provider timeline remapper.
+    """
+
+    canonical = episode_served_chapters(ep, with_source_index=with_source_index)
+    if canonical or not include_generated:
+        return canonical
+    generated = []
+    for index, chapter in enumerate(ep.generated_chapters or []):
+        if not isinstance(chapter, dict) or chapter.get("start") is None:
+            continue
+        item = dict(chapter)
+        if with_source_index:
+            item.setdefault("generated_index", index)
+        generated.append(item)
+    return sorted(generated, key=lambda chapter: float(chapter.get("start", 0)))
