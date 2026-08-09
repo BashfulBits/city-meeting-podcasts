@@ -20,6 +20,7 @@ from citypods.compute.llm_policy import estimate_tokens
 
 AGENDA_ITEM_EXTRACTOR_CONTRACT = "agenda-chapter-item-extract"
 TITLE_EQUIVALENCE_CONTRACT = "agenda-chapter-title-equivalence"
+AGENDA_PRODUCTION_MODEL = "mistral/mistral-medium-2508"
 
 _PROMPT_VARIANT_INSTRUCTIONS = {
     "standard": "",
@@ -380,6 +381,25 @@ def build_agenda_item_extraction_request(
         messages=messages,
         model=model or select_locator_model(input_tokens),
         input_tokens=input_tokens,
+    )
+
+
+def build_production_agenda_item_extraction_request(
+    agenda_text: str,
+    *,
+    candidate_hints: Sequence[Mapping[str, object]] = (),
+) -> AgendaItemExtractionRequest:
+    """Build the pinned production agenda-flow request.
+
+    Research callers retain the historical model selector and prompt variants; production uses
+    the approved Mistral Medium route and the recall-oriented agenda-flow instructions.
+    """
+
+    return build_agenda_item_extraction_request(
+        agenda_text=agenda_text,
+        model=AGENDA_PRODUCTION_MODEL,
+        candidate_hints=candidate_hints,
+        prompt_variant="agenda-flow",
     )
 
 
@@ -956,6 +976,7 @@ def match_title_candidates(
 
 
 __all__ = [
+    "AGENDA_PRODUCTION_MODEL",
     "AGENDA_ITEM_EXTRACTOR_CONTRACT",
     "AGENDA_EXTRACTION_PROMPT_VARIANTS",
     "TITLE_EQUIVALENCE_CONTRACT",
@@ -970,6 +991,7 @@ __all__ = [
     "TitleEquivalenceResult",
     "assess_agenda_item_extractor_response",
     "build_agenda_item_extraction_request",
+    "build_production_agenda_item_extraction_request",
     "build_title_equivalence_request",
     "ensure_agenda_item_extractor_contract",
     "ensure_title_equivalence_contract",

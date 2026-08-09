@@ -19,6 +19,7 @@ LOCATOR_CONTRACT = "agenda-chapter-locate"
 # maintained alias and accepts the provider-qualified form below.
 MISTRAL_LOCATOR_MODEL = "mistral/mistral-large-2512"
 GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
+PRODUCTION_LOCATOR_MODEL = "gemini/gemini-3.5-flash-lite"
 # Mistral Large 3 accepts 256k total tokens. Reserve enough output room for a long chapter list
 # plus one structured-output repair. Gemini's documented 1M input window has the same reserve.
 MISTRAL_CONTEXT_TOKENS = 256_000
@@ -417,3 +418,50 @@ def build_locator_request(
         model=select_locator_model(input_tokens),
         input_tokens=input_tokens,
     )
+
+
+def build_production_locator_request(
+    agenda_items: Sequence[LocatorAgendaItem],
+    units: Sequence[LocatorUnit],
+    *,
+    unit_annotations: Mapping[str, Mapping[str, Any]] | None = None,
+) -> LocatorRequest:
+    """Build the full-transcript production request on pinned Gemini 3.5 Flash Lite.
+
+    The complete unit list is always retained.  Annotations are optional research provenance and
+    never replace or filter transcript units.
+    """
+
+    request = build_locator_request(
+        agenda_items,
+        units,
+        unit_annotations=unit_annotations,
+    )
+    return LocatorRequest(
+        messages=request.messages,
+        model=PRODUCTION_LOCATOR_MODEL,
+        input_tokens=request.input_tokens,
+    )
+
+
+__all__ = [
+    "GEMINI_CONTEXT_TOKENS",
+    "GEMINI_LOCATOR_MODEL",
+    "LOCATOR_CONTRACT",
+    "LOCATOR_OUTPUT_TOKEN_RESERVE",
+    "LocatorAgendaItem",
+    "LocatorAnchor",
+    "LocatorRequest",
+    "LocatorUnit",
+    "MISTRAL_CONTEXT_TOKENS",
+    "MISTRAL_LOCATOR_MODEL",
+    "PRODUCTION_LOCATOR_MODEL",
+    "build_locator_request",
+    "build_locator_units",
+    "build_production_locator_request",
+    "ensure_locator_contract",
+    "locator_units_from_vtt",
+    "locator_units_from_words",
+    "select_locator_model",
+    "validate_locator_response",
+]
