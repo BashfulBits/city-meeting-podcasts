@@ -72,6 +72,16 @@ evidence for later admission decisions; an experiment result is not a runtime fe
   deduplicated pooled full-context hint encodings on a frozen packet sample. It never sends hidden
   provider labels. Non-Mistral variants may be run with bounded parallel workers; Mistral remains
   serial because its account quota and observed latency make concurrent calls unsafe.
+- `report_locator_shadow.py` joins completed route results to the separate hidden provider gold
+  manifest (and, optionally, the scoring-only agenda crosswalk) after requests finish. It reports
+  timing-only precision/recall, strong-crosswalk item-plus-boundary precision, boundary error,
+  abstentions, malformed/failed routes, suspected wrong-item signals, and available token/cost/
+  latency counters. The report can evaluate explicitly supplied gates, but omitted gates remain
+  `not_configured`; raw model confidence is never treated as a publication gate.
+- `citypods.chapter_rollout.ChapterRolloutPolicy` is the pure, disabled-by-default cohort control
+  used by future monitoring/hydration work. It bounds provider, body, and duration, and downgrades
+  an overlay request to shadow until an independently generated report gate passes. It does not
+  publish records or mutate state in this research phase.
 - `select_locator_calibration_cohort.py` selects a provider/body/duration-stratified held-out
   confidence cohort. `prepare_locator_calibration_review.py` joins model proposals by
   episode/item/timed-unit evidence reference and includes a small transcript context; it does not
