@@ -598,13 +598,16 @@ def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: Cit
             "recipe": recipe,
         }
     elif name in {"chapter_locator", "generated_chapters"}:
+        from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
+        recipe = f"{LOCATOR_PROMPT_VERSION}:{LOCATOR_MODEL}:{CHAPTER_LOCATOR_PIPELINE_VERSION}"
         payload = {
             **common,
             "agenda_recipe": (ep.generated_agenda_candidates or {}).get("recipe"),
             "agenda_artifact": (ep.generated_agenda_candidates or {}).get("artifact_key"),
             "transcript": ep.transcript_key,
             "transcript_words": ep.transcript_words_key,
-            "recipe": "locator-v1:gemini-3.5-flash-lite:1",
+            "recipe": recipe,
         }
     elif name == "tags":
         payload = {
@@ -2498,6 +2501,7 @@ PROVIDER_ALIGN_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 CHAPTER_AGENDA_PIPELINE_VERSION = "1"
+CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
 # Public (imported by citypods.feeds) so the feed tag and the stored object never disagree.
@@ -4478,7 +4482,7 @@ class ChapterBoundaryLocatorStage:
     """Locate agenda candidates in the complete timed transcript."""
 
     name = "chapter_locator"
-    version = "1"
+    version = CHAPTER_LOCATOR_PIPELINE_VERSION
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -4511,7 +4515,8 @@ class ChapterBoundaryLocatorStage:
                 continue
             try:
                 agenda = AgendaCandidatesArtifact.from_dict(raw_agenda)
-                transcript_hash = hashlib.sha256(words or vtt or b"").hexdigest()
+                selected_data = words if unit_source == "words" else vtt
+                transcript_hash = hashlib.sha256(selected_data or b"").hexdigest()
                 job = build_locator_job(
                     episode_uid=uid,
                     agenda=agenda,
@@ -4553,11 +4558,15 @@ class ChapterBoundaryLocatorStage:
                 generated = []
                 for anchor in boundary.anchors:
                     item = items.get(anchor.get("agenda_item_index"))
-                    if item is None:
+                    start = anchor.get("start")
+                    # BoundaryResultArtifact schema ensures start is always set, but guard
+                    # defensively so a malformed persisted anchor cannot cause a TypeError in
+                    # episode_public_chapters (which calls float(start) unconditionally).
+                    if item is None or item.status != "accepted" or start is None:
                         continue
                     generated.append(
                         {
-                            "start": anchor.get("start"),
+                            "start": start,
                             "title": item.title,
                             "agenda_item_index": item.index,
                             "display_ref": item.display_ref,

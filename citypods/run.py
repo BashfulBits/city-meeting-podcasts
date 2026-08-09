@@ -1901,9 +1901,12 @@ def _build_impl(
             raise ValueError(f"no feed or city entity with slug {only_slug!r}")
     # H6b source/shard selection (by source_key, so a city's combined + per-board feeds stay
     # together in one shard and one record store). ``scoped`` marks a partial run for statesync.
-    # Scoped lanes (tag, chapter-agenda, chapter) only own their specific artifact block, so they
-    # must always route through merged persistence even when running without --source/--shard.
-    scoped = bool(source or shard or lane in {"tag", "chapter-agenda", "chapter"})
+    # Scoped lanes (tag, chapter-agenda, chapter-locator, chapter) only own their specific artifact
+    # block, so they must always route through merged persistence even when running without
+    # --source or --shard.
+    scoped = bool(
+        source or shard or lane in {"tag", "chapter-agenda", "chapter-locator", "chapter"}
+    )
     if source:
         cities = [c for c in cities if source_key(c) == source]
         if not cities:
@@ -2780,7 +2783,7 @@ def _build_impl(
                 _history_safety = 1.0
             elif lane == "tag":
                 _history_window_min = float(defaults.get("tag_run_time_budget_minutes", 240))
-            elif lane in {"chapter-agenda", "chapter"}:
+            elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
                 _history_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             _window = _history_window_min * 60 * _history_safety
             print("finalize: recording run history", flush=True)
