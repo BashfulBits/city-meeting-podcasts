@@ -116,6 +116,13 @@ class LLMRoute:
     api_key_env: str = ""
     account_id: str = ""
 
+    def __post_init__(self) -> None:
+        # Hand-built fallback and test routes intentionally omit provider adapter metadata.  They
+        # still need to be valid direct LiteLLM routes, so preserve their canonical model rather
+        # than making every consumer remember an empty-string fallback.
+        if not self.direct_model:
+            object.__setattr__(self, "direct_model", self.model)
+
 
 _DEEPSEEK_WINDOW = PeakWindow("UTC", time(16, 30), time(0, 30), 0.5)
 
@@ -124,8 +131,12 @@ def _load_generated_routes() -> list[LLMRoute]:
     path = Path(__file__).with_name("llm_routes.json")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
         return []
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"Invalid generated LLM route catalog at {path}; rerun scripts/compile_llm_limits.py"
+        ) from exc
     result = []
     for item in raw.get("routes", []):
         provider = str(item.get("provider", ""))
@@ -190,8 +201,8 @@ if not _GENERATED_ROUTES:
             transports=("direct", "llm-dispatch"),
             free=True,
             quota=QuotaPolicy(
-                rpm=10,
-                rpd=1500,
+                rpm=5,
+                rpd=20,
                 tpm=250_000,
                 reset_timezone="America/Los_Angeles",
             ),

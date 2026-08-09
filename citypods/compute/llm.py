@@ -42,6 +42,9 @@ from citypods.compute.llm_policy import (
     ROUTE_REGISTRY,
     DeferredLLMRequest,
     LLMRequestPolicy,
+    LLMRoute,
+    PricingPolicy,
+    QuotaPolicy,
     estimate_tokens,
 )
 from citypods.compute.llm_scheduler import SelectionResult, select_and_reserve, select_route
@@ -1375,11 +1378,25 @@ class LiteLLMBackend(Backend):
         # the job's entire lifetime. A handle from `_run_without_policy` has no `owner` and is a
         # no-op here, unchanged from the pre-R13 behavior.
         if handle.owner is not None and handle.model is not None and self.storage is not None:
-            route = (
-                ROUTE_REGISTRY.get(handle.route_id)
-                if handle.route_id
-                else (ROUTE_CANDIDATES.get(handle.model) or (None,))[0]
-            )
+            route = ROUTE_REGISTRY.get(handle.route_id) if handle.route_id else None
+            if route is None:
+                # A physical route can be retired between queue submission and reconciliation.
+                # Locate its persisted reservation before falling back to a currently configured
+                # logical candidate: settlement/release must use the physical ledger key that was
+                # actually charged, not whichever provider happens to rank first today.
+                ledger, _ = load_llm_budget_cas(self.storage)
+                reservation_route_id = ledger.find_inflight_owner(handle.owner)
+                if reservation_route_id:
+                    route = LLMRoute(
+                        model=handle.model,
+                        transport="direct",
+                        free=True,
+                        quota=QuotaPolicy(),
+                        pricing=PricingPolicy(),
+                        route_id=reservation_route_id,
+                    )
+                else:
+                    route = (ROUTE_CANDIDATES.get(handle.model) or (None,))[0]
             if route is not None and getattr(self.storage, "cas_capable", False):
                 # Price against the rate captured on the handle at reservation time, not
                 # whatever `ROUTES` says right now -- config can change between a dispatch and
@@ -1407,22 +1424,6 @@ class LiteLLMBackend(Backend):
                 )
                 write_deferred(self.storage, handle.recipe_hash, result)
                 # Layer 1 Verified Consumption: purge R2 object only after B2 write succeeds
-                try:
-                    self._session.delete(
-                        candidate, headers=headers, timeout=self.config.timeout_seconds
-                    )
-                except Exception:
-                    pass
-            elif getattr(self.storage, "cas_capable", False):
-                # Route removed from ROUTES since the handle was created: we can't settle
-                # (no route to price against), but we must release the inflight reservation
-                # to avoid leaking quota until the ledger entry ages out.
-                release_route_reservation(
-                    self.storage,
-                    handle.owner,
-                    handle.model,
-                )
-                write_deferred(self.storage, handle.recipe_hash, result)
                 try:
                     self._session.delete(
                         candidate, headers=headers, timeout=self.config.timeout_seconds

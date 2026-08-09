@@ -18,6 +18,29 @@ def test_default_compile_never_touches_the_network(monkeypatch):
     assert "gemini/gemini-3-flash-preview" in compiled["model_routes_map"]
 
 
+def test_python_catalog_rejects_an_unknown_route_account():
+    compiled = {
+        "_metadata": {},
+        "providers": {"example": {"accounts": [{"id": "real", "api_key_env": "REAL_KEY"}]}},
+        "routes": [
+            {
+                "route_id": "example_route",
+                "model": "example/model",
+                "provider": "example",
+                "upstream_model": "model",
+                "account_id": "missing",
+            }
+        ],
+    }
+    with pytest.raises(ValueError, match="unknown account_id 'missing'"):
+        compile_llm_limits._python_routes(compiled)
+
+
+def test_openai_compatible_provider_selectors_use_litellms_openai_adapter():
+    for provider in ("kilo", "opencode", "siliconflow"):
+        assert compile_llm_limits._direct_model(provider, "vendor/model") == "openai/vendor/model"
+
+
 def test_openrouter_transform_dedups_within_the_same_discovery_pass():
     """Two discovered model IDs that normalize to the same route_id must not both be appended --
     the CodeRabbit-flagged bug: `existing_route_ids` was never updated inside the loop."""

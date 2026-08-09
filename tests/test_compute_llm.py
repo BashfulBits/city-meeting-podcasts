@@ -170,9 +170,17 @@ def test_policy_no_eligible_route_returns_a_deferred_handle_without_reservation(
         model = "gemini/gemini-3-flash-preview"
         for route in ROUTE_CANDIDATES[model]:
             ledger = budget._ledger(model, now, route=route)
+            if route.quota.rpm is not None:
+                ledger.requests_minute = route.quota.rpm
+            if route.quota.tpm is not None:
+                ledger.tokens_minute = route.quota.tpm
             if route.quota.rpd is not None:
                 ledger.requests_day = route.quota.rpd
                 ledger.requests_day_key = daily_reset_key(now, route.quota.reset_timezone)
+            if route.quota.concurrency is not None:
+                ledger.inflight = {
+                    f"owner-{index}": None for index in range(route.quota.concurrency)
+                }
 
     mutate_llm_budget(storage, exhaust, now=now)
     backend = LiteLLMBackend(

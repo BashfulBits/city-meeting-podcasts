@@ -26,8 +26,10 @@ providers:
       - id: project_secondary
         api_key_env: GEMINI_API_KEY_SECONDARY
   deepseek:
-    api_base: https://api.deepseek.com
-    chat_path: /v1/chat/completions
+    # LiteLLM's DeepSeek adapter posts below this OpenAI-compatible v1 base; the Worker appends
+    # chat_path itself, so its path is intentionally relative to the same base.
+    api_base: https://api.deepseek.com/v1
+    chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
       - id: primary
@@ -61,8 +63,8 @@ providers:
       - id: primary
         api_key_env: ZAI_API_KEY
   openrouter:
-    api_base: https://openrouter.ai/api
-    chat_path: /v1/chat/completions
+    api_base: https://openrouter.ai/api/v1
+    chat_path: /chat/completions
     reset_timezone: UTC
     discovery:
       endpoint: https://openrouter.ai/api/v1/models
@@ -519,7 +521,7 @@ routes:
     output_per_token: 0.0
 
   - route_id: openrouter_google_gemma_4_26b_a4b_it_free
-    model: google/gemma-4-26b-it
+    model: google/gemma-4-26b-a4b-it
     provider: openrouter
     upstream_model: google/gemma-4-26b-a4b-it:free
     account_id: primary

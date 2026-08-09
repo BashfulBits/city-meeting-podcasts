@@ -420,8 +420,8 @@
         "llm-dispatch"
       ],
       "direct_model": "openrouter/meta-llama/llama-3.3-70b-instruct",
-      "api_base": "https://openrouter.ai/api",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://openrouter.ai/api/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "OPENROUTER_API_KEY",
       "reset_timezone": "UTC"
     },
@@ -459,7 +459,7 @@
         "direct",
         "llm-dispatch"
       ],
-      "direct_model": "siliconflow/Qwen/Qwen2.5-72B-Instruct",
+      "direct_model": "openai/Qwen/Qwen2.5-72B-Instruct",
       "api_base": "https://api.siliconflow.com/v1",
       "chat_path": "/chat/completions",
       "api_key_env": "SILICONFLOW_API_KEY",
@@ -479,7 +479,7 @@
         "direct",
         "llm-dispatch"
       ],
-      "direct_model": "siliconflow/deepseek-ai/DeepSeek-V4-Flash",
+      "direct_model": "openai/deepseek-ai/DeepSeek-V4-Flash",
       "api_base": "https://api.siliconflow.com/v1",
       "chat_path": "/chat/completions",
       "api_key_env": "SILICONFLOW_API_KEY",
@@ -500,8 +500,8 @@
         "llm-dispatch"
       ],
       "direct_model": "deepseek/deepseek-v4-flash",
-      "api_base": "https://api.deepseek.com",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://api.deepseek.com/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "DEEPSEEK_API_KEY",
       "reset_timezone": "UTC"
     },
@@ -520,8 +520,8 @@
         "llm-dispatch"
       ],
       "direct_model": "deepseek/deepseek-v4-pro",
-      "api_base": "https://api.deepseek.com",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://api.deepseek.com/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "DEEPSEEK_API_KEY",
       "reset_timezone": "UTC"
     },
@@ -798,14 +798,14 @@
         "llm-dispatch"
       ],
       "direct_model": "openrouter/google/gemma-4-31b-it:free",
-      "api_base": "https://openrouter.ai/api",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://openrouter.ai/api/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "OPENROUTER_API_KEY",
       "reset_timezone": "UTC"
     },
     {
       "route_id": "openrouter_google_gemma_4_26b_a4b_it_free",
-      "model": "google/gemma-4-26b-it",
+      "model": "google/gemma-4-26b-a4b-it",
       "provider": "openrouter",
       "upstream_model": "google/gemma-4-26b-a4b-it:free",
       "account_id": "primary",
@@ -820,8 +820,8 @@
         "llm-dispatch"
       ],
       "direct_model": "openrouter/google/gemma-4-26b-a4b-it:free",
-      "api_base": "https://openrouter.ai/api",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://openrouter.ai/api/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "OPENROUTER_API_KEY",
       "reset_timezone": "UTC"
     },
@@ -842,8 +842,8 @@
         "llm-dispatch"
       ],
       "direct_model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
-      "api_base": "https://openrouter.ai/api",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://openrouter.ai/api/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "OPENROUTER_API_KEY",
       "reset_timezone": "UTC"
     },
@@ -864,8 +864,8 @@
         "llm-dispatch"
       ],
       "direct_model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-      "api_base": "https://openrouter.ai/api",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://openrouter.ai/api/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "OPENROUTER_API_KEY",
       "reset_timezone": "UTC"
     },
@@ -884,8 +884,8 @@
         "llm-dispatch"
       ],
       "direct_model": "openrouter/qwen/qwen3-235b-a22b-2507",
-      "api_base": "https://openrouter.ai/api",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://openrouter.ai/api/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "OPENROUTER_API_KEY",
       "reset_timezone": "UTC"
     },
@@ -904,8 +904,8 @@
         "llm-dispatch"
       ],
       "direct_model": "openrouter/mistralai/mistral-small-3.2-24b-instruct",
-      "api_base": "https://openrouter.ai/api",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://openrouter.ai/api/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "OPENROUTER_API_KEY",
       "reset_timezone": "UTC"
     },
@@ -924,8 +924,8 @@
         "llm-dispatch"
       ],
       "direct_model": "openrouter/openai/gpt-4o-mini",
-      "api_base": "https://openrouter.ai/api",
-      "chat_path": "/v1/chat/completions",
+      "api_base": "https://openrouter.ai/api/v1",
+      "chat_path": "/chat/completions",
       "api_key_env": "OPENROUTER_API_KEY",
       "reset_timezone": "UTC"
     },

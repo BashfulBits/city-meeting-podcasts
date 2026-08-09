@@ -59,15 +59,19 @@ Phase R (Research-Tool Surface)._
 
 - **Direct provider catalog and bounded dispatch execution.** The provider-limits compiler now emits
   the Python LiteLLM route catalog as well as the Worker catalog: all 52 physical account routes are
-  deduplicated into 37 logical models, each with direct and dispatch transports, direct LiteLLM
+  deduplicated into 38 logical models, each with direct and dispatch transports, direct LiteLLM
   selector/base/key metadata, and a physical `route_id`. Python and the Worker use the same
   versioned `routes[route_id]` ledger shape, including optional cost and `inflight` fields, so a
   future shared R2/B2 CAS ledger does not require a format migration. The Worker now renews its cron
   lease with CAS, computes an effective run deadline with a 20-second finalization reserve, prioritizes fast
-  requests, bounds long-context requests to the long lane, reaps expired reservations, retains all
+  requests while reserving a first-batch long-lane slot, bounds long-context requests to the long lane, reaps expired reservations, retains all
   sibling task outcomes with `Promise.allSettled`, and sanitizes upstream error details. **Backfill:**
   no catalog/artifact invalidation; existing ephemeral ledgers with logical keys remain readable,
   while new reservations use physical route IDs.
+  Operators configure the lane/run bounds with `FAST_UPSTREAM_TIMEOUT_SECONDS`,
+  `UPSTREAM_TIMEOUT_SECONDS`, `FINALIZATION_RESERVE_SECONDS`, `MAX_EXECUTION_SECONDS`,
+  `BATCH_CONCURRENCY`, and `MAX_TOTAL_REQUESTS`; the Worker emits `deadline_guard` when queued
+  work cannot safely fit. See the Worker README's [Scheduling lanes](workers/llm-dispatch-proxy/README.md#scheduling-lanes).
 
 ### Fixed
 

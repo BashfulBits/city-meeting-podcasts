@@ -77,16 +77,18 @@ credential-disclosure bug fixed in review/41 — see its §2 for the incident).
 
 `FAST_UPSTREAM_TIMEOUT_SECONDS` and `UPSTREAM_TIMEOUT_SECONDS` define the fast and long request lanes.
 `MAX_EXECUTION_SECONDS` is the invocation deadline, `FINALIZATION_RESERVE_SECONDS` is held back for
-terminal request/ledger writes, and `LEASE_DURATION_SECONDS` is the renewable single-runner lock.
+terminal request/ledger writes, `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS` bound per-run parallelism
+and volume, and `LEASE_DURATION_SECONDS` is the renewable single-runner lock.
 Before dispatching, the Worker checks the candidate's lane timeout against the effective deadline and
 requeues work that cannot fit; timeout telemetry reports `unknown duration` when the provider did not
 provide a trustworthy duration. A timeout is therefore a loud, retryable signal rather than a silent
 loss of a long-context result. The cron lease (`locks/cron.json`) carries a per-invocation owner token,
 and every batch renews it with CAS, so a slow invocation's eventual release can never delete a later
 invocation's lease.
-A stale `processing_started_at` marker is *not* currently reclaimed by a separate mechanism — the
-Worker's dispatch flow is synchronous end-to-end within one invocation, so a crashed invocation simply
-leaves its claimed record `status: "pending"` for the next tick to pick up normally.
+The Worker marks a record pending before its upstream call and retains a matching `inflight`
+reservation in `state/dispatch_budget.json`. If an invocation crashes, the request stays pending for
+the next tick and the reservation reaper removes its expiring concurrency claim, so either artifact
+cannot permanently block work.
 
 Deployment is path-scoped by `.github/workflows/llm-dispatch-worker-deploy.yml` and uses the same
 Cloudflare deployment secrets as the existing media proxy.
@@ -95,8 +97,10 @@ Cloudflare deployment secrets as the existing media proxy.
 
 Each scheduled invocation claims up to `MAX_TOTAL_REQUESTS` records in batches of
 `BATCH_CONCURRENCY`, subject to the route ledger and the effective deadline. Fast-lane requests are
-ordered before long-lane requests so a backlog of quick calls drains first. A long request is only
-started when its full upstream timeout plus the finalization reserve fits; otherwise it is requeued
-with a loud `deadline_guard` scheduler status for the next invocation. This keeps the Worker from
-starting work it cannot finish before the 15-minute Cron Trigger ceiling while still allowing the
-data to determine whether a long-context lane is needed.
+ordered before long-lane requests so a backlog of quick calls drains first, except that a fresh run
+reserves one first-batch slot for a long request that can fit. With the deployed values, the long-lane
+start window is `820 - 720 - 20 = 80` seconds: starting it in that first batch lets the remaining
+batch slots drain fast work concurrently, while a later start is requeued with the loud
+`deadline_guard` scheduler status for the next invocation. This keeps the Worker from starting work
+it cannot finish before the 15-minute Cron Trigger ceiling without allowing fast backlog to starve
+long-context work indefinitely.

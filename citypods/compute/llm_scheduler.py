@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from citypods.compute.llm_budget import (
     LLM_BUDGET_STATE_KEY,
     LLMBudget,
+    RouteLedger,
     load_llm_budget_cas,
     serialize_llm_budget,
 )
@@ -317,10 +318,10 @@ def select_route(
             cost=cost,
             now=now,
         ):
-            physical_key = ledger.route_key(route_key, route)
-            route_ledger = ledger.routes.get(physical_key)
-            if route_ledger is None:
-                route_ledger = ledger._ledger(physical_key, now, route=route)
+            route_ledger = ledger._ledger(route_key, now, route=route, create=False)
+            # A missing ledger is unspent and therefore available. Reaching this branch means
+            # `available()` observed a real exhausted or blocked physical route.
+            assert route_ledger is not None
             predicted = _next_quota_reset(
                 route,
                 route_ledger,
@@ -356,7 +357,10 @@ def select_route(
                 route_key,
                 cost,
                 predicted,
-                _utilization(route, ledger.routes[ledger.route_key(route_key, route)]),
+                _utilization(
+                    route,
+                    ledger._ledger(route_key, now, route=route, create=False) or RouteLedger(),
+                ),
                 route_requests,
                 route_tokens,
                 transport,

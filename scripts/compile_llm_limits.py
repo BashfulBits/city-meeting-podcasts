@@ -34,11 +34,11 @@ PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
 def _direct_model(provider: str, upstream_model: str) -> str:
     """Return the LiteLLM model selector for a compiled provider route.
 
-    Kilo and OpenCode expose OpenAI-compatible gateways rather than stable LiteLLM provider
-    adapters.  Selecting the OpenAI adapter and supplying the compiled ``api_base`` keeps those
-    routes usable directly without teaching the scheduler provider-specific URL logic.
+    Kilo, OpenCode, and SiliconFlow expose OpenAI-compatible gateways rather than stable LiteLLM
+    provider adapters. Selecting the OpenAI adapter and supplying the compiled ``api_base`` keeps
+    those routes usable directly without teaching the scheduler provider-specific URL logic.
     """
-    if provider in {"kilo", "opencode"}:
+    if provider in {"kilo", "opencode", "siliconflow"}:
         return f"openai/{upstream_model}"
     return f"{provider}/{upstream_model}"
 
@@ -54,14 +54,20 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
     routes = []
     for source in compiled.get("routes", []):
         provider_cfg = providers.get(source.get("provider"), {})
+        requested_account_id = source.get("account_id")
         account = next(
             (
                 account
                 for account in provider_cfg.get("accounts", [])
-                if account.get("id") == source.get("account_id")
+                if account.get("id") == requested_account_id
             ),
             None,
         )
+        if requested_account_id and account is None:
+            raise ValueError(
+                f"route {source.get('route_id', source.get('model'))!r} references unknown "
+                f"account_id {requested_account_id!r} for provider {source.get('provider')!r}"
+            )
         if account is None and provider_cfg.get("accounts"):
             account = provider_cfg["accounts"][0]
         route = dict(source)

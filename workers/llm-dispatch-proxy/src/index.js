@@ -17,9 +17,9 @@ const DEFAULT_LEASE_DURATION_SECONDS = 14 * 60; // 840s
 const DEFAULT_UPSTREAM_TIMEOUT_SECONDS = 12 * 60; // 720s
 const DEFAULT_FAST_UPSTREAM_TIMEOUT_SECONDS = 90;
 // Keep enough wall-clock margin to persist terminal records and release reservations while still
-// allowing the 12-minute long lane inside the 12.5-minute invocation deadline.
+// allowing the 12-minute long lane inside the 13m40s invocation deadline.
 const DEFAULT_FINALIZATION_RESERVE_SECONDS = 20;
-const DEFAULT_MAX_EXECUTION_SECONDS = 12.5 * 60; // 750s
+const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
 const DEFAULT_BATCH_CONCURRENCY = 4;
 const DEFAULT_MAX_TOTAL_REQUESTS = 16;
 
@@ -144,6 +144,17 @@ function config(env) {
       `MAX_EXECUTION_SECONDS (${result.maxExecutionSeconds}) must be less than ` +
         `LEASE_DURATION_SECONDS (${result.leaseDurationSeconds})`,
     );
+  }
+  for (const [name, timeoutSeconds] of [
+    ["UPSTREAM_TIMEOUT_SECONDS", result.upstreamTimeoutSeconds],
+    ["FAST_UPSTREAM_TIMEOUT_SECONDS", result.fastUpstreamTimeoutSeconds],
+  ]) {
+    if (timeoutSeconds + result.finalizationReserveSeconds > result.maxExecutionSeconds) {
+      throw new Error(
+        `${name} plus FINALIZATION_RESERVE_SECONDS must fit within ` +
+          `MAX_EXECUTION_SECONDS (${result.maxExecutionSeconds})`,
+      );
+    }
   }
   return result;
 }
@@ -535,8 +546,21 @@ async function acquireCronLease(bucket, now, owner, leaseDurationSeconds) {
 async function releaseCronLease(bucket, owner) {
   try {
     const current = await getJson(bucket, CRON_LOCK_KEY);
-    if (current?.value?.owner === owner && typeof bucket.delete === "function") {
-      await bucket.delete(CRON_LOCK_KEY);
+    if (current?.value?.owner === owner) {
+      // R2's delete has no ETag precondition.  Deleting after a read would leave a TOCTOU window
+      // in which an expired lease is acquired by another invocation and then removed by this
+      // stale owner.  A CAS-written expired tombstone is immediately acquirable and cannot erase
+      // a newer lease if the object changed after our read.
+      await putJson(
+        bucket,
+        CRON_LOCK_KEY,
+        {
+          ...current.value,
+          released_at: new Date().toISOString(),
+          expires_at: new Date(0).toISOString(),
+        },
+        { etagMatches: current.etag },
+      );
     }
   } catch {
     // Best-effort release; the lease's own expiry is the real backstop.
@@ -545,7 +569,11 @@ async function releaseCronLease(bucket, owner) {
 
 async function renewCronLease(bucket, now, owner, leaseDurationSeconds) {
   const current = await getJson(bucket, CRON_LOCK_KEY);
-  if (!current || current.value?.owner !== owner) {
+  if (
+    !current ||
+    current.value?.owner !== owner ||
+    parseTime(current.value?.expires_at) <= now.getTime()
+  ) {
     return false;
   }
   const renewed = {
@@ -957,6 +985,21 @@ async function dispatchBatch(
       return parseTime(a.record.created_at) - parseTime(b.record.created_at);
     });
 
+    // Fast work normally drains first.  At the start of a fresh run, however, reserve one slot
+    // for a long request when it can still complete inside this invocation's deadline.  Without
+    // this escape hatch, a permanent fast backlog fills the only 10-second long-lane start
+    // window and leaves every long request pending forever.
+    if (
+      runDeadlineMs != null &&
+      Date.now() + (cfg.upstreamTimeoutSeconds + cfg.finalizationReserveSeconds) * 1000 <=
+        runDeadlineMs
+    ) {
+      const firstLong = claimable.find((item) => item.record.policy?.timeout_class === "long");
+      if (firstLong) {
+        claimable = [firstLong, ...claimable.filter((item) => item !== firstLong)];
+      }
+    }
+
     let budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
     let budget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
 
@@ -1242,11 +1285,20 @@ async function dispatchBatch(
     for (let index = 0; index < settled.length; index += 1) {
       const outcome = settled[index];
       const item = candidatesToDispatch[index];
-      await releaseRouteReservation(
+      const released = await releaseRouteReservation(
         bucket,
         item.chosenRoute.route_id,
         item.reservationOwner,
       );
+      if (!released) {
+        console.error(
+          JSON.stringify({
+            event: "llm_dispatch_reservation_release_failed",
+            request_id: item.claimed.record.id,
+            route_id: item.chosenRoute.route_id,
+          }),
+        );
+      }
       if (outcome.status === "fulfilled") {
         results.push(outcome.value);
         continue;
@@ -1438,93 +1490,101 @@ async function handleRequest(request, env) {
   return plain(404, "not found");
 }
 
+async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
+  const bucket = env.LLM_QUEUE;
+  if (!bucket) return { status: "no_storage", totalDispatched: 0 };
+  const cfg = config(env);
+  const startMs = nowMs();
+  // `config()` guarantees the execution budget is shorter than the lease. The lease is acquired
+  // after `startMs`, so its actual expiry is later than this fixed run deadline. Renewals protect
+  // ownership between batches; they never extend the invocation deadline.
+  const deadlineMs = startMs + cfg.maxExecutionSeconds * 1000;
+  const leaseOwner = crypto.randomUUID();
+  const acquiredLock = await acquireCronLease(
+    bucket,
+    new Date(nowMs()),
+    leaseOwner,
+    cfg.leaseDurationSeconds,
+  );
+  if (!acquiredLock) {
+    console.log(JSON.stringify({ event: "llm_dispatch", status: "lease_busy" }));
+    return { status: "lease_busy", totalDispatched: 0 };
+  }
+
+  let totalDispatched = 0;
+  let status = "idle";
+  try {
+    while (nowMs() < deadlineMs && totalDispatched < cfg.maxTotalRequests) {
+      if (
+        deadlineMs - nowMs() <
+        (cfg.fastUpstreamTimeoutSeconds + cfg.finalizationReserveSeconds) * 1000
+      ) {
+        status = "deadline_guard";
+        break;
+      }
+      const renewed = await renewCronLease(
+        bucket,
+        new Date(nowMs()),
+        leaseOwner,
+        cfg.leaseDurationSeconds,
+      );
+      if (!renewed) {
+        status = "lease_lost";
+        console.error(JSON.stringify({ event: "llm_dispatch", status }));
+        break;
+      }
+      const now = new Date(nowMs());
+      const batchResult = await dispatchBatch(
+        env,
+        fetchImpl,
+        now,
+        cfg.batchConcurrency,
+        leaseOwner,
+        deadlineMs,
+      );
+      status = batchResult.status;
+      if (
+        batchResult.status === "idle" ||
+        batchResult.status === "no_capacity" ||
+        batchResult.status === "deadline_guard" ||
+        batchResult.count === 0
+      ) {
+        console.log(
+          JSON.stringify({
+            event: "llm_dispatch_batch",
+            status: batchResult.status,
+            count: 0,
+          }),
+        );
+        break;
+      }
+      totalDispatched += batchResult.count;
+      status = "dispatched";
+      console.log(
+        JSON.stringify({
+          event: "llm_dispatch_batch",
+          status,
+          count: batchResult.count,
+          totalDispatched,
+        }),
+      );
+    }
+  } catch (error) {
+    status = "error";
+    console.error(JSON.stringify({ event: "llm_dispatch", status, error: error?.name || "Error" }));
+  } finally {
+    await releaseCronLease(bucket, leaseOwner);
+  }
+  return { status, totalDispatched };
+}
+
 export default {
   fetch(request, env) {
     return handleRequest(request, env);
   },
 
-  async scheduled(_controller, env) {
-    const bucket = env.LLM_QUEUE;
-    if (!bucket) return;
-    const cfg = config(env);
-    const startMs = Date.now();
-    // The run may start near a lease boundary.  All work, including final R2 writes and the
-    // reservation-slot cleanup, must fit before the earlier of the configured execution budget
-    // and the current lease expiry.  A later iteration renews the lease, but never extends this
-    // invocation's own execution deadline.
-    const deadlineMs = Math.min(
-      startMs + cfg.maxExecutionSeconds * 1000,
-      startMs + cfg.leaseDurationSeconds * 1000,
-    );
-    const leaseOwner = crypto.randomUUID();
-    const acquiredLock = await acquireCronLease(
-      bucket,
-      new Date(),
-      leaseOwner,
-      cfg.leaseDurationSeconds,
-    );
-    if (!acquiredLock) {
-      console.log(JSON.stringify({ event: "llm_dispatch", status: "lease_busy" }));
-      return;
-    }
-
-    let totalDispatched = 0;
-    try {
-      while (Date.now() < deadlineMs && totalDispatched < cfg.maxTotalRequests) {
-        if (deadlineMs - Date.now() < (cfg.fastUpstreamTimeoutSeconds + cfg.finalizationReserveSeconds) * 1000) {
-          break;
-        }
-        const renewed = await renewCronLease(
-          bucket,
-          new Date(),
-          leaseOwner,
-          cfg.leaseDurationSeconds,
-        );
-        if (!renewed) {
-          console.error(JSON.stringify({ event: "llm_dispatch", status: "lease_lost" }));
-          break;
-        }
-        const now = new Date();
-        const batchResult = await dispatchBatch(
-          env,
-          fetch,
-          now,
-          cfg.batchConcurrency,
-          leaseOwner,
-          deadlineMs,
-        );
-        if (
-          batchResult.status === "idle" ||
-          batchResult.status === "no_capacity" ||
-          batchResult.status === "deadline_guard" ||
-          batchResult.count === 0
-        ) {
-          console.log(
-            JSON.stringify({
-              event: "llm_dispatch_batch",
-              status: batchResult.status,
-              count: 0,
-            }),
-          );
-          break;
-        }
-        totalDispatched += batchResult.count;
-        console.log(
-          JSON.stringify({
-            event: "llm_dispatch_batch",
-            status: "dispatched",
-            count: batchResult.count,
-            totalDispatched,
-          }),
-        );
-      }
-    } catch (error) {
-      console.error(
-        JSON.stringify({ event: "llm_dispatch", status: "error", error: error?.name || "Error" }),
-      );
-    } finally {
-      await releaseCronLease(bucket, leaseOwner);
-    }
+  scheduled(_controller, env) {
+    return runScheduled(env);
   },
 };
 
@@ -1540,6 +1600,7 @@ export {
   rankRoutes,
   releaseCronLease,
   renewCronLease,
+  runScheduled,
   requestKey,
   resolveProviderCredentials,
   routeAvailable,

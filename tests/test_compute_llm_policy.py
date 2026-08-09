@@ -35,6 +35,7 @@ def test_policy_and_route_dataclasses_and_token_estimate():
     )
     assert policy.allow_paid is True
     assert route.quota.rpm == 1
+    assert route.direct_model == route.model
     assert estimate_tokens([{"role": "user", "content": "12345"}]) == 2
     assert DEFAULT_OUTPUT_TOKEN_MARGIN == 1024
 

@@ -9,6 +9,7 @@ from citypods.compute.llm_budget import (
 )
 from citypods.compute.llm_policy import (
     ROUTE_CANDIDATES,
+    ROUTE_REGISTRY,
     ROUTES,
     LLMRequestPolicy,
     LLMRoute,
@@ -24,9 +25,8 @@ DIRECT = frozenset({"direct"})
 BOTH_TRANSPORTS = frozenset({"direct", "mistral-dispatch", "llm-dispatch"})
 
 
-def _gemini_exhausted() -> LLMBudget:
+def _all_free_direct_routes_exhausted() -> LLMBudget:
     budget = LLMBudget()
-    from citypods.compute.llm_policy import ROUTE_REGISTRY
 
     for route_id, route in ROUTE_REGISTRY.items():
         if not route.free or "direct" not in route.transports:
@@ -54,7 +54,7 @@ def test_paid_route_wins_when_free_quota_cannot_reset_before_deadline():
     result = select_route(
         LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=1)),
         routes=ROUTES,
-        ledger=_gemini_exhausted(),
+        ledger=_all_free_direct_routes_exhausted(),
         available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
@@ -94,11 +94,11 @@ def test_ranking_prefers_free_route_over_a_simultaneously_eligible_paid_route():
     )
 
 
-def test_free_route_is_not_replaced_when_paid_routes_are_disallowed():
+def test_no_route_is_selected_when_free_routes_are_exhausted_and_paid_is_disallowed():
     result = select_route(
         LLMRequestPolicy(allow_paid=False, deadline_at=NOW + timedelta(hours=24)),
         routes=ROUTES,
-        ledger=_gemini_exhausted(),
+        ledger=_all_free_direct_routes_exhausted(),
         available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
@@ -158,7 +158,7 @@ def test_deepseek_off_peak_preference_and_deadline_override():
     assert urgent.model == model
 
 
-def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
+def test_direct_transport_selects_a_direct_capable_route():
     result = select_route(
         LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",), allow_paid=True),
         routes=ROUTES,
@@ -169,6 +169,27 @@ def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
     )
     assert result.model == "mistral/mistral-large-2512"
     assert result.transport == "direct"
+
+
+def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
+    route = LLMRoute(
+        model="example/dispatch-only",
+        transport="llm-dispatch",
+        transports=("llm-dispatch",),
+        free=True,
+        quota=QuotaPolicy(rpm=1),
+        pricing=PricingPolicy(),
+    )
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(route.model,)),
+        routes={route.model: route},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=NOW,
+    )
+    assert result.model is None
+    assert (route.model, "transport gate") in result.rejected
 
 
 def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
@@ -255,9 +276,9 @@ def test_select_and_reserve_dual_transport_direct_vs_overflow_owner():
     assert overflow_selection.owner == "recipe-overflow"
 
 
-def test_research_only_mistral_medium_is_not_an_implicit_pipeline_fallback():
+def test_production_mistral_medium_is_available_directly_after_catalog_expansion():
     model = "mistral/mistral-medium-2508"
-    excluded = select_route(
+    direct = select_route(
         LLMRequestPolicy(allowed_models=(model,)),
         routes=ROUTES,
         ledger=LLMBudget(),
@@ -265,11 +286,11 @@ def test_research_only_mistral_medium_is_not_an_implicit_pipeline_fallback():
         estimated_tokens=1024,
         now=NOW,
     )
-    assert excluded.model == model
-    assert excluded.transport == "direct"
+    assert direct.model == model
+    assert direct.transport == "direct"
 
     included = select_route(
-        LLMRequestPolicy(allowed_models=(model,), allow_experimental=True),
+        LLMRequestPolicy(allowed_models=(model,)),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=BOTH_TRANSPORTS,
