@@ -202,8 +202,8 @@ def score_route(
         if any(left >= right for left, right in zip(starts, starts[1:], strict=False)):
             totals["non_monotonic_anchors"] += 1
         agenda_count = row.get("agenda_item_count")
-        if not isinstance(agenda_count, int):
-            agenda_count = route.get("agenda_item_count") if isinstance(route, Mapping) else None
+        # build_report injects agenda_item_count from the route-level record into each enriched
+        # row, so a Mapping-route fallback here is never reached in practice.
         if isinstance(agenda_count, int) and agenda_count >= len(anchors):
             totals["abstained_items"] += agenda_count - len(anchors)
         for key, target in (
@@ -212,8 +212,8 @@ def score_route(
             ("latency_seconds", "latency_seconds"),
         ):
             value = _number(row.get(key))
-            if value is None and isinstance(route, Mapping):
-                value = _number(route.get(key))
+            # build_report propagates input_tokens/cost_usd/latency_seconds into each enriched
+            # row, so no Mapping-route fallback is needed here.
             if value is not None:
                 if target == "tokens":
                     token_total += value
