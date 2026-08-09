@@ -73,6 +73,22 @@ def test_uid_is_stable_across_provider_migration():
     assert e1.uid == e2.uid  # subscribers don't re-download on migration
 
 
+def test_generated_chapter_blocks_round_trip_without_replacing_provider_chapters():
+    ep = _ep("generated")
+    ep.uid = "uid-generated"
+    ep.chapters = [{"start": 12, "title": "Provider item"}]
+    ep.generated_agenda_candidates = {"status": "completed", "recipe": "agenda-recipe"}
+    ep.generated_chapters = [{"start": 24, "title": "Generated item", "generated": True}]
+    ep.generated_chapters_spec_hash = "locator-recipe"
+
+    restored = record_to_episode(episode_to_record(ep))
+
+    assert restored.chapters == ep.chapters
+    assert restored.generated_agenda_candidates == ep.generated_agenda_candidates
+    assert restored.generated_chapters == ep.generated_chapters
+    assert restored.generated_chapters_spec_hash == "locator-recipe"
+
+
 def test_source_id_keeps_record_namespace_stable_across_provider_migration():
     granicus = _city(provider="granicus", source={"feed_url": "G"})
     old_key = source_key(granicus)
@@ -1607,6 +1623,9 @@ def test_protected_blocks_for_lane():
             "tags_llm_recipe_hash",
             "tags_spec_hash",
             "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(
@@ -1626,6 +1645,9 @@ def test_protected_blocks_for_lane():
             "tags_llm_recipe_hash",
             "tags_spec_hash",
             "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     assert protected_blocks_for_lane("align") == frozenset(
@@ -1645,6 +1667,9 @@ def test_protected_blocks_for_lane():
             "tags_llm_recipe_hash",
             "tags_spec_hash",
             "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     assert protected_blocks_for_lane("diarize") == frozenset(
@@ -1664,6 +1689,9 @@ def test_protected_blocks_for_lane():
             "tags_llm_recipe_hash",
             "tags_spec_hash",
             "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     assert protected_blocks_for_lane("tag") == frozenset(
@@ -1679,6 +1707,9 @@ def test_protected_blocks_for_lane():
             "minutes_text",
             "minutes_votes",
             "minutes_roster",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.
