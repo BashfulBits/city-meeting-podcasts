@@ -1011,6 +1011,7 @@ def _process_city(
 
     defaults = site_config.get("defaults", {}) if isinstance(site_config, dict) else {}
     meeting_pages_enabled = bool(defaults.get("meeting_pages", True))
+    include_generated_chapters = bool(site_config.get("generated_chapters_enabled", False))
 
     # feed_content_hash drives the re-render skip: hash the render-relevant fields + build
     # fingerprint. Unchanged + outputs present -> skip the (re-)render entirely. (Audio is a
@@ -1039,6 +1040,7 @@ def _process_city(
                 base_url,
                 site_config,
                 page_cache,
+                include_generated_chapters=include_generated_chapters,
             )
             new_entry["meeting_pages"] = rendered_page_cache
             meeting_outputs_changed = rendered_page_cache != page_cache
@@ -1070,7 +1072,13 @@ def _process_city(
                 new_entry,
             )
 
-        _write_chapter_sidecars(city_dir, city, feed_eps, base_url)
+        _write_chapter_sidecars(
+            city_dir,
+            city,
+            feed_eps,
+            base_url,
+            include_generated_chapters=include_generated_chapters,
+        )
         if has_audio:
             (city_dir / "audio_feed.xml").write_text(
                 build_rss(
@@ -1079,6 +1087,7 @@ def _process_city(
                     "audio",
                     base_url,
                     meeting_pages=meeting_pages_enabled,
+                    include_generated_chapters=include_generated_chapters,
                 )
             )
         if has_video:
@@ -1089,6 +1098,7 @@ def _process_city(
                     "video",
                     base_url,
                     meeting_pages=meeting_pages_enabled,
+                    include_generated_chapters=include_generated_chapters,
                 )
             )
         else:
@@ -2065,6 +2075,9 @@ def _build_impl(
     # render-only deploy split would otherwise open — review/12 §H6/H11b).
     persist_records = phase != "render"
     stages = {"render": render_stages, "enrich": enrich_stages, "all": default_stages}[phase]()
+    # Generated chaptering is an explicitly separate asynchronous lane.  It is not included in
+    # ordinary audio/enrich runs because agenda/transcript prerequisites may complete in different
+    # workflows and the initial rollout is a served-time overlay, not an audio-affecting change.
     if lane == "chapter-agenda":
         stages = [AgendaChapterCandidatesStage()]
     elif lane == "chapter-locator":
@@ -2081,7 +2094,7 @@ def _build_impl(
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
     tag_llm_deadline = None  # UTC datetime; set for the `tag` lane so the LLM scheduler can pace
-    chapter_llm_deadline = None  # UTC datetime for deferred chapter submission
+    chapter_llm_deadline = None  # UTC datetime; chapter lanes use route-policy pacing
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
         window_min = float(defaults.get("run_time_budget_minutes", 0))
@@ -2136,15 +2149,14 @@ def _build_impl(
                 from datetime import UTC, datetime, timedelta
 
                 tag_llm_deadline = datetime.now(UTC) + timedelta(seconds=remaining_secs)
-            if tag_window_min > 0:
-                print(
-                    f"budget: tag wall-clock window {tag_window_min:.0f}m × {safety} "
-                    "(+ yield if superseded)"
-                )
         elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
+            # Chapter jobs are deferred rather than held on a runner.  Give the scheduler the
+            # workflow's remaining wall-clock as a hard stop so a run can submit/finalize work
+            # without waiting beyond the job budget; route pacing itself remains policy-owned.
             chapter_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
+            chapter_deadline_secs = chapter_window_min * 60 * safety
             remaining_secs = max(
-                0.0, chapter_window_min * 60 * safety - (time.monotonic() - enrich_phase_start)
+                0.0, chapter_deadline_secs - (time.monotonic() - enrich_phase_start)
             )
             deadline = (time.monotonic() + remaining_secs) if chapter_window_min > 0 else None
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
@@ -2153,7 +2165,7 @@ def _build_impl(
 
                 chapter_llm_deadline = datetime.now(UTC) + timedelta(seconds=remaining_secs)
                 print(
-                    f"budget: chapter-agenda window {chapter_window_min:.0f}m × {safety} "
+                    f"budget: {lane} window {chapter_window_min:.0f}m × {safety} "
                     "(+ yield if superseded)"
                 )
         else:
@@ -3014,7 +3026,12 @@ def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_inf
 
 
 def _write_chapter_sidecars(
-    city_dir: Path, city: City, episodes: list[Episode], base_url: str
+    city_dir: Path,
+    city: City,
+    episodes: list[Episode],
+    base_url: str,
+    *,
+    include_generated_chapters: bool = False,
 ) -> None:
     """Write each chaptered episode's Podcasting 2.0 chapters JSON to
     ``<slug>/chapters/<uid>.json`` (referenced by ``<podcast:chapters>``), and prune sidecars
@@ -3023,10 +3040,12 @@ def _write_chapter_sidecars(
     chap_dir = city_dir / "chapters"
     wanted: set[str] = set()
     for ep in episodes:
-        if chapters_url(city, ep, base_url):
+        if chapters_url(city, ep, base_url, include_generated=include_generated_chapters):
             wanted.add(f"{ep.uid}.json")
             chap_dir.mkdir(parents=True, exist_ok=True)
-            (chap_dir / f"{ep.uid}.json").write_text(chapters_json(ep))
+            (chap_dir / f"{ep.uid}.json").write_text(
+                chapters_json(ep, include_generated=include_generated_chapters)
+            )
     if chap_dir.exists():
         for stale in chap_dir.glob("*.json"):
             if stale.name not in wanted:
@@ -3080,6 +3099,8 @@ def _write_meeting_pages(
     base_url: str,
     site_config: dict,
     page_cache: dict,
+    *,
+    include_generated_chapters: bool = False,
 ) -> dict:
     """Render retained meeting pages whose per-episode hashes or outputs changed."""
     pages_cache = dict(page_cache or {})
@@ -3102,6 +3123,7 @@ def _write_meeting_pages(
             city.city_website,
             base_url.rstrip("/"),
             site_config.get("github_repo"),
+            include_generated_chapters,
         ]
         page_hash = hashlib.sha256(
             json.dumps([meeting_page_hash(ep), page_context], separators=(",", ":")).encode()
@@ -3111,7 +3133,13 @@ def _write_meeting_pages(
         page_dir = city_dir / ep.uid
         page_dir.mkdir(parents=True, exist_ok=True)
         (page_dir / "index.html").write_text(
-            render_meeting_page(city, ep, base_url, site_config=site_config)
+            render_meeting_page(
+                city,
+                ep,
+                base_url,
+                site_config=site_config,
+                include_generated_chapters=include_generated_chapters,
+            )
         )
         pages_cache[ep.uid] = page_hash
     for child in city_dir.iterdir():

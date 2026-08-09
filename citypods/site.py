@@ -6,7 +6,7 @@ import dataclasses
 import html
 import json
 
-from citypods.chapters import episode_served_chapters
+from citypods.chapters import episode_public_chapters
 from citypods.durations import episode_served_duration_seconds
 from citypods.feeds import enclosure_url, episode_resource_links, meeting_page_url, ordered_links
 from citypods.models import AgendaRecord, City, Episode
@@ -243,6 +243,7 @@ def render_meeting_page(
     base_url: str,
     *,
     site_config: dict | None = None,
+    include_generated_chapters: bool = False,
 ) -> str:
     """Render one stable meeting permalink with media, metadata, chapters, and transcript UI."""
     site = base_url.rstrip("/")
@@ -270,7 +271,13 @@ def render_meeting_page(
             ),
             "source_url": _source_deeplink(city, ep, float(ch.get("start", 0))),
         }
-        for index, ch in enumerate(episode_served_chapters(ep, with_source_index=True))
+        for index, ch in enumerate(
+            episode_public_chapters(
+                ep,
+                include_generated=include_generated_chapters,
+                with_source_index=True,
+            )
+        )
     ]
     report_url = None
     github_repo = (site_config or {}).get("github_repo")
