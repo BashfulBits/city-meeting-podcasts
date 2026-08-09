@@ -14,6 +14,7 @@ from citypods.chapter_artifacts import (
     recipe_hash,
 )
 from citypods.chapter_locator import (
+    PRODUCTION_LOCATOR_MODEL,
     LocatorAgendaItem,
     LocatorUnit,
     build_production_locator_request,
@@ -30,7 +31,10 @@ from citypods.compute.base import InferenceJob, JobResult
 from citypods.compute.llm import TASK_VERSIONS
 from citypods.compute.llm_policy import LLMRequestPolicy
 
-LOCATOR_MODEL = "gemini/gemini-3.5-flash-lite"
+# chapter_locator.py is the single source of truth for the production locator model name.
+LOCATOR_MODEL = PRODUCTION_LOCATOR_MODEL
+# Prompt variant used for all production agenda extraction jobs.
+AGENDA_PROMPT_VERSION = "agenda-flow"
 LOCATOR_PROMPT_VERSION = "locator-v1"
 
 
@@ -72,14 +76,17 @@ def build_agenda_job(
     request = build_production_agenda_item_extraction_request(
         agenda_text, candidate_hints=candidate_hints
     )
-    recipe = recipe_hash(
-        task="agenda-item-extract",
-        task_version=TASK_VERSIONS["agenda-item-extract"],
-        episode_uid=episode_uid,
-        source_hash=agenda_source_hash,
-        model=AGENDA_PRODUCTION_MODEL,
-        prompt_version="agenda-flow",
-    )
+    recipe_parts: dict[str, Any] = {
+        "task": "agenda-item-extract",
+        "task_version": TASK_VERSIONS["agenda-item-extract"],
+        "episode_uid": episode_uid,
+        "source_hash": agenda_source_hash,
+        "model": AGENDA_PRODUCTION_MODEL,
+        "prompt_version": AGENDA_PROMPT_VERSION,
+    }
+    if candidate_hints:
+        recipe_parts["candidate_hints"] = [dict(h) for h in candidate_hints]
+    recipe = recipe_hash(**recipe_parts)
     ensure_agenda_item_extractor_contract()
     return InferenceJob(
         task="agenda-item-extract",
@@ -130,7 +137,7 @@ def finalize_agenda_job(
         episode_uid=episode_uid,
         source_hash=agenda_source_hash,
         model=model,
-        prompt_version="agenda-flow",
+        prompt_version=AGENDA_PROMPT_VERSION,
         recipe=result.recipe_hash,
         items=tuple(candidates),
         diagnostics={"source_line_count": len(lines)},
@@ -161,16 +168,19 @@ def build_locator_job(
         locator_items, units, unit_annotations=unit_annotations
     )
     hint_mode = "none" if not unit_annotations else "research"
-    recipe = recipe_hash(
-        task="agenda-chapter-locate",
-        task_version=TASK_VERSIONS["agenda-chapter-locate"],
-        episode_uid=episode_uid,
-        agenda_recipe=agenda.recipe,
-        transcript_hash=transcript_hash,
-        model=LOCATOR_MODEL,
-        prompt_version=LOCATOR_PROMPT_VERSION,
-        hint_mode=hint_mode,
-    )
+    recipe_parts: dict[str, Any] = {
+        "task": "agenda-chapter-locate",
+        "task_version": TASK_VERSIONS["agenda-chapter-locate"],
+        "episode_uid": episode_uid,
+        "agenda_recipe": agenda.recipe,
+        "transcript_hash": transcript_hash,
+        "model": LOCATOR_MODEL,
+        "prompt_version": LOCATOR_PROMPT_VERSION,
+        "hint_mode": hint_mode,
+    }
+    if unit_annotations:
+        recipe_parts["unit_annotations"] = {k: dict(v) for k, v in unit_annotations.items()}
+    recipe = recipe_hash(**recipe_parts)
     from citypods.chapter_locator import LOCATOR_CONTRACT, ensure_locator_contract
 
     ensure_locator_contract()
@@ -234,6 +244,7 @@ def finalize_locator_job(
 
 
 __all__ = [
+    "AGENDA_PROMPT_VERSION",
     "LOCATOR_MODEL",
     "LOCATOR_PROMPT_VERSION",
     "build_agenda_job",
