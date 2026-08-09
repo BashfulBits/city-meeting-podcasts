@@ -3,17 +3,10 @@
 # Used by scripts/compile_llm_limits.py to generate workers/llm-dispatch-proxy/src/dispatch_limits.json
 
 source: Centralized provider limits registry
-observed_on: 2026-08-06
+observed_on: 2026-08-08
 
 # `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
-# through -- required for every provider, not just Mistral. This is what let a bug ship where an
-# unresolved provider's request silently fell back to Mistral's endpoint (review/41): the Worker
-# used to have no per-provider URL of its own to fall back to instead.
-# `discovery.endpoint`, when present, is only ever fetched by
-# `scripts/compile_llm_limits.py --discover <provider>`, a maintainer-run, opt-in step -- never by
-# the deploy workflow. Add a `discovery` block here (and a matching fetcher function in that
-# script) for any future provider that gets a models/pricing discovery endpoint; nothing about the
-# opt-in gate is specific to OpenRouter.
+# through -- required for every provider, not just Mistral.
 providers:
   mistral:
     api_base: https://api.mistral.ai
@@ -24,20 +17,12 @@ providers:
       - id: primary
         api_key_env: MISTRAL_API_KEY
   gemini:
-    # Google's own OpenAI-compatibility endpoint -- confirmed real, no LiteLLM Proxy hop needed
-    # for this route (review/27 §3's "may point at a provider's own OpenAI-compatible endpoint").
     api_base: https://generativelanguage.googleapis.com/v1beta/openai
     chat_path: /chat/completions
     reset_timezone: America/Los_Angeles
     accounts:
       - id: project_primary
         api_key_env: GEMINI_API_KEY
-      # Second Gemini account/project, same free-tier shape as primary. Reachable only through
-      # the dispatch Worker's `llm-dispatch` transport -- the Python scheduler only ever sees one
-      # canonical `gemini/...` route per model and calls it directly by default (review/41); a
-      # caller must opt in with `LLMRequestPolicy(allow_dispatch_overflow=True)` to let the
-      # Worker's per-route ledger rotate onto this account once `project_primary`'s own window is
-      # exhausted.
       - id: project_secondary
         api_key_env: GEMINI_API_KEY_SECONDARY
   deepseek:
@@ -47,6 +32,34 @@ providers:
     accounts:
       - id: primary
         api_key_env: DEEPSEEK_API_KEY
+  siliconflow:
+    api_base: https://api.siliconflow.com/v1
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: SILICONFLOW_API_KEY
+  groq:
+    api_base: https://api.groq.com/openai/v1
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: GROQ_API_KEY
+  sambanova:
+    api_base: https://api.sambanova.ai/v1
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: SAMBANOVA_API_KEY
+  zai:
+    api_base: https://api.z.ai/api/paas/v4
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: ZAI_API_KEY
   openrouter:
     api_base: https://openrouter.ai/api
     chat_path: /v1/chat/completions
@@ -56,25 +69,43 @@ providers:
     accounts:
       - id: primary
         api_key_env: OPENROUTER_API_KEY
+  kilo:
+    api_base: https://api.kilo.ai/api/gateway
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: KILO_API_KEY
+  opencode:
+    api_base: https://opencode.ai/zen/v1
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: OPENCODE_API_KEY
 
 routes:
-  - route_id: gemini_3_flash_preview_primary
-    model: gemini/gemini-3-flash-preview
+  # ==========================================
+  # GEMINI & GEMMA ROUTES (Google AI Studio)
+  # ==========================================
+  # High-Capacity Workhorses (500 RPD / 15 RPM each)
+  - route_id: gemini_3_5_flash_lite_primary
+    model: gemini/gemini-3.5-flash-lite
     provider: gemini
-    upstream_model: gemini-3-flash-preview
+    upstream_model: gemini-3.5-flash-lite
     account_id: project_primary
-    rpm: 10
-    rpd: 1500
+    rpm: 15
+    rpd: 500
     tpm: 250000
     free: true
 
-  - route_id: gemini_3_flash_preview_secondary
-    model: gemini/gemini-3-flash-preview
+  - route_id: gemini_3_5_flash_lite_secondary
+    model: gemini/gemini-3.5-flash-lite
     provider: gemini
-    upstream_model: gemini-3-flash-preview
+    upstream_model: gemini-3.5-flash-lite
     account_id: project_secondary
-    rpm: 10
-    rpd: 1500
+    rpm: 15
+    rpd: 500
     tpm: 250000
     free: true
 
@@ -98,52 +129,216 @@ routes:
     tpm: 250000
     free: true
 
-  - route_id: gemini_3_5_flash_lite_primary
-    model: gemini/gemini-3.5-flash-lite
+  # Gemma 4 Massive Free Quota Pools (14.4k RPD / 30 RPM each)
+  - route_id: gemma_4_26b_primary
+    model: google/gemma-4-26b-it
     provider: gemini
-    upstream_model: gemini-3.5-flash-lite
+    upstream_model: gemma-4-26b-it
     account_id: project_primary
-    rpm: 15
-    rpd: 500
-    tpm: 250000
+    rpm: 30
+    rpd: 14400
+    tpm: 16000
     free: true
 
-  - route_id: gemini_3_5_flash_lite_secondary
-    model: gemini/gemini-3.5-flash-lite
+  - route_id: gemma_4_26b_secondary
+    model: google/gemma-4-26b-it
     provider: gemini
-    upstream_model: gemini-3.5-flash-lite
+    upstream_model: gemma-4-26b-it
     account_id: project_secondary
-    rpm: 15
-    rpd: 500
+    rpm: 30
+    rpd: 14400
+    tpm: 16000
+    free: true
+
+  - route_id: gemma_4_31b_primary
+    model: google/gemma-4-31b-it
+    provider: gemini
+    upstream_model: gemma-4-31b-it
+    account_id: project_primary
+    rpm: 30
+    rpd: 14400
+    tpm: 16000
+    free: true
+
+  - route_id: gemma_4_31b_secondary
+    model: google/gemma-4-31b-it
+    provider: gemini
+    upstream_model: gemma-4-31b-it
+    account_id: project_secondary
+    rpm: 30
+    rpd: 14400
+    tpm: 16000
+    free: true
+
+  # Additional Free Flash Burst Pools (20 RPD / 5-10 RPM each)
+  - route_id: gemini_3_flash_preview_primary
+    model: gemini/gemini-3-flash-preview
+    provider: gemini
+    upstream_model: gemini-3-flash-preview
+    account_id: project_primary
+    rpm: 5
+    rpd: 20
     tpm: 250000
     free: true
 
-  - route_id: mistral_large_2512_primary
-    model: mistral/mistral-large-2512
-    provider: mistral
-    upstream_model: mistral-large-2512
-    account_id: primary
-    rpm: 1
+  - route_id: gemini_3_flash_preview_secondary
+    model: gemini/gemini-3-flash-preview
+    provider: gemini
+    upstream_model: gemini-3-flash-preview
+    account_id: project_secondary
+    rpm: 5
+    rpd: 20
     tpm: 250000
     free: true
 
-  - route_id: mistral_large_3_primary
-    model: mistral/mistral-large-3
-    provider: mistral
-    upstream_model: mistral-large-3
-    account_id: primary
-    rpm: 1
+  - route_id: gemini_3_6_flash_primary
+    model: gemini/gemini-3.6-flash
+    provider: gemini
+    upstream_model: gemini-3.6-flash
+    account_id: project_primary
+    rpm: 5
+    rpd: 20
     tpm: 250000
     free: true
 
-  - route_id: mistral_medium_2508_primary
-    model: mistral/mistral-medium-2508
-    provider: mistral
-    upstream_model: mistral-medium-2508
-    account_id: primary
-    rpm: 22
-    tpm: 356250
+  - route_id: gemini_3_6_flash_secondary
+    model: gemini/gemini-3.6-flash
+    provider: gemini
+    upstream_model: gemini-3.6-flash
+    account_id: project_secondary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
     free: true
+
+  - route_id: gemini_3_5_flash_primary
+    model: gemini/gemini-3.5-flash
+    provider: gemini
+    upstream_model: gemini-3.5-flash
+    account_id: project_primary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_3_5_flash_secondary
+    model: gemini/gemini-3.5-flash
+    provider: gemini
+    upstream_model: gemini-3.5-flash
+    account_id: project_secondary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_2_5_flash_primary
+    model: gemini/gemini-2.5-flash
+    provider: gemini
+    upstream_model: gemini-2.5-flash
+    account_id: project_primary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_2_5_flash_secondary
+    model: gemini/gemini-2.5-flash
+    provider: gemini
+    upstream_model: gemini-2.5-flash
+    account_id: project_secondary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_2_5_flash_lite_primary
+    model: gemini/gemini-2.5-flash-lite
+    provider: gemini
+    upstream_model: gemini-2.5-flash-lite
+    account_id: project_primary
+    rpm: 10
+    rpd: 20
+    tpm: 250000
+    free: true
+
+  - route_id: gemini_2_5_flash_lite_secondary
+    model: gemini/gemini-2.5-flash-lite
+    provider: gemini
+    upstream_model: gemini-2.5-flash-lite
+    account_id: project_secondary
+    rpm: 10
+    rpd: 20
+    tpm: 250000
+    free: true
+
+  # ==========================================
+  # LLAMA 3.3 70B MULTI-PROVIDER POOL (Groq + SambaNova + OpenRouter)
+  # ==========================================
+  - route_id: groq_llama_3_3_70b_versatile_primary
+    model: meta-llama/llama-3.3-70b-instruct
+    provider: groq
+    upstream_model: llama-3.3-70b-versatile
+    account_id: primary
+    rpm: 30
+    rpd: 1000
+    tpm: 6000
+    free: true
+
+  - route_id: sambanova_llama_3_3_70b_instruct_primary
+    model: meta-llama/llama-3.3-70b-instruct
+    provider: sambanova
+    upstream_model: Meta-Llama-3.3-70B-Instruct
+    account_id: primary
+    rpm: 20
+    rpd: 1000
+    tpm: 100000
+    free: true
+
+  - route_id: openrouter_meta_llama_llama_3_3_70b_instruct
+    model: meta-llama/llama-3.3-70b-instruct
+    provider: openrouter
+    upstream_model: meta-llama/llama-3.3-70b-instruct
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000010
+    output_per_token: 0.00000040
+
+  # ==========================================
+  # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
+  # ==========================================
+  - route_id: sambanova_qwen_2_5_72b_instruct_primary
+    model: qwen/qwen-2.5-72b-instruct
+    provider: sambanova
+    upstream_model: Qwen2.5-72B-Instruct
+    account_id: primary
+    rpm: 20
+    rpd: 1000
+    tpm: 100000
+    free: true
+
+  - route_id: siliconflow_qwen_2_5_72b_primary
+    model: qwen/qwen-2.5-72b-instruct
+    provider: siliconflow
+    upstream_model: Qwen/Qwen2.5-72B-Instruct
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000007 # $0.07 / MTok
+    output_per_token: 0.00000028 # $0.28 / MTok
+
+  # ==========================================
+  # DEEPSEEK V4 FLASH MULTI-PROVIDER POOL (SiliconFlow + DeepSeek Direct)
+  # ==========================================
+  - route_id: siliconflow_deepseek_v4_flash_primary
+    model: deepseek/deepseek-v4-flash
+    provider: siliconflow
+    upstream_model: deepseek-ai/DeepSeek-V4-Flash
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.000000049 # $0.049 / MTok (Promo)
+    output_per_token: 0.000000196 # $0.196 / MTok
 
   - route_id: deepseek_v4_flash_primary
     model: deepseek/deepseek-v4-flash
@@ -152,7 +347,7 @@ routes:
     account_id: primary
     concurrency: 5
     free: false
-    input_per_token: 0.00000014
+    input_per_token: 0.00000014 # Direct base ($0.0028 on cache hit & $0.07 off-peak)
     output_per_token: 0.00000028
 
   - route_id: deepseek_v4_pro_primary
@@ -164,3 +359,306 @@ routes:
     free: false
     input_per_token: 0.000000435
     output_per_token: 0.00000087
+
+  # ==========================================
+  # MISTRAL ROUTES (Audited Exact Quotas)
+  # ==========================================
+  # Codestral 2508: 2.08 RPS (124 RPM), 625k TPM
+  - route_id: mistral_codestral_2508_primary
+    model: mistral/codestral-2508
+    provider: mistral
+    upstream_model: codestral-2508
+    account_id: primary
+    rpm: 124
+    tpm: 625000
+    free: true
+
+  # Devstral 2512: 0.83 RPS (49 RPM), 1,000,000 TPM
+  - route_id: mistral_devstral_2512_primary
+    model: mistral/devstral-2512
+    provider: mistral
+    upstream_model: devstral-2512
+    account_id: primary
+    rpm: 49
+    tpm: 1000000
+    free: true
+
+  # Mistral Small 2603: 0.83 RPS (49 RPM), 50k TPM
+  - route_id: mistral_small_2603_primary
+    model: mistral/mistral-small-2603
+    provider: mistral
+    upstream_model: mistral-small-2603
+    account_id: primary
+    rpm: 49
+    tpm: 50000
+    free: true
+
+  # Mistral Medium 2508: 0.38 RPS (22 RPM), 356.25k TPM
+  - route_id: mistral_medium_2508_primary
+    model: mistral/mistral-medium-2508
+    provider: mistral
+    upstream_model: mistral-medium-2508
+    account_id: primary
+    rpm: 22
+    tpm: 356250
+    free: true
+
+  # Mistral Medium 2505: 0.42 RPS (25 RPM), 375k TPM
+  - route_id: mistral_medium_2505_primary
+    model: mistral/mistral-medium-2505
+    provider: mistral
+    upstream_model: mistral-medium-2505
+    account_id: primary
+    rpm: 25
+    tpm: 375000
+    free: true
+
+  # Mistral Large 2512: 0.07 RPS (4.2 RPM -> 4 RPM), 250k TPM
+  - route_id: mistral_large_2512_primary
+    model: mistral/mistral-large-2512
+    provider: mistral
+    upstream_model: mistral-large-2512
+    account_id: primary
+    rpm: 4
+    tpm: 250000
+    free: true
+
+  # Mistral Large 3: 4 RPM, 250k TPM
+  - route_id: mistral_large_3_primary
+    model: mistral/mistral-large-3
+    provider: mistral
+    upstream_model: mistral-large-3
+    account_id: primary
+    rpm: 4
+    tpm: 250000
+    free: true
+
+  # Labs Leanstral: 0.63 RPS (37 RPM), 5,000,000 TPM
+  - route_id: mistral_labs_leanstral_1_5_1_primary
+    model: mistral/labs-leanstral-1-5-1
+    provider: mistral
+    upstream_model: labs-leanstral-1-5-1
+    account_id: primary
+    rpm: 37
+    tpm: 5000000
+    free: true
+
+  # ==========================================
+  # Z.AI ROUTES (Zhipu AI Global GLM Series)
+  # ==========================================
+  # Free Tier Routes
+  - route_id: zai_glm_4_7_flash_primary
+    model: zai/glm-4.7-flash
+    provider: zai
+    upstream_model: glm-4.7-flash
+    account_id: primary
+    rpm: 15
+    rpd: 500
+    concurrency: 2
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: zai_glm_4_5_flash_primary
+    model: zai/glm-4.5-flash
+    provider: zai
+    upstream_model: glm-4.5-flash
+    account_id: primary
+    rpm: 15
+    rpd: 500
+    concurrency: 2
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  # Paid High-Speed / Frontier Routes
+  - route_id: zai_glm_4_7_flashx_primary
+    model: zai/glm-4.7-flashx
+    provider: zai
+    upstream_model: glm-4.7-flashx
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000007
+    output_per_token: 0.00000040
+
+  - route_id: zai_glm_4_7_primary
+    model: zai/glm-4.7
+    provider: zai
+    upstream_model: glm-4.7
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000060
+    output_per_token: 0.00000220
+
+  - route_id: zai_glm_5_primary
+    model: zai/glm-5
+    provider: zai
+    upstream_model: glm-5
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000100
+    output_per_token: 0.00000320
+
+  # ==========================================
+  # OPENROUTER CURATED ROUTES (Gemma 4 & Up)
+  # ==========================================
+  # Free Endpoints (Guarded with 10 RPM / 200 RPD / Concurrency 1)
+  - route_id: openrouter_google_gemma_4_31b_it_free
+    model: google/gemma-4-31b-it
+    provider: openrouter
+    upstream_model: google/gemma-4-31b-it:free
+    account_id: primary
+    rpm: 10
+    rpd: 200
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: openrouter_google_gemma_4_26b_a4b_it_free
+    model: google/gemma-4-26b-it
+    provider: openrouter
+    upstream_model: google/gemma-4-26b-a4b-it:free
+    account_id: primary
+    rpm: 10
+    rpd: 200
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: openrouter_nvidia_nemotron_3_ultra_550b_a55b_free
+    model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+    provider: openrouter
+    upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
+    account_id: primary
+    rpm: 10
+    rpd: 200
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: openrouter_nvidia_nemotron_3_super_120b_a12b_free
+    model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+    provider: openrouter
+    upstream_model: nvidia/nemotron-3-super-120b-a12b:free
+    account_id: primary
+    rpm: 10
+    rpd: 200
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  # Paid Frontier / Elite Open-Weights
+  - route_id: openrouter_qwen_qwen3_235b_a22b_2507
+    model: openrouter/qwen/qwen3-235b-a22b-2507
+    provider: openrouter
+    upstream_model: qwen/qwen3-235b-a22b-2507
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000009
+    output_per_token: 0.00000036
+
+  - route_id: openrouter_mistralai_mistral_small_3_2_24b_instruct
+    model: openrouter/mistralai/mistral-small-3.2-24b-instruct
+    provider: openrouter
+    upstream_model: mistralai/mistral-small-3.2-24b-instruct
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000009
+    output_per_token: 0.00000027
+
+  - route_id: openrouter_openai_gpt_4o_mini
+    model: openrouter/openai/gpt-4o-mini
+    provider: openrouter
+    upstream_model: openai/gpt-4o-mini
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000015
+    output_per_token: 0.00000060
+
+  # ==========================================
+  # KILO CODE ROUTES (Kilo Gateway)
+  # ==========================================
+  - route_id: kilo_stepfun_step_3_7_flash_free
+    model: kilo/stepfun/step-3.7-flash:free
+    provider: kilo
+    upstream_model: stepfun/step-3.7-flash:free
+    account_id: primary
+    rpm: 20
+    rpd: 200
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: kilo_nvidia_nemotron_3_ultra_550b_a55b_free
+    model: kilo/nvidia/nemotron-3-ultra-550b-a55b:free
+    provider: kilo
+    upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
+    account_id: primary
+    rpm: 20
+    rpd: 200
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  # ==========================================
+  # OPENCODE ZEN ROUTES (OpenCode.ai)
+  # ==========================================
+  - route_id: opencode_deepseek_v4_flash_free
+    model: opencode/deepseek-v4-flash-free
+    provider: opencode
+    upstream_model: deepseek-v4-flash-free
+    account_id: primary
+    rpm: 30
+    rpd: 500
+    tpm: 250000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: opencode_mimo_v2_5_free
+    model: opencode/mimo-v2.5-free
+    provider: opencode
+    upstream_model: mimo-v2.5-free
+    account_id: primary
+    rpm: 30
+    rpd: 500
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: opencode_longcat_2_0_free
+    model: opencode/longcat-2.0-free
+    provider: opencode
+    upstream_model: longcat-2.0-free
+    account_id: primary
+    rpm: 20
+    rpd: 200
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: opencode_nemotron_3_ultra_free
+    model: opencode/nemotron-3-ultra-free
+    provider: opencode
+    upstream_model: nemotron-3-ultra-free
+    account_id: primary
+    rpm: 20
+    rpd: 200
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0

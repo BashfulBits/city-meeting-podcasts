@@ -1359,3 +1359,98 @@ def test_require_direct_policy_bypasses_dispatch():
     assert isinstance(res, JobResult)
     assert res.output["choices"][0]["message"]["content"] == "direct response"
     assert not posted
+
+
+def test_reconcile_emits_warning_on_retrying_upstream_timeout(capsys):
+    class TimeoutRetrySession(requests.Session):
+        def get(self, *_args, **_kwargs):
+            res = requests.Response()
+            res.status_code = 202
+            res._content = json.dumps(
+                {
+                    "id": "chatcmpl-test-1",
+                    "status": "pending",
+                    "attempts": 2,
+                    "available_at": "2026-08-09T06:00:00Z",
+                    "last_error": {
+                        "code": "upstream_timeout",
+                        "duration_seconds": 720,
+                        "model": "deepseek/deepseek-v4-pro",
+                        "route_id": "deepseek_v4_pro_primary",
+                    },
+                }
+            ).encode()
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="deepseek/deepseek-v4-pro",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=TimeoutRetrySession(),
+        storage=storage,
+    )
+
+    handle = JobHandle(
+        backend="litellm",
+        task="summarize",
+        recipe_hash="recipe-timeout-retry",
+        ref="chatcmpl-test-1",
+        model="deepseek/deepseek-v4-pro",
+    )
+
+    result = backend.reconcile(handle)
+    assert result is None
+    captured = capsys.readouterr()
+    assert "::warning title=LLM Upstream Timeout Warning::" in captured.out
+    assert "timed out after 720s" in captured.out
+    assert "deepseek_v4_pro_primary" in captured.out
+
+
+def test_reconcile_emits_error_on_terminal_upstream_timeout(capsys):
+    class TimeoutFailedSession(requests.Session):
+        def get(self, *_args, **_kwargs):
+            res = requests.Response()
+            res.status_code = 502
+            res._content = json.dumps(
+                {
+                    "error": {
+                        "code": "upstream_timeout",
+                        "message": (
+                            "Upstream LLM provider timed out after 720s without completing response"
+                        ),
+                        "duration_seconds": 720,
+                        "attempts": 5,
+                        "route_id": "deepseek_v4_pro_primary",
+                    }
+                }
+            ).encode()
+            return res
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="deepseek/deepseek-v4-pro",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=TimeoutFailedSession(),
+        storage=storage,
+    )
+
+    handle = JobHandle(
+        backend="litellm",
+        task="summarize",
+        recipe_hash="recipe-terminal-timeout",
+        ref="chatcmpl-test-terminal",
+        model="deepseek/deepseek-v4-pro",
+    )
+
+    with pytest.raises(LLMBackendError, match="timed out after 720s"):
+        backend.reconcile(handle)
+
+    captured = capsys.readouterr()
+    assert "::error title=LLM Terminal Timeout Failure::" in captured.out
+    assert "failed permanently after 5 attempts exceeding 720s timeout" in captured.out

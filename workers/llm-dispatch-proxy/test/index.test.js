@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   acquireCronLease,
   config,
+  dispatchBatch,
   dispatchOne,
   handleRequest,
   nextLocalMidnightUTC,
@@ -98,6 +99,13 @@ const ENV = {
   GEMINI_API_KEY: "gemini-primary-secret",
   GEMINI_API_KEY_SECONDARY: "gemini-secondary-secret",
   DEEPSEEK_API_KEY: "deepseek-secret",
+  SILICONFLOW_API_KEY: "siliconflow-secret",
+  GROQ_API_KEY: "groq-secret",
+  SAMBANOVA_API_KEY: "sambanova-secret",
+  ZAI_API_KEY: "zai-secret",
+  OPENROUTER_API_KEY: "openrouter-secret",
+  KILO_API_KEY: "kilo-secret",
+  OPENCODE_API_KEY: "opencode-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),
@@ -270,7 +278,7 @@ test("per-route ledger exhaustion rotates onto a second account instead of block
     return new Response(JSON.stringify({ id: `c-${calls.length}`, choices: [] }), { status: 200 });
   };
 
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < 5; i += 1) {
     await handleRequest(
       chatRequest(undefined, `gemini-burst-${i}`, "gemini/gemini-3-flash-preview"),
       env,
@@ -278,32 +286,36 @@ test("per-route ledger exhaustion rotates onto a second account instead of block
     const result = await dispatchOne(env, upstream, new Date());
     assert.equal(result.status, "completed");
   }
-  assert.equal(calls.length, 10);
+  assert.equal(calls.length, 5);
   assert.ok(calls.every((call) => call.init.headers.authorization === "Bearer gemini-primary-secret"));
 
-  // The 11th request within the same minute window must roll onto the secondary account.
-  await handleRequest(chatRequest(undefined, "gemini-burst-11", "gemini/gemini-3-flash-preview"), env);
-  const eleventh = await dispatchOne(env, upstream, new Date());
-  assert.equal(eleventh.status, "completed");
-  assert.equal(calls[10].init.headers.authorization, "Bearer gemini-secondary-secret");
+  // The 6th request within the same minute window must roll onto the secondary account (rpm=5).
+  await handleRequest(chatRequest(undefined, "gemini-burst-6", "gemini/gemini-3-flash-preview"), env);
+  const sixth = await dispatchOne(env, upstream, new Date());
+  assert.equal(sixth.status, "completed");
+  assert.equal(calls[5].init.headers.authorization, "Bearer gemini-secondary-secret");
 });
 
 test("a route with no capacity anywhere is requeued (no_capacity), not permanently failed", async () => {
   const env = isolatedEnv();
-  await handleRequest(chatRequest(undefined, "first"), env);
-  await handleRequest(chatRequest(undefined, "second"), env);
+  for (let i = 0; i < 4; i += 1) {
+    await handleRequest(chatRequest(undefined, `req-${i}`), env);
+  }
+  await handleRequest(chatRequest(undefined, "fifth"), env);
   const now = new Date();
 
-  const first = await dispatchOne(env, okUpstream(), now);
-  assert.equal(first.status, "completed");
-  const exhausted = await dispatchOne(env, okUpstream(), now); // Mistral rpm=1, same minute
+  for (let i = 0; i < 4; i += 1) {
+    const res = await dispatchOne(env, okUpstream(), now);
+    assert.equal(res.status, "completed");
+  }
+  const exhausted = await dispatchOne(env, okUpstream(), now); // Mistral Large rpm=4, same minute
   assert.equal(exhausted.status, "no_capacity");
   const stored = await env.LLM_QUEUE.get(`requests/${exhausted.requestId}.json`);
   const record = await stored.json();
   assert.equal(record.status, "pending");
   assert.equal(record.attempts, 0); // not counted as a real attempt
 
-  // The next minute's window frees Mistral's single slot back up.
+  // The next minute's window frees Mistral's capacity back up.
   const nextMinute = new Date(now.getTime() + 61_000);
   const recovered = await dispatchOne(env, okUpstream(), nextMinute);
   assert.equal(recovered.status, "completed");
@@ -881,3 +893,100 @@ test("idempotency collision detects policy field differences, not just payload",
   const conflict = await handleRequest(conflictReq, env);
   assert.equal(conflict.status, 409, "different allow_paid with same idem key must 409");
 });
+
+test("dispatchBatch executes multiple requests concurrently in a single batch", async () => {
+  const env = isolatedEnv();
+  for (let i = 0; i < 4; i += 1) {
+    await handleRequest(
+      chatRequest([{ role: "user", content: `batch item ${i}` }], `item-${i}`, "mistral/mistral-large-2512"),
+      env,
+    );
+  }
+
+  const calls = [];
+  const parallelUpstream = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push({ url, body });
+    return new Response(
+      JSON.stringify({
+        id: `completion-${calls.length}`,
+        choices: [{ message: { role: "assistant", content: `Response ${calls.length}` } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  const now = new Date();
+  const batchResult = await dispatchBatch(env, parallelUpstream, now, 4);
+  assert.equal(batchResult.status, "completed");
+  assert.equal(batchResult.count, 4);
+  assert.equal(batchResult.completedCount, 4);
+  assert.equal(calls.length, 4);
+
+  // All 4 records in R2 are completed
+  for (let i = 0; i < 4; i += 1) {
+    const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
+    const completedObjects = listRes.objects.filter((o) => o.customMetadata?.status === "completed");
+    assert.equal(completedObjects.length, 4);
+  }
+});
+
+test("upstream LLM timeout tags last_error with upstream_timeout, duration, and route metadata", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "timeout-check"), env);
+  const queuedBody = await queued.json();
+
+  const timingOutUpstream = async () => {
+    const error = new Error("The operation was aborted due to timeout");
+    error.name = "TimeoutError";
+    throw error;
+  };
+
+  const now = new Date();
+  const result = await dispatchOne(env, timingOutUpstream, now);
+  assert.equal(result.status, "retrying");
+  assert.equal(result.error, "upstream_timeout");
+
+  const stored = await env.LLM_QUEUE.get(`requests/${queuedBody.id}.json`);
+  const record = await stored.json();
+  assert.equal(record.status, "pending");
+  assert.equal(record.attempts, 1);
+  assert.equal(record.last_error?.code, "upstream_timeout");
+  assert.equal(record.last_error?.model, "mistral/mistral-large-2512");
+  assert.equal(record.last_error?.route_id, "mistral_large_2512_primary");
+  assert.ok(record.last_error?.duration_seconds >= 0);
+  assert.match(record.last_error?.message, /timed out/);
+});
+
+test("exhausting retry attempts on timeout fails permanently with upstream_timeout", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "terminal-timeout-check"), env);
+  const queuedBody = await queued.json();
+
+  // Pre-seed attempts to 4 so 5th attempt triggers terminal failure
+  const key = `requests/${queuedBody.id}.json`;
+  const existing = await env.LLM_QUEUE.get(key);
+  const data = await existing.json();
+  data.attempts = 4;
+  await env.LLM_QUEUE.put(key, JSON.stringify(data));
+
+  const timingOutUpstream = async () => {
+    const error = new Error("The operation was aborted due to timeout");
+    error.name = "TimeoutError";
+    throw error;
+  };
+
+  const now = new Date();
+  const result = await dispatchOne(env, timingOutUpstream, now);
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "upstream_timeout");
+
+  const stored = await env.LLM_QUEUE.get(key);
+  const record = await stored.json();
+  assert.equal(record.status, "failed");
+  assert.equal(record.attempts, 5);
+  assert.equal(record.error?.code, "upstream_timeout");
+  assert.equal(record.error?.route_id, "mistral_large_2512_primary");
+  assert.match(record.error?.message, /timed out/);
+});
+

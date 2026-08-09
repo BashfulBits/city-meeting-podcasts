@@ -141,11 +141,11 @@ def test_transport_gate_hides_dispatch_routes_from_a_direct_only_caller():
 
 
 def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
-    """The Worker claims one Large request per Cron minute, below the upstream 0.07-RPS cap."""
+    """Mistral Large route matches the upstream 0.07-RPS (4 RPM) ceiling."""
     route = ROUTES["mistral/mistral-large-2512"]
     assert route.transport == "llm-dispatch"
     assert route.transports == ("llm-dispatch",)
-    assert route.quota.rpm == 1
+    assert route.quota.rpm == 4
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():

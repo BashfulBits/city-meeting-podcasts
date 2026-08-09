@@ -1,44 +1,43 @@
 # LLM backend setup
 
 The R2 adapter is configuration-only until a calling stage is enabled. It supports these
-LiteLLM routes:
+LiteLLM and multi-provider routes:
 
-| Route | Environment secret |
-| --- | --- |
-| `gemini/gemini-3-flash-preview` | `GEMINI_API_KEY` |
-| `deepseek/deepseek-v4-flash` / `deepseek/deepseek-v4-pro` | `DEEPSEEK_API_KEY` |
-| `mistral/mistral-large-2512` | `MISTRAL_API_KEY` |
+| Provider | Environment secret | Sign-up / Dashboard | Usage Mode | Notes |
+| --- | --- | --- | --- | --- |
+| **Google AI Studio** | `GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY` | [aistudio.google.com](https://aistudio.google.com) | Direct & Dispatch | Gemma 4 26B/31B (29k Free RPD), Gemini 3.5/3.1 Flash Lite (1k Free RPD), Flash Burst |
+| **Groq** | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) | Direct & Dispatch | Llama 3.3 70B (30 RPM / 1,000 Free RPD) |
+| **SambaNova** | `SAMBANOVA_API_KEY` | [cloud.sambanova.ai](https://cloud.sambanova.ai) | Direct & Dispatch | Llama 3.3 70B & Qwen 2.5 72B (20 RPM / 1,000 Free RPD) |
+| **Mistral AI** | `MISTRAL_API_KEY` | [console.mistral.ai](https://console.mistral.ai) | Dispatch (`llm-dispatch`) | Mistral Large, Mistral Small 2603, Codestral, Devstral, Medium (1B Tok/Mo pool) |
+| **Z.AI (Zhipu AI)** | `ZAI_API_KEY` | [z.ai](https://z.ai) | Direct & Dispatch | GLM-4.7-Flash & GLM-4.5-Flash (15 RPM / 500 Free RPD) |
+| **SiliconFlow** | `SILICONFLOW_API_KEY` | [cloud.siliconflow.cn](https://cloud.siliconflow.cn) | Direct & Dispatch | DeepSeek-V4-Flash ($0.049/M promo) & Qwen 2.5 72B ($0.07/M) |
+| **DeepSeek Direct** | `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com) | Direct & Dispatch | DeepSeek-V4-Flash ($0.14/M base, $0.0028 cache, $0.07 off-peak), DeepSeek-V4-Pro |
+| **OpenRouter** | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) | Direct & Dispatch | Curated Gemma 4, Nemotron 550B/120B free endpoints and frontier models |
+| **Kilo Code** | `KILO_API_KEY` | [app.kilo.ai](https://app.kilo.ai) | Direct & Dispatch | StepFun Step-3.7-Flash & NVIDIA Nemotron-3-Ultra 550B (20 RPM / 200 Free RPD) |
+| **OpenCode Zen** | `OPENCODE_API_KEY` | [opencode.ai/auth](https://opencode.ai/auth) | Direct & Dispatch | DeepSeek-V4-Flash (1M Context), MiMo-V2.5, LongCat-2.0 (1.6T), Nemotron 3 Ultra |
+
+For the full model evaluation matrix, quality ratings, and recommended task mappings, see the canonical [LLM Model Catalog & Decision Matrix in ARCHITECTURE.md](ARCHITECTURE.md#llm-model-catalog--decision-matrix).
 
 Install the optional dependency with `pip install -e ".[llm]"`. Select a direct route with
 `LLM_MODEL=gemini/gemini-3-flash-preview` and `LLM_MODE=direct`. LiteLLM reads the provider key from the
 matching environment variable; do not put keys in YAML, source, or episode records.
 
-For the paced Mistral path (and, on explicit opt-in only, Gemini overflow — see below), deploy the
-Worker and set `LLM_MODE=dispatch`, `LLM_DISPATCH_URL=https://<worker-domain>`, and
-`LLM_DISPATCH_AUTH_TOKEN`. The Worker's own provider credentials/routing are no longer Wrangler
-config — see [`workers/llm-dispatch-proxy/README.md`](workers/llm-dispatch-proxy/README.md) and
-[`config/provider_limits.yml`](config/provider_limits.yml) (review/41). `DISPATCH_AUTH_TOKEN` is still
-a plain Worker secret matching the client token.
+For the paced dispatch path (and multi-provider routing), deploy the Worker and set `LLM_MODE=dispatch`,
+`LLM_DISPATCH_URL=https://<worker-domain>`, and `LLM_DISPATCH_AUTH_TOKEN`. The Worker's own provider
+credentials and routing policies are defined in [`config/provider_limits.yml`](config/provider_limits.yml) and
+compiled into `workers/llm-dispatch-proxy/src/dispatch_limits.json` (review/41). `DISPATCH_AUTH_TOKEN` is a
+plain Worker secret matching the client token.
 
-**A route that also offers `direct` (today only Gemini) is never automatically sent through the
-Worker** — a caller must set `LLMRequestPolicy(allow_dispatch_overflow=True)` to reach a
-Worker-only-visible account (e.g. `GEMINI_API_KEY_SECONDARY`) once its own direct route's quota is
-exhausted; otherwise it always calls Gemini directly, even when `LLM_DISPATCH_URL` happens to be
-configured for an unrelated reason. Mistral has no direct route at all, so it always dispatches.
+**A route that also offers `direct` is never automatically sent through the Worker** unless the caller sets
+`LLMRequestPolicy(allow_dispatch_overflow=True)` to reach Worker-only accounts or overflow capacity; otherwise
+it always calls the provider directly.
 
 Account and secret checklist (performed by the maintainer, never pasted into chat or committed):
 
-1. Create an API key in Google AI Studio, DeepSeek Platform, and/or the Mistral Console for the
-   providers you intend to use. Enable billing/quotas according to the provider’s current terms. A
-   second Google AI Studio project/key (`GEMINI_API_KEY_SECONDARY`) is optional, only needed if the
-   Worker's Gemini overflow route is in use.
-2. For local testing, export the corresponding key in the shell running the pipeline.
-3. For GitHub Actions, add the key as a repository/environment secret (for example, `gh secret set
-   GEMINI_API_KEY` prompts securely for the value). Use an environment-scoped secret for production.
-4. For the Cloudflare Worker, from `workers/llm-dispatch-proxy/`, run `npx wrangler secret put
-   DISPATCH_AUTH_TOKEN` plus `npx wrangler secret put <NAME>` for every `api_key_env` named in
-   `config/provider_limits.yml`'s `accounts` blocks (e.g. `MISTRAL_API_KEY`, `GEMINI_API_KEY`,
-   `GEMINI_API_KEY_SECONDARY`, `DEEPSEEK_API_KEY`); do not pass any value as a command-line argument.
-
-The first safe activation is Gemini direct mode with a small test job. DeepSeek can remain optional
-until a budget is chosen. Mistral should use the Worker route because its rate limit is paced there.
+1. Create API keys in Google AI Studio, Groq, SambaNova, Mistral Console, Z.AI, SiliconFlow, DeepSeek, OpenRouter, Kilo Code, and/or OpenCode.
+2. For local testing, export the corresponding keys in your shell.
+3. For GitHub Actions, add the keys as repository/environment secrets (e.g., `gh secret set GROQ_API_KEY`).
+4. For the Cloudflare Worker, from `workers/llm-dispatch-proxy/`, run `npx wrangler secret put DISPATCH_AUTH_TOKEN`
+   plus `npx wrangler secret put <NAME>` for every `api_key_env` declared in [`config/provider_limits.yml`](config/provider_limits.yml)
+   (`GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY`, `GROQ_API_KEY`, `SAMBANOVA_API_KEY`, `MISTRAL_API_KEY`, `ZAI_API_KEY`,
+   `SILICONFLOW_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `KILO_API_KEY`, `OPENCODE_API_KEY`).

@@ -95,6 +95,12 @@ SUPPORTED_MODELS = frozenset(
         "mistral/mistral-large-2512",
         "mistral/mistral-large-3",
         "mistral/mistral-medium-2508",
+        "kilo/stepfun/step-3.7-flash:free",
+        "kilo/nvidia/nemotron-3-ultra-550b-a55b:free",
+        "opencode/deepseek-v4-flash-free",
+        "opencode/mimo-v2.5-free",
+        "opencode/longcat-2.0-free",
+        "opencode/nemotron-3-ultra-free",
     }
 )
 
@@ -1263,9 +1269,52 @@ class LiteLLMBackend(Backend):
                 candidate, headers=headers, timeout=self.config.timeout_seconds
             )
             if response.status_code == 202:
+                try:
+                    body = response.json()
+                    if isinstance(body, dict) and body.get("last_error"):
+                        last_err = body["last_error"]
+                        if (
+                            isinstance(last_err, dict)
+                            and last_err.get("code") == "upstream_timeout"
+                        ):
+                            dur = last_err.get("duration_seconds", 720)
+                            attempts = body.get("attempts", 1)
+                            route_id = last_err.get("route_id", "unknown")
+                            avail = body.get("available_at", "soon")
+                            warn_msg = (
+                                f"::warning title=LLM Upstream Timeout Warning::"
+                                f"Request {handle.ref} for model '{handle.model}' timed out "
+                                f"after {dur}s on route '{route_id}' (attempt {attempts}). "
+                                f"Next retry at {avail}."
+                            )
+                            print(warn_msg)
+                except Exception:
+                    pass
                 return None
             if response.status_code != 200:
-                raise LLMBackendError(f"LLM dispatch poll returned HTTP {response.status_code}")
+                err_code = "unknown"
+                err_msg = ""
+                try:
+                    err_json = response.json().get("error", {})
+                    err_code = err_json.get("code", "unknown")
+                    err_msg = err_json.get("message", "")
+                    if err_code == "upstream_timeout":
+                        dur = err_json.get("duration_seconds", 720)
+                        attempts = err_json.get("attempts", 5)
+                        route_id = err_json.get("route_id", "unknown")
+                        err_annotation = (
+                            f"::error title=LLM Terminal Timeout Failure::"
+                            f"Request {handle.ref} for model '{handle.model}' failed permanently "
+                            f"after {attempts} attempts exceeding {dur}s timeout "
+                            f"on route '{route_id}'."
+                        )
+                        print(err_annotation)
+                except Exception:
+                    pass
+                msg = f"LLM dispatch poll returned HTTP {response.status_code}"
+                if err_msg:
+                    msg += f": {err_msg}"
+                raise LLMBackendError(msg)
             try:
                 result = self._completed_dispatch_result(
                     task=handle.task,
