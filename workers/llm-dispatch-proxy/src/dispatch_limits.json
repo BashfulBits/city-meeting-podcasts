@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 52,
+    "routes_count": 55,
     "providers_count": 10
   },
   "providers": {
@@ -382,7 +382,18 @@
       "route_id": "siliconflow_deepseek_v4_flash_primary",
       "model": "deepseek/deepseek-v4-flash",
       "provider": "siliconflow",
-      "upstream_model": "deepseek-ai/DeepSeek-V4-Flash",
+      "upstream_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 4.9e-08,
+      "output_per_token": 1.96e-07
+    },
+    {
+      "route_id": "siliconflow_deepseek_v4_flash_0731_primary",
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "provider": "siliconflow",
+      "upstream_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
       "account_id": "primary",
       "concurrency": 5,
       "free": false,
@@ -393,7 +404,18 @@
       "route_id": "deepseek_v4_flash_primary",
       "model": "deepseek/deepseek-v4-flash",
       "provider": "deepseek",
-      "upstream_model": "deepseek-v4-flash",
+      "upstream_model": "deepseek-v4-flash-0731",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1.4e-07,
+      "output_per_token": 2.8e-07
+    },
+    {
+      "route_id": "deepseek_v4_flash_0731_primary",
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-flash-0731",
       "account_id": "primary",
       "concurrency": 5,
       "free": false,
@@ -665,7 +687,20 @@
       "route_id": "opencode_deepseek_v4_flash_free",
       "model": "opencode/deepseek-v4-flash-free",
       "provider": "opencode",
-      "upstream_model": "deepseek-v4-flash-free",
+      "upstream_model": "deepseek-v4-flash-0731",
+      "account_id": "primary",
+      "rpm": 30,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0
+    },
+    {
+      "route_id": "opencode_deepseek_v4_flash_0731_free",
+      "model": "opencode/deepseek-v4-flash-0731",
+      "provider": "opencode",
+      "upstream_model": "deepseek-v4-flash-0731",
       "account_id": "primary",
       "rpm": 30,
       "rpd": 500,
@@ -972,7 +1007,18 @@
       "route_id": "siliconflow_deepseek_v4_flash_primary",
       "model": "deepseek/deepseek-v4-flash",
       "provider": "siliconflow",
-      "upstream_model": "deepseek-ai/DeepSeek-V4-Flash",
+      "upstream_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 4.9e-08,
+      "output_per_token": 1.96e-07
+    },
+    "siliconflow_deepseek_v4_flash_0731_primary": {
+      "route_id": "siliconflow_deepseek_v4_flash_0731_primary",
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "provider": "siliconflow",
+      "upstream_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
       "account_id": "primary",
       "concurrency": 5,
       "free": false,
@@ -983,7 +1029,18 @@
       "route_id": "deepseek_v4_flash_primary",
       "model": "deepseek/deepseek-v4-flash",
       "provider": "deepseek",
-      "upstream_model": "deepseek-v4-flash",
+      "upstream_model": "deepseek-v4-flash-0731",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1.4e-07,
+      "output_per_token": 2.8e-07
+    },
+    "deepseek_v4_flash_0731_primary": {
+      "route_id": "deepseek_v4_flash_0731_primary",
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-flash-0731",
       "account_id": "primary",
       "concurrency": 5,
       "free": false,
@@ -1255,7 +1312,20 @@
       "route_id": "opencode_deepseek_v4_flash_free",
       "model": "opencode/deepseek-v4-flash-free",
       "provider": "opencode",
-      "upstream_model": "deepseek-v4-flash-free",
+      "upstream_model": "deepseek-v4-flash-0731",
+      "account_id": "primary",
+      "rpm": 30,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0
+    },
+    "opencode_deepseek_v4_flash_0731_free": {
+      "route_id": "opencode_deepseek_v4_flash_0731_free",
+      "model": "opencode/deepseek-v4-flash-0731",
+      "provider": "opencode",
+      "upstream_model": "deepseek-v4-flash-0731",
       "account_id": "primary",
       "rpm": 30,
       "rpd": 500,
@@ -1355,6 +1425,10 @@
       "siliconflow_deepseek_v4_flash_primary",
       "deepseek_v4_flash_primary"
     ],
+    "deepseek/deepseek-v4-flash-0731": [
+      "siliconflow_deepseek_v4_flash_0731_primary",
+      "deepseek_v4_flash_0731_primary"
+    ],
     "deepseek/deepseek-v4-pro": [
       "deepseek_v4_pro_primary"
     ],
@@ -1423,6 +1497,9 @@
     ],
     "opencode/deepseek-v4-flash-free": [
       "opencode_deepseek_v4_flash_free"
+    ],
+    "opencode/deepseek-v4-flash-0731": [
+      "opencode_deepseek_v4_flash_0731_free"
     ],
     "opencode/mimo-v2.5-free": [
       "opencode_mimo_v2_5_free"
