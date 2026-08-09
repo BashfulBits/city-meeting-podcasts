@@ -331,25 +331,46 @@ routes:
 
   # ==========================================
   # DEEPSEEK V4 FLASH MULTI-PROVIDER POOL (SiliconFlow + DeepSeek Direct)
+  # Pinned to 0731 Revision (284B MoE / 13B Active, 1M Context Window)
   # ==========================================
   - route_id: siliconflow_deepseek_v4_flash_primary
     model: deepseek/deepseek-v4-flash
     provider: siliconflow
-    upstream_model: deepseek-ai/DeepSeek-V4-Flash
+    upstream_model: deepseek-ai/DeepSeek-V4-Flash-0731
     account_id: primary
     concurrency: 5
     free: false
     input_per_token: 0.000000049 # $0.049 / MTok (Promo)
     output_per_token: 0.000000196 # $0.196 / MTok
 
+  - route_id: siliconflow_deepseek_v4_flash_0731_primary
+    model: deepseek/deepseek-v4-flash-0731
+    provider: siliconflow
+    upstream_model: deepseek-ai/DeepSeek-V4-Flash-0731
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.000000049
+    output_per_token: 0.000000196
+
   - route_id: deepseek_v4_flash_primary
     model: deepseek/deepseek-v4-flash
     provider: deepseek
-    upstream_model: deepseek-v4-flash
+    upstream_model: deepseek-v4-flash-0731
     account_id: primary
     concurrency: 5
     free: false
     input_per_token: 0.00000014 # Direct base ($0.0028 on cache hit & $0.07 off-peak)
+    output_per_token: 0.00000028
+
+  - route_id: deepseek_v4_flash_0731_primary
+    model: deepseek/deepseek-v4-flash-0731
+    provider: deepseek
+    upstream_model: deepseek-v4-flash-0731
+    account_id: primary
+    concurrency: 5
+    free: false
+    input_per_token: 0.00000014
     output_per_token: 0.00000028
 
   - route_id: deepseek_v4_pro_primary
@@ -620,7 +641,19 @@ routes:
   - route_id: opencode_deepseek_v4_flash_free
     model: opencode/deepseek-v4-flash-free
     provider: opencode
-    upstream_model: deepseek-v4-flash-free
+    upstream_model: deepseek-v4-flash-0731
+    account_id: primary
+    rpm: 30
+    rpd: 500
+    tpm: 250000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: opencode_deepseek_v4_flash_0731_free
+    model: opencode/deepseek-v4-flash-0731
+    provider: opencode
+    upstream_model: deepseek-v4-flash-0731
     account_id: primary
     rpm: 30
     rpd: 500
