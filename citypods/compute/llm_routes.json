@@ -1,0 +1,1065 @@
+{
+  "_metadata": {
+    "source": "config/provider_limits.yml",
+    "routes_count": 52,
+    "providers_count": 10
+  },
+  "routes": [
+    {
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "account_id": "project_primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3.5-flash-lite",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_3_5_flash_lite_secondary",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "account_id": "project_secondary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3.5-flash-lite",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY_SECONDARY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_3_1_flash_lite_primary",
+      "model": "gemini/gemini-3.1-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.1-flash-lite",
+      "account_id": "project_primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3.1-flash-lite",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_3_1_flash_lite_secondary",
+      "model": "gemini/gemini-3.1-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.1-flash-lite",
+      "account_id": "project_secondary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3.1-flash-lite",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY_SECONDARY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemma_4_26b_primary",
+      "model": "google/gemma-4-26b-it",
+      "provider": "gemini",
+      "upstream_model": "gemma-4-26b-it",
+      "account_id": "project_primary",
+      "rpm": 30,
+      "rpd": 14400,
+      "tpm": 16000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemma-4-26b-it",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemma_4_26b_secondary",
+      "model": "google/gemma-4-26b-it",
+      "provider": "gemini",
+      "upstream_model": "gemma-4-26b-it",
+      "account_id": "project_secondary",
+      "rpm": 30,
+      "rpd": 14400,
+      "tpm": 16000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemma-4-26b-it",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY_SECONDARY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemma_4_31b_primary",
+      "model": "google/gemma-4-31b-it",
+      "provider": "gemini",
+      "upstream_model": "gemma-4-31b-it",
+      "account_id": "project_primary",
+      "rpm": 30,
+      "rpd": 14400,
+      "tpm": 16000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemma-4-31b-it",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemma_4_31b_secondary",
+      "model": "google/gemma-4-31b-it",
+      "provider": "gemini",
+      "upstream_model": "gemma-4-31b-it",
+      "account_id": "project_secondary",
+      "rpm": 30,
+      "rpd": 14400,
+      "tpm": 16000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemma-4-31b-it",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY_SECONDARY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_3_flash_preview_primary",
+      "model": "gemini/gemini-3-flash-preview",
+      "provider": "gemini",
+      "upstream_model": "gemini-3-flash-preview",
+      "account_id": "project_primary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3-flash-preview",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_3_flash_preview_secondary",
+      "model": "gemini/gemini-3-flash-preview",
+      "provider": "gemini",
+      "upstream_model": "gemini-3-flash-preview",
+      "account_id": "project_secondary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3-flash-preview",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY_SECONDARY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_3_6_flash_primary",
+      "model": "gemini/gemini-3.6-flash",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.6-flash",
+      "account_id": "project_primary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3.6-flash",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_3_6_flash_secondary",
+      "model": "gemini/gemini-3.6-flash",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.6-flash",
+      "account_id": "project_secondary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3.6-flash",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY_SECONDARY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_3_5_flash_primary",
+      "model": "gemini/gemini-3.5-flash",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash",
+      "account_id": "project_primary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3.5-flash",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_3_5_flash_secondary",
+      "model": "gemini/gemini-3.5-flash",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash",
+      "account_id": "project_secondary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-3.5-flash",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY_SECONDARY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_2_5_flash_primary",
+      "model": "gemini/gemini-2.5-flash",
+      "provider": "gemini",
+      "upstream_model": "gemini-2.5-flash",
+      "account_id": "project_primary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-2.5-flash",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_2_5_flash_secondary",
+      "model": "gemini/gemini-2.5-flash",
+      "provider": "gemini",
+      "upstream_model": "gemini-2.5-flash",
+      "account_id": "project_secondary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-2.5-flash",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY_SECONDARY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_2_5_flash_lite_primary",
+      "model": "gemini/gemini-2.5-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-2.5-flash-lite",
+      "account_id": "project_primary",
+      "rpm": 10,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-2.5-flash-lite",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "gemini_2_5_flash_lite_secondary",
+      "model": "gemini/gemini-2.5-flash-lite",
+      "provider": "gemini",
+      "upstream_model": "gemini-2.5-flash-lite",
+      "account_id": "project_secondary",
+      "rpm": 10,
+      "rpd": 20,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "gemini/gemini-2.5-flash-lite",
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GEMINI_API_KEY_SECONDARY",
+      "reset_timezone": "America/Los_Angeles"
+    },
+    {
+      "route_id": "groq_llama_3_3_70b_versatile_primary",
+      "model": "meta-llama/llama-3.3-70b-instruct",
+      "provider": "groq",
+      "upstream_model": "llama-3.3-70b-versatile",
+      "account_id": "primary",
+      "rpm": 30,
+      "rpd": 1000,
+      "tpm": 6000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "groq/llama-3.3-70b-versatile",
+      "api_base": "https://api.groq.com/openai/v1",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GROQ_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "sambanova_llama_3_3_70b_instruct_primary",
+      "model": "meta-llama/llama-3.3-70b-instruct",
+      "provider": "sambanova",
+      "upstream_model": "Meta-Llama-3.3-70B-Instruct",
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 1000,
+      "tpm": 100000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "sambanova/Meta-Llama-3.3-70B-Instruct",
+      "api_base": "https://api.sambanova.ai/v1",
+      "chat_path": "/chat/completions",
+      "api_key_env": "SAMBANOVA_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "openrouter_meta_llama_llama_3_3_70b_instruct",
+      "model": "meta-llama/llama-3.3-70b-instruct",
+      "provider": "openrouter",
+      "upstream_model": "meta-llama/llama-3.3-70b-instruct",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1e-07,
+      "output_per_token": 4e-07,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openrouter/meta-llama/llama-3.3-70b-instruct",
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "sambanova_qwen_2_5_72b_instruct_primary",
+      "model": "qwen/qwen-2.5-72b-instruct",
+      "provider": "sambanova",
+      "upstream_model": "Qwen2.5-72B-Instruct",
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 1000,
+      "tpm": 100000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "sambanova/Qwen2.5-72B-Instruct",
+      "api_base": "https://api.sambanova.ai/v1",
+      "chat_path": "/chat/completions",
+      "api_key_env": "SAMBANOVA_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "siliconflow_qwen_2_5_72b_primary",
+      "model": "qwen/qwen-2.5-72b-instruct",
+      "provider": "siliconflow",
+      "upstream_model": "Qwen/Qwen2.5-72B-Instruct",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 7e-08,
+      "output_per_token": 2.8e-07,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "siliconflow/Qwen/Qwen2.5-72B-Instruct",
+      "api_base": "https://api.siliconflow.com/v1",
+      "chat_path": "/chat/completions",
+      "api_key_env": "SILICONFLOW_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "siliconflow_deepseek_v4_flash_primary",
+      "model": "deepseek/deepseek-v4-flash",
+      "provider": "siliconflow",
+      "upstream_model": "deepseek-ai/DeepSeek-V4-Flash",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 4.9e-08,
+      "output_per_token": 1.96e-07,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "siliconflow/deepseek-ai/DeepSeek-V4-Flash",
+      "api_base": "https://api.siliconflow.com/v1",
+      "chat_path": "/chat/completions",
+      "api_key_env": "SILICONFLOW_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "deepseek_v4_flash_primary",
+      "model": "deepseek/deepseek-v4-flash",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-flash",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1.4e-07,
+      "output_per_token": 2.8e-07,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "deepseek/deepseek-v4-flash",
+      "api_base": "https://api.deepseek.com",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "deepseek_v4_pro_primary",
+      "model": "deepseek/deepseek-v4-pro",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-pro",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 4.35e-07,
+      "output_per_token": 8.7e-07,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "deepseek/deepseek-v4-pro",
+      "api_base": "https://api.deepseek.com",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "mistral_codestral_2508_primary",
+      "model": "mistral/codestral-2508",
+      "provider": "mistral",
+      "upstream_model": "codestral-2508",
+      "account_id": "primary",
+      "rpm": 124,
+      "tpm": 625000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "mistral/codestral-2508",
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "MISTRAL_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "mistral_devstral_2512_primary",
+      "model": "mistral/devstral-2512",
+      "provider": "mistral",
+      "upstream_model": "devstral-2512",
+      "account_id": "primary",
+      "rpm": 49,
+      "tpm": 1000000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "mistral/devstral-2512",
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "MISTRAL_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "mistral_small_2603_primary",
+      "model": "mistral/mistral-small-2603",
+      "provider": "mistral",
+      "upstream_model": "mistral-small-2603",
+      "account_id": "primary",
+      "rpm": 49,
+      "tpm": 50000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "mistral/mistral-small-2603",
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "MISTRAL_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "mistral_medium_2508_primary",
+      "model": "mistral/mistral-medium-2508",
+      "provider": "mistral",
+      "upstream_model": "mistral-medium-2508",
+      "account_id": "primary",
+      "rpm": 22,
+      "tpm": 356250,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "mistral/mistral-medium-2508",
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "MISTRAL_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "mistral_medium_2505_primary",
+      "model": "mistral/mistral-medium-2505",
+      "provider": "mistral",
+      "upstream_model": "mistral-medium-2505",
+      "account_id": "primary",
+      "rpm": 25,
+      "tpm": 375000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "mistral/mistral-medium-2505",
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "MISTRAL_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "mistral_large_2512_primary",
+      "model": "mistral/mistral-large-2512",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-2512",
+      "account_id": "primary",
+      "rpm": 4,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "mistral/mistral-large-2512",
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "MISTRAL_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "mistral_large_3_primary",
+      "model": "mistral/mistral-large-3",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-3",
+      "account_id": "primary",
+      "rpm": 4,
+      "tpm": 250000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "mistral/mistral-large-3",
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "MISTRAL_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "mistral_labs_leanstral_1_5_1_primary",
+      "model": "mistral/labs-leanstral-1-5-1",
+      "provider": "mistral",
+      "upstream_model": "labs-leanstral-1-5-1",
+      "account_id": "primary",
+      "rpm": 37,
+      "tpm": 5000000,
+      "free": true,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "mistral/labs-leanstral-1-5-1",
+      "api_base": "https://api.mistral.ai",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "MISTRAL_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "zai_glm_4_7_flash_primary",
+      "model": "zai/glm-4.7-flash",
+      "provider": "zai",
+      "upstream_model": "glm-4.7-flash",
+      "account_id": "primary",
+      "rpm": 15,
+      "rpd": 500,
+      "concurrency": 2,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "zai/glm-4.7-flash",
+      "api_base": "https://api.z.ai/api/paas/v4",
+      "chat_path": "/chat/completions",
+      "api_key_env": "ZAI_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "zai_glm_4_5_flash_primary",
+      "model": "zai/glm-4.5-flash",
+      "provider": "zai",
+      "upstream_model": "glm-4.5-flash",
+      "account_id": "primary",
+      "rpm": 15,
+      "rpd": 500,
+      "concurrency": 2,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "zai/glm-4.5-flash",
+      "api_base": "https://api.z.ai/api/paas/v4",
+      "chat_path": "/chat/completions",
+      "api_key_env": "ZAI_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "zai_glm_4_7_flashx_primary",
+      "model": "zai/glm-4.7-flashx",
+      "provider": "zai",
+      "upstream_model": "glm-4.7-flashx",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 7e-08,
+      "output_per_token": 4e-07,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "zai/glm-4.7-flashx",
+      "api_base": "https://api.z.ai/api/paas/v4",
+      "chat_path": "/chat/completions",
+      "api_key_env": "ZAI_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "zai_glm_4_7_primary",
+      "model": "zai/glm-4.7",
+      "provider": "zai",
+      "upstream_model": "glm-4.7",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 6e-07,
+      "output_per_token": 2.2e-06,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "zai/glm-4.7",
+      "api_base": "https://api.z.ai/api/paas/v4",
+      "chat_path": "/chat/completions",
+      "api_key_env": "ZAI_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "zai_glm_5_primary",
+      "model": "zai/glm-5",
+      "provider": "zai",
+      "upstream_model": "glm-5",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1e-06,
+      "output_per_token": 3.2e-06,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "zai/glm-5",
+      "api_base": "https://api.z.ai/api/paas/v4",
+      "chat_path": "/chat/completions",
+      "api_key_env": "ZAI_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "openrouter_google_gemma_4_31b_it_free",
+      "model": "google/gemma-4-31b-it",
+      "provider": "openrouter",
+      "upstream_model": "google/gemma-4-31b-it:free",
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 200,
+      "concurrency": 1,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openrouter/google/gemma-4-31b-it:free",
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "openrouter_google_gemma_4_26b_a4b_it_free",
+      "model": "google/gemma-4-26b-it",
+      "provider": "openrouter",
+      "upstream_model": "google/gemma-4-26b-a4b-it:free",
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 200,
+      "concurrency": 1,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openrouter/google/gemma-4-26b-a4b-it:free",
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
+      "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "provider": "openrouter",
+      "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 200,
+      "concurrency": 1,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
+      "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "openrouter",
+      "upstream_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 200,
+      "concurrency": 1,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "openrouter_qwen_qwen3_235b_a22b_2507",
+      "model": "openrouter/qwen/qwen3-235b-a22b-2507",
+      "provider": "openrouter",
+      "upstream_model": "qwen/qwen3-235b-a22b-2507",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 9e-08,
+      "output_per_token": 3.6e-07,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openrouter/qwen/qwen3-235b-a22b-2507",
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "openrouter_mistralai_mistral_small_3_2_24b_instruct",
+      "model": "openrouter/mistralai/mistral-small-3.2-24b-instruct",
+      "provider": "openrouter",
+      "upstream_model": "mistralai/mistral-small-3.2-24b-instruct",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 9e-08,
+      "output_per_token": 2.7e-07,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openrouter/mistralai/mistral-small-3.2-24b-instruct",
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "openrouter_openai_gpt_4o_mini",
+      "model": "openrouter/openai/gpt-4o-mini",
+      "provider": "openrouter",
+      "upstream_model": "openai/gpt-4o-mini",
+      "account_id": "primary",
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1.5e-07,
+      "output_per_token": 6e-07,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openrouter/openai/gpt-4o-mini",
+      "api_base": "https://openrouter.ai/api",
+      "chat_path": "/v1/chat/completions",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "kilo_stepfun_step_3_7_flash_free",
+      "model": "kilo/stepfun/step-3.7-flash:free",
+      "provider": "kilo",
+      "upstream_model": "stepfun/step-3.7-flash:free",
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 100000,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openai/stepfun/step-3.7-flash:free",
+      "api_base": "https://api.kilo.ai/api/gateway",
+      "chat_path": "/chat/completions",
+      "api_key_env": "KILO_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
+      "model": "kilo/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "provider": "kilo",
+      "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 100000,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openai/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "api_base": "https://api.kilo.ai/api/gateway",
+      "chat_path": "/chat/completions",
+      "api_key_env": "KILO_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "opencode_deepseek_v4_flash_free",
+      "model": "opencode/deepseek-v4-flash-free",
+      "provider": "opencode",
+      "upstream_model": "deepseek-v4-flash-free",
+      "account_id": "primary",
+      "rpm": 30,
+      "rpd": 500,
+      "tpm": 250000,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openai/deepseek-v4-flash-free",
+      "api_base": "https://opencode.ai/zen/v1",
+      "chat_path": "/chat/completions",
+      "api_key_env": "OPENCODE_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "opencode_mimo_v2_5_free",
+      "model": "opencode/mimo-v2.5-free",
+      "provider": "opencode",
+      "upstream_model": "mimo-v2.5-free",
+      "account_id": "primary",
+      "rpm": 30,
+      "rpd": 500,
+      "tpm": 100000,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openai/mimo-v2.5-free",
+      "api_base": "https://opencode.ai/zen/v1",
+      "chat_path": "/chat/completions",
+      "api_key_env": "OPENCODE_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "opencode_longcat_2_0_free",
+      "model": "opencode/longcat-2.0-free",
+      "provider": "opencode",
+      "upstream_model": "longcat-2.0-free",
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 100000,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openai/longcat-2.0-free",
+      "api_base": "https://opencode.ai/zen/v1",
+      "chat_path": "/chat/completions",
+      "api_key_env": "OPENCODE_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "opencode_nemotron_3_ultra_free",
+      "model": "opencode/nemotron-3-ultra-free",
+      "provider": "opencode",
+      "upstream_model": "nemotron-3-ultra-free",
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 100000,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openai/nemotron-3-ultra-free",
+      "api_base": "https://opencode.ai/zen/v1",
+      "chat_path": "/chat/completions",
+      "api_key_env": "OPENCODE_API_KEY",
+      "reset_timezone": "UTC"
+    }
+  ]
+}

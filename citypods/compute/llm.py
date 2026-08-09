@@ -38,7 +38,8 @@ from citypods.compute.llm_budget import (
 from citypods.compute.llm_deferred import look_up_deferred, write_deferred
 from citypods.compute.llm_policy import (
     DEFAULT_OUTPUT_TOKEN_MARGIN,
-    ROUTES,
+    ROUTE_CANDIDATES,
+    ROUTE_REGISTRY,
     DeferredLLMRequest,
     LLMRequestPolicy,
     estimate_tokens,
@@ -85,24 +86,7 @@ TASK_PROMPTS: dict[Task, str] = {
     ),
 }
 
-SUPPORTED_MODELS = frozenset(
-    {
-        "gemini/gemini-3-flash-preview",
-        "gemini/gemini-3.1-flash-lite",
-        "gemini/gemini-3.5-flash-lite",
-        "deepseek/deepseek-v4-flash",
-        "deepseek/deepseek-v4-pro",
-        "mistral/mistral-large-2512",
-        "mistral/mistral-large-3",
-        "mistral/mistral-medium-2508",
-        "kilo/stepfun/step-3.7-flash:free",
-        "kilo/nvidia/nemotron-3-ultra-550b-a55b:free",
-        "opencode/deepseek-v4-flash-free",
-        "opencode/mimo-v2.5-free",
-        "opencode/longcat-2.0-free",
-        "opencode/nemotron-3-ultra-free",
-    }
-)
+SUPPORTED_MODELS = frozenset(ROUTE_CANDIDATES)
 
 # Fallback backoff when a 429 carries no parseable Retry-After hint.
 _DEFAULT_BLOCK_SECONDS = 60.0
@@ -482,6 +466,8 @@ class LiteLLMBackend(Backend):
         A backend built with both configured (as the deferred-request sweep's is) can select
         freely across every route regardless of which transport backs it.
         """
+        if self.config.mode == "dispatch":
+            return frozenset({"mistral-dispatch", "llm-dispatch"})
         transports = {"direct"}
         if self.config.dispatch_url:
             transports.add("mistral-dispatch")
@@ -545,8 +531,17 @@ class LiteLLMBackend(Backend):
             "json_schema": {"name": model.__name__, "schema": safe_model.model_json_schema()},
         }
 
-    def _provider_options(self, job: InferenceJob, resolved_model: str) -> dict[str, Any]:
+    def _provider_options(
+        self, job: InferenceJob, resolved_model: str, *, route=None
+    ) -> dict[str, Any]:
         options: dict[str, Any] = {"model": resolved_model}
+        if route is not None:
+            if route.api_base:
+                options["api_base"] = route.api_base
+            if route.api_key_env:
+                api_key = os.environ.get(route.api_key_env)
+                if api_key:
+                    options["api_key"] = api_key
         for field in ("temperature", "max_tokens", "tools", "tool_choice"):
             if field in job.inputs:
                 options[field] = job.inputs[field]
@@ -573,6 +568,7 @@ class LiteLLMBackend(Backend):
         resolved_model: str,
         policy: LLMRequestPolicy | None = None,
         estimated_tokens: int | None = None,
+        route=None,
     ) -> dict[str, Any]:
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
         payload: dict[str, Any] = {
@@ -590,11 +586,12 @@ class LiteLLMBackend(Backend):
             payload["allow_paid"] = policy.allow_paid
             payload["allow_batch"] = policy.allow_batch
             payload["submit_next"] = policy.submit_next
+            payload["timeout_class"] = policy.timeout_class
             if policy.deadline_at is not None:
                 payload["deadline_at"] = policy.deadline_at.isoformat()
         if estimated_tokens is not None:
             payload["estimated_tokens"] = estimated_tokens
-        payload.update(self._provider_options(job, resolved_model))
+        payload.update(self._provider_options(job, resolved_model, route=route))
         return payload
 
     def _run_structured_direct(
@@ -603,6 +600,7 @@ class LiteLLMBackend(Backend):
         model: ResponseModel,
         *,
         resolved_model: str,
+        route=None,
         completion: Callable[..., Any] | None = None,
     ) -> JobResult:
         """Dispatch to whichever structured-output path this route actually works with.
@@ -614,13 +612,16 @@ class LiteLLMBackend(Backend):
         completion_fn = completion if completion is not None else self._completion_fn()
         if resolved_model.startswith("gemini/"):
             return self._run_native_structured_direct(
-                job, model, resolved_model=resolved_model, completion=completion_fn
+                job, model, resolved_model=resolved_model, route=route, completion=completion_fn
             )
-        if resolved_model.startswith("deepseek/"):
+        if resolved_model.startswith("deepseek/") or (
+            route is not None and route.model.startswith("deepseek/")
+        ):
             return self._run_native_structured_direct(
                 job,
                 model,
                 resolved_model=resolved_model,
+                route=route,
                 completion=completion_fn,
                 response_format={"type": "json_object"},
             )
@@ -637,7 +638,7 @@ class LiteLLMBackend(Backend):
                 response_model=model,
                 messages=_messages(job),
                 max_retries=1,
-                **self._provider_options(job, resolved_model),
+                **self._provider_options(job, resolved_model, route=route),
             )
         except InstructorRetryException as exc:
             if os.environ.get(_SAFE_DIAGNOSTICS_ENV) == "1":
@@ -672,6 +673,7 @@ class LiteLLMBackend(Backend):
         resolved_model: str,
         completion: Callable[..., Any],
         response_format: Mapping[str, Any] | None = None,
+        route=None,
     ) -> JobResult:
         """Use a provider-native structured response with local validation and one retry.
 
@@ -699,9 +701,11 @@ class LiteLLMBackend(Backend):
         from pydantic import ValidationError
 
         messages = list(_messages(job))
-        if resolved_model.startswith("deepseek/"):
+        if resolved_model.startswith("deepseek/") or (
+            route is not None and route.model.startswith("deepseek/")
+        ):
             messages = _messages_with_schema(messages, model)
-        options = self._provider_options(job, resolved_model)
+        options = self._provider_options(job, resolved_model, route=route)
         response_format = response_format or self._gemini_response_format(model)
         failed_attempts: list[_FailedAttempt] = []
         first_attempt_usage: Any = None
@@ -867,7 +871,10 @@ class LiteLLMBackend(Backend):
         something already submitted."""
         available_transports = self._available_transports()
         if policy.require_direct:
-            available_transports = available_transports & {"direct"}
+            # ``require_direct`` is an explicit capability override for GH Actions callers.  It
+            # remains valid even when the backend's normal mode is dispatch; absent this opt-in,
+            # dispatch mode never silently calls a provider key from the runner.
+            available_transports = frozenset({"direct"})
         # Instructor's `max_retries=1` (see `_run_structured_direct`) can send up to two real
         # provider requests for one logical dispatch. Reserve the worst case up front so RPM/RPD/
         # TPM can never be breached even when both attempts happen; settling afterwards to the
@@ -878,7 +885,7 @@ class LiteLLMBackend(Backend):
             self.storage,
             job.recipe_hash,
             policy,
-            routes=ROUTES,
+            routes=ROUTE_REGISTRY,
             available_transports=available_transports,
             estimated_tokens=per_attempt_tokens * max_provider_attempts,
             requests=max_provider_attempts,
@@ -944,14 +951,11 @@ class LiteLLMBackend(Backend):
         # `recipe_hash` into one reservation. Reading the same resolved value here, rather than
         # recomputing it, makes the two impossible to disagree.
         #
-        # A route that offers *only* dispatch transports (Mistral -- no direct route exists at
-        # all) always dispatches: there is no alternative. A route that also offers `direct`
-        # (today only Gemini) dispatches only when the caller explicitly opted in via
-        # `allow_dispatch_overflow` -- direct is otherwise always preferred, restoring
-        # review/33 §7's "Gemini needs no Worker" decision as the default (see review/41 for the
-        # incident this fixes: any caller whose backend had `dispatch_url` configured at all used
-        # to silently route Gemini through the Worker instead of calling it directly).
+        # Every compiled route offers both transports. Direct is preferred for a direct-capable
+        # runner; dispatch mode selects the Worker, and `allow_dispatch_overflow` explicitly opts
+        # a direct-capable runner into the Worker to reach its independent provider/account pool.
         is_dispatch = selection.transport in {"mistral-dispatch", "llm-dispatch"}
+        direct_model = route.direct_model or resolved_model
         try:
             if not is_dispatch:
                 if structured:
@@ -966,7 +970,8 @@ class LiteLLMBackend(Backend):
                     result = self._run_structured_direct(
                         job,
                         structured[1],
-                        resolved_model=resolved_model,
+                        resolved_model=direct_model,
+                        route=route,
                         completion=guarded_completion,
                     )
                 else:
@@ -977,7 +982,7 @@ class LiteLLMBackend(Backend):
                     # Passing `policy=policy` on this branch was a real bug (CodeRabbit,
                     # review/41): those keys reached `completion_fn(**payload)` on every direct
                     # policy-bearing call.
-                    payload = self._payload(job, resolved_model=resolved_model)
+                    payload = self._payload(job, resolved_model=direct_model, route=route)
                     completion_fn = self._completion_fn()
                     attempted = True
                     attempted_requests += 1
@@ -1027,9 +1032,8 @@ class LiteLLMBackend(Backend):
                     # Deliberately not settled here: the reservation stays inflight until
                     # `reconcile()` observes the Worker's terminal response and can settle it to
                     # actual usage (see `reconcile()`). A job whose handle is never reconciled
-                    # leaves a stale inflight entry -- harmless today since no configured route
-                    # declares `concurrency` (nothing checks `inflight_count`), but a real reap
-                    # mechanism (mirroring H17's lease reap) would be needed before that changes.
+                    # leaves an inflight entry until the reservation expiry is reaped. The shared
+                    # ledger's expiry is what keeps concurrency-only routes from being stuck.
                     return JobHandle(
                         task=job.task,
                         recipe_hash=job.recipe_hash,
@@ -1038,6 +1042,7 @@ class LiteLLMBackend(Backend):
                         structured_output=structured_name,
                         model=resolved_model,
                         owner=owner,
+                        route_id=route.route_id or None,
                         input_per_token=route.pricing.input_per_token,
                         output_per_token=route.pricing.output_per_token,
                         attempted_requests=attempted_requests,
@@ -1060,6 +1065,13 @@ class LiteLLMBackend(Backend):
             input_per_token=route.pricing.input_per_token,
             output_per_token=route.pricing.output_per_token,
         )
+        if result.model != resolved_model:
+            result = JobResult(
+                task=result.task,
+                recipe_hash=result.recipe_hash,
+                output=result.output,
+                model=resolved_model,
+            )
         settle_route_reservation(
             self.storage,
             owner,
@@ -1145,7 +1157,7 @@ class LiteLLMBackend(Backend):
         per_attempt_tokens = estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN
         return select_route(
             policy,
-            routes=ROUTES,
+            routes=ROUTE_REGISTRY,
             ledger=ledger,
             available_transports=self._available_transports(),
             estimated_tokens=per_attempt_tokens * max_provider_attempts,
@@ -1177,11 +1189,21 @@ class LiteLLMBackend(Backend):
         metadata (the returned ``model`` field is new, additive, and asserted by no pre-R13
         test)."""
         if self.config.mode == "direct":
+            route = (ROUTE_CANDIDATES.get(self.config.model) or (None,))[0]
+            direct_model = route.direct_model if route is not None else self.config.model
             if structured:
-                return self._run_structured_direct(
-                    job, structured[1], resolved_model=self.config.model
+                result = self._run_structured_direct(
+                    job, structured[1], resolved_model=direct_model, route=route
                 )
-            response = self._completion_fn()(**self._payload(job, resolved_model=self.config.model))
+                return JobResult(
+                    task=result.task,
+                    recipe_hash=result.recipe_hash,
+                    output=result.output,
+                    model=self.config.model,
+                )
+            response = self._completion_fn()(
+                **self._payload(job, resolved_model=direct_model, route=route)
+            )
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
@@ -1277,43 +1299,55 @@ class LiteLLMBackend(Backend):
                             isinstance(last_err, dict)
                             and last_err.get("code") == "upstream_timeout"
                         ):
-                            dur = last_err.get("duration_seconds", 720)
+                            dur = last_err.get("duration_seconds")
+                            dur_label = (
+                                f"{dur}s" if isinstance(dur, (int, float)) else "unknown duration"
+                            )
                             attempts = body.get("attempts", 1)
+                            attempts_label = (
+                                str(attempts) if isinstance(attempts, int) else "unknown"
+                            )
                             route_id = last_err.get("route_id", "unknown")
                             avail = body.get("available_at", "soon")
                             warn_msg = (
                                 f"::warning title=LLM Upstream Timeout Warning::"
                                 f"Request {handle.ref} for model '{handle.model}' timed out "
-                                f"after {dur}s on route '{route_id}' (attempt {attempts}). "
+                                f"after {dur_label} on route '{route_id}' "
+                                f"(attempt {attempts_label}). "
                                 f"Next retry at {avail}."
                             )
                             print(warn_msg)
-                except Exception:
+                except (AttributeError, TypeError, ValueError):
                     pass
                 return None
             if response.status_code != 200:
                 err_code = "unknown"
-                err_msg = ""
                 try:
                     err_json = response.json().get("error", {})
-                    err_code = err_json.get("code", "unknown")
-                    err_msg = err_json.get("message", "")
+                    if isinstance(err_json, Mapping):
+                        err_code = str(err_json.get("code", "unknown"))
                     if err_code == "upstream_timeout":
-                        dur = err_json.get("duration_seconds", 720)
-                        attempts = err_json.get("attempts", 5)
+                        dur = err_json.get("duration_seconds")
+                        dur_label = (
+                            f"{dur}s" if isinstance(dur, (int, float)) else "unknown duration"
+                        )
+                        attempts = err_json.get("attempts")
+                        attempts_label = str(attempts) if isinstance(attempts, int) else "unknown"
                         route_id = err_json.get("route_id", "unknown")
                         err_annotation = (
                             f"::error title=LLM Terminal Timeout Failure::"
                             f"Request {handle.ref} for model '{handle.model}' failed permanently "
-                            f"after {attempts} attempts exceeding {dur}s timeout "
+                            f"after {attempts_label} attempts exceeding {dur_label} timeout "
                             f"on route '{route_id}'."
                         )
                         print(err_annotation)
-                except Exception:
+                except (AttributeError, TypeError, ValueError):
                     pass
                 msg = f"LLM dispatch poll returned HTTP {response.status_code}"
-                if err_msg:
-                    msg += f": {err_msg}"
+                if err_code != "unknown":
+                    msg += f" ({err_code})"
+                if err_code == "upstream_timeout":
+                    msg += f" timed out after {dur_label}"
                 raise LLMBackendError(msg)
             try:
                 result = self._completed_dispatch_result(
@@ -1341,7 +1375,11 @@ class LiteLLMBackend(Backend):
         # the job's entire lifetime. A handle from `_run_without_policy` has no `owner` and is a
         # no-op here, unchanged from the pre-R13 behavior.
         if handle.owner is not None and handle.model is not None and self.storage is not None:
-            route = ROUTES.get(handle.model)
+            route = (
+                ROUTE_REGISTRY.get(handle.route_id)
+                if handle.route_id
+                else (ROUTE_CANDIDATES.get(handle.model) or (None,))[0]
+            )
             if route is not None and getattr(self.storage, "cas_capable", False):
                 # Price against the rate captured on the handle at reservation time, not
                 # whatever `ROUTES` says right now -- config can change between a dispatch and

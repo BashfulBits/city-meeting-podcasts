@@ -11,10 +11,14 @@ const DEFAULT_PROCESSING_TIMEOUT_SECONDS = 20 * 60;
 const DEFAULT_RETRY_BASE_SECONDS = 60;
 const DEFAULT_RETRY_MAX_SECONDS = 60 * 60;
 // Large-context & reasoning LLM calls (DeepSeek 1M, Gemini 1M, Mistral 256k) can take several minutes.
-// Wall-clock timeouts are scaled for multi-minute generation:
-// 12-minute upstream fetch timeout, 14-minute cron distributed lease lock, 12.5-minute execution loop.
+// Wall-clock timeouts are scaled for multi-minute generation.  Fast requests use a short lane so
+// scheduled invocations drain backlog first; long-context requests get the larger bounded lane.
 const DEFAULT_LEASE_DURATION_SECONDS = 14 * 60; // 840s
 const DEFAULT_UPSTREAM_TIMEOUT_SECONDS = 12 * 60; // 720s
+const DEFAULT_FAST_UPSTREAM_TIMEOUT_SECONDS = 90;
+// Keep enough wall-clock margin to persist terminal records and release reservations while still
+// allowing the 12-minute long lane inside the 12.5-minute invocation deadline.
+const DEFAULT_FINALIZATION_RESERVE_SECONDS = 20;
 const DEFAULT_MAX_EXECUTION_SECONDS = 12.5 * 60; // 750s
 const DEFAULT_BATCH_CONCURRENCY = 4;
 const DEFAULT_MAX_TOTAL_REQUESTS = 16;
@@ -98,7 +102,7 @@ function config(env) {
   const upstreamModel = requiredString(env.UPSTREAM_MODEL, "UPSTREAM_MODEL");
   const model = String(env.MODEL_ID || `${provider}/${modelName(upstreamModel)}`).trim();
 
-  return {
+  const result = {
     provider,
     model,
     upstreamModel,
@@ -135,6 +139,13 @@ function config(env) {
     ),
     ...leaseAndTimeoutConfig(env),
   };
+  if (result.maxExecutionSeconds >= result.leaseDurationSeconds) {
+    throw new Error(
+      `MAX_EXECUTION_SECONDS (${result.maxExecutionSeconds}) must be less than ` +
+        `LEASE_DURATION_SECONDS (${result.leaseDurationSeconds})`,
+    );
+  }
+  return result;
 }
 
 function leaseAndTimeoutConfig(env) {
@@ -146,13 +157,32 @@ function leaseAndTimeoutConfig(env) {
     env.UPSTREAM_TIMEOUT_SECONDS,
     DEFAULT_UPSTREAM_TIMEOUT_SECONDS,
   );
+  const fastUpstreamTimeoutSeconds = positiveNumber(
+    env.FAST_UPSTREAM_TIMEOUT_SECONDS,
+    DEFAULT_FAST_UPSTREAM_TIMEOUT_SECONDS,
+  );
+  const finalizationReserveSeconds = positiveNumber(
+    env.FINALIZATION_RESERVE_SECONDS,
+    DEFAULT_FINALIZATION_RESERVE_SECONDS,
+  );
   if (upstreamTimeoutSeconds >= leaseDurationSeconds) {
     throw new Error(
       `UPSTREAM_TIMEOUT_SECONDS (${upstreamTimeoutSeconds}) must be less than ` +
         `LEASE_DURATION_SECONDS (${leaseDurationSeconds})`,
     );
   }
-  return { leaseDurationSeconds, upstreamTimeoutSeconds };
+  if (fastUpstreamTimeoutSeconds >= upstreamTimeoutSeconds) {
+    throw new Error(
+      `FAST_UPSTREAM_TIMEOUT_SECONDS (${fastUpstreamTimeoutSeconds}) must be less than ` +
+        `UPSTREAM_TIMEOUT_SECONDS (${upstreamTimeoutSeconds})`,
+    );
+  }
+  return {
+    leaseDurationSeconds,
+    upstreamTimeoutSeconds,
+    fastUpstreamTimeoutSeconds,
+    finalizationReserveSeconds,
+  };
 }
 
 async function hasValidBearer(request, env) {
@@ -336,6 +366,9 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
   if (body.allow_batch !== undefined) policy.allow_batch = Boolean(body.allow_batch);
   if (body.submit_next !== undefined) policy.submit_next = Boolean(body.submit_next);
   if (typeof body.deadline_at === "string") policy.deadline_at = body.deadline_at;
+  if (body.timeout_class === "long" || body.timeout_class === "fast") {
+    policy.timeout_class = body.timeout_class;
+  }
   if (typeof body.estimated_tokens === "number" && body.estimated_tokens > 0) {
     policy.estimated_tokens = Math.floor(body.estimated_tokens);
   }
@@ -390,7 +423,14 @@ async function enqueue(bucket, normalized, cfg, now = new Date(), idempotencyKey
   if (!putResult) {
     const fresh = await getJson(bucket, key);
     if (fresh && fresh.value) {
-      return fresh.value;
+      const stored = fresh.value;
+      const sameModel = stored.model === normalized.model;
+      const sameRequest = JSON.stringify(stored.request) === JSON.stringify(normalized.request);
+      const samePolicy = JSON.stringify(stored.policy || {}) === JSON.stringify(normalized.policy || {});
+      if (!sameModel || !sameRequest || !samePolicy) {
+        throw new HttpError(409, "idempotency key collision with different payload or policy");
+      }
+      return stored;
     }
     throw new HttpError(503, "could not persist queued request");
   }
@@ -503,6 +543,25 @@ async function releaseCronLease(bucket, owner) {
   }
 }
 
+async function renewCronLease(bucket, now, owner, leaseDurationSeconds) {
+  const current = await getJson(bucket, CRON_LOCK_KEY);
+  if (!current || current.value?.owner !== owner) {
+    return false;
+  }
+  const renewed = {
+    ...current.value,
+    renewed_at: now.toISOString(),
+    expires_at: new Date(now.getTime() + leaseDurationSeconds * 1000).toISOString(),
+  };
+  try {
+    return Boolean(
+      await putJson(bucket, CRON_LOCK_KEY, renewed, { etagMatches: current.etag }),
+    );
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Per-route/per-account ledger (`state/dispatch_budget.json`)
 // ---------------------------------------------------------------------------------------------
@@ -572,7 +631,15 @@ function ledgerEntry(budget, routeId) {
       requests_day: 0,
       requests_day_key: "",
       blocked_until: null,
+      cost_used: 0,
+      cost_cycle_key: "",
+      cost_day_used: 0,
+      cost_day_key: "",
+      inflight: {},
     };
+  } else if (!budget.routes[routeId].inflight) {
+    // Preserve ledgers written by older Worker versions and by the Python CAS ledger.
+    budget.routes[routeId].inflight = {};
   }
   return budget.routes[routeId];
 }
@@ -593,11 +660,17 @@ function rollLedgerWindows(entry, route, now) {
   }
 }
 
-function routeAvailable(entry, route, { requests, tokens }, now) {
-  if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
-    return false;
+function reapExpiredInflight(entry, now) {
+  for (const [owner, reservation] of Object.entries(entry.inflight || {})) {
+    if (reservation?.expires_at && parseTime(reservation.expires_at) <= now.getTime()) {
+      delete entry.inflight[owner];
+    }
   }
-  if (!route.free && route.rpm == null && route.rpd == null && route.tpm == null) {
+}
+
+function routeAvailable(entry, route, { requests, tokens }, now) {
+  reapExpiredInflight(entry, now);
+  if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
     return false;
   }
   if (route.rpm != null && entry.requests_minute + requests > route.rpm) {
@@ -609,15 +682,63 @@ function routeAvailable(entry, route, { requests, tokens }, now) {
   if (route.tpm != null && entry.tokens_minute + tokens > route.tpm) {
     return false;
   }
+  if (
+    route.concurrency != null &&
+    Object.keys(entry.inflight || {}).length + requests > route.concurrency
+  ) {
+    return false;
+  }
   return true;
 }
 
-function reserveRouteCapacity(entry, route, { requests, tokens }) {
+function reserveRouteCapacity(
+  entry,
+  route,
+  { requests, tokens },
+  { owner = null, reservedAt = null, expiresAt = null } = {},
+) {
   entry.requests_minute += requests;
   entry.tokens_minute += tokens;
   if (route.rpd != null) {
     entry.requests_day += requests;
   }
+  if (owner) {
+    entry.inflight[owner] = {
+      requests,
+      tokens,
+      cost: 0,
+      reserved_at: reservedAt,
+      expires_at: expiresAt,
+    };
+  }
+}
+
+async function releaseRouteReservation(bucket, routeId, owner) {
+  if (!owner) return true;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const loaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
+    if (!loaded?.value) return true;
+    const budget = loaded.value;
+    const entry = ledgerEntry(budget, routeId);
+    if (!entry.inflight?.[owner]) return true;
+    delete entry.inflight[owner];
+    try {
+      if (
+        await putJson(bucket, DISPATCH_BUDGET_KEY, budget, { etagMatches: loaded.etag })
+      ) {
+        return true;
+      }
+    } catch {
+      // Retry after a sibling's CAS update.
+    }
+  }
+  return false;
+}
+
+function timeoutSecondsForRecord(record, cfg) {
+  return record?.policy?.timeout_class === "long"
+    ? cfg.upstreamTimeoutSeconds
+    : cfg.fastUpstreamTimeoutSeconds;
 }
 
 function nextRouteReset(entry, route, now) {
@@ -765,6 +886,7 @@ async function dispatchBatch(
   now = new Date(),
   maxBatch = DEFAULT_BATCH_CONCURRENCY,
   externalLeaseOwner = null,
+  runDeadlineMs = null,
 ) {
   const bucket = env.LLM_QUEUE;
   if (!bucket) {
@@ -829,16 +951,20 @@ async function dispatchBatch(
       const pA = a.record.policy?.submit_next ? 0 : 1;
       const pB = b.record.policy?.submit_next ? 0 : 1;
       if (pA !== pB) return pA - pB;
+      const tA = a.record.policy?.timeout_class === "long" ? 1 : 0;
+      const tB = b.record.policy?.timeout_class === "long" ? 1 : 0;
+      if (tA !== tB) return tA - tB;
       return parseTime(a.record.created_at) - parseTime(b.record.created_at);
     });
 
     let budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
-    let budget = (budgetLoaded && budgetLoaded.value) || { routes: {} };
+    let budget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
 
     // Select candidates up to maxBatch with stacked in-memory ledger reservations
     const candidatesToDispatch = [];
     const batchFailures = [];
     let lastRequeuedId = null;
+    let deadlineGuarded = false;
 
     for (const claimed of claimable) {
       if (candidatesToDispatch.length >= maxBatch) break;
@@ -860,6 +986,16 @@ async function dispatchBatch(
       }
 
       const { chosenRoute } = selection;
+      const timeoutSeconds = timeoutSecondsForRecord(claimed.record, cfg);
+      if (
+        runDeadlineMs != null &&
+        Date.now() + (timeoutSeconds + cfg.finalizationReserveSeconds) * 1000 > runDeadlineMs
+      ) {
+        await requeue(bucket, claimed, now);
+        lastRequeuedId = claimed.record.id;
+        deadlineGuarded = true;
+        continue;
+      }
       let creds;
       try {
         creds = resolveProviderCredentials(env, chosenRoute);
@@ -889,7 +1025,14 @@ async function dispatchBatch(
         continue;
       }
 
-      reserveRouteCapacity(entry, chosenRoute, reservationSize);
+      const reservationOwner = claimed.record.id;
+      reserveRouteCapacity(entry, chosenRoute, reservationSize, {
+        owner: reservationOwner,
+        reservedAt: now.toISOString(),
+        expiresAt: new Date(
+          runDeadlineMs || now.getTime() + timeoutSeconds * 1000,
+        ).toISOString(),
+      });
       claimed.record.attempts = (claimed.record.attempts || 0) + 1;
       claimed.record.processing_started_at = now.toISOString();
 
@@ -898,6 +1041,8 @@ async function dispatchBatch(
         chosenRoute,
         creds,
         reservationSize,
+        reservationOwner,
+        timeoutSeconds,
       });
     }
 
@@ -911,20 +1056,36 @@ async function dispatchBatch(
           results: batchFailures,
         };
       }
-      return { status: "no_capacity", count: 0, requestId: lastRequeuedId };
+      return {
+        status: deadlineGuarded ? "deadline_guard" : "no_capacity",
+        count: 0,
+        requestId: lastRequeuedId,
+      };
     }
 
     // Atomic CAS write of the combined budget reservations
     let ledgerSaved = false;
+    let freshCapacityFailed = false;
     for (let attempt = 0; attempt < 3 && !ledgerSaved; attempt += 1) {
       if (attempt > 0) {
         budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
-        const freshBudget = (budgetLoaded && budgetLoaded.value) || { routes: {} };
+        const freshBudget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
         for (const item of candidatesToDispatch) {
           const entry = ledgerEntry(freshBudget, item.chosenRoute.route_id);
           rollLedgerWindows(entry, item.chosenRoute, now);
-          reserveRouteCapacity(entry, item.chosenRoute, item.reservationSize);
+          if (!routeAvailable(entry, item.chosenRoute, item.reservationSize, now)) {
+            freshCapacityFailed = true;
+            break;
+          }
+          reserveRouteCapacity(entry, item.chosenRoute, item.reservationSize, {
+            owner: item.reservationOwner,
+            reservedAt: now.toISOString(),
+            expiresAt: new Date(
+              runDeadlineMs || now.getTime() + item.timeoutSeconds * 1000,
+            ).toISOString(),
+          });
         }
+        if (freshCapacityFailed) break;
         budget = freshBudget;
       }
       ledgerSaved = Boolean(
@@ -951,9 +1112,10 @@ async function dispatchBatch(
       };
     }
 
-    // Execute batch concurrently with Promise.all
-    const results = await Promise.all(
-      candidatesToDispatch.map(async ({ claimed, chosenRoute, creds }) => {
+    // Execute batch concurrently, retaining every sibling outcome.  One unexpected task/write
+    // rejection must not discard successful results or leave its sibling reservations inflight.
+    const settled = await Promise.allSettled(
+      candidatesToDispatch.map(async ({ claimed, chosenRoute, creds, timeoutSeconds }) => {
         const upstreamPayload = {
           ...claimed.record.request,
           model: creds.upstreamModel,
@@ -972,20 +1134,20 @@ async function dispatchBatch(
             headers,
             body: JSON.stringify(upstreamPayload),
             redirect: "manual",
-            signal: AbortSignal.timeout(cfg.upstreamTimeoutSeconds * 1000),
+            signal: AbortSignal.timeout(timeoutSeconds * 1000),
           });
         } catch (err) {
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
           const isTimeout =
             err?.name === "TimeoutError" ||
             err?.name === "AbortError" ||
-            elapsedSec >= cfg.upstreamTimeoutSeconds;
+            elapsedSec >= timeoutSeconds;
           const code = isTimeout ? "upstream_timeout" : "upstream_unreachable";
           const errorDetail = {
             code,
             message: isTimeout
-              ? `Upstream LLM provider timed out after ${cfg.upstreamTimeoutSeconds}s without completing response`
-              : err?.message || "upstream_unreachable",
+              ? `Upstream LLM provider timed out after ${timeoutSeconds}s without completing response`
+              : "upstream request failed before a response was received",
             model: chosenRoute.model,
             route_id: chosenRoute.route_id,
             duration_seconds: elapsedSec,
@@ -1075,6 +1237,38 @@ async function dispatchBatch(
         };
       }),
     );
+
+    const results = [];
+    for (let index = 0; index < settled.length; index += 1) {
+      const outcome = settled[index];
+      const item = candidatesToDispatch[index];
+      await releaseRouteReservation(
+        bucket,
+        item.chosenRoute.route_id,
+        item.reservationOwner,
+      );
+      if (outcome.status === "fulfilled") {
+        results.push(outcome.value);
+        continue;
+      }
+      console.error(
+        JSON.stringify({
+          event: "llm_dispatch_task_error",
+          request_id: item.claimed.record.id,
+          error: outcome.reason?.name || "Error",
+        }),
+      );
+      try {
+        await saveFailure(bucket, item.claimed, 500, now, "worker_task_failed");
+      } catch {
+        // The request remains recoverable by the processing-timeout reaper if this write races.
+      }
+      results.push({
+        status: "failed",
+        requestId: item.claimed.record.id,
+        reason: "worker_task_failed",
+      });
+    }
 
     const completedCount = results.filter((r) => r.status === "completed").length;
     return {
@@ -1254,7 +1448,14 @@ export default {
     if (!bucket) return;
     const cfg = config(env);
     const startMs = Date.now();
-    const deadlineMs = startMs + cfg.maxExecutionSeconds * 1000;
+    // The run may start near a lease boundary.  All work, including final R2 writes and the
+    // reservation-slot cleanup, must fit before the earlier of the configured execution budget
+    // and the current lease expiry.  A later iteration renews the lease, but never extends this
+    // invocation's own execution deadline.
+    const deadlineMs = Math.min(
+      startMs + cfg.maxExecutionSeconds * 1000,
+      startMs + cfg.leaseDurationSeconds * 1000,
+    );
     const leaseOwner = crypto.randomUUID();
     const acquiredLock = await acquireCronLease(
       bucket,
@@ -1270,7 +1471,17 @@ export default {
     let totalDispatched = 0;
     try {
       while (Date.now() < deadlineMs && totalDispatched < cfg.maxTotalRequests) {
-        if (deadlineMs - Date.now() < 60_000) {
+        if (deadlineMs - Date.now() < (cfg.fastUpstreamTimeoutSeconds + cfg.finalizationReserveSeconds) * 1000) {
+          break;
+        }
+        const renewed = await renewCronLease(
+          bucket,
+          new Date(),
+          leaseOwner,
+          cfg.leaseDurationSeconds,
+        );
+        if (!renewed) {
+          console.error(JSON.stringify({ event: "llm_dispatch", status: "lease_lost" }));
           break;
         }
         const now = new Date();
@@ -1280,10 +1491,12 @@ export default {
           now,
           cfg.batchConcurrency,
           leaseOwner,
+          deadlineMs,
         );
         if (
           batchResult.status === "idle" ||
           batchResult.status === "no_capacity" ||
+          batchResult.status === "deadline_guard" ||
           batchResult.count === 0
         ) {
           console.log(
@@ -1326,6 +1539,7 @@ export {
   normalizeChatRequest,
   rankRoutes,
   releaseCronLease,
+  renewCronLease,
   requestKey,
   resolveProviderCredentials,
   routeAvailable,

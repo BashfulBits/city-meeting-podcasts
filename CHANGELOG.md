@@ -43,8 +43,8 @@ Phase R (Research-Tool Surface)._
     become unreachable post-deploy, which is already documented as loss-tolerant (review/33 §10.4/§10.6).
 
 - **Multi-provider dispatch follow-up corrections** (same PR, review pass):
-  - Worker `routeAvailable` now fails closed for paid routes declaring only `concurrency` and no
-    `rpm`/`rpd`/`tpm`, preventing unmetered DeepSeek dispatches.
+  - Worker `routeAvailable` now supports paid routes declaring only `concurrency` and enforces
+    their `inflight` slots; concurrency reservations are released with CAS after each task.
   - `delete_dispatched_ref` now normalises path-style refs (`/v1/requests/chatcmpl-…`) and full URLs,
     not just bare `chatcmpl-…` IDs — handles store the `location` header, which is always a path.
   - Worker CAS-retry loop re-checks `routeAvailable` against the freshly loaded ledger before
@@ -56,6 +56,18 @@ Phase R (Research-Tool Surface)._
   - `select_and_reserve` guards against returning a `None` transport when reusing an in-flight
     reservation whose dispatch transport has been removed from the backend config.
   - Deploy workflow gains a `dispatch_limits.json` drift check to catch uncommitted recompilations.
+
+- **Direct provider catalog and bounded dispatch execution.** The provider-limits compiler now emits
+  the Python LiteLLM route catalog as well as the Worker catalog: all 52 physical account routes are
+  deduplicated into 37 logical models, each with direct and dispatch transports, direct LiteLLM
+  selector/base/key metadata, and a physical `route_id`. Python and the Worker use the same
+  versioned `routes[route_id]` ledger shape, including optional cost and `inflight` fields, so a
+  future shared R2/B2 CAS ledger does not require a format migration. The Worker now renews its cron
+  lease with CAS, computes an effective run deadline with a 20-second finalization reserve, prioritizes fast
+  requests, bounds long-context requests to the long lane, reaps expired reservations, retains all
+  sibling task outcomes with `Promise.allSettled`, and sanitizes upstream error details. **Backfill:**
+  no catalog/artifact invalidation; existing ephemeral ledgers with logical keys remain readable,
+  while new reservations use physical route IDs.
 
 ### Fixed
 

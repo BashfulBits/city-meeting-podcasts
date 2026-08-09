@@ -28,6 +28,8 @@ class LLMReservation:
     day_key: str = ""
     cost_cycle_key: str = ""
     cost_day_key: str = ""
+    reserved_at: str = ""
+    expires_at: str = ""
 
 
 @dataclass
@@ -58,8 +60,24 @@ class RouteLedger:
 class LLMBudget:
     routes: dict[str, RouteLedger] = field(default_factory=dict)
 
+    @staticmethod
+    def route_key(model: str, route: LLMRoute) -> str:
+        """Physical route key shared with the Worker ledger; old hand-built routes use model."""
+        return route.route_id or model
+
     def _ledger(self, model: str, now: datetime, *, route: LLMRoute) -> RouteLedger:
-        led = self.routes.setdefault(model, RouteLedger())
+        physical_key = self.route_key(model, route)
+        # A prior Python ledger used logical model names before the provider/account catalog
+        # gained physical route IDs. Promote that one legacy entry in-memory on first access so
+        # old ephemeral state remains usable without maintaining two accounting shapes.
+        legacy_key = route.model
+        if (
+            physical_key != legacy_key
+            and physical_key not in self.routes
+            and legacy_key in self.routes
+        ):
+            self.routes[physical_key] = self.routes.pop(legacy_key)
+        led = self.routes.setdefault(physical_key, RouteLedger())
         mk = minute_key(now)
         if led.requests_minute_key != mk:
             led.requests_minute = 0
@@ -81,6 +99,14 @@ class LLMBudget:
             if led.cost_day_key != cost_day_key:
                 led.cost_day_used = 0.0
                 led.cost_day_key = cost_day_key
+        for owner, reservation in list(led.inflight.items()):
+            if reservation.expires_at:
+                try:
+                    if datetime.fromisoformat(reservation.expires_at) <= now.astimezone(UTC):
+                        del led.inflight[owner]
+                except ValueError:
+                    # A malformed expiry must not make a route permanently unavailable.
+                    del led.inflight[owner]
         return led
 
     def available(
@@ -120,10 +146,11 @@ class LLMBudget:
             led.blocked_until = until.astimezone(UTC).isoformat()
 
     def find_inflight_owner(self, owner: str) -> str | None:
-        """The model ``owner`` currently has a reservation under, if any. A dispatch-mode retry
-        under the same (deterministic, recipe_hash-derived) owner must resolve to the *same*
-        model it originally reserved -- the Worker's own idempotency-key dedup still resolves to
-        that original request regardless of what a fresh selection pass would pick this time."""
+        """The physical route key ``owner`` currently has a reservation under, if any.
+        A dispatch-mode retry under the same (deterministic, recipe_hash-derived) owner must
+        resolve to the *same* model it originally reserved -- the Worker's own idempotency-key
+        dedup still resolves to that original request regardless of what a fresh selection pass
+        would pick this time."""
         for model, ledger in self.routes.items():
             if owner in ledger.inflight:
                 return model
@@ -220,6 +247,7 @@ class LLMBudget:
 
     def to_dict(self) -> dict:
         return {
+            "version": 1,
             "routes": {
                 model: {
                     "cost_used": ledger.cost_used,
@@ -231,7 +259,7 @@ class LLMBudget:
                     "requests_day": ledger.requests_day,
                     "requests_day_key": ledger.requests_day_key,
                     "tokens_minute": ledger.tokens_minute,
-                    "blocked_until": ledger.blocked_until,
+                    "blocked_until": ledger.blocked_until or None,
                     "inflight": {
                         owner: {
                             "cost": reservation.cost,
@@ -241,12 +269,14 @@ class LLMBudget:
                             "day_key": reservation.day_key,
                             "cost_cycle_key": reservation.cost_cycle_key,
                             "cost_day_key": reservation.cost_day_key,
+                            "reserved_at": reservation.reserved_at or None,
+                            "expires_at": reservation.expires_at or None,
                         }
                         for owner, reservation in ledger.inflight.items()
                     },
                 }
                 for model, ledger in self.routes.items()
-            }
+            },
         }
 
     @classmethod
@@ -266,6 +296,8 @@ class LLMBudget:
                         day_key=str(value.get("day_key") or ""),
                         cost_cycle_key=str(value.get("cost_cycle_key") or ""),
                         cost_day_key=str(value.get("cost_day_key") or ""),
+                        reserved_at=str(value.get("reserved_at") or ""),
+                        expires_at=str(value.get("expires_at") or ""),
                     )
             routes[str(model)] = RouteLedger(
                 cost_used=float(raw.get("cost_used", 0.0)),

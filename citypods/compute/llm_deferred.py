@@ -162,6 +162,7 @@ def _serialize_policy(policy: LLMRequestPolicy) -> dict[str, Any]:
         "allow_paid": policy.allow_paid,
         "deadline_at": policy.deadline_at.isoformat() if policy.deadline_at is not None else None,
         "purpose": policy.purpose,
+        "timeout_class": policy.timeout_class,
     }
 
 
@@ -173,6 +174,7 @@ def _deserialize_policy(data: Mapping[str, Any]) -> LLMRequestPolicy:
         allow_paid=bool(data.get("allow_paid", False)),
         deadline_at=datetime.fromisoformat(deadline) if deadline else None,
         purpose=str(data.get("purpose", "")),
+        timeout_class=("fast" if data.get("timeout_class") == "fast" else "long"),
     )
 
 
@@ -193,6 +195,7 @@ def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
         "ref": result.ref,
         "structured_output": result.structured_output,
         "model": result.model,
+        "route_id": result.route_id,
         "owner": result.owner,
         "input_per_token": result.input_per_token,
         "output_per_token": result.output_per_token,
@@ -242,6 +245,7 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                 ref=data.get("ref", ""),
                 structured_output=data.get("structured_output"),
                 model=data.get("model"),
+                route_id=data.get("route_id"),
                 owner=data.get("owner"),
                 input_per_token=data.get("input_per_token"),
                 output_per_token=data.get("output_per_token"),
@@ -553,12 +557,15 @@ def _release_abandoned_reservation(storage, data: Mapping[str, Any], *, now: dat
         return
     try:
         from citypods.compute.llm_budget import release_route_reservation
-        from citypods.compute.llm_policy import ROUTES
+        from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTE_REGISTRY
 
-        route = ROUTES.get(model)
+        route_id = data.get("route_id")
+        route = ROUTE_REGISTRY.get(route_id) if isinstance(route_id, str) else None
+        if route is None:
+            route = next(iter(ROUTE_CANDIDATES.get(model, ())), None)
         if route is None:
             return
-        release_route_reservation(storage, owner, model, route=route, now=now)
+        release_route_reservation(storage, owner, route.route_id or model, route=route, now=now)
     except Exception:  # noqa: BLE001 -- best-effort cleanup must never block pruning
         pass
 

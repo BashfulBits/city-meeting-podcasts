@@ -8,7 +8,7 @@ LiteLLM and multi-provider routes:
 | **Google AI Studio** | `GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY` | [aistudio.google.com](https://aistudio.google.com) | Direct & Dispatch | Gemma 4 26B/31B (29k Free RPD), Gemini 3.5/3.1 Flash Lite (1k Free RPD), Flash Burst |
 | **Groq** | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) | Direct & Dispatch | Llama 3.3 70B (30 RPM / 1,000 Free RPD) |
 | **SambaNova** | `SAMBANOVA_API_KEY` | [cloud.sambanova.ai](https://cloud.sambanova.ai) | Direct & Dispatch | Llama 3.3 70B & Qwen 2.5 72B (20 RPM / 1,000 Free RPD) |
-| **Mistral AI** | `MISTRAL_API_KEY` | [console.mistral.ai](https://console.mistral.ai) | Dispatch (`llm-dispatch`) | Mistral Large, Mistral Small 2603, Codestral, Devstral, Medium (1B Tok/Mo pool) |
+| **Mistral AI** | `MISTRAL_API_KEY` | [console.mistral.ai](https://console.mistral.ai) | Direct & Dispatch | Mistral Large, Mistral Small 2603, Codestral, Devstral, Medium (1B Tok/Mo pool) |
 | **Z.AI (Zhipu AI)** | `ZAI_API_KEY` | [z.ai](https://z.ai) | Direct & Dispatch | GLM-4.7-Flash & GLM-4.5-Flash (15 RPM / 500 Free RPD) |
 | **SiliconFlow** | `SILICONFLOW_API_KEY` | [cloud.siliconflow.cn](https://cloud.siliconflow.cn) | Direct & Dispatch | DeepSeek-V4-Flash ($0.049/M promo) & Qwen 2.5 72B ($0.07/M) |
 | **DeepSeek Direct** | `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com) | Direct & Dispatch | DeepSeek-V4-Flash ($0.14/M base, $0.0028 cache, $0.07 off-peak), DeepSeek-V4-Pro |
@@ -18,9 +18,12 @@ LiteLLM and multi-provider routes:
 
 For the full model evaluation matrix, quality ratings, and recommended task mappings, see the canonical [LLM Model Catalog & Decision Matrix in ARCHITECTURE.md](ARCHITECTURE.md#llm-model-catalog--decision-matrix).
 
-Install the optional dependency with `pip install -e ".[llm]"`. Select a direct route with
-`LLM_MODEL=gemini/gemini-3-flash-preview` and `LLM_MODE=direct`. LiteLLM reads the provider key from the
-matching environment variable; do not put keys in YAML, source, or episode records.
+Install the optional dependency with `pip install -e ".[llm]"`. Select any compiled logical route with
+`LLM_MODEL=gemini/gemini-3-flash-preview` and `LLM_MODE=direct`. Python loads the generated
+`citypods/compute/llm_routes.json` catalog, selects the physical provider/account route, and passes
+its LiteLLM model selector, `api_base`, and environment-keyed credential to LiteLLM; do not put keys
+in YAML, source, or episode records. Re-run `python scripts/compile_llm_limits.py` after changing
+`config/provider_limits.yml`.
 
 For the paced dispatch path (and multi-provider routing), deploy the Worker and set `LLM_MODE=dispatch`,
 `LLM_DISPATCH_URL=https://<worker-domain>`, and `LLM_DISPATCH_AUTH_TOKEN`. The Worker's own provider
@@ -28,9 +31,12 @@ credentials and routing policies are defined in [`config/provider_limits.yml`](c
 compiled into `workers/llm-dispatch-proxy/src/dispatch_limits.json` (review/41). `DISPATCH_AUTH_TOKEN` is a
 plain Worker secret matching the client token.
 
-**A route that also offers `direct` is never automatically sent through the Worker** unless the caller sets
-`LLMRequestPolicy(allow_dispatch_overflow=True)` to reach Worker-only accounts or overflow capacity; otherwise
-it always calls the provider directly.
+`LLM_MODE=direct` calls LiteLLM directly and prefers the direct transport. `LLM_MODE=dispatch` submits
+to the Cloudflare Worker and never relies on runner provider credentials. A direct-capable caller can
+set `LLMRequestPolicy(allow_dispatch_overflow=True)` to reach the Worker’s independent provider/account
+pool; otherwise it remains direct. `ROUTES` is the logical-model view, while the generated physical
+route registry preserves duplicate models across providers and accounts for selection and CAS ledger
+keys.
 
 Account and secret checklist (performed by the maintainer, never pasted into chat or committed):
 

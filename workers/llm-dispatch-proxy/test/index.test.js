@@ -11,6 +11,7 @@ import {
   nextRouteReset,
   rankRoutes,
   releaseCronLease,
+  renewCronLease,
   resolveProviderCredentials,
   routeAvailable,
   selectRoute,
@@ -538,6 +539,25 @@ test("releasing the cron lease only deletes it if the owner still matches", asyn
   assert.equal(await bucket.get("locks/cron.json"), null);
 });
 
+test("renewing the cron lease is owner-checked and CAS-safe", async () => {
+  const bucket = new FakeBucket();
+  const first = new Date("2026-08-06T12:00:00Z");
+  assert.equal(await acquireCronLease(bucket, first, "invocation-a", 30), true);
+
+  const renewed = new Date(first.getTime() + 10_000);
+  assert.equal(await renewCronLease(bucket, renewed, "invocation-a", 30), true);
+  const current = await bucket.get("locks/cron.json");
+  const lease = await current.json();
+  assert.equal(lease.owner, "invocation-a");
+  assert.equal(lease.renewed_at, renewed.toISOString());
+  assert.equal(lease.expires_at, new Date(renewed.getTime() + 30_000).toISOString());
+
+  assert.equal(await renewCronLease(bucket, renewed, "wrong-owner", 30), false);
+  const later = new Date(renewed.getTime() + 31_000);
+  assert.equal(await acquireCronLease(bucket, later, "invocation-b", 30), true);
+  assert.equal(await renewCronLease(bucket, later, "invocation-a", 30), false);
+});
+
 test("GET /v1/queue/estimate reports backlog_count for pending records of the requested model only", async () => {
   const env = isolatedEnv();
   const now = new Date();
@@ -836,19 +856,24 @@ test("credential-resolution failure never touches the ledger, and a persistent l
   assert.equal(posted.count, 0);
 });
 
-test("routeAvailable fails closed for a paid route with only concurrency and no rpm/rpd/tpm", () => {
+test("routeAvailable supports concurrency-only routes and enforces the slot", () => {
   const now = new Date("2026-08-06T12:00:00Z");
   // A paid route declaring only concurrency: no rpm, rpd, or tpm.
   const paidConcurrencyOnly = { free: false, concurrency: 5 };
   const entry = { requests_minute: 0, requests_day: 0, tokens_minute: 0, blocked_until: "" };
+  assert.equal(routeAvailable(entry, paidConcurrencyOnly, { requests: 1, tokens: 10 }, now), true);
+  entry.inflight = Object.fromEntries(
+    Array.from({ length: 5 }, (_, index) => [`existing-${index}`, { requests: 1, tokens: 10 }]),
+  );
   assert.equal(
     routeAvailable(entry, paidConcurrencyOnly, { requests: 1, tokens: 10 }, now),
     false,
-    "paid route with no rpm/rpd/tpm must be rejected (fail-closed)",
+    "a concurrency-only route must reject once all slots are occupied",
   );
 
-  // A free route with no rpm/rpd/tpm should still pass (free routes are not gated).
+  // A free route with no rpm/rpd/tpm should still pass when its slots are empty.
   const freeConcurrencyOnly = { free: true, concurrency: 5 };
+  entry.inflight = {};
   assert.equal(
     routeAvailable(entry, freeConcurrencyOnly, { requests: 1, tokens: 10 }, now),
     true,
@@ -931,6 +956,73 @@ test("dispatchBatch executes multiple requests concurrently in a single batch", 
   }
 });
 
+test("a batch retains sibling success when one task rejects during finalization", async () => {
+  class FinalizationFailureBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.failKey = null;
+    }
+
+    async put(key, value, options = {}) {
+      if (
+        key === this.failKey &&
+        typeof value === "string" &&
+        value.includes('"status":"completed"')
+      ) {
+        throw new Error("injected finalization failure");
+      }
+      return super.put(key, value, options);
+    }
+  }
+
+  const bucket = new FinalizationFailureBucket();
+  const env = { ...ENV, LLM_QUEUE: bucket };
+  for (let i = 0; i < 2; i += 1) {
+    await handleRequest(
+      chatRequest([{ role: "user", content: `sibling ${i}` }], `sibling-${i}`),
+      env,
+    );
+  }
+  bucket.failKey = [...bucket.objects.keys()].find((key) => key.startsWith("requests/"));
+
+  const result = await dispatchBatch(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+    2,
+  );
+  assert.equal(result.status, "completed");
+  assert.deepEqual(
+    result.results.map((item) => item.status).sort(),
+    ["completed", "failed"],
+  );
+  const failed = await bucket.get(bucket.failKey);
+  assert.equal((await failed.json()).status, "failed");
+});
+
+test("deadline guard requeues work that cannot finish with finalization reserve", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "deadline-guard"), env);
+  const body = await queued.json();
+  const calls = [];
+  const now = new Date();
+  const result = await dispatchBatch(
+    env,
+    async () => {
+      calls.push(true);
+      return new Response(JSON.stringify({ choices: [] }), { status: 200 });
+    },
+    now,
+    1,
+    null,
+    now.getTime() + 100_000,
+  );
+  assert.equal(result.status, "deadline_guard");
+  assert.equal(calls.length, 0);
+  const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
+  assert.equal((await stored.json()).status, "pending");
+});
+
 test("upstream LLM timeout tags last_error with upstream_timeout, duration, and route metadata", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(chatRequest(undefined, "timeout-check"), env);
@@ -989,4 +1081,3 @@ test("exhausting retry attempts on timeout fails permanently with upstream_timeo
   assert.equal(record.error?.route_id, "mistral_large_2512_primary");
   assert.match(record.error?.message, /timed out/);
 });
-

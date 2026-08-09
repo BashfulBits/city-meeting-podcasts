@@ -336,17 +336,20 @@ total on `/admin/status`.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
   design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests; a
-  per-minute Cron Trigger claims one ready request with an R2 conditional write, ranks that request's
+  per-minute Cron Trigger claims a bounded batch of ready requests with an R2 conditional write, ranks each request's
   canonical model's candidate routes (free before paid, then cheapest) against a **per-route/per-account
-  ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s minute/day window-key shape),
+  ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s versioned minute/day
+  window, cost, `blocked_until`, and `inflight` shape),
   reserves capacity on the first route with room, resolves that route's own provider config
   (`config/provider_limits.yml` → compiled `dispatch_limits.json`: `api_base`/`chat_path`/account
   `api_key_env`) for the upstream call, and persists either the response or a bounded retry/failure
   state. Multiple accounts of one provider (e.g. `GEMINI_API_KEY`/`GEMINI_API_KEY_SECONDARY`) compile to
   separate `route_id`s with independent ledger entries, so exhausting one account's window rolls
   selection onto the next rather than blocking the model — this is what makes "key rotation" real rather
-  than a first-match static pick. A caller may only dispatch a route that also offers `direct` (today
-  only Gemini) when it explicitly opts in via `LLMRequestPolicy.allow_dispatch_overflow`; the Worker's
+  than a first-match static pick. Every compiled route exposes both direct LiteLLM and Worker
+  transports; `LLM_MODE=direct` is the synchronous GH Actions path, while `LLM_MODE=dispatch` is the
+  asynchronous Worker path. A direct-capable caller may explicitly opt into Worker overflow with
+  `LLMRequestPolicy.allow_dispatch_overflow`; the Worker's
   transport is inherently always-asynchronous, and defaulting to it whenever a backend merely had
   `dispatch_url` configured previously broke city discovery's same-run-completion requirement (review/41
   §incident). The implemented Python LLM backend uses this as its `JobHandle` path; direct provider
@@ -359,11 +362,11 @@ total on `/admin/status`.
 
 ### LLM Model Catalog & Decision Matrix
 
-The pipeline routes LLM jobs across 8 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to `workers/llm-dispatch-proxy/src/dispatch_limits.json`). All models strictly meet or exceed the **Gemma 4 quality floor ($\ge 24\text{B}-123\text{B}+$ parameters)**.
+The pipeline routes LLM jobs across 10 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python `citypods/compute/llm_routes.json`). The generated catalog contains 52 physical provider/account routes representing 37 deduplicated logical models; every route supports direct LiteLLM and asynchronous dispatch. All models strictly meet or exceed the **Gemma 4 quality floor ($\ge 24\text{B}-123\text{B}+$ parameters)**.
 
 | Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Context Window | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
 |---|---|---|---|---|---|---|
-| **`mistral/mistral-large-2512`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B Dense | Mistral AI | 128k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | `llm-dispatch` default | Complex meeting synthesis, policy dispute resolution, high-stakes soundbite selection |
+| **`mistral/mistral-large-2512`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B Dense | Mistral AI | 128k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Direct or dispatch | Complex meeting synthesis, policy dispute resolution, high-stakes soundbite selection |
 | **`mistral/mistral-large-3`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B+ Frontier | Mistral AI | 128k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Available in pool | Frontier civic reasoning, ordinance comparison, multi-speaker attribution |
 | **`mistral/mistral-small-2603`** | ⭐ **Tier 2 (Advanced MoE)**<br>119B MoE (128 experts) | Mistral AI | 256k tokens | 49 RPM<br>50k TPM (1B Mo pool) | Available in pool | Full 3-hour meeting ingestion, narrative chapter summaries, legislative amendments |
 | **`mistral/codestral-2508`** | ⭐ **Tier 2 (Structured Specialist)**<br>22B–32B Dense | Mistral AI | 256k tokens | 124 RPM<br>625k TPM (1B Mo pool) | Available in pool | Strict JSON schema extraction, table/ordinance parsing, agenda crosswalk recovery |

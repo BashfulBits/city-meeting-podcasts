@@ -60,6 +60,48 @@ def test_reserve_settle_and_release_round_trip():
     assert ledger.cost_used == pytest.approx(0.1)
 
 
+def test_serialized_ledger_matches_worker_shape():
+    budget = LLMBudget()
+    budget.reserve("owner", ROUTE.model, route=ROUTE, requests=1, tokens=10, cost=0.1, now=NOW)
+    data = budget.to_dict()
+    entry = data["routes"][ROUTE.model]
+    assert data["version"] == 1
+    assert set(
+        [
+            "requests_minute",
+            "tokens_minute",
+            "requests_minute_key",
+            "requests_day",
+            "requests_day_key",
+            "blocked_until",
+            "inflight",
+        ]
+    ) <= set(entry)
+    assert entry["inflight"]["owner"]["requests"] == 1
+
+
+def test_legacy_logical_ledger_is_promoted_to_the_physical_route_key():
+    route = LLMRoute(
+        model=ROUTE.model,
+        transport=ROUTE.transport,
+        free=ROUTE.free,
+        quota=ROUTE.quota,
+        pricing=ROUTE.pricing,
+        route_id="physical-test-route",
+    )
+    budget = LLMBudget(
+        routes={
+            route.model: RouteLedger(
+                requests_minute=3,
+                requests_minute_key="2026-07-16T12:00",
+            )
+        }
+    )
+    budget.available(route.model, route=route, requests=1, tokens=1, cost=0, now=NOW)
+    assert route.model not in budget.routes
+    assert budget.routes[route.route_id].requests_minute == 3
+
+
 def test_settle_corrects_unused_worst_case_request_reservation():
     budget = LLMBudget()
     budget.reserve(
