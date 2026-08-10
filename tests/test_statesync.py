@@ -1024,3 +1024,41 @@ def test_cas_manifest_conflict_remerges_disjoint_updates(tmp_path):
     push_state(bucket, second)
     manifest = json.loads((bucket._path(f"{STATE_PREFIX}/catalog/manifest.json")).read_text())
     assert set(manifest["objects"]) == {"sources/one/episodes.json", "sources/two/episodes.json"}
+
+
+def test_routed_manifest_is_published_on_r2_not_b2(tmp_path):
+    from citypods.storage.routing import COORDINATION_PREFIXES, RoutingStorage
+    from citypods.storage.s3 import CASConflict
+
+    class CASLocal(LocalStorage):
+        cas_capable = True
+
+        def get_bytes(self, key):
+            path = self._path(key)
+            if not path.exists():
+                return None
+            return path.read_bytes(), str(path.stat().st_mtime_ns)
+
+        def put_cas(self, key, data, content_type, *, if_none_match=None, if_match=None):
+            current = self.get_bytes(key)
+            if if_none_match == "*" and current is not None:
+                raise CASConflict(key)
+            if if_match is not None and (current is None or current[1] != if_match):
+                raise CASConflict(key)
+            path = self._path(key)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            return self.public_url(key), self.get_bytes(key)[1]
+
+    b2 = LocalStorage(root=tmp_path / "b2", url_prefix="https://b2")
+    r2 = CASLocal(root=tmp_path / "r2", url_prefix="https://r2")
+    storage = RoutingStorage(
+        primary=b2, coordination=r2, coordination_prefixes=COORDINATION_PREFIXES
+    )
+    state_dir = tmp_path / "state"
+    save_records(state_dir, "src", {"u1": {"uid": "u1"}})
+
+    assert push_state(storage, state_dir) == 1
+    assert b2.exists(f"{STATE_PREFIX}/sources/src/episodes.json")
+    assert not b2.exists(f"{STATE_PREFIX}/catalog/manifest.json")
+    assert r2.exists(f"{STATE_PREFIX}/catalog/manifest.json")
