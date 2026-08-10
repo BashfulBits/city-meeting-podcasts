@@ -307,6 +307,20 @@ def test_routing_cas_delegates_to_coordination():
     assert router.telemetry() == {"r2_class_a": 1, "r2_class_b": 1}
 
 
+def test_routing_catalog_manifest_cas_uses_coordination_backend():
+    # The compact manifest is a CAS-published coordination object even though its key is nested
+    # under state/catalog/. It must not be sent to the non-CAS B2 primary.
+    from citypods.storage.routing import COORDINATION_PREFIXES
+
+    router, primary, coord = _router(prefixes=COORDINATION_PREFIXES)
+    key = "state/catalog/manifest.json"
+    assert router.get_bytes(key) == (b"{}", '"etag"')
+    router.put_cas(key, b"{}", "application/json", if_match='"etag"')
+    assert ("get_bytes", key) in coord.calls
+    assert ("put_cas", key) in coord.calls
+    assert all(called_key != key for _, called_key in primary.calls)
+
+
 def test_routing_cas_on_primary_key_raises_when_unsupported():
     # A coordination-prefix key with no coordination backend falls to the primary, which
     # has no CAS — surface a clear error rather than silently using a non-atomic path.

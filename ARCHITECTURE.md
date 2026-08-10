@@ -313,8 +313,10 @@ total on `/admin/status`.
 - **Static site** → Jinja2 templates render to `docs/`; Jekyll disabled (`docs/.nojekyll`); served by
   GitHub Pages at the configured custom domain.
 - **Object storage** → Backblaze B2 (S3 API) fronted by a Cloudflare Worker/CDN (free egress) for
-  audio + transcripts + durable state. The coordination control-plane (budget/work/provider leases)
-  routes to Cloudflare R2 for compare-and-swap (`RoutingStorage`, `COORDINATION_PREFIXES`).
+  audio + transcripts + durable state. The coordination control-plane (budget, catalog manifest,
+  work/provider leases) routes to Cloudflare R2 for compare-and-swap (`RoutingStorage`,
+  `COORDINATION_PREFIXES`); the manifest is rebuildable from the B2 state objects and is excluded
+  from the bulk B2 sync.
   **Lifecycle backstops** (as-code, `scripts/apply_bucket_lifecycle.py`, GH#496): R2 expires the
   validator's scratch prefixes `work-leases/__validate__/` + `provider-leases/validate-` after **1 day**
   (so a crashed runner's un-run cleanup can't leak scratch); B2 keeps deleted/overwritten object

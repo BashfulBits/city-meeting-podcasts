@@ -2,17 +2,17 @@
 
 Most state — content-addressed audio/transcripts and append-only logs — stays on the
 *primary* backend (B2), where writes are free and consistency is strong. Only the
-coordination control-plane (the GPU budget ledger, the Stage-2 work-lease ledger, and the
-provider concurrency slots), which genuinely needs compare-and-swap, routes to the
-*coordination* backend (R2).
+coordination control-plane (the GPU budget ledger, compact catalog manifest, Stage-2
+work-lease ledger, and provider concurrency slots), which genuinely needs compare-and-swap,
+routes to the *coordination* backend (R2).
 
 ``RoutingStorage`` implements the ``StorageBackend`` Protocol and dispatches each call by
 key prefix, so callers keep using one storage object unchanged. CAS-only methods
 (``get_bytes``/``put_cas``) delegate to the coordination backend.
 
 The set of coordination prefixes is passed in (``COORDINATION_PREFIXES`` is the production
-default). It is **empty today** — routing is a deliberate no-op so this substrate lands
-without moving any artifact; later changes add prefixes as each artifact migrates to R2.
+default). Non-coordination state continues to route to B2, while each listed control-plane
+object is addressed on R2 and excluded from the bulk B2 state sync.
 """
 
 from __future__ import annotations
@@ -25,6 +25,8 @@ from citypods.storage.base import StorageBackend
 # prefix here with its own change:
 #   - ``state/compute_budget.json`` (H17 PR3): free-tier GPU ledger — atomic-decrement overspend
 #     guard; lives on R2, accessed by CAS, excluded from the bulk B2 state sync.
+#   - ``state/catalog/manifest.json`` (GH#1015): compact durable-state index — conditionally
+#     published on R2; rebuildable from B2 state objects and excluded from the bulk B2 sync.
 #   - ``work-leases/`` (H17 PR4): the Stage-2 per-item competitive-claim ledger (review/18 §4); each
 #     ``work-leases/<source>/<uid>.json`` is an independent CAS object. Derived/GET by key, never
 #     listed (listing is a Class-A op on R2).
@@ -46,6 +48,7 @@ COORDINATION_PREFIXES: tuple[str, ...] = (
     "state/llm_budget.json",
     "state/asr_worker_telemetry.json",
     "state/transcript_quality_ledger.json",
+    "state/catalog/manifest.json",
     "work-leases/",
     "work-leases-index/",
     "provider-leases/",
@@ -74,6 +77,9 @@ _EPHEMERAL_R2_PREFIXES: dict[str, str] = {
     # mirrored to the B2 durable-state snapshot (`state/transcript_quality_rollups.json`), so the
     # R2 object is recoverable and not the only copy of human review history.
     "state/transcript_quality_ledger.json": "CAS write-serialization cache mirrored durably to B2",
+    # Compact state index: every listed object is a B2-resident durable state file, so the index can
+    # be rebuilt by the full-list fallback if R2 expires or loses this coordination object.
+    "state/catalog/manifest.json": "compact index; rebuilt from B2 durable state objects if lost",
     # Stage-2 per-item work-lease ledger: a claim token, not a work product. If lost, the item
     # looks unclaimed and is re-derived from the B2 discovery index and re-claimed.
     "work-leases/": "per-item claim tokens; re-derived from the B2 discovery index",
