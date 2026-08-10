@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://austintx.new.swagit.com/views/117/independent-citizen-s-redistricting-committee
   body: "Redistricting"
+lifecycle:
+  status: dormant
+  reason: "redistricting finished"
 podcast_title: "Austin: Independent Citizens Redistricting Commission"
 podcast_author: "City of Austin, TX"
 podcast_email: ""
