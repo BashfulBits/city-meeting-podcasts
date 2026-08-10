@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from citypods.bodies import filter_by_body
+from citypods.bodies import BodySelector, filter_by_body, source_body_filter
 from citypods.chapters import episode_served_chapters
 from citypods.durations import set_served_duration_seconds
 from citypods.feeds import enclosure_url
@@ -115,12 +115,12 @@ class ArchiveDiff:
 
 
 def compute_archive_diff(
-    fetched_episodes: list[Episode], records: dict, *, body: str | None = None
+    fetched_episodes: list[Episode], records: dict, *, body: BodySelector = None
 ) -> ArchiveDiff:
     """Compare freshly-fetched episodes against the append-only archive.
 
     The record store is shared across every body on the same source (``source_key`` strips the
-    per-board ``body`` filter), so it holds *all* bodies' episodes. When ``body`` is given, scope
+    per-board body filter), so it holds *all* bodies' episodes. When ``body`` is given, scope
     both sides of the diff to that body's slice — otherwise one body's materialized episodes would
     make the diff suppress a genuine empty/too-few finding for a *different* body whose ``body:``
     filter has stopped matching (HTML/name change, typo) on the same shared view.
@@ -1310,7 +1310,7 @@ def audit_city(
     # Scope the archive diff to this feed's own body: the record store is shared across every body
     # on the same source, so an unscoped diff would let other bodies' materialized episodes suppress
     # a genuine per-body regression (its ``body:`` filter stopped matching, dropping it to 0).
-    body = city.source.get("body")
+    body = source_body_filter(city.source)
     diff = compute_archive_diff(episodes, records, body=body) if records is not None else None
 
     # Newest publication date in the archive (across all episodes, pre-filter) for staleness

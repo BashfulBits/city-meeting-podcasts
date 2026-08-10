@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.artwork import render_cover
-from citypods.bodies import filter_by_body
+from citypods.bodies import filter_by_body, source_body_filter
 from citypods.compute import DispatchCoordinator, make_compute
 from citypods.config import (
     RESERVED_PUBLIC_DIRS as _RESERVED_DOC_NAMES,
@@ -971,13 +971,14 @@ def _process_city(
     # Filter the shared source archive to this feed's body, then cap to the most-recent
     # max_episodes (a feed never shows more; the archive itself retains far more — issue #109).
     archived = len(episodes)
+    body_filter = source_body_filter(city.source)
     retained_eps = sorted(
-        filter_by_body(episodes, city.source.get("body")),
+        filter_by_body(episodes, body_filter),
         key=lambda e: e.published,
         reverse=True,
     )
     calendar_records = sorted(
-        filter_by_body(pipeline.calendar_records(city), city.source.get("body")),
+        filter_by_body(pipeline.calendar_records(city), body_filter),
         key=lambda record: record.published,
         reverse=True,
     )

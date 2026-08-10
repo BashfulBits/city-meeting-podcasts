@@ -3,7 +3,9 @@
 Swagit has no public API/RSS, but its archive "view" page is server-rendered HTML: a
 table of rows, each ``<a href="/videos/{id}">{body name}</a>`` + a date. One view lists
 every body's meetings, so a city YAML selects one body via ``body:`` (substring match) —
-e.g. "City Council Agenda Meetings". Use ``scripts/discover_swagit.py`` to list the bodies.
+e.g. "City Council Agenda Meetings". A feed may add ``body_any:`` with a list of explicit
+alternative labels when one logical feed spans multiple provider bodies. Use
+``scripts/discover_swagit.py`` to list the bodies.
 
 A city YAML may set ``list_url`` (one view) or ``list_urls`` (several views, merged and
 deduped by video id) — mirrors Granicus ``feed_url``/``feed_urls``. Useful when a city

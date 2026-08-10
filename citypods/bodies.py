@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import collections
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime
 from typing import TypeVar
 
@@ -84,9 +84,43 @@ def body_key(body: str | None) -> str:
     return " ".join(words)
 
 
-def matches(body: str | None, needle: str) -> bool:
-    """True if ``needle`` matches ``body``, tolerant of spelling/case/plural variants."""
-    return body_key(needle) in body_key(body)
+BodySelector = str | Sequence[str] | None
+
+
+def source_body_filter(source: Mapping[str, object]) -> BodySelector:
+    """Return the body selector configured for one feed source.
+
+    ``body`` remains the primary selector for existing feeds. ``body_any`` adds explicit
+    alternatives without broadening a substring filter to unrelated bodies that happen to share
+    words such as ``City Council``.
+    """
+    primary = source.get("body")
+    additional = source.get("body_any")
+    if additional is None:
+        return primary if isinstance(primary, str) and primary.strip() else None
+    if not isinstance(additional, list) or any(
+        not isinstance(value, str) or not value.strip() for value in additional
+    ):
+        raise ValueError("source.body_any must be a non-empty list of non-empty strings")
+    selectors = []
+    if isinstance(primary, str) and primary.strip():
+        selectors.append(primary)
+    selectors.extend(additional)
+    return tuple(selectors) or None
+
+
+def _selectors(needle: BodySelector) -> tuple[str, ...]:
+    if needle is None:
+        return ()
+    if isinstance(needle, str):
+        return (needle,) if needle.strip() else ()
+    return tuple(value for value in needle if isinstance(value, str) and value.strip())
+
+
+def matches(body: str | None, needle: BodySelector) -> bool:
+    """True if any configured selector matches ``body``."""
+    body_key_value = body_key(body)
+    return any(body_key(selector) in body_key_value for selector in _selectors(needle))
 
 
 def is_excluded(body: str | None, exclude: list[str]) -> bool:
@@ -94,8 +128,8 @@ def is_excluded(body: str | None, exclude: list[str]) -> bool:
     return any(matches(body, term) for term in exclude)
 
 
-def filter_by_body(episodes: list[Episode], body: str | None) -> list[Episode]:
-    if not body:
+def filter_by_body(episodes: list[Episode], body: BodySelector) -> list[Episode]:
+    if not _selectors(body):
         return episodes
     return [e for e in episodes if matches(e.body, body)]
 

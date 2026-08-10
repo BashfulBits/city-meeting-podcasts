@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **Dallas City Council feed now includes special-called full-council sessions** (GH#1121). A
+  source may now declare `body_any` for explicit alternative provider labels; the shared selector
+  is applied consistently by feed rendering, audits, reports, build validation, and search. The
+  Dallas feed keeps `City Council Agenda Meetings` as its primary label and adds
+  `Special Called City Council Meeting`, while continuing to exclude `Council Briefing` and
+  committee bodies. This changes feed membership only: existing audio/transcript artifacts and
+  stable episode UIDs are reused, with no pipeline-version bump or forced artifact backfill.
+
 ### Added
 
 - **Multi-Provider Cloudflare Worker Dispatch Proxy & Per-Route Ledger.** ([`review/41`](review/41-multi-provider-llm-dispatch.md))

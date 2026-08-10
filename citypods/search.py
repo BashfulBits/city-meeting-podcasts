@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from citypods.bodies import matches, source_body_filter
 from citypods.chapters import episode_served_chapters
 from citypods.feeds import episode_resource_links, meeting_page_url
 from citypods.models import City, Episode
@@ -345,10 +346,11 @@ def _city_for_record(candidates: list[City], record: dict[str, Any]) -> City:
     body = str(record.get("body") or "").casefold()
     if body:
         for city in candidates:
-            configured = str(city.source.get("body") or "").casefold()
-            if configured and (configured == body or configured in body or body in configured):
+            configured = source_body_filter(city.source)
+            selectors = (configured,) if isinstance(configured, str) else configured or ()
+            if any(matches(body, selector) or matches(selector, body) for selector in selectors):
                 return city
-    return next((city for city in candidates if not city.source.get("body")), candidates[0])
+    return next((city for city in candidates if not source_body_filter(city.source)), candidates[0])
 
 
 def _search_record_inputs(record: dict[str, Any]) -> dict[str, Any]:

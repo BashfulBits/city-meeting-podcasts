@@ -80,7 +80,7 @@ def _truncation_stats(cities: list, state_dir: Path | None) -> dict:
     if not state_dir or not cities:
         return {"checked": 0, "truncated": 0, "max_gap": 0, "examples": []}
 
-    from citypods.bodies import matches
+    from citypods.bodies import matches, source_body_filter
     from citypods.records import load_records, source_key
 
     truncated = 0
@@ -96,7 +96,7 @@ def _truncation_stats(cities: list, state_dir: Path | None) -> dict:
         key = source_key(city)
         if key not in cache:
             cache[key] = load_records(Path(state_dir), key)
-        body = city.source.get("body")
+        body = source_body_filter(city.source)
         archived = sum(1 for r in cache[key].values() if not body or matches(r.get("body"), body))
         if archived == 0:
             continue
@@ -426,9 +426,9 @@ def _feed_row(
     processing_profile: str = "",
 ) -> dict:
     """Aggregate per-episode stats for one feed (city config), filtered by body where applicable."""
-    from citypods.bodies import matches
+    from citypods.bodies import matches, source_body_filter
 
-    body = city.source.get("body")
+    body = source_body_filter(city.source)
     episodes = hosted = linked_video = served = stale = 0
     pending = deferred = dead = transient_errors = 0
     hours_hosted = hours_linked = gb_stored = 0.0

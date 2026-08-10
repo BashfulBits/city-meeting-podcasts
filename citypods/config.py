@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from citypods.bodies import source_body_filter
 from citypods.models import (
     DEFAULT_FULL_ARTIFACT_EPISODES,
     DEFAULT_MAX_EPISODES,
@@ -267,6 +268,10 @@ def _build_city(
         return default
 
     provider = get_provider(raw["provider"])
+    try:
+        source_body_filter(raw["source"])
+    except ValueError as exc:
+        raise ValueError(f"{source_file.name}: {exc}") from exc
     provider.validate(raw["source"])
     # SSRF/abuse gate: every source URL must be https on an allowed host (audit #S1). No DNS
     # here — the resolve/private-IP check runs at fetch time (citypods.http.GuardedHTTPAdapter).

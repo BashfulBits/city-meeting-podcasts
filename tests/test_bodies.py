@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from citypods.bodies import body_key, canonical_body, filter_by_body, granicus_body, matches
+import pytest
+
+from citypods.bodies import (
+    body_key,
+    canonical_body,
+    filter_by_body,
+    granicus_body,
+    matches,
+    source_body_filter,
+)
 from citypods.models import Episode
 
 
@@ -93,3 +102,28 @@ def test_filter_by_body():
         "City Council Briefing",
     ]
     assert filter_by_body(eps, None) == eps  # no filter -> unchanged
+
+
+def test_source_body_filter_supports_explicit_alternatives_without_broadening():
+    eps = [
+        _ep("City Council Agenda Meetings"),
+        _ep("Special Called City Council Meeting"),
+        _ep("Ad Hoc City Council Canvassing Committee"),
+        _ep("Council Briefing"),
+    ]
+    selector = source_body_filter(
+        {
+            "body": "City Council Agenda Meetings",
+            "body_any": ["Special Called City Council Meeting"],
+        }
+    )
+
+    assert [e.body for e in filter_by_body(eps, selector)] == [
+        "City Council Agenda Meetings",
+        "Special Called City Council Meeting",
+    ]
+
+
+def test_source_body_filter_rejects_malformed_alternatives():
+    with pytest.raises(ValueError, match="body_any"):
+        source_body_filter({"body": "City Council", "body_any": "Special Called"})

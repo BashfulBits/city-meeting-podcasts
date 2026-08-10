@@ -59,6 +59,32 @@ def test_loads_valid_city(tmp_path):
     assert c.lifecycle.status == "active"
 
 
+def test_loads_explicit_alternative_body_selectors(tmp_path):
+    body = VALID.replace(
+        "source:\n  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n",
+        "source:\n"
+        "  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n"
+        "  body: City Council\n"
+        "  body_any:\n"
+        "    - Special Called City Council Meeting\n",
+    )
+    _write(tmp_path, "foo-tx.yml", body)
+    city = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert city.source["body_any"] == ["Special Called City Council Meeting"]
+
+
+def test_rejects_malformed_alternative_body_selectors(tmp_path):
+    body = VALID.replace(
+        "source:\n  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n",
+        "source:\n"
+        "  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n"
+        "  body_any: Special Called City Council Meeting\n",
+    )
+    _write(tmp_path, "foo-tx.yml", body)
+    with pytest.raises(ValueError, match="body_any"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
 def test_source_id_is_loaded_and_path_safe(tmp_path):
     _write(tmp_path, "foo-tx.yml", VALID + "source_id: 4ea6c4b78abc\n")
     assert load_city_configs(tmp_path, DEFAULTS)[0].source_id == "4ea6c4b78abc"
