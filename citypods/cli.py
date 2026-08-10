@@ -1059,7 +1059,7 @@ def _compute_plan_shards(args) -> int:
 def _validate_build(args) -> int:
     from pathlib import Path
 
-    from citypods.bodies import matches, source_body_filter
+    from citypods.bodies import record_matches_body, source_body_filter, source_body_inclusions
     from citypods.records import load_records, source_key
     from citypods.validate import validate_build
 
@@ -1074,10 +1074,11 @@ def _validate_build(args) -> int:
             key = source_key(city)
             records = load_records(state_dir, key)
             body = source_body_filter(city.source)
+            inclusions = source_body_inclusions(city.source)
             hosted = sum(
                 1
                 for r in records.values()
-                if (not body or matches(r.get("body"), body)) and (r.get("audio") or {}).get("url")
+                if record_matches_body(r, body, inclusions) and (r.get("audio") or {}).get("url")
             )
             if hosted == 0:
                 known_empty.add(city.slug)

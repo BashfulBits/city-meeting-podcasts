@@ -25,6 +25,13 @@ Phase R (Research-Tool Surface)._
   committee bodies. This changes feed membership only: existing audio/transcript artifacts and
   stable episode UIDs are reused, with no pipeline-version bump or forced artifact backfill.
 
+- **One-off body naming drift now has an exact exception path and audit coverage.** A feed may use
+  `source.body_includes` for provider-GUID-specific rows without permanently broadening its body
+  selector. Feed-health audits suppress historical excluded labels, flag recurrence of a known
+  one-off label with its prior inclusion GUID, and flag newly observed excluded labels so city
+  configurations can stay current. Fort Worth's single `Work Session` recording is covered this
+  way (GH#1005); no pipeline-version bump or artifact backfill is required.
+
 ### Added
 
 - **Multi-Provider Cloudflare Worker Dispatch Proxy & Per-Route Ledger.** ([`review/41`](review/41-multi-provider-llm-dispatch.md))

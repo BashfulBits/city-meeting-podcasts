@@ -142,6 +142,18 @@ _GUIDANCE: dict[str, str] = {
         "are happening but not appearing here, check the provider config for a stale view or "
         "filter."
     ),
+    "unexpected-body": (
+        "**What this means:** the provider returned a body/title label that is not covered by "
+        "any body-specific feed selector or exact one-off provider inclusion. The finding "
+        "distinguishes a repeated one-off label from a label newly observed in the append-only "
+        "archive.\n\n"
+        "**Common causes:** the city added a committee, renamed a meeting type, or used a "
+        "one-off provider label for a recording.\n\n"
+        "**Resolution:** inspect the title, date, and provider GUID in the finding. If the label "
+        "is a recurring body, add or update its feed YAML and adapter mapping. If it is a true "
+        "one-off, add only that exact provider GUID under `source.body_includes`. The audit will "
+        "continue to flag later rows with the same one-off label."
+    ),
     "dormant-resumed": (
         "**What this means:** a feed committed as `dormant` has published recently.\n\n"
         "**Resolution:** verify whether regular meetings have resumed. If so, open a YAML PR "

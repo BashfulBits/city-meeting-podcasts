@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from citypods.bodies import source_body_filter
+from citypods.bodies import source_body_filter, source_body_inclusions
 from citypods.models import (
     DEFAULT_FULL_ARTIFACT_EPISODES,
     DEFAULT_MAX_EPISODES,
@@ -270,6 +270,7 @@ def _build_city(
     provider = get_provider(raw["provider"])
     try:
         source_body_filter(raw["source"])
+        source_body_inclusions(raw["source"])
     except ValueError as exc:
         raise ValueError(f"{source_file.name}: {exc}") from exc
     provider.validate(raw["source"])

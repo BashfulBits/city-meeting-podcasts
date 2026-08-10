@@ -20,6 +20,7 @@ from citypods.audit import (
     check_provider_error_rates,
     check_rehost_backlog,
     check_staleness,
+    check_unexpected_bodies,
     check_view_cap,
     compute_archive_diff,
     count_audio_failures,
@@ -415,6 +416,49 @@ def _city():
         podcast_email="",
         podcast_description="d",
     )
+
+
+def test_check_unexpected_bodies_distinguishes_one_off_recurrence_and_new_labels():
+    city = _city()
+    city.source = {
+        "feed_url": "u",
+        "body": "City Council",
+        "body_includes": [
+            {"provider_guid": "https://example/old-work-session", "body": "Work Session"}
+        ],
+    }
+    current_one_off = _ep(1, "https://example/new-work-session")
+    current_one_off.body = "Work Session"
+    current_one_off.title = "Work Session"
+    new_committee = _ep(2, "https://example/new-committee")
+    new_committee.body = "New Committee"
+    new_committee.title = "New Committee"
+    historical = _ep(3, "https://example/old-planning")
+    historical.body = "Planning and Zoning Commission"
+    records = {
+        "old-work": {
+            "provider_guid": "https://example/old-work-session",
+            "body": "Work Session",
+        },
+        "old-planning": {
+            "provider_guid": "https://example/old-planning",
+            "body": "Planning and Zoning Commission",
+        },
+    }
+
+    finding = check_unexpected_bodies(
+        city.slug,
+        [current_one_off, new_committee, historical],
+        records,
+        related_cities=[city],
+    )
+
+    assert finding is not None
+    assert finding.check == "unexpected-body"
+    assert "same label as a configured one-off inclusion" in finding.message
+    assert "https://example/old-work-session" in finding.message
+    assert "new label not present in the append-only archive" in finding.message
+    assert "Planning and Zoning Commission" not in finding.message
 
 
 def test_audit_city_skips_other_checks_when_feed_is_empty():

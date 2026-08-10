@@ -12,7 +12,10 @@ from citypods.bodies import (
     filter_by_body,
     granicus_body,
     matches,
+    matches_exact_body_label,
+    record_matches_body,
     source_body_filter,
+    source_body_inclusions,
 )
 from citypods.models import Episode
 
@@ -127,3 +130,67 @@ def test_source_body_filter_supports_explicit_alternatives_without_broadening():
 def test_source_body_filter_rejects_malformed_alternatives():
     with pytest.raises(ValueError, match="body_any"):
         source_body_filter({"body": "City Council", "body_any": "Special Called"})
+
+
+def test_body_inclusions_match_only_the_exact_provider_guid():
+    inclusions = source_body_inclusions(
+        {
+            "body": "City Council",
+            "body_includes": [
+                {
+                    "provider_guid": "https://example/MediaPlayer.php?view_id=5&clip_id=6331",
+                    "body": "Work Session",
+                }
+            ],
+        }
+    )
+    eps = [
+        Episode(
+            guid="https://example/MediaPlayer.php?view_id=5&clip_id=6331",
+            title="Work Session",
+            published=datetime(2026, 5, 1, tzinfo=UTC),
+            video_url="x",
+            body="Work Session",
+        ),
+        Episode(
+            guid="https://example/MediaPlayer.php?view_id=5&clip_id=6332",
+            title="Work Session",
+            published=datetime(2026, 5, 1, tzinfo=UTC),
+            video_url="x",
+            body="Work Session",
+        ),
+        Episode(
+            guid="other",
+            title="Planning and Zoning Commission Work Session",
+            published=datetime(2026, 5, 1, tzinfo=UTC),
+            video_url="x",
+            body="Planning and Zoning Commission Work Session",
+        ),
+    ]
+
+    assert [e.guid for e in filter_by_body(eps, "City Council", inclusions)] == [
+        "https://example/MediaPlayer.php?view_id=5&clip_id=6331"
+    ]
+    assert record_matches_body(
+        {"provider_guid": "https://example/MediaPlayer.php?view_id=5&clip_id=6331"},
+        "City Council",
+        inclusions,
+    )
+    assert matches_exact_body_label("Work Session Work Session", "Work Session")
+    assert not matches_exact_body_label(
+        "Planning and Zoning Commission Work Session", "Work Session"
+    )
+
+
+def test_body_inclusions_validate_entries():
+    with pytest.raises(ValueError, match="body_includes"):
+        source_body_inclusions({"body_includes": [{"provider_guid": "x"}]})
+    with pytest.raises(ValueError, match="duplicate"):
+        source_body_inclusions(
+            {
+                "body_includes": [
+                    {"provider_guid": "x", "body": "Work Session"},
+                    {"provider_guid": "x", "body": "Work Session"},
+                ]
+            }
+        )

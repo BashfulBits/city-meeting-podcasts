@@ -361,6 +361,18 @@ def test_source_key_ignores_alternative_body_selectors_so_feeds_share_storage():
     assert source_key(combined) == source_key(per_board)
 
 
+def test_source_key_ignores_one_off_body_inclusions_so_feeds_share_storage():
+    combined = _city(source={"feed_url": "F"})
+    per_board = _city(
+        source={
+            "feed_url": "F",
+            "body": "City Council",
+            "body_includes": [{"provider_guid": "https://example/clip/1", "body": "Work Session"}],
+        }
+    )
+    assert source_key(combined) == source_key(per_board)
+
+
 def test_shard_assignment_is_deterministic_and_in_range():
     # Stable across calls/processes (sorted order, not salted hash()), and always 0 <= i < n.
     keys = ["abc123", "deadbeef", source_key(_city(source={"feed_url": "F"}))]
