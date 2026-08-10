@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from citypods.bodies import filter_by_body
+from citypods.bodies import filter_by_body, matches_configured_body
 from citypods.chapters import episode_served_chapters
 from citypods.durations import set_served_duration_seconds
 from citypods.feeds import enclosure_url
@@ -115,21 +115,27 @@ class ArchiveDiff:
 
 
 def compute_archive_diff(
-    fetched_episodes: list[Episode], records: dict, *, body: str | None = None
+    fetched_episodes: list[Episode],
+    records: dict,
+    *,
+    body: str | None = None,
+    body_aliases: list[str] | None = None,
 ) -> ArchiveDiff:
     """Compare freshly-fetched episodes against the append-only archive.
 
     The record store is shared across every body on the same source (``source_key`` strips the
-    per-board ``body`` filter), so it holds *all* bodies' episodes. When ``body`` is given, scope
-    both sides of the diff to that body's slice — otherwise one body's materialized episodes would
-    make the diff suppress a genuine empty/too-few finding for a *different* body whose ``body:``
-    filter has stopped matching (HTML/name change, typo) on the same shared view.
+    per-board body filters), so it holds *all* bodies' episodes. When ``body`` or aliases are given,
+    scope both sides of the diff to that feed's slice — otherwise one body's materialized episodes
+    would make the diff suppress a genuine empty/too-few finding for a *different* body whose filter
+    has stopped matching (HTML/name change, typo) on the same shared view.
     """
-    if body:
-        from citypods.bodies import matches
-
-        fetched_episodes = filter_by_body(fetched_episodes, body)
-        records = {uid: r for uid, r in records.items() if matches(r.get("body"), body)}
+    if body or body_aliases:
+        fetched_episodes = filter_by_body(fetched_episodes, body, body_aliases)
+        records = {
+            uid: r
+            for uid, r in records.items()
+            if matches_configured_body(r.get("body"), body, body_aliases)
+        }
     fetched_uids = {e.uid for e in fetched_episodes if e.uid}
     archived_uids = set(records)
     materialized = sum(1 for r in records.values() if (r.get("audio") or {}).get("url"))
@@ -1307,21 +1313,27 @@ def audit_city(
     if records is not None:
         merge_persisted(episodes, records)
 
-    # Scope the archive diff to this feed's own body: the record store is shared across every body
-    # on the same source, so an unscoped diff would let other bodies' materialized episodes suppress
-    # a genuine per-body regression (its ``body:`` filter stopped matching, dropping it to 0).
+    # Scope the archive diff to this feed's own body/aliases: the record store is shared across
+    # every body on the same source, so an unscoped diff would let other bodies' materialized
+    # episodes suppress a genuine per-body regression (its filter stopped matching, dropping it
+    # to 0).
     body = city.source.get("body")
-    diff = compute_archive_diff(episodes, records, body=body) if records is not None else None
+    body_aliases = city.source.get("body_aliases")
+    diff = (
+        compute_archive_diff(episodes, records, body=body, body_aliases=body_aliases)
+        if records is not None
+        else None
+    )
 
     # Newest publication date in the archive (across all episodes, pre-filter) for staleness
     # correction (CR2-CP-24: comment previously said "Oldest" but the code below is `max(dates)`).
     archive_newest: datetime | None = None
     if records:
-        from citypods.bodies import matches
-
         dates = []
         for rec in records.values():
-            if body and not matches(rec.get("body"), body):
+            if (body or body_aliases) and not matches_configured_body(
+                rec.get("body"), body, body_aliases
+            ):
                 continue
             pub = rec.get("published")
             if pub:
@@ -1332,7 +1344,7 @@ def audit_city(
         if dates:
             archive_newest = max(dates)
 
-    episodes = filter_by_body(episodes, body)
+    episodes = filter_by_body(episodes, body, body_aliases)
     episodes.sort(key=lambda e: e.published, reverse=True)
     episodes = episodes[: city.max_episodes]
     legacy_lifecycle_status = _legacy_lifecycle_status(city)

@@ -387,6 +387,33 @@ def test_compute_archive_diff():
     assert diff.backlog == 1  # e2 is HLS with no hosted_audio_url
 
 
+def test_compute_archive_diff_applies_exact_body_aliases():
+    episode = _ep(1, "work-session")
+    episode.body = "Work Session Work Session"
+    episode.uid = "work-session-uid"
+    records = {
+        "work-session-uid": {
+            "body": "Work Session Work Session",
+            "audio": {"url": "https://cdn/work-session.m4a"},
+        },
+        "ccpd": {
+            "body": (
+                "Crime Control and Prevention District immediately following the Council Work "
+                "Session"
+            ),
+            "audio": {"url": "https://cdn/ccpd.m4a"},
+        },
+    }
+
+    diff = compute_archive_diff(
+        [episode], records, body="City Council", body_aliases=["Work Session"]
+    )
+
+    assert diff.fetched == 1
+    assert diff.archived == 1
+    assert diff.materialized == 1
+
+
 # ---------------------------------------------------------------------------
 # audit_city integration — all three triage scenarios
 # ---------------------------------------------------------------------------

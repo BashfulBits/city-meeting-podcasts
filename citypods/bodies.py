@@ -2,7 +2,8 @@
 
 Each provider populates ``Episode.body`` with the meeting body it can infer. A city's
 optional ``source.body`` then filters a mixed feed down to one body (case-insensitive
-substring), so any provider can produce "one feed per board/commission".
+substring), while ``source.body_aliases`` handles exact alternate provider labels, so any
+provider can produce "one feed per board/commission" without broad false-positive aliases.
 """
 
 from __future__ import annotations
@@ -89,15 +90,44 @@ def matches(body: str | None, needle: str) -> bool:
     return body_key(needle) in body_key(body)
 
 
+def matches_alias(body: str | None, alias: str) -> bool:
+    """Match a configured alternate provider label without substring false positives.
+
+    Archive HTML can duplicate the visible meeting name when the row contains both a visible
+    player link and a hidden video-only link.  Accept an exact normalized label or a whole-label
+    repetition of it, but do not match a phrase embedded in another body's description (for
+    example, ``"... following the Council Work Session"``).
+    """
+    actual = body_key(body).split()
+    expected = body_key(alias).split()
+    if not actual or not expected or len(actual) % len(expected):
+        return False
+    repetitions = len(actual) // len(expected)
+    return actual == expected * repetitions
+
+
+def matches_configured_body(
+    body: str | None, configured: str | None, aliases: Iterable[str] | None = None
+) -> bool:
+    """Apply the normal body filter plus any exact alternate provider labels."""
+    aliases = tuple(aliases or ())
+    return bool(configured and matches(body, configured)) or any(
+        matches_alias(body, alias) for alias in aliases if isinstance(alias, str) and alias.strip()
+    )
+
+
 def is_excluded(body: str | None, exclude: list[str]) -> bool:
     """True if ``body`` matches any denylist term (case-insensitive substring)."""
     return any(matches(body, term) for term in exclude)
 
 
-def filter_by_body(episodes: list[Episode], body: str | None) -> list[Episode]:
-    if not body:
+def filter_by_body(
+    episodes: list[Episode], body: str | None, aliases: Iterable[str] | None = None
+) -> list[Episode]:
+    aliases = tuple(aliases or ())
+    if not body and not aliases:
         return episodes
-    return [e for e in episodes if matches(e.body, body)]
+    return [e for e in episodes if matches_configured_body(e.body, body, aliases)]
 
 
 def rank_by_body(

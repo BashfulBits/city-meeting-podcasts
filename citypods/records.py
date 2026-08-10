@@ -194,7 +194,7 @@ def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
 
 
 def source_key(city: City) -> str:
-    """Stable id for a city's media source, ignoring the per-board ``body`` filter, so the
+    """Stable id for a city's media source, ignoring per-feed body filters and aliases, so the
     combined feed and every per-board feed of one city share one record store + audio object.
 
     ``source_id`` is the provider-migration seam: once pinned to the pre-migration key it keeps
@@ -202,7 +202,7 @@ def source_key(city: City) -> str:
     """
     if city.source_id:
         return city.source_id
-    src = {k: v for k, v in city.source.items() if k != "body"}
+    src = {k: v for k, v in city.source.items() if k not in {"body", "body_aliases"}}
     raw = f"{city.provider}|{json.dumps(src, sort_keys=True)}"
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 

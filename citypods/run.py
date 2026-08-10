@@ -971,13 +971,15 @@ def _process_city(
     # Filter the shared source archive to this feed's body, then cap to the most-recent
     # max_episodes (a feed never shows more; the archive itself retains far more — issue #109).
     archived = len(episodes)
+    body = city.source.get("body")
+    body_aliases = city.source.get("body_aliases")
     retained_eps = sorted(
-        filter_by_body(episodes, city.source.get("body")),
+        filter_by_body(episodes, body, body_aliases),
         key=lambda e: e.published,
         reverse=True,
     )
     calendar_records = sorted(
-        filter_by_body(pipeline.calendar_records(city), city.source.get("body")),
+        filter_by_body(pipeline.calendar_records(city), body, body_aliases),
         key=lambda record: record.published,
         reverse=True,
     )

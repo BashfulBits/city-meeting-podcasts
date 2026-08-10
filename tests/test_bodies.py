@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from citypods.bodies import body_key, canonical_body, filter_by_body, granicus_body, matches
+from citypods.bodies import (
+    body_key,
+    canonical_body,
+    filter_by_body,
+    granicus_body,
+    matches,
+    matches_alias,
+    matches_configured_body,
+)
 from citypods.models import Episode
 
 
@@ -86,10 +94,34 @@ def test_matches_is_variant_tolerant():
     )
 
 
+def test_matches_alias_requires_a_whole_provider_label():
+    assert matches_alias("Work Session", "Work Session")
+    assert matches_alias("Work Session Work Session", "Work Session")
+    assert not matches_alias(
+        "Crime Control and Prevention District immediately following the Council Work Session",
+        "Work Session",
+    )
+    assert not matches_alias("Planning and Zoning Commission Work Session", "Work Session")
+    assert matches_configured_body("Work Session Work Session", "City Council", ["Work Session"])
+
+
 def test_filter_by_body():
-    eps = [_ep("City Council"), _ep("Planning and Zoning"), _ep("City Council Briefing")]
+    eps = [
+        _ep("City Council"),
+        _ep("Planning and Zoning"),
+        _ep("City Council Briefing"),
+        _ep("Work Session"),
+        _ep("Work Session Work Session"),
+        _ep("Crime Control and Prevention District immediately following the Council Work Session"),
+    ]
     assert [e.body for e in filter_by_body(eps, "City Council")] == [
         "City Council",
         "City Council Briefing",
+    ]
+    assert [e.body for e in filter_by_body(eps, "City Council", ["Work Session"])] == [
+        "City Council",
+        "City Council Briefing",
+        "Work Session",
+        "Work Session Work Session",
     ]
     assert filter_by_body(eps, None) == eps  # no filter -> unchanged

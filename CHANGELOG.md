@@ -75,6 +75,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Fort Worth council feeds missed a generically titled work session.** Added exact normalized
+  `source.body_aliases` matching (including Granicus archive rows that duplicate the visible label)
+  and configured `Work Session` for the City Council and City Council Worksession feeds. The alias
+  does not match phrases embedded in another body's title, such as a CCPD meeting held after a
+  council work session. No pipeline-version bump or artifact backfill is required; the shared
+  source record is re-projected at render time.
+
 - **H15/R5 ingest workflows could double-comment or leave a persisted decision unconfirmed on retry.**
   `asr-quality-ingest.yml` and `llm-tag-review-ingest.yml` each persist a review decision, then separately `gh issue comment` and `gh issue close` the source issue. A GitHub API failure between those steps left a durable decision recorded with no confirmation posted, and a retry re-ran the comment/close pair unconditionally — double-posting the comment if it had actually succeeded before the close call failed. The persist step was already safe to re-run (`record_review()` / `ingest_review_decision()` overwrite by candidate/sample identity, not append), so the fix is confined to the comment/close step: check existing comments for a stable `<!-- h15-ingest:N -->` / `<!-- llm-ingest:N -->` marker before commenting, and check the issue's current state before closing, mirroring the find-or-update comment pattern already used in `dep-bump-smoke.yml`.
 

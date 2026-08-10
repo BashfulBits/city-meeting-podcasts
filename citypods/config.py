@@ -268,6 +268,14 @@ def _build_city(
 
     provider = get_provider(raw["provider"])
     provider.validate(raw["source"])
+    body_aliases = raw["source"].get("body_aliases")
+    if body_aliases is not None and (
+        not isinstance(body_aliases, list)
+        or not all(isinstance(alias, str) and alias.strip() for alias in body_aliases)
+    ):
+        raise ValueError(
+            f"{source_file.name}: source.body_aliases must be a list of non-empty strings"
+        )
     # SSRF/abuse gate: every source URL must be https on an allowed host (audit #S1). No DNS
     # here — the resolve/private-IP check runs at fetch time (citypods.http.GuardedHTTPAdapter).
     validate_city_sources(raw["provider"], raw["source"], _get("city_website"))
@@ -417,7 +425,9 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
             raise ValueError(f"{path.name}: duplicate slug {city.slug!r}")
         seen_slugs.add(city.slug)
         if city.source_id:
-            identity_source = {k: v for k, v in city.source.items() if k != "body"}
+            identity_source = {
+                k: v for k, v in city.source.items() if k not in {"body", "body_aliases"}
+            }
             identity = (city.city_entity, city.provider, identity_source, path.name)
             prior = seen_source_ids.get(city.source_id)
             if prior is not None and prior[:3] != identity[:3]:

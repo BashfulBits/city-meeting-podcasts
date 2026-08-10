@@ -345,7 +345,9 @@ def test_calendar_records_are_append_only_and_preserve_old_links(tmp_path):
 
 def test_source_key_ignores_body_so_feeds_share_storage():
     combined = _city(source={"feed_url": "F"})
-    per_board = _city(source={"feed_url": "F", "body": "City Council"})
+    per_board = _city(
+        source={"feed_url": "F", "body": "City Council", "body_aliases": ["Work Session"]}
+    )
     assert source_key(combined) == source_key(per_board)
 
 

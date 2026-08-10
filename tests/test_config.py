@@ -59,6 +59,34 @@ def test_loads_valid_city(tmp_path):
     assert c.lifecycle.status == "active"
 
 
+def test_body_aliases_load_and_validate(tmp_path):
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID.replace(
+            "  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n",
+            "  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n"
+            "  body_aliases: [Work Session]\n",
+        ),
+    )
+    city = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert city.source["body_aliases"] == ["Work Session"]
+
+
+def test_body_aliases_must_be_non_empty_strings(tmp_path):
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID.replace(
+            "  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n",
+            "  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n"
+            "  body_aliases: [Work Session, '']\n",
+        ),
+    )
+    with pytest.raises(ValueError, match="body_aliases"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
 def test_source_id_is_loaded_and_path_safe(tmp_path):
     _write(tmp_path, "foo-tx.yml", VALID + "source_id: 4ea6c4b78abc\n")
     assert load_city_configs(tmp_path, DEFAULTS)[0].source_id == "4ea6c4b78abc"
