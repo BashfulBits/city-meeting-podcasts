@@ -153,10 +153,10 @@ def chapters_json(ep: Episode, *, include_generated: bool = False) -> str:
     """Render an episode's chapters as a Podcasting 2.0 chapters document (the JSON a
     ``<podcast:chapters>`` URL points to)."""
     chapters = [
-        {"startTime": round(c["start"]), "title": c.get("title", "")}
+        {"startTime": round(float(c["start"])), "title": str(c.get("title") or "")}
         for c in sorted(
             episode_public_chapters(ep, include_generated=include_generated),
-            key=lambda c: c["start"],
+            key=lambda c: float(c.get("start", 0)),
         )
     ]
     return json.dumps({"version": "1.2.0", "chapters": chapters}, indent=2) + "\n"

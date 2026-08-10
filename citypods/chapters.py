@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from citypods.models import Episode
 from citypods.timeline import remap, timeline_digest
 
@@ -57,16 +59,26 @@ def episode_public_chapters(
     overlay for otherwise unchaptered episodes.  Generated starts are already in served time and
     therefore are not passed through the provider timeline remapper.
     """
-
     canonical = episode_served_chapters(ep, with_source_index=with_source_index)
     if canonical or not include_generated:
         return canonical
-    generated = []
+    generated: list[dict] = []
     for index, chapter in enumerate(ep.generated_chapters or []):
-        if not isinstance(chapter, dict) or chapter.get("start") is None:
+        if not isinstance(chapter, dict):
+            continue
+        raw_start = chapter.get("start")
+        # Python booleans subclass int (isinstance(True, int) is True). Reject booleans explicitly.
+        if isinstance(raw_start, bool) or raw_start is None:
+            continue
+        try:
+            start = float(raw_start)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(start) or start < 0.0:
             continue
         item = dict(chapter)
+        item["start"] = start
         if with_source_index:
             item.setdefault("generated_index", index)
         generated.append(item)
-    return sorted(generated, key=lambda chapter: float(chapter.get("start", 0)))
+    return sorted(generated, key=lambda ch: ch["start"])

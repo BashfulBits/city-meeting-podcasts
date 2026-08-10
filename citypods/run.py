@@ -1016,7 +1016,11 @@ def _process_city(
     # feed_content_hash drives the re-render skip: hash the render-relevant fields + build
     # fingerprint. Unchanged + outputs present -> skip the (re-)render entirely. (Audio is a
     # separate concern, gated by audio_spec_hash inside materialize_audio.)
-    content_hash = feed_content_hash(feed_eps, fingerprint)
+    content_hash = feed_content_hash(
+        feed_eps,
+        fingerprint,
+        include_generated_chapters=include_generated_chapters,
+    )
     new_entry = {"content_hash": content_hash}
     cache_entry = cache.get(city.slug)
     feed_unchanged = (

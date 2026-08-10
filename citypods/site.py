@@ -259,8 +259,8 @@ def render_meeting_page(
     chapters = [
         {
             "id": chapter_id(ep, ch, index),
-            "start": int(ch.get("start", 0)),
-            "title": ch.get("title", ""),
+            "start": round(float(ch.get("start", 0))),
+            "title": str(ch.get("title") or ""),
             "tags": next(
                 (
                     [tag.get("id") for tag in annotation.get("tags") or [] if tag.get("id")]

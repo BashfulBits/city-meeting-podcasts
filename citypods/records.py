@@ -36,7 +36,7 @@ from typing import Literal
 
 from citypods.availability import MediaAvailability
 from citypods.bodies import body_key, canonical_body, rank_by_body
-from citypods.chapters import episode_served_chapters
+from citypods.chapters import episode_public_chapters, episode_served_chapters
 from citypods.durations import (
     episode_duration_hours,
     episode_served_duration_seconds,
@@ -521,7 +521,12 @@ def audio_object_key(city: City, ep: Episode, spec: str) -> str:
     return f"{city.provider}/{source_key(city)}/{ep.uid}-{spec}.m4a"
 
 
-def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
+def feed_content_hash(
+    episodes: list[Episode],
+    fingerprint: str,
+    *,
+    include_generated_chapters: bool = False,
+) -> str:
     """Hash of the render-relevant fields of the (filtered+capped) feed. Drives the
     re-render skip. Includes notes/summary/links/chapters so an enrichment change re-renders.
 
@@ -541,7 +546,7 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
             e.transcript_synced,
             e.transcript_basis,
             sorted((e.links or {}).items()),
-            episode_served_chapters(e),
+            episode_public_chapters(e, include_generated=include_generated_chapters),
             e.generated_chapters,
             e.generated_chapters_spec_hash,
             e.chapters_basis,
@@ -553,7 +558,12 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
         ]
         for e in sorted(episodes, key=lambda e: e.uid or "")
     ]
-    blob = json.dumps([fingerprint, payload], separators=(",", ":"), sort_keys=True, default=str)
+    blob = json.dumps(
+        [fingerprint, bool(include_generated_chapters), payload],
+        separators=(",", ":"),
+        sort_keys=True,
+        default=str,
+    )
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
