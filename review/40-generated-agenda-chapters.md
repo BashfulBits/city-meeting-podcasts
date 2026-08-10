@@ -2439,6 +2439,43 @@ the full benchmark runners, adjudication UIs, scorer variants, and exploratory r
 the public history receives only the pieces that have a clear reusable contract or a production
 correctness justification.
 
+### Phase-10 item 6 implementation slice (2026-08-09)
+
+The first clean implementation slice is intentionally limited to shadow evaluation, monitoring
+signals, and rollout controls. It is based on the PR1135 head (the multi-provider dispatch and
+extended Worker interface) and does not port the accidentally bundled agenda/chapter pipeline from
+PR1136. PR1136 was closed unmerged; its branch remains available as a recoverable research
+archive. The production chapter stages, artifact hydration, and model route wiring remain separate
+future PRs.
+
+`scripts/research/agenda_chapters/report_locator_shadow.py` now consumes a completed
+`run_locator_packet_shadow.py` result plus the separate hidden `gold.json` and optional scoring-only
+crosswalk. It never puts provider labels into a request. Its report keeps these measurements
+distinct:
+
+- timing-only provider-start recall and precision, using one-to-one nearest matching within an
+  explicit tolerance;
+- strong-crosswalk correct-item-plus-valid-boundary precision, with weak/ambiguous crosswalk rows
+  excluded from the item-quality denominator;
+- boundary error, abstention, duplicate/non-monotonic anchors, malformed/failed routes, and
+  available token/cost/latency counters;
+- `suspected_wrong_item` and `suspected_skipped_item_anchors`, explicitly diagnostic signals rather
+  than human-adjudicated false-positive labels.
+
+The report supports only predeclared quality gates supplied by the operator. If a threshold is not
+provided, the gate is `not_configured`; raw model confidence remains diagnostic and cannot admit a
+chapter. `citypods.chapter_rollout.ChapterRolloutPolicy` supplies a pure, disabled-by-default
+provider/body/duration cohort control. It can select `shadow` or a bounded future `overlay`, but an
+overlay is downgraded to shadow unless the independent report gate passes. This module has no
+publication side effect and is ready for a later hydration stage to call.
+
+The PR1135 interface review found no incompatible LLM request contract: the Python client still
+submits OpenAI-shaped `POST /v1/chat/completions` requests with an idempotency key and receives a
+`202` request handle (or a terminal `200`), while the Worker poll remains `GET /v1/requests/{id}`.
+The phase-10 item-6 tooling therefore consumes existing result JSON and does not modify the LLM
+client or Worker. Any future chapter workflow must use the pinned route policy from PR1135 rather
+than historical sleeps or mutable aliases.
+
 ## Open-source landscape check (2026-07-27)
 
 No maintained open-source library was found that operationalizes this exact contract: agenda-item

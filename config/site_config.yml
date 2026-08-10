@@ -17,6 +17,10 @@ city_request_form:
 city_discovery:
   llm_model: "gemini/gemini-3-flash-preview"
   llm_mode: "direct"  # direct | dispatch
+# Generated chapter records are persisted by the chapter lanes but remain shadow-only until the
+# frozen provider-chapter validation gate passes. When enabled, the served-time overlay fills only
+# episodes without canonical provider chapter markers; it never changes audio or provider data.
+generated_chapters_enabled: false
 # R5 topic tagging. Rules are always available. Dispatch collects validated LLM candidates in
 # shadow storage; the generic calibration matrix controls visibility. The initial 1.0 fallback is
 # intentionally conservative and can be lowered only after the weekly human-review process has

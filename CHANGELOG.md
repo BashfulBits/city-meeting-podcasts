@@ -17,6 +17,24 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Read-Only Chapter Locator Shadow Report & Rollout Controls.** ([`review/40`](review/40-generated-agenda-chapters.md))
+  Added offline quality evaluation reporting and pure, disabled-by-default rollout cohort controls for generated agenda chapters (GH#1078):
+  - `report_locator_shadow.py` joins completed locator shadow runs to hidden gold chapters and scoring crosswalks without mutating episode state, reporting timing-only recall/precision, greedy one-to-one strong-crosswalk item precision, boundary errors, abstentions, and operational metrics.
+  - `evaluate_gate` evaluates operator-supplied quality gates with strict threshold validation (positive integer episode counts and bounded `[0, 1]` rates) and requires explicit `provider_labels_in_requests: false` attestation.
+  - `citypods.chapter_rollout.ChapterRolloutPolicy` provides immutable, bounded rollout controls (`providers`, `bodies`, `max_duration_seconds`, `max_episodes_per_run`) that enforce per-run limits statelessly and downgrade overlay to shadow unless an independent shadow gate passes.
+
+- **Reversible Served-Time Chapter Overlay & Publication Controls.** ([`review/40`](review/40-generated-agenda-chapters.md))
+  Added publication-layer overlay for generated agenda chapters without altering underlying audio bytes or
+  overwriting authoritative provider chapter markers:
+  - `episode_public_chapters` returns canonical provider chapters when present, and overlays validated generated
+    chapters only when `include_generated=True` (controlled by `generated_chapters_enabled` in `config/site_config.yml`).
+  - Chapter start timestamps are strictly validated and normalized against booleans, non-numeric values, negative
+    offsets, and non-finite floats.
+  - Podcasting 2.0 JSON sidecars (`chapters_json`) and meeting permalinks (`render_meeting_page`) consistently round
+    start times to whole-second integers per the Podcasting 2.0 specification.
+  - `feed_content_hash` incorporates `include_generated_chapters` and public chapter state so toggling publication
+    flags triggers sidecar and RSS re-rendering.
+
 - **Multi-Provider Cloudflare Worker Dispatch Proxy & Per-Route Ledger.** ([`review/41`](review/41-multi-provider-llm-dispatch.md))
   Extended `workers/llm-dispatch-proxy/` and the Python compute layer to route Gemini/Mistral/DeepSeek/
   OpenRouter through one Worker with real multi-account API key rotation, replacing R10's original

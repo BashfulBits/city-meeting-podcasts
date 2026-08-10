@@ -529,6 +529,16 @@ def test_feed_hash_reacts_to_notes_but_audio_spec_does_not():
     assert feed_content_hash([ep], "fp") != before  # summary re-renders the feed
 
 
+def test_feed_hash_reacts_to_generated_chapters_publication_flag():
+    ep = _ep("g1")
+    ep.uid = "u1"
+    ep.generated_chapters = [{"start": 10, "title": "Gen Chapter", "generated": True}]
+
+    hash_disabled = feed_content_hash([ep], "fp", include_generated_chapters=False)
+    hash_enabled = feed_content_hash([ep], "fp", include_generated_chapters=True)
+    assert hash_disabled != hash_enabled
+
+
 def test_record_store_roundtrip(tmp_path):
     ep = _ep("g1")
     ep.uid = "u1"
