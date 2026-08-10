@@ -32,6 +32,36 @@ from typing import Any
 REPORT_VERSION = 1
 
 
+def _validate_rate_threshold(name: str, value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{name} must be a finite float between 0 and 1")
+    val = float(value)
+    if not math.isfinite(val) or val < 0.0 or val > 1.0:
+        raise ValueError(f"{name} must be a finite float between 0 and 1")
+    return val
+
+
+def _validate_count_threshold(name: str, value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _validate_tolerance(tolerance: object) -> float:
+    if (
+        isinstance(tolerance, bool)
+        or not isinstance(tolerance, int | float)
+        or not math.isfinite(float(tolerance))
+        or float(tolerance) < 0
+    ):
+        raise ValueError("tolerance must be a non-negative finite number")
+    return float(tolerance)
+
+
 def _number(value: object) -> float | None:
     if isinstance(value, bool):
         return None
@@ -125,8 +155,7 @@ def score_route(
     become a false-positive label.  All counts are integer audit signals; percentages are derived
     only when their denominator is known.
     """
-    if tolerance < 0:
-        raise ValueError("tolerance must be non-negative")
+    tol = _validate_tolerance(tolerance)
     totals: Counter[str] = Counter()
     boundary_errors: list[float] = []
     per_provider: dict[str, Counter[str]] = defaultdict(Counter)
@@ -157,31 +186,49 @@ def score_route(
         per_provider[provider]["provider_chapters"] += len(gold_starts)
         per_provider[provider]["anchors"] += len(anchors)
         timing_matches = _nearest_matches(
-            [float(anchor["start"]) for anchor in anchors], gold_starts, tolerance
+            [float(anchor["start"]) for anchor in anchors], gold_starts, tol
         )
         totals["provider_start_hits"] += len(timing_matches)
         per_provider[provider]["provider_start_hits"] += len(timing_matches)
         boundary_errors.extend(distance for _, _, distance in timing_matches)
 
         strong_targets = _strong_targets(crosswalk_row)
-        correct = 0
-        for anchor in anchors:
+        candidate_matches: list[tuple[float, int, int]] = []
+        for anchor_idx, anchor in enumerate(anchors):
             item_index = anchor.get("agenda_item_index")
-            matching = [
-                abs(float(anchor["start"]) - target_start)
+            if item_index is None:
+                continue
+            for target_idx, (target_item, target_start) in enumerate(strong_targets):
+                if target_item == item_index:
+                    distance = abs(float(anchor["start"]) - target_start)
+                    if distance <= tol:
+                        candidate_matches.append((distance, anchor_idx, target_idx))
+
+        used_anchors: set[int] = set()
+        used_strong_targets: set[int] = set()
+        correct = 0
+        for _distance, anchor_idx, target_idx in sorted(candidate_matches, key=lambda m: m[0]):
+            if anchor_idx in used_anchors or target_idx in used_strong_targets:
+                continue
+            used_anchors.add(anchor_idx)
+            used_strong_targets.add(target_idx)
+            correct += 1
+
+        totals["correct_item_valid_boundary"] += correct
+        per_provider[provider]["correct_item_valid_boundary"] += correct
+
+        # Suspected wrong item: anchors NOT matched to their own item's strong target,
+        # but within tolerance of a strong target for a different agenda item.
+        for anchor_idx, anchor in enumerate(anchors):
+            if anchor_idx in used_anchors:
+                continue
+            item_index = anchor.get("agenda_item_index")
+            if any(
+                target_item != item_index and abs(float(anchor["start"]) - target_start) <= tol
                 for target_item, target_start in strong_targets
-                if target_item == item_index
-            ]
-            if matching and min(matching) <= tolerance:
-                correct += 1
-            elif any(
-                abs(float(anchor["start"]) - target_start) <= tolerance
-                for _, target_start in strong_targets
             ):
                 totals["suspected_wrong_item"] += 1
                 per_provider[provider]["suspected_wrong_item"] += 1
-        totals["correct_item_valid_boundary"] += correct
-        per_provider[provider]["correct_item_valid_boundary"] += correct
 
         # This is deliberately named suspected: generated_items are a deterministic crosswalk,
         # not a human adjudication of whether a skipped agenda item was discussed.
@@ -226,7 +273,7 @@ def score_route(
     totals["episodes"] = completed_rows + totals["failed_episodes"]
     result: dict[str, Any] = {
         "route": route_name,
-        "tolerance_seconds": tolerance,
+        "tolerance_seconds": tol,
         "counts": dict(totals),
         "metrics": {
             "provider_start_recall": _rate(
@@ -284,43 +331,54 @@ def evaluate_gate(
     max_failed_rate: float | None = None,
 ) -> dict[str, Any]:
     """Evaluate only explicitly supplied rollout gates; omitted gates remain undecided."""
+    min_completed = _validate_count_threshold("min_completed_episodes", min_completed_episodes)
+    min_recall = _validate_rate_threshold("min_provider_start_recall", min_provider_start_recall)
+    min_precision = _validate_rate_threshold(
+        "min_correct_item_precision", min_correct_item_precision
+    )
+    max_wrong = _validate_rate_threshold("max_suspected_wrong_rate", max_suspected_wrong_rate)
+    max_failed = _validate_rate_threshold("max_failed_rate", max_failed_rate)
+
     counts = report.get("counts", {})
     metrics = report.get("metrics", {})
     checks: dict[str, bool | None] = {}
 
     def check(name: str, value: object, threshold: float | int | None, *, minimum: bool) -> None:
-        if threshold is None or not isinstance(value, int | float):
+        if (
+            threshold is None
+            or not isinstance(value, int | float)
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+        ):
             checks[name] = None
         elif minimum:
             checks[name] = float(value) >= float(threshold)
         else:
             checks[name] = float(value) <= float(threshold)
 
-    check(
-        "completed_episodes", counts.get("completed_episodes"), min_completed_episodes, minimum=True
-    )
+    check("completed_episodes", counts.get("completed_episodes"), min_completed, minimum=True)
     check(
         "provider_start_recall",
         metrics.get("provider_start_recall"),
-        min_provider_start_recall,
+        min_recall,
         minimum=True,
     )
     check(
         "correct_item_valid_boundary_precision",
         metrics.get("correct_item_valid_boundary_precision"),
-        min_correct_item_precision,
+        min_precision,
         minimum=True,
     )
     check(
         "suspected_wrong_item_rate",
         metrics.get("suspected_wrong_item_rate"),
-        max_suspected_wrong_rate,
+        max_wrong,
         minimum=False,
     )
     check(
         "malformed_or_failed_rate",
         metrics.get("malformed_or_failed_rate"),
-        max_failed_rate,
+        max_failed,
         minimum=False,
     )
     decided = [value for value in checks.values() if value is not None]
@@ -343,6 +401,12 @@ def build_report(
     gate_kwargs: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a versioned route report from a runner result and hidden scoring artifacts."""
+    if "provider_labels_in_requests" not in results or not isinstance(
+        results["provider_labels_in_requests"], bool
+    ):
+        raise ValueError("results must explicitly declare boolean provider_labels_in_requests")
+    provider_labels = results["provider_labels_in_requests"]
+    tol = _validate_tolerance(tolerance)
     gold_by_uid = {
         str(row.get("uid")): row for row in gold.get("episodes", []) if isinstance(row, Mapping)
     }
@@ -365,15 +429,13 @@ def build_report(
                     enriched.setdefault("agenda_item_count", row.get("agenda_item_count"))
                     by_route[str(route)].append(enriched)
     reports = {
-        route: score_route(
-            rows, gold_by_uid, crosswalk_by_uid=crosswalk_by_uid, tolerance=tolerance
-        )
+        route: score_route(rows, gold_by_uid, crosswalk_by_uid=crosswalk_by_uid, tolerance=tol)
         for route, rows in sorted(by_route.items())
     }
     return {
         "version": REPORT_VERSION,
         "purpose": "read-only locator shadow quality and rollout report",
-        "provider_labels_in_requests": results.get("provider_labels_in_requests") is True,
+        "provider_labels_in_requests": provider_labels,
         "routes": reports,
         "gates": {
             route: evaluate_gate(report, **dict(gate_kwargs or {}))

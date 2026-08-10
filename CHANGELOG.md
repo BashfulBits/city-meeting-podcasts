@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Read-Only Chapter Locator Shadow Report & Rollout Controls.** ([`review/40`](review/40-generated-agenda-chapters.md))
+  Added offline quality evaluation reporting and pure, disabled-by-default rollout cohort controls for generated agenda chapters (GH#1078):
+  - `report_locator_shadow.py` joins completed locator shadow runs to hidden gold chapters and scoring crosswalks without mutating episode state, reporting timing-only recall/precision, greedy one-to-one strong-crosswalk item precision, boundary errors, abstentions, and operational metrics.
+  - `evaluate_gate` evaluates operator-supplied quality gates with strict threshold validation (positive integer episode counts and bounded `[0, 1]` rates) and requires explicit `provider_labels_in_requests: false` attestation.
+  - `citypods.chapter_rollout.ChapterRolloutPolicy` provides immutable, bounded rollout controls (`providers`, `bodies`, `max_duration_seconds`, `max_episodes_per_run`) that enforce per-run limits statelessly and downgrade overlay to shadow unless an independent shadow gate passes.
+
 - **Reversible Served-Time Chapter Overlay & Publication Controls.** ([`review/40`](review/40-generated-agenda-chapters.md))
   Added publication-layer overlay for generated agenda chapters without altering underlying audio bytes or
   overwriting authoritative provider chapter markers:

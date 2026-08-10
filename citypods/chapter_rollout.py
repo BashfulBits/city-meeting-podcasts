@@ -9,6 +9,7 @@ monitoring job before generated records exist in production.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
@@ -39,18 +40,20 @@ class ChapterRolloutPolicy:
                 values = (values,)
             if not isinstance(values, (list, tuple, set, frozenset)):
                 raise ValueError(f"chapter rollout {key} must be a list of strings")
-            result = tuple(
-                sorted({str(item).strip().casefold() for item in values if str(item).strip()})
-            )
+            if any(isinstance(item, bool) or not isinstance(item, str) for item in values):
+                raise ValueError(f"chapter rollout {key} must be a list of strings")
+            result = tuple(sorted({item.strip().casefold() for item in values if item.strip()}))
             return result
 
         duration = value.get("max_duration_seconds")
         if duration is not None:
+            if isinstance(duration, bool):
+                raise ValueError("chapter rollout max_duration_seconds must be positive")
             try:
                 duration = float(duration)
             except (TypeError, ValueError) as exc:
                 raise ValueError("chapter rollout max_duration_seconds must be positive") from exc
-            if duration <= 0:
+            if not math.isfinite(duration) or duration <= 0:
                 raise ValueError("chapter rollout max_duration_seconds must be positive")
         limit = value.get("max_episodes_per_run")
         if limit is not None:
@@ -65,19 +68,38 @@ class ChapterRolloutPolicy:
         )
 
     def allows_episode(
-        self, *, provider: str, body: str | None = None, duration_seconds: float | None = None
+        self,
+        *,
+        provider: str,
+        body: str | None = None,
+        duration_seconds: float | None = None,
+        selected_count: int | None = None,
     ) -> bool:
         """Return whether the episode is inside the configured bounded cohort."""
         if self.mode == "disabled":
             return False
+        if self.max_episodes_per_run is not None and selected_count is not None:
+            if (
+                isinstance(selected_count, bool)
+                or not isinstance(selected_count, int)
+                or selected_count < 0
+                or selected_count >= self.max_episodes_per_run
+            ):
+                return False
         if self.providers and provider.casefold() not in self.providers:
             return False
         if self.bodies and (body or "").casefold() not in self.bodies:
             return False
-        if self.max_duration_seconds is not None and (
-            duration_seconds is None or duration_seconds > self.max_duration_seconds
-        ):
-            return False
+        if self.max_duration_seconds is not None:
+            if (
+                duration_seconds is None
+                or isinstance(duration_seconds, bool)
+                or not isinstance(duration_seconds, int | float)
+            ):
+                return False
+            dur = float(duration_seconds)
+            if not math.isfinite(dur) or dur < 0 or dur > self.max_duration_seconds:
+                return False
         return True
 
     def effective_mode(self, *, shadow_gate_status: str, eligible: bool) -> RolloutMode:
