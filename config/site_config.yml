@@ -391,7 +391,10 @@ defaults:
         monthly_dollars: 24.0           # conservatively below free credit to absorb CPU/RAM billing
         reserve_dollars: 0.7
         rollover_day_of_month: 18       # confirmed against Beam's actual free-credit reset date
-        estimated_dollars_per_runtime_second: 0.000192
+        # RTX4090 GPU ($0.000192) + 1 CPU ($0.0000528) + 4 GiB RAM ($0.0000056/GiB-sec).
+        # Keep this all-in rate aligned with scripts/compute/beam_app.py's explicit resources;
+        # Beam settlement is runtime-rate based because this worker has no per-call billing API.
+        estimated_dollars_per_runtime_second: 0.0002672
         unit_label: dollar
       dispatch:
         max_inflight: 100

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -507,6 +508,37 @@ def test_telemetry_metadata_has_no_backoff_without_timeout_attempts(tmp_path, mo
     metadata = worker._telemetry_metadata(_queued("a"))
 
     assert metadata["timeout_backoff_until"] is None
+
+
+def test_modal_billing_uses_workspace_report(monkeypatch, tmp_path):
+    worker = _loop_worker(tmp_path, ["a"])
+    worker.config = replace(worker.config, provider_run_id="fc-123")
+    calls = {}
+
+    class FakeBilling:
+        def report(self, **kwargs):
+            calls.update(kwargs)
+            return [SimpleNamespace(object_id="fc-123", cost=1.25)]
+
+    class FakeWorkspace:
+        billing = FakeBilling()
+
+        @classmethod
+        def from_context(cls):
+            return cls()
+
+    monkeypatch.setitem(sys.modules, "modal", SimpleNamespace(Workspace=FakeWorkspace))
+
+    dollars, source = worker._modal_actual_spend(
+        started_at=datetime(2026, 8, 10, tzinfo=UTC),
+        finished_at=datetime(2026, 8, 10, 0, 1, tzinfo=UTC),
+        fallback_run_elapsed_seconds=999.0,
+        policy=worker._budget_policy(),
+    )
+
+    assert dollars == pytest.approx(1.25)
+    assert source == "modal-billing-report"
+    assert calls["resolution"] == "h"
 
 
 def test_config_from_env_uses_site_config_max_claims_by_default(monkeypatch):

@@ -571,9 +571,9 @@ class ExternalTranscribeWorker:
         function_call_id = self.config.provider_run_id
         if function_call_id:
             try:
-                from modal.billing import workspace_billing_report
+                import modal
 
-                report = workspace_billing_report(
+                report = modal.Workspace.from_context().billing.report(
                     start=started_at - timedelta(minutes=5),
                     end=finished_at + timedelta(minutes=5),
                     resolution="h",
@@ -587,6 +587,11 @@ class ExternalTranscribeWorker:
                     total += float(row.cost)
                 if matched:
                     return total, "modal-billing-report"
+                print(
+                    f"[external-worker] modal billing report had no row for {function_call_id}; "
+                    "using runtime fallback",
+                    flush=True,
+                )
             except Exception as exc:  # noqa: BLE001
                 print(f"[external-worker] modal billing lookup warning: {exc}", flush=True)
         rate = self._estimated_dollars_per_runtime_second(policy)
@@ -926,6 +931,7 @@ class ExternalTranscribeWorker:
             started_at = datetime.now(UTC).isoformat()
             started = time.monotonic()
             tracker = self._resource_tracker()
+            tracker.start_rss_monitor()
             tracker.record("claim-start")
             outcome = "failed"
             actual = 0.0
@@ -976,6 +982,9 @@ class ExternalTranscribeWorker:
                     worked += 1
                 outcome = "success"
             finally:
+                # Stop before settlement so the final sample is included in the claim's peak,
+                # including runs that fail during model load or audio materialization.
+                tracker.stop_rss_monitor()
                 settled_claims.append(
                     CompletedClaim(
                         owner=claim_owner,
@@ -1926,6 +1935,7 @@ def _run_characterization(
     summary.budget_cycle_key = budget_cycle
     summary.budget_unit_label = policy.budget.unit_label
     worker_tracker = worker._resource_tracker()
+    worker_tracker.start_rss_monitor()
     worker_tracker.record("characterize-start")
     run_started_at = datetime.now(UTC)
     run_started = time.monotonic()
@@ -2028,8 +2038,15 @@ def _run_characterization(
             return out
 
         model_workers = 1 if mode == "sequential" else max(1, concurrency)
-        for entry in selected:
-            worker._model_with_workers(worker._city_for(entry["item"]), num_workers=model_workers)
+        try:
+            for entry in selected:
+                worker._model_with_workers(
+                    worker._city_for(entry["item"]), num_workers=model_workers
+                )
+        finally:
+            # Claim trackers cover inference; the run tracker also covers characterization's
+            # eager model preload, which is often the largest cold-start RSS transition.
+            worker_tracker.stop_rss_monitor()
 
         summary_lock = threading.Lock()
 
@@ -2039,6 +2056,7 @@ def _run_characterization(
             lease_claimed = bool(entry["lease_claimed"])
             metadata = dict(entry["metadata"])
             tracker = worker._resource_tracker()
+            tracker.start_rss_monitor()
             tracker.record("claim-start")
             started_at = datetime.now(UTC).isoformat()
             started = time.monotonic()
@@ -2076,6 +2094,7 @@ def _run_characterization(
                     summary.gpu_seconds += actual
                 outcome = "success"
             finally:
+                tracker.stop_rss_monitor()
                 if lease_claimed:
                     with summary_lock:
                         settled_claims.append(
@@ -2182,6 +2201,7 @@ def _run_characterization(
         )
         return out
     finally:
+        worker_tracker.stop_rss_monitor()
         worker_tracker.record("characterize-finish")
         summary.update_resource_peaks(worker_tracker)
 
