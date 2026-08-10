@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from citypods.bodies import matches, source_body_filter, source_body_inclusions
 from citypods.chapters import episode_served_chapters
 from citypods.feeds import episode_resource_links, meeting_page_url
 from citypods.models import City, Episode
@@ -343,12 +344,19 @@ def _shard_cities(cities: Iterable[City]) -> dict[str, list[City]]:
 def _city_for_record(candidates: list[City], record: dict[str, Any]) -> City:
     """Prefer a body-specific feed when one shares this source's record store."""
     body = str(record.get("body") or "").casefold()
-    if body:
-        for city in candidates:
-            configured = str(city.source.get("body") or "").casefold()
-            if configured and (configured == body or configured in body or body in configured):
+    provider_guid = str(record.get("provider_guid") or "")
+    for city in candidates:
+        configured = source_body_filter(city.source)
+        inclusions = source_body_inclusions(city.source)
+        if provider_guid and any(
+            provider_guid == inclusion.provider_guid for inclusion in inclusions
+        ):
+            return city
+        if body:
+            selectors = (configured,) if isinstance(configured, str) else configured or ()
+            if any(matches(body, selector) for selector in selectors):
                 return city
-    return next((city for city in candidates if not city.source.get("body")), candidates[0])
+    return next((city for city in candidates if not source_body_filter(city.source)), candidates[0])
 
 
 def _search_record_inputs(record: dict[str, Any]) -> dict[str, Any]:
@@ -407,6 +415,8 @@ def _shard_hash(records: dict[str, Any], candidates: list[City], base_url: str) 
             {
                 "slug": city.slug,
                 "body": city.source.get("body"),
+                "body_any": city.source.get("body_any"),
+                "body_includes": city.source.get("body_includes"),
                 "entity": city.city_entity,
                 "title": city.podcast_title,
                 "author": city.podcast_author,

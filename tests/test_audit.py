@@ -20,6 +20,7 @@ from citypods.audit import (
     check_provider_error_rates,
     check_rehost_backlog,
     check_staleness,
+    check_unexpected_bodies,
     check_view_cap,
     compute_archive_diff,
     count_audio_failures,
@@ -417,6 +418,49 @@ def _city():
     )
 
 
+def test_check_unexpected_bodies_distinguishes_one_off_recurrence_and_new_labels():
+    city = _city()
+    city.source = {
+        "feed_url": "u",
+        "body": "City Council",
+        "body_includes": [
+            {"provider_guid": "https://example/old-work-session", "body": "Work Session"}
+        ],
+    }
+    current_one_off = _ep(1, "https://example/new-work-session")
+    current_one_off.body = "Work Session"
+    current_one_off.title = "Work Session"
+    new_committee = _ep(2, "https://example/new-committee")
+    new_committee.body = "New Committee"
+    new_committee.title = "New Committee"
+    historical = _ep(3, "https://example/old-planning")
+    historical.body = "Planning and Zoning Commission"
+    records = {
+        "old-work": {
+            "provider_guid": "https://example/old-work-session",
+            "body": "Work Session",
+        },
+        "old-planning": {
+            "provider_guid": "https://example/old-planning",
+            "body": "Planning and Zoning Commission",
+        },
+    }
+
+    finding = check_unexpected_bodies(
+        city.slug,
+        [current_one_off, new_committee, historical],
+        records,
+        related_cities=[city],
+    )
+
+    assert finding is not None
+    assert finding.check == "unexpected-body"
+    assert "same label as a configured one-off inclusion" in finding.message
+    assert "https://example/old-work-session" in finding.message
+    assert "new label not present in the append-only archive" in finding.message
+    assert "Planning and Zoning Commission" not in finding.message
+
+
 def test_audit_city_skips_other_checks_when_feed_is_empty():
     findings = audit_city(_city(), provider=_FakeProvider([]), now=NOW, view_counts=[100])
     assert [f.check for f in findings] == ["drift"]  # view-cap not added on empty feed
@@ -482,6 +526,26 @@ def test_audit_city_triage_c_genuine_regression_files_ticket():
     drift = [f for f in findings if f.check == "drift"]
     assert len(drift) == 1
     assert "inferred:" in drift[0].message
+
+
+def test_audit_city_reports_new_excluded_label_before_archive_merge():
+    city = _city()
+    city.source = {"feed_url": "u", "body": "City Council"}
+    episode = _ep(1, "new-committee")
+    episode.body = "New Committee"
+    episode.title = "New Committee"
+
+    findings = audit_city(
+        city,
+        provider=_FakeProvider([episode]),
+        now=NOW,
+        records={},
+        related_cities=[city],
+    )
+
+    unexpected = [finding for finding in findings if finding.check == "unexpected-body"]
+    assert len(unexpected) == 1
+    assert "New Committee" in unexpected[0].message
 
 
 def test_compute_archive_diff_scoped_to_body():

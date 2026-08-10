@@ -49,7 +49,11 @@ city isn't already onboarded.
 
 Most sources list many bodies (City Council, Planning & Zoning, Board of Adjustments, …) in
 one feed. Add an optional `source.body` filter (case-insensitive substring) to produce a
-**single-body feed**, and make one YAML per board you want. List a source's bodies with:
+**single-body feed**, and make one YAML per board you want. If one logical feed spans distinct
+provider labels, add `source.body_any` with explicit alternative labels. For a one-off provider row
+whose label is not reliable enough to add permanently, use `source.body_includes` with its exact
+provider GUID and expected body label; the audit will flag later rows with that label or newly seen
+body labels. List a source's bodies with:
 
 ```bash
 citypods bodies <slug>      # meeting count + latest date per body
@@ -71,9 +75,11 @@ successive runs.
   Recorded meetings expose a direct CDN MP4 (used as the video enclosure). Set
   `extract_audio: true` to also publish a small hosted M4A audio feed.
 - **swagit** — `source.list_url` is a Swagit view page and `source.body` selects one meeting
-  body (substring-matched; one feed per body). `source.list_urls` (a list) merges several view
-  pages into one feed — useful for a combined feed spanning views that are split by meeting
-  type (e.g. regular meetings + work sessions); omit `body` there to skip the per-body filter.
+  body (substring-matched; one feed per body). `source.body_any` adds explicit alternative body
+  labels to that feed. `source.body_includes` adds exact provider rows for one-off naming
+  exceptions. `source.list_urls` (a list) merges several view pages into one feed —
+  useful for a combined feed spanning views that are split by meeting type (e.g. regular meetings
+  + work sessions); omit `body` there to skip the per-body filter.
   Media is an expiring presigned MP4, so audio is always re-hosted (audio-only feed). List the
   bodies with `python scripts/discover_swagit.py <list_url>`.
 

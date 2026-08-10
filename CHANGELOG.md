@@ -15,6 +15,23 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **Dallas City Council feed now includes special-called full-council sessions** (GH#1121). A
+  source may now declare `body_any` for explicit alternative provider labels; the shared selector
+  is applied consistently by feed rendering, audits, reports, build validation, and search. The
+  Dallas feed keeps `City Council Agenda Meetings` as its primary label and adds
+  `Special Called City Council Meeting`, while continuing to exclude `Council Briefing` and
+  committee bodies. This changes feed membership only: existing audio/transcript artifacts and
+  stable episode UIDs are reused, with no pipeline-version bump or forced artifact backfill.
+
+- **One-off body naming drift now has an exact exception path and audit coverage.** A feed may use
+  `source.body_includes` for provider-GUID-specific rows without permanently broadening its body
+  selector. Feed-health audits suppress historical excluded labels, flag recurrence of a known
+  one-off label with its prior inclusion GUID, and flag newly observed excluded labels so city
+  configurations can stay current. Fort Worth's single `Work Session` recording is covered this
+  way (GH#1005); no pipeline-version bump or artifact backfill is required.
+
 ### Added
 
 - **Read-Only Chapter Locator Shadow Report & Rollout Controls.** ([`review/40`](review/40-generated-agenda-chapters.md))

@@ -9,6 +9,8 @@ the audit catches the next instance automatically instead of by manual investiga
                          multi-view).
   * ``empty`` / ``drift`` — a wrong ``body`` filter, denylist, or provider HTML/API change
                          leaves a feed with too few / zero episodes.
+  * ``unexpected-body`` — a source emits a new or repeated excluded body/title label not
+                           covered by the city's configured body feeds or exact one-off inclusion.
   * ``rehost-backlog`` — the audio pipeline is wholly stalled (bad storage creds / ffmpeg),
                          so an HLS-only feed never gets a playable enclosure.
   * ``dead-enclosure`` — expiring Swagit presigned URLs / dead Granicus DownloadFile links.
@@ -34,12 +36,22 @@ Counts and the inferred cause appear in every filed finding's message.
 from __future__ import annotations
 
 import statistics
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from citypods.bodies import filter_by_body
+from citypods.bodies import (
+    BodyInclusion,
+    BodySelector,
+    body_key,
+    filter_by_body,
+    matches,
+    matches_exact_body_label,
+    record_matches_body,
+    source_body_filter,
+    source_body_inclusions,
+)
 from citypods.chapters import episode_served_chapters
 from citypods.durations import set_served_duration_seconds
 from citypods.feeds import enclosure_url
@@ -115,21 +127,23 @@ class ArchiveDiff:
 
 
 def compute_archive_diff(
-    fetched_episodes: list[Episode], records: dict, *, body: str | None = None
+    fetched_episodes: list[Episode],
+    records: dict,
+    *,
+    body: BodySelector = None,
+    inclusions: Iterable[BodyInclusion] = (),
 ) -> ArchiveDiff:
     """Compare freshly-fetched episodes against the append-only archive.
 
     The record store is shared across every body on the same source (``source_key`` strips the
-    per-board ``body`` filter), so it holds *all* bodies' episodes. When ``body`` is given, scope
+    per-board body filter), so it holds *all* bodies' episodes. When ``body`` is given, scope
     both sides of the diff to that body's slice — otherwise one body's materialized episodes would
     make the diff suppress a genuine empty/too-few finding for a *different* body whose ``body:``
     filter has stopped matching (HTML/name change, typo) on the same shared view.
     """
-    if body:
-        from citypods.bodies import matches
-
-        fetched_episodes = filter_by_body(fetched_episodes, body)
-        records = {uid: r for uid, r in records.items() if matches(r.get("body"), body)}
+    if body or inclusions:
+        fetched_episodes = filter_by_body(fetched_episodes, body, inclusions)
+        records = {uid: r for uid, r in records.items() if record_matches_body(r, body, inclusions)}
     fetched_uids = {e.uid for e in fetched_episodes if e.uid}
     archived_uids = set(records)
     materialized = sum(1 for r in records.values() if (r.get("audio") or {}).get("url"))
@@ -277,6 +291,85 @@ def check_view_cap(slug: str, view_counts: list[int], *, cap: int = 100) -> Find
             f"{len(saturated)} view(s) at the {cap}-item cap; bodies may be missing",
         )
     return None
+
+
+def check_unexpected_bodies(
+    slug: str,
+    episodes: list[Episode],
+    records: Mapping[str, dict],
+    *,
+    related_cities: Iterable[City],
+) -> Finding | None:
+    """Find new or repeated provider labels not covered by any feed on this source.
+
+    Historical excluded labels are ignored to avoid turning every known committee into an issue.
+    A label listed in ``body_includes`` is treated specially: a later provider row with the same
+    label but a different GUID is a useful signal that a one-off naming exception became a pattern.
+    """
+    specs: list[tuple[BodySelector, tuple[BodyInclusion, ...]]] = []
+    one_offs: list[BodyInclusion] = []
+    for city in related_cities:
+        body = source_body_filter(city.source)
+        inclusions = source_body_inclusions(city.source)
+        if body is not None or inclusions:
+            specs.append((body, inclusions))
+            one_offs.extend(inclusions)
+    if not specs:
+        return None
+
+    archived_labels = {body_key(record.get("body")) for record in records.values()}
+    unexpected: dict[str, dict[str, object]] = {}
+    for episode in episodes:
+        if any(
+            matches(episode.body, body)
+            or any(episode.guid == inclusion.provider_guid for inclusion in inclusions)
+            for body, inclusions in specs
+        ):
+            continue
+        if not episode.body:
+            continue
+        label_key = body_key(episode.body)
+        matching_one_offs = [
+            inclusion
+            for inclusion in one_offs
+            if matches_exact_body_label(episode.body, inclusion.body)
+        ]
+        if not matching_one_offs and records and label_key in archived_labels:
+            continue
+        row = unexpected.setdefault(
+            label_key,
+            {"body": episode.body, "one_offs": matching_one_offs, "episodes": []},
+        )
+        row["episodes"].append(episode)
+
+    if not unexpected:
+        return None
+
+    details: list[str] = []
+    for row in unexpected.values():
+        row_episodes = row["episodes"]
+        examples = "; ".join(
+            f"title={episode.title!r}, published={episode.published.date()}, "
+            f"provider_guid={episode.guid!r}"
+            for episode in row_episodes[:3]
+        )
+        matching_one_offs = row["one_offs"]
+        if matching_one_offs:
+            known = ", ".join(inclusion.provider_guid for inclusion in matching_one_offs)
+            context = (
+                f"same label as a configured one-off inclusion ({known}), but this row is not "
+                "included"
+            )
+        else:
+            context = "new label not present in the append-only archive"
+        details.append(f"body={row['body']!r}: {len(row_episodes)} row(s); {context}; {examples}")
+    return Finding(
+        slug,
+        "unexpected-body",
+        WARN,
+        "provider returned body/title labels not covered by the configured body feeds: "
+        + " | ".join(details),
+    )
 
 
 def aggregate_view_cap_findings(
@@ -1278,6 +1371,7 @@ def audit_city(
     head: Callable[[str], int] | None = None,
     resolve: Callable[[Episode], str] | None = None,
     run_history: list[dict] | None = None,
+    related_cities: Iterable[City] | None = None,
     probe_timeline_audio: Callable[[Episode], AudioDurationProbe | None] | None = None,
     probe_timeline_audio_full: Callable[[Episode], AudioDurationProbe | None] | None = None,
     timeline_diagnostics: list[dict] | None = None,
@@ -1304,24 +1398,37 @@ def audit_city(
     # Stable identity + persisted artifacts (hosted audio) so the backlog check can tell a
     # stalled pipeline from a normal in-progress backfill.
     assign_uids(city, episodes)
+    unexpected = (
+        check_unexpected_bodies(
+            city.slug,
+            episodes,
+            records or {},
+            related_cities=related_cities,
+        )
+        if related_cities is not None
+        else None
+    )
     if records is not None:
         merge_persisted(episodes, records)
 
     # Scope the archive diff to this feed's own body: the record store is shared across every body
     # on the same source, so an unscoped diff would let other bodies' materialized episodes suppress
     # a genuine per-body regression (its ``body:`` filter stopped matching, dropping it to 0).
-    body = city.source.get("body")
-    diff = compute_archive_diff(episodes, records, body=body) if records is not None else None
+    body = source_body_filter(city.source)
+    body_inclusions = source_body_inclusions(city.source)
+    diff = (
+        compute_archive_diff(episodes, records, body=body, inclusions=body_inclusions)
+        if records is not None
+        else None
+    )
 
     # Newest publication date in the archive (across all episodes, pre-filter) for staleness
     # correction (CR2-CP-24: comment previously said "Oldest" but the code below is `max(dates)`).
     archive_newest: datetime | None = None
     if records:
-        from citypods.bodies import matches
-
         dates = []
         for rec in records.values():
-            if body and not matches(rec.get("body"), body):
+            if (body or body_inclusions) and not record_matches_body(rec, body, body_inclusions):
                 continue
             pub = rec.get("published")
             if pub:
@@ -1332,13 +1439,15 @@ def audit_city(
         if dates:
             archive_newest = max(dates)
 
-    episodes = filter_by_body(episodes, body)
+    episodes = filter_by_body(episodes, body, body_inclusions)
     episodes.sort(key=lambda e: e.published, reverse=True)
     episodes = episodes[: city.max_episodes]
     legacy_lifecycle_status = _legacy_lifecycle_status(city)
     suppress_legacy_lifecycle_checks = legacy_lifecycle_status in {"inactive", "superseded"}
 
     findings: list[Finding] = []
+    if unexpected:
+        findings.append(unexpected)
     if city.lifecycle.status == "dormant":
         resumed = check_dormant_resumed(city.slug, episodes, now)
         if resumed:
@@ -1732,6 +1841,10 @@ def audit_all(
     records_by_source: dict[str, dict] = {}
     entity_of_source: dict[str, str | None] = {}
     status_by_source_uid: dict[tuple[str, str], str] = {}
+    cities_by_source: dict[str, list[City]] = {}
+    for city in cities:
+        cities_by_source.setdefault(source_key(city), []).append(city)
+    unexpected_checked_sources: set[str] = set()
     for city in cities:
         src_key = source_key(city)
         records = load_records(state_dir, src_key)
@@ -1766,31 +1879,37 @@ def audit_all(
             media_too_large_sources.add(src_key)
             findings.extend(check_media_too_large(city.slug, records))
         _diag_before = len(timeline_diagnostics) if timeline_diagnostics is not None else 0
-        findings.extend(
-            audit_city(
-                city,
-                provider=provider,
-                now=now,
-                min_meetings=min_meetings,
-                records=records,
-                view_counts=view_counts,
-                head=head,
-                resolve=resolve,
-                run_history=run_history,
-                probe_timeline_audio=(
-                    _probe_timeline_audio_header if timeline_diagnostics is not None else None
-                ),
-                probe_timeline_audio_full=(
-                    _probe_timeline_audio_full if timeline_diagnostics is not None else None
-                ),
-                timeline_diagnostics=timeline_diagnostics,
-                mutate_timeline_integrity=persist_timeline_integrity,
-                max_kbps=max_kbps,
-                timeline_repair_min_delta=timeline_repair_min_delta,
-                timeline_repair_cohort=timeline_repair_cohort,
-                timeline_finding_min_delta=timeline_finding_min_delta,
-            )
+        city_findings = audit_city(
+            city,
+            provider=provider,
+            now=now,
+            min_meetings=min_meetings,
+            records=records,
+            view_counts=view_counts,
+            head=head,
+            resolve=resolve,
+            run_history=run_history,
+            probe_timeline_audio=(
+                _probe_timeline_audio_header if timeline_diagnostics is not None else None
+            ),
+            probe_timeline_audio_full=(
+                _probe_timeline_audio_full if timeline_diagnostics is not None else None
+            ),
+            timeline_diagnostics=timeline_diagnostics,
+            mutate_timeline_integrity=persist_timeline_integrity,
+            max_kbps=max_kbps,
+            timeline_repair_min_delta=timeline_repair_min_delta,
+            timeline_repair_cohort=timeline_repair_cohort,
+            timeline_finding_min_delta=timeline_finding_min_delta,
+            related_cities=(
+                cities_by_source[src_key] if src_key not in unexpected_checked_sources else None
+            ),
         )
+        findings.extend(city_findings)
+        if src_key not in unexpected_checked_sources and not any(
+            finding.check == "unreachable" for finding in city_findings
+        ):
+            unexpected_checked_sources.add(src_key)
         if timeline_diagnostics is not None:
             for diag in timeline_diagnostics[_diag_before:]:
                 status_by_source_uid[(src_key, diag["uid"])] = diag["check"]
