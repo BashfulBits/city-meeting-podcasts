@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Sign District Advisory Committee"
+lifecycle:
+  status: dormant
+  reason: "appears disbanded in 2025"
 podcast_title: "Dallas: Sign District Advisory Committee"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""
