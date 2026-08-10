@@ -123,7 +123,8 @@ Phase R (Research-Tool Surface)._
   now routes to the R2 coordination backend, where conditional publication is supported, while the
   indexed durable state remains on B2. This removes the repeated `backend 'b2' is not cas_capable`
   warnings and lets fresh workers rebuild/publish the manifest when the R2 copy is absent; no
-  durable state backfill is needed.
+  durable state backfill is needed. The ASR reconcile path now seeds a complete R2 manifest after
+  its B2-list fallback restore, and scoped pushes refuse to publish an incomplete first manifest.
 
 - **H15/R5 ingest workflows could double-comment or leave a persisted decision unconfirmed on retry.**
   `asr-quality-ingest.yml` and `llm-tag-review-ingest.yml` each persist a review decision, then separately `gh issue comment` and `gh issue close` the source issue. A GitHub API failure between those steps left a durable decision recorded with no confirmation posted, and a retry re-ran the comment/close pair unconditionally — double-posting the comment if it had actually succeeded before the close call failed. The persist step was already safe to re-run (`record_review()` / `ingest_review_decision()` overwrite by candidate/sample identity, not append), so the fix is confined to the comment/close step: check existing comments for a stable `<!-- h15-ingest:N -->` / `<!-- llm-ingest:N -->` marker before commenting, and check the issue's current state before closing, mirroring the find-or-update comment pattern already used in `dep-bump-smoke.yml`.
