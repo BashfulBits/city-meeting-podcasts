@@ -229,6 +229,57 @@ def _write_local_manifest(state_dir: Path, manifest: dict) -> None:
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
 
+def ensure_remote_manifest(storage, state_dir: Path, *, log=None) -> bool:
+    """Seed a complete remote manifest after a full B2 fallback restore.
+
+    ``pull_state`` can restore a complete local snapshot by listing B2 when the R2 manifest is
+    absent. A later scoped push must not publish only its owned subset as a new manifest, so the
+    ASR reconcile job calls this once after that full restore. The seed indexes local durable files
+    without re-uploading them; their canonical bytes are already on B2. Returns whether a manifest
+    is present or was successfully seeded. A concurrent seed is harmless: the conditional write
+    loses and the caller's subsequent scoped push will re-read the winner.
+    """
+    if not _supported(storage) or not getattr(storage, "cas_capable", False):
+        return False
+    emit = log or (lambda msg: print(msg, flush=True))
+    state_dir = Path(state_dir)
+    try:
+        current = storage.get_bytes(MANIFEST_KEY)
+    except Exception as exc:  # noqa: BLE001 — leave the B2-list fallback available for retry
+        emit(f"state: WARNING could not inspect remote manifest for seed ({exc})")
+        return False
+    if current is not None:
+        return True
+
+    objects = {}
+    for path in sorted(state_dir.rglob("*")):
+        if not path.is_file() or path.suffix not in _SUFFIXES:
+            continue
+        rel = path.relative_to(state_dir).as_posix()
+        if rel in {MANIFEST_REL_PATH, DIRTY_JOURNAL_NAME, TOMBSTONE_JOURNAL_NAME}:
+            continue
+        if _is_cas_managed(storage, f"{STATE_PREFIX}/{rel}"):
+            continue
+        objects[rel] = _manifest_object(rel, path)
+    tombstones = _read_journal(state_dir / TOMBSTONE_JOURNAL_NAME, state_dir, label="tombstone")
+    manifest = {
+        "version": MANIFEST_VERSION,
+        "generation": 1,
+        "updated_at": datetime.now(UTC).isoformat(),
+        "objects": objects,
+        "tombstones": sorted(tombstones),
+    }
+    payload = json.dumps(manifest, indent=2, sort_keys=True).encode()
+    try:
+        storage.put_cas(MANIFEST_KEY, payload, "application/json", if_none_match="*")
+    except Exception as exc:  # noqa: BLE001 — a concurrent seed or transient retry is safe
+        emit(f"state: WARNING could not seed remote manifest ({exc})")
+        return False
+    _write_local_manifest(state_dir, manifest)
+    emit(f"state: seeded remote manifest with {len(objects)} object(s)")
+    return True
+
+
 def _full_state_keys(storage):
     return [
         key
@@ -463,6 +514,13 @@ def push_state(storage, state_dir: Path, *, only_prefixes=None, only_paths=None,
             # since a partial push must not be silently reported as complete).
             for _ in pool.map(_push_one, changed):
                 pass
+
+    # A scoped writer may have restored state from the B2-list fallback but only owns a subset of
+    # files. Never let that subset become a new authoritative manifest; the next full restore must
+    # continue using the B2 listing until the run-start reconcile job seeds a complete R2 index.
+    if remote_manifest is None and explicitly_scoped:
+        emit("state: remote manifest absent; retaining B2-list fallback after scoped push")
+        return len(changed) if journal_driven else len(candidates)
 
     delta_objects = {rel: _manifest_object(rel, state_dir / rel) for rel in changed}
 

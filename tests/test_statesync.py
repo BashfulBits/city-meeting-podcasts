@@ -21,6 +21,7 @@ from citypods.records import (
 from citypods.statesync import (
     STATE_PREFIX,
     TransientStateSyncError,
+    ensure_remote_manifest,
     fetch_remote_records,
     mark_state_deleted,
     mark_state_dirty,
@@ -725,6 +726,25 @@ class _CASLocal(LocalStorage):
 
     cas_capable = True
 
+    def get_bytes(self, key):
+        path = self._path(key)
+        if not path.exists():
+            return None
+        return path.read_bytes(), str(path.stat().st_mtime_ns)
+
+    def put_cas(self, key, data, content_type, *, if_none_match=None, if_match=None):
+        from citypods.storage.s3 import CASConflict
+
+        current = self.get_bytes(key)
+        if if_none_match == "*" and current is not None:
+            raise CASConflict(key)
+        if if_match is not None and (current is None or current[1] != if_match):
+            raise CASConflict(key)
+        path = self._path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        return self.public_url(key), self.get_bytes(key)[1]
+
 
 def test_push_state_excludes_cas_managed_budget(tmp_path):
     bucket = _CASLocal(root=tmp_path / "bucket", url_prefix="https://x")
@@ -738,6 +758,46 @@ def test_push_state_excludes_cas_managed_budget(tmp_path):
     assert not bucket.exists(f"{STATE_PREFIX}/compute_budget.json")
     assert bucket.exists(f"{STATE_PREFIX}/sources/src1/episodes.json")
     assert pushed == 1
+
+
+def test_scoped_push_does_not_publish_partial_manifest_when_remote_manifest_is_missing(tmp_path):
+    from citypods.storage.routing import COORDINATION_PREFIXES, RoutingStorage
+
+    b2 = LocalStorage(root=tmp_path / "b2", url_prefix="https://b2")
+    r2 = _CASLocal(root=tmp_path / "r2", url_prefix="https://r2")
+    storage = RoutingStorage(
+        primary=b2, coordination=r2, coordination_prefixes=COORDINATION_PREFIXES
+    )
+    state_dir = tmp_path / "state"
+    save_records(state_dir, "src", {"u1": {"uid": "u1"}})
+    (state_dir / "work.json").write_text("[]")
+
+    assert push_state(storage, state_dir, only_prefixes=["work.json"]) == 1
+    assert b2.exists(f"{STATE_PREFIX}/work.json")
+    assert not r2.exists(f"{STATE_PREFIX}/catalog/manifest.json")
+
+
+def test_ensure_remote_manifest_seeds_complete_snapshot_before_scoped_push(tmp_path):
+    from citypods.storage.routing import COORDINATION_PREFIXES, RoutingStorage
+
+    b2 = LocalStorage(root=tmp_path / "b2", url_prefix="https://b2")
+    r2 = _CASLocal(root=tmp_path / "r2", url_prefix="https://r2")
+    storage = RoutingStorage(
+        primary=b2, coordination=r2, coordination_prefixes=COORDINATION_PREFIXES
+    )
+    state_dir = tmp_path / "state"
+    save_records(state_dir, "src", {"u1": {"uid": "u1"}})
+    (state_dir / "work.json").write_text("[]")
+
+    assert ensure_remote_manifest(storage, state_dir) is True
+    manifest = json.loads((r2._path(f"{STATE_PREFIX}/catalog/manifest.json")).read_text())
+    assert set(manifest["objects"]) == {"sources/src/episodes.json", "work.json"}
+
+    # A later scoped reconcile push must preserve the complete seed rather than replacing it with
+    # the one file it owns.
+    assert push_state(storage, state_dir, only_prefixes=["work.json"]) == 1
+    manifest = json.loads((r2._path(f"{STATE_PREFIX}/catalog/manifest.json")).read_text())
+    assert set(manifest["objects"]) == {"sources/src/episodes.json", "work.json"}
 
 
 def test_push_state_includes_budget_for_non_cas_backend(tmp_path):

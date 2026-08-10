@@ -792,7 +792,7 @@ def _compute_reconcile(args) -> int:
         save_manifest,
     )
     from citypods.state import resolve_state_dir
-    from citypods.statesync import pull_state, push_state
+    from citypods.statesync import ensure_remote_manifest, pull_state, push_state
     from citypods.storage import make_storage
 
     site_config = load_site_config(args.site_config)
@@ -886,6 +886,10 @@ def _compute_reconcile(args) -> int:
     summary = reconcile_compute(
         state_dir, storage, sweep_work_leases=sweep_work_leases, use_lease_index=use_lease_index
     )
+    # If the R2 catalog manifest is missing, pull_state() above restored the complete durable
+    # snapshot from B2's listing. Seed the complete R2 index before the scoped work.json push, or
+    # that push could publish only its owned subset and hide the other B2 state files from workers.
+    ensure_remote_manifest(storage, state_dir)
     push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])
     leases = summary.get("leases", {})
     lease_note = (
