@@ -107,8 +107,10 @@ def source_body_filter(source: Mapping[str, object]) -> BodySelector:
     additional = source.get("body_any")
     if additional is None:
         return primary if isinstance(primary, str) and primary.strip() else None
-    if not isinstance(additional, list) or any(
-        not isinstance(value, str) or not value.strip() for value in additional
+    if (
+        not isinstance(additional, list)
+        or not additional
+        or any(not isinstance(value, str) or not value.strip() for value in additional)
     ):
         raise ValueError("source.body_any must be a non-empty list of non-empty strings")
     selectors = []

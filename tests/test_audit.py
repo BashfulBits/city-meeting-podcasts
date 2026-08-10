@@ -528,6 +528,26 @@ def test_audit_city_triage_c_genuine_regression_files_ticket():
     assert "inferred:" in drift[0].message
 
 
+def test_audit_city_reports_new_excluded_label_before_archive_merge():
+    city = _city()
+    city.source = {"feed_url": "u", "body": "City Council"}
+    episode = _ep(1, "new-committee")
+    episode.body = "New Committee"
+    episode.title = "New Committee"
+
+    findings = audit_city(
+        city,
+        provider=_FakeProvider([episode]),
+        now=NOW,
+        records={},
+        related_cities=[city],
+    )
+
+    unexpected = [finding for finding in findings if finding.check == "unexpected-body"]
+    assert len(unexpected) == 1
+    assert "New Committee" in unexpected[0].message
+
+
 def test_compute_archive_diff_scoped_to_body():
     # A shared-view source: records hold two bodies, but the diff scopes to "Planning".
     e1 = _ep(1, "g1")

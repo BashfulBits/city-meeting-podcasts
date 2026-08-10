@@ -354,7 +354,7 @@ def _city_for_record(candidates: list[City], record: dict[str, Any]) -> City:
             return city
         if body:
             selectors = (configured,) if isinstance(configured, str) else configured or ()
-            if any(matches(body, selector) or matches(selector, body) for selector in selectors):
+            if any(matches(body, selector) for selector in selectors):
                 return city
     return next((city for city in candidates if not source_body_filter(city.source)), candidates[0])
 

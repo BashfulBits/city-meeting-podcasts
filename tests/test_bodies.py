@@ -132,6 +132,11 @@ def test_source_body_filter_rejects_malformed_alternatives():
         source_body_filter({"body": "City Council", "body_any": "Special Called"})
 
 
+def test_source_body_filter_rejects_empty_alternatives():
+    with pytest.raises(ValueError, match="body_any"):
+        source_body_filter({"body_any": []})
+
+
 def test_body_inclusions_match_only_the_exact_provider_guid():
     inclusions = source_body_inclusions(
         {

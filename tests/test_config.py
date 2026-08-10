@@ -156,6 +156,33 @@ def test_conflicting_source_id_reuse_raises(tmp_path):
         load_city_configs(tmp_path, DEFAULTS)
 
 
+def test_shared_source_id_allows_feed_local_body_selectors(tmp_path):
+    first = VALID.replace(
+        "source:\n  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n",
+        "source:\n"
+        "  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n"
+        "  body: City Council\n"
+        "  body_any:\n"
+        "    - Special Called City Council Meeting\n",
+    )
+    second = VALID.replace(
+        "source:\n  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n",
+        "source:\n"
+        "  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n"
+        "  body: City Council\n"
+        "  body_includes:\n"
+        "    - provider_guid: https://foo.granicus.com/MediaPlayer.php?view_id=2&clip_id=42\n"
+        "      body: Work Session\n",
+    ).replace("slug: foo-tx", "slug: bar-tx")
+    _write(tmp_path, "foo-tx.yml", first + "source_id: shared-source\n")
+    _write(tmp_path, "bar-tx.yml", second + "source_id: shared-source\n")
+
+    assert {city.slug for city in load_city_configs(tmp_path, DEFAULTS)} == {
+        "foo-tx",
+        "bar-tx",
+    }
+
+
 @pytest.mark.parametrize(
     "block,status,checks_before,checks_after",
     [

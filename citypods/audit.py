@@ -334,7 +334,7 @@ def check_unexpected_bodies(
             for inclusion in one_offs
             if matches_exact_body_label(episode.body, inclusion.body)
         ]
-        if not matching_one_offs and (not records or label_key in archived_labels):
+        if not matching_one_offs and records and label_key in archived_labels:
             continue
         row = unexpected.setdefault(
             label_key,
@@ -1398,6 +1398,16 @@ def audit_city(
     # Stable identity + persisted artifacts (hosted audio) so the backlog check can tell a
     # stalled pipeline from a normal in-progress backfill.
     assign_uids(city, episodes)
+    unexpected = (
+        check_unexpected_bodies(
+            city.slug,
+            episodes,
+            records or {},
+            related_cities=related_cities,
+        )
+        if related_cities is not None
+        else None
+    )
     if records is not None:
         merge_persisted(episodes, records)
 
@@ -1429,16 +1439,6 @@ def audit_city(
         if dates:
             archive_newest = max(dates)
 
-    unexpected = (
-        check_unexpected_bodies(
-            city.slug,
-            episodes,
-            records or {},
-            related_cities=related_cities,
-        )
-        if related_cities is not None
-        else None
-    )
     episodes = filter_by_body(episodes, body, body_inclusions)
     episodes.sort(key=lambda e: e.published, reverse=True)
     episodes = episodes[: city.max_episodes]

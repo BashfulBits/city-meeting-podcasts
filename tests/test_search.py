@@ -70,6 +70,16 @@ def _shard(tmp_path, src):
     return json.loads((tmp_path / "docs" / "data" / "search" / f"{src}.json").read_text())
 
 
+def test_search_routing_uses_directional_body_matching():
+    broad_label = _city("agenda", body="City Council Agenda Meetings")
+    exact_label = _city("council", body="City Council")
+
+    assert (
+        search_mod._city_for_record([broad_label, exact_label], {"body": "City Council"})
+        is exact_label
+    )
+
+
 def test_text_values_excludes_llm_tag_bookkeeping_fields():
     """An admitted LLM tag carries confidence/explanation/source alongside its taxonomy id.
     _text_values flattens tag dicts into the public search index's tags field/facet, so those
