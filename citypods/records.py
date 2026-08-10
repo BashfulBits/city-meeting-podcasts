@@ -542,6 +542,8 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
             e.transcript_basis,
             sorted((e.links or {}).items()),
             episode_served_chapters(e),
+            e.generated_chapters,
+            e.generated_chapters_spec_hash,
             e.chapters_basis,
             episode_source_duration_seconds(e),
             episode_served_duration_seconds(e),
@@ -571,6 +573,8 @@ def meeting_page_hash(ep: Episode) -> str:
         "chapter_tags": ep.chapter_tags,
         "links": sorted((ep.links or {}).items()),
         "chapters": episode_served_chapters(ep),
+        "generated_chapters": ep.generated_chapters,
+        "generated_chapters_spec_hash": ep.generated_chapters_spec_hash,
         "chapters_basis": ep.chapters_basis,
         "transcript_url": ep.transcript_hosted_url,
         "transcript_format": ep.transcript_format,
@@ -1138,6 +1142,12 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             for link_key, link_value in (rec.get("links") or {}).items():
                 if link_key.endswith("_artifact_key") and isinstance(link_value, str):
                     keys.add(link_value)
+            generated = rec.get("generated_agenda_candidates") or {}
+            if isinstance(generated, dict):
+                for artifact_field in ("artifact_key", "boundary_artifact_key"):
+                    artifact_key = generated.get(artifact_field)
+                    if isinstance(artifact_key, str) and artifact_key:
+                        keys.add(artifact_key)
     return keys
 
 
@@ -1154,6 +1164,9 @@ def episode_to_record(ep: Episode) -> dict:
         "source_chapters": ep.source_chapters or None,
         "chapters": ep.chapters,
         "chapters_basis": ep.chapters_basis,
+        "generated_agenda_candidates": ep.generated_agenda_candidates or None,
+        "generated_chapters": ep.generated_chapters or None,
+        "generated_chapters_spec_hash": ep.generated_chapters_spec_hash,
         "summary": ep.summary,
         "tags": ep.tags or None,
         "chapter_tags": ep.chapter_tags or None,
@@ -1424,6 +1437,15 @@ def record_to_episode(rec: dict) -> Episode:
         minutes_roster=roster.get("members") if isinstance(roster.get("members"), list) else [],
         source_chapters=rec.get("source_chapters") or [],
         chapters=rec.get("chapters") or [],
+        generated_agenda_candidates=(
+            rec.get("generated_agenda_candidates")
+            if isinstance(rec.get("generated_agenda_candidates"), dict)
+            else {}
+        ),
+        generated_chapters=(
+            rec.get("generated_chapters") if isinstance(rec.get("generated_chapters"), list) else []
+        ),
+        generated_chapters_spec_hash=rec.get("generated_chapters_spec_hash"),
         provider_transcript=(
             rec.get("provider_transcript")
             if isinstance(rec.get("provider_transcript"), dict)
@@ -1599,6 +1621,9 @@ ARTIFACT_BLOCKS: frozenset[str] = frozenset(
         "tags_llm_recipe_hash",
         "tags_spec_hash",
         "tags_input_fingerprint",
+        "generated_agenda_candidates",
+        "generated_chapters",
+        "generated_chapters_spec_hash",
     }
 )
 PLANNING_FIELDS: frozenset[str] = frozenset(
@@ -1635,6 +1660,17 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
             "tags_input_fingerprint",
         }
     ),
+    "chapter-agenda": frozenset({"generated_agenda_candidates"}),
+    "chapter-locator": frozenset(
+        {"generated_agenda_candidates", "generated_chapters", "generated_chapters_spec_hash"}
+    ),
+    "chapter": frozenset(
+        {
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
+        }
+    ),
 }
 
 _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
@@ -1645,6 +1681,9 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     "align": frozenset({"transcript"}),
     "diarize": frozenset({"diarize"}),
     "tag": frozenset({"tags"}),
+    "chapter-agenda": frozenset({"chapter_agenda"}),
+    "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
+    "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
 }
 
 
@@ -1799,7 +1838,7 @@ def merge_preserving_foreign(
                         merged_status[stage_name] = status
                 rec["stage_completion"] = merged_status
             for block in protected:
-                if remote_rec.get(block):
+                if block in remote_rec:
                     rec[block] = remote_rec[block]
             _preserve_remote_served_duration_if_protected(rec, remote_rec, protected)
             _preserve_remote_planning_if_better(rec, remote_rec, protected)
@@ -1920,6 +1959,15 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.source_chapters = rec.get("source_chapters") or ep.source_chapters
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)
+        persisted_agenda_candidates = rec.get("generated_agenda_candidates")
+        if isinstance(persisted_agenda_candidates, dict):
+            ep.generated_agenda_candidates = persisted_agenda_candidates
+        persisted_generated = rec.get("generated_chapters")
+        if isinstance(persisted_generated, list):
+            ep.generated_chapters = persisted_generated
+        ep.generated_chapters_spec_hash = rec.get(
+            "generated_chapters_spec_hash", ep.generated_chapters_spec_hash
+        )
         ep.tags = rec.get("tags") or ep.tags
         ep.chapter_tags = rec.get("chapter_tags") or ep.chapter_tags
         ep.llm_tag_candidates = rec.get("llm_tag_candidates") or ep.llm_tag_candidates
