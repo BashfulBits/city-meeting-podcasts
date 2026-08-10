@@ -31,6 +31,7 @@ Supported wrapper-level env overrides here:
 - ``CITYPODS_BEAM_APP``
 - ``CITYPODS_BEAM_SCHEDULE``
 - ``CITYPODS_BEAM_GPU``
+- ``CITYPODS_BEAM_MEMORY``
 
 This wrapper also forwards a shared set of ``CITYPODS_WORKER_*`` env vars into the remote runtime;
 see ``citypods.compute.external_worker`` for the canonical list and semantics.
@@ -88,6 +89,7 @@ def _resolve_gpu() -> str:
 
 
 GPU = _resolve_gpu()
+MEMORY = os.environ.get("CITYPODS_BEAM_MEMORY", "4Gi")
 
 
 def _pinned_versions(constraints_file: Path) -> dict[str, str]:
@@ -261,6 +263,8 @@ image = (
     name=APP_NAME,
     image=image,
     gpu=GPU,
+    cpu=1.0,
+    memory=MEMORY,
     secrets=RUNTIME_SECRETS,
     env=RUNTIME_ENV,  # Beam's Schedule API uses `env`, not `env_vars` (GH#814)
     timeout=24 * 3600,
