@@ -26,6 +26,7 @@ from citypods.audit import (
     compute_archive_diff,
     count_audio_failures,
 )
+from citypods.bodies import BodyInclusion
 from citypods.models import Episode, FeedLifecycle
 
 NOW = datetime(2026, 5, 30, tzinfo=UTC)
@@ -77,7 +78,10 @@ def test_check_agenda_quality_requires_repeated_rejection():
                     "status": "rejected",
                     "reason": "ambiguous-native-and-ocr",
                     "assessment_attempts": 3,
-                    "source_url": "https://example.test/agenda.pdf",
+                    "source_url": (
+                        "https://user:password@example.test/agenda.pdf?"
+                        "X-Amz-Signature=secret#page=1"
+                    ),
                 }
             },
         }
@@ -88,6 +92,8 @@ def test_check_agenda_quality_requires_repeated_rejection():
     assert finding.check == "agenda-quality"
     assert "3 of 3" in finding.message
     assert "source=https://example.test/agenda.pdf" in finding.message
+    assert "X-Amz-Signature" not in finding.message
+    assert "password@" not in finding.message
     assert "body=City Council" in finding.message
 
 
@@ -116,7 +122,7 @@ def test_check_agenda_quality_alerts_for_one_episode_after_three_attempts():
             "agenda_text": {
                 "quality": {
                     "status": "rejected",
-                    "reason": "ocr_unavailable",
+                    "reason": "ocr-unavailable",
                     "assessment_attempts": 3,
                     "source_url": "https://example.test/agenda.pdf",
                 }
@@ -126,6 +132,70 @@ def test_check_agenda_quality_alerts_for_one_episode_after_three_attempts():
     finding = check_agenda_quality("council", records, body="City Council")
     assert finding is not None
     assert "1 of 1" in finding.message
+
+
+def test_check_agenda_quality_preserves_active_artifact_but_alerts_on_last_rejection():
+    records = {
+        "u1": {
+            "uid": "u1",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "accepted",
+                    "eligibility": "agenda",
+                    "assessment_attempts": 0,
+                    "source_url": "https://example.test/good.pdf",
+                    "last_assessment": {
+                        "status": "rejected",
+                        "reason": "ambiguous-native-and-ocr",
+                        "assessment_attempts": 3,
+                        "source_url": "https://example.test/shell.pdf?token=secret",
+                    },
+                }
+            },
+        }
+    }
+    finding = check_agenda_quality("council", records, body="City Council")
+    assert finding is not None
+    assert "source=https://example.test/shell.pdf" in finding.message
+    assert "token=secret" not in finding.message
+
+
+def test_check_agenda_quality_applies_body_inclusions():
+    records = {
+        "included": {
+            "uid": "included",
+            "guid": "included",
+            "body": "Other Body",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 3,
+                }
+            },
+        },
+        "excluded": {
+            "uid": "excluded",
+            "guid": "excluded",
+            "body": "Other Body",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 3,
+                }
+            },
+        },
+    }
+    finding = check_agenda_quality(
+        "council",
+        records,
+        inclusions=(BodyInclusion("included", "City Council"),),
+    )
+    assert finding is not None
+    assert "uid=included" in finding.message
+    assert "uid=excluded" not in finding.message
 
 
 def test_check_agenda_quality_ignores_stale_assessment_history():

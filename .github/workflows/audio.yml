@@ -172,7 +172,7 @@ jobs:
           timeout 30 docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin <<<"${GHCR_TOKEN}" || true
           if timeout 300 docker pull "${AUDIO_RUNNER_IMAGE}" \
             && docker run --rm --entrypoint sh "${AUDIO_RUNNER_IMAGE}" -c \
-              'ffmpeg -version >/dev/null && ffprobe -version >/dev/null && python -c "import boto3, citypods"'; then
+              'ffmpeg -version >/dev/null && ffprobe -version >/dev/null && pdftocairo -v >/dev/null && tesseract --version >/dev/null && python -c "import boto3, citypods"'; then
             echo "mode=container" >> "$GITHUB_OUTPUT"
             echo "Using prebuilt audio runtime ${AUDIO_RUNNER_IMAGE}"
           else

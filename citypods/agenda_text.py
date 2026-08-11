@@ -32,13 +32,22 @@ MAX_TEXT_CHARS = 1_000_000
 MAX_LINKS = 200
 AGENDA_TEXT_MAX_CHARS = 50_000
 BACKUP_ITEM_MAX_CHARS = 20_000
-AGENDA_TEXT_QUALITY_VERSION = "2"
+# Bumped 2 -> 3 (GH#1092): line-preserving placeholder classification, bounded native/OCR
+# similarity, and scaled OCR budgets change the persisted quality decision.
+AGENDA_TEXT_QUALITY_VERSION = "3"
 OCR_MAX_PAGES = 120
 OCR_MAX_OUTPUT_CHARS = AGENDA_TEXT_MAX_CHARS
 OCR_PROBE_TIMEOUT_SECONDS = 15
 OCR_FULL_TIMEOUT_SECONDS = 60
+OCR_FULL_SECONDS_PER_PAGE = 5
 OCR_MIN_CONFIDENCE = 60.0
 OCR_MIN_ALPHA_CHARS = 100
+_SIMILARITY_SAMPLE_CHARS = 8_000
+_SIMILARITY_ACCEPTANCE_THRESHOLD = 0.6
+
+
+class OcrUnavailableError(RuntimeError):
+    """Raised when the bounded OCR fallback cannot find its required executables."""
 
 
 @dataclass(frozen=True)
@@ -216,7 +225,7 @@ def _is_placeholder_text(text: str) -> bool:
             normalized.casefold()
         ):
             return True
-        if len(normalized) <= 500 or agenda_content_score(normalized) == 0:
+        if len(normalized) <= 500 or agenda_content_score(text) == 0:
             return True
     compact = re.sub(r"[^a-z0-9]+", "", normalized.casefold())
     return (
@@ -240,7 +249,7 @@ def classify_agenda_text(text: str) -> str:
         return "empty"
     if "not currently published" in normalized.casefold():
         return "unpublished-placeholder"
-    if _is_placeholder_text(normalized):
+    if _is_placeholder_text(text):
         return "viewer-placeholder"
     if _is_short_notice(normalized):
         return "short-notice"
@@ -282,7 +291,7 @@ def _ocr_pdf_pages(
 ) -> tuple[str, float | None]:
     """Render selected PDF pages and return Tesseract text plus mean word confidence."""
     if not shutil.which("pdftocairo") or not shutil.which("tesseract"):
-        raise RuntimeError("ocr_unavailable")
+        raise OcrUnavailableError
     with tempfile.TemporaryDirectory(prefix="citypods-ocr-") as temp_dir:
         root = Path(temp_dir)
         pdf_path = root / "agenda.pdf"
@@ -433,8 +442,8 @@ def assess_agenda_document(
     except Exception as exc:  # noqa: BLE001 - convert tool failures into durable diagnostics
         if isinstance(exc, subprocess.TimeoutExpired):
             reason = "ocr-timeout"
-        elif str(exc) == "ocr_unavailable":
-            reason = "ocr_unavailable"
+        elif isinstance(exc, OcrUnavailableError):
+            reason = "ocr-unavailable"
         else:
             reason = "ocr-probe-failed"
         return (
@@ -475,15 +484,13 @@ def assess_agenda_document(
             discovered,
         )
 
-    native_similarity = SequenceMatcher(
-        a=_normalize_ws(native).casefold(), b=_normalize_ws(probe_text).casefold()
-    ).ratio()
+    native_similarity = _bounded_text_similarity(native, probe_text)
     materially_better = (
         probe_alpha >= max(OCR_MIN_ALPHA_CHARS, native_alpha * 2) and probe_score > native_score
     )
     if not materially_better and native_suspicious and native_alpha >= OCR_MIN_ALPHA_CHARS:
         materially_better = probe_score > native_score and probe_alpha >= native_alpha * 1.5
-    if not materially_better and native_similarity < 0.6:
+    if not materially_better and native_similarity < _SIMILARITY_ACCEPTANCE_THRESHOLD:
         return (
             AgendaTextAssessment(
                 "",
@@ -506,13 +513,16 @@ def assess_agenda_document(
             full_text, full_confidence = runner(
                 content,
                 list(range(1, min(page_count, OCR_MAX_PAGES) + 1)),
-                timeout=OCR_FULL_TIMEOUT_SECONDS,
+                timeout=max(
+                    OCR_FULL_TIMEOUT_SECONDS,
+                    OCR_FULL_SECONDS_PER_PAGE * max(1, min(page_count, OCR_MAX_PAGES)),
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - required OCR failure is durable and retryable
             if isinstance(exc, subprocess.TimeoutExpired):
                 reason = "ocr-timeout"
-            elif str(exc) == "ocr_unavailable":
-                reason = "ocr_unavailable"
+            elif isinstance(exc, OcrUnavailableError):
+                reason = "ocr-unavailable"
             else:
                 reason = "ocr-full-failed"
             return (
@@ -840,6 +850,27 @@ def agenda_title_similarity(left: str, right: str) -> float:
     ):
         return 1.0
     return SequenceMatcher(a=left_norm, b=right_norm).ratio()
+
+
+def _bounded_text_similarity(left: str, right: str) -> float:
+    """Compare bounded normalized samples without allowing hostile inputs to consume the run.
+
+    The persisted diagnostic is exact only when both normalized inputs fit the sample bound. When
+    their lengths make the acceptance threshold mathematically impossible, the cheap upper bound is
+    returned instead of running ``SequenceMatcher``. Otherwise the comparison uses a fixed prefix;
+    the quality gate only needs a conservative agreement signal, not a whole-document similarity.
+    """
+    left_norm = _normalize_ws(left).casefold()
+    right_norm = _normalize_ws(right).casefold()
+    if not left_norm or not right_norm:
+        return 0.0
+    upper_bound = 2 * min(len(left_norm), len(right_norm)) / (len(left_norm) + len(right_norm))
+    if upper_bound < _SIMILARITY_ACCEPTANCE_THRESHOLD:
+        return upper_bound
+    return SequenceMatcher(
+        a=left_norm[:_SIMILARITY_SAMPLE_CHARS],
+        b=right_norm[:_SIMILARITY_SAMPLE_CHARS],
+    ).ratio()
 
 
 def attribute_links_to_chapters(

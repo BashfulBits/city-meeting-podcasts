@@ -976,7 +976,12 @@ def test_reconcile_agenda_quality_adds_human_verification_label():
     calls = _run_reconcile([f], existing_issues={}, now=_NOW)
     create_calls = [a for a in calls if len(a) >= 2 and a[1] == "create"]
     assert create_calls
-    assert "needs:human-verification" in create_calls[0]
+    assert {
+        "signal:feed-health",
+        "type:operations",
+        "severity:warn",
+        "needs:human-verification",
+    } <= set(create_calls[0])
 
 
 def test_reconcile_grouped_empty_findings_do_not_open_issue():

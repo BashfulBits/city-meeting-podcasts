@@ -573,6 +573,8 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     assert not image.endswith(":latest")
     assert len(env["FFMPEG_SHA256"]) == 64
     assert wf["permissions"]["packages"] == "read"
+    image_wf, _ = _job("audio-runner-image.yml", job_name="build")
+    assert image == image_wf["env"]["IMAGE"]
 
     select = next(s for s in job["steps"] if s.get("name") == "Select audio runtime")
     # Self-built ffmpeg (scripts/build_ffmpeg_static.sh) vendored to our own B2 bucket, not

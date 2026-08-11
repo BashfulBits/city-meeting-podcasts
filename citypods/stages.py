@@ -33,7 +33,7 @@ translation, summarization, any multi-second ASR/LLM/network/CPU job) is::
             stats.reused += 1
             continue
         if ctx.stop is not None and ctx.stop():    # check immediately before the costly work
-            stats.skipped += 1                     # deferred to a later run — not an error
+            stats.defer("wall-clock-budget")        # deferred to a later run — not an error
             continue
         <do the expensive, restartable work for ep, persisting enough to resume next run>
 
@@ -1912,8 +1912,11 @@ class ChaptersStage:
                 # source-time equivalent we can safely remap across multiple sources.
                 stats.reused += 1
                 continue
-            if remaining <= 0 or (ctx.stop is not None and ctx.stop()):
-                stats.skipped += 1
+            if remaining <= 0:
+                stats.defer("per-run-cap")
+                continue
+            if ctx.stop is not None and ctx.stop():
+                stats.defer("wall-clock-budget")
                 continue
             remaining -= 1
             try:
@@ -1992,6 +1995,9 @@ class AgendaTextStage:
     # bounded second-hop enumeration-page follow are new manifest fields/behavior. Without this
     # bump, stage_is_dirty()'s generic version check would never re-derive an already-completed
     # episode's backup manifest, leaving it permanently on the old, unattributed shape.
+    # Bumped 2 -> 3 (GH#1092): re-assess existing agenda artifacts through the quality gate and
+    # backfill their quality envelope gradually during normal enrichment; no bulk migration run
+    # is required, and only suspicious PDFs invoke OCR.
     version = "3"
 
     def process(
@@ -2051,13 +2057,15 @@ class AgendaTextStage:
             if (
                 ep.agenda_text_url == agenda_url
                 and ep.agenda_backup_url
+                and ep.agenda_text_attempts == 0
                 and quality.get("status") == "accepted"
                 and quality.get("pipeline_version") == AGENDA_TEXT_QUALITY_VERSION
+                and not quality.get("last_assessment")
             ):
                 stats.reused += 1
                 continue
             if ctx.stop is not None and ctx.stop():
-                stats.skipped += 1
+                stats.defer("wall-clock-budget", sample=ep.uid or ep.guid)
                 continue
             try:
                 import hashlib
@@ -2110,26 +2118,32 @@ class AgendaTextStage:
                 ]
                 now = datetime.now(UTC)
                 prior_quality = ep.agenda_text_quality or {}
+                prior_assessment = prior_quality.get("last_assessment")
+                if not isinstance(prior_assessment, dict):
+                    prior_assessment = prior_quality
                 quality = assessment.as_dict()
                 document_hash = hashlib.sha256(content).hexdigest()
                 same_document = (
+                    prior_assessment.get("document_hash") == document_hash
+                    and prior_assessment.get("source_url") == selected_url
+                )
+                same_accepted_document = (
                     prior_quality.get("document_hash") == document_hash
                     and prior_quality.get("source_url") == selected_url
+                    and prior_quality.get("status") == "accepted"
                 )
                 quality["document_hash"] = document_hash
                 quality["first_seen"] = (
-                    prior_quality.get("first_seen", now.isoformat())
+                    prior_assessment.get("first_seen", now.isoformat())
                     if same_document
                     else now.isoformat()
                 )
                 quality["last_seen"] = now.isoformat()
                 quality["assessment_attempts"] = (
-                    int(prior_quality.get("assessment_attempts", 0) or 0) + 1
+                    int(prior_assessment.get("assessment_attempts", 0) or 0) + 1
                     if same_document
                     else 1
                 )
-                ep.agenda_text_url = selected_url
-                ep.agenda_text_quality = quality
                 ep.agenda_text_last_attempt = datetime.now(UTC).isoformat()
                 if assessment.status != "accepted":
                     ep.agenda_text_attempts += 1
@@ -2138,13 +2152,26 @@ class AgendaTextStage:
                         f"agenda-quality-{assessment.reason}",
                         sample=ep.uid or ep.guid,
                     )
-                    ep.links = dict(ep.links or {})
-                    ep.links.pop("agenda_text_artifact", None)
-                    ep.links.pop("agenda_text_artifact_key", None)
-                    ep.links.pop("agenda_backup_artifact", None)
-                    ep.links.pop("agenda_backup_artifact_key", None)
-                    ep.agenda_backup_url = None
+                    had_accepted_artifact = prior_quality.get("status") == "accepted"
+                    if had_accepted_artifact and not same_accepted_document:
+                        # Keep the last known-good artifact eligible while retaining the new
+                        # rejection for audit/diagnostics. A transient portal shell must not make
+                        # an already-published agenda disappear from the feed.
+                        retained_quality = dict(prior_quality)
+                        retained_quality["last_assessment"] = quality
+                        ep.agenda_text_quality = retained_quality
+                    else:
+                        ep.agenda_text_url = selected_url
+                        ep.agenda_text_quality = quality
+                        ep.links = dict(ep.links or {})
+                        ep.links.pop("agenda_text_artifact", None)
+                        ep.links.pop("agenda_text_artifact_key", None)
+                        ep.links.pop("agenda_backup_artifact", None)
+                        ep.links.pop("agenda_backup_artifact_key", None)
+                        ep.agenda_backup_url = None
                     continue
+                ep.agenda_text_url = selected_url
+                ep.agenda_text_quality = quality
                 ep.agenda_text_attempts = 0
                 stats.quality(
                     "accepted-notice"
@@ -2401,7 +2428,7 @@ class MinutesTextStage:
                 stats.defer("minutes-text-backoff")
                 continue
             if ctx.stop is not None and ctx.stop():
-                stats.skipped += 1
+                stats.defer("wall-clock-budget", sample=ep.uid or ep.guid)
                 continue
             try:
                 content, content_type = fetch_document_bytes(
@@ -2573,8 +2600,10 @@ def _document_key(source: str, uid: str, kind: str, content: bytes) -> str:
 
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
-AGENDA_TEXT_PIPELINE_VERSION = "2"
-# Bumped alongside AgendaTextStage.version -- see that class's comment.
+AGENDA_TEXT_PIPELINE_VERSION = "3"
+# Bumped 2 -> 3 alongside AgendaTextStage.version (GH#1092). Existing records are gradually
+# re-assessed during normal enrichment; old artifacts remain available until a replacement is
+# accepted, and suspicious PDFs alone invoke OCR.
 AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
 MINUTES_VOTES_PIPELINE_VERSION = "1"

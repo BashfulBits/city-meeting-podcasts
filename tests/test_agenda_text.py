@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.agenda_text import (
+    OCR_FULL_SECONDS_PER_PAGE,
     AgendaTitleCandidate,
     _extract_pdf,
     agenda_title_similarity,
@@ -153,6 +154,17 @@ def test_quality_classifier_preserves_short_notice_and_rejects_viewer_shell():
     assert classify_agenda_text("https://example.test/documentviewer.php") == "viewer-placeholder"
 
 
+def test_quality_classifier_preserves_line_structure_for_real_agenda_text():
+    text = (
+        "Public meeting information\n"
+        "1. Housing and neighborhood improvements\n"
+        "2. Budget and transportation planning\n"
+        "3. Public safety capital program update\n"
+        + ("The loading dock report is included in the supporting materials.\n" * 12)
+    )
+    assert classify_agenda_text(text) == "complete"
+
+
 def test_pdf_quality_gate_keeps_good_native_text_without_ocr():
     content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
     calls = []
@@ -198,6 +210,7 @@ def test_pdf_quality_gate_accepts_ocr_when_embedded_text_is_a_placeholder(monkey
     assert assessment.method == "ocr"
     assert assessment.reason == "ocr-materially-better"
     assert len(calls) == 2
+    assert calls[1][1] >= OCR_FULL_SECONDS_PER_PAGE * len(calls[1][0])
 
 
 def test_pdf_quality_gate_fails_closed_when_ocr_is_ambiguous(monkeypatch):
@@ -231,7 +244,7 @@ def test_pdf_quality_gate_records_ocr_unavailability(monkeypatch):
         source_url="https://example.test/agenda.pdf",
     )
     assert assessment.status == "rejected"
-    assert assessment.reason == "ocr_unavailable"
+    assert assessment.reason == "ocr-unavailable"
 
 
 def test_pdf_quality_gate_fails_closed_when_full_ocr_times_out(monkeypatch):

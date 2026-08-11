@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from citypods.agenda_text import AgendaTextAssessment
 from citypods.models import City, Episode
 from citypods.stages import (
+    AgendaTextStage,
     AudioStage,
     LinksStage,
     StageContext,
@@ -114,6 +116,68 @@ def test_audio_stage_noop_without_storage(tmp_path):
     eps = [_ep("g1")]
     stats = AudioStage().process(FakeProvider(), _city(), eps, _ctx(tmp_path, storage=False))
     assert stats.ran == 0 and eps[0].hosted_audio_url is None
+
+
+def test_agenda_stage_retains_last_accepted_artifact_on_new_document_rejection(
+    tmp_path, monkeypatch
+):
+    import citypods.agenda_text as agenda_text
+    import citypods.http as http
+    import citypods.stages as stages
+
+    ep = _ep("g1")
+    ep.links = {
+        "agenda": "https://example.test/new-shell.pdf",
+        "agenda_text_artifact": "https://cdn/old-agenda.txt",
+        "agenda_text_artifact_key": "documents/x/uid-g1/agenda-old",
+        "agenda_backup_artifact": "https://cdn/old-backup.txt",
+        "agenda_backup_artifact_key": "documents/x/uid-g1/backup-old",
+    }
+    ep.agenda_text_url = "https://example.test/old-agenda.pdf"
+    ep.agenda_backup_url = "https://cdn/old-backup.txt"
+    ep.agenda_text_quality = {
+        "status": "accepted",
+        "eligibility": "agenda",
+        "pipeline_version": "3",
+        "source_url": ep.agenda_text_url,
+        "document_hash": "old-hash",
+    }
+
+    monkeypatch.setattr(http, "fetch_document_bytes", lambda *args, **kwargs: (b"shell", "pdf"))
+    monkeypatch.setattr(stages, "_validated_document_url", lambda city, url: url)
+    monkeypatch.setattr(
+        agenda_text,
+        "assess_agenda_document",
+        lambda *args, **kwargs: (
+            AgendaTextAssessment(
+                "",
+                kwargs["source_url"],
+                "pdf",
+                "none",
+                "rejected",
+                "unknown",
+                "ambiguous-native-and-ocr",
+            ),
+            [],
+        ),
+    )
+
+    stats = AgendaTextStage().process(None, _city(), [ep], _ctx(tmp_path))
+
+    assert stats.defer_reasons["agenda-quality-ambiguous-native-and-ocr"] == 1
+    assert ep.agenda_text_url == "https://example.test/old-agenda.pdf"
+    assert ep.agenda_backup_url == "https://cdn/old-backup.txt"
+    assert ep.links["agenda_text_artifact_key"].endswith("agenda-old")
+    assert ep.agenda_text_quality["status"] == "accepted"
+    assert ep.agenda_text_quality["last_assessment"]["status"] == "rejected"
+
+    # Backoff-skipped runs do not count, but a later actual assessment of the same replacement
+    # document must continue the nested diagnostic history rather than restarting at one.
+    ep.agenda_text_last_attempt = "2020-01-01T00:00:00+00:00"
+    second = AgendaTextStage().process(None, _city(), [ep], _ctx(tmp_path))
+    assert second.defer_reasons["agenda-quality-ambiguous-native-and-ocr"] == 1
+    assert ep.agenda_text_quality.get("last_assessment"), ep.agenda_text_quality
+    assert ep.agenda_text_quality["last_assessment"]["assessment_attempts"] == 2
 
 
 def test_audio_stage_skips_withheld_availability(tmp_path):

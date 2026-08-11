@@ -40,6 +40,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from citypods.bodies import (
     BodyInclusion,
@@ -659,6 +660,7 @@ def check_agenda_quality(
     records: dict,
     *,
     body: str | None = None,
+    inclusions: Iterable[BodyInclusion] = (),
     ambiguity_attempts: int = _AGENDA_AMBIGUITY_ATTEMPTS,
     recent_days: int = _AGENDA_AUDIT_RECENT_DAYS,
     now: datetime | None = None,
@@ -670,20 +672,24 @@ def check_agenda_quality(
     It therefore covers archived episodes outside the provider's current fetch window and does
     not create network/OCR work in the audit job.
     """
-    from citypods.bodies import matches
-
     now = now or datetime.now(UTC)
+    inclusions = tuple(inclusions)
     cutoff = now.timestamp() - recent_days * 86400
     affected: list[tuple[str, dict, dict]] = []
     assessed = 0
     for uid, record in records.items():
-        if body and not matches(record.get("body"), body):
+        if (body or inclusions) and not record_matches_body(record, body, inclusions):
             continue
         agenda = record.get("agenda_text") or {}
         quality = agenda.get("quality") if isinstance(agenda.get("quality"), dict) else {}
         if not quality:
             continue
-        last_seen = quality.get("last_seen")
+        # A rejected replacement assessment must not hide a previously accepted artifact from
+        # chapters, but its diagnostic still needs to count toward the quality alert.
+        assessment = quality.get("last_assessment")
+        if not isinstance(assessment, dict):
+            assessment = quality
+        last_seen = assessment.get("last_seen")
         if last_seen:
             try:
                 observed = datetime.fromisoformat(str(last_seen))
@@ -693,12 +699,12 @@ def check_agenda_quality(
                     continue
             except ValueError:
                 pass
-        attempts = int(quality.get("assessment_attempts", 0) or 0)
+        attempts = int(assessment.get("assessment_attempts", 0) or 0)
         if attempts:
             assessed += 1
-        if quality.get("status") != "rejected" or attempts < ambiguity_attempts:
+        if assessment.get("status") != "rejected" or attempts < ambiguity_attempts:
             continue
-        affected.append((uid, record, quality))
+        affected.append((uid, record, assessment))
 
     episode_threshold = any(
         int(quality.get("assessment_attempts", 0) or 0) >= ambiguity_attempts
@@ -716,7 +722,9 @@ def check_agenda_quality(
     rows = []
     for uid, record, quality in affected[:20]:
         reason = quality.get("reason") or "unknown"
-        source = quality.get("source_url") or (record.get("links") or {}).get("agenda") or ""
+        source = _redact_agenda_source_url(
+            quality.get("source_url") or (record.get("links") or {}).get("agenda") or ""
+        )
         rows.append(
             f"source={source or 'unknown'}, uid={uid}, "
             f"date={record.get('published', 'unknown')}, body={record.get('body') or 'unknown'}, "
@@ -737,6 +745,24 @@ def check_agenda_quality(
         + "; ".join(rows)
         + suffix,
     )
+
+
+def _redact_agenda_source_url(value: object) -> str:
+    """Keep an agenda source useful for diagnosis without leaking signed URL material."""
+    raw = str(value or "")
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+        hostname = parts.hostname
+        if not parts.scheme or not hostname:
+            return raw
+        if ":" in hostname and not hostname.startswith("["):
+            hostname = f"[{hostname}]"
+        port = f":{parts.port}" if parts.port is not None else ""
+        return urlunsplit((parts.scheme, f"{hostname}{port}", parts.path, "", ""))
+    except ValueError:
+        return "[invalid-url]"
 
 
 def check_enclosures(
@@ -1562,6 +1588,7 @@ def audit_city(
                 city.slug,
                 records,
                 body=body,
+                inclusions=body_inclusions,
             )
             if agenda_quality:
                 findings.append(agenda_quality)

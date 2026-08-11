@@ -167,7 +167,7 @@ PDF text extraction, no new package.
    than serving stale cached text — the same "content-addressed, not just URL-addressed" discipline the
    provider-transcript registry already uses.
 
-4. **`AGENDA_TEXT_PIPELINE_VERSION = "1"`** (`citypods/stages.py`, alongside `TRANSCRIPT_PIPELINE_VERSION`
+4. **`AGENDA_TEXT_PIPELINE_VERSION = "3"`** (`citypods/stages.py`, alongside `TRANSCRIPT_PIPELINE_VERSION`
    at `:1231`) — one version constant for this new pipeline, per the existing per-pipeline-version
    convention (`AUDIO_PIPELINE_VERSION`, `TRANSCRIPT_PIPELINE_VERSION`). A bump re-derives only
    `agenda_text`, never transcript/audio/tags.
@@ -402,7 +402,12 @@ agenda artifacts gradually; only suspicious PDFs invoke OCR.
 Extraction failures are categorized as placeholder/low-quality, OCR unavailable, OCR probe/full failure,
 ambiguous native-versus-OCR, or fetch/parse failure. Each assessment increments the bounded attempt
 history for the same source URL/document hash and applies agenda backoff. A rejection never publishes a
-text artifact; a changed source URL/document hash starts a fresh history.
+new text artifact. If a different document fails after a previously accepted artifact exists, the stage
+retains that last-known-good artifact and quality envelope, placing the rejected assessment in its
+``last_assessment`` diagnostic field so chapter eligibility remains stable while the feed-health audit
+can still alert on repeated ambiguity. A rejection of the same accepted document, or a rejection with
+no accepted artifact, withholds the artifact as specified above. A changed source URL/document hash
+starts a fresh history.
 
 The daily feed-health audit reads these persisted diagnostics without fetching or OCRing documents,
 using the most recent 90-day assessment window. It

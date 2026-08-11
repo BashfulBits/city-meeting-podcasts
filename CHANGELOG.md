@@ -81,8 +81,9 @@ Phase R (Research-Tool Surface)._
   versioned quality evidence. The feed-health audit consolidates repeated ambiguity into one
   maintainer issue and auto-closes it after recovery. The stage/version bump gradually re-evaluates
   existing agenda artifacts on normal enrich runs; OCR replaces native text only when clearly better,
-  and no separate bulk backfill is performed. The audio-runner image is v2 with the OCR binaries;
-  the host fallback and CI smoke checks verify the same tools.
+  and no separate bulk backfill is performed. A rejected replacement document retains the prior
+  accepted artifact while recording the new diagnostic for feed-health alerting. The audio-runner
+  image is v2 with the OCR binaries; the host fallback and CI smoke checks verify the same tools.
 
 - **Multi-Provider Cloudflare Worker Dispatch Proxy & Per-Route Ledger.** ([`review/41`](review/41-multi-provider-llm-dispatch.md))
   Extended `workers/llm-dispatch-proxy/` and the Python compute layer to route Gemini/Mistral/DeepSeek/
