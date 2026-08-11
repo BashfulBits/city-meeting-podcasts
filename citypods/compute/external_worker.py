@@ -371,6 +371,19 @@ def _is_deterministic_media_decode_error(exc: BaseException) -> bool:
     }
 
 
+def _is_rate_limited_error(exc: BaseException) -> bool:
+    """True when a provider returned HTTP 429 through direct or child-process execution."""
+    response = getattr(exc, "response", None)
+    if getattr(response, "status_code", None) == 429:
+        return True
+    if isinstance(exc, LocalInferenceWorkerError):
+        message = exc.worker_exception_message.lower()
+        return exc.worker_exception_name == "HTTPError" and (
+            "429" in message or "too many requests" in message
+        )
+    return False
+
+
 def _int_env(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or raw == "":
@@ -783,6 +796,8 @@ class ExternalTranscribeWorker:
                 )
                 raise ClaimDeferred("transient-state-sync") from exc
             except Exception as exc:
+                if _is_rate_limited_error(exc):
+                    raise ClaimDeferred("rate-limited") from exc
                 if _is_deterministic_media_decode_error(exc):
                     self._quarantine_media_decode(item, exc)
                     raise ClaimDeferred("media-decode") from exc
@@ -1918,6 +1933,8 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
             )
             raise ClaimDeferred("transient-state-sync") from exc
         except Exception as exc:
+            if _is_rate_limited_error(exc):
+                raise ClaimDeferred("rate-limited") from exc
             if _is_deterministic_media_decode_error(exc):
                 self._quarantine_media_decode(item, exc)
                 raise ClaimDeferred("media-decode") from exc

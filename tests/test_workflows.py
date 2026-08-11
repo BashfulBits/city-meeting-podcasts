@@ -1093,11 +1093,21 @@ def test_clear_materialization_workflow_avoids_injection_and_guards_apply():
 
 def test_reclaim_transcript_workflow_guards_write_to_main():
     wf, job = _job("reclaim-transcript.yml")
-    step = next(s for s in job["steps"] if s.get("name") == "Reclaim transcript")
+    step = next(s for s in job["steps"] if s.get("name") == "Run transcript recovery")
     run = step["run"]
     assert step["env"]["GIT_REF"] == "${{ github.ref }}"
     assert '"$GIT_REF" != "refs/heads/main"' in run
     assert "args+=(--write)" in run
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+    assert inputs["operation"]["type"] == "choice"
+    assert inputs["operation"]["default"] == "reclaim-transcript"
+    assert inputs["source_key"]["required"] is False
+    assert inputs["episode_uid"]["required"] is False
+    assert inputs["work_class"]["default"] == "provider-transcript-align"
+    assert 'python -m citypods.cli compute requeue-failed-work-leases "${args[@]}"' in run
+    assert '"$GIT_REF" != "refs/heads/main"' in run
+    assert "source_key and episode_uid are required" in run
+    assert job["env"]["AUDIO_STORAGE_BACKEND"] == "routing"
     assert set(_on(wf)) == {"workflow_dispatch"}
 
 

@@ -85,6 +85,11 @@ changing GPU availability.
 The scheduled ASR matrix currently runs three transcribe workers and two provider-align workers.
 Large hosted-audio downloads use the same capped `Retry-After` policy as other transient HTTP
 fetches, because the normal guarded session cannot be used for multi-hundred-megabyte responses.
+Transient HTTP 429 failures return a work item to the queue rather than permanently failing its
+lease; `compute reconcile` reaps expired leases across every transcript work class. Terminal failed
+leases remain operator-controlled and can be reopened for one class with the dry-run-by-default
+`compute requeue-failed-work-leases` command, exposed through the manual Transcript Recovery
+workflow alongside the existing artifact-reclaim operation.
 The Audio lane runs its CLI inside the version-pinned
 `ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v2` image. That image is built weekly and on
 runtime-definition changes from a digest-pinned Python base plus a checksum-pinned static

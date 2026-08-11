@@ -18,6 +18,7 @@ from citypods.compute import (
     DispatchTarget,
     lease_owner_for,
     reconcile_compute,
+    requeue_failed_work_leases,
     select_backend,
 )
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
@@ -529,6 +530,75 @@ class TestReconcile:
         reclaimed, _etag = wl.read_lease(bucket, "s1", "u1")
         assert reclaimed.state == "queued" and reclaimed.owner == ""
 
+    def test_work_lease_reaper_covers_provider_alignment_classes(self, tmp_path):
+        from citypods.ops import work_leases as wl
+
+        bucket = _MemBucket()
+        items = [
+            _item("asr", "transcript-asr"),
+            _item("align", "provider-transcript-align"),
+        ]
+        save_manifest(tmp_path, items)
+        for item in items:
+            wl.claim(
+                bucket,
+                item.source_key,
+                item.episode_uid,
+                owner="dead",
+                ttl_seconds=1,
+                now=NOW - timedelta(hours=1),
+            )
+        # Provider alignment has a distinct content-addressed filename prefix from ASR. Reconcile
+        # must settle this completed lease instead of requeueing it as an unfinished ASR item.
+        bucket.objs["transcripts/s1/align-provider-align-align-done.vtt"] = b"WEBVTT\n"
+
+        summary = reconcile_compute(
+            tmp_path, bucket, now=NOW, sweep_work_leases=True, use_lease_index=False
+        )
+
+        assert summary["leases"]["requeued"] == 1
+        assert summary["leases"]["completed"] == 1
+        assert all(
+            wl.read_lease(bucket, item.source_key, item.episode_uid)[0].state
+            == ("done" if item.episode_uid == "align" else "queued")
+            for item in items
+        )
+
+    def test_requeue_failed_work_leases_is_class_scoped(self, tmp_path):
+        from citypods.ops import work_leases as wl
+
+        bucket = _MemBucket()
+        items = [
+            _item("asr", "transcript-asr"),
+            _item("align", "provider-transcript-align"),
+        ]
+        save_manifest(tmp_path, items)
+        for item in items:
+            wl.claim(
+                bucket,
+                item.source_key,
+                item.episode_uid,
+                owner="failed-worker",
+                ttl_seconds=600,
+                now=NOW,
+            )
+            wl.release(
+                bucket,
+                item.source_key,
+                item.episode_uid,
+                owner="failed-worker",
+                state="failed",
+                now=NOW,
+            )
+
+        summary = requeue_failed_work_leases(
+            tmp_path, bucket, work_class="provider-transcript-align", now=NOW
+        )
+
+        assert summary["requeued"] == 1
+        assert wl.read_lease(bucket, "s1", "align")[0].state == "queued"
+        assert wl.read_lease(bucket, "s1", "asr")[0].state == "failed"
+
     def test_cli_reconcile_reads_work_lease_reaper_enabled_from_defaults_block(
         self, tmp_path, monkeypatch
     ):
@@ -612,6 +682,58 @@ class TestReconcile:
         assert [(it.source_key, it.episode_uid, it.work_class) for it in manifest] == [
             ("s1", "u1", "transcript-asr")
         ]
+
+    def test_cli_requeue_failed_dry_run_does_not_write_resolved_state(self, tmp_path, monkeypatch):
+        from citypods import cli
+
+        bucket = _MemBucket()
+        monkeypatch.setattr("citypods.storage.make_storage", lambda *a, **kw: bucket)
+        monkeypatch.setattr(cli, "load_city_configs", lambda *a, **kw: [])
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "sentinel").write_text("untouched")
+        site_config_path = tmp_path / "site_config.yml"
+        site_config_path.write_text(f"state_dir: {state_dir}\n")
+
+        pull_targets: list[Path] = []
+
+        def fake_pull(_storage, target):
+            target = Path(target)
+            pull_targets.append(target)
+            target.mkdir(parents=True, exist_ok=True)
+
+        monkeypatch.setattr("citypods.statesync.pull_state", fake_pull)
+        monkeypatch.setattr(
+            "citypods.ops.workqueue.rebuild_manifest_from_state",
+            lambda cities, *, site_config, state_dir: [],
+        )
+        captured: dict = {}
+        monkeypatch.setattr(
+            "citypods.compute.dispatch.requeue_failed_work_leases",
+            lambda recovery_state_dir, storage, **kwargs: (
+                captured.update(state_dir=Path(recovery_state_dir), kwargs=kwargs)
+                or {"scanned": 0, "requeued": 0, "skipped": 0, "conflicts": 0}
+            ),
+        )
+
+        rc = cli.main(
+            [
+                "compute",
+                "requeue-failed-work-leases",
+                "--work-class",
+                "provider-transcript-align",
+                "--site-config",
+                str(site_config_path),
+                "--output-dir",
+                str(tmp_path / "docs"),
+            ]
+        )
+
+        assert rc == 0
+        assert pull_targets and pull_targets[0] != state_dir
+        assert captured["state_dir"] != state_dir
+        assert (state_dir / "sentinel").read_text() == "untouched"
+        assert not (state_dir / "work.json").exists()
 
     def test_empty_manifest_is_noop(self, tmp_path):
         assert reconcile_compute(tmp_path, storage=None, now=NOW) == {
