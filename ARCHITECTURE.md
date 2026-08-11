@@ -276,6 +276,14 @@ total on `/admin/status`.
   queue; the timed-out episode (not a merely-superseded one) records durable timeout backoff
   instead of becoming a terminal failure, and every worker's admission check refuses to re-claim
   it until that backoff window lapses.
+- **External-worker resource telemetry and provider settlement** — Modal/Beam claim trackers sample
+  process RSS once per second (without GPU polling) and retain the sampled peak in
+  `state/asr_worker_telemetry.json`; provider logs therefore retain useful pre-OOM breadcrumbs even
+  when a killed claim cannot write its final telemetry record. Beam's scheduled and canary wrappers
+  explicitly request 1 CPU plus 4 GiB RAM, and its configured runtime rate includes those resources
+  alongside the RTX4090 rate. Modal actual-cost settlement uses the current workspace billing report
+  API and falls back to the configured runtime estimate when a report is unavailable or has no row
+  for the function call.
 - **Hosted-audio fetch reliability and cross-process decode-error quarantine** — `_download_audio_file`
   (`citypods/stages.py`, shared by `TranscriptStage` and `external_worker.py`) retries a
   `ChunkedEncodingError`/`ConnectionError` mid-stream (a transient storage/CDN connection drop while

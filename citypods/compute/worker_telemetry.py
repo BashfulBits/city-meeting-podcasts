@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -94,10 +95,11 @@ class ResourceTracker:
     peak_rss_bytes: int | None = None
     peak_gpu_vram_used_bytes: int | None = None
     gpu_vram_total_bytes: int | None = None
+    _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+    _rss_monitor_stop: threading.Event | None = field(default=None, init=False, repr=False)
+    _rss_monitor_thread: threading.Thread | None = field(default=None, init=False, repr=False)
 
-    def record(self, label: str) -> dict[str, Any]:
-        snap = resource_snapshot(label, rss_probe=self.rss_probe, gpu_probe=self.gpu_probe)
-        self.snapshots.append(snap)
+    def _update_peaks(self, snap: dict[str, Any]) -> None:
         rss = snap.get("rss_bytes")
         gpu_used = snap.get("gpu_vram_used_bytes")
         gpu_total = snap.get("gpu_vram_total_bytes")
@@ -117,7 +119,16 @@ class ResourceTracker:
                 if self.gpu_vram_total_bytes is None
                 else max(self.gpu_vram_total_bytes, gpu_total)
             )
+
+    def record(self, label: str) -> dict[str, Any]:
+        snap = resource_snapshot(label, rss_probe=self.rss_probe, gpu_probe=self.gpu_probe)
+        with self._lock:
+            self.snapshots.append(snap)
+            self._update_peaks(snap)
         if self.log is not None:
+            rss = snap.get("rss_bytes")
+            gpu_used = snap.get("gpu_vram_used_bytes")
+            gpu_total = snap.get("gpu_vram_total_bytes")
             self.log(
                 "[external-worker] resource "
                 f"label={label} rss={format_bytes(rss)} "
@@ -125,24 +136,81 @@ class ResourceTracker:
             )
         return snap
 
+    def record_rss_sample(self) -> dict[str, Any]:
+        """Record a cheap RSS-only sample without invoking ``nvidia-smi``."""
+
+        snap = {
+            "label": "rss-sample",
+            "captured_at": _now_iso(),
+            "rss_bytes": self.rss_probe(),
+            "gpu_vram_used_bytes": None,
+            "gpu_vram_total_bytes": None,
+        }
+        with self._lock:
+            old_peak = self.peak_rss_bytes
+            self.snapshots.append(snap)
+            self._update_peaks(snap)
+            new_peak = self.peak_rss_bytes
+        # Log only new peaks: this gives killed containers useful breadcrumbs without producing
+        # one provider-log line per sampling interval during long successful claims.
+        if self.log is not None and isinstance(new_peak, int) and new_peak != old_peak:
+            self.log(
+                "[external-worker] resource sample "
+                f"rss={format_bytes(snap.get('rss_bytes'))} peak_rss={format_bytes(new_peak)}"
+            )
+        return snap
+
+    def start_rss_monitor(self, *, interval_seconds: float = 1.0) -> None:
+        """Start a daemon sampler for RSS peaks during a worker/claim scope."""
+
+        if interval_seconds <= 0:
+            raise ValueError("RSS monitor interval must be positive")
+        with self._lock:
+            thread = self._rss_monitor_thread
+            if thread is not None and thread.is_alive():
+                return
+            stop = threading.Event()
+            self._rss_monitor_stop = stop
+
+            def _monitor() -> None:
+                while not stop.wait(interval_seconds):
+                    try:
+                        self.record_rss_sample()
+                    except Exception as exc:  # noqa: BLE001
+                        if self.log is not None:
+                            self.log(f"[external-worker] RSS monitor warning: {exc}")
+
+            thread = threading.Thread(target=_monitor, name="citypods-rss-monitor", daemon=True)
+            self._rss_monitor_thread = thread
+        self.record_rss_sample()
+        thread.start()
+
+    def stop_rss_monitor(self) -> None:
+        """Stop sampling, wait briefly for the sampler, and take a final RSS sample."""
+
+        with self._lock:
+            stop = self._rss_monitor_stop
+            thread = self._rss_monitor_thread
+        if stop is None:
+            return
+        stop.set()
+        if thread is not None:
+            thread.join(timeout=2.0)
+        try:
+            self.record_rss_sample()
+        finally:
+            with self._lock:
+                self._rss_monitor_stop = None
+                self._rss_monitor_thread = None
+
     def update_from(self, other: ResourceTracker) -> None:
-        if other.peak_rss_bytes is not None:
-            self.peak_rss_bytes = (
-                other.peak_rss_bytes
-                if self.peak_rss_bytes is None
-                else max(self.peak_rss_bytes, other.peak_rss_bytes)
-            )
-        if other.peak_gpu_vram_used_bytes is not None:
-            self.peak_gpu_vram_used_bytes = (
-                other.peak_gpu_vram_used_bytes
-                if self.peak_gpu_vram_used_bytes is None
-                else max(self.peak_gpu_vram_used_bytes, other.peak_gpu_vram_used_bytes)
-            )
-        if other.gpu_vram_total_bytes is not None:
-            self.gpu_vram_total_bytes = (
-                other.gpu_vram_total_bytes
-                if self.gpu_vram_total_bytes is None
-                else max(self.gpu_vram_total_bytes, other.gpu_vram_total_bytes)
+        with self._lock, other._lock:
+            self._update_peaks(
+                {
+                    "rss_bytes": other.peak_rss_bytes,
+                    "gpu_vram_used_bytes": other.peak_gpu_vram_used_bytes,
+                    "gpu_vram_total_bytes": other.gpu_vram_total_bytes,
+                }
             )
 
 

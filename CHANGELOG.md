@@ -24,6 +24,15 @@ Phase R (Research-Tool Surface)._
   persisted even when selection finds no route, so quota state does not remain on an old day key.
   This changes only ephemeral coordination state (`state/llm_budget.json` and the dispatch Worker
   budget); no durable catalog artifact is invalidated or backfilled.
+  
+- **External GPU-worker memory and billing telemetry now match the deployed resource model.** Modal
+  settlement uses `Workspace.from_context().billing.report()` instead of the deprecated billing
+  helper, with an explicit fallback when the report cannot be queried or has no matching function
+  call. Modal/Beam workers sample process RSS once per second around claims, including the final
+  sample before settlement, while Beam's scheduled and canary entrypoints now request 1 CPU and 4 GiB
+  RAM. Beam's configured runtime rate is correspondingly updated to include GPU, CPU, and RAM pricing
+  (`$0.0002672/s`). This is an operational admission/telemetry change only: no pipeline version was
+  bumped, existing artifacts were not invalidated, and no backfill is required.
 
 - **Dallas City Council feed now includes special-called full-council sessions** (GH#1121). A
   source may now declare `body_any` for explicit alternative provider labels; the shared selector

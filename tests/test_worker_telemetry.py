@@ -87,6 +87,22 @@ def test_summary_includes_peak_worker_memory_fields():
     assert data["gpu_vram_total_bytes"] == 400
 
 
+def test_rss_sample_does_not_poll_gpu_and_updates_peak():
+    lines = []
+    tracker = ResourceTracker(
+        log=lines.append,
+        rss_probe=lambda: 1234,
+        gpu_probe=lambda: (_ for _ in ()).throw(AssertionError("RSS samples must not poll GPU")),
+    )
+
+    snap = tracker.record_rss_sample()
+
+    assert snap["label"] == "rss-sample"
+    assert snap["rss_bytes"] == 1234
+    assert tracker.peak_rss_bytes == 1234
+    assert "peak_rss=" in lines[0]
+
+
 def test_append_worker_telemetry_uses_one_cas_object_and_bounds_samples():
     bucket = MemCAS()
     for i in range(3):
