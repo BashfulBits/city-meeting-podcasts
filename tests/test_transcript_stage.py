@@ -1261,6 +1261,158 @@ def test_download_audio_file_raises_http_429_after_retries(tmp_path):
         )
 
 
+def test_download_audio_file_validates_manual_redirects(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    class _FakeResponse:
+        def __init__(self, status_code, headers=None):
+            self.status_code = status_code
+            self.headers = headers or {}
+            self.closed = False
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.exceptions.HTTPError(response=self)
+
+        def iter_content(self, chunk_size):
+            yield b"fake audio bytes"
+
+        def close(self):
+            self.closed = True
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __init__(self):
+            self.calls = []
+            self.responses = iter(
+                [
+                    _FakeResponse(302, {"Location": "/audio.m4a"}),
+                    _FakeResponse(200),
+                ]
+            )
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return next(self.responses)
+
+    sessions = []
+
+    def _session():
+        session = _FakeSession()
+        sessions.append(session)
+        return session
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", side_effect=_session),
+        patch("citypods.stages.validate_source_url") as validate,
+    ):
+        stages_mod._download_audio_file("https://example.com/download", dest)
+
+    assert dest.read_bytes() == b"fake audio bytes"
+    assert [url for url, _kwargs in sessions[0].calls] == [
+        "https://example.com/download",
+        "https://example.com/audio.m4a",
+    ]
+    assert all(kwargs["allow_redirects"] is False for _url, kwargs in sessions[0].calls)
+    assert [args[0] for args, _kwargs in validate.call_args_list] == [
+        "https://example.com/download",
+        "https://example.com/audio.m4a",
+    ]
+
+
+def test_download_audio_file_rejects_unsafe_redirect(tmp_path):
+    import citypods.stages as stages_mod
+    from citypods.security import SecurityError
+
+    class _FakeResponse:
+        status_code = 302
+        headers = {"Location": "http://127.0.0.1/audio.m4a"}
+
+        def close(self):
+            pass
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    def _validate(url, *, resolve):
+        if url.startswith("http://127.0.0.1"):
+            raise SecurityError("blocked redirect")
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", _FakeSession),
+        patch("citypods.stages.validate_source_url", side_effect=_validate),
+        pytest.raises(SecurityError),
+    ):
+        stages_mod._download_audio_file("https://example.com/download", dest)
+
+
+def test_download_audio_file_enforces_redirect_limit(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+    from citypods.security import MAX_REDIRECTS
+
+    class _FakeResponse:
+        status_code = 302
+        headers = {"Location": "/next"}
+
+        def close(self):
+            pass
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            self.calls += 1
+            return _FakeResponse()
+
+    sessions = []
+
+    def _session():
+        session = _FakeSession()
+        sessions.append(session)
+        return session
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", side_effect=_session),
+        patch("citypods.stages.validate_source_url"),
+        pytest.raises(requests.exceptions.TooManyRedirects),
+    ):
+        stages_mod._download_audio_file("https://example.com/download", dest)
+
+    assert sessions[0].calls == MAX_REDIRECTS + 1
+
+
 def test_download_audio_file_exhausts_default_attempt_limit_with_backoff_schedule(tmp_path):
     import requests
 
