@@ -1924,14 +1924,14 @@ class ChaptersStage:
             except Exception as exc:  # one bad page must not fail the whole source
                 stats.errors.append(f"{ep.uid}: {exc}")
                 continue
+            # Transcript availability is independent of chapter availability. A provider page
+            # with no agenda markers may still expose a transcript endpoint and must not lose it.
+            if transcript and "transcript" not in (ep.links or {}):
+                ep.links = {**(ep.links or {}), "transcript": transcript}
             if chapters:
                 ep.source_chapters = [dict(ch) for ch in chapters]
                 ep.chapters = [dict(ch) for ch in chapters]
                 ep.chapters_basis = "source:s0"
-                # Don't clobber a richer transcript already set (e.g. CivicClerk's published
-                # transcript PDF beats a closed-caption .srt fallback).
-                if transcript and "transcript" not in (ep.links or {}):
-                    ep.links = {**(ep.links or {}), "transcript": transcript}
                 stats.ran += 1
             else:
                 stats.reused += 1  # no agenda items on this page; nothing to embed
@@ -2608,7 +2608,8 @@ AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
 MINUTES_VOTES_PIPELINE_VERSION = "1"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
-PROVIDER_ALIGN_PIPELINE_VERSION = "1"
+PROVIDER_ALIGN_PIPELINE_VERSION = "2"
+PROVIDER_NATIVE_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 CHAPTER_AGENDA_PIPELINE_VERSION = "1"
@@ -2659,6 +2660,8 @@ def _provider_align_spec_hash(ep: Episode, artifact: dict) -> str:
     spec = {
         "v": PROVIDER_ALIGN_PIPELINE_VERSION,
         "provider": artifact.get("spec_hash"),
+        "text": artifact.get("text_hash"),
+        "model": artifact.get("model"),
         "timeline": tl_digest,
         "repair": timeline_audio_repair_token(ep, REPAIR_TRANSCRIPT_REGENERATE),
     }
@@ -2668,6 +2671,104 @@ def _provider_align_spec_hash(ep: Episode, artifact: dict) -> str:
 
 def _provider_align_object_key(src_key: str, uid: str, spec: str) -> str:
     return f"transcripts/{src_key}/{uid}-provider-align-{spec}.vtt"
+
+
+def _provider_align_words_object_key(src_key: str, uid: str, spec: str) -> str:
+    return f"transcripts/{src_key}/{uid}-provider-align-{spec}.words.json"
+
+
+def _provider_native_words_object_key(src_key: str, uid: str, spec: str) -> str:
+    return f"transcripts/{src_key}/{uid}-provider-native-{spec}.words.json"
+
+
+_VTT_WORD_TIMESTAMP_RE = re.compile(r"<(?P<time>(?:(?:\d{2}:)?\d{2}:\d{2})[\.,]\d{3})>")
+
+
+def _has_word_timing_vtt(content: bytes) -> bool:
+    """Return whether a WebVTT source contains inline word timestamps.
+
+    Cue timestamps alone are not sufficient for the downstream word-boundary features.  WebVTT
+    word timing is represented by inline ``<HH:MM:SS.mmm>`` tags inside cue text; SRT never
+    qualifies for the provider-native path.
+    """
+    if not content.lstrip().startswith(b"WEBVTT"):
+        return False
+    return any(_VTT_WORD_TIMESTAMP_RE.finditer(content.decode("utf-8-sig", errors="replace")))
+
+
+def _provider_vtt_words_json(content: bytes, *, basis: str = "served") -> bytes | None:
+    """Convert inline word-timed VTT into the shared word-sidecar shape.
+
+    Provider VTTs vary in whether every word has an explicit marker.  When markers exist, words
+    between adjacent markers are distributed over that interval; this is only used for the
+    provider-native preserve path, never for the computed provider-alignment path.
+    """
+    if not _has_word_timing_vtt(content):
+        return None
+    cues = _parse_timed_transcript(content, "vtt")
+    out_segments: list[dict] = []
+    for cue in cues:
+        raw = str(cue.get("text") or "")
+        markers = list(_VTT_WORD_TIMESTAMP_RE.finditer(raw))
+        if not markers:
+            continue
+        words: list[dict] = []
+        chunks: list[tuple[float, float, str]] = []
+        # Providers commonly timestamp the *second* word onward.  Keep the leading words and
+        # distribute them between the cue start and the first explicit marker.
+        first_start = _parse_transcript_time(markers[0].group("time"))
+        chunks.append((float(cue["start"]), first_start, raw[: markers[0].start()]))
+        for index, marker in enumerate(markers):
+            start = _parse_transcript_time(marker.group("time"))
+            end = (
+                _parse_transcript_time(markers[index + 1].group("time"))
+                if index + 1 < len(markers)
+                else float(cue["end"])
+            )
+            text = raw[
+                marker.end() : markers[index + 1].start() if index + 1 < len(markers) else None
+            ]
+            chunks.append((start, end, text))
+        for start, end, text in chunks:
+            tokens = text.replace("\n", " ").split()
+            if not tokens:
+                continue
+            end = max(start, end)
+            step = (end - start) / len(tokens)
+            for token_index, token in enumerate(tokens):
+                word_start = start + step * token_index
+                word_end = (
+                    end if token_index + 1 == len(tokens) else start + step * (token_index + 1)
+                )
+                words.append({"w": token, "s": round(word_start, 3), "e": round(word_end, 3)})
+        if words:
+            plain = _VTT_WORD_TIMESTAMP_RE.sub("", raw).replace("\n", " ").strip()
+            out_segments.append(
+                {
+                    "start": round(float(cue["start"]), 3),
+                    "end": round(float(cue["end"]), 3),
+                    "text": plain,
+                    "words": words,
+                }
+            )
+    if not out_segments:
+        return None
+    return json.dumps(
+        {"schema": "2", "basis": basis, "segments": out_segments},
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
+def _provider_source_text(content: bytes, fmt: str) -> str:
+    """Extract provider wording for our aligner, discarding provider timing as authority."""
+    if fmt in {"vtt", "srt"}:
+        joined = "\n".join(
+            str(cue.get("text") or "") for cue in _parse_timed_transcript(content, fmt)
+        )
+        joined = _VTT_WORD_TIMESTAMP_RE.sub("", joined)
+        return _preprocess_align_text(joined)
+    return _preprocess_align_text(content.decode("utf-8", errors="replace"))
 
 
 def _provider_diarize_spec_hash(ep: Episode, artifact: dict) -> str:
@@ -2706,6 +2807,7 @@ def _provider_transcript_artifact(
     spec: str,
     fmt: str,
     synced: bool,
+    word_timed: bool = False,
     now: str,
     status: str,
 ) -> dict:
@@ -2717,6 +2819,7 @@ def _provider_transcript_artifact(
         "format": fmt,
         "basis": "source:s0",
         "synced": synced,
+        "word_timed": word_timed,
         "confidence": None,
         "checked_at": now,
         "fetched_at": now,
@@ -3015,6 +3118,9 @@ def _adopt_asr_keys(ep: Episode, storage, asr_key: str, words_key: str, recipe: 
     ep.transcript_format = "vtt"
     ep.transcript_basis = "served"
     ep.transcript_synced = True
+    ep.transcript_text_source = "asr"
+    ep.transcript_timing_source = "computed"
+    ep.transcript_selection = "asr"
     _reset_asr_timeout_backoff(ep)
 
 
@@ -3267,6 +3373,61 @@ class TranscriptStage:
             ep.transcript_format = "vtt"
             ep.transcript_basis = "served"
             ep.transcript_synced = True
+            ep.transcript_text_source = "asr"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "asr"
+            _reset_asr_timeout_backoff(ep)
+
+        def _store_provider_align_artifacts(
+            ep: Episode,
+            artifacts,
+            provider_artifact: dict,
+            text_hash: str,
+        ) -> None:
+            """Store computed timing while retaining provider wording provenance."""
+            uid = ep.uid or ep.guid
+            align_artifact = {
+                **provider_artifact,
+                "text_hash": text_hash,
+                "model": city.asr_model,
+            }
+            align_spec = _provider_align_spec_hash(ep, align_artifact)
+            key = _provider_align_object_key(src_key, uid, align_spec)
+            words_key = _provider_align_words_object_key(src_key, uid, align_spec)
+            with _tmp.TemporaryDirectory() as t:
+                vtt_dest = Path(t) / "provider-align.vtt"
+                vtt_dest.write_bytes(artifacts.vtt)
+                url = ctx.storage.put_file(key, vtt_dest, TRANSCRIPT_MIME["vtt"])
+                words_dest = Path(t) / "provider-align.words.json"
+                words_dest.write_bytes(artifacts.words)
+                words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
+
+            known = dict(provider_artifact)
+            known.update(
+                {
+                    "aligned_key": key,
+                    "aligned_url": url,
+                    "aligned_words_key": words_key,
+                    "aligned_words_url": words_url,
+                    "align_spec_hash": align_spec,
+                    "align_coverage": artifacts.coverage,
+                    "status": "known_good",
+                }
+            )
+            _provider_transcript_set_known_good(ep, known)
+
+            ep.transcript_key = key
+            ep.transcript_hosted_url = url
+            ep.transcript_words_key = words_key
+            ep.transcript_words_url = words_url
+            ep.transcript_spec_hash = align_spec
+            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_format = "vtt"
+            ep.transcript_basis = "served"
+            ep.transcript_synced = True
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "provider-aligned"
             _reset_asr_timeout_backoff(ep)
 
         def _maybe_align_provider_transcript(
@@ -3275,7 +3436,13 @@ class TranscriptStage:
             ep_ref: str,
             allow_active: bool,
         ) -> bool:
-            """Promote and optionally publish a timed provider document as served-time VTT."""
+            """Preserve a provider VTT only when it already has word-level timing.
+
+            Cue-level VTT/SRT timing is useful source material for the aligner, but it is not a
+            sufficient served transcript because search, clips, and diarization consume word
+            boundaries.  Non-word-timed provider documents deliberately return ``False`` here and
+            enter the common stable-ts alignment path below.
+            """
             if not (ep.audio_key and ep.hosted_audio_url):
                 return False
             registry = ep.provider_transcript or {}
@@ -3288,7 +3455,6 @@ class TranscriptStage:
                 if (
                     isinstance(artifact, dict)
                     and artifact.get("key")
-                    and artifact.get("synced")
                     and artifact.get("format") in {"vtt", "srt"}
                 ):
                     selected = dict(artifact)
@@ -3299,16 +3465,26 @@ class TranscriptStage:
             content = _read_storage_bytes(ctx.storage, selected["key"])
             if content is None:
                 return False
-            cues = _parse_timed_transcript(content, selected.get("format") or "vtt")
-            remapped_cues, confidence = _remap_provider_cues(ep, cues)
-            if not remapped_cues:
+            word_timed = bool(selected.get("word_timed")) or (
+                selected.get("format") == "vtt" and _has_word_timing_vtt(content)
+            )
+            # A word-timed provider VTT is safe to preserve only on the identity timeline.  On an
+            # edited timeline its word offsets are source-clock values, so the provider wording
+            # goes through stable-ts against the actual served audio instead.
+            if not word_timed or (
+                ep.timeline is not None and timeline_digest(ep.timeline, ep.sources)
+            ):
+                return False
+            native_words = _provider_vtt_words_json(content, basis="served")
+            if native_words is None:
+                # The marker detector is intentionally permissive; require a usable sidecar too
+                # before claiming that a provider-native transcript satisfies word-boundary users.
                 return False
 
-            align_spec = _provider_align_spec_hash(ep, selected)
             selected = {
                 **selected,
-                "confidence": confidence,
-                "align_spec_hash": align_spec,
+                "word_timed": True,
+                "native_spec_hash": selected.get("spec_hash"),
                 "aligned_at": datetime.now(UTC).isoformat(),
             }
 
@@ -3334,41 +3510,108 @@ class TranscriptStage:
             if not allow_active:
                 return False
 
-            key = _provider_align_object_key(src_key, ep.uid or ep.guid, align_spec)
-            if ep.transcript_key == key and ep.transcript_synced and _present(key):
+            key = selected["key"]
+            if (
+                ep.transcript_key == key
+                and ep.transcript_synced
+                and _present(key)
+                and selected.get("words_key")
+                and _present(selected["words_key"])
+            ):
                 ep.transcript_hosted_url = ctx.storage.public_url(key)
+                ep.transcript_words_key = selected.get("words_key")
+                ep.transcript_words_url = (
+                    ctx.storage.public_url(ep.transcript_words_key)
+                    if ep.transcript_words_key and _present(ep.transcript_words_key)
+                    else None
+                )
                 stats.reused += 1
                 return True
 
-            with _tmp.TemporaryDirectory() as t:
-                dest = Path(t) / "provider-aligned.vtt"
-                dest.write_bytes(_provider_cues_to_vtt(remapped_cues))
-                url = ctx.storage.put_file(key, dest, TRANSCRIPT_MIME["vtt"])
+            words_key = selected.get("words_key") or _provider_native_words_object_key(
+                src_key, ep.uid or ep.guid, selected["spec_hash"]
+            )
+            words_url = None
+            words = native_words
+            if words is not None and not _present(words_key):
+                with _tmp.TemporaryDirectory() as t:
+                    words_dest = Path(t) / "provider.words.json"
+                    words_dest.write_bytes(words)
+                    words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
+            elif words is not None:
+                words_url = ctx.storage.public_url(words_key)
 
             provider_registry = dict(ep.provider_transcript or {})
             known = dict(provider_registry.get("known_good") or selected)
-            known["aligned_key"] = key
-            known["aligned_url"] = url
+            known["word_timed"] = True
+            known["native_key"] = key
+            known["native_url"] = selected.get("hosted_url") or ctx.storage.public_url(key)
+            known["words_key"] = words_key if words is not None else None
+            known["words_url"] = words_url or (
+                ctx.storage.public_url(words_key) if words is not None else None
+            )
             provider_registry["known_good"] = known
             ep.provider_transcript = provider_registry
 
             ep.transcript_key = key
-            ep.transcript_hosted_url = url
-            ep.transcript_spec_hash = align_spec
+            ep.transcript_hosted_url = selected.get("hosted_url") or ctx.storage.public_url(key)
+            ep.transcript_spec_hash = selected["spec_hash"]
             ep.transcript_format = "vtt"
             ep.transcript_basis = "served"
             ep.transcript_synced = True
-            ep.transcript_words_key = None
-            ep.transcript_words_url = None
-            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_words_key = words_key if words is not None else None
+            ep.transcript_words_url = known["words_url"]
+            ep.transcript_pipeline_version = f"provider-native:{PROVIDER_NATIVE_PIPELINE_VERSION}"
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "provider"
+            ep.transcript_selection = "provider-native"
             _reset_asr_timeout_backoff(ep)
             stats.ran += 1
-            stats.aligned += 1
             print(
-                f"[enrich] transcript provider-align done {ep_ref} "
-                f"confidence={confidence if confidence is not None else 'unknown'}",
+                f"[enrich] transcript provider-native done {ep_ref} word_timed=true",
                 flush=True,
             )
+            return True
+
+        def _maybe_adopt_provider_alignment(
+            ep: Episode,
+            *,
+            allow_active: bool,
+        ) -> bool:
+            """Switch to an already-computed provider alignment after an H15 route change."""
+            if not allow_active:
+                return False
+            registry = ep.provider_transcript or {}
+            if not isinstance(registry, dict):
+                return False
+            artifact = next(
+                (
+                    item
+                    for item in (registry.get("candidate"), registry.get("known_good"))
+                    if isinstance(item, dict) and item.get("aligned_key")
+                ),
+                None,
+            )
+            if artifact is None:
+                return False
+            key = artifact.get("aligned_key")
+            words_key = artifact.get("aligned_words_key")
+            if not key or not _present(key) or not words_key or not _present(words_key):
+                return False
+            ep.transcript_key = key
+            ep.transcript_hosted_url = artifact.get("aligned_url") or ctx.storage.public_url(key)
+            ep.transcript_words_key = words_key
+            ep.transcript_words_url = artifact.get("aligned_words_url") or ctx.storage.public_url(
+                words_key
+            )
+            ep.transcript_spec_hash = artifact.get("align_spec_hash")
+            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_format = "vtt"
+            ep.transcript_basis = "served"
+            ep.transcript_synced = True
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "provider-aligned"
             return True
 
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
@@ -3406,14 +3649,22 @@ class TranscriptStage:
                         flush=True,
                     )
 
-        for ep in _materialize_set(
+        materialized_episodes = _materialize_set(
             episodes,
             city.full_artifact_episodes,
             feed_visible_per_body=city.max_episodes,
             policy=ctx.backlog_policy,
             city_slug=city.slug,
             work_class="transcript-asr",
-        ):
+        )
+        materialized_uids = {ep.uid or ep.guid for ep in materialized_episodes}
+
+        # Provider discovery is broader than expensive artifact work. A known transcript endpoint
+        # is useful evidence for every discovered episode, including deep-archive rows outside the
+        # current materialization/ASR cohort. We iterate all records below and bound only inference
+        # to the configured materialized set.
+        for ep in episodes:
+            inference_eligible = (ep.uid or ep.guid) in materialized_uids
             quality_body_name = canonical_body(ep.body or "") or ep.body or "(unknown)"
             quality_body_key_value = quality_body_key(quality_body_name)
             route = ctx.transcript_quality_routes.get((src_key, quality_body_key_value))
@@ -3427,6 +3678,11 @@ class TranscriptStage:
             recheck_asr_words_key: str | None = None
             active_synced_reused = False
             provider_url = (ep.links or {}).get("transcript")
+            force_provider_selection = route is not None and route.prefers_provider_align
+            force_asr_selection = route is not None and route.prefers_fresh_asr
+            active_is_provider = ep.transcript_text_source == "provider" or str(
+                ep.transcript_pipeline_version or ""
+            ).startswith("provider-")
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
             #    stop()) so a yielded run still references every already-synced transcript.
             #    Version-aware (H12): an ASR transcript (key carries the ``-asr-`` infix) from an
@@ -3457,7 +3713,7 @@ class TranscriptStage:
                         recipe_ranks=(route.recipe_ranks if route is not None else None),
                     )
                     words_present = not ep.transcript_words_key or _present(ep.transcript_words_key)
-                    if accepted_existing_asr and words_present:
+                    if accepted_existing_asr and words_present and not force_provider_selection:
                         ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                         if ep.transcript_words_key and _present(ep.transcript_words_key):
                             ep.transcript_words_url = ctx.storage.public_url(
@@ -3466,7 +3722,7 @@ class TranscriptStage:
                         _reset_asr_timeout_backoff(ep)
                         stats.reused += 1
                         active_synced_reused = True
-                        if not provider_url:
+                        if not provider_url and not force_provider_selection:
                             continue
                     elif ep.transcript_pipeline_version != ASR_PIPELINE_VERSION:
                         redo_stale_asr = True  # own recipe/version changed; re-transcribe
@@ -3483,17 +3739,23 @@ class TranscriptStage:
                         _reset_asr_timeout_backoff(ep)
                         stats.reused += 1
                         active_synced_reused = True
-                        if not provider_url:
+                        if not provider_url and not force_provider_selection:
                             continue
                 else:
-                    ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
-                    if ep.transcript_words_key and _present(ep.transcript_words_key):
-                        ep.transcript_words_url = ctx.storage.public_url(ep.transcript_words_key)
-                    _reset_asr_timeout_backoff(ep)
-                    stats.reused += 1
-                    active_synced_reused = True
-                    if not provider_url:
-                        continue
+                    if force_asr_selection:
+                        redo_stale_asr = True
+                        active_is_provider = True
+                    else:
+                        ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
+                        if ep.transcript_words_key and _present(ep.transcript_words_key):
+                            ep.transcript_words_url = ctx.storage.public_url(
+                                ep.transcript_words_key
+                            )
+                        _reset_asr_timeout_backoff(ep)
+                        stats.reused += 1
+                        active_synced_reused = True
+                        if not provider_url and not force_provider_selection:
+                            continue
             elif ep.transcript_key and ep.transcript_synced:
                 key_name = ep.transcript_key.rsplit("/", 1)[-1]
                 if key_name.startswith(f"{ep.uid or ep.guid}-asr-"):
@@ -3501,6 +3763,12 @@ class TranscriptStage:
                     if ep.transcript_pipeline_version == ASR_PIPELINE_VERSION:
                         recheck_asr_key = ep.transcript_key
                         recheck_asr_words_key = ep.transcript_words_key
+
+            if active_is_provider and force_asr_selection:
+                # H15 routing is source/body policy, not an episode-level review gate. A route
+                # change must be able to replace a previously served provider artifact.
+                active_synced_reused = False
+                redo_stale_asr = True
 
             # 1b. Untimed stored transcript: re-attach URL so the feed still shows it as a
             #     text note, then fall through to the ASR slot to attempt an upgrade.
@@ -3557,6 +3825,7 @@ class TranscriptStage:
                         ),
                         None,
                     )
+                    url = matched_current.get("hosted_url") if matched_current else None
                     if matched_current is not None:
                         if _provider_transcript_note_checked(
                             ep,
@@ -3579,7 +3848,8 @@ class TranscriptStage:
                             dest.write_bytes(content)
                             mime = TRANSCRIPT_MIME.get(fmt, "text/plain")
                             url = ctx.storage.put_file(key, dest, mime)
-
+                        if not url:
+                            raise RuntimeError("provider transcript storage URL unavailable")
                         artifact = _provider_transcript_artifact(
                             source_url=provider_url,
                             key=key,
@@ -3587,6 +3857,7 @@ class TranscriptStage:
                             spec=spec,
                             fmt=fmt,
                             synced=timed,
+                            word_timed=fmt == "vtt" and _has_word_timing_vtt(content),
                             now=datetime.now(UTC).isoformat(),
                             status="candidate",
                         )
@@ -3597,9 +3868,8 @@ class TranscriptStage:
                             f"fmt={fmt} candidate=true",
                             flush=True,
                         )
-                        # Do not promote or switch the active <podcast:transcript> here. If an
-                        # ASR/provider-aligned transcript is already active, it keeps serving;
-                        # PT-PR3 decides temporary feed exposure for provider documents.
+                        # Do not promote or switch the active <podcast:transcript> here. The
+                        # source/body route below owns that selection.
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: {exc}")
                     print(
@@ -3608,27 +3878,57 @@ class TranscriptStage:
                     )
                     continue
 
-            if provider_url:
-                registry = ep.provider_transcript or {}
-                active_provider = registry.get("known_good") or registry.get("candidate")
-                if (
-                    not ep.transcript_hosted_url
-                    and isinstance(active_provider, dict)
-                    and active_provider.get("hosted_url")
-                    and active_provider.get("format") == "txt"
-                ):
-                    ep.transcript_hosted_url = active_provider["hosted_url"]
-                    ep.transcript_format = "txt"
+            registry = ep.provider_transcript or {}
+            active_provider = (
+                registry.get("candidate") or registry.get("known_good")
+                if isinstance(registry, dict)
+                else None
+            )
+            if (
+                active_provider is None
+                and ep.transcript_key
+                and ep.transcript_format in {"txt", "vtt", "srt"}
+                and not ep.transcript_key.rsplit("/", 1)[-1].startswith(f"{ep.uid or ep.guid}-asr-")
+            ):
+                # Legacy records predate the provider registry. Their non-ASR transcript object is
+                # still provider wording and must receive provider provenance when aligned.
+                active_provider = {
+                    "key": ep.transcript_key,
+                    "format": ep.transcript_format,
+                    "spec_hash": ep.transcript_spec_hash,
+                    "hosted_url": ep.transcript_hosted_url,
+                }
+            if (
+                not ep.transcript_key
+                and isinstance(active_provider, dict)
+                and active_provider.get("hosted_url")
+            ):
+                # Keep the provider source visible as an untimed note while the computed
+                # word-timed artifact is queued; never expose it as the synced feed transcript.
+                ep.transcript_hosted_url = active_provider["hosted_url"]
+                ep.transcript_format = active_provider.get("format") or "txt"
+                ep.transcript_synced = False
 
-            # PT-PR5: timed provider source documents are evaluated in source time, remapped
-            # through the canonical timeline, and promoted to known_good only when their
-            # confidence is at least the previous known_good. Do not replace an already-active
-            # ASR/provider transcript in this rollout; the H15 trust router owns that policy.
+            # Apply the source/body H15 route dynamically. Existing artifacts are enough to switch
+            # the served transcript; an episode does not need its own review decision.
+            if _maybe_adopt_provider_alignment(
+                ep,
+                allow_active=force_provider_selection and not active_synced_reused,
+            ):
+                continue
+
+            # Preserve a provider-native artifact only when its VTT carries word timings. All
+            # other provider documents continue through the common stable-ts path below.
             if _maybe_align_provider_transcript(
                 ep,
                 ep_ref=ep_ref,
-                allow_active=not active_synced_reused,
+                allow_active=not active_synced_reused and not force_asr_selection,
             ):
+                continue
+
+            if not inference_eligible:
+                # The provider source was probed and any already-computed route selection was
+                # applied above; full ASR/align remains bounded by the artifact cohort.
                 continue
 
             # Legacy active provider transcripts remain valid input for alignment. They are not
@@ -3682,24 +3982,34 @@ class TranscriptStage:
                 )
                 continue
 
-            # Determine alignment text from any stored untimed source transcript.
-            # Strip non-spoken minutes content (headers, speaker labels, vote tallies)
-            # before passing to stable-ts — provider "transcripts" are minutes documents
-            # that include text never spoken in the audio, which causes ~50 % alignment
-            # failures when passed verbatim.
+            # Determine alignment text from any stored provider source transcript. Cue-level
+            # VTT/SRT timing is source evidence, not served timing; stable-ts computes the final
+            # word boundaries. Only a provider-native word-timed VTT bypasses this path.
             align_text: str | None = None
-            if ep.transcript_hosted_url and ep.transcript_format == "txt":
+            provider_alignment_requested = isinstance(active_provider, dict) and bool(
+                active_provider.get("key")
+            )
+            if provider_alignment_requested:
+                provider_content = _read_storage_bytes(ctx.storage, active_provider["key"])
+                if provider_content is not None:
+                    provider_fmt = str(active_provider.get("format") or "txt")
+                    provider_word_timed = provider_fmt == "vtt" and (
+                        active_provider.get("word_timed") or _has_word_timing_vtt(provider_content)
+                    )
+                    if not provider_word_timed:
+                        align_text = _provider_source_text(provider_content, provider_fmt)
+            elif ep.transcript_hosted_url and ep.transcript_format in {"txt", "vtt", "srt"}:
+                # Legacy records may have the URL but not the provider registry yet.
                 try:
                     from citypods.http import make_session
 
                     with make_session() as sess:
                         r = sess.get(ep.transcript_hosted_url, timeout=30)
                     if r.status_code == 200:
-                        raw_text = r.content.decode("utf-8", errors="replace")
-                        align_text = _preprocess_align_text(raw_text)
+                        align_text = _provider_source_text(r.content, ep.transcript_format)
                 except Exception:  # noqa: BLE001
                     pass  # alignment hint unavailable; fall back to fresh transcription
-            if route is not None and route.prefers_fresh_asr:
+            if force_asr_selection:
                 align_text = None
 
             # Lane gating (H6b): the sharded asr.yml runs a single-model lane so faster-whisper and
@@ -3709,6 +4019,9 @@ class TranscriptStage:
             # the auto per-episode behavior for a direct ``citypods enrich``. Apply this before the
             # alignment-enabled guard: production's transcribe lane must deliberately ignore source
             # text and generate fresh ASR even while the separate align lane remains disabled.
+            if ctx.lane == "transcribe" and provider_alignment_requested:
+                stats.defer("provider-align-lane")
+                continue
             if ctx.lane == "transcribe":
                 align_text = None
             elif ctx.lane == "align" and align_text is None:
@@ -3724,7 +4037,11 @@ class TranscriptStage:
             # TranscriptQualityRoute / _route_from_row), so it schedules the cheap align lane
             # even while the site-wide asr_alignment_enabled default stays off elsewhere.
             align_lane_unblocked = route is not None and route.prefers_provider_align
-            if align_text and not (city.asr_alignment_enabled or align_lane_unblocked):
+            if (
+                align_text
+                and not provider_alignment_requested
+                and not (city.asr_alignment_enabled or align_lane_unblocked)
+            ):
                 stats.defer("alignment-disabled")
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=alignment-disabled",
@@ -3798,7 +4115,7 @@ class TranscriptStage:
                     flush=True,
                 )
 
-            if not migration_missing and _present(asr_key):
+            if not migration_missing and _present(asr_key) and not force_provider_selection:
                 ep.transcript_key = asr_key
                 ep.transcript_hosted_url = ctx.storage.public_url(asr_key)
                 if _present(words_key):
@@ -3809,6 +4126,9 @@ class TranscriptStage:
                 ep.transcript_format = "vtt"
                 ep.transcript_spec_hash = recipe
                 ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+                ep.transcript_text_source = "asr"
+                ep.transcript_timing_source = "computed"
+                ep.transcript_selection = "asr"
                 _reset_asr_timeout_backoff(ep)
                 stats.reused += 1
                 continue
@@ -3816,7 +4136,19 @@ class TranscriptStage:
             cached_artifacts = ctx.asr_artifact_cache.get(cache_key)
             if cached_artifacts is not None:
                 try:
-                    _store_asr_artifacts(ep, cached_artifacts, recipe)
+                    if (
+                        provider_alignment_requested
+                        and isinstance(active_provider, dict)
+                        and align_text is not None
+                    ):
+                        _store_provider_align_artifacts(
+                            ep,
+                            cached_artifacts,
+                            active_provider,
+                            align_hash,
+                        )
+                    else:
+                        _store_asr_artifacts(ep, cached_artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
                     print(
@@ -3957,7 +4289,19 @@ class TranscriptStage:
                     sem.release()
                     sem = None
                 try:
-                    _store_asr_artifacts(ep, cached_artifacts, recipe)
+                    if (
+                        provider_alignment_requested
+                        and isinstance(active_provider, dict)
+                        and align_text is not None
+                    ):
+                        _store_provider_align_artifacts(
+                            ep,
+                            cached_artifacts,
+                            active_provider,
+                            align_hash,
+                        )
+                    else:
+                        _store_asr_artifacts(ep, cached_artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
                     print(
@@ -4291,7 +4635,20 @@ class TranscriptStage:
             audio_tmp.cleanup()
 
             try:
-                _store_asr_artifacts(ep, artifacts, recipe)
+                if (
+                    _aligned[0]
+                    and provider_alignment_requested
+                    and isinstance(active_provider, dict)
+                    and align_text is not None
+                ):
+                    _store_provider_align_artifacts(
+                        ep,
+                        artifacts,
+                        active_provider,
+                        align_hash,
+                    )
+                else:
+                    _store_asr_artifacts(ep, artifacts, recipe)
                 asr_elapsed = time.monotonic() - _asr_started_at
                 runtime_log.append(
                     transcribe_seconds=asr_elapsed,

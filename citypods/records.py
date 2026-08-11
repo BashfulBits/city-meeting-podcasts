@@ -1138,6 +1138,11 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             words_key = transcript.get("words_key")
             if words_key:
                 keys.add(words_key)
+            comparison = transcript.get("asr_comparison") or {}
+            if isinstance(comparison, dict):
+                for field in ("key", "words_key"):
+                    if comparison.get(field):
+                        keys.add(comparison[field])
             speakers_key = (rec.get("speakers") or {}).get("key")
             if speakers_key:
                 keys.add(speakers_key)
@@ -1145,11 +1150,20 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             if isinstance(provider_transcript, dict):
                 for slot in ("known_good", "candidate"):
                     artifact = provider_transcript.get(slot) or {}
-                    if isinstance(artifact, dict) and artifact.get("key"):
-                        keys.add(artifact["key"])
+                    if isinstance(artifact, dict):
+                        for field in (
+                            "key",
+                            "words_key",
+                            "aligned_key",
+                            "aligned_words_key",
+                        ):
+                            if artifact.get(field):
+                                keys.add(artifact[field])
                 for artifact in provider_transcript.get("history") or []:
-                    if isinstance(artifact, dict) and artifact.get("key"):
-                        keys.add(artifact["key"])
+                    if isinstance(artifact, dict):
+                        for field in ("key", "words_key", "aligned_key", "aligned_words_key"):
+                            if artifact.get(field):
+                                keys.add(artifact[field])
             for link_key, link_value in (rec.get("links") or {}).items():
                 if link_key.endswith("_artifact_key") and isinstance(link_value, str):
                     keys.add(link_value)
@@ -1225,6 +1239,10 @@ def episode_to_record(ep: Episode) -> dict:
             "synced": ep.transcript_synced,
             "words_key": ep.transcript_words_key,
             "words_url": ep.transcript_words_url,
+            "text_source": ep.transcript_text_source,
+            "timing_source": ep.transcript_timing_source,
+            "selection": ep.transcript_selection,
+            "asr_comparison": ep.transcript_asr_comparison or None,
             "pipeline_version": ep.transcript_pipeline_version,
             "timeout_attempts": ep.transcript_timeout_attempts,
             "timeout_last_attempt": ep.transcript_timeout_last_attempt,
@@ -1240,6 +1258,7 @@ def episode_to_record(ep: Episode) -> dict:
             or ep.transcript_words_url
             or ep.transcript_timeout_attempts
             or ep.transcript_media_error
+            or ep.transcript_asr_comparison
         )
         else None,
         # Provider/city-supplied source transcript registry.  Separate from the active
@@ -1310,6 +1329,12 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_synced": bool(t.get("synced", False)),
         "transcript_words_key": t.get("words_key"),
         "transcript_words_url": t.get("words_url"),
+        "transcript_text_source": t.get("text_source"),
+        "transcript_timing_source": t.get("timing_source"),
+        "transcript_selection": t.get("selection"),
+        "transcript_asr_comparison": (
+            t.get("asr_comparison") if isinstance(t.get("asr_comparison"), dict) else {}
+        ),
         "transcript_pipeline_version": t.get("pipeline_version"),
         "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
         "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),
@@ -1916,7 +1941,11 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
             ep.transcript_synced = transcript_fields["transcript_synced"]
             ep.transcript_words_key = transcript_fields["transcript_words_key"]
             ep.transcript_words_url = transcript_fields["transcript_words_url"]
+            ep.transcript_text_source = transcript_fields["transcript_text_source"]
+            ep.transcript_timing_source = transcript_fields["transcript_timing_source"]
+            ep.transcript_selection = transcript_fields["transcript_selection"]
             ep.transcript_pipeline_version = transcript_fields["transcript_pipeline_version"]
+        ep.transcript_asr_comparison = transcript_fields.get("transcript_asr_comparison", {})
         ep.transcript_timeout_attempts = transcript_fields.get("transcript_timeout_attempts", 0)
         ep.transcript_timeout_last_attempt = transcript_fields.get(
             "transcript_timeout_last_attempt"
