@@ -84,6 +84,12 @@ Phase R (Research-Tool Surface)._
   committee bodies. This changes feed membership only: existing audio/transcript artifacts and
   stable episode UIDs are reused, with no pipeline-version bump or forced artifact backfill.
 
+- **Addison City Council feed now includes Swagit's recurring `Work Session` and `Work Session and
+  Regular Meeting` labels.** These rows were previously excluded by the `City Council` selector,
+  causing the feed to appear stale despite recent council recordings. This changes feed membership
+  only: newly matching rows enter normal discovery/materialization, with no pipeline-version bump or
+  global artifact invalidation.
+
 - **One-off body naming drift now has an exact exception path and audit coverage.** A feed may use
   `source.body_includes` for provider-GUID-specific rows without permanently broadening its body
   selector. Feed-health audits suppress historical excluded labels, flag recurrence of a known
