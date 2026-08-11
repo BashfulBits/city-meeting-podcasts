@@ -45,6 +45,7 @@ from citypods.compute.llm_policy import (
     LLMRoute,
     PricingPolicy,
     QuotaPolicy,
+    canonical_model,
     estimate_tokens,
 )
 from citypods.compute.llm_scheduler import SelectionResult, select_and_reserve, select_route
@@ -446,9 +447,11 @@ class LiteLLMBackend(Backend):
         storage=None,
     ) -> None:
         self.config = config or LLMBackendConfig.from_env()
-        if self.config.model not in SUPPORTED_MODELS:
+        if canonical_model(self.config.model) not in SUPPORTED_MODELS:
             raise ValueError(f"unsupported LLM model route: {self.config.model!r}")
-        unsupported_extra = [m for m in self.config.additional_models if m not in SUPPORTED_MODELS]
+        unsupported_extra = [
+            m for m in self.config.additional_models if canonical_model(m) not in SUPPORTED_MODELS
+        ]
         if unsupported_extra:
             raise ValueError(f"unsupported additional LLM model route(s): {unsupported_extra!r}")
         if self.config.mode not in {"direct", "dispatch"}:
@@ -1191,9 +1194,10 @@ class LiteLLMBackend(Backend):
         """Preserve the pre-R13 request/response path exactly for callers without scheduler
         metadata (the returned ``model`` field is new, additive, and asserted by no pre-R13
         test)."""
+        logical_model = canonical_model(self.config.model)
         if self.config.mode == "direct":
-            route = (ROUTE_CANDIDATES.get(self.config.model) or (None,))[0]
-            direct_model = route.direct_model if route is not None else self.config.model
+            route = (ROUTE_CANDIDATES.get(logical_model) or (None,))[0]
+            direct_model = route.direct_model if route is not None else logical_model
             if structured:
                 result = self._run_structured_direct(
                     job, structured[1], resolved_model=direct_model, route=route
@@ -1202,7 +1206,7 @@ class LiteLLMBackend(Backend):
                     task=result.task,
                     recipe_hash=result.recipe_hash,
                     output=result.output,
-                    model=self.config.model,
+                    model=logical_model,
                 )
             response = self._completion_fn()(
                 **self._payload(job, resolved_model=direct_model, route=route)
@@ -1211,11 +1215,11 @@ class LiteLLMBackend(Backend):
                 task=job.task,
                 recipe_hash=job.recipe_hash,
                 output=_response_mapping(response),
-                model=self.config.model,
+                model=logical_model,
             )
 
         structured_name, model = structured if structured else (None, None)
-        payload = self._payload(job, model, resolved_model=self.config.model)
+        payload = self._payload(job, model, resolved_model=logical_model)
         headers = {"content-type": "application/json"}
         if self.config.dispatch_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
@@ -1237,7 +1241,7 @@ class LiteLLMBackend(Backend):
                     recipe_hash=job.recipe_hash,
                     output=response.json(),
                     structured_output=structured_name,
-                    model=self.config.model,
+                    model=logical_model,
                 )
             if response.status_code != 202:
                 raise LLMBackendError(f"LLM dispatch returned HTTP {response.status_code}")
@@ -1253,7 +1257,7 @@ class LiteLLMBackend(Backend):
                 backend=self.name,
                 ref=ref,
                 structured_output=structured_name,
-                model=self.config.model,
+                model=logical_model,
             )
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch request failed") from exc
@@ -1396,7 +1400,7 @@ class LiteLLMBackend(Backend):
                         route_id=reservation_route_id,
                     )
                 else:
-                    route = (ROUTE_CANDIDATES.get(handle.model) or (None,))[0]
+                    route = (ROUTE_CANDIDATES.get(canonical_model(handle.model)) or (None,))[0]
             if route is not None and getattr(self.storage, "cas_capable", False):
                 # Price against the rate captured on the handle at reservation time, not
                 # whatever `ROUTES` says right now -- config can change between a dispatch and

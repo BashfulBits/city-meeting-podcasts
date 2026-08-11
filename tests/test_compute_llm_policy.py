@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from citypods.compute.llm import SUPPORTED_MODELS
 from citypods.compute.llm_policy import (
     DEFAULT_OUTPUT_TOKEN_MARGIN,
+    MODEL_ALIASES,
     ROUTE_CANDIDATES,
     ROUTES,
     LLMRequestPolicy,
@@ -10,6 +11,7 @@ from citypods.compute.llm_policy import (
     PeakWindow,
     PricingPolicy,
     QuotaPolicy,
+    canonical_model,
     estimate_tokens,
 )
 
@@ -45,3 +47,17 @@ def test_generated_catalog_deduplicates_logical_models_across_direct_routes():
     assert {candidate.provider for candidate in candidates} == {"groq", "sambanova", "openrouter"}
     assert all(set(candidate.transports) == {"direct", "llm-dispatch"} for candidate in candidates)
     assert all(candidate.route_id and candidate.direct_model for candidate in candidates)
+
+
+def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
+    deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
+    assert {candidate.provider for candidate in deepseek} == {"deepseek", "siliconflow", "opencode"}
+    assert canonical_model("opencode/deepseek-v4-flash-free") == "deepseek/deepseek-v4-flash"
+    assert MODEL_ALIASES["deepseek/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
+
+    nemotron = ROUTE_CANDIDATES["nvidia/nemotron-3-ultra-550b-a55b:free"]
+    assert {candidate.provider for candidate in nemotron} == {"openrouter", "kilo", "opencode"}
+    assert (
+        canonical_model("opencode/nemotron-3-ultra-free")
+        == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    )

@@ -4,6 +4,14 @@
     "routes_count": 55,
     "providers_count": 10
   },
+  "model_aliases": {
+    "deepseek/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
+    "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "opencode/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
+    "opencode/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
+    "opencode/nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free"
+  },
   "routes": [
     {
       "route_id": "gemini_3_5_flash_lite_primary",
@@ -487,7 +495,7 @@
     },
     {
       "route_id": "siliconflow_deepseek_v4_flash_0731_primary",
-      "model": "deepseek/deepseek-v4-flash-0731",
+      "model": "deepseek/deepseek-v4-flash",
       "provider": "siliconflow",
       "upstream_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
       "account_id": "primary",
@@ -527,7 +535,7 @@
     },
     {
       "route_id": "deepseek_v4_flash_0731_primary",
-      "model": "deepseek/deepseek-v4-flash-0731",
+      "model": "deepseek/deepseek-v4-flash",
       "provider": "deepseek",
       "upstream_model": "deepseek-v4-flash-0731",
       "account_id": "primary",
@@ -875,7 +883,7 @@
     },
     {
       "route_id": "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
-      "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "provider": "openrouter",
       "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "account_id": "primary",
@@ -1001,7 +1009,7 @@
     },
     {
       "route_id": "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
-      "model": "kilo/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "provider": "kilo",
       "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "account_id": "primary",
@@ -1023,7 +1031,7 @@
     },
     {
       "route_id": "opencode_deepseek_v4_flash_free",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "deepseek/deepseek-v4-flash",
       "provider": "opencode",
       "upstream_model": "deepseek-v4-flash-0731",
       "account_id": "primary",
@@ -1045,7 +1053,7 @@
     },
     {
       "route_id": "opencode_deepseek_v4_flash_0731_free",
-      "model": "opencode/deepseek-v4-flash-0731",
+      "model": "deepseek/deepseek-v4-flash",
       "provider": "opencode",
       "upstream_model": "deepseek-v4-flash-0731",
       "account_id": "primary",
@@ -1111,7 +1119,7 @@
     },
     {
       "route_id": "opencode_nemotron_3_ultra_free",
-      "model": "opencode/nemotron-3-ultra-free",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "provider": "opencode",
       "upstream_model": "nemotron-3-ultra-free",
       "account_id": "primary",

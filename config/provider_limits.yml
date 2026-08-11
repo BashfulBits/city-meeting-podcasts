@@ -337,6 +337,7 @@ routes:
   # ==========================================
   - route_id: siliconflow_deepseek_v4_flash_primary
     model: deepseek/deepseek-v4-flash
+    model_key: deepseek/deepseek-v4-flash
     provider: siliconflow
     upstream_model: deepseek-ai/DeepSeek-V4-Flash-0731
     account_id: primary
@@ -347,6 +348,7 @@ routes:
 
   - route_id: siliconflow_deepseek_v4_flash_0731_primary
     model: deepseek/deepseek-v4-flash-0731
+    model_key: deepseek/deepseek-v4-flash
     provider: siliconflow
     upstream_model: deepseek-ai/DeepSeek-V4-Flash-0731
     account_id: primary
@@ -357,6 +359,7 @@ routes:
 
   - route_id: deepseek_v4_flash_primary
     model: deepseek/deepseek-v4-flash
+    model_key: deepseek/deepseek-v4-flash
     provider: deepseek
     upstream_model: deepseek-v4-flash-0731
     account_id: primary
@@ -367,6 +370,7 @@ routes:
 
   - route_id: deepseek_v4_flash_0731_primary
     model: deepseek/deepseek-v4-flash-0731
+    model_key: deepseek/deepseek-v4-flash
     provider: deepseek
     upstream_model: deepseek-v4-flash-0731
     account_id: primary
@@ -557,6 +561,8 @@ routes:
 
   - route_id: openrouter_nvidia_nemotron_3_ultra_550b_a55b_free
     model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+    # OpenRouter and Kilo expose the same upstream free model under provider-qualified selectors.
+    model_key: nvidia/nemotron-3-ultra-550b-a55b:free
     provider: openrouter
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
     account_id: primary
@@ -627,6 +633,7 @@ routes:
 
   - route_id: kilo_nvidia_nemotron_3_ultra_550b_a55b_free
     model: kilo/nvidia/nemotron-3-ultra-550b-a55b:free
+    model_key: nvidia/nemotron-3-ultra-550b-a55b:free
     provider: kilo
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
     account_id: primary
@@ -642,6 +649,9 @@ routes:
   # ==========================================
   - route_id: opencode_deepseek_v4_flash_free
     model: opencode/deepseek-v4-flash-free
+    # All provider aliases below are the pinned DeepSeek V4 Flash 0731 revision. Keep route_id
+    # separate so each provider's credential and quota ledger remains independent.
+    model_key: deepseek/deepseek-v4-flash
     provider: opencode
     upstream_model: deepseek-v4-flash-0731
     account_id: primary
@@ -654,6 +664,7 @@ routes:
 
   - route_id: opencode_deepseek_v4_flash_0731_free
     model: opencode/deepseek-v4-flash-0731
+    model_key: deepseek/deepseek-v4-flash
     provider: opencode
     upstream_model: deepseek-v4-flash-0731
     account_id: primary
@@ -690,6 +701,9 @@ routes:
 
   - route_id: opencode_nemotron_3_ultra_free
     model: opencode/nemotron-3-ultra-free
+    # OpenCode's provider-local name for the same Nemotron 3 Ultra free family exposed by
+    # OpenRouter and Kilo under the explicit NVIDIA model identifier.
+    model_key: nvidia/nemotron-3-ultra-550b-a55b:free
     provider: opencode
     upstream_model: nemotron-3-ultra-free
     account_id: primary

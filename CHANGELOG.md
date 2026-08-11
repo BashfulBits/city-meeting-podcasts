@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Equivalent provider model selectors now share canonical logical keys.** The limits compiler
+  emits a `model_aliases` map and normalizes route entries before generating the Python and Worker
+  catalogs. DeepSeek V4 Flash 0731 aliases now share one logical candidate pool across DeepSeek,
+  SiliconFlow, and OpenCode; the equivalent OpenRouter/Kilo/OpenCode Nemotron free routes are
+  likewise unified. Physical `route_id` entries remain separate, so provider/account quotas and ledger
+  reservations are not merged. Existing provider-qualified selectors remain accepted through the
+  alias map; no stored LLM result or pipeline artifact is invalidated, and no backfill is required.
+
 - **Topic tagging is now pinned to Gemini 3.1 Flash Lite only.** Gemini 3.5 Flash Lite remains
   reserved for production chapter locating, preserving its independent free-tier capacity for the
   long-context locator workload. This changes the tag route allowlist only; tag prompts, recipe
