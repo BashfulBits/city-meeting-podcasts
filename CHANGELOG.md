@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Topic tagging now uses the asynchronous LLM dispatch Worker.** The tag workflow enqueues Gemini
+  requests instead of holding a GitHub Actions runner while waiting for local quota windows; the
+  Worker owns provider credentials, pacing, retries, and completion, and the deferred sweep makes
+  results available to a later tag run. This is a transport/configuration change only: prompts,
+  recipe hashes, tag visibility gates, and stored artifacts are unchanged, so no pipeline-version
+  bump or catalog backfill is required. Existing direct deferred records remain compatible with the
+  sweep.
+
 - **LLM TPM admission now models average throughput instead of a hard one-minute request ceiling.**
   The Python CAS ledger and LLM dispatch Worker admit requests larger than one minute's declared
   TPM and persist an oversized-request cooldown proportional to `tokens / TPM`; ordinary smaller

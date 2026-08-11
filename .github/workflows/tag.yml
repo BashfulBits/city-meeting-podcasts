@@ -2,8 +2,8 @@ name: LLM topic tags
 
 # R5's bounded producer.  This lane is deliberately separate from Audio and ASR: topic tags
 # only read already-persisted meeting material, and a quota deferral is normal rather than a
-# workflow failure.  Flash-Lite is pinned in site_config.yml and the CAS scheduler limits it to
-# 20 provider attempts per Pacific calendar day.
+# workflow failure. Flash-Lite is pinned in site_config.yml. The tag lane uses the asynchronous
+# dispatch Worker, so this workflow enqueues work and a later deferred sweep consumes the result.
 on:
   schedule:
     - cron: "15 18 * * *" # after Gemini's Pacific daily reset, allowing for cron jitter
@@ -48,7 +48,8 @@ jobs:
       - name: Produce bounded LLM topic-tag candidates
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
+          LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}

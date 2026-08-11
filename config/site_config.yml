@@ -35,10 +35,10 @@ tagging:
   llm_models:
     - "gemini/gemini-3.1-flash-lite"
     - "gemini/gemini-3.5-flash-lite"
-  # direct | dispatch. Gemini's transport under R13's scheduler is "direct" (review/33 §7 — its
-  # free tier doesn't need the Mistral Worker's async pacing); "dispatch" is for a route that
-  # actually needs LLM_DISPATCH_URL configured (environment-only), which this route does not.
-  llm_mode: "direct"
+  # direct | dispatch. Tags do not need a same-run response, so keep provider calls off the
+  # Actions runner and let the asynchronous dispatch Worker pace and retry them. The tag workflow
+  # must provide LLM_DISPATCH_URL/LLM_DISPATCH_AUTH_TOKEN; provider keys remain Worker secrets.
+  llm_mode: "dispatch"
   taxonomy_path: "config/taxonomy.yml"
   evaluation:
     state_path: "llm_evaluation.json"

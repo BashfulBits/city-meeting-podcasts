@@ -310,8 +310,10 @@ reuses one decoded registry snapshot for selection, expiry pruning, and its fina
 capability is deferred until a real batch-capable provider is confirmed. The city-onboarding consumer
 (`citypods/discovery/classify.py`) requires a free, immediate result (`allow_paid=False`, no deadline) —
 it acts on the result synchronously and already owns its own daily retry for "not eligible now"; the
-scorer/evaluation consumer forces an explicit paid or free model via a singleton allowlist. R13 must not
-move provider-specific scheduling policy into either Worker.
+scorer/evaluation consumer forces an explicit paid or free model via a singleton allowlist. The R5 topic
+tagging consumer is the intentional non-interactive exception: its committed `tagging.llm_mode: dispatch`
+setting uses the generic Worker transport so the Actions runner enqueues work and the deferred sweep
+reconciles it later. R13 must not move provider-specific scheduling policy into either Worker.
 
 **LLM backend + Rate-limited LLM dispatch Worker (new, Infra — ROADMAP R2 and R10).** Matured to L3 —
 full design in [`review/27`](27-llm-backend-and-provider-routing.md): a LiteLLM-backed `Backend` adapter
