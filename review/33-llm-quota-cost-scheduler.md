@@ -1044,6 +1044,21 @@ deadline for it. **Test**: updates the existing prompt-construction assertion in
 | City discovery's policy (`allow_paid=True`, a 24h deadline) | Changed to `allow_paid=False`, no deadline (§5, §12 LLM-SCHED-9) — it acts on results synchronously and must never silently spend money or wait days for a discount; it already owns its own daily retry for "not now." |
 | **Kept unchanged** | The pure selection function and its six gates (§5); the shared ledger's core reserve/settle/release model (§10.1); the CAS-retry pattern mirroring `compute/budget.py` (§10.3); DeepSeek off-peak preference and its sourced figures (§8); the whole "no central scheduler queue" philosophy -- the registry is a cache, not a queue (§10.5, §10.7). |
 
+### §13.3 Post-implementation correction — TPM burst/debt semantics and persisted rollover
+
+The original implementation treated `tpm` like a fixed one-minute request bucket. That was too
+strict for provider limits documented as average tokens-per-minute throughput: a request larger
+than one minute's nominal TPM can be accepted, provided subsequent work is paced to repay the
+token debt. The implementation now keeps ordinary burst capacity up to `tpm` and, when a request
+pushes the route above that amount, records `tokens_available_at` at approximately
+`now + (tokens_in_burst / tpm) * 60 seconds`. This is provider-neutral and applies to direct Python
+reservations and the dispatch Worker's per-route ledger. A provider can still reject a request for
+context-size, model-specific, or actual rate-limit reasons; those live signals remain authoritative.
+
+The CAS selection path also persists window/day rollover changes when no route is reservable, so
+an old `requests_day_key` cannot remain visible merely because every current candidate was blocked.
+These changes affect only ephemeral coordination ledgers and do not invalidate durable LLM outputs.
+
 ## §14. Open decisions
 
 - DeepSeek's actual concurrency ceiling — unmeasured; ships as `None` (untracked), added once real

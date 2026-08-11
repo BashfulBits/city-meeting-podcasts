@@ -215,6 +215,11 @@ total on `/admin/status`.
 
 - **Provider Protocol + registry** — a new platform is a new adapter, no core change.
 - **Stage Protocol + `default_stages()`** — a new per-episode feature is a new stage.
+- **LLM TPM is average throughput** — per-route token limits preserve ordinary burst capacity up to
+  the configured TPM, while an oversized request creates a persisted cooldown proportional to
+  `tokens / TPM`; RPM, RPD, concurrency, and reactive provider blocks remain independent gates.
+- **LLM coordination rollover is durable** — quota-window/day-key refreshes are CAS-persisted even
+  when selection finds no eligible route, so diagnostics cannot remain pinned to stale state.
 - **Split hashes** — `audio_spec_hash` (bytes) and `feed_content_hash` (RSS) invalidate independently.
 - **Content-addressed audio + stable UID** — CDN cache-bust, rollback, and provider-migration safe.
 - **Duplicate source views share audio work without changing durable identity** — feeds under one

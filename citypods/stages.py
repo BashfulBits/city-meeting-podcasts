@@ -1070,24 +1070,15 @@ class TagsStage:
                         if dispatched:
                             candidate_tags = []
                             completed_llm_recipe = None
-                            if resolved_model == "payload-too-large":
-                                # This episode's own material could never fit any allowed route's
-                                # real token budget -- says nothing about remaining quota, unlike
-                                # an ordinary defer, so it must NOT set
-                                # `tag_llm_dispatch_exhausted` (that would stop every other
-                                # episode in this run from even attempting a dispatch over one
-                                # oversized episode). See llm_tag_suggestions()'s docstring.
-                                stats.defer("tag-llm-oversized", sample=ep.uid or ep.guid)
-                            else:
-                                stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
-                                if not had_cached_pending:
-                                    # A fresh dispatch attempt (no pre-existing registry entry)
-                                    # came back deferred -- the live pacing loop genuinely found
-                                    # no eligible route before the run's deadline. Signal the rest
-                                    # of this run's episodes not to re-fetch their text merely to
-                                    # re-attempt a dispatch that will also just defer -- see the
-                                    # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
-                                    ctx.tag_llm_dispatch_exhausted.set()
+                            stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
+                            if not had_cached_pending:
+                                # A fresh dispatch attempt (no pre-existing registry entry) came
+                                # back deferred -- the live pacing loop genuinely found no
+                                # eligible route before the run's deadline. Signal the rest of
+                                # this run's episodes not to re-fetch their text merely to
+                                # re-attempt a dispatch that will also just defer -- see the
+                                # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
+                                ctx.tag_llm_dispatch_exhausted.set()
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to

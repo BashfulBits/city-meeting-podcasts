@@ -60,6 +60,41 @@ def test_reserve_settle_and_release_round_trip():
     assert ledger.cost_used == pytest.approx(0.1)
 
 
+def test_tpm_is_a_rate_and_allows_a_burst_larger_than_one_minute():
+    route = LLMRoute(
+        model="burst/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+
+    # 950 tokens at 100 TPM consumes 9.5 minutes of token-rate capacity, but it is not
+    # rejected merely because it exceeds one minute's nominal throughput.
+    assert budget.available(route.model, route=route, requests=1, tokens=950, cost=0, now=NOW)
+    budget.reserve("burst", route.model, route=route, requests=1, tokens=950, cost=0, now=NOW)
+    assert not budget.available(route.model, route=route, requests=1, tokens=1, cost=0, now=NOW)
+    assert not budget.available(
+        route.model,
+        route=route,
+        requests=1,
+        tokens=1,
+        cost=0,
+        now=NOW + timedelta(minutes=9, seconds=29),
+    )
+    assert budget.available(
+        route.model,
+        route=route,
+        requests=1,
+        tokens=1,
+        cost=0,
+        now=NOW + timedelta(minutes=9, seconds=31),
+    )
+    budget.release("burst", route.model, route=route, now=NOW)
+    assert budget.routes[route.model].tokens_available_at == ""
+
+
 def test_serialized_ledger_matches_worker_shape():
     budget = LLMBudget()
     budget.reserve("owner", ROUTE.model, route=ROUTE, requests=1, tokens=10, cost=0.1, now=NOW)
@@ -76,6 +111,7 @@ def test_serialized_ledger_matches_worker_shape():
         "requests_minute_key",
         "requests_day",
         "requests_day_key",
+        "tokens_available_at",
         "blocked_until",
         "inflight",
     }

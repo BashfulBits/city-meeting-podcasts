@@ -718,8 +718,17 @@ test("routeAvailable respects rpm/rpd/tpm/blocked_until independently", () => {
     false,
   );
   assert.equal(
-    routeAvailable({ requests_minute: 0, requests_day: 0, tokens_minute: 95 }, route, { requests: 1, tokens: 10 }, now),
+    routeAvailable(
+      { requests_minute: 0, requests_day: 0, tokens_minute: 0, tokens_available_at: "2026-08-06T12:01:00Z" },
+      route,
+      { requests: 1, tokens: 10 },
+      now,
+    ),
     false,
+  );
+  assert.equal(
+    routeAvailable({ requests_minute: 0, requests_day: 0, tokens_minute: 0 }, route, { requests: 1, tokens: 1000 }, now),
+    true,
   );
   assert.equal(
     routeAvailable(

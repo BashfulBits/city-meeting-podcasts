@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM TPM admission now models average throughput instead of a hard one-minute request ceiling.**
+  The Python CAS ledger and LLM dispatch Worker admit requests larger than one minute's declared
+  TPM and persist an oversized-request cooldown proportional to `tokens / TPM`; ordinary smaller
+  requests retain their normal per-minute burst. Rollover-only RPM/RPD/token bookkeeping is now
+  persisted even when selection finds no route, so quota state does not remain on an old day key.
+  This changes only ephemeral coordination state (`state/llm_budget.json` and the dispatch Worker
+  budget); no durable catalog artifact is invalidated or backfilled.
+
 - **Dallas City Council feed now includes special-called full-council sessions** (GH#1121). A
   source may now declare `body_any` for explicit alternative provider labels; the shared selector
   is applied consistently by feed rendering, audits, reports, build validation, and search. The

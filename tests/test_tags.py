@@ -591,11 +591,10 @@ def test_episode_tag_inputs_strips_preamble_and_includes_backup_text():
     assert "i. call to order" not in agenda_text
 
 
-def test_llm_tag_suggestions_defers_when_material_exceeds_every_tpm_capped_route():
-    """A message payload whose own single-attempt estimate exceeds half of every allowed
-    tpm-capped route's budget (the structured-call x2 reservation, citypods/compute/llm.py) can
-    never be reserved on that route, in any window -- this must be flagged distinctly and
-    deferred, not passed through to a dispatch that would retry it forever."""
+def test_llm_tag_suggestions_admits_material_larger_than_one_tpm_minute():
+    """TPM is an average throughput rate, not a maximum request size."""
+
+    from citypods.compute.base import JobResult
 
     class Config:
         model = "gemini/gemini-3.1-flash-lite"
@@ -609,7 +608,11 @@ def test_llm_tag_suggestions_defers_when_material_exceeds_every_tpm_capped_route
         config = Config()
 
         def run_inference(self, job):
-            raise AssertionError("must not dispatch when material can never fit any window")
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": '{"tags": []}'}}]},
+            )
 
     taxonomy = taxonomy_from_dict(
         {
@@ -618,7 +621,7 @@ def test_llm_tag_suggestions_defers_when_material_exceeds_every_tpm_capped_route
             "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
         }
     )
-    huge_agenda_text = "housing " * 200_000  # far past half of gemini-3.1-flash-lite's tpm=250,000
+    huge_agenda_text = "housing " * 200_000  # far past one minute of gemini's 250k TPM
     tags, chapter_tags, dispatched, resolved_model = llm_tag_suggestions(
         Backend(),
         taxonomy=taxonomy,
@@ -629,15 +632,12 @@ def test_llm_tag_suggestions_defers_when_material_exceeds_every_tpm_capped_route
     )
     assert tags == []
     assert chapter_tags == {}
-    assert dispatched is True
-    # Distinct from the ordinary "dispatched, unresolved" None -- TagsStage uses this sentinel to
-    # avoid treating one oversized episode as evidence of whole-run quota exhaustion.
-    assert resolved_model == "payload-too-large"
+    assert dispatched is False
+    assert resolved_model is None
 
 
 def test_llm_tag_suggestions_dispatches_when_material_fits_one_tpm_capped_route():
-    """A payload that fits under half of at least one allowed tpm-capped route's budget must
-    still dispatch normally, even if it would use most of that route's minute."""
+    """A payload that fits within the configured provider context can dispatch normally."""
     from citypods.compute.base import JobResult
 
     class Config:

@@ -655,6 +655,7 @@ function ledgerEntry(budget, routeId) {
     budget.routes[routeId] = {
       requests_minute: 0,
       tokens_minute: 0,
+      tokens_available_at: "",
       requests_minute_key: "",
       requests_day: 0,
       requests_day_key: "",
@@ -676,7 +677,9 @@ function rollLedgerWindows(entry, route, now) {
   const mk = minuteKey(now);
   if (entry.requests_minute_key !== mk) {
     entry.requests_minute = 0;
-    entry.tokens_minute = 0;
+    // `tokens_minute` is retained as legacy telemetry; TPM admission uses the continuous
+    // `tokens_available_at` schedule below and must not reset at a wall-clock minute boundary.
+    if (!entry.tokens_available_at) entry.tokens_minute = 0;
     entry.requests_minute_key = mk;
   }
   if (route.rpd != null) {
@@ -685,6 +688,15 @@ function rollLedgerWindows(entry, route, now) {
       entry.requests_day = 0;
       entry.requests_day_key = dk;
     }
+  }
+  if (
+    route.tpm != null &&
+    entry.tokens_available_at &&
+    parseTime(entry.tokens_available_at) <= now.getTime()
+  ) {
+    // An oversized request's token debt has drained. Start a fresh burst budget.
+    entry.tokens_available_at = "";
+    entry.tokens_minute = 0;
   }
 }
 
@@ -707,7 +719,11 @@ function routeAvailable(entry, route, { requests, tokens }, now) {
   if (route.rpd != null && entry.requests_day + requests > route.rpd) {
     return false;
   }
-  if (route.tpm != null && entry.tokens_minute + tokens > route.tpm) {
+  if (
+    route.tpm != null &&
+    entry.tokens_available_at &&
+    parseTime(entry.tokens_available_at) > now.getTime()
+  ) {
     return false;
   }
   if (
@@ -725,8 +741,19 @@ function reserveRouteCapacity(
   { requests, tokens },
   { owner = null, reservedAt = null, expiresAt = null } = {},
 ) {
+  const tokensMinuteBefore = entry.tokens_minute;
   entry.requests_minute += requests;
   entry.tokens_minute += tokens;
+  const tokenScheduleBefore = entry.tokens_available_at || "";
+  const totalTokens = tokensMinuteBefore + tokens;
+  const tokenScheduleAfter =
+    route.tpm != null && !tokenScheduleBefore && totalTokens > route.tpm
+      ? new Date(
+          Date.parse(reservedAt || new Date().toISOString()) +
+            (totalTokens * 60_000) / route.tpm,
+        ).toISOString()
+      : tokenScheduleBefore;
+  if (tokenScheduleAfter) entry.tokens_available_at = tokenScheduleAfter;
   if (route.rpd != null) {
     entry.requests_day += requests;
   }
@@ -735,6 +762,9 @@ function reserveRouteCapacity(
       requests,
       tokens,
       cost: 0,
+      tokens_available_at_before: tokenScheduleBefore,
+      tokens_available_at_after: tokenScheduleAfter,
+      tokens_minute_before: tokensMinuteBefore,
       reserved_at: reservedAt,
       expires_at: expiresAt,
     };
@@ -778,11 +808,12 @@ function nextRouteReset(entry, route, now) {
   }
   const candidates = [];
   const nextMinuteMs = Math.floor(now.getTime() / 60000) * 60000 + 60000;
-  if (
-    (route.rpm != null && entry.requests_minute >= route.rpm) ||
-    (route.tpm != null && entry.tokens_minute >= route.tpm)
-  ) {
+  if (route.rpm != null && entry.requests_minute >= route.rpm) {
     candidates.push(new Date(nextMinuteMs));
+  }
+  if (route.tpm != null && entry.tokens_available_at) {
+    const tokenReadyMs = parseTime(entry.tokens_available_at);
+    if (tokenReadyMs > now.getTime()) candidates.push(new Date(tokenReadyMs));
   }
   if (route.rpd != null && entry.requests_day >= route.rpd) {
     candidates.push(nextLocalMidnightUTC(now, routeResetTimezone(route)));
@@ -1090,6 +1121,20 @@ async function dispatchBatch(
     }
 
     if (candidatesToDispatch.length === 0) {
+      // Route selection rolls minute/day/token windows in memory even when every request is
+      // requeued. Persist those bookkeeping changes so the coordination object does not retain
+      // stale quota keys until a later successful reservation.
+      const before = JSON.stringify((budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} });
+      const after = JSON.stringify(budget);
+      if (budgetLoaded && before !== after) {
+        try {
+          await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
+            onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
+          });
+        } catch {
+          // A sibling may have committed fresher rollover state; the request remains requeued.
+        }
+      }
       if (batchFailures.length > 0) {
         return {
           status: "failed",

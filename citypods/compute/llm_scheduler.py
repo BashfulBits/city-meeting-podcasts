@@ -132,14 +132,9 @@ def _next_quota_reset(
     """The soonest time an axis actually keeping ``model`` unavailable right now will reset.
 
     Only offers a candidate for an axis genuinely responsible for the current ``available()``
-    failure -- checking ``ledger.requests_minute_key == minute_key(now)`` (true on nearly every
-    call, since merely checking availability stamps that key for the rest of the minute)
-    previously offered "next minute" as a candidate unconditionally, even when RPM/TPM were
-    nowhere near their cap and the real blocker was RPD. `min()` would then pick that bogus
-    near-immediate time over the real tomorrow reset, so a paced caller would busy-retry every
-    few seconds for the rest of the day instead of correctly giving up until the real reset --
-    for a caller that never gives up on `None` (`LiteLLMBackend._run_policy_job_paced`), that can
-    burn its *entire* deadline on one route, never reaching whatever else was queued behind it.
+    failure. RPM remains a wall-clock minute bucket; TPM is an average throughput rate and uses
+    the route's persisted oversized-request cooldown instead of comparing one request with a hard
+    one-minute bucket. RPD remains a daily reset.
 
     Same reasoning applies to ``blocked_until``: it only ever moves forward (`LLMBudget.block()`
     extends it, never clears it), so a route blocked by an *earlier* real 429 keeps a stale
@@ -156,12 +151,14 @@ def _next_quota_reset(
     resets: list[datetime] = []
     quota = route.quota
     pricing = route.pricing
-    per_minute_binding = (
-        quota.rpm is not None and ledger.requests_minute + requests > quota.rpm
-    ) or (quota.tpm is not None and ledger.tokens_minute + tokens > quota.tpm)
+    per_minute_binding = quota.rpm is not None and ledger.requests_minute + requests > quota.rpm
     if per_minute_binding:
         current = now.astimezone(UTC)
         resets.append(current.replace(second=0, microsecond=0) + timedelta(minutes=1))
+    if quota.tpm is not None and ledger.tokens_available_at:
+        token_ready_at = datetime.fromisoformat(ledger.tokens_available_at)
+        if token_ready_at > now.astimezone(UTC):
+            resets.append(token_ready_at)
     if quota.rpd is not None and ledger.requests_day + requests > quota.rpd:
         resets.append(_next_local_midnight(quota.reset_timezone, now))
     if pricing.daily_cost_cap is not None and ledger.cost_day_used + cost > pricing.daily_cost_cap:
@@ -464,6 +461,21 @@ def select_and_reserve(
         )
         last_selection = selection
         if selection.route is None:
+            # Availability checks roll minute/day/token windows in memory. Persist that rollover
+            # even when no route can be reserved, otherwise a coordination ledger can display an
+            # old day key until the first successful request and every caller sees stale quota
+            # accounting. This is a bookkeeping-only CAS write; unchanged ledgers are untouched.
+            rolled_body = serialize_llm_budget(ledger)
+            if etag is not None:
+                current_body, _ = storage.get_bytes(LLM_BUDGET_STATE_KEY) or (None, None)
+                if current_body != rolled_body:
+                    try:
+                        storage.put_cas(
+                            LLM_BUDGET_STATE_KEY, rolled_body, "application/json", if_match=etag
+                        )
+                    except CASConflict:
+                        sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
+                        continue
             return selection
         owner = _owner_for(recipe_hash, selection.transport)
         # No availability recheck here: `select_route` already confirmed `ledger.available(...)`

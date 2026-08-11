@@ -4,8 +4,10 @@ from zoneinfo import ZoneInfo
 from citypods.compute.llm_budget import (
     LLMBudget,
     LLMReservation,
+    RouteLedger,
     load_llm_budget_cas,
     mutate_llm_budget,
+    serialize_llm_budget,
 )
 from citypods.compute.llm_policy import (
     ROUTE_CANDIDATES,
@@ -321,6 +323,71 @@ def test_retry_at_is_next_minute_when_only_the_per_minute_window_is_full():
     )
     assert result.model is None
     assert result.retry_at == NOW.replace(second=0, microsecond=0) + timedelta(minutes=1)
+
+
+def test_tpm_retry_at_is_token_schedule_not_next_minute():
+    route = LLMRoute(
+        model="burst/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    budget.reserve("burst", route.model, route=route, requests=1, tokens=950, cost=0, now=NOW)
+
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(route.model,)),
+        routes={route.model: route},
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1,
+        now=NOW,
+    )
+
+    assert result.model is None
+    assert result.retry_at == NOW + timedelta(minutes=9, seconds=30)
+
+
+def test_no_selection_persists_window_rollover():
+    route = LLMRoute(
+        model="rollover/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=1, rpd=3, tpm=100),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget(
+        routes={
+            route.model: RouteLedger(
+                requests_minute=1,
+                requests_minute_key="2026-07-15T11:59",
+                requests_day=3,
+                requests_day_key="2026-07-15",
+                blocked_until=(NOW + timedelta(hours=1)).isoformat(),
+            )
+        }
+    )
+    storage = MemCAS()
+    storage.seed("state/llm_budget.json", serialize_llm_budget(budget))
+
+    result = select_and_reserve(
+        storage,
+        "rollover-recipe",
+        LLMRequestPolicy(allowed_models=(route.model,)),
+        routes={route.model: route},
+        available_transports=DIRECT,
+        estimated_tokens=1,
+        now=NOW,
+    )
+
+    assert result.model is None
+    rolled, _ = load_llm_budget_cas(storage)
+    ledger = rolled.routes[route.model]
+    assert ledger.requests_minute == 0
+    assert ledger.requests_minute_key == "2026-07-16T12:00"
+    assert ledger.requests_day == 0
+    assert ledger.requests_day_key == "2026-07-16"
 
 
 def test_retry_at_is_tomorrows_reset_when_only_the_daily_quota_is_exhausted():
