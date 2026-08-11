@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Topic tagging is now pinned to Gemini 3.1 Flash Lite only.** Gemini 3.5 Flash Lite remains
+  reserved for production chapter locating, preserving its independent free-tier capacity for the
+  long-context locator workload. This changes the tag route allowlist only; tag prompts, recipe
+  hashes, visibility calibration, and stored artifacts are unchanged, so no pipeline-version bump
+  or catalog backfill is required.
+
 - **Topic tagging now uses the asynchronous LLM dispatch Worker.** The tag workflow enqueues Gemini
   requests instead of holding a GitHub Actions runner while waiting for local quota windows; the
   Worker owns provider credentials, pacing, retries, and completion, and the deferred sweep makes
