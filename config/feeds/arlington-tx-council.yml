@@ -4,6 +4,9 @@ provider: granicus
 source:
   feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
   body: "Council"
+  body_includes:
+    - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890"
+      body: "Special Joint Meeting"
 podcast_title: "Arlington: Council"
 podcast_author: "City of Arlington, TX"
 podcast_email: ""

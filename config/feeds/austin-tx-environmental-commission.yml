@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://austintx.new.swagit.com/views/117/environmental-commission
   body: "Environmental Commission"
+  body_includes:
+    - provider_guid: "157167"
+      body: "Austin Environmental Assessment Virtual Meeting"
 podcast_title: "Austin: Environmental Commission"
 podcast_author: "City of Austin, TX"
 podcast_email: ""
