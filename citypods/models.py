@@ -177,6 +177,12 @@ class Episode:
     # this holds per-word timings for server-side search / clips / diarization.
     transcript_words_key: str | None = None  # storage object key for the word JSON
     transcript_words_url: str | None = None  # public CDN URL for the word JSON
+    # Independent provenance of the feed-facing transcript.  A provider document can supply
+    # wording while our aligner supplies timing, so one boolean (``transcript_synced``) is not
+    # enough for downstream filtering or H15 routing.
+    transcript_text_source: str | None = None  # "provider" | "asr"
+    transcript_timing_source: str | None = None  # "provider" | "computed"
+    transcript_selection: str | None = None  # "provider-native" | "provider-aligned" | "asr"
     # ASR pipeline version that produced this transcript (None = provider-supplied or
     # pre-versioning). Drives version-aware re-transcription: an ASR transcript from an
     # older version is re-done; provider transcripts are never invalidated by a bump.

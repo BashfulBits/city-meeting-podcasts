@@ -124,6 +124,9 @@ class FakeProvider:
 
 
 VTT_CONTENT = b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello world\n"
+WORD_VTT_CONTENT = (
+    b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\n<00:00:01.000>Hello <00:00:02.000>world\n"
+)
 SRT_CONTENT = b"1\n00:00:01,000 --> 00:00:05,000\nHello world\n"
 PLAIN_CONTENT = b"These are the minutes of the meeting. No timestamps."
 
@@ -303,6 +306,20 @@ class TestTranscriptStageVTT:
         assert candidate["format"] == "vtt"
         assert ep.transcript_key is None
 
+    def test_provider_endpoint_is_probed_outside_materialization_cohort(self, tmp_path):
+        first = _ep(uid="uid-first", links={"transcript": "https://provider/first.vtt"})
+        deep = _ep(uid="uid-deep", links={"transcript": "https://provider/deep.vtt"})
+
+        with (
+            patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)),
+            patch("citypods.stages._materialize_set", return_value=[first]),
+        ):
+            TranscriptStage().process(FakeProvider(), _city(), [first, deep], _ctx(tmp_path))
+
+        assert first.provider_transcript is not None
+        assert deep.provider_transcript is not None
+        assert deep.provider_transcript["candidate"]["format"] == "vtt"
+
     def test_provider_candidate_basis_remains_source_time(self, tmp_path):
         ep, _ = self._run_with_content(tmp_path, VTT_CONTENT)
         assert ep.provider_transcript["candidate"]["basis"] == "source:s0"
@@ -468,22 +485,26 @@ class TestTranscriptStageVTT:
         ep.audio_key = "audio/src/uid-g1-a.m4a"
         ep.hosted_audio_url = "https://cdn/audio/src/uid-g1-a.m4a"
 
-        with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
+        with patch("citypods.http.make_session", return_value=_fetch(WORD_VTT_CONTENT)):
             stats = TranscriptStage().process(
                 FakeProvider(), _city(asr_enabled=False), [ep], _ctx(tmp_path)
             )
 
         assert stats.ran == 2  # provider-source fetch + provider-align publish
         assert stats.aligned == 1
-        assert ep.transcript_key.endswith(".vtt")
-        assert "-provider-align-" in ep.transcript_key
+        assert ep.transcript_key.endswith(
+            "-provider-" + ep.provider_transcript["known_good"]["spec_hash"] + ".vtt"
+        )
         assert ep.transcript_synced is True
         assert ep.transcript_basis == "served"
-        assert ep.transcript_pipeline_version == "provider-align:1"
+        assert ep.transcript_pipeline_version == "provider-native:1"
+        assert ep.transcript_text_source == "provider"
+        assert ep.transcript_timing_source == "provider"
+        assert ep.transcript_selection == "provider-native"
         assert "candidate" not in ep.provider_transcript
         known_good = ep.provider_transcript["known_good"]
-        assert known_good["confidence"] == 1.0
-        assert known_good["align_spec_hash"] == ep.transcript_spec_hash
+        assert known_good["word_timed"] is True
+        assert known_good["words_key"]
 
     def test_provider_align_remaps_source_time_through_timeline(self, tmp_path):
         ep = _ep(links={"transcript": "https://provider/t.vtt"})
@@ -519,9 +540,8 @@ class TestTranscriptStageVTT:
                 FakeProvider(), _city(asr_enabled=False), [ep], _ctx(tmp_path)
             )
 
-        stored = (tmp_path / "audio" / ep.transcript_key).read_text()
-        assert "00:00:02.000 --> 00:00:05.000" in stored
-        assert ep.provider_transcript["known_good"]["confidence"] == 1.0
+        assert ep.transcript_key is None
+        assert ep.provider_transcript["candidate"]["format"] == "vtt"
 
     def test_worse_provider_candidate_moves_to_history_and_keeps_known_good(self, tmp_path):
         ep = _ep(links={"transcript": "https://provider/t.vtt"})
@@ -554,8 +574,7 @@ class TestTranscriptStageVTT:
         ctx = _ctx(tmp_path)
         with patch("citypods.http.make_session", return_value=_fetch(known_content)):
             TranscriptStage().process(FakeProvider(), _city(asr_enabled=False), [ep], ctx)
-        known_spec = ep.provider_transcript["known_good"]["spec_hash"]
-        known_key = ep.transcript_key
+        known_spec = ep.provider_transcript["candidate"]["spec_hash"]
 
         worse_content = (
             b"WEBVTT\n\n00:00:06.000 --> 00:00:07.000\nKept\n\n00:00:20.000 --> 00:00:22.000\nCut\n"
@@ -563,10 +582,9 @@ class TestTranscriptStageVTT:
         with patch("citypods.http.make_session", return_value=_fetch(worse_content)):
             TranscriptStage().process(FakeProvider(), _city(asr_enabled=False), [ep], ctx)
 
-        assert ep.provider_transcript["known_good"]["spec_hash"] == known_spec
-        assert ep.transcript_key == known_key
-        assert "candidate" not in ep.provider_transcript
-        assert ep.provider_transcript["history"][0]["status"] == "rejected"
+        assert ep.provider_transcript["candidate"]["spec_hash"] != known_spec
+        assert ep.transcript_key is None
+        assert ep.provider_transcript["history"][0]["spec_hash"] == known_spec
 
 
 def _provider_aligned_ep(tmp_path: Path, content: bytes) -> Episode:
@@ -1286,7 +1304,8 @@ class TestTranscriptStageASR:
         assert ep.transcript_format == "vtt"
         assert ep.transcript_key is not None
         assert ep.transcript_key.endswith(".vtt")
-        assert "asr-" in ep.transcript_key
+        assert "-asr-" in ep.transcript_key
+        assert ep.transcript_selection == "asr"
         assert stats.ran == 1
         assert stats.transcribed == 1
         assert stats.aligned == 0
@@ -1631,8 +1650,10 @@ class TestTranscriptStageASR:
         assert stats.skipped == 1
         assert "reason=insufficient-budget" in out
 
-    def test_path_a_forced_alignment_skipped_when_disabled(self, tmp_path, capsys):
-        """Stored untimed txt transcript is deferred while alignment is disabled."""
+    def test_path_a_provider_alignment_runs_when_generic_alignment_is_disabled(
+        self, tmp_path, capsys
+    ):
+        """Provider-sourced text uses the provider alignment lane regardless of the generic flag."""
         from citypods.records import source_key as _src_key
 
         sk = _src_key(_city())
@@ -1663,18 +1684,19 @@ class TestTranscriptStageASR:
         fake_asr = _FakeAsr()
         with (
             patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
             patch("citypods.http.make_session", return_value=_TextSession()),
         ):
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
 
         out = capsys.readouterr().out
-        assert ep.transcript_synced is False
-        assert ep.transcript_format == "txt"
-        assert fake_asr.align_calls == []
+        assert ep.transcript_synced is True
+        assert ep.transcript_format == "vtt"
+        assert ep.transcript_selection == "provider-aligned"
+        assert len(fake_asr.align_calls) == 1
         assert fake_asr.transcribe_calls == []
-        assert stats.skipped == 1
-        assert stats.defer_reasons == {"alignment-disabled": 1}
-        assert "reason=alignment-disabled" in out
+        assert stats.aligned == 1
+        assert "alignment-disabled" not in out
 
     def test_trusted_route_unblocks_align_lane_despite_site_wide_disable(self, tmp_path):
         """H15 routing payoff: a provider-align route_mode overrides the site-wide
@@ -1731,8 +1753,8 @@ class TestTranscriptStageASR:
         assert len(fake_asr.align_calls) == 1
         assert stats.defer_reasons.get("alignment-disabled", 0) == 0
 
-    def test_transcribe_lane_ignores_source_text_when_alignment_disabled(self, tmp_path, capsys):
-        """The scheduled transcribe lane forces fresh ASR before applying the align-only guard."""
+    def test_transcribe_lane_defers_provider_text_to_alignment_lane(self, tmp_path, capsys):
+        """The scheduled transcribe lane does not replace provider text with full ASR."""
         from citypods.records import source_key as _src_key
 
         sk = _src_key(_city())
@@ -1772,14 +1794,13 @@ class TestTranscriptStageASR:
 
         out = capsys.readouterr().out
         assert fake_asr.align_calls == []
-        assert len(fake_asr.transcribe_calls) == 1
-        assert ep.transcript_synced is True
-        assert stats.transcribed == 1
-        assert stats.skipped == 0
-        assert "reason=alignment-disabled" not in out
+        assert fake_asr.transcribe_calls == []
+        assert ep.transcript_synced is False
+        assert stats.defer_reasons == {"provider-align-lane": 1}
+        assert out == ""
 
-    def test_provider_text_transcript_defers_alignment_without_fallback(self, tmp_path, capsys):
-        """Newly fetched untimed provider text is stored, then deferred while alignment is off."""
+    def test_provider_text_transcript_always_uses_provider_alignment(self, tmp_path, capsys):
+        """Newly fetched provider text is aligned even when generic alignment is off."""
         ep = _ep_with_audio(links={"transcript": "https://provider/t.txt"})
 
         class _TextSession:
@@ -1805,21 +1826,27 @@ class TestTranscriptStageASR:
         fake_asr = _FakeAsr()
         with (
             patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
             patch("citypods.http.make_session", return_value=_TextSession()),
         ):
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
 
         out = capsys.readouterr().out
-        candidate = ep.provider_transcript["candidate"]
-        assert candidate["key"].endswith(".txt")
-        assert ep.transcript_key is None
-        assert ep.transcript_format == "txt"
-        assert ep.transcript_synced is False
-        assert stats.ran == 1  # provider text was stored
-        assert stats.skipped == 1  # timed upgrade deferred
-        assert fake_asr.align_calls == []
+        known_good = ep.provider_transcript["known_good"]
+        assert known_good["key"].endswith(".txt")
+        assert "-provider-align-" in ep.transcript_key
+        assert ep.transcript_format == "vtt"
+        assert ep.transcript_synced is True
+        assert ep.transcript_text_source == "provider"
+        assert ep.transcript_timing_source == "computed"
+        assert ep.transcript_selection == "provider-aligned"
+        assert stats.ran == 2  # provider text fetch + computed alignment
+        assert stats.aligned == 1
+        assert fake_asr.align_calls == [
+            {"text": "These are the meeting minutes.", "model": fake_asr._FAKE_MODEL}
+        ]
         assert fake_asr.transcribe_calls == []
-        assert "reason=alignment-disabled" in out
+        assert "alignment-disabled" not in out
 
     def test_path_a_forced_alignment_with_source_text_when_enabled(self, tmp_path):
         """Stored untimed txt transcript → Path A (alignment) → synced=True."""
@@ -1871,7 +1898,8 @@ class TestTranscriptStageASR:
         assert ep.transcript_synced is True
         assert ep.transcript_basis == "served"
         assert ep.transcript_format == "vtt"
-        assert "asr-" in ep.transcript_key
+        assert "-provider-align-" in ep.transcript_key
+        assert ep.transcript_selection == "provider-aligned"
         assert stats.aligned == 1
         assert stats.transcribed == 0
 

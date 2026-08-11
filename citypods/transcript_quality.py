@@ -808,6 +808,11 @@ def _episode_candidate_pair(city: City, ep, *, config: QualityConfig) -> dict | 
             break
     if not (ep.hosted_audio_url and isinstance(provider, dict)):
         return None
+    provider_source_mode = (
+        "provider-native"
+        if provider.get("format") == "vtt" and provider.get("word_timed")
+        else "provider-aligned"
+    )
     source_key_value = source_key(city)
     body_name = ep.body or "(unknown)"
     sample_id = _sha(
@@ -833,6 +838,7 @@ def _episode_candidate_pair(city: City, ep, *, config: QualityConfig) -> dict | 
         "episode_title": ep.title,
         "published_at": ep.published.isoformat(),
         "audio_url": ep.hosted_audio_url,
+        "provider_source_mode": provider_source_mode,
         "clip_start": clip_start,
         "clip_end": clip_end,
         "candidates": [
@@ -842,6 +848,7 @@ def _episode_candidate_pair(city: City, ep, *, config: QualityConfig) -> dict | 
                 "provider_source_ref": provider.get("key") or provider.get("source_url"),
                 "provider_source_url": provider.get("source_url"),
                 "provider_source_format": provider.get("format") or "txt",
+                "source_mode": provider_source_mode,
             },
             {
                 "candidate_id": "asr-challenger",
@@ -849,6 +856,7 @@ def _episode_candidate_pair(city: City, ep, *, config: QualityConfig) -> dict | 
                 "challenger_model": config.challenger_model,
                 "challenger_compute_type": config.challenger_compute_type,
                 "challenger_beam_size": config.challenger_beam_size,
+                "source_mode": "asr",
             },
         ],
     }
@@ -1712,6 +1720,7 @@ def _evaluate_one_sample(
         "body_key": sample["body_key"],
         "body_name": sample["body_name"],
         "episode_uid": sample["episode_uid"],
+        "provider_source_mode": sample.get("provider_source_mode"),
         "metrics": metrics,
         "pair_metrics": pair_metrics,
         "auto_margin": margin,
@@ -1737,6 +1746,7 @@ def _evaluate_one_sample(
                 "sampled_at": manifest_sampled_at or _utc_now(),
                 "episode_uid": sample["episode_uid"],
                 "episode_title": sample.get("episode_title"),
+                "provider_source_mode": sample.get("provider_source_mode"),
                 "review_page": review_page_ref,
                 "clip_start": float(sample.get("clip_start", 0) or 0),
                 "clip_end": float(sample.get("clip_end", 0) or 0),
@@ -2384,6 +2394,7 @@ def collect_gold_points(state_dir: Path, *, storage=None) -> list[dict]:
                         "source_key": source_key_value,
                         "body_key": body_key_value,
                         "gold_source": evidence.get("gold_source"),
+                        "provider_source_mode": evidence.get("provider_source_mode"),
                         "candidate_label": label,
                         "role": role,
                         "is_reference": bool(gold_role) and role == gold_role,
@@ -2529,6 +2540,10 @@ def build_calibration_report(
         if median_l2 is not None
         else []
     )
+    mode_counts: dict[str, int] = {}
+    for point in points:
+        mode = str(point.get("provider_source_mode") or "unknown")
+        mode_counts[mode] = mode_counts.get(mode, 0) + 1
     return {
         "generated_at": _utc_now(),
         "point_count": n,
@@ -2539,6 +2554,7 @@ def build_calibration_report(
         "l2_coverage": scan_stats["l2_coverage"],
         "agreement_floor": scan_stats["agreement_floor"],
         "flagged_corrections": flagged,
+        "provider_source_modes": mode_counts,
         "current_thresholds": {
             "agreement_threshold": config.agreement_threshold,
             "trust_margin_threshold": config.trust_margin_threshold,
@@ -2565,6 +2581,9 @@ def render_calibration_report_markdown(report: dict) -> str:
         "## Coverage",
         "",
     ]
+    lines.extend(["Provider-source modes in gold points:", ""])
+    for mode, count in sorted((report.get("provider_source_modes") or {}).items()):
+        lines.append(f"- `{mode}`: {count}")
     for bucket in report["auto_score_histogram"]:
         lines.append(f"- `{bucket['range']}`: {bucket['count']}")
     lines.extend(

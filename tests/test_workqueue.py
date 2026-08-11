@@ -587,6 +587,8 @@ def _provider_rec(days_ago, *, align_spec="align-new", transcript_spec=None, dia
             "spec_hash": transcript_spec,
             "basis": "served",
             "synced": True,
+            "words_key": f"transcripts/s/u-provider-align-{transcript_spec}.words.json",
+            "selection": "provider-aligned",
         }
     if diarize_spec is not None:
         rec["speakers"] = {
@@ -657,13 +659,13 @@ def test_build_manifest_transcript_asr_when_no_source_text():
 def test_build_manifest_alignment_disabled():
     recs = {"u": _rec(1, hosted=True, provider_text=True)}
     tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=False), recs)]))
-    assert tx[0].work_class == "transcript-align" and tx[0].state == "alignment-disabled"
+    assert tx[0].work_class == "provider-transcript-align" and tx[0].state == "queued"
 
 
 def test_build_manifest_align_queued_when_enabled():
     recs = {"u": _rec(1, hosted=True, provider_text=True)}
     tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=True), recs)]))
-    assert tx[0].work_class == "transcript-align" and tx[0].state == "queued"
+    assert tx[0].work_class == "provider-transcript-align" and tx[0].state == "queued"
 
 
 def test_build_manifest_transcript_quality_route_unblocks_align_lane():
@@ -683,7 +685,7 @@ def test_build_manifest_transcript_quality_route_unblocks_align_lane():
             },
         )
     )
-    assert tx[0].work_class == "transcript-align"
+    assert tx[0].work_class == "provider-transcript-align"
     assert tx[0].state == "queued"
 
 
@@ -888,10 +890,10 @@ def test_manifest_counts():
     assert counts["by_work_class"]["audio"]["done"] == 2
     assert counts["by_work_class"]["audio"]["queued"] == 1
     assert counts["by_work_class"]["transcript-asr"]["queued"] == 1
-    assert counts["by_work_class"]["transcript-align"]["alignment-disabled"] == 1
-    assert counts["alignment_disabled"] == 1
+    assert counts["by_work_class"]["provider-transcript-align"]["queued"] == 1
+    assert counts["alignment_disabled"] == 0
     # queued only — alignment-disabled is NOT counted as actionable backlog
-    assert counts["feed_visible_pending"] == 2
+    assert counts["feed_visible_pending"] == 3
     assert counts["archive_backfill_pending"] == 0
     assert counts["deep_archive_items"] == 0
 

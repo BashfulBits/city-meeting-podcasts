@@ -427,14 +427,14 @@ actually persist to the sidecar; the rest is derived from records each run. This
 feed still missing audio/transcripts?" answerable in the status page, and is the **lease/merge
 substrate** ASR sharding needs.
 
-**ASR lane split (new H11a mitigation, 2026-06-09).** Production temporarily sets
-`asr_alignment_enabled: false`, so untimed provider transcripts remain notes-only and their timed
-upgrade is skipped as `alignment-disabled` rather than falling back to generated text. H5 should model
-that explicitly instead of hiding it inside the generic transcript backlog: use separate work classes
-for `transcript-asr` (fresh large-v3-turbo transcription for meetings with no source text) and
-`transcript-align` (stable-ts forced alignment for untimed provider text). The manifest should preserve
-the provider-text hash used for alignment and expose `alignment-disabled` / `needs_alignment` counts in
-the status surface, so re-enabling alignment later is a backlog-drain decision, not a behavioral surprise.
+**ASR lane split and provider probing (updated 2026-08-11).** Use separate work classes for
+`transcript-asr` (fresh large-v3-turbo transcription for meetings with no provider source) and
+`provider-transcript-align` (stable-ts forced alignment for provider wording). Every discovered
+provider transcript endpoint is probed independently of materialization depth, existing ASR state, or
+feed visibility. Cue timing in VTT/SRT is source evidence only; it is not served timing unless the
+provider VTT contains inline word timestamps. The scheduled ASR workflow runs both lanes, and the
+manifest/status preserve provider text/timing/selection provenance so H15 can measure the three
+outcomes rather than silently mixing them.
 
 **(b) Configurable prioritization policy.** A declarative, ordered list of **sort keys** applied
 lexicographically to the pending set; ties fall through to the next key. Config (`site_config.yml`):
@@ -1547,11 +1547,17 @@ native relationship before closing a cleared parent.
   the original PR shipped this as a no-op that always exited green. A separate `finalize` job closes
   cleared parent issues exactly once per run, after the matrix, so N children closing in the same run
   can't race each other into double-closing the same parent.
-- **Routing payoff (the unblock, implemented both directions):** `TranscriptQualityRoute.route_mode`
-  gates the align lane per `(source_key, body_key)` in `TranscriptStage` — `provider-align` overrides
-  the site-wide `asr_alignment_enabled=false` default for just that source/body (the concrete
-  resolution of H6b's "align lane implemented but unscheduled"); `fresh-asr` forces the align hint off
-  even when source text exists. See "Calibration-gated routing" below for how `route_mode` is decided.
+- **Routing payoff (implemented both directions):** `TranscriptQualityRoute.route_mode` is a
+  source/body policy, not an episode-level review gate. `provider-align` selects an existing
+  provider-aligned artifact or schedules provider wording through stable-ts; `fresh-asr` selects
+  fresh ASR even when provider text exists; `unknown` preserves the current valid artifact and uses
+  the normal provider-first fallback for new work. A route change therefore changes the served
+  `<podcast:transcript>` on the next H15/enrich pass without requiring an H15 child review for that
+  episode. See "Calibration-gated routing" below for how `route_mode` is decided.
+- **Transcript provenance (locked):** every active transcript records independent text and timing
+  sources plus a selection (`provider/provider/provider-native`, `provider/computed/provider-aligned`,
+  or `asr/computed/asr`). H15 reports these categories separately, so provider wording with computed
+  boundaries is not mistaken for provider alignment.
 - **Admin surface (shipped in GH#885):** `/admin/status` now includes a transcript-quality panel
   showing the per-source/body trust table, route/calibration distribution, prioritized
   needs-attention list, L2 coverage, L3 gold-point counts, and latest calibration snapshot. This
@@ -1727,19 +1733,14 @@ migration.
   summaries/history report copied/already-present/missing/regenerated migration counts.
   `ASR_PIPELINE_VERSION` is unchanged; audio-only recipe changes no longer queue ASR work, and the only
   expected regeneration is for missing old artifacts.
-- **PT-PR5 — provider-transcript-align queue + confidence.** Add the `provider-transcript-align` work class.
-  Alignment uses the provider document in source-time, translates timestamps through the timeline module
-  before serving, writes confidence as `float | null`, and can compare a new candidate against the
-  previous known-good artifact before promotion. Backfill priority is moderate: aim for roughly a 1/3
-  split of completed artifacts between provider-transcript-align and ASR-transcript-align per ASR run.
-  Because alignment is faster than full ASR, this should reduce fresh-ASR completions only modestly
-  (target ≈10%). **Implemented in PT-PR5 ([#459](https://github.com/BashfulBits/city-meeting-podcasts/pull/459)):** the work manifest now emits
-  `provider-transcript-align` for hosted episodes with a timed provider registry entry; `TranscriptStage`
-  parses provider VTT/SRT in source time, remaps cues via `timeline.py`, publishes a served-time
-  `provider-align` VTT when no active transcript already owns the episode, records confidence, and
-  rejects worse candidates to bounded history instead of replacing `known_good`. The provider registry is
-  transcript-lane-owned for the Stage-1 foreign-block-preserving merge. `ASR_PIPELINE_VERSION` is
-  unchanged; provider-align has its own recipe version and does not invalidate ASR.
+- **PT-PR5 — provider-transcript-align queue + confidence.** Provider wording is the aligner input and
+  stable-ts writes the word-boundary timing; cue timing from VTT/SRT is not authoritative. Only a
+  provider VTT with inline word timestamps may remain `provider-native`; SRT, cue-only VTT, and TXT
+  become `provider-aligned` after our aligner. Every provider endpoint is probed, while inference
+  remains materialization/lease bounded. The source/body H15 route can select provider-aligned or
+  fresh-ASR artifacts dynamically. The provider registry retains candidates and rollback history, and
+  the active record identifies provider text plus computed/provider timing. `ASR_PIPELINE_VERSION` is
+  unchanged; provider-align has its own version and does not invalidate ASR.
 - **PT-PR6 — provider-transcript-diarize + rollback wiring.** Queue diarization from the selected
   provider-aligned transcript without discarding successful transcript text if diarization fails. If a
   candidate align/diarize score is worse than known-good, retain it in history and keep serving

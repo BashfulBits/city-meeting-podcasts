@@ -40,6 +40,7 @@ The canonical worker env vars parsed here are:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -95,12 +96,17 @@ from citypods.records import (
 from citypods.security import redact_subprocess_text
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
+    PROVIDER_ALIGN_PIPELINE_VERSION,
     TRANSCRIPT_MIME,
     _adopt_asr_keys,
     _asr_object_key,
     _asr_recipe_hash,
     _asr_words_object_key,
     _download_audio_file,
+    _provider_align_object_key,
+    _provider_align_spec_hash,
+    _provider_align_words_object_key,
+    _provider_source_text,
     _record_asr_timeout,
     _reset_asr_timeout_backoff,
 )
@@ -108,7 +114,9 @@ from citypods.state import resolve_state_dir
 from citypods.statesync import TransientStateSyncError, pull_state, push_records_merged
 from citypods.storage import make_storage
 
-SUPPORTED_WORK_CLASSES = frozenset({"transcript-asr"})
+SUPPORTED_WORK_CLASSES = frozenset(
+    {"transcript-asr", "transcript-align", "provider-transcript-align"}
+)
 RESERVED_WORK_CLASSES = frozenset({"transcript-diarize"})
 
 # How many already-done (adopted) head-of-queue items one run will skip past, beyond ``max_claims``,
@@ -1063,6 +1071,8 @@ class ExternalTranscribeWorker:
         t = threading.Thread(target=_renew, name="citypods-worker-lease-renew", daemon=True)
         t.start()
         try:
+            if item.work_class in {"transcript-align", "provider-transcript-align"}:
+                return self._run_align_item(item, tracker)
             return self._run_transcribe_item(item, tracker)
         finally:
             stop.set()
@@ -1387,6 +1397,126 @@ class ExternalTranscribeWorker:
             raise RuntimeError(f"failed to flush batched transcript records{where}")
         self._pending_transcript_records = {}
         self._pending_transcript_since = None
+
+    def _run_align_item(
+        self,
+        item: WorkItem,
+        tracker: ResourceTracker,
+        *,
+        persist_results: bool = True,
+    ) -> bool:
+        """Align provider wording and persist a provider-derived word-timed artifact."""
+        city, ep, records = self._episode_for(item)
+        registry = ep.provider_transcript or {}
+        provider = next(
+            (
+                entry
+                for entry in (registry.get("candidate"), registry.get("known_good"))
+                if isinstance(entry, dict)
+                and entry.get("key")
+                and entry.get("format") in {"txt", "vtt", "srt"}
+            ),
+            None,
+        )
+        if provider is None:
+            raise RuntimeError(f"{item.source_key}/{item.episode_uid} has no provider source")
+        if not ep.hosted_audio_url:
+            raise RuntimeError(f"{item.source_key}/{item.episode_uid} has no hosted audio")
+
+        with tempfile.TemporaryDirectory() as td:
+            source_path = Path(td) / "provider-transcript"
+            if not self.storage.get_file(provider["key"], source_path):
+                raise RuntimeError(f"missing provider source {provider['key']}")
+            content = source_path.read_bytes()
+            text = _provider_source_text(content, str(provider.get("format") or "txt"))
+            if not text:
+                raise RuntimeError(f"empty provider source {provider['key']}")
+            text_hash = hashlib.sha1(text.encode()).hexdigest()[:12]
+            align_inputs = {**provider, "text_hash": text_hash, "model": city.asr_model}
+            align_spec = _provider_align_spec_hash(ep, align_inputs)
+            uid = ep.uid or ep.guid
+            vtt_key = _provider_align_object_key(item.source_key, uid, align_spec)
+            words_key = _provider_align_words_object_key(item.source_key, uid, align_spec)
+
+            if self.storage.exists(vtt_key) and self.storage.exists(words_key):
+                adopted = True
+            else:
+                adopted = False
+                audio_path = Path(td) / "audio.m4a"
+                _download_audio_file(ep.hosted_audio_url, audio_path)
+                tracker.record("after-audio-download")
+                job = InferenceJob(
+                    task="align",
+                    inputs={
+                        "audio_path": audio_path,
+                        "text": text,
+                        "model": city.asr_model,
+                        "language": city.asr_language or None,
+                        "compute_type": city.asr_compute_type,
+                        "cpu_threads": self.config.cpu_threads,
+                    },
+                    recipe_hash=align_spec,
+                )
+                tracker.record("before-asr")
+                if hasattr(self, "local_backend"):
+                    artifacts = self.local_backend.run_inference(job).output
+                else:
+                    from citypods import asr as asr_mod
+
+                    artifacts = asr_mod.align(
+                        audio_path,
+                        text,
+                        city.asr_model,
+                        city.asr_language or None,
+                        self.config.cpu_threads,
+                    )
+                tracker.record("after-asr")
+                if not persist_results:
+                    return False
+                vtt_path = Path(td) / "provider-align.vtt"
+                words_path = Path(td) / "provider-align.words.json"
+                vtt_path.write_bytes(artifacts.vtt)
+                words_path.write_bytes(artifacts.words)
+                vtt_url = self.storage.put_file(vtt_key, vtt_path, TRANSCRIPT_MIME["vtt"])
+                words_url = self.storage.put_file(words_key, words_path, "application/json")
+
+            if not persist_results:
+                return adopted
+            vtt_url = self.storage.public_url(vtt_key)
+            words_url = self.storage.public_url(words_key)
+            known = dict(provider)
+            known.update(
+                {
+                    "aligned_key": vtt_key,
+                    "aligned_url": vtt_url,
+                    "aligned_words_key": words_key,
+                    "aligned_words_url": words_url,
+                    "align_spec_hash": align_spec,
+                    "status": "known_good",
+                }
+            )
+            registry = dict(ep.provider_transcript or {})
+            registry["known_good"] = known
+            candidate = registry.get("candidate")
+            if isinstance(candidate, dict) and candidate.get("spec_hash") == provider.get(
+                "spec_hash"
+            ):
+                registry.pop("candidate", None)
+            ep.provider_transcript = registry
+            ep.transcript_key = vtt_key
+            ep.transcript_hosted_url = vtt_url
+            ep.transcript_words_key = words_key
+            ep.transcript_words_url = words_url
+            ep.transcript_spec_hash = align_spec
+            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_format = "vtt"
+            ep.transcript_basis = "served"
+            ep.transcript_synced = True
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "provider-aligned"
+            self._queue_transcript_record(item, ep, records, ref_uid=uid)
+            return adopted
 
     def _run_transcribe_item(
         self,
@@ -1772,7 +1902,7 @@ def run_internal_worker(
         max_claims=max_claims if max_claims is not None else sys.maxsize,
         max_scan=max_scan,
         lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
-        work_class="transcript-asr",
+        work_class=os.environ.get("CITYPODS_WORKER_WORK_CLASS", "transcript-asr"),
         estimated_runtime_seconds_per_audio_second=(
             policy.task.estimated_runtime_seconds_per_audio_second
         ),
@@ -2063,13 +2193,20 @@ def _run_characterization(
             outcome = "failed"
             actual = 0.0
             try:
-                adopted = worker._run_transcribe_item(
-                    item,
-                    tracker,
-                    model_num_workers=model_workers,
-                    persist_results=persist_results,
-                    allow_adopt=not benchmark_only,
-                )
+                if item.work_class in {"transcript-align", "provider-transcript-align"}:
+                    adopted = worker._run_align_item(
+                        item,
+                        tracker,
+                        persist_results=persist_results,
+                    )
+                else:
+                    adopted = worker._run_transcribe_item(
+                        item,
+                        tracker,
+                        model_num_workers=model_workers,
+                        persist_results=persist_results,
+                        allow_adopt=not benchmark_only,
+                    )
             except Exception:
                 actual = max(0.0, time.monotonic() - started)
                 if lease_claimed:

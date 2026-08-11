@@ -1145,11 +1145,20 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             if isinstance(provider_transcript, dict):
                 for slot in ("known_good", "candidate"):
                     artifact = provider_transcript.get(slot) or {}
-                    if isinstance(artifact, dict) and artifact.get("key"):
-                        keys.add(artifact["key"])
+                    if isinstance(artifact, dict):
+                        for field in (
+                            "key",
+                            "words_key",
+                            "aligned_key",
+                            "aligned_words_key",
+                        ):
+                            if artifact.get(field):
+                                keys.add(artifact[field])
                 for artifact in provider_transcript.get("history") or []:
-                    if isinstance(artifact, dict) and artifact.get("key"):
-                        keys.add(artifact["key"])
+                    if isinstance(artifact, dict):
+                        for field in ("key", "words_key", "aligned_key", "aligned_words_key"):
+                            if artifact.get(field):
+                                keys.add(artifact[field])
             for link_key, link_value in (rec.get("links") or {}).items():
                 if link_key.endswith("_artifact_key") and isinstance(link_value, str):
                     keys.add(link_value)
@@ -1225,6 +1234,9 @@ def episode_to_record(ep: Episode) -> dict:
             "synced": ep.transcript_synced,
             "words_key": ep.transcript_words_key,
             "words_url": ep.transcript_words_url,
+            "text_source": ep.transcript_text_source,
+            "timing_source": ep.transcript_timing_source,
+            "selection": ep.transcript_selection,
             "pipeline_version": ep.transcript_pipeline_version,
             "timeout_attempts": ep.transcript_timeout_attempts,
             "timeout_last_attempt": ep.transcript_timeout_last_attempt,
@@ -1310,6 +1322,9 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_synced": bool(t.get("synced", False)),
         "transcript_words_key": t.get("words_key"),
         "transcript_words_url": t.get("words_url"),
+        "transcript_text_source": t.get("text_source"),
+        "transcript_timing_source": t.get("timing_source"),
+        "transcript_selection": t.get("selection"),
         "transcript_pipeline_version": t.get("pipeline_version"),
         "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
         "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),

@@ -466,7 +466,7 @@ def test_build_status_backlog_by_work_class(tmp_path):
     a1 = _rec("a1", media_kind="hls", hosted_url=None)  # audio queued
     a2 = _rec("a2", media_kind="hls", hosted_url="http://cdn/a2.m4a")  # audio done + transcript-asr
     a3 = _rec("a3", media_kind="hls", hosted_url="http://cdn/a3.m4a")
-    a3["links"] = {"transcript": "http://cdn/a3.vtt"}  # provider text + alignment off → disabled
+    a3["links"] = {"transcript": "http://cdn/a3.vtt"}  # provider text → provider alignment
     save_records(tmp_path, source_key(city), {"a1": a1, "a2": a2, "a3": a3})
 
     status = build_status([city], site_config=SITE, state_dir=tmp_path)
@@ -478,9 +478,9 @@ def test_build_status_backlog_by_work_class(tmp_path):
     assert status["kpis"]["audio_coverage_pct"] == pytest.approx(66.7)
     assert status["kpis"]["audio_coverage_scope"] == "feed_visible"
     assert wc["transcript-asr"]["queued"] == 1
-    assert wc["transcript-align"]["alignment-disabled"] == 1
-    assert bl["alignment_disabled"] == 1
-    assert bl["work_pending"] == 2  # audio a1 + transcript-asr a2 (alignment-disabled NOT counted)
+    assert wc["provider-transcript-align"]["queued"] == 1
+    assert bl["alignment_disabled"] == 0
+    assert bl["work_pending"] == 3  # audio a1 + both transcript lanes
     assert bl["deep_archive_items"] == 0
 
 
@@ -505,6 +505,8 @@ def test_build_status_provider_transcript_rollout_metrics(tmp_path):
         "key": "transcripts/src/done-provider-align-align-done.vtt",
         "spec_hash": "align-done",
         "synced": True,
+        "words_key": "transcripts/src/done-provider-align-align-done.words.json",
+        "selection": "provider-aligned",
     }
     done["speakers"] = {
         "key": "transcripts/src/done-provider-diarize-speaker-done.speakers.json",
@@ -542,6 +544,8 @@ def test_build_status_provider_transcript_rollout_metrics(tmp_path):
         "key": "transcripts/src/failed-provider-align-align-failed.vtt",
         "spec_hash": "align-failed",
         "synced": True,
+        "words_key": "transcripts/src/failed-provider-align-align-failed.words.json",
+        "selection": "provider-aligned",
     }
     failed_diarize["speakers"] = {
         "spec_hash": "speaker-failed",

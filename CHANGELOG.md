@@ -17,6 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Provider transcript alignment now preserves word-boundary provenance.** Provider endpoints are
+  probed for every discovered episode. A VTT with inline word timestamps is served as
+  `provider-native`; cue-only VTT/SRT/TXT is aligned with stable-ts and served as
+  `provider-aligned`; episodes without provider text use fresh ASR. Active records and the H15
+  report now distinguish provider text/provider timing, provider text/computed timing, and ASR.
+  H15 routing is source/body policy rather than an episode-level publication gate, so a changed
+  route dynamically changes the served transcript. `PROVIDER_ALIGN_PIPELINE_VERSION` was bumped
+  from 1 to 2; existing provider-align artifacts are re-evaluated/adopted under the new semantics,
+  while ASR artifacts are not invalidated.
+
 - **Topic tagging now uses the asynchronous LLM dispatch Worker.** The tag workflow enqueues Gemini
   requests instead of holding a GitHub Actions runner while waiting for local quota windows; the
   Worker owns provider credentials, pacing, retries, and completion, and the deferred sweep makes

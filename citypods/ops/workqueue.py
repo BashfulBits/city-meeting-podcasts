@@ -407,7 +407,11 @@ def _provider_transcript_entry(registry: object) -> dict | None:
         return None
     for slot in ("candidate", "known_good"):
         entry = registry.get(slot)
-        if isinstance(entry, dict) and entry.get("key") and entry.get("synced"):
+        if (
+            isinstance(entry, dict)
+            and entry.get("key")
+            and entry.get("format") in {"txt", "vtt", "srt"}
+        ):
             return entry
     return None
 
@@ -428,15 +432,16 @@ def _quality_route_for(
 def _transcript_class(rec: dict, *, route: TranscriptQualityRoute | None = None) -> str:
     """Classify the next transcript artifact this episode can produce.
 
-    A stored timed city/provider document is the provider-alignment lane. A bare provider
-    text/link remains the ASR forced-alignment lane; otherwise the item needs fresh ASR.
+    Every provider source document is the provider-derived lane. Only a provider VTT that already
+    carries word timing can bypass our aligner; cue-only VTT/SRT and raw TXT still need computed
+    word boundaries. A missing provider source uses fresh ASR.
     """
     if route is not None and route.prefers_fresh_asr:
         return "transcript-asr"
     if _provider_transcript_entry(rec.get("provider_transcript")) is not None:
         return "provider-transcript-align"
     has_source_text = bool((rec.get("links") or {}).get("transcript"))
-    return "transcript-align" if has_source_text else "transcript-asr"
+    return "provider-transcript-align" if has_source_text else "transcript-asr"
 
 
 def _episode_work_items(
@@ -473,14 +478,33 @@ def _episode_work_items(
             # CR2-CP-23: an old ASR-produced transcript.key (no "-provider-align-" marker) is
             # not proof this class is done — it must be the provider-align artifact itself, at
             # the provider's current align_spec_hash, or this episode still needs that work.
-            transcript_done = (
+            native_done = (
+                provider is not None
+                and bool(provider.get("word_timed"))
+                and transcript.get("key") == provider.get("key")
+                and transcript.get("selection") == "provider-native"
+                and bool(transcript.get("words_key"))
+            )
+            aligned_done = (
                 bool(transcript.get("key"))
                 and "-provider-align-" in str(transcript.get("key"))
                 and provider is not None
                 and transcript.get("spec_hash") == provider.get("align_spec_hash")
+                and bool(transcript.get("words_key"))
             )
+            transcript_done = native_done or aligned_done
         else:
-            transcript_done = bool(transcript.get("key"))
+            # A source/body fresh-ASR route must not mistake an older provider artifact for a
+            # completed ASR result. The route is intentionally able to replace the served source.
+            transcript_key = str(transcript.get("key") or "")
+            provider_source_exists = provider is not None or bool(
+                (rec.get("links") or {}).get("transcript")
+            )
+            transcript_done = bool(transcript_key) and (
+                not provider_source_exists
+                or transcript.get("selection") == "asr"
+                or f"{uid}-asr-" in transcript_key.rsplit("/", 1)[-1]
+            )
         align_lane_unblocked = route is not None and route.prefers_provider_align
         if transcript_done:
             items.append(WorkItem(work_class=work_class, state="done", **base))
