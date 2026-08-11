@@ -25,7 +25,9 @@ Phase R (Research-Tool Surface)._
   H15 routing is source/body policy rather than an episode-level publication gate, so a changed
   route dynamically changes the served transcript. `PROVIDER_ALIGN_PIPELINE_VERSION` was bumped
   from 1 to 2; existing provider-align artifacts are re-evaluated/adopted under the new semantics,
-  while ASR artifacts are not invalidated.
+  while ASR artifacts are not invalidated. Provider-selected episodes then enter a separate
+  `transcript-asr-comparison` queue only after the ordinary ASR queue drains; it retains full ASR
+  artifacts for H15 without replacing the served provider route.
 
 - **Topic tagging now uses the asynchronous LLM dispatch Worker.** The tag workflow enqueues Gemini
   requests instead of holding a GitHub Actions runner while waiting for local quota windows; the

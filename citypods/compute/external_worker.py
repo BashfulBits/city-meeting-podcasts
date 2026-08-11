@@ -77,6 +77,7 @@ from citypods.compute.worker_telemetry import (
 )
 from citypods.config import load_city_configs, load_site_config
 from citypods.durations import episode_duration_hours
+from citypods.http import make_session
 from citypods.models import City, Episode
 from citypods.ops import work_leases
 from citypods.ops.workqueue import (
@@ -93,29 +94,45 @@ from citypods.records import (
     source_key,
     transcript_timeout_backoff_until,
 )
-from citypods.security import redact_subprocess_text
+from citypods.security import redact_subprocess_text, validate_source_url
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
     PROVIDER_ALIGN_PIPELINE_VERSION,
+    PROVIDER_NATIVE_PIPELINE_VERSION,
     TRANSCRIPT_MIME,
     _adopt_asr_keys,
     _asr_object_key,
     _asr_recipe_hash,
     _asr_words_object_key,
+    _detect_format,
     _download_audio_file,
+    _has_word_timing_vtt,
     _provider_align_object_key,
     _provider_align_spec_hash,
     _provider_align_words_object_key,
+    _provider_native_words_object_key,
     _provider_source_text,
+    _provider_transcript_artifact,
+    _provider_transcript_object_key,
+    _provider_transcript_promote_candidate,
+    _provider_transcript_set_known_good,
+    _provider_transcript_spec_hash,
+    _provider_vtt_words_json,
     _record_asr_timeout,
     _reset_asr_timeout_backoff,
 )
 from citypods.state import resolve_state_dir
 from citypods.statesync import TransientStateSyncError, pull_state, push_records_merged
 from citypods.storage import make_storage
+from citypods.timeline import timeline_digest
 
 SUPPORTED_WORK_CLASSES = frozenset(
-    {"transcript-asr", "transcript-align", "provider-transcript-align"}
+    {
+        "transcript-asr",
+        "transcript-asr-comparison",
+        "transcript-align",
+        "provider-transcript-align",
+    }
 )
 RESERVED_WORK_CLASSES = frozenset({"transcript-diarize"})
 
@@ -1097,14 +1114,28 @@ class ExternalTranscribeWorker:
         )
 
     def _base_candidates(self) -> list[WorkItem]:
-        return [
+        manifest = self._manifest()
+        candidates = [
             wi
-            for wi in self._manifest()
+            for wi in manifest
             if wi.work_class == self.config.work_class
             and wi.state == "queued"
             and wi.priority_bucket == BUCKET_FEED_VISIBLE
             and self._preferred_duration(wi)
         ]
+        # Provider alignment is the fast coverage path.  A comparison ASR rendition is admitted
+        # only after this worker sees no ordinary ASR work, so it cannot consume the limited
+        # GitHub-runner budget while fresh-ASR-only episodes are still waiting.
+        if self.config.work_class == "transcript-asr" and not candidates:
+            candidates = [
+                wi
+                for wi in manifest
+                if wi.work_class == "transcript-asr-comparison"
+                and wi.state == "queued"
+                and wi.priority_bucket == BUCKET_FEED_VISIBLE
+                and self._preferred_duration(wi)
+            ]
+        return candidates
 
     def _city_for(self, item: WorkItem) -> City:
         if item.city_slug and item.city_slug in self._city_by_slug:
@@ -1419,7 +1450,7 @@ class ExternalTranscribeWorker:
             None,
         )
         if provider is None:
-            raise RuntimeError(f"{item.source_key}/{item.episode_uid} has no provider source")
+            provider = self._fetch_provider_source(item, ep)
         if not ep.hosted_audio_url:
             raise RuntimeError(f"{item.source_key}/{item.episode_uid} has no hosted audio")
 
@@ -1428,6 +1459,15 @@ class ExternalTranscribeWorker:
             if not self.storage.get_file(provider["key"], source_path):
                 raise RuntimeError(f"missing provider source {provider['key']}")
             content = source_path.read_bytes()
+            if persist_results and self._adopt_native_provider_vtt(
+                item,
+                ep,
+                records,
+                provider,
+                content,
+                source_path.parent,
+            ):
+                return False
             text = _provider_source_text(content, str(provider.get("format") or "txt"))
             if not text:
                 raise RuntimeError(f"empty provider source {provider['key']}")
@@ -1445,40 +1485,17 @@ class ExternalTranscribeWorker:
                 audio_path = Path(td) / "audio.m4a"
                 _download_audio_file(ep.hosted_audio_url, audio_path)
                 tracker.record("after-audio-download")
-                job = InferenceJob(
-                    task="align",
-                    inputs={
-                        "audio_path": audio_path,
-                        "text": text,
-                        "model": city.asr_model,
-                        "language": city.asr_language or None,
-                        "compute_type": city.asr_compute_type,
-                        "cpu_threads": self.config.cpu_threads,
-                    },
-                    recipe_hash=align_spec,
+                artifacts = self._align_provider_text(
+                    item, city, ep, audio_path, text, align_spec, tracker
                 )
-                tracker.record("before-asr")
-                if hasattr(self, "local_backend"):
-                    artifacts = self.local_backend.run_inference(job).output
-                else:
-                    from citypods import asr as asr_mod
-
-                    artifacts = asr_mod.align(
-                        audio_path,
-                        text,
-                        city.asr_model,
-                        city.asr_language or None,
-                        self.config.cpu_threads,
-                    )
-                tracker.record("after-asr")
                 if not persist_results:
                     return False
                 vtt_path = Path(td) / "provider-align.vtt"
                 words_path = Path(td) / "provider-align.words.json"
                 vtt_path.write_bytes(artifacts.vtt)
                 words_path.write_bytes(artifacts.words)
-                vtt_url = self.storage.put_file(vtt_key, vtt_path, TRANSCRIPT_MIME["vtt"])
-                words_url = self.storage.put_file(words_key, words_path, "application/json")
+                self.storage.put_file(vtt_key, vtt_path, TRANSCRIPT_MIME["vtt"])
+                self.storage.put_file(words_key, words_path, "application/json")
 
             if not persist_results:
                 return adopted
@@ -1495,14 +1512,7 @@ class ExternalTranscribeWorker:
                     "status": "known_good",
                 }
             )
-            registry = dict(ep.provider_transcript or {})
-            registry["known_good"] = known
-            candidate = registry.get("candidate")
-            if isinstance(candidate, dict) and candidate.get("spec_hash") == provider.get(
-                "spec_hash"
-            ):
-                registry.pop("candidate", None)
-            ep.provider_transcript = registry
+            _provider_transcript_set_known_good(ep, known)
             ep.transcript_key = vtt_key
             ep.transcript_hosted_url = vtt_url
             ep.transcript_words_key = words_key
@@ -1515,8 +1525,151 @@ class ExternalTranscribeWorker:
             ep.transcript_text_source = "provider"
             ep.transcript_timing_source = "computed"
             ep.transcript_selection = "provider-aligned"
+            _reset_asr_timeout_backoff(ep)
+            self._clear_media_decode_quarantine(ep)
             self._queue_transcript_record(item, ep, records, ref_uid=uid)
             return adopted
+
+    def _adopt_native_provider_vtt(
+        self,
+        item: WorkItem,
+        ep: Episode,
+        records: dict,
+        provider: dict,
+        content: bytes,
+        work_dir: Path,
+    ) -> bool:
+        """Serve a provider VTT directly only when it supplies usable word timings.
+
+        This mirrors ``TranscriptStage`` for the scheduled pull worker.  Cue-only VTT/SRT and
+        text documents deliberately fall through to stable-ts alignment; downstream consumers
+        require word boundaries, not merely cue boundaries.
+        """
+        if (
+            provider.get("format") != "vtt"
+            or not provider.get("word_timed")
+            or (ep.timeline is not None and timeline_digest(ep.timeline, ep.sources))
+        ):
+            return False
+        words = _provider_vtt_words_json(content, basis="served")
+        spec = str(provider.get("spec_hash") or "")
+        if words is None or not spec:
+            return False
+        uid = ep.uid or ep.guid
+        words_key = _provider_native_words_object_key(item.source_key, uid, spec)
+        existed = self.storage.exists(words_key)
+        if not existed:
+            words_path = work_dir / "provider-native.words.json"
+            words_path.write_bytes(words)
+            self.storage.put_file(words_key, words_path, "application/json")
+        known = dict(provider)
+        known.update(
+            {
+                "word_timed": True,
+                "native_key": provider["key"],
+                "native_url": self.storage.public_url(provider["key"]),
+                "words_key": words_key,
+                "words_url": self.storage.public_url(words_key),
+                "status": "known_good",
+            }
+        )
+        _provider_transcript_set_known_good(ep, known)
+        ep.transcript_key = provider["key"]
+        ep.transcript_hosted_url = self.storage.public_url(provider["key"])
+        ep.transcript_words_key = words_key
+        ep.transcript_words_url = self.storage.public_url(words_key)
+        ep.transcript_spec_hash = spec
+        ep.transcript_pipeline_version = f"provider-native:{PROVIDER_NATIVE_PIPELINE_VERSION}"
+        ep.transcript_format = "vtt"
+        ep.transcript_basis = "served"
+        ep.transcript_synced = True
+        ep.transcript_text_source = "provider"
+        ep.transcript_timing_source = "provider"
+        ep.transcript_selection = "provider-native"
+        _reset_asr_timeout_backoff(ep)
+        self._clear_media_decode_quarantine(ep)
+        self._queue_transcript_record(item, ep, records, ref_uid=uid)
+        return True
+
+    def _fetch_provider_source(self, item: WorkItem, ep: Episode) -> dict:
+        """Fetch a linked provider document before aligning it on the GitHub runner.
+
+        Discovery records retain the provider URL before a transcript worker has ever touched the
+        episode.  The align worker is therefore responsible for materializing that source on its
+        first claim; later claims use the content-addressed registry object.
+        """
+        provider_url = (ep.links or {}).get("transcript")
+        if not provider_url:
+            raise RuntimeError(f"{item.source_key}/{item.episode_uid} has no provider source")
+        validate_source_url(provider_url, resolve=True)
+        with make_session() as sess:
+            response = sess.get(provider_url, timeout=30)
+        if response.status_code >= 400 or not response.content.strip():
+            raise RuntimeError(
+                f"provider transcript fetch failed status={response.status_code} "
+                f"for {item.source_key}/{item.episode_uid}"
+            )
+        content = response.content
+        fmt = _detect_format(content)
+        spec = _provider_transcript_spec_hash(content)
+        key = _provider_transcript_object_key(item.source_key, ep.uid or ep.guid, spec, fmt)
+        if not self.storage.exists(key):
+            with tempfile.TemporaryDirectory() as td:
+                source_path = Path(td) / f"provider.{fmt}"
+                source_path.write_bytes(content)
+                self.storage.put_file(key, source_path, TRANSCRIPT_MIME.get(fmt, "text/plain"))
+        artifact = _provider_transcript_artifact(
+            source_url=provider_url,
+            key=key,
+            hosted_url=self.storage.public_url(key),
+            spec=spec,
+            fmt=fmt,
+            synced=fmt in {"vtt", "srt"},
+            word_timed=fmt == "vtt" and _has_word_timing_vtt(content),
+            now=datetime.now(UTC).isoformat(),
+            status="candidate",
+        )
+        _provider_transcript_promote_candidate(ep, artifact)
+        return artifact
+
+    def _align_provider_text(
+        self,
+        item: WorkItem,
+        city: City,
+        ep: Episode,
+        audio_path: Path,
+        text: str,
+        align_spec: str,
+        tracker: ResourceTracker,
+    ):
+        """Run provider-wording alignment; the internal worker overrides the deadline policy."""
+        job = InferenceJob(
+            task="align",
+            inputs={
+                "audio_path": audio_path,
+                "text": text,
+                "model": city.asr_model,
+                "language": city.asr_language or None,
+                "compute_type": city.asr_compute_type,
+                "cpu_threads": self.config.cpu_threads,
+            },
+            recipe_hash=align_spec,
+        )
+        tracker.record("before-asr")
+        if hasattr(self, "local_backend"):
+            artifacts = self.local_backend.run_inference(job).output
+        else:
+            from citypods import asr as asr_mod
+
+            artifacts = asr_mod.align(
+                audio_path,
+                text,
+                city.asr_model,
+                city.asr_language or None,
+                self.config.cpu_threads,
+            )
+        tracker.record("after-asr")
+        return artifacts
 
     def _run_transcribe_item(
         self,
@@ -1537,6 +1690,7 @@ class ExternalTranscribeWorker:
         uid = ep.uid or ep.guid
         asr_key = _asr_object_key(item.source_key, uid, recipe)
         words_key = _asr_words_object_key(item.source_key, uid, recipe)
+        comparison = item.work_class == "transcript-asr-comparison"
         adopted = allow_adopt and self.storage.exists(asr_key) and self.storage.exists(words_key)
         if adopted:
             print(
@@ -1544,7 +1698,10 @@ class ExternalTranscribeWorker:
                 "(artifacts already present, no transcription)",
                 flush=True,
             )
-            _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
+            if comparison:
+                self._store_asr_comparison(ep, asr_key, words_key, recipe)
+            else:
+                _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
             _reset_asr_timeout_backoff(ep)
             self._clear_media_decode_quarantine(ep)
         else:
@@ -1566,22 +1723,14 @@ class ExternalTranscribeWorker:
                 vtt_path.write_bytes(artifacts.vtt)
                 words_path = Path(td) / "transcript.words.json"
                 words_path.write_bytes(artifacts.words)
-                ep.transcript_key = asr_key
-                ep.transcript_hosted_url = self.storage.put_file(
-                    asr_key, vtt_path, TRANSCRIPT_MIME["vtt"]
-                )
-                ep.transcript_words_key = words_key
-                ep.transcript_words_url = self.storage.put_file(
-                    words_key, words_path, "application/json"
-                )
-                ep.transcript_spec_hash = recipe
-                ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
-                ep.transcript_format = "vtt"
-                ep.transcript_basis = "served"
-                ep.transcript_synced = True
+                self.storage.put_file(asr_key, vtt_path, TRANSCRIPT_MIME["vtt"])
+                self.storage.put_file(words_key, words_path, "application/json")
                 _reset_asr_timeout_backoff(ep)
                 self._clear_media_decode_quarantine(ep)
-                _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
+                if comparison:
+                    self._store_asr_comparison(ep, asr_key, words_key, recipe, artifacts=artifacts)
+                else:
+                    _adopt_asr_keys(ep, self.storage, asr_key, words_key, recipe)
                 tracker.record("after-artifact-upload")
 
         if not persist_results:
@@ -1596,6 +1745,32 @@ class ExternalTranscribeWorker:
         # whatever remains at end of run, so this still lands durably even for a batch of one.
         self._queue_transcript_record(item, ep, records, ref_uid=uid)
         return adopted
+
+    def _store_asr_comparison(
+        self,
+        ep: Episode,
+        asr_key: str,
+        words_key: str,
+        recipe: str,
+        *,
+        artifacts=None,
+    ) -> None:
+        """Record a complete ASR rendition without changing the served provider route."""
+        ep.transcript_asr_comparison = {
+            "key": asr_key,
+            "url": self.storage.public_url(asr_key),
+            "words_key": words_key,
+            "words_url": self.storage.public_url(words_key),
+            "spec_hash": recipe,
+            "pipeline_version": ASR_PIPELINE_VERSION,
+            "format": "vtt",
+            "basis": "served",
+            "synced": True,
+            "completed_at": datetime.now(UTC).isoformat(),
+            "acoustic_coverage": getattr(artifacts, "coverage", None),
+            "word_logprob_mean": getattr(artifacts, "word_logprob_mean", None),
+            "word_logprob_p10": getattr(artifacts, "word_logprob_p10", None),
+        }
 
     def _append_telemetry_sample(
         self,
@@ -1759,6 +1934,60 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
         model_num_workers: int = 1,
     ):
         del model_num_workers
+        return self._run_local_inference_with_timeout(
+            item,
+            ep,
+            InferenceJob(
+                task="transcribe",
+                inputs={
+                    "audio_path": audio_path,
+                    "model": city.asr_model,
+                    "language": city.asr_language or None,
+                    "compute_type": city.asr_compute_type,
+                    "beam_size": city.asr_beam_size,
+                    "initial_prompt": None,
+                    "cpu_threads": self.config.cpu_threads,
+                },
+                recipe_hash=_asr_recipe_hash(city, ep, None),
+            ),
+            tracker,
+        )
+
+    def _align_provider_text(
+        self,
+        item: WorkItem,
+        city: City,
+        ep: Episode,
+        audio_path: Path,
+        text: str,
+        align_spec: str,
+        tracker: ResourceTracker,
+    ):
+        return self._run_local_inference_with_timeout(
+            item,
+            ep,
+            InferenceJob(
+                task="align",
+                inputs={
+                    "audio_path": audio_path,
+                    "text": text,
+                    "model": city.asr_model,
+                    "language": city.asr_language or None,
+                    "compute_type": city.asr_compute_type,
+                    "cpu_threads": self.config.cpu_threads,
+                },
+                recipe_hash=align_spec,
+            ),
+            tracker,
+        )
+
+    def _run_local_inference_with_timeout(
+        self,
+        item: WorkItem,
+        ep: Episode,
+        job: InferenceJob,
+        tracker: ResourceTracker,
+    ):
         duration_hours, _source = episode_duration_hours(ep)
         timeout_s = self.timing.per_item_timeout_seconds(duration_hours)
         if timeout_s is not None and timeout_s <= 0:
@@ -1769,23 +1998,7 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
         def _infer() -> None:
             try:
                 tracker.record("before-asr")
-                result.append(
-                    self.local_backend.run_inference(
-                        InferenceJob(
-                            task="transcribe",
-                            inputs={
-                                "audio_path": audio_path,
-                                "model": city.asr_model,
-                                "language": city.asr_language or None,
-                                "compute_type": city.asr_compute_type,
-                                "beam_size": city.asr_beam_size,
-                                "initial_prompt": None,
-                                "cpu_threads": self.config.cpu_threads,
-                            },
-                            recipe_hash=_asr_recipe_hash(city, ep, None),
-                        )
-                    ).output
-                )
+                result.append(self.local_backend.run_inference(job).output)
                 tracker.record("after-asr")
             except BaseException as exc:  # noqa: BLE001
                 errors.append(exc)
@@ -1895,14 +2108,21 @@ def run_internal_worker(
     pull_state(storage, state_dir)
     run_id = os.environ.get("GITHUB_RUN_ID") or "local"
     slot = os.environ.get("CITYPODS_INTERNAL_WORKER_SLOT") or "0"
+    work_class = os.environ.get("CITYPODS_WORKER_WORK_CLASS", "transcript-asr")
+    if work_class not in SUPPORTED_WORK_CLASSES:
+        raise ValueError(f"unsupported internal worker class: {work_class!r}")
     policy = backend_policy(site_config, "github-actions")
     cfg = ExternalWorkerConfig(
         backend="github-actions",
-        owner=owner or f"github-actions:{run_id}:{slot}",
+        owner=(
+            owner
+            or os.environ.get("CITYPODS_WORKER_OWNER")
+            or f"github-actions:{run_id}:{work_class}:{slot}"
+        ),
         max_claims=max_claims if max_claims is not None else sys.maxsize,
         max_scan=max_scan,
         lease_ttl_seconds=_float_env("CITYPODS_WORKER_LEASE_TTL_SECONDS", 20 * 3600),
-        work_class=os.environ.get("CITYPODS_WORKER_WORK_CLASS", "transcript-asr"),
+        work_class=work_class,
         estimated_runtime_seconds_per_audio_second=(
             policy.task.estimated_runtime_seconds_per_audio_second
         ),

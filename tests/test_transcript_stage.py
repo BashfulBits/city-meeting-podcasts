@@ -41,6 +41,8 @@ from citypods.stages import (
     TranscriptStage,
     _asr_fits_remaining_budget,
     _asr_timeout_seconds,
+    _provider_source_text,
+    _provider_vtt_words_json,
     default_stages,
     enrich_stages,
 )
@@ -127,6 +129,7 @@ VTT_CONTENT = b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello world\n"
 WORD_VTT_CONTENT = (
     b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\n<00:00:01.000>Hello <00:00:02.000>world\n"
 )
+WORD_VTT_WITH_LEADING_TEXT = b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello <00:00:02.000>world\n"
 SRT_CONTENT = b"1\n00:00:01,000 --> 00:00:05,000\nHello world\n"
 PLAIN_CONTENT = b"These are the minutes of the meeting. No timestamps."
 
@@ -267,6 +270,11 @@ class TestTranscriptStageASRStubbed:
 
 
 class TestTranscriptStageVTT:
+    def test_word_timed_vtt_keeps_leading_unmarked_words_and_align_text_strips_markers(self):
+        words = json.loads(_provider_vtt_words_json(WORD_VTT_WITH_LEADING_TEXT).decode())
+        assert [word["w"] for word in words["segments"][0]["words"]] == ["Hello", "world"]
+        assert _provider_source_text(WORD_VTT_WITH_LEADING_TEXT, "vtt") == "Hello world"
+
     def _run_with_content(self, tmp_path, content: bytes, url="https://provider/t.vtt"):
         from unittest.mock import patch
 
@@ -480,7 +488,7 @@ class TestTranscriptStageVTT:
 
         assert calls == [("https://provider/t.vtt", {"resolve": True})]
 
-    def test_hosted_timed_provider_candidate_aligns_to_active_transcript(self, tmp_path):
+    def test_hosted_word_timed_provider_candidate_is_served_natively(self, tmp_path):
         ep = _ep(links={"transcript": "https://provider/t.vtt"})
         ep.audio_key = "audio/src/uid-g1-a.m4a"
         ep.hosted_audio_url = "https://cdn/audio/src/uid-g1-a.m4a"
@@ -490,8 +498,8 @@ class TestTranscriptStageVTT:
                 FakeProvider(), _city(asr_enabled=False), [ep], _ctx(tmp_path)
             )
 
-        assert stats.ran == 2  # provider-source fetch + provider-align publish
-        assert stats.aligned == 1
+        assert stats.ran == 2  # provider-source fetch + provider-native sidecar publish
+        assert stats.aligned == 0
         assert ep.transcript_key.endswith(
             "-provider-" + ep.provider_transcript["known_good"]["spec_hash"] + ".vtt"
         )

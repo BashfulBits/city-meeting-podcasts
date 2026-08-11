@@ -813,6 +813,12 @@ def _episode_candidate_pair(city: City, ep, *, config: QualityConfig) -> dict | 
         if provider.get("format") == "vtt" and provider.get("word_timed")
         else "provider-aligned"
     )
+    comparison = (
+        ep.transcript_asr_comparison
+        if isinstance(getattr(ep, "transcript_asr_comparison", None), dict)
+        else {}
+    )
+    comparison_ready = bool(comparison.get("key") and comparison.get("words_key"))
     source_key_value = source_key(city)
     body_name = ep.body or "(unknown)"
     sample_id = _sha(
@@ -822,7 +828,7 @@ def _episode_candidate_pair(city: City, ep, *, config: QualityConfig) -> dict | 
                 str(ep.uid or ep.guid),
                 str(provider.get("spec_hash") or ""),
                 str(provider.get("key") or provider.get("source_url") or ""),
-                config.challenger_model,
+                str(comparison.get("spec_hash") or config.challenger_model),
             ]
         )
     )
@@ -857,6 +863,21 @@ def _episode_candidate_pair(city: City, ep, *, config: QualityConfig) -> dict | 
                 "challenger_compute_type": config.challenger_compute_type,
                 "challenger_beam_size": config.challenger_beam_size,
                 "source_mode": "asr",
+                # A completed deferred production ASR pass is the preferred challenger: H15
+                # compares the real catalog artifacts without spending another transcribe run.
+                # When absent, materialization retains the existing sampled challenger behavior.
+                **(
+                    {
+                        "recipe_hash": comparison.get("pipeline_version"),
+                        "transcript_ref": comparison.get("key"),
+                        "words_ref": comparison.get("words_key"),
+                        "acoustic_coverage": comparison.get("acoustic_coverage"),
+                        "word_logprob_mean": comparison.get("word_logprob_mean"),
+                        "word_logprob_p10": comparison.get("word_logprob_p10"),
+                    }
+                    if comparison_ready
+                    else {}
+                ),
             },
         ],
     }

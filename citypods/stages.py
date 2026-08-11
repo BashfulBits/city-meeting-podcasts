@@ -2662,7 +2662,6 @@ def _provider_align_spec_hash(ep: Episode, artifact: dict) -> str:
         "provider": artifact.get("spec_hash"),
         "text": artifact.get("text_hash"),
         "model": artifact.get("model"),
-        "asr": ASR_PIPELINE_VERSION,
         "timeline": tl_digest,
         "repair": timeline_audio_repair_token(ep, REPAIR_TRANSCRIPT_REGENERATE),
     }
@@ -2676,6 +2675,10 @@ def _provider_align_object_key(src_key: str, uid: str, spec: str) -> str:
 
 def _provider_align_words_object_key(src_key: str, uid: str, spec: str) -> str:
     return f"transcripts/{src_key}/{uid}-provider-align-{spec}.words.json"
+
+
+def _provider_native_words_object_key(src_key: str, uid: str, spec: str) -> str:
+    return f"transcripts/{src_key}/{uid}-provider-native-{spec}.words.json"
 
 
 _VTT_WORD_TIMESTAMP_RE = re.compile(r"<(?P<time>(?:(?:\d{2}:)?\d{2}:\d{2})[\.,]\d{3})>")
@@ -2710,6 +2713,11 @@ def _provider_vtt_words_json(content: bytes, *, basis: str = "served") -> bytes 
         if not markers:
             continue
         words: list[dict] = []
+        chunks: list[tuple[float, float, str]] = []
+        # Providers commonly timestamp the *second* word onward.  Keep the leading words and
+        # distribute them between the cue start and the first explicit marker.
+        first_start = _parse_transcript_time(markers[0].group("time"))
+        chunks.append((float(cue["start"]), first_start, raw[: markers[0].start()]))
         for index, marker in enumerate(markers):
             start = _parse_transcript_time(marker.group("time"))
             end = (
@@ -2720,10 +2728,13 @@ def _provider_vtt_words_json(content: bytes, *, basis: str = "served") -> bytes 
             text = raw[
                 marker.end() : markers[index + 1].start() if index + 1 < len(markers) else None
             ]
+            chunks.append((start, end, text))
+        for start, end, text in chunks:
             tokens = text.replace("\n", " ").split()
             if not tokens:
                 continue
-            step = max(0.0, end - start) / len(tokens)
+            end = max(start, end)
+            step = (end - start) / len(tokens)
             for token_index, token in enumerate(tokens):
                 word_start = start + step * token_index
                 word_end = (
@@ -2755,6 +2766,7 @@ def _provider_source_text(content: bytes, fmt: str) -> str:
         joined = "\n".join(
             str(cue.get("text") or "") for cue in _parse_timed_transcript(content, fmt)
         )
+        joined = _VTT_WORD_TIMESTAMP_RE.sub("", joined)
         return _preprocess_align_text(joined)
     return _preprocess_align_text(content.decode("utf-8", errors="replace"))
 
@@ -3390,8 +3402,7 @@ class TranscriptStage:
                 words_dest.write_bytes(artifacts.words)
                 words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
 
-            registry = dict(ep.provider_transcript or {})
-            known = dict(registry.get("known_good") or provider_artifact)
+            known = dict(provider_artifact)
             known.update(
                 {
                     "aligned_key": key,
@@ -3403,13 +3414,7 @@ class TranscriptStage:
                     "status": "known_good",
                 }
             )
-            registry["known_good"] = known
-            candidate = registry.get("candidate")
-            if isinstance(candidate, dict) and candidate.get("spec_hash") == provider_artifact.get(
-                "spec_hash"
-            ):
-                registry.pop("candidate", None)
-            ep.provider_transcript = registry
+            _provider_transcript_set_known_good(ep, known)
 
             ep.transcript_key = key
             ep.transcript_hosted_url = url
@@ -3523,7 +3528,7 @@ class TranscriptStage:
                 stats.reused += 1
                 return True
 
-            words_key = selected.get("words_key") or _provider_align_words_object_key(
+            words_key = selected.get("words_key") or _provider_native_words_object_key(
                 src_key, ep.uid or ep.guid, selected["spec_hash"]
             )
             words_url = None
@@ -3562,7 +3567,6 @@ class TranscriptStage:
             ep.transcript_selection = "provider-native"
             _reset_asr_timeout_backoff(ep)
             stats.ran += 1
-            stats.aligned += 1
             print(
                 f"[enrich] transcript provider-native done {ep_ref} word_timed=true",
                 flush=True,
@@ -3592,12 +3596,7 @@ class TranscriptStage:
                 return False
             key = artifact.get("aligned_key")
             words_key = artifact.get("aligned_words_key")
-            if (
-                not key
-                or not ctx.storage.exists(key)
-                or not words_key
-                or not ctx.storage.exists(words_key)
-            ):
+            if not key or not _present(key) or not words_key or not _present(words_key):
                 return False
             ep.transcript_key = key
             ep.transcript_hosted_url = artifact.get("aligned_url") or ctx.storage.public_url(key)
@@ -4137,12 +4136,16 @@ class TranscriptStage:
             cached_artifacts = ctx.asr_artifact_cache.get(cache_key)
             if cached_artifacts is not None:
                 try:
-                    if provider_alignment_requested and isinstance(active_provider, dict):
+                    if (
+                        provider_alignment_requested
+                        and isinstance(active_provider, dict)
+                        and align_text is not None
+                    ):
                         _store_provider_align_artifacts(
                             ep,
                             cached_artifacts,
                             active_provider,
-                            hashlib.sha1(align_text.encode()).hexdigest()[:12],
+                            align_hash,
                         )
                     else:
                         _store_asr_artifacts(ep, cached_artifacts, recipe)
@@ -4286,12 +4289,16 @@ class TranscriptStage:
                     sem.release()
                     sem = None
                 try:
-                    if provider_alignment_requested and isinstance(active_provider, dict):
+                    if (
+                        provider_alignment_requested
+                        and isinstance(active_provider, dict)
+                        and align_text is not None
+                    ):
                         _store_provider_align_artifacts(
                             ep,
                             cached_artifacts,
                             active_provider,
-                            hashlib.sha1(align_text.encode()).hexdigest()[:12],
+                            align_hash,
                         )
                     else:
                         _store_asr_artifacts(ep, cached_artifacts, recipe)
@@ -4632,12 +4639,13 @@ class TranscriptStage:
                     _aligned[0]
                     and provider_alignment_requested
                     and isinstance(active_provider, dict)
+                    and align_text is not None
                 ):
                     _store_provider_align_artifacts(
                         ep,
                         artifacts,
                         active_provider,
-                        hashlib.sha1(align_text.encode()).hexdigest()[:12],
+                        align_hash,
                     )
                 else:
                     _store_asr_artifacts(ep, artifacts, recipe)

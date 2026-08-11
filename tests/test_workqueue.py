@@ -742,6 +742,7 @@ def test_build_manifest_provider_transcript_diarize_queued_after_align_selected(
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
     assert [(it.work_class, it.state) for it in tx] == [
         ("provider-transcript-align", "done"),
+        ("transcript-asr-comparison", "queued"),
         ("provider-transcript-diarize", "queued"),
     ]
 
@@ -764,6 +765,7 @@ def test_build_manifest_provider_transcript_diarize_done_when_spec_matches():
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
     assert [(it.work_class, it.state) for it in tx] == [
         ("provider-transcript-align", "done"),
+        ("transcript-asr-comparison", "queued"),
         ("provider-transcript-diarize", "done"),
     ]
 

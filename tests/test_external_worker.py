@@ -868,6 +868,31 @@ def test_internal_worker_prefers_shorter_known_eligible_recordings(tmp_path, mon
     assert [item.episode_uid for item in candidates] == ["short", "mid"]
 
 
+def test_transcribe_worker_defers_asr_comparisons_until_normal_asr_is_empty(tmp_path, monkeypatch):
+    worker = _internal_worker(tmp_path)
+    normal = WorkItem(
+        source_key="src",
+        episode_uid="normal",
+        work_class="transcript-asr",
+        state="queued",
+        priority_bucket=BUCKET_FEED_VISIBLE,
+        duration_hours=1.0,
+    )
+    comparison = WorkItem(
+        source_key="src",
+        episode_uid="comparison",
+        work_class="transcript-asr-comparison",
+        state="queued",
+        priority_bucket=BUCKET_FEED_VISIBLE,
+        duration_hours=1.0,
+    )
+    monkeypatch.setattr(worker, "_manifest", lambda: [normal, comparison])
+    assert worker._base_candidates() == [normal]
+
+    monkeypatch.setattr(worker, "_manifest", lambda: [comparison])
+    assert worker._base_candidates() == [comparison]
+
+
 def test_internal_worker_declines_claim_that_cannot_finish_before_backstop(tmp_path):
     worker = _internal_worker(tmp_path)
     worker.timing = InternalJobTiming(
@@ -1156,6 +1181,73 @@ def test_adopted_item_pushes_owned_record(tmp_path, monkeypatch):
 
     assert adopted is True
     assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}]
+
+
+def test_asr_comparison_does_not_replace_the_served_provider_transcript(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a"])
+    _patch_transcribe_item(monkeypatch, worker, exists=True)
+    worker.storage.public_url = lambda key: f"https://cdn/{key}"
+    ep = SimpleNamespace(
+        transcript_key="provider-key",
+        transcript_selection="provider-aligned",
+    )
+
+    worker._store_asr_comparison(ep, "asr-key", "words-key", "recipe")
+
+    assert ep.transcript_key == "provider-key"
+    assert ep.transcript_selection == "provider-aligned"
+    assert ep.transcript_asr_comparison["key"] == "asr-key"
+
+
+def test_provider_align_worker_materializes_a_link_only_provider_source(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a"])
+    objects: dict[str, bytes] = {}
+
+    class _Storage:
+        def exists(self, key):
+            return key in objects
+
+        def put_file(self, key, path, _mime):
+            objects[key] = path.read_bytes()
+            return self.public_url(key)
+
+        @staticmethod
+        def public_url(key):
+            return f"https://cdn/{key}"
+
+    class _Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        @staticmethod
+        def get(_url, timeout):
+            assert timeout == 30
+            return SimpleNamespace(status_code=200, content=b"Provided transcript wording")
+
+    worker.storage = _Storage()
+    ep = SimpleNamespace(
+        uid="a",
+        guid="g",
+        links={"transcript": "https://provider.example/transcript.txt"},
+        provider_transcript={},
+    )
+    validated = []
+    monkeypatch.setattr(ew, "make_session", lambda: _Session())
+    monkeypatch.setattr(
+        ew, "validate_source_url", lambda url, **kwargs: validated.append((url, kwargs))
+    )
+
+    artifact = worker._fetch_provider_source(
+        WorkItem(source_key="src", episode_uid="a", work_class="provider-transcript-align"), ep
+    )
+
+    assert validated == [("https://provider.example/transcript.txt", {"resolve": True})]
+    assert artifact["format"] == "txt"
+    assert objects[artifact["key"]] == b"Provided transcript wording"
+    assert ep.provider_transcript["candidate"]["key"] == artifact["key"]
 
 
 def test_transcript_batch_coalesces_multiple_items_into_one_push(tmp_path, monkeypatch):

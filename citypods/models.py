@@ -183,6 +183,9 @@ class Episode:
     transcript_text_source: str | None = None  # "provider" | "asr"
     transcript_timing_source: str | None = None  # "provider" | "computed"
     transcript_selection: str | None = None  # "provider-native" | "provider-aligned" | "asr"
+    # Deferred full-ASR rendition of a provider-selected episode.  This stays separate from the
+    # feed-facing transcript until H15 has comparative evidence to change the quality route.
+    transcript_asr_comparison: dict = field(default_factory=dict)
     # ASR pipeline version that produced this transcript (None = provider-supplied or
     # pre-versioning). Drives version-aware re-transcription: an ASR transcript from an
     # older version is re-done; provider transcripts are never invalidated by a bump.

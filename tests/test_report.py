@@ -507,6 +507,8 @@ def test_build_status_provider_transcript_rollout_metrics(tmp_path):
         "synced": True,
         "words_key": "transcripts/src/done-provider-align-align-done.words.json",
         "selection": "provider-aligned",
+        "text_source": "provider",
+        "timing_source": "computed",
     }
     done["speakers"] = {
         "key": "transcripts/src/done-provider-diarize-speaker-done.speakers.json",
@@ -546,6 +548,8 @@ def test_build_status_provider_transcript_rollout_metrics(tmp_path):
         "synced": True,
         "words_key": "transcripts/src/failed-provider-align-align-failed.words.json",
         "selection": "provider-aligned",
+        "text_source": "provider",
+        "timing_source": "computed",
     }
     failed_diarize["speakers"] = {
         "spec_hash": "speaker-failed",
@@ -575,6 +579,8 @@ def test_build_status_provider_transcript_rollout_metrics(tmp_path):
     assert pt["align"]["confidence"]["count"] == 2
     assert pt["align"]["confidence"]["high"] == 1
     assert pt["align"]["confidence"]["medium"] == 1
+    assert pt["active_provenance"]["provider-aligned"] == 2
+    assert pt["active_text_timing"] == {"provider+computed": 2}
     assert pt["diarize"]["work"] == {"done": 1, "queued": 1}
     assert pt["diarize"]["done"] == 1
     assert pt["diarize"]["errors"] == {"no-speaker-labels": 1}

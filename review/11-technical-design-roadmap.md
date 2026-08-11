@@ -137,7 +137,9 @@ both `transcribe` and `align` lanes. Provider transcript endpoints are probed fo
 episode; provider VTT with inline word timing is the only native-serving case, while cue-only VTT,
 SRT, and TXT use the provider-transcript-align lane. H15 route decisions are source/body policy and
 can dynamically select provider-aligned versus fresh-ASR output; active records and reports preserve
-the text/timing provenance needed for the three-way quality review. See [review/12 §H15](12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring).
+the text/timing provenance needed for the three-way quality review. After provider coverage is
+complete, a distinct `transcript-asr-comparison` queue produces full ASR only when normal ASR work
+is empty; it is H15 evidence and never replaces the served artifact by itself. See [review/12 §H15](12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring).
 
 ### Phase R — Research-Tool Surface (toward 1.0)
 

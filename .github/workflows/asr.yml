@@ -111,6 +111,7 @@ jobs:
           # test_workflows.)
           GITHUB_TOKEN: ${{ github.token }}
           CITYPODS_INTERNAL_WORKER_SLOT: ${{ matrix.slot }}
+          CITYPODS_WORKER_OWNER: github-actions:${{ github.run_id }}:${{ matrix.lane }}:${{ matrix.slot }}
           CITYPODS_WORKER_WORK_CLASS: ${{ matrix.lane == 'align' && 'provider-transcript-align' || 'transcript-asr' }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}

@@ -58,10 +58,11 @@ heavy, best-effort, resumable backfill runs in two dedicated workflows,
 uses a canonical preflight to restore state once and emits only non-empty source shards; workers
 consume its fingerprinted snapshot and fail closed if it is stale. A fully idle cycle runs an
 explicit successful no-op. `asr.yml` now launches a matrix of **identical pull workers** that all run
-`citypods compute run-internal-worker` against the shared Stage-2 lease ledger. The **Audio** (and
-unscheduled **align**) lane is **source-atomic** — a `source_key` goes to exactly one shard — because that lane
-is throttled per source (per-source encode caps, Granicus media leases), so the
-provider, not the runner, is the ceiling (review/18 §2.3). The **transcribe** lane plans **per
+`citypods compute run-internal-worker` against the shared Stage-2 lease ledger. The **Audio** lane is
+**source-atomic** — a `source_key` goes to exactly one shard — because it is throttled per source
+(per-source encode caps, Granicus media leases), so the provider, not the runner, is the ceiling
+(review/18 §2.3). Both scheduled transcript lanes claim per episode: **align** prioritizes provider
+documents and **transcribe** first drains ordinary ASR before deferred comparisons. The **transcribe** lane plans **per
 `(source, uid)` episode** (review/18 §3.1): each episode is independent GPU work, so one skewed
 source (e.g. a 2,000-episode Granicus backlog) spreads across all shards instead of pinning to one.
 Assignment is weighted by each lane's own remaining-work estimate — pending playable/unknown
@@ -96,7 +97,7 @@ retains its model cache across episodes but can be terminated and restarted on a
 the timed-out episode records an exponential durable backoff — enforced on the next admission
 attempt, by any worker, not merely recorded — while unrelated episodes continue.
 Packaging follows the lane boundary: scheduled fresh ASR installs `asr-transcribe` (faster-whisper
-only), a future align-only job installs `asr-align` (stable-ts), and diagnostics install `asr-bench`;
+only), scheduled align-only jobs install `asr-align` (stable-ts), and diagnostics install `asr-bench`;
 the legacy aggregate `asr` extra remains available for contributors needing all three surfaces.
 All Python installs — CI, the runner image, and the external Modal/Beam worker images — resolve against
 compiled **version-pinned** `constraints/*.txt` (one source of truth; [`review/22`](review/22-dependency-and-reproducibility-policy.md)),

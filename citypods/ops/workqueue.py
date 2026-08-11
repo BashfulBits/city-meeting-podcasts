@@ -45,6 +45,7 @@ MANIFEST_VERSION = 1
 WORK_CLASSES = (
     "audio",
     "transcript-asr",
+    "transcript-asr-comparison",
     "transcript-align",
     "provider-transcript-align",
     "provider-transcript-diarize",
@@ -518,6 +519,26 @@ def _episode_work_items(
             )
         else:
             items.append(WorkItem(work_class=work_class, state="queued", **base))
+        # Provider-first coverage is immediate; a fresh ASR rendition is a separate, lower
+        # priority artifact used by H15 once normal ASR backlog has drained.  It must never
+        # replace the active provider transcript merely by completing.
+        if transcript_done and transcript.get("selection") in {
+            "provider-native",
+            "provider-aligned",
+        }:
+            comparison = transcript.get("asr_comparison") or {}
+            comparison_done = bool(
+                isinstance(comparison, dict)
+                and comparison.get("key")
+                and comparison.get("words_key")
+            )
+            items.append(
+                WorkItem(
+                    work_class="transcript-asr-comparison",
+                    state="done" if comparison_done else "queued",
+                    **base,
+                )
+            )
         speakers = rec.get("speakers") or {}
         active_provider_align = (
             provider is not None
