@@ -6,6 +6,10 @@ source:
   body: "City Council Agenda Meetings"   # see scripts/discover_swagit.py for other bodies
   body_any:
     - "Special Called City Council Meeting"
+lifecycle:
+  status: paused
+  recheck_after: 2026-09-30
+  reason: "Summer break"
 podcast_title: "Dallas City Council Meetings"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""
