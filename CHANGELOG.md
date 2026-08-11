@@ -23,7 +23,8 @@ Phase R (Research-Tool Surface)._
   only; no ASR or provider-align pipeline version changed, and no stored artifacts are invalidated
   or backfilled. Exhausted 429 attempts now defer rather than terminally wedge a lease; reconcile
   covers all transcript work classes, and an explicit class-scoped recovery command reopens failed
-  leases left by earlier incidents.
+  leases left by earlier incidents. The manual Transcript Recovery workflow exposes that command
+  with the same B2/R2 credentials used by production Actions.
 
 - **Feed-health stale alerts now allow five median cadence intervals with a 45-day floor.**
   This replaces the previous 3×/30-day rule, reducing alerts during ordinary multi-week recesses
