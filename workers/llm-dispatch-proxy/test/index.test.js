@@ -780,6 +780,21 @@ test("nextRouteReset prefers a live blocked_until over the plain minute/day roll
   assert.equal(reset.toISOString(), blockedUntil);
 });
 
+test("nextRouteReset waits for the latest blocking axis", () => {
+  const now = new Date("2026-08-06T12:00:30Z");
+  const route = { rpm: 60, rpd: 10, reset_timezone: "UTC" };
+  const reset = nextRouteReset(
+    {
+      requests_available_at: "2026-08-06T12:00:35.000Z",
+      requests_day: 10,
+      blocked_until: "2026-08-06T12:00:40.000Z",
+    },
+    route,
+    now,
+  );
+  assert.equal(reset.toISOString(), "2026-08-07T00:00:00.000Z");
+});
+
 test("resolveProviderCredentials rejects an http:// api_base and a route with no matching account", () => {
   const dispatchLimits = {
     providers: {

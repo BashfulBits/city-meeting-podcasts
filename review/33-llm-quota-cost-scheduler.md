@@ -473,16 +473,33 @@ class LLMReservation:
     minute_key: str = ""
     day_key: str = ""
     cost_cycle_key: str = ""
+    cost_day_key: str = ""
+    # Persisted schedule positions are restored only when they still equal the reservation's
+    # post-reservation value, so releasing one reservation cannot erase a later reservation.
+    tokens_available_at_before: str = ""
+    tokens_available_at_after: str = ""
+    tokens_minute_before: int = 0
+    requests_available_at_before: str = ""
+    requests_available_at_after: str = ""
+    provider_key: str = ""
+    provider_requests_available_at_before: str = ""
+    provider_requests_available_at_after: str = ""
+    reserved_at: str = ""
+    expires_at: str = ""
 
 @dataclass
 class RouteLedger:
     cost_used: float = 0.0
     cost_cycle_key: str = ""
+    cost_day_used: float = 0.0
+    cost_day_key: str = ""
     requests_minute: int = 0
     requests_minute_key: str = ""      # minute_key(now), UTC "YYYY-MM-DDTHH:MM"
     requests_day: int = 0
     requests_day_key: str = ""         # daily_reset_key(now, route.quota.reset_timezone)
     tokens_minute: int = 0
+    tokens_available_at: str = ""       # end of the persisted average-TPM schedule
+    requests_available_at: str = ""     # end of the persisted continuous route-RPM schedule
     inflight: dict[str, LLMReservation] = field(default_factory=dict)
     blocked_until: str = ""            # ISO datetime, UTC; set by a real 429 (§7.1)
 
@@ -491,22 +508,32 @@ class RouteLedger:
         return len(self.inflight)
 
 @dataclass
+class ProviderLedger:
+    requests_available_at: str = ""     # shared provider-wide RPM schedule
+
+@dataclass
 class LLMBudget:
     routes: dict[str, RouteLedger] = field(default_factory=dict)
+    providers: dict[str, ProviderLedger] = field(default_factory=dict)
 
     def find_inflight_owner(self, owner: str) -> str | None:
         """The model `owner` currently has a reservation under, if any -- used to resolve a
         dispatch-mode retry to the same route it originally reserved (§10.3)."""
 ```
 
-`minute_key(now: datetime) -> str` truncates UTC time to the minute — a **fixed-minute bucket**, not a
-sliding window. This is a deliberate simplification: a burst straddling a minute boundary can admit
-slightly more than the declared RPM in a short window, but the provider's own 429 is the real backstop
-(§8's "advisory" principle applies here too), and a sliding window is meaningfully more code to get
-right for a benefit this system doesn't need. `daily_reset_key(now, tz_name)` converts `now` into the
-named IANA zone (`zoneinfo.ZoneInfo`) and returns that zone's local date as `"YYYY-MM-DD"` — this is
-what makes Gemini's bucket roll over at Pacific midnight, not UTC midnight, including across DST.
-`cost_cycle_key` reuses `citypods.compute.budget.cycle_key(now)` directly — **do not reimplement it.**
+`minute_key(now: datetime) -> str` still truncates UTC time to the minute for the legacy
+`requests_minute`/`tokens_minute` counters and for loading older state. New RPM reservations use the
+continuous `requests_available_at` schedule instead: each request advances it by `60 / rpm` seconds,
+so a declared RPM is an average spacing requirement rather than a burstable fixed-minute bucket.
+When a route has `provider_rpm`, the same interval is applied to a shared `ProviderLedger` keyed by
+provider, so models from that provider cannot collectively submit faster than the configured global
+rate. State written before these schedule fields existed remains readable; until a new reservation
+populates a schedule, `available()` conservatively falls back to the legacy minute counters. TPM uses
+the analogous `tokens_available_at` average-throughput schedule and retains the minute counter for
+compatibility/telemetry. `daily_reset_key(now, tz_name)` converts `now` into the named IANA zone
+(`zoneinfo.ZoneInfo`) and returns that zone's local date as `"YYYY-MM-DD"` — this is what makes Gemini's
+bucket roll over at Pacific midnight, not UTC midnight, including across DST. `cost_cycle_key` reuses
+`citypods.compute.budget.cycle_key(now)` directly — **do not reimplement it.**
 
 `LLMBudget._ledger(model, now, *, route)` rolls each window independently against its own key,
 mirroring `Budget._ledger`'s rollover-on-access idiom — rolling the minute window must never also
@@ -518,8 +545,13 @@ def _ledger(self, model: str, now: datetime, *, route: LLMRoute) -> RouteLedger:
     mk = minute_key(now)
     if led.requests_minute_key != mk:
         led.requests_minute = 0
-        led.tokens_minute = 0
+        if not led.tokens_available_at:
+            led.tokens_minute = 0
         led.requests_minute_key = mk
+    if led.tokens_available_at and datetime.fromisoformat(led.tokens_available_at) <= now:
+        led.tokens_available_at = ""
+    if led.requests_available_at and datetime.fromisoformat(led.requests_available_at) <= now:
+        led.requests_available_at = ""
     if route.quota.rpd is not None:
         dk = daily_reset_key(now, route.quota.reset_timezone)
         if led.requests_day_key != dk:
@@ -544,7 +576,8 @@ def block(self, model: str, until: datetime, *, route: LLMRoute, now: datetime) 
 def reserve(self, owner: str, model: str, *, route: LLMRoute, requests: int, tokens: int,
             cost: float, now: datetime) -> None: ...
 def settle(self, owner: str, model: str, *, route: LLMRoute, now: datetime,
-           actual_tokens: int | None = None, actual_cost: float | None = None) -> None: ...
+           actual_requests: int | None = None, actual_tokens: int | None = None,
+           actual_cost: float | None = None) -> None: ...
 def release(self, owner: str, model: str, *, route: LLMRoute, now: datetime) -> None: ...
 ```
 
@@ -1000,7 +1033,8 @@ deadline for it. **Test**: updates the existing prompt-construction assertion in
   never deadlocks work.
 - A job with no `llm_policy` behaves identically to `LiteLLMBackend` before this item existed — proven
   by a byte-for-byte payload comparison, not an informal read-through.
-- Mistral Worker pacing remains unchanged.
+- Mistral Worker pacing remains provider-wide and conservative; Python and Worker admission both
+  space configured RPM continuously, while the Worker's queue/claim pacing remains unchanged.
 - Every rejection is explainable from `SelectionResult.rejected`, with no separate persisted job-*
   lifecycle* table to keep in sync (the deferred-request registry, §10.7, is a plain two-state cache,
   not a scheduler's job table).
@@ -1028,7 +1062,7 @@ deadline for it. **Test**: updates the existing prompt-construction assertion in
 | review/27 §8's $ budget ledger treated as a separate, later concern | Per maintainer decision, ships as the same CAS object as R13's quota ledger, built once (§10). |
 | Model selection implicitly assumed to be able to cross transports | Added an explicit gate-0 transport constraint (§2, §5): the scheduler picks a model, never a transport; a `direct`-mode backend never becomes a `dispatch`-mode call mid-request. **Reversed in §13.2 below** once a real caller (the sweep) needed exactly this. |
 | Reservation release semantics on any failure | Added the explicit settle-vs-release distinction (§10.2): only release when the network call was never attempted; settle (keep quota charged) for every outcome after that, since the provider's own counter already moved. Not present at all in the initial draft, and easy to get backwards by copying `compute/budget.py`'s GPU-dispatch pattern verbatim. |
-| **Kept unchanged** | Allowlist + free-model-protection semantics; RPM/RPD/TPM as independent per-route dimensions; recipe-hash/artifact-identity independence from scheduling policy (§3); "no provider data in Stages" (§11.6); DeepSeek off-peak *preference*, not a hard constraint (§8, itself carried over from review/27 §5.3). |
+| **Kept unchanged** | Allowlist + free-model-protection semantics; RPM/RPD/TPM as independent per-route dimensions, with optional provider-wide RPM pacing; recipe-hash/artifact-identity independence from scheduling policy (§3); "no provider data in Stages" (§11.6); DeepSeek off-peak *preference*, not a hard constraint (§8, itself carried over from review/27 §5.3). |
 
 ### §13.2 First L3 pass → implementation + code review + interface unification (2026-07-17)
 
@@ -1058,6 +1092,16 @@ context-size, model-specific, or actual rate-limit reasons; those live signals r
 The CAS selection path also persists window/day rollover changes when no route is reservable, so
 an old `requests_day_key` cannot remain visible merely because every current candidate was blocked.
 These changes affect only ephemeral coordination ledgers and do not invalidate durable LLM outputs.
+
+The same correction now applies to request pacing. RPM is a rate, not a fixed-minute allowance:
+`requests_available_at` advances by `60 / rpm` seconds for every reserved request. A configured
+`provider_rpm` uses a shared provider ledger, so all models on that provider are spaced against one
+global schedule; the Worker consumes the compiled `provider_rpm` value from `dispatch_limits.json`
+and mirrors this state in `state/dispatch_budget.json`. Older ledgers without schedule fields remain
+readable through a conservative minute-counter fallback, and new reservations migrate the affected
+route/provider into continuous pacing. Releases and settlements restore a schedule only when its
+current value still matches that reservation's recorded post-reservation value; token counters are
+restored with the token schedule so a release after a minute rollover cannot leave stale TPM debt.
 
 ## §14. Open decisions
 

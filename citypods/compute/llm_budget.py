@@ -60,8 +60,8 @@ class RouteLedger:
     # End of the currently reserved token-rate schedule. A request may be larger than one
     # minute's TPM; it pushes this point farther into the future.
     tokens_available_at: str = ""
-    # End of the continuous request-rate schedule. RPM is pacing, not a burstable wall-clock
-    # minute bucket; a route with rpm=60 admits one request every second.
+    # End of the continuous request-rate schedule. Unlike the legacy minute counter, RPM is
+    # pacing: a route with rpm=60 admits one request every second.
     requests_available_at: str = ""
     inflight: dict[str, LLMReservation] = field(default_factory=dict)
     # ISO datetime, UTC; "" means not blocked. Set by a real provider 429/rate-limit response
@@ -191,6 +191,7 @@ class LLMBudget:
             and led.tokens_available_at == reservation.tokens_available_at_after
         ):
             led.tokens_available_at = reservation.tokens_available_at_before
+            led.tokens_minute = reservation.tokens_minute_before
         if (
             reservation.requests_available_at_after
             and led.requests_available_at == reservation.requests_available_at_after

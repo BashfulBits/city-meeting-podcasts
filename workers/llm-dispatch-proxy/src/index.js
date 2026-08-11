@@ -865,13 +865,13 @@ function timeoutSecondsForRecord(record, cfg) {
 }
 
 function nextRouteReset(entry, route, now, dispatchLimits = DISPATCH_LIMITS, budget = null) {
+  const candidates = [];
   if (entry.blocked_until) {
     const blockedMs = parseTime(entry.blocked_until);
     if (blockedMs > now.getTime()) {
-      return new Date(blockedMs);
+      candidates.push(new Date(blockedMs));
     }
   }
-  const candidates = [];
   const nextMinuteMs = Math.floor(now.getTime() / 60000) * 60000 + 60000;
   if (route.rpm != null) {
     if (entry.requests_available_at) {
@@ -898,7 +898,9 @@ function nextRouteReset(entry, route, now, dispatchLimits = DISPATCH_LIMITS, bud
   if (candidates.length === 0) {
     return new Date(nextMinuteMs);
   }
-  return new Date(Math.min(...candidates.map((d) => d.getTime())));
+  // Every candidate is a necessary gate for this route. Returning the earliest one can cause an
+  // immediate retry while another axis (for example RPD) remains exhausted; wait for all of them.
+  return new Date(Math.max(...candidates.map((d) => d.getTime())));
 }
 
 function rankRoutes(routes) {

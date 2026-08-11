@@ -33,11 +33,11 @@ class SelectionResult:
     # which isn't known until selection completes.
     owner: str | None = None
     # When nothing was selectable *now*, the earliest UTC time an allowed route is predicted to
-    # become eligible again (the soonest per-minute window rollover, daily quota reset, or the end
-    # of a real-429 block across the allowed routes), or `None` if nothing will free up. A pacing
+    # become eligible again (the first route whose continuous RPM/TPM schedules and daily quota
+    # are all clear, or the end of a real-429 block), or `None` if nothing will free up. A pacing
     # caller (see `LiteLLMBackend._run_policy_job`) sleeps until this instead of deferring to a
-    # future run, so a single run can drain its full daily quota across successive minute windows
-    # rather than bursting one window's worth and stopping. `None` when a route *was* selected.
+    # future run, so a single run can drain its full daily quota while respecting average-rate
+    # spacing. `None` when a route *was* selected.
     retry_at: datetime | None = None
     # Exact capacity reserved for the selected route. Direct structured calls reserve their
     # potential corrective retry; a queued Worker route reserves its single upstream attempt.
@@ -136,20 +136,19 @@ def _next_quota_reset(
     cost: float,
     provider_ledger=None,
 ) -> datetime:
-    """The soonest time an axis actually keeping ``model`` unavailable right now will reset.
+    """The next time all axes currently keeping ``model`` unavailable will be clear.
 
     Only offers a candidate for an axis genuinely responsible for the current ``available()``
     failure. RPM is a continuous request-rate schedule; TPM is an average throughput rate and uses
     the route's persisted oversized-request cooldown instead of comparing one request with a hard
-    one-minute bucket. RPD remains a daily reset.
+    one-minute allowance. RPD remains a daily reset.
 
     Same reasoning applies to ``blocked_until``: it only ever moves forward (`LLMBudget.block()`
     extends it, never clears it), so a route blocked by an *earlier* real 429 keeps a stale
     timestamp in the ledger long after that block itself expired. `available()` already treats a
     block as in effect only while ``now < blocked_until`` (see its own check) -- this function must
-    agree, or a past `blocked_until` wins `min()` over the real (future) axis reset the same way an
-    unconditional "next minute" used to, reintroducing the identical busy-retry-forever failure
-    mode this function exists to prevent.
+    agree, or a past `blocked_until` could become the selected retry time instead of the latest
+    real axis reset.
 
     And again for ``pricing.daily_cost_cap``: it resets on the same daily boundary as RPD
     (``daily_reset_key`` in ``llm_budget.py``'s ``_ledger()``), so it gets the same real reset-time
@@ -194,7 +193,10 @@ def _next_quota_reset(
         # for every axis, rather than `now`, which would reintroduce the same busy-retry this
         # function exists to prevent for the axes it does model precisely.
         resets.append(now.astimezone(UTC).replace(second=0, microsecond=0) + timedelta(minutes=1))
-    return min(resets)
+    # Every candidate in `resets` is a necessary gate. Retrying at the earliest candidate can
+    # immediately fail on another still-blocking axis (for example, route RPM before tomorrow's
+    # RPD reset), so wait for the latest candidate.
+    return max(resets)
 
 
 def _estimated_cost(route: LLMRoute, estimated_tokens: int, now: datetime) -> float:
@@ -295,7 +297,7 @@ def select_route(
     candidates: list[tuple[LLMRoute, str, float, datetime, float, int, int, str]] = []
     allowed = set(policy.allowed_models) if policy.allowed_models is not None else None
     # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
-    # only *temporarily* unavailable -- per-minute window full, daily quota spent, or under a real
+    # only *temporarily* unavailable -- a rate schedule full, daily quota spent, or under a real
     # 429 block -- is predicted to free up again. A pacing caller sleeps until this rather than
     # deferring the whole request to a future run. Off-peak (discount-window) waits are excluded:
     # a route gated only on a price window is available *now*, just not at its cheapest, so pacing

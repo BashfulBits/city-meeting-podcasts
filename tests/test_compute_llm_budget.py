@@ -95,6 +95,28 @@ def test_tpm_is_a_rate_and_allows_a_burst_larger_than_one_minute():
     assert budget.routes[route.model].tokens_available_at == ""
 
 
+def test_release_restores_token_counter_after_rollover_before_small_reservation():
+    route = LLMRoute(
+        model="release/burst",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    budget.reserve("oversized", route.model, route=route, requests=1, tokens=150, cost=0, now=NOW)
+
+    rollover = NOW + timedelta(minutes=1)
+    budget.release("oversized", route.model, route=route, now=rollover)
+    ledger = budget.routes[route.model]
+    assert ledger.tokens_minute == 0
+    assert ledger.tokens_available_at == ""
+
+    budget.reserve("small", route.model, route=route, requests=1, tokens=10, cost=0, now=rollover)
+    assert ledger.tokens_minute == 10
+    assert ledger.tokens_available_at == ""
+
+
 def test_rpm_is_a_continuous_request_pace():
     route = LLMRoute(
         model="paced/model",

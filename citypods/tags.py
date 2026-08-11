@@ -708,8 +708,8 @@ def llm_tag_suggestions(
         # No fixed character cap here (unlike the other fields): agenda_text now includes
         # backup/attachment document text (episode_tag_inputs()), whose size varies a lot
         # per-episode. Blindly truncating at a small fixed length would silently drop most of
-        # that content before it ever reached the real budget check below. The pre-flight
-        # estimate_tokens() check right after `messages` is assembled is the real backstop now.
+        # that content before it reaches the scheduler/backend's authoritative sizing and pacing
+        # checks.
         "agenda_text": agenda_text,
         "transcript_text": transcript_text[:100_000],
         "agenda_documents": agenda_documents or [],
