@@ -82,6 +82,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urljoin
 
 from citypods import asr as asr_mod
 from citypods.asr import asr_initial_prompt
@@ -124,7 +125,7 @@ from citypods.records import (
     transcript_timeout_backoff_until,
 )
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
-from citypods.security import validate_source_url
+from citypods.security import MAX_REDIRECTS, validate_source_url
 from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
 from citypods.transcript_quality import (
     TranscriptQualityRoute,
@@ -3189,11 +3190,10 @@ def _detect_format(content: bytes) -> str:
 def _download_audio(url: str):
     """Download the hosted audio to a temp file, yield the Path, then clean up.
 
-    Uses a plain ``requests`` session (not ``make_session``) because:
-    - ``ep.hosted_audio_url`` is a URL *we* generated (our own CDN), not untrusted user input,
-      so the SSRF guard in ``GuardedHTTPAdapter`` adds no value here.
-    - Hosted M4A files routinely exceed the 64 MiB ``MAX_RESPONSE_BYTES`` cap that
-      ``make_session`` enforces on Content-Length, which would reject valid audio.
+    Uses a plain ``requests`` session (not ``make_session``) because hosted M4A files routinely
+    exceed the 64 MiB ``MAX_RESPONSE_BYTES`` cap that ``make_session`` enforces on Content-Length.
+    ``_download_audio_file`` retains the SSRF guard by validating the initial URL and every manual
+    redirect hop before issuing the streaming request.
     """
     import tempfile as _tmp2
 
@@ -3236,24 +3236,93 @@ def _download_audio_file(
 ) -> None:
     import requests as _req
 
-    from citypods.http import USER_AGENT
+    from citypods.http import USER_AGENT, clamped_retry_after_seconds
 
+    redirect_statuses = {301, 302, 303, 307, 308}
     last: Exception | None = None
     for attempt in range(max_attempts):
         try:
             with _req.Session() as sess:
                 sess.headers["User-Agent"] = USER_AGENT
-                r = sess.get(url, timeout=300, stream=True)
-                r.raise_for_status()
-                received = 0
-                with open(dest, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=65536):
-                        received += len(chunk)
-                        if received > _MAX_HOSTED_AUDIO_BYTES:
-                            raise HostedAudioTooLargeError(
-                                f"hosted audio exceeded {_MAX_HOSTED_AUDIO_BYTES} bytes: {url}"
+                current_url = url
+                redirects_followed = 0
+                retry_download = False
+                while True:
+                    validate_source_url(current_url, resolve=True)
+                    r = sess.get(
+                        current_url,
+                        timeout=300,
+                        stream=True,
+                        allow_redirects=False,
+                    )
+                    if getattr(r, "status_code", None) in redirect_statuses:
+                        location = getattr(r, "headers", {}).get("Location")
+                        if not location:
+                            close = getattr(r, "close", None)
+                            if close is not None:
+                                close()
+                            raise _req.exceptions.HTTPError(
+                                "redirect response missing Location header", response=r
                             )
-                        f.write(chunk)
+                        if redirects_followed >= MAX_REDIRECTS:
+                            close = getattr(r, "close", None)
+                            if close is not None:
+                                close()
+                            raise _req.exceptions.TooManyRedirects(
+                                f"hosted audio exceeded {MAX_REDIRECTS} redirects", response=r
+                            )
+                        next_url = urljoin(current_url, str(location))
+                        # The next loop iteration validates this Location-derived URL immediately
+                        # before issuing the request, keeping redirect validation adjacent to the
+                        # network boundary without resolving the same host twice.
+                        close = getattr(r, "close", None)
+                        if close is not None:
+                            close()
+                        current_url = next_url
+                        redirects_followed += 1
+                        continue
+                    try:
+                        r.raise_for_status()
+                    except _req.exceptions.HTTPError as exc:
+                        # Large hosted audio cannot use make_session() because its response-size
+                        # cap is intentionally sized for feed/document traffic. Preserve the same
+                        # bounded Retry-After policy here for the CDN's transient 429 responses.
+                        if getattr(r, "status_code", None) != 429:
+                            raise
+                        last = exc
+                        if attempt + 1 >= max_attempts:
+                            retry_download = True
+                            break
+                        retry_after = clamped_retry_after_seconds(getattr(r, "headers", {}))
+                        delay = (
+                            retry_after
+                            if retry_after is not None
+                            else _AUDIO_DOWNLOAD_BACKOFF_SECONDS * (2**attempt)
+                        )
+                        close = getattr(r, "close", None)
+                        if close is not None:
+                            close()
+                        sleep(delay)
+                        retry_download = True
+                        break
+                    received = 0
+                    try:
+                        with open(dest, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=65536):
+                                received += len(chunk)
+                                if received > _MAX_HOSTED_AUDIO_BYTES:
+                                    raise HostedAudioTooLargeError(
+                                        f"hosted audio exceeded {_MAX_HOSTED_AUDIO_BYTES} bytes: "
+                                        f"{url}"
+                                    )
+                                f.write(chunk)
+                    finally:
+                        close = getattr(r, "close", None)
+                        if close is not None:
+                            close()
+                    break
+                if retry_download:
+                    continue
             return
         except (
             _req.exceptions.ChunkedEncodingError,

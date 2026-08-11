@@ -31,9 +31,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Four workers per lane. The slot only seeds a distinct claim-scan offset.
-        slot: [0, 1, 2, 3]
-        lane: [transcribe, align]
+        # Keep the known-good transcription capacity close at three while the new provider-
+        # alignment lane gets two workers. Slots seed distinct claim-scan offsets.
+        include:
+          - {slot: 0, lane: transcribe, workers: 3}
+          - {slot: 1, lane: transcribe, workers: 3}
+          - {slot: 2, lane: transcribe, workers: 3}
+          - {slot: 0, lane: align, workers: 2}
+          - {slot: 1, lane: align, workers: 2}
     env:
       # ASR keeps Whisper weights in the existing Actions-cache/B2 cascade, but uses the same
       # checksum-pinned ffmpeg runtime as Audio instead of depending on Ubuntu package mirrors.
@@ -103,7 +108,7 @@ jobs:
 
       # Each worker claims from the shared transcript queue until the start cutoff or a newer run
       # is queued behind it. Completion persists per-item; the next run resumes from storage.
-      - name: ${{ matrix.lane }} worker ${{ matrix.slot }}/4
+      - name: ${{ matrix.lane }} worker ${{ matrix.slot }}/${{ matrix.workers }}
         id: asr
         env:
           # Lets the shard poll the Actions API and yield gracefully when a newer run is queued

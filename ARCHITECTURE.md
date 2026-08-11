@@ -82,6 +82,9 @@ manifest from canonical records, reaps expired work leases, and then starts iden
 workers; the matrix no longer consumes a static transcribe-plan artifact. H14 extends the planner's
 route classifier with one budget/capacity snapshot; individual workers must not race to predict
 changing GPU availability.
+The scheduled ASR matrix currently runs three transcribe workers and two provider-align workers.
+Large hosted-audio downloads use the same capped `Retry-After` policy as other transient HTTP
+fetches, because the normal guarded session cannot be used for multi-hundred-megabyte responses.
 The Audio lane runs its CLI inside the version-pinned
 `ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v2` image. That image is built weekly and on
 runtime-definition changes from a digest-pinned Python base plus a checksum-pinned static

@@ -212,8 +212,16 @@ def test_heavy_workflow_is_sharded_and_lane_pinned(workflow, lane, job_name):
         shards = matrix.get("shard")
         assert "fromJSON(needs.plan.outputs.matrix).shard" in str(shards)
     else:
-        shards = matrix.get("slot")
-        assert shards == [0, 1, 2, 3], f"{workflow} must run four identical pull workers"
+        entries = matrix.get("include") or []
+        assert [
+            (entry.get("lane"), entry.get("slot"), entry.get("workers")) for entry in entries
+        ] == [
+            ("transcribe", 0, 3),
+            ("transcribe", 1, 3),
+            ("transcribe", 2, 3),
+            ("align", 0, 2),
+            ("align", 1, 2),
+        ], f"{workflow} must run three transcribe and two align pull workers"
     step = next(
         s
         for s in job["steps"]
