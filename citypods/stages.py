@@ -3236,7 +3236,7 @@ def _download_audio_file(
 ) -> None:
     import requests as _req
 
-    from citypods.http import USER_AGENT
+    from citypods.http import USER_AGENT, clamped_retry_after_seconds
 
     last: Exception | None = None
     for attempt in range(max_attempts):
@@ -3244,7 +3244,28 @@ def _download_audio_file(
             with _req.Session() as sess:
                 sess.headers["User-Agent"] = USER_AGENT
                 r = sess.get(url, timeout=300, stream=True)
-                r.raise_for_status()
+                try:
+                    r.raise_for_status()
+                except _req.exceptions.HTTPError as exc:
+                    # Large hosted audio cannot use make_session() because its response-size cap
+                    # is intentionally sized for feed/document traffic. Preserve the same bounded
+                    # Retry-After policy here for the CDN's transient 429 responses.
+                    if getattr(r, "status_code", None) != 429:
+                        raise
+                    last = exc
+                    if attempt + 1 >= max_attempts:
+                        break
+                    retry_after = clamped_retry_after_seconds(getattr(r, "headers", {}))
+                    delay = (
+                        retry_after
+                        if retry_after is not None
+                        else _AUDIO_DOWNLOAD_BACKOFF_SECONDS * (2**attempt)
+                    )
+                    close = getattr(r, "close", None)
+                    if close is not None:
+                        close()
+                    sleep(delay)
+                    continue
                 received = 0
                 with open(dest, "wb") as f:
                     for chunk in r.iter_content(chunk_size=65536):

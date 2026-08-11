@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Hosted-audio ASR downloads now retry HTTP 429 responses with a capped `Retry-After` delay.**
+  The scheduled ASR matrix is also reduced to three transcribe workers and two provider-align
+  workers to lower concurrent CDN pressure. This changes transport behavior and worker capacity
+  only; no ASR or provider-align pipeline version changed, and no stored artifacts are invalidated
+  or backfilled.
+
 - **Feed-health stale alerts now allow five median cadence intervals with a 45-day floor.**
   This replaces the previous 3×/30-day rule, reducing alerts during ordinary multi-week recesses
   while still flagging prolonged outages. It changes audit classification only; no catalog

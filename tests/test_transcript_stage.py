@@ -1175,6 +1175,92 @@ def test_download_audio_file_retries_response_timeout(tmp_path):
     assert dest.read_bytes() == b"fake audio bytes"
 
 
+def test_download_audio_file_retries_http_429_and_honors_capped_retry_after(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeResponse:
+        status_code = 429
+        headers = {"Retry-After": "300"}
+
+        def raise_for_status(self):
+            raise requests.exceptions.HTTPError(response=self)
+
+        def close(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"fake audio bytes"
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                return _FakeResponse()
+            response = _FakeResponse()
+            response.status_code = 200
+            response.headers = {}
+            response.raise_for_status = lambda: None
+            return response
+
+    sleeps: list[float] = []
+    dest = tmp_path / "audio.m4a"
+    with patch("requests.Session", _FakeSession):
+        stages_mod._download_audio_file("https://example.com/audio.m4a", dest, sleep=sleeps.append)
+
+    assert attempts["n"] == 3
+    assert dest.read_bytes() == b"fake audio bytes"
+    assert sleeps == [120, 120]
+
+
+def test_download_audio_file_raises_http_429_after_retries(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    class _FakeResponse:
+        status_code = 429
+        headers = {"Retry-After": "1"}
+
+        def raise_for_status(self):
+            raise requests.exceptions.HTTPError(response=self)
+
+        def close(self):
+            pass
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", _FakeSession),
+        pytest.raises(requests.exceptions.HTTPError),
+    ):
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a", dest, max_attempts=3, sleep=lambda _s: None
+        )
+
+
 def test_download_audio_file_exhausts_default_attempt_limit_with_backoff_schedule(tmp_path):
     import requests
 

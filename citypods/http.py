@@ -19,6 +19,7 @@ import re
 import threading
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 import requests
@@ -44,6 +45,30 @@ USER_AGENT = (
     "Chrome/124.0.0.0 Safari/537.36"
 )
 DEFAULT_TIMEOUT = 30
+_MAX_RETRY_AFTER_SECONDS = 120
+
+
+def clamped_retry_after_seconds(
+    headers: Mapping[str, str], *, now: datetime | None = None
+) -> float | None:
+    """Parse ``Retry-After`` and cap it so one response cannot stall a whole worker."""
+    value = headers.get("Retry-After")
+    if value is None:
+        return None
+    value = str(value).strip()
+    try:
+        seconds = float(value)
+    except ValueError:
+        try:
+            from email.utils import parsedate_to_datetime
+
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError, OverflowError):
+            return None
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=UTC)
+        seconds = (retry_at - (now or datetime.now(UTC))).total_seconds()
+    return min(max(0.0, seconds), _MAX_RETRY_AFTER_SECONDS)
 
 
 # Retry transient failures (connection resets, 429s, 5xx) with exponential backoff. At ~80+
@@ -58,13 +83,10 @@ class _ClampedRetry(Retry):
     retries surfaces as a ``ProviderError`` so the next scheduled run retries cleanly."""
 
     # Longest we'll wait on a single Retry-After before falling back to plain backoff.
-    MAX_RETRY_AFTER_SECONDS = 120
+    MAX_RETRY_AFTER_SECONDS = _MAX_RETRY_AFTER_SECONDS
 
     def get_retry_after(self, response):
-        retry_after = super().get_retry_after(response)
-        if retry_after is None:
-            return None
-        return min(retry_after, self.MAX_RETRY_AFTER_SECONDS)
+        return clamped_retry_after_seconds(response.headers)
 
 
 # ``403`` is in the forcelist on purpose (issue #39): media bytes go to ffmpeg, never through this
