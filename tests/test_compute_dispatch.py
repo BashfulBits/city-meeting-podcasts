@@ -683,6 +683,58 @@ class TestReconcile:
             ("s1", "u1", "transcript-asr")
         ]
 
+    def test_cli_requeue_failed_dry_run_does_not_write_resolved_state(self, tmp_path, monkeypatch):
+        from citypods import cli
+
+        bucket = _MemBucket()
+        monkeypatch.setattr("citypods.storage.make_storage", lambda *a, **kw: bucket)
+        monkeypatch.setattr(cli, "load_city_configs", lambda *a, **kw: [])
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "sentinel").write_text("untouched")
+        site_config_path = tmp_path / "site_config.yml"
+        site_config_path.write_text(f"state_dir: {state_dir}\n")
+
+        pull_targets: list[Path] = []
+
+        def fake_pull(_storage, target):
+            target = Path(target)
+            pull_targets.append(target)
+            target.mkdir(parents=True, exist_ok=True)
+
+        monkeypatch.setattr("citypods.statesync.pull_state", fake_pull)
+        monkeypatch.setattr(
+            "citypods.ops.workqueue.rebuild_manifest_from_state",
+            lambda cities, *, site_config, state_dir: [],
+        )
+        captured: dict = {}
+        monkeypatch.setattr(
+            "citypods.compute.dispatch.requeue_failed_work_leases",
+            lambda recovery_state_dir, storage, **kwargs: (
+                captured.update(state_dir=Path(recovery_state_dir), kwargs=kwargs)
+                or {"scanned": 0, "requeued": 0, "skipped": 0, "conflicts": 0}
+            ),
+        )
+
+        rc = cli.main(
+            [
+                "compute",
+                "requeue-failed-work-leases",
+                "--work-class",
+                "provider-transcript-align",
+                "--site-config",
+                str(site_config_path),
+                "--output-dir",
+                str(tmp_path / "docs"),
+            ]
+        )
+
+        assert rc == 0
+        assert pull_targets and pull_targets[0] != state_dir
+        assert captured["state_dir"] != state_dir
+        assert (state_dir / "sentinel").read_text() == "untouched"
+        assert not (state_dir / "work.json").exists()
+
     def test_empty_manifest_is_noop(self, tmp_path):
         assert reconcile_compute(tmp_path, storage=None, now=NOW) == {
             "reaped": 0,

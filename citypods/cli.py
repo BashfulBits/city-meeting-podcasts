@@ -949,6 +949,7 @@ def _compute_requeue_failed_work_leases(args) -> int:
     poison item remains terminal until an operator confirms the failure was transient.
     """
     import json
+    import tempfile
     from pathlib import Path
 
     from citypods.compute.dispatch import requeue_failed_work_leases
@@ -965,18 +966,25 @@ def _compute_requeue_failed_work_leases(args) -> int:
     if storage is None:
         print("error: failed work-lease recovery requires configured storage")
         return 1
-    pull_state(storage, state_dir)
-    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
-    save_manifest(
-        state_dir,
-        rebuild_manifest_from_state(cities, site_config=site_config, state_dir=state_dir),
-    )
-    summary = requeue_failed_work_leases(
-        state_dir,
-        storage,
-        work_class=args.work_class,
-        dry_run=not args.write,
-    )
+    # A dry run must not even rewrite the local snapshot: pull and rebuild into a throwaway
+    # directory, then discard it after the read-only lease inspection. Write mode deliberately
+    # keeps the existing resolved state directory behavior for the operator's durable operation.
+    with tempfile.TemporaryDirectory() as temporary_state:
+        recovery_state_dir = state_dir if args.write else Path(temporary_state)
+        pull_state(storage, recovery_state_dir)
+        cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
+        save_manifest(
+            recovery_state_dir,
+            rebuild_manifest_from_state(
+                cities, site_config=site_config, state_dir=recovery_state_dir
+            ),
+        )
+        summary = requeue_failed_work_leases(
+            recovery_state_dir,
+            storage,
+            work_class=args.work_class,
+            dry_run=not args.write,
+        )
     summary.update({"work_class": args.work_class, "dry_run": not args.write})
     print(json.dumps(summary, indent=2))
     return 0
