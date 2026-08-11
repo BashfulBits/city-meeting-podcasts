@@ -7,6 +7,10 @@ source:
   body_includes:
     - provider_guid: "47028"
       body: "Environmental Board & Urban Forestry Board Joint Meeting"
+lifecycle:
+  status: retired
+  reason: "Historical one-off Environmental Board feed; current Environmental Commission meetings are covered by the active commission feed."
+  evidence_url: "https://austintx.new.swagit.com/views/117/environmental-commission"
 podcast_title: "Austin: Environmental Board"
 podcast_author: "City of Austin, TX"
 podcast_email: ""
