@@ -11,6 +11,8 @@ providers:
   mistral:
     api_base: https://api.mistral.ai
     chat_path: /v1/chat/completions
+    # Mistral's account-wide limit is 60 RPM (one submission per second), shared by every model.
+    rpm: 60
     monthly_tpm: 1000000000
     reset_day: 1
     accounts:

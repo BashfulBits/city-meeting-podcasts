@@ -695,14 +695,12 @@ def llm_tag_suggestions(
     deadline_at: Any | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], bool, str | None]:
     """Run and validate additive suggestions; return episode tags, chapter tags, dispatched, and
-    the resolved model that produced them (``None`` when dispatched/unresolved). When ``dispatched``
-    is true because the material could never fit any allowed route's real token budget (not an
-    ordinary "no capacity this minute" defer), the fourth element is instead the literal string
-    ``"payload-too-large"`` -- callers (``TagsStage``) must not treat that as evidence of genuine
-    quota exhaustion for the whole run, since it says nothing about remaining capacity."""
+    the resolved model that produced them (``None`` when dispatched/unresolved). TPM is an average
+    provider throughput rate, so large payloads are admitted and paced by the scheduler rather
+    than rejected as permanently oversized based on the route's per-minute figure."""
     model = ensure_llm_contract()
     from citypods.compute.base import InferenceJob, JobHandle, JobResult
-    from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy, estimate_tokens
+    from citypods.compute.llm_policy import LLMRequestPolicy
 
     allowed = taxonomy.by_id
     material = {
@@ -710,8 +708,8 @@ def llm_tag_suggestions(
         # No fixed character cap here (unlike the other fields): agenda_text now includes
         # backup/attachment document text (episode_tag_inputs()), whose size varies a lot
         # per-episode. Blindly truncating at a small fixed length would silently drop most of
-        # that content before it ever reached the real budget check below. The pre-flight
-        # estimate_tokens() check right after `messages` is assembled is the real backstop now.
+        # that content before it reaches the scheduler/backend's authoritative sizing and pacing
+        # checks.
         "agenda_text": agenda_text,
         "transcript_text": transcript_text[:100_000],
         "agenda_documents": agenda_documents or [],
@@ -773,34 +771,6 @@ def llm_tag_suggestions(
         # storage isn't CAS-capable (local dev/dry runs), so tagging works there as it did pre-R13.
         additional = tuple(getattr(backend_config, "additional_models", ()) or ())
         allowed_models = (backend_model, *(m for m in additional if m != backend_model))
-        # Pre-flight check for the one case the token-aware reservation ledger
-        # (citypods/compute/llm_budget.py) can't already self-resolve: it correctly lets a single
-        # call use an entire otherwise-empty minute's tpm budget (paced throughput is fine to drop
-        # to 1 request/minute for a large episode), but a structured (Instructor) call reserves
-        # estimate_tokens(messages)*2 up front for its worst-case retry accounting
-        # (citypods/compute/llm.py) -- so a payload whose own estimate already exceeds HALF of a
-        # route's tpm can never be reserved on that route, in any window, and would otherwise
-        # retry forever with no distinguishing signal from an ordinary "full this minute" defer.
-        token_estimate = estimate_tokens(messages)
-        capped_tpm = {
-            candidate: ROUTES[candidate].quota.tpm
-            for candidate in allowed_models
-            if candidate in ROUTES and ROUTES[candidate].quota.tpm is not None
-        }
-        if capped_tpm and all(token_estimate > tpm // 2 for tpm in capped_tpm.values()):
-            print(
-                f"llm tag budget: material estimate={token_estimate} tokens exceeds half of "
-                f"every tpm-capped allowed route's budget ({capped_tpm}) for recipe_hash="
-                f"{recipe_hash} -- this would never fit any window as-is, not just this minute. "
-                "Deferring (see CHANGELOG for the reassign-to-uncapped-route/truncate follow-up, "
-                "gated on how often this actually fires).",
-                flush=True,
-            )
-            # A distinct sentinel, not None (the ordinary "dispatched, unresolved" value) -- see
-            # the docstring above. TagsStage must be able to tell this apart from a genuine
-            # capacity-exhausted defer, or one oversized episode would stop the rest of the run's
-            # episodes from even attempting a dispatch.
-            return [], {}, True, "payload-too-large"
         inputs["llm_policy"] = LLMRequestPolicy(
             allowed_models=allowed_models,
             allow_paid=allow_paid,

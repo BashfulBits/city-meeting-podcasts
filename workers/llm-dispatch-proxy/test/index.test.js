@@ -262,11 +262,10 @@ test("a non-Mistral route resolves its own provider's URL and API key, not Mistr
   assert.equal(calls[0].body.model, "gemini-3-flash-preview");
 });
 
-test("per-route ledger exhaustion rotates onto a second account instead of blocking the model", async (t) => {
-  // Mistral has one account (rpm=1) -- a second immediate request stays pending, never rotates
-  // (there's nothing to rotate onto). Gemini has two accounts (project_primary/project_secondary);
-  // once primary's rpm=10 window is spent, a further Gemini request must resolve to the secondary
-  // account's own key -- this is what "multi-account key rotation" actually requires (review/41).
+test("RPM is a continuous per-route pace, not a burstable minute bucket", async (t) => {
+  // Mistral Large's physical route is configured at 4 RPM, so its next request is eligible
+  // 15 seconds after the previous reservation. Its provider has only one configured account, so
+  // a second immediate request must remain pending rather than rotating around the route pace.
   //
   // The clock is frozen for the whole test (CodeRabbit, review/41): `enqueue()` stamps its own
   // `new Date()` independently of what the test passes to `dispatchOne`, so an unmocked clock
@@ -281,47 +280,72 @@ test("per-route ledger exhaustion rotates onto a second account instead of block
     return new Response(JSON.stringify({ id: `c-${calls.length}`, choices: [] }), { status: 200 });
   };
 
-  for (let i = 0; i < 5; i += 1) {
-    await handleRequest(
-      chatRequest(undefined, `gemini-burst-${i}`, "gemini/gemini-3-flash-preview"),
-      env,
-    );
-    const result = await dispatchOne(env, upstream, new Date());
-    assert.equal(result.status, "completed");
-  }
-  assert.equal(calls.length, 5);
-  assert.ok(calls.every((call) => call.init.headers.authorization === "Bearer gemini-primary-secret"));
-
-  // The 6th request within the same minute window must roll onto the secondary account (rpm=5).
-  await handleRequest(chatRequest(undefined, "gemini-burst-6", "gemini/gemini-3-flash-preview"), env);
-  const sixth = await dispatchOne(env, upstream, new Date());
-  assert.equal(sixth.status, "completed");
-  assert.equal(calls[5].init.headers.authorization, "Bearer gemini-secondary-secret");
+  await handleRequest(
+    chatRequest(undefined, "mistral-paced-1"),
+    env,
+  );
+  assert.equal((await dispatchOne(env, upstream, new Date())).status, "completed");
+  await handleRequest(
+    chatRequest(undefined, "mistral-paced-2"),
+    env,
+  );
+  const blocked = await dispatchOne(env, upstream, new Date());
+  assert.equal(blocked.status, "no_capacity");
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${blocked.requestId}.json`)).json()).status, "pending");
+  assert.equal(
+    (await dispatchOne(env, upstream, new Date("2026-08-06T12:00:15.000Z"))).status,
+    "completed",
+  );
+  assert.equal(calls.length, 2);
 });
 
-test("a route with no capacity anywhere is requeued (no_capacity), not permanently failed", async () => {
+test("a route with no capacity anywhere is requeued (no_capacity), not permanently failed", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-06T12:00:00.000Z") });
   const env = isolatedEnv();
   for (let i = 0; i < 4; i += 1) {
     await handleRequest(chatRequest(undefined, `req-${i}`), env);
   }
   await handleRequest(chatRequest(undefined, "fifth"), env);
-  const now = new Date();
+  const now = new Date("2026-08-06T12:00:00.000Z");
 
   for (let i = 0; i < 4; i += 1) {
-    const res = await dispatchOne(env, okUpstream(), now);
+    const res = await dispatchOne(env, okUpstream(), new Date(now.getTime() + i * 15_000));
     assert.equal(res.status, "completed");
   }
-  const exhausted = await dispatchOne(env, okUpstream(), now); // Mistral Large rpm=4, same minute
+  const exhausted = await dispatchOne(env, okUpstream(), new Date(now.getTime() + 45_000));
   assert.equal(exhausted.status, "no_capacity");
   const stored = await env.LLM_QUEUE.get(`requests/${exhausted.requestId}.json`);
   const record = await stored.json();
   assert.equal(record.status, "pending");
   assert.equal(record.attempts, 0); // not counted as a real attempt
 
-  // The next minute's window frees Mistral's capacity back up.
-  const nextMinute = new Date(now.getTime() + 61_000);
+  // The next paced slot and minute boundary free Mistral's capacity back up.
+  const nextMinute = new Date(now.getTime() + 60_000);
   const recovered = await dispatchOne(env, okUpstream(), nextMinute);
   assert.equal(recovered.status, "completed");
+});
+
+test("provider RPM paces different models through one shared schedule", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-06T12:00:00.000Z") });
+  const env = isolatedEnv();
+  const calls = [];
+  const upstream = async (_url, init) => {
+    calls.push(JSON.parse(init.body).model);
+    return new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 });
+  };
+
+  await handleRequest(chatRequest(undefined, "mistral-codestral", "mistral/codestral-2508"), env);
+  assert.equal((await dispatchOne(env, upstream, new Date())).status, "completed");
+
+  // The route-level intervals differ, but Mistral's provider-wide 60 RPM cap is shared by both.
+  await handleRequest(chatRequest(undefined, "mistral-small", "mistral/mistral-small-2603"), env);
+  const blocked = await dispatchOne(env, upstream, new Date());
+  assert.equal(blocked.status, "no_capacity");
+  assert.equal(
+    (await dispatchOne(env, upstream, new Date("2026-08-06T12:00:01.000Z"))).status,
+    "completed",
+  );
+  assert.deepEqual(calls, ["codestral-2508", "mistral-small-2603"]);
 });
 
 test("a paid-only model with allow_paid=false fails permanently instead of dispatching anyway", async () => {
@@ -718,8 +742,17 @@ test("routeAvailable respects rpm/rpd/tpm/blocked_until independently", () => {
     false,
   );
   assert.equal(
-    routeAvailable({ requests_minute: 0, requests_day: 0, tokens_minute: 95 }, route, { requests: 1, tokens: 10 }, now),
+    routeAvailable(
+      { requests_minute: 0, requests_day: 0, tokens_minute: 0, tokens_available_at: "2026-08-06T12:01:00Z" },
+      route,
+      { requests: 1, tokens: 10 },
+      now,
+    ),
     false,
+  );
+  assert.equal(
+    routeAvailable({ requests_minute: 0, requests_day: 0, tokens_minute: 0 }, route, { requests: 1, tokens: 1000 }, now),
+    true,
   );
   assert.equal(
     routeAvailable(
@@ -745,6 +778,21 @@ test("nextRouteReset prefers a live blocked_until over the plain minute/day roll
   const blockedUntil = "2026-08-06T12:30:00.000Z";
   const reset = nextRouteReset({ blocked_until: blockedUntil }, route, now);
   assert.equal(reset.toISOString(), blockedUntil);
+});
+
+test("nextRouteReset waits for the latest blocking axis", () => {
+  const now = new Date("2026-08-06T12:00:30Z");
+  const route = { rpm: 60, rpd: 10, reset_timezone: "UTC" };
+  const reset = nextRouteReset(
+    {
+      requests_available_at: "2026-08-06T12:00:35.000Z",
+      requests_day: 10,
+      blocked_until: "2026-08-06T12:00:40.000Z",
+    },
+    route,
+    now,
+  );
+  assert.equal(reset.toISOString(), "2026-08-07T00:00:00.000Z");
 });
 
 test("resolveProviderCredentials rejects an http:// api_base and a route with no matching account", () => {
@@ -933,7 +981,7 @@ test("idempotency collision detects policy field differences, not just payload",
   assert.equal(conflict.status, 409, "different allow_paid with same idem key must 409");
 });
 
-test("dispatchBatch executes multiple requests concurrently in a single batch", async () => {
+test("dispatchBatch admits only one same-route request until its RPM interval elapses", async () => {
   const env = isolatedEnv();
   for (let i = 0; i < 4; i += 1) {
     await handleRequest(
@@ -958,13 +1006,13 @@ test("dispatchBatch executes multiple requests concurrently in a single batch", 
   const now = new Date();
   const batchResult = await dispatchBatch(env, parallelUpstream, now, 4);
   assert.equal(batchResult.status, "completed");
-  assert.equal(batchResult.count, 4);
-  assert.equal(batchResult.completedCount, 4);
-  assert.equal(calls.length, 4);
+  assert.equal(batchResult.count, 1);
+  assert.equal(batchResult.completedCount, 1);
+  assert.equal(calls.length, 1);
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter((o) => o.customMetadata?.status === "completed");
-  assert.equal(completedObjects.length, 4);
+  assert.equal(completedObjects.length, 1);
 });
 
 test("a batch retains sibling success when one task rejects during finalization", async () => {
@@ -988,12 +1036,18 @@ test("a batch retains sibling success when one task rejects during finalization"
 
   const bucket = new FinalizationFailureBucket();
   const env = { ...ENV, LLM_QUEUE: bucket };
-  for (let i = 0; i < 2; i += 1) {
-    await handleRequest(
-      chatRequest([{ role: "user", content: `sibling ${i}` }], `sibling-${i}`),
-      env,
-    );
-  }
+  await handleRequest(
+    chatRequest([{ role: "user", content: "mistral sibling" }], "sibling-mistral"),
+    env,
+  );
+  await handleRequest(
+    chatRequest(
+      [{ role: "user", content: "gemini sibling" }],
+      "sibling-gemini",
+      "gemini/gemini-3-flash-preview",
+    ),
+    env,
+  );
   bucket.failKey = [...bucket.objects.keys()].find((key) => key.startsWith("requests/"));
 
   const result = await dispatchBatch(
@@ -1038,7 +1092,7 @@ test("a fresh invocation gives one long request a batch slot despite a fast back
     null,
     now.getTime() + 820_000,
   );
-  assert.equal(selected.length, 4);
+  assert.equal(selected.length, 1);
   const records = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completed = await Promise.all(
     records.objects.map(async (object) => ({ key: object.key, record: await (await env.LLM_QUEUE.get(object.key)).json() })),

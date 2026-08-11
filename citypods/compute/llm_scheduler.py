@@ -33,11 +33,11 @@ class SelectionResult:
     # which isn't known until selection completes.
     owner: str | None = None
     # When nothing was selectable *now*, the earliest UTC time an allowed route is predicted to
-    # become eligible again (the soonest per-minute window rollover, daily quota reset, or the end
-    # of a real-429 block across the allowed routes), or `None` if nothing will free up. A pacing
+    # become eligible again (the first route whose continuous RPM/TPM schedules and daily quota
+    # are all clear, or the end of a real-429 block), or `None` if nothing will free up. A pacing
     # caller (see `LiteLLMBackend._run_policy_job`) sleeps until this instead of deferring to a
-    # future run, so a single run can drain its full daily quota across successive minute windows
-    # rather than bursting one window's worth and stopping. `None` when a route *was* selected.
+    # future run, so a single run can drain its full daily quota while respecting average-rate
+    # spacing. `None` when a route *was* selected.
     retry_at: datetime | None = None
     # Exact capacity reserved for the selected route. Direct structured calls reserve their
     # potential corrective retry; a queued Worker route reserves its single upstream attempt.
@@ -127,27 +127,28 @@ def _next_local_midnight(reset_timezone: str, now: datetime) -> datetime:
 
 
 def _next_quota_reset(
-    route: LLMRoute, ledger, now: datetime, *, requests: int, tokens: int, cost: float
+    route: LLMRoute,
+    ledger,
+    now: datetime,
+    *,
+    requests: int,
+    tokens: int,
+    cost: float,
+    provider_ledger=None,
 ) -> datetime:
-    """The soonest time an axis actually keeping ``model`` unavailable right now will reset.
+    """The next time all axes currently keeping ``model`` unavailable will be clear.
 
     Only offers a candidate for an axis genuinely responsible for the current ``available()``
-    failure -- checking ``ledger.requests_minute_key == minute_key(now)`` (true on nearly every
-    call, since merely checking availability stamps that key for the rest of the minute)
-    previously offered "next minute" as a candidate unconditionally, even when RPM/TPM were
-    nowhere near their cap and the real blocker was RPD. `min()` would then pick that bogus
-    near-immediate time over the real tomorrow reset, so a paced caller would busy-retry every
-    few seconds for the rest of the day instead of correctly giving up until the real reset --
-    for a caller that never gives up on `None` (`LiteLLMBackend._run_policy_job_paced`), that can
-    burn its *entire* deadline on one route, never reaching whatever else was queued behind it.
+    failure. RPM is a continuous request-rate schedule; TPM is an average throughput rate and uses
+    the route's persisted oversized-request cooldown instead of comparing one request with a hard
+    one-minute allowance. RPD remains a daily reset.
 
     Same reasoning applies to ``blocked_until``: it only ever moves forward (`LLMBudget.block()`
     extends it, never clears it), so a route blocked by an *earlier* real 429 keeps a stale
     timestamp in the ledger long after that block itself expired. `available()` already treats a
     block as in effect only while ``now < blocked_until`` (see its own check) -- this function must
-    agree, or a past `blocked_until` wins `min()` over the real (future) axis reset the same way an
-    unconditional "next minute" used to, reintroducing the identical busy-retry-forever failure
-    mode this function exists to prevent.
+    agree, or a past `blocked_until` could become the selected retry time instead of the latest
+    real axis reset.
 
     And again for ``pricing.daily_cost_cap``: it resets on the same daily boundary as RPD
     (``daily_reset_key`` in ``llm_budget.py``'s ``_ledger()``), so it gets the same real reset-time
@@ -156,12 +157,23 @@ def _next_quota_reset(
     resets: list[datetime] = []
     quota = route.quota
     pricing = route.pricing
-    per_minute_binding = (
-        quota.rpm is not None and ledger.requests_minute + requests > quota.rpm
-    ) or (quota.tpm is not None and ledger.tokens_minute + tokens > quota.tpm)
-    if per_minute_binding:
-        current = now.astimezone(UTC)
-        resets.append(current.replace(second=0, microsecond=0) + timedelta(minutes=1))
+    if quota.rpm is not None:
+        if ledger.requests_available_at:
+            request_ready_at = datetime.fromisoformat(ledger.requests_available_at)
+            if request_ready_at > now.astimezone(UTC):
+                resets.append(request_ready_at)
+        elif ledger.requests_minute + requests > quota.rpm:
+            current = now.astimezone(UTC)
+            resets.append(current.replace(second=0, microsecond=0) + timedelta(minutes=1))
+    if route.provider_rpm is not None and provider_ledger is not None:
+        if provider_ledger.requests_available_at:
+            provider_ready_at = datetime.fromisoformat(provider_ledger.requests_available_at)
+            if provider_ready_at > now.astimezone(UTC):
+                resets.append(provider_ready_at)
+    if quota.tpm is not None and ledger.tokens_available_at:
+        token_ready_at = datetime.fromisoformat(ledger.tokens_available_at)
+        if token_ready_at > now.astimezone(UTC):
+            resets.append(token_ready_at)
     if quota.rpd is not None and ledger.requests_day + requests > quota.rpd:
         resets.append(_next_local_midnight(quota.reset_timezone, now))
     if pricing.daily_cost_cap is not None and ledger.cost_day_used + cost > pricing.daily_cost_cap:
@@ -181,7 +193,10 @@ def _next_quota_reset(
         # for every axis, rather than `now`, which would reintroduce the same busy-retry this
         # function exists to prevent for the axes it does model precisely.
         resets.append(now.astimezone(UTC).replace(second=0, microsecond=0) + timedelta(minutes=1))
-    return min(resets)
+    # Every candidate in `resets` is a necessary gate. Retrying at the earliest candidate can
+    # immediately fail on another still-blocking axis (for example, route RPM before tomorrow's
+    # RPD reset), so wait for the latest candidate.
+    return max(resets)
 
 
 def _estimated_cost(route: LLMRoute, estimated_tokens: int, now: datetime) -> float:
@@ -282,7 +297,7 @@ def select_route(
     candidates: list[tuple[LLMRoute, str, float, datetime, float, int, int, str]] = []
     allowed = set(policy.allowed_models) if policy.allowed_models is not None else None
     # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
-    # only *temporarily* unavailable -- per-minute window full, daily quota spent, or under a real
+    # only *temporarily* unavailable -- a rate schedule full, daily quota spent, or under a real
     # 429 block -- is predicted to free up again. A pacing caller sleeps until this rather than
     # deferring the whole request to a future run. Off-peak (discount-window) waits are excluded:
     # a route gated only on a price window is available *now*, just not at its cheapest, so pacing
@@ -329,6 +344,7 @@ def select_route(
                 requests=route_requests,
                 tokens=route_tokens,
                 cost=cost,
+                provider_ledger=ledger._provider_ledger(route, create=False),
             )
             retry_ats.append(predicted)
             reason = "quota or budget exhausted"
@@ -464,6 +480,21 @@ def select_and_reserve(
         )
         last_selection = selection
         if selection.route is None:
+            # Availability checks roll minute/day/token windows in memory. Persist that rollover
+            # even when no route can be reserved, otherwise a coordination ledger can display an
+            # old day key until the first successful request and every caller sees stale quota
+            # accounting. This is a bookkeeping-only CAS write; unchanged ledgers are untouched.
+            rolled_body = serialize_llm_budget(ledger)
+            if etag is not None:
+                current_body, _ = storage.get_bytes(LLM_BUDGET_STATE_KEY) or (None, None)
+                if current_body != rolled_body:
+                    try:
+                        storage.put_cas(
+                            LLM_BUDGET_STATE_KEY, rolled_body, "application/json", if_match=etag
+                        )
+                    except CASConflict:
+                        sleep(min(base_sleep * 2**attempt, max_sleep) * (0.5 + rng.random()))
+                        continue
             return selection
         owner = _owner_for(recipe_hash, selection.transport)
         # No availability recheck here: `select_route` already confirmed `ledger.available(...)`

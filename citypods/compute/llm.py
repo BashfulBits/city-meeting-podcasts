@@ -95,9 +95,9 @@ SUPPORTED_MODELS = frozenset(ROUTE_CANDIDATES)
 _DEFAULT_BLOCK_SECONDS = 60.0
 _SAFE_DIAGNOSTICS_ENV = "LLM_SAFE_DIAGNOSTICS"
 
-# Longest single sleep the pacing loop takes between capacity re-checks. A per-minute window
-# rollover is <=60s away, so this only bounds responsiveness (it re-checks the deadline and the
-# freshest ledger this often); the loop keeps sleeping until a route frees or the deadline passes.
+# Longest single sleep the pacing loop takes between capacity re-checks. This bounds responsiveness
+# to continuous RPM/TPM schedules (and daily resets); the loop keeps sleeping until a route frees or
+# the deadline passes.
 _PACING_POLL_CAP_SECONDS = 10.0
 # Tiny floor so an "eligible now, but the reserve just lost a race" retry can't hot-spin the CPU.
 _PACING_MIN_SLEEP_SECONDS = 0.2
@@ -1102,11 +1102,11 @@ class LiteLLMBackend(Backend):
     ) -> JobResult | JobHandle:
         """`_run_policy_job` with within-run rate pacing.
 
-        A single logical dispatch that can't be placed *right now* only because a route's per-minute
-        window is momentarily full (RPM/TPM), or because a real 429 briefly blocked it, is not
-        given up on: this waits until a route is predicted to free up and retries, so one run drains
-        its full *daily* quota across successive minute windows instead of bursting one window's
-        worth (~RPM) and stopping. It gives up (returns the deferred handle for the sweep / a later
+        A single logical dispatch that can't be placed *right now* only because a route's continuous
+        RPM/TPM schedule is momentarily full, or because a real 429 briefly blocked it, is not given
+        up on: this waits until a route is predicted to free up and retries, so one run drains its
+        full *daily* quota while respecting average-rate spacing instead of bursting and stopping.
+        It gives up (returns the deferred handle for the sweep / a later
         run) only when nothing frees up before ``policy.deadline_at`` -- i.e. the daily quota is
         genuinely spent, or the run's own wall-clock budget would elapse first. With no
         ``deadline_at`` set there is nothing to pace against, so it behaves exactly like the

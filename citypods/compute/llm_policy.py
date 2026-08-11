@@ -109,6 +109,7 @@ class LLMRoute:
     # fields and use ``route_id`` as their shared-ledger key.
     route_id: str = ""
     provider: str = ""
+    provider_rpm: int | None = None
     upstream_model: str = ""
     direct_model: str = ""
     api_base: str = ""
@@ -161,6 +162,7 @@ def _load_generated_routes() -> list[LLMRoute]:
                 max_provider_attempts=None,
                 route_id=str(item.get("route_id", item["model"])),
                 provider=provider,
+                provider_rpm=item.get("provider_rpm"),
                 upstream_model=str(item.get("upstream_model", "")),
                 direct_model=str(item.get("direct_model", "")),
                 api_base=str(item.get("api_base", "")),

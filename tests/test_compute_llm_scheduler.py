@@ -4,8 +4,11 @@ from zoneinfo import ZoneInfo
 from citypods.compute.llm_budget import (
     LLMBudget,
     LLMReservation,
+    ProviderLedger,
+    RouteLedger,
     load_llm_budget_cas,
     mutate_llm_budget,
+    serialize_llm_budget,
 )
 from citypods.compute.llm_policy import (
     ROUTE_CANDIDATES,
@@ -323,6 +326,107 @@ def test_retry_at_is_next_minute_when_only_the_per_minute_window_is_full():
     assert result.retry_at == NOW.replace(second=0, microsecond=0) + timedelta(minutes=1)
 
 
+def test_tpm_retry_at_is_token_schedule_not_next_minute():
+    route = LLMRoute(
+        model="burst/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    budget.reserve("burst", route.model, route=route, requests=1, tokens=950, cost=0, now=NOW)
+
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(route.model,)),
+        routes={route.model: route},
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1,
+        now=NOW,
+    )
+
+    assert result.model is None
+    assert result.retry_at == NOW + timedelta(minutes=9, seconds=30)
+
+
+def test_retry_at_waits_for_all_blocking_quota_axes():
+    route = LLMRoute(
+        model="provider/daily-limit",
+        transport="direct",
+        free=True,
+        provider="provider",
+        provider_rpm=60,
+        quota=QuotaPolicy(rpd=3),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget(
+        providers={
+            "provider": ProviderLedger(
+                requests_available_at=(NOW + timedelta(seconds=5)).isoformat()
+            )
+        }
+    )
+    led = budget._ledger(route.model, NOW, route=route)
+    led.requests_day = route.quota.rpd
+
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(route.model,)),
+        routes={route.model: route},
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=1,
+        now=NOW,
+    )
+
+    assert result.model is None
+    zone = ZoneInfo(route.quota.reset_timezone)
+    tomorrow = NOW.astimezone(zone).date() + timedelta(days=1)
+    expected = datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone).astimezone(UTC)
+    assert result.retry_at == expected
+
+
+def test_no_selection_persists_window_rollover():
+    route = LLMRoute(
+        model="rollover/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=1, rpd=3, tpm=100),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget(
+        routes={
+            route.model: RouteLedger(
+                requests_minute=1,
+                requests_minute_key="2026-07-15T11:59",
+                requests_day=3,
+                requests_day_key="2026-07-15",
+                blocked_until=(NOW + timedelta(hours=1)).isoformat(),
+            )
+        }
+    )
+    storage = MemCAS()
+    storage.seed("state/llm_budget.json", serialize_llm_budget(budget))
+
+    result = select_and_reserve(
+        storage,
+        "rollover-recipe",
+        LLMRequestPolicy(allowed_models=(route.model,)),
+        routes={route.model: route},
+        available_transports=DIRECT,
+        estimated_tokens=1,
+        now=NOW,
+    )
+
+    assert result.model is None
+    rolled, _ = load_llm_budget_cas(storage)
+    ledger = rolled.routes[route.model]
+    assert ledger.requests_minute == 0
+    assert ledger.requests_minute_key == "2026-07-16T12:00"
+    assert ledger.requests_day == 0
+    assert ledger.requests_day_key == "2026-07-16"
+
+
 def test_retry_at_is_tomorrows_reset_when_only_the_daily_quota_is_exhausted():
     """The inverse of the per-minute case above: with RPM/TPM completely fresh this minute and
     only RPD exhausted, `retry_at` must be tomorrow's reset, not a bogus "next minute" guess.
@@ -358,9 +462,10 @@ def test_retry_at_ignores_a_stale_blocked_until_and_falls_back_to_the_daily_rese
     """`blocked_until` only ever moves forward (`LLMBudget.block()` extends it, never clears it),
     so a route that was 429-blocked earlier today still carries that (now past) timestamp in its
     ledger entry long after the block itself expired. Before this fix, `_next_quota_reset` added
-    it to the reset candidates unconditionally, and a past timestamp always wins `min()` over a
-    correctly-computed future "tomorrow" RPD reset -- reproducing the exact same busy-retry-forever
-    failure mode the "next minute" fix above addressed, just via a different unconditional axis."""
+    it to the reset candidates unconditionally, allowing a stale timestamp to be selected instead
+    of a correctly-computed future "tomorrow" RPD reset -- reproducing the exact same
+    busy-retry-forever failure mode the "next minute" fix above addressed, just via a different
+    unconditional axis."""
     budget = LLMBudget()
     model = "gemini/gemini-3.1-flash-lite"
     route = ROUTES[model]
@@ -386,7 +491,8 @@ def test_retry_at_ignores_a_stale_blocked_until_and_falls_back_to_the_daily_rese
 
 def test_retry_at_honors_a_still_active_blocked_until():
     """The inverse: a `blocked_until` still in the future *is* a real constraint and must still
-    win when it's the soonest reset -- this fix must not stop honoring genuine, active blocks."""
+    be included among the required reset times -- this fix must not stop honoring genuine, active
+    blocks."""
     budget = LLMBudget()
     model = "gemini/gemini-3.1-flash-lite"
     route = ROUTES[model]
@@ -617,7 +723,7 @@ def test_select_and_reserve_owner_is_unique_per_direct_attempt():
         routes={route.model: route},
         available_transports=DIRECT,
         estimated_tokens=10,
-        now=NOW,
+        now=NOW + timedelta(seconds=12),
     )
     assert first.owner != second.owner
     budget, _ = load_llm_budget_cas(storage)
