@@ -18,7 +18,8 @@ Phase R (Research-Tool Surface)._
 ### Fixed
 
 - **Equivalent provider model selectors now share canonical logical keys.** The limits compiler
-  emits a `model_aliases` map and normalizes route entries before generating the Python and Worker
+  emits a `model_aliases` map, coalesces selector-only duplicates for one physical provider/account
+  quota bucket, and normalizes route entries before generating the Python and Worker
   catalogs. DeepSeek V4 Flash 0731 aliases now share one logical candidate pool across DeepSeek,
   SiliconFlow, and OpenCode; the equivalent OpenRouter/Kilo/OpenCode Nemotron free routes are
   likewise unified. Physical `route_id` entries remain separate, so provider/account quotas and ledger

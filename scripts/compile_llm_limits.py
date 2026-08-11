@@ -232,6 +232,19 @@ def _validated_routes(
     routes_by_id: dict[str, dict[str, Any]] = {}
     model_routes_map: dict[str, list[str]] = {}
     model_aliases: dict[str, str] = {}
+    physical_routes: dict[tuple[str, str, str], tuple[str, dict[str, Any]]] = {}
+
+    def register_alias(source_model: str, canonical_model: str, index: int) -> None:
+        if source_model == canonical_model:
+            return
+        prior = model_aliases.get(source_model)
+        if prior is not None and prior != canonical_model:
+            raise ValueError(
+                f"route #{index} assigns model alias {source_model!r} to both "
+                f"{prior!r} and {canonical_model!r}"
+            )
+        model_aliases[source_model] = canonical_model
+
     for index, route in enumerate(routes):
         try:
             r_id = route["route_id"]
@@ -255,17 +268,41 @@ def _validated_routes(
         normalized = dict(route)
         normalized["model"] = c_model
         normalized.pop("model_key", None)
+
+        # A provider/account/upstream tuple is one physical quota bucket. A second YAML entry
+        # that differs only by its selector is an alias, not another capacity pool; compiling it
+        # as a route would let the Worker reserve the same credential twice. Require complete
+        # physical identity and identical limits before coalescing, so a real quota/configuration
+        # conflict fails loudly instead of silently choosing one entry.
+        physical_identity = tuple(
+            str(normalized.get(field, "")) for field in ("provider", "account_id", "upstream_model")
+        )
+        physical_settings = {
+            key: value for key, value in normalized.items() if key not in {"route_id", "model"}
+        }
+        if all(physical_identity):
+            prior_physical = physical_routes.get(physical_identity)
+            if prior_physical is not None:
+                prior_model, prior_settings = prior_physical
+                if c_model != prior_model:
+                    raise ValueError(
+                        f"route #{index} reuses physical provider/account/upstream tuple "
+                        f"{physical_identity!r} with conflicting model_key {c_model!r}; "
+                        f"existing key is {prior_model!r}"
+                    )
+                if physical_settings != prior_settings:
+                    raise ValueError(
+                        f"route #{index} reuses physical provider/account/upstream tuple "
+                        f"{physical_identity!r} with conflicting limits or settings"
+                    )
+                register_alias(source_model, prior_model, index)
+                continue
+            physical_routes[physical_identity] = (c_model, physical_settings)
+
         normalized_routes.append(normalized)
         routes_by_id[r_id] = normalized
         model_routes_map.setdefault(c_model, []).append(r_id)
-        if source_model != c_model:
-            prior = model_aliases.get(source_model)
-            if prior is not None and prior != c_model:
-                raise ValueError(
-                    f"route #{index} assigns model alias {source_model!r} to both "
-                    f"{prior!r} and {c_model!r}"
-                )
-            model_aliases[source_model] = c_model
+        register_alias(source_model, c_model, index)
 
     canonical_models = set(model_routes_map)
     conflicts = sorted(alias for alias in model_aliases if alias in canonical_models)

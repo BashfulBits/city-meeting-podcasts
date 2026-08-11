@@ -23,7 +23,17 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     deepseek_key = "deepseek/deepseek-v4-flash"
     deepseek_routes = compiled["model_routes_map"][deepseek_key]
-    assert len(deepseek_routes) == 6
+    assert len(deepseek_routes) == 3
+    physical_routes = [compiled["routes_by_id"][route_id] for route_id in deepseek_routes]
+    assert (
+        len(
+            {
+                (route["provider"], route["account_id"], route["upstream_model"])
+                for route in physical_routes
+            }
+        )
+        == 3
+    )
     assert compiled["model_aliases"]["deepseek/deepseek-v4-flash-0731"] == deepseek_key
     assert compiled["model_aliases"]["opencode/deepseek-v4-flash-free"] == deepseek_key
 
@@ -49,6 +59,30 @@ def test_model_key_aliases_must_not_conflict_with_a_canonical_key():
         },
     ]
     with pytest.raises(ValueError, match="also a canonical model"):
+        compile_llm_limits._validated_routes(routes)
+
+
+def test_physical_aliases_with_conflicting_limits_are_rejected():
+    routes = [
+        {
+            "route_id": "first",
+            "model": "provider/model",
+            "provider": "provider",
+            "account_id": "primary",
+            "upstream_model": "vendor/model",
+            "rpm": 10,
+        },
+        {
+            "route_id": "second",
+            "model": "provider/model-alias",
+            "model_key": "provider/model",
+            "provider": "provider",
+            "account_id": "primary",
+            "upstream_model": "vendor/model",
+            "rpm": 20,
+        },
+    ]
+    with pytest.raises(ValueError, match="conflicting limits"):
         compile_llm_limits._validated_routes(routes)
 
 
