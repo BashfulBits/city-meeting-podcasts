@@ -749,6 +749,22 @@ def test_swagit_worker_credentials_reach_provider_fetch_lanes():
             assert "--env SWAGIT_PROXY_TOKEN" in step["run"]
 
 
+def test_tag_lane_uses_async_llm_dispatch_and_keeps_provider_key_off_runner():
+    _wf, job = _job("tag.yml", job_name="tag")
+    step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Produce bounded LLM topic-tag candidates"
+    )
+    env = step["env"]
+    assert env["LLM_DISPATCH_URL"] == "${{ secrets.LLM_DISPATCH_URL }}"
+    assert env["LLM_DISPATCH_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}"
+    assert "GEMINI_API_KEY" not in env
+
+    site = yaml.safe_load((WORKFLOWS.parent.parent / "config" / "site_config.yml").read_text())
+    assert site["tagging"]["llm_mode"] == "dispatch"
+
+
 def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():
     wf, job = _job("granicus-worker-deploy.yml", job_name="deploy")
     triggers = _on(wf)
