@@ -758,6 +758,20 @@ def test_decode_error_classifier_still_matches_direct_exceptions():
     assert ew._is_deterministic_media_decode_error(ValueError("nope")) is False
 
 
+def test_rate_limit_classifier_unwraps_direct_and_child_process_errors():
+    import requests
+
+    direct = requests.exceptions.HTTPError(
+        "429 Client Error: Too Many Requests", response=SimpleNamespace(status_code=429)
+    )
+    assert ew._is_rate_limited_error(direct) is True
+    wrapped = LocalInferenceWorkerError(
+        "HTTPError", "429 Client Error: Too Many Requests", "Traceback..."
+    )
+    assert ew._is_rate_limited_error(wrapped) is True
+    assert ew._is_rate_limited_error(ValueError("429 unrelated text")) is False
+
+
 def test_admit_claim_retries_when_audio_identity_changed(tmp_path):
     worker = _loop_worker(tmp_path, ["a"])
 

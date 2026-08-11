@@ -504,6 +504,50 @@ def abandon(
     return True
 
 
+def requeue_failed(
+    storage,
+    candidates: Iterable[tuple[str, str]],
+    *,
+    now: datetime | None = None,
+    dry_run: bool = False,
+) -> dict[str, int]:
+    """Return terminal ``failed`` leases to ``queued`` for an explicit operator recovery.
+
+    Failed leases are intentionally not reclaimed by the normal dead-worker sweep: they represent
+    a completed attempt, not an expired holder. A transient provider outage can still make an
+    entire lane fail, though, so a class-scoped recovery command needs a narrow, CAS-safe way to
+    reopen only the manifest-derived items the operator selected. ``dry_run`` performs the same
+    reads without changing lease or active-index state.
+    """
+    from citypods.storage import CASConflict
+
+    now = now or datetime.now(UTC)
+    summary = {"scanned": 0, "requeued": 0, "skipped": 0, "conflicts": 0}
+    for source_key, uid in candidates:
+        summary["scanned"] += 1
+        existing, etag = read_lease(storage, source_key, uid)
+        if existing is None or etag is None or existing.state != "failed":
+            summary["skipped"] += 1
+            continue
+        if dry_run:
+            summary["requeued"] += 1
+            continue
+        existing.state = "queued"
+        existing.owner = ""
+        existing.lease_expiry = None
+        existing.updated_at = now
+        try:
+            storage.put_cas(
+                lease_key(source_key, uid), _serialize(existing), "application/json", if_match=etag
+            )
+        except CASConflict:
+            summary["conflicts"] += 1
+            continue
+        _index_remove(storage, source_key, uid)
+        summary["requeued"] += 1
+    return summary
+
+
 def _settle_leased(
     storage,
     source_key: str,

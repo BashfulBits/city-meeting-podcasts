@@ -107,6 +107,35 @@ def test_terminal_states_are_not_claimable():
     assert wl.claim(bucket, "s1", "u1", owner="w2", ttl_seconds=600, now=NOW) is None
 
 
+def test_requeue_failed_reopens_only_failed_leases():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "failed", owner="w1", ttl_seconds=600, now=NOW)
+    wl.release(bucket, "s1", "failed", owner="w1", state="failed", now=NOW)
+    wl.claim(bucket, "s1", "queued", owner="w2", ttl_seconds=600, now=NOW)
+
+    summary = wl.requeue_failed(bucket, [("s1", "failed"), ("s1", "queued")], now=NOW)
+
+    assert summary == {"scanned": 2, "requeued": 1, "skipped": 1, "conflicts": 0}
+    reopened, _ = wl.read_lease(bucket, "s1", "failed")
+    assert reopened.state == "queued" and reopened.owner == ""
+    assert wl.claim(bucket, "s1", "failed", owner="w3", ttl_seconds=600, now=NOW) is not None
+    still_held, _ = wl.read_lease(bucket, "s1", "queued")
+    assert still_held.state == "leased" and still_held.owner == "w2"
+
+
+def test_requeue_failed_dry_run_is_read_only():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
+    wl.release(bucket, "s1", "u1", owner="w1", state="failed", now=NOW)
+    writes = bucket.class_a
+
+    summary = wl.requeue_failed(bucket, [("s1", "u1")], now=NOW, dry_run=True)
+
+    assert summary["requeued"] == 1
+    assert bucket.class_a == writes
+    assert wl.read_lease(bucket, "s1", "u1")[0].state == "failed"
+
+
 def test_renew_extends_only_for_holder():
     bucket = _MemCAS()
     wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)

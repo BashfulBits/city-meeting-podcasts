@@ -18,6 +18,7 @@ from citypods.compute import (
     DispatchTarget,
     lease_owner_for,
     reconcile_compute,
+    requeue_failed_work_leases,
     select_backend,
 )
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
@@ -528,6 +529,75 @@ class TestReconcile:
         assert summary["leases"]["requeued"] == 1
         reclaimed, _etag = wl.read_lease(bucket, "s1", "u1")
         assert reclaimed.state == "queued" and reclaimed.owner == ""
+
+    def test_work_lease_reaper_covers_provider_alignment_classes(self, tmp_path):
+        from citypods.ops import work_leases as wl
+
+        bucket = _MemBucket()
+        items = [
+            _item("asr", "transcript-asr"),
+            _item("align", "provider-transcript-align"),
+        ]
+        save_manifest(tmp_path, items)
+        for item in items:
+            wl.claim(
+                bucket,
+                item.source_key,
+                item.episode_uid,
+                owner="dead",
+                ttl_seconds=1,
+                now=NOW - timedelta(hours=1),
+            )
+        # Provider alignment has a distinct content-addressed filename prefix from ASR. Reconcile
+        # must settle this completed lease instead of requeueing it as an unfinished ASR item.
+        bucket.objs["transcripts/s1/align-provider-align-align-done.vtt"] = b"WEBVTT\n"
+
+        summary = reconcile_compute(
+            tmp_path, bucket, now=NOW, sweep_work_leases=True, use_lease_index=False
+        )
+
+        assert summary["leases"]["requeued"] == 1
+        assert summary["leases"]["completed"] == 1
+        assert all(
+            wl.read_lease(bucket, item.source_key, item.episode_uid)[0].state
+            == ("done" if item.episode_uid == "align" else "queued")
+            for item in items
+        )
+
+    def test_requeue_failed_work_leases_is_class_scoped(self, tmp_path):
+        from citypods.ops import work_leases as wl
+
+        bucket = _MemBucket()
+        items = [
+            _item("asr", "transcript-asr"),
+            _item("align", "provider-transcript-align"),
+        ]
+        save_manifest(tmp_path, items)
+        for item in items:
+            wl.claim(
+                bucket,
+                item.source_key,
+                item.episode_uid,
+                owner="failed-worker",
+                ttl_seconds=600,
+                now=NOW,
+            )
+            wl.release(
+                bucket,
+                item.source_key,
+                item.episode_uid,
+                owner="failed-worker",
+                state="failed",
+                now=NOW,
+            )
+
+        summary = requeue_failed_work_leases(
+            tmp_path, bucket, work_class="provider-transcript-align", now=NOW
+        )
+
+        assert summary["requeued"] == 1
+        assert wl.read_lease(bucket, "s1", "align")[0].state == "queued"
+        assert wl.read_lease(bucket, "s1", "asr")[0].state == "failed"
 
     def test_cli_reconcile_reads_work_lease_reaper_enabled_from_defaults_block(
         self, tmp_path, monkeypatch

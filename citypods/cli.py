@@ -288,6 +288,26 @@ def main(argv: list[str] | None = None) -> int:
     crt.add_argument("--config-dir", default="config")
     crt.add_argument("--output-dir", default="docs")
     crt.add_argument("--base-url", help="base URL (for resolving cloud storage)")
+    rwl = cp_sub.add_parser(
+        "requeue-failed-work-leases",
+        help="reopen terminal failed leases for one transcript work class; dry-run unless --write",
+    )
+    rwl.add_argument(
+        "--work-class",
+        required=True,
+        choices=(
+            "transcript-asr",
+            "transcript-asr-comparison",
+            "transcript-align",
+            "provider-transcript-align",
+            "provider-transcript-diarize",
+        ),
+    )
+    rwl.add_argument("--write", action="store_true", help="actually requeue failed leases")
+    rwl.add_argument("--site-config", default="config/site_config.yml")
+    rwl.add_argument("--config-dir", default="config")
+    rwl.add_argument("--output-dir", default="docs")
+    rwl.add_argument("--base-url", help="base URL (for resolving cloud storage)")
     ciw = cp_sub.add_parser(
         "run-internal-worker",
         help="run one pull/claim transcribe worker inside GitHub Actions until the stop budget",
@@ -351,6 +371,8 @@ def main(argv: list[str] | None = None) -> int:
             return _compute_plan_shards(args)
         if args.compute_command == "reclaim-transcript":
             return _compute_reclaim_transcript(args)
+        if args.compute_command == "requeue-failed-work-leases":
+            return _compute_requeue_failed_work_leases(args)
         if args.compute_command == "run-internal-worker":
             return _compute_run_internal_worker(args)
     if args.command == "transcript-quality":
@@ -822,7 +844,10 @@ def _compute_reconcile(args) -> int:
         # mixing a durable budget with a possibly-stale local work.json.
         import tempfile
 
-        from citypods.compute.dispatch import _asr_artifact_present
+        from citypods.compute.dispatch import (
+            REAPABLE_WORK_CLASSES,
+            _transcript_artifact_present,
+        )
         from citypods.ops.work_leases import integrity_partition_for
         from citypods.ops.work_leases import reap as reap_work_leases
         from citypods.ops.work_leases import reap_indexed as reap_work_leases_indexed
@@ -844,12 +869,24 @@ def _compute_reconcile(args) -> int:
                 candidates = [
                     (wi.source_key, wi.episode_uid)
                     for wi in manifest
-                    if wi.work_class == "transcript-asr" and wi.state != "done"
+                    if wi.work_class in REAPABLE_WORK_CLASSES and wi.state != "done"
                 ]
+                work_classes_by_key: dict[tuple[str, str], set[str]] = {}
+                for wi in manifest:
+                    if wi.work_class in REAPABLE_WORK_CLASSES and wi.state != "done":
+                        work_classes_by_key.setdefault((wi.source_key, wi.episode_uid), set()).add(
+                            wi.work_class
+                        )
+
+                def artifact_present(source_key: str, uid: str) -> bool:
+                    return _transcript_artifact_present(
+                        storage, source_key, uid, work_classes_by_key.get((source_key, uid))
+                    )
+
                 if use_lease_index:
                     lease_preview = reap_work_leases_indexed(
                         storage,
-                        artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                        artifact_present=artifact_present,
                         now=now,
                         dry_run=True,
                         integrity_candidates=candidates,
@@ -859,7 +896,7 @@ def _compute_reconcile(args) -> int:
                     lease_preview = reap_work_leases(
                         storage,
                         candidates,
-                        artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                        artifact_present=artifact_present,
                         now=now,
                         dry_run=True,
                     )
@@ -902,6 +939,46 @@ def _compute_reconcile(args) -> int:
         f"compute reconcile: {summary['reaped']} reaped, {summary['settled']} settled, "
         f"{summary['in_flight']} in-flight{lease_note}"
     )
+    return 0
+
+
+def _compute_requeue_failed_work_leases(args) -> int:
+    """Explicitly reopen failed Stage-2 leases for one transcript work class.
+
+    The default is read-only. This is intentionally separate from ``compute reconcile`` so a
+    poison item remains terminal until an operator confirms the failure was transient.
+    """
+    import json
+    from pathlib import Path
+
+    from citypods.compute.dispatch import requeue_failed_work_leases
+    from citypods.ops.workqueue import rebuild_manifest_from_state, save_manifest
+    from citypods.state import resolve_state_dir
+    from citypods.statesync import pull_state
+    from citypods.storage import make_storage
+
+    site_config = load_site_config(args.site_config)
+    output_dir = Path(args.output_dir)
+    state_dir = resolve_state_dir(site_config, output_dir)
+    base_url = getattr(args, "base_url", None) or site_config.get("base_url", "")
+    storage = make_storage(site_config, base_url, output_dir)
+    if storage is None:
+        print("error: failed work-lease recovery requires configured storage")
+        return 1
+    pull_state(storage, state_dir)
+    cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
+    save_manifest(
+        state_dir,
+        rebuild_manifest_from_state(cities, site_config=site_config, state_dir=state_dir),
+    )
+    summary = requeue_failed_work_leases(
+        state_dir,
+        storage,
+        work_class=args.work_class,
+        dry_run=not args.write,
+    )
+    summary.update({"work_class": args.work_class, "dry_run": not args.write})
+    print(json.dumps(summary, indent=2))
     return 0
 
 
