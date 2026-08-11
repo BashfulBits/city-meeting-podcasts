@@ -562,6 +562,11 @@ _STALL_THRESHOLD = 3  # pipeline is "active" when >= this many of those runs enc
 
 _PROVIDER_ERR_LOOK_BACK = 5
 _PROVIDER_ERR_THRESHOLD = 2  # warn when a provider has errors in >= this many recent runs
+_AGENDA_AMBIGUITY_ATTEMPTS = 3
+_AGENDA_FEED_MIN_AFFECTED = 3
+_AGENDA_FEED_MIN_ASSESSED = 5
+_AGENDA_FEED_RATIO = 0.20
+_AGENDA_AUDIT_RECENT_DAYS = 90
 
 
 def _active_encode_runs(run_history: list[dict], *, limit: int = _STALL_LOOK_BACK) -> int:
@@ -647,6 +652,91 @@ def check_provider_error_rates(
                 )
             )
     return findings
+
+
+def check_agenda_quality(
+    slug: str,
+    records: dict,
+    *,
+    body: str | None = None,
+    ambiguity_attempts: int = _AGENDA_AMBIGUITY_ATTEMPTS,
+    recent_days: int = _AGENDA_AUDIT_RECENT_DAYS,
+    now: datetime | None = None,
+) -> Finding | None:
+    """Warn when agenda quality rejection persists for an episode or across a feed.
+
+    This check is deliberately record-only: the enrichment stage stores the last assessment and
+    its attempt counter, while the daily audit turns repeated failures into one actionable issue.
+    It therefore covers archived episodes outside the provider's current fetch window and does
+    not create network/OCR work in the audit job.
+    """
+    from citypods.bodies import matches
+
+    now = now or datetime.now(UTC)
+    cutoff = now.timestamp() - recent_days * 86400
+    affected: list[tuple[str, dict, dict]] = []
+    assessed = 0
+    for uid, record in records.items():
+        if body and not matches(record.get("body"), body):
+            continue
+        agenda = record.get("agenda_text") or {}
+        quality = agenda.get("quality") if isinstance(agenda.get("quality"), dict) else {}
+        if not quality:
+            continue
+        last_seen = quality.get("last_seen")
+        if last_seen:
+            try:
+                observed = datetime.fromisoformat(str(last_seen))
+                if observed.tzinfo is None:
+                    observed = observed.replace(tzinfo=UTC)
+                if observed.timestamp() < cutoff:
+                    continue
+            except ValueError:
+                pass
+        attempts = int(quality.get("assessment_attempts", 0) or 0)
+        if attempts:
+            assessed += 1
+        if quality.get("status") != "rejected" or attempts < ambiguity_attempts:
+            continue
+        affected.append((uid, record, quality))
+
+    episode_threshold = any(
+        int(quality.get("assessment_attempts", 0) or 0) >= ambiguity_attempts
+        for _, _, quality in affected
+    )
+    feed_threshold = (
+        episode_threshold
+        or len(affected) >= _AGENDA_FEED_MIN_AFFECTED
+        or (
+            assessed >= _AGENDA_FEED_MIN_ASSESSED and len(affected) / assessed >= _AGENDA_FEED_RATIO
+        )
+    )
+    if not affected or not feed_threshold:
+        return None
+    rows = []
+    for uid, record, quality in affected[:20]:
+        reason = quality.get("reason") or "unknown"
+        source = quality.get("source_url") or (record.get("links") or {}).get("agenda") or ""
+        rows.append(
+            f"source={source or 'unknown'}, uid={uid}, "
+            f"date={record.get('published', 'unknown')}, body={record.get('body') or 'unknown'}, "
+            f"attempts={quality.get('assessment_attempts', 0)}, "
+            f"reason={reason}, native={quality.get('native_chars', 0)}, "
+            f"ocr={quality.get('ocr_chars', 0)}, "
+            f"similarity={quality.get('native_ocr_similarity')}, "
+            f"confidence={quality.get('ocr_mean_confidence')}"
+        )
+    overflow = len(affected) - len(rows)
+    suffix = f"; +{overflow} more" if overflow > 0 else ""
+    return Finding(
+        slug,
+        "agenda-quality",
+        WARN,
+        f"{len(affected)} of {assessed} assessed agenda(s) remain rejected after "
+        f"{ambiguity_attempts}+ attempts; inspect OCR/native-text quality. "
+        + "; ".join(rows)
+        + suffix,
+    )
 
 
 def check_enclosures(
@@ -1468,6 +1558,13 @@ def audit_city(
             if cap:
                 findings.append(cap)
         if records is not None:
+            agenda_quality = check_agenda_quality(
+                city.slug,
+                records,
+                body=body,
+            )
+            if agenda_quality:
+                findings.append(agenda_quality)
             backlog = check_rehost_backlog(city.slug, episodes, run_history=run_history)
             if backlog:
                 findings.append(backlog)

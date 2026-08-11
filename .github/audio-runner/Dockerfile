@@ -27,6 +27,7 @@ ENV PATH="/opt/citypods-ffmpeg/bin:${PATH}" \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3.12 python3-pip python-is-python3 ca-certificates \
       libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0 \
+      poppler-utils tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 # install_static_ffmpeg.py imports scripts._pinned_fetch as a sibling module (it derives its repo
@@ -39,7 +40,9 @@ RUN python /opt/citypods-src/scripts/install_static_ffmpeg.py \
       --sha256 "${FFMPEG_SHA256}" \
       --install-dir /opt/citypods-ffmpeg \
     && ffmpeg -version \
-    && ffprobe -version
+    && ffprobe -version \
+    && pdftocairo -v \
+    && tesseract --version
 
 # Install the audio lane's Python dependencies into the image. At runtime /workspace is the current
 # checkout and PYTHONPATH points there, so application code comes from the exact workflow SHA while

@@ -84,6 +84,7 @@ _DEAD_MEETINGS_URL_STATUSES = frozenset({404, 410, 451})
 # first-seen date regardless of the display cap, so nothing is lost across runs.
 _MAX_ROWS = 60
 _MAX_EXAMPLE_CHARS = 180
+_AGENDA_MAX_EXAMPLE_CHARS = 500
 _NON_ISSUE_CHECKS = frozenset({"empty"})
 _AUDIT_WORKFLOW_URL = (
     "https://github.com/BashfulBits/city-meeting-podcasts/actions/workflows/audit.yml"
@@ -353,6 +354,16 @@ _GUIDANCE: dict[str, str] = {
         "unreachable provider CDN.\n\n"
         "**Resolution:** usually self-heals as backoff expires. Investigate only if the count "
         "keeps climbing across multiple audits instead of draining."
+    ),
+    "agenda-quality": (
+        "**What this means:** agenda extraction has been rejected repeatedly for one or more "
+        "meetings in this feed. The pipeline is withholding the text rather than publishing a "
+        "placeholder or an untrustworthy embedded PDF text layer.\n\n"
+        "**Common causes:** a publisher viewer shell, a changed agenda endpoint, an image-only "
+        "PDF that needs OCR, or native text that conflicts with the visible page.\n\n"
+        "**Resolution:** inspect the listed source URLs and quality metrics, then add a fixture "
+        "or adjust the provider/source handling if the document is valid. The finding closes "
+        "automatically after later assessments stop rejecting the affected documents."
     ),
     "meetings-url-dead": (
         "**What this means:** the configured `meetings_url` returned a browser-visible dead "
@@ -639,8 +650,11 @@ def _group_by_check(findings: list[Finding]) -> dict[str, dict[str, _FeedRow]]:
         for slug, fs in by_slug.items():
             severity = ERROR if any(f.severity == ERROR for f in fs) else fs[0].severity
             example = fs[0].message
-            if len(example) > _MAX_EXAMPLE_CHARS:
-                example = example[: _MAX_EXAMPLE_CHARS - 1] + "…"
+            max_example_chars = (
+                _AGENDA_MAX_EXAMPLE_CHARS if check == "agenda-quality" else _MAX_EXAMPLE_CHARS
+            )
+            if len(example) > max_example_chars:
+                example = example[: max_example_chars - 1] + "…"
             rows[slug] = _FeedRow(slug=slug, count=len(fs), severity=severity, example=example)
         result[check] = rows
     return result
@@ -1133,8 +1147,12 @@ def _reconcile_grouped(
         sev_label = f"severity:{severity}"
 
         if issue is None:
+            human_label = (
+                ["--label", "needs:human-verification"] if check == "agenda-quality" else []
+            )
             if dry_run:
-                print(f"CREATE  {title}  [{sev_label}]")
+                human_note = " [needs:human-verification]" if human_label else ""
+                print(f"CREATE  {title}  [{sev_label}]{human_note}")
             else:
                 _gh(
                     "issue",
@@ -1149,12 +1167,15 @@ def _reconcile_grouped(
                     "type:operations",
                     "--label",
                     sev_label,
+                    *human_label,
                 )
             created += 1
             continue
 
         current_labels = _label_names(issue)
         desired_labels = {"signal:feed-health", "type:operations", sev_label}
+        if check == "agenda-quality":
+            desired_labels.add("needs:human-verification")
         to_remove = {
             lbl for lbl in current_labels if lbl.startswith("severity:") and lbl != sev_label
         }

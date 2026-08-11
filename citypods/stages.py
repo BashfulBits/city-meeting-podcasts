@@ -467,6 +467,7 @@ class StageStats:
     rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
     defer_reasons: dict[str, int] = field(default_factory=dict)
     defer_samples: list[str] = field(default_factory=list)
+    quality_counts: dict[str, int] = field(default_factory=dict)
 
     def defer(self, reason: str, count: int = 1, *, sample: str | None = None) -> None:
         """Record restartable work left for a later run, grouped by a stable reason token."""
@@ -474,6 +475,9 @@ class StageStats:
         self.defer_reasons[reason] = self.defer_reasons.get(reason, 0) + count
         if sample and len(self.defer_samples) < 5:
             self.defer_samples.append(sample)
+
+    def quality(self, outcome: str, count: int = 1) -> None:
+        self.quality_counts[outcome] = self.quality_counts.get(outcome, 0) + count
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -1988,7 +1992,7 @@ class AgendaTextStage:
     # bounded second-hop enumeration-page follow are new manifest fields/behavior. Without this
     # bump, stage_is_dirty()'s generic version check would never re-derive an already-completed
     # episode's backup manifest, leaving it permanently on the old, unattributed shape.
-    version = "2"
+    version = "3"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -1998,7 +2002,9 @@ class AgendaTextStage:
 
         from citypods.agenda_text import (
             AGENDA_TEXT_MAX_CHARS,
+            AGENDA_TEXT_QUALITY_VERSION,
             DocumentLink,
+            assess_agenda_document,
             attribute_links_by_content,
             chapter_text_matches,
             extract_document,
@@ -2041,26 +2047,110 @@ class AgendaTextStage:
             if agenda_text_backoff_until(ep) and agenda_text_backoff_until(ep) > now:
                 stats.defer("agenda-text-backoff")
                 continue
-            if ep.agenda_text_url == agenda_url and ep.agenda_backup_url:
+            quality = ep.agenda_text_quality or {}
+            if (
+                ep.agenda_text_url == agenda_url
+                and ep.agenda_backup_url
+                and quality.get("status") == "accepted"
+                and quality.get("pipeline_version") == AGENDA_TEXT_QUALITY_VERSION
+            ):
                 stats.reused += 1
                 continue
             if ctx.stop is not None and ctx.stop():
                 stats.skipped += 1
                 continue
             try:
-                content, content_type = fetch(agenda_url)
-                text, discovered = extract_document(
-                    content, content_type=content_type, source_url=agenda_url
-                )
-                text = text[:AGENDA_TEXT_MAX_CHARS]
+                import hashlib
+
+                candidate_urls = []
+                for candidate in (
+                    links_map.get("agenda_portal"),
+                    links_map.get("agenda"),
+                    links_map.get("agenda_packet"),
+                ):
+                    if candidate and candidate not in candidate_urls:
+                        candidate_urls.append(candidate)
+                assessment = None
+                content = b""
+                discovered: list[DocumentLink] = []
+                selected_url = agenda_url
+                for candidate_url in candidate_urls:
+                    try:
+                        candidate_content, candidate_type = fetch(candidate_url)
+                        candidate_assessment, candidate_links = assess_agenda_document(
+                            candidate_content,
+                            content_type=candidate_type,
+                            source_url=candidate_url,
+                        )
+                    except Exception:
+                        continue
+                    content = candidate_content
+                    selected_url = candidate_url
+                    assessment, discovered = candidate_assessment, candidate_links
+                    if assessment.status == "accepted":
+                        break
+                    # A portal shell may expose the actual PDF as a same-origin link.  Follow only
+                    # validated links and keep the bounded candidate list deterministic.
+                    for link in candidate_links:
+                        if (
+                            link.url not in candidate_urls
+                            and _is_valid_document_url(city, link.url)
+                            and ("pdf" in link.url.lower() or link.kind == "backup")
+                        ):
+                            candidate_urls.append(link.url)
+                    if len(candidate_urls) >= 8:
+                        break
+                if assessment is None:
+                    raise RuntimeError("agenda-candidate-fetch-failed")
+                text = assessment.text[:AGENDA_TEXT_MAX_CHARS]
                 links = [
                     link
                     for link in minutes_links(discovered)
                     if _is_valid_document_url(city, link.url)
                 ]
-                ep.agenda_text_url = agenda_url
-                ep.agenda_text_attempts = 0
+                now = datetime.now(UTC)
+                prior_quality = ep.agenda_text_quality or {}
+                quality = assessment.as_dict()
+                document_hash = hashlib.sha256(content).hexdigest()
+                same_document = (
+                    prior_quality.get("document_hash") == document_hash
+                    and prior_quality.get("source_url") == selected_url
+                )
+                quality["document_hash"] = document_hash
+                quality["first_seen"] = (
+                    prior_quality.get("first_seen", now.isoformat())
+                    if same_document
+                    else now.isoformat()
+                )
+                quality["last_seen"] = now.isoformat()
+                quality["assessment_attempts"] = (
+                    int(prior_quality.get("assessment_attempts", 0) or 0) + 1
+                    if same_document
+                    else 1
+                )
+                ep.agenda_text_url = selected_url
+                ep.agenda_text_quality = quality
                 ep.agenda_text_last_attempt = datetime.now(UTC).isoformat()
+                if assessment.status != "accepted":
+                    ep.agenda_text_attempts += 1
+                    stats.quality(assessment.reason)
+                    stats.defer(
+                        f"agenda-quality-{assessment.reason}",
+                        sample=ep.uid or ep.guid,
+                    )
+                    ep.links = dict(ep.links or {})
+                    ep.links.pop("agenda_text_artifact", None)
+                    ep.links.pop("agenda_text_artifact_key", None)
+                    ep.links.pop("agenda_backup_artifact", None)
+                    ep.links.pop("agenda_backup_artifact_key", None)
+                    ep.agenda_backup_url = None
+                    continue
+                ep.agenda_text_attempts = 0
+                stats.quality(
+                    "accepted-notice"
+                    if assessment.eligibility == "notice"
+                    else f"accepted-{assessment.method}"
+                )
                 agenda_artifact_url = _store_document(
                     ctx, src_key, ep.uid or ep.guid, "agenda", text.encode()
                 )
@@ -2262,6 +2352,7 @@ class AgendaTextStage:
                 ep.agenda_text_last_attempt = now.isoformat()
                 ep.agenda_backup_attempts += 1
                 ep.agenda_backup_last_attempt = now.isoformat()
+                stats.quality("fetch-failure")
                 stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
         return stats
 
@@ -2482,7 +2573,7 @@ def _document_key(source: str, uid: str, kind: str, content: bytes) -> str:
 
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
-AGENDA_TEXT_PIPELINE_VERSION = "1"
+AGENDA_TEXT_PIPELINE_VERSION = "2"
 # Bumped alongside AgendaTextStage.version -- see that class's comment.
 AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"

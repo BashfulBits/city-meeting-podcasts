@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 import yaml
 
-from citypods.agenda_text import resolve_chapter_spans
+from citypods.agenda_text import agenda_chapter_eligible, resolve_chapter_spans
 from citypods.chapters import episode_served_chapters
 
 TAGGER_VERSION = "2"
@@ -264,6 +264,13 @@ def tag_input_fingerprint(
         "admission_policy": admission_policy if llm_enabled else "",
         "agenda_text_artifact_key": links.get("agenda_text_artifact_key"),
         "agenda_backup_artifact_key": links.get("agenda_backup_artifact_key"),
+        "agenda_quality": {
+            "status": (getattr(ep, "agenda_text_quality", None) or {}).get("status"),
+            "eligibility": (getattr(ep, "agenda_text_quality", None) or {}).get("eligibility"),
+            "pipeline_version": (getattr(ep, "agenda_text_quality", None) or {}).get(
+                "pipeline_version"
+            ),
+        },
         "transcript_key": ep.transcript_key,
         "transcript_format": ep.transcript_format,
         "chapters": chapter_fingerprint,
@@ -459,6 +466,8 @@ def agenda_item_context(ep: Any, storage: Any = None) -> dict[int, str]:
     structured item mapping (``chapter_index`` + ``text``/``item_text``) and otherwise returns no
     per-chapter agenda context.
     """
+    if not agenda_chapter_eligible(getattr(ep, "agenda_text_quality", None)):
+        return {}
     links = ep.links or {}
     data = _read_storage_bytes(storage, links.get("agenda_backup_artifact_key"))
     if not data:
@@ -544,9 +553,12 @@ def episode_tag_inputs(ep: Any, storage: Any = None) -> tuple[str, str, str]:
     links = ep.links or {}
     agenda_data = _read_storage_bytes(storage, links.get("agenda_text_artifact_key"))
     agenda_text = agenda_data.decode("utf-8", errors="replace") if agenda_data else ""
+    quality = getattr(ep, "agenda_text_quality", None)
+    if agenda_text and not agenda_chapter_eligible(quality):
+        agenda_text = ""
     if agenda_text:
         agenda_text = _strip_preamble(agenda_text, chapter_titles)
-    backup_text = _episode_backup_text(ep, storage)
+    backup_text = _episode_backup_text(ep, storage) if agenda_chapter_eligible(quality) else ""
     if backup_text:
         agenda_text = f"{agenda_text}\n\n--- backup/attachment documents ---\n\n{backup_text}"
     transcript_data = _read_storage_bytes(storage, ep.transcript_key)

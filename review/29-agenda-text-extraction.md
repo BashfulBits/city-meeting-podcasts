@@ -1,7 +1,7 @@
 # review/29 — Agenda Text Extraction
 
-**Maturity: L3 (dev-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
-ROADMAP R3, inserted 2026-07-14, narrowed 2026-07-16 · issues not yet cut**
+**Maturity: L3 (implementation in progress, GH#1092) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
+ROADMAP R3, inserted 2026-07-14, narrowed 2026-07-16**
 
 > **Matured to L3, 2026-07-12** — the maintainer's own stated bar for starting this item ("once R11
 > supplies agenda URLs for almost every meeting in the existing feed index") is a *production-execution*
@@ -41,15 +41,14 @@ This item is text extraction only.
 
 ---
 
-## §2. Scope boundary — two explicit non-goals, one reversed decision
+## §2. Scope boundary — selective OCR quality gate added by GH#1092
 
-1. **No OCR.** A scanned-image PDF with no text layer yields empty/near-empty extracted text. Treated as
-   an extraction failure (§9), not a trigger for adding an OCR dependency. Revisit only if telemetry
-   shows this is a large fraction of real agendas, matching this project's general "don't build for a
-   problem you haven't measured yet" instinct (H14d's chunking-disabled-by-default precedent). Applies
-   equally to backup/packet material (§3a) — an image-only exhibit (a site plan, a photo) extracts to
-   nothing and is dropped, which is also the main reason backup material stays bounded in practice even
-   though it's no longer excluded by policy (see the corrected reasoning below).
+1. **Selective OCR, not blanket OCR.** Native extraction remains the fast path. Suspicious PDFs —
+   including image-heavy documents, known viewer/loading placeholders, and implausibly short or
+   boilerplate text — receive a bounded Tesseract/Poppler probe. Full OCR runs only when the probe finds
+   meaningful visible agenda content. Native-versus-OCR comparison follows the approach documented by
+   the open-source [`pdf-text-quality`](https://github.com/hypothesis/pdf-text-quality) project.
+   Ambiguous cases fail closed and retain diagnostics rather than publishing plausible-looking text.
 2. **No LLM synthesis at this stage.** Output is the extracted plain text itself, consumed as-is by R4/R5.
    No summarization, no structuring, no "what's being proposed" framing — that's explicitly Phase F.
 3. ~~**Agenda, not Packet.**~~ **Reversed 2026-07-12 — this exclusion was based on an unverified size
@@ -272,7 +271,12 @@ extraction fails at a meaningfully different rate).
 
 ## §6. Module / file plan (exact)
 
-- **`citypods/agenda_text.py`** — new. Two extraction functions:
+**GH#1092 implementation amendment:** the extraction module now owns the shared quality classifier and
+`assess_agenda_document()` admission API. The existing native extractors remain the fast path; the
+assessment layer invokes bounded Tesseract/Poppler OCR only for suspicious PDFs and returns the quality
+envelope consumed by `AgendaTextStage`, chapter extraction, and feed-health auditing.
+
+- **`citypods/agenda_text.py`** — existing extraction module. Two extraction functions:
   - `extract_agenda_pdf(content: bytes) -> str` — `pypdf.PdfReader`, concatenate `page.extract_text()`
     across pages, normalize whitespace.
   - `extract_agenda_html(content: bytes) -> str` — `BeautifulSoup(content, "html.parser")`, strip
@@ -378,31 +382,45 @@ what keep that cheap: a whole-document hash comparison for agenda-only text, and
 comparison for backup text (so one changed backup item doesn't force re-fetching every other item on the
 same episode), neither a re-fetch unless something actually changed.
 
+### §7a. Quality decision and chapter eligibility (GH#1092)
+
+`AgendaTextStage` stores a bounded quality envelope alongside the plain-text sidecar: status, eligibility,
+method, reason, pipeline version, source/document identity, native/OCR lengths, page count, confidence,
+similarity, truncation, and assessment history. Only `status=accepted` with `eligibility=agenda` may feed
+agenda-item or generated-chapter extraction. Genuine short notices remain searchable but are marked
+`eligibility=notice`; rejected placeholders and ambiguous documents have no agenda artifact key. Legacy
+artifacts without a quality envelope remain readable/searchable for compatibility but are not eligible
+for chapter/tag extraction until the gradual backfill assesses them.
+
+The stage version and `AGENDA_TEXT_PIPELINE_VERSION` are bumped together. This re-evaluates existing
+agenda artifacts gradually; only suspicious PDFs invoke OCR.
+
 ---
 
 ## §8. Failure handling & backoff
 
-Extraction can fail for real, expected reasons: a dead/moved agenda URL, a scanned-image PDF with no text
-layer, a malformed/corrupted document, a transient network error. All failures are treated identically at
-the Stage level — increment `agenda_text_attempts`, apply `agenda_text_backoff_until`'s escalating delay
-(§5), leave `agenda_text_url` unset (or unchanged, if a prior successful extraction exists and this is a
-*re*-extraction attempt after a source link changed). **No distinction between "permanent" and
-"transient" failure classes** — unlike H19's ASR-timeout handling (which is expensive GPU time, worth
-finer-grained treatment), a failed agenda-text fetch costs one HTTP request; the 14-day backoff cap is
-already generous enough that over-engineering failure-class detection isn't worth it for this item's
-stakes. A city's agenda platform migrating (Appendix P's IQM2/NovusAGENDA EOL tripwires) or R11
-discovering a better URL both naturally resolve a stuck extraction on their own next run, since the link
-itself changes and the recipe_hash comparison in §6 detects that as "needs re-extraction," independent of
-backoff state.
+Extraction failures are categorized as placeholder/low-quality, OCR unavailable, OCR probe/full failure,
+ambiguous native-versus-OCR, or fetch/parse failure. Each assessment increments the bounded attempt
+history for the same source URL/document hash and applies agenda backoff. A rejection never publishes a
+text artifact; a changed source URL/document hash starts a fresh history.
+
+The daily feed-health audit reads these persisted diagnostics without fetching or OCRing documents,
+using the most recent 90-day assessment window. It
+creates or updates one consolidated `agenda-quality` GitHub issue when one episode reaches three actual
+rejected assessments, or when a feed reaches three affected episodes or 20% of at least five assessed
+episodes. The issue uses the existing stable reconciliation key, `signal:feed-health`,
+`type:operations`, `severity:warn`, and `needs:human-verification`; it lists affected episodes and
+quality evidence, comments only on state changes, and auto-closes after recovery. One-off failures stay
+in records and run history without creating issue noise.
 
 ---
 
 ## §9. Migration / backfill
 
-No dedicated backfill workflow. `AgendaTextStage` runs as part of the normal enrich phase and extracts
-agenda text (and backup text, §6a) for every episode with populated links on the following scheduled
-runs — the same gradual pattern H12's version-aware re-transcribe and R5's planned `TagsStage` both
-already use, not a special-cased bulk job. Coverage is naturally bounded by R11's own rollout: an episode
+No dedicated backfill workflow. The bumped `AgendaTextStage` runs as part of the normal enrich phase and
+re-evaluates every episode with populated links on following scheduled runs — the same gradual pattern
+H12's version-aware re-transcribe and R5's planned `TagsStage` already use, not a special-cased bulk job.
+Coverage is naturally bounded by R11's own rollout: an episode
 with no `ep.links["agenda"]`/`["agenda_portal"]`/`["agenda_packet"]` yet simply has no extraction
 attempted — both URL fields stay `None`, R4/R5 both already treat that as an expected, valid,
 additive-not-blocking state.
@@ -426,6 +444,13 @@ anymore:**
 ## §10. Tests
 
 `tests/test_agenda_text.py`:
+
+- Shared classification recognizes viewer/loading shells, unpublished/error responses, filename/URL-only
+  content, genuine short notices, and usable agenda text.
+- Native-quality PDFs bypass OCR; suspicious PDFs invoke bounded probe/full OCR, accept clearly superior
+  OCR, and fail closed on ambiguous or unavailable OCR. Quality metadata survives record round trips.
+- Repeated quality rejection crosses the three-attempt/three-episode feed-health thresholds and resolves
+  when the persisted status becomes accepted.
 
 - `extract_agenda_pdf`/`extract_agenda_html` are deterministic and offline (fixture PDF/HTML bytes, no
   network) — a fixture PDF with known text extracts that text; a fixture HTML page with nav/footer/script

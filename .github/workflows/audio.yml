@@ -130,7 +130,7 @@ jobs:
         # Preflight emits only shards with actionable source work. Ownership remains source-atomic.
         shard: ${{ fromJSON(needs.plan.outputs.matrix).shard }}
     env:
-      AUDIO_RUNNER_IMAGE: ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1
+      AUDIO_RUNNER_IMAGE: ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v2
       FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
       FFMPEG_FALLBACK_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
@@ -179,13 +179,16 @@ jobs:
             echo "::warning title=Audio runner image unavailable::Using checksum-pinned static ffmpeg fallback on the host runner."
             sudo apt-get update -qq
             sudo apt-get install -y -qq --no-install-recommends \
-              libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+              libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0 \
+              poppler-utils tesseract-ocr
             timeout 300 python scripts/install_static_ffmpeg.py \
               --url "${FFMPEG_URL}" \
               --sha256 "${FFMPEG_SHA256}" \
               --install-dir "${FFMPEG_FALLBACK_DIR}"
             "${FFMPEG_FALLBACK_DIR}/bin/ffmpeg" -version >/dev/null
             "${FFMPEG_FALLBACK_DIR}/bin/ffprobe" -version >/dev/null
+            pdftocairo -v >/dev/null
+            tesseract --version >/dev/null
             echo "mode=host" >> "$GITHUB_OUTPUT"
           fi
 

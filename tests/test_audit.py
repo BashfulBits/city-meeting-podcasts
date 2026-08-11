@@ -11,6 +11,7 @@ from citypods.audit import (
     aggregate_view_cap_findings,
     audit_all,
     audit_city,
+    check_agenda_quality,
     check_dead_audio_aggregate,
     check_deferred_audio_aggregate,
     check_dormant_resumed,
@@ -63,6 +64,86 @@ def test_check_empty_no_diff_baseline():
     assert check_empty("s", [], 3).check == "drift"
     assert check_empty("s", [_ep(1), _ep(8)], 3).check == "empty"
     assert check_empty("s", [_ep(1), _ep(8), _ep(15)], 3) is None
+
+
+def test_check_agenda_quality_requires_repeated_rejection():
+    records = {
+        f"u{i}": {
+            "uid": f"u{i}",
+            "title": f"Meeting {i}",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 3,
+                    "source_url": "https://example.test/agenda.pdf",
+                }
+            },
+        }
+        for i in range(3)
+    }
+    finding = check_agenda_quality("council", records, body="City Council")
+    assert finding is not None
+    assert finding.check == "agenda-quality"
+    assert "3 of 3" in finding.message
+    assert "source=https://example.test/agenda.pdf" in finding.message
+    assert "body=City Council" in finding.message
+
+
+def test_check_agenda_quality_suppresses_one_off_rejection():
+    records = {
+        "u1": {
+            "uid": "u1",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 1,
+                }
+            },
+        }
+    }
+    assert check_agenda_quality("council", records, body="City Council") is None
+
+
+def test_check_agenda_quality_alerts_for_one_episode_after_three_attempts():
+    records = {
+        "u1": {
+            "uid": "u1",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ocr_unavailable",
+                    "assessment_attempts": 3,
+                    "source_url": "https://example.test/agenda.pdf",
+                }
+            },
+        }
+    }
+    finding = check_agenda_quality("council", records, body="City Council")
+    assert finding is not None
+    assert "1 of 1" in finding.message
+
+
+def test_check_agenda_quality_ignores_stale_assessment_history():
+    records = {
+        "u1": {
+            "uid": "u1",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 3,
+                    "last_seen": (NOW - timedelta(days=91)).isoformat(),
+                }
+            },
+        }
+    }
+    assert check_agenda_quality("council", records, body="City Council", now=NOW) is None
 
 
 def test_check_empty_suppresses_drift_when_archive_has_materialized_episodes():
