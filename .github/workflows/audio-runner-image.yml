@@ -22,7 +22,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE: ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v1
+  IMAGE: ghcr.io/bashfulbits/citypods-audio-runner:py312-ffmpeg71-v2
   FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
 
 jobs:
@@ -73,5 +73,7 @@ jobs:
             python --version
             ffmpeg -version
             ffprobe -version
+            pdftocairo -v
+            tesseract --version
             python -c "import boto3, citypods"
           '

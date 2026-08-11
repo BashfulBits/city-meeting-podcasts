@@ -573,6 +573,8 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     assert not image.endswith(":latest")
     assert len(env["FFMPEG_SHA256"]) == 64
     assert wf["permissions"]["packages"] == "read"
+    image_wf, _ = _job("audio-runner-image.yml", job_name="build")
+    assert image == image_wf["env"]["IMAGE"]
 
     select = next(s for s in job["steps"] if s.get("name") == "Select audio runtime")
     # Self-built ffmpeg (scripts/build_ffmpeg_static.sh) vendored to our own B2 bucket, not
@@ -586,6 +588,9 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     assert "timeout 300 python scripts/install_static_ffmpeg.py" in select["run"]
     assert '--sha256 "${FFMPEG_SHA256}"' in select["run"]
     assert '"${FFMPEG_FALLBACK_DIR}/bin/ffprobe" -version' in select["run"]
+    assert "poppler-utils tesseract-ocr" in select["run"]
+    assert "pdftocairo -v" in select["run"]
+    assert "tesseract --version" in select["run"]
     # Runtime (non -dev) packages for the codec/TLS libraries build_ffmpeg_static.sh links
     # dynamically -- only needed on the host fallback path, not the container path.
     assert "libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0" in select["run"]
@@ -608,7 +613,7 @@ def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():
     assert {"schedule", "workflow_dispatch", "push"} <= set(_on(wf))
     assert wf["permissions"]["packages"] == "write"
     assert job["timeout-minutes"] == 30
-    assert wf["env"]["IMAGE"].endswith(":py312-ffmpeg71-v1")
+    assert wf["env"]["IMAGE"].endswith(":py312-ffmpeg71-v2")
     assert not wf["env"]["IMAGE"].endswith(":latest")
 
     build = next(s for s in job["steps"] if "docker/build-push-action" in s.get("uses", ""))

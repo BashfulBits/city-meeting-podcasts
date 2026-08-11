@@ -246,6 +246,7 @@ class SourcePipeline:
                 "asr_migration_regenerated": 0,
                 "defer_reasons": {},
                 "defer_samples": [],
+                "quality_counts": {},
             }
         )
 
@@ -588,6 +589,8 @@ class SourcePipeline:
                     t["defer_reasons"][reason] = t["defer_reasons"].get(reason, 0) + count
                 if s.defer_samples and len(t["defer_samples"]) < 5:
                     t["defer_samples"].extend(s.defer_samples[: 5 - len(t["defer_samples"])])
+                for outcome, count in s.quality_counts.items():
+                    t["quality_counts"][outcome] = t["quality_counts"].get(outcome, 0) + count
 
     def h16_availability_summary(self) -> dict:
         """Census of durable media-availability verdicts across this run's known catalog (H16 PR3).
@@ -3289,6 +3292,7 @@ def _record_run_history(
             },
             "defer_reasons": dict(sorted((t.get("defer_reasons") or {}).items())),
             "defer_samples": list(t.get("defer_samples") or [])[:5],
+            "quality_counts": dict(sorted((t.get("quality_counts") or {}).items())),
         }
         for name, t in stage_totals.items()
     }

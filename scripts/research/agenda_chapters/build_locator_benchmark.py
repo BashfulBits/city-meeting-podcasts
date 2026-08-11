@@ -26,7 +26,7 @@ try:  # Works both as a package import in tests and as a directly-run research s
 except ImportError:  # pragma: no cover - exercised by the CLI invocation path
     from audit_chapters import BenchmarkSample, collect_benchmark_cohort
 
-from citypods.agenda_text import extract_agenda_title_candidates
+from citypods.agenda_text import classify_agenda_text, extract_agenda_title_candidates
 from citypods.bodies import body_key, canonical_body
 from citypods.chapter_locator import build_locator_request, build_locator_units
 from citypods.chapter_titles import match_title_candidates
@@ -84,13 +84,9 @@ def duration_bucket(seconds: float | None) -> str:
 
 def classify_agenda_artifact(text: str, *, candidate_count: int) -> str:
     """Classify a fetched agenda artifact for eligibility diagnostics, not admission."""
-    normalized = " ".join(text.casefold().split())
-    if not normalized:
-        return "empty"
-    if "not currently published" in normalized:
-        return "unpublished-placeholder"
-    if "documentviewer.php" in normalized or "loading" in normalized:
-        return "viewer-placeholder"
+    shared_class = classify_agenda_text(text)
+    if shared_class != "complete":
+        return shared_class
     return "structural-candidates" if candidate_count else "no-structural-candidates"
 
 

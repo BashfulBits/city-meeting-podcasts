@@ -108,6 +108,11 @@ class Episode:
     agenda_text_url: str | None = None
     agenda_text_attempts: int = 0
     agenda_text_last_attempt: str | None = None
+    # Bounded, explainable quality decision for the agenda text artifact.  The text itself stays
+    # in the content-addressed sidecar; this small envelope lets chapter extraction and the
+    # feed-health audit distinguish trustworthy agenda text from notices/placeholders without
+    # rereading the document.
+    agenda_text_quality: dict = field(default_factory=dict)
     agenda_backup_url: str | None = None
     agenda_backup_attempts: int = 0
     agenda_backup_last_attempt: str | None = None

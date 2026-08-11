@@ -718,11 +718,17 @@ def _sum_stage_totals(rows: list[dict]) -> dict:
     )
     for row in rows:
         for name, stage in (row.get("stages") or {}).items():
-            out = totals.setdefault(name, {**{k: 0 for k in keys}, "defer_reasons": {}})
+            out = totals.setdefault(
+                name, {**{k: 0 for k in keys}, "defer_reasons": {}, "quality_counts": {}}
+            )
             for k in keys:
                 out[k] += stage.get(k, 0) or 0
             for reason, count in (stage.get("defer_reasons") or {}).items():
                 out["defer_reasons"][reason] = out["defer_reasons"].get(reason, 0) + int(count or 0)
+            for outcome, count in (stage.get("quality_counts") or {}).items():
+                out["quality_counts"][outcome] = out["quality_counts"].get(outcome, 0) + int(
+                    count or 0
+                )
     for stage in totals.values():
         if "seconds" in stage:
             stage["seconds"] = round(stage["seconds"], 1)

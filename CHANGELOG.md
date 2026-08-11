@@ -75,6 +75,15 @@ Phase R (Research-Tool Surface)._
     start times to whole-second integers per the Podcasting 2.0 specification.
   - `feed_content_hash` incorporates `include_generated_chapters` and public chapter state so toggling publication
     flags triggers sidecar and RSS re-rendering.
+- **GH#1092 agenda-text quality gate and selective OCR.** `AgendaTextStage` now classifies native
+  extraction, probes suspicious PDFs with bounded Poppler/Tesseract OCR, rejects placeholders and
+  ambiguous documents, retains genuine short notices as chapter-ineligible diagnostics, and records
+  versioned quality evidence. The feed-health audit consolidates repeated ambiguity into one
+  maintainer issue and auto-closes it after recovery. The stage/version bump gradually re-evaluates
+  existing agenda artifacts on normal enrich runs; OCR replaces native text only when clearly better,
+  and no separate bulk backfill is performed. A rejected replacement document retains the prior
+  accepted artifact while recording the new diagnostic for feed-health alerting. The audio-runner
+  image is v2 with the OCR binaries; the host fallback and CI smoke checks verify the same tools.
 
 - **Multi-Provider Cloudflare Worker Dispatch Proxy & Per-Route Ledger.** ([`review/41`](review/41-multi-provider-llm-dispatch.md))
   Extended `workers/llm-dispatch-proxy/` and the Python compute layer to route Gemini/Mistral/DeepSeek/

@@ -1190,8 +1190,9 @@ def episode_to_record(ep: Episode) -> dict:
             "url": ep.agenda_text_url,
             "attempts": ep.agenda_text_attempts,
             "last_attempt": ep.agenda_text_last_attempt,
+            "quality": ep.agenda_text_quality or None,
         }
-        if ep.agenda_text_url or ep.agenda_text_attempts
+        if ep.agenda_text_url or ep.agenda_text_attempts or ep.agenda_text_quality
         else None,
         "agenda_backup": {
             "url": ep.agenda_backup_url,
@@ -1436,6 +1437,9 @@ def record_to_episode(rec: dict) -> Episode:
         agenda_text_url=agenda.get("url"),
         agenda_text_attempts=_coerce_non_negative_int(agenda.get("attempts")),
         agenda_text_last_attempt=agenda.get("last_attempt"),
+        agenda_text_quality=(
+            agenda.get("quality") if isinstance(agenda.get("quality"), dict) else {}
+        ),
         agenda_backup_url=backup.get("url"),
         agenda_backup_attempts=_coerce_non_negative_int(backup.get("attempts")),
         agenda_backup_last_attempt=backup.get("last_attempt"),
@@ -1957,6 +1961,9 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.agenda_text_url = agenda.get("url")
         ep.agenda_text_attempts = _coerce_non_negative_int(agenda.get("attempts"))
         ep.agenda_text_last_attempt = agenda.get("last_attempt")
+        ep.agenda_text_quality = (
+            agenda.get("quality") if isinstance(agenda.get("quality"), dict) else {}
+        )
         ep.agenda_backup_url = backup.get("url")
         ep.agenda_backup_attempts = _coerce_non_negative_int(backup.get("attempts"))
         ep.agenda_backup_last_attempt = backup.get("last_attempt")

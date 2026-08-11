@@ -1,13 +1,17 @@
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.agenda_text import (
+    OCR_FULL_SECONDS_PER_PAGE,
     AgendaTitleCandidate,
     _extract_pdf,
     agenda_title_similarity,
+    assess_agenda_document,
     attribute_links_by_content,
     attribute_links_to_chapters,
     chapter_text_matches,
+    classify_agenda_text,
     extract_agenda_outline,
     extract_agenda_text,
     extract_agenda_title_candidates,
@@ -72,6 +76,22 @@ def test_record_round_trip_preserves_document_artifacts():
     assert restored.minutes_roster == episode.minutes_roster
 
 
+def test_record_round_trip_preserves_agenda_quality_metadata():
+    episode = Episode("g", "Meeting", datetime.now(UTC), "video", body="Council")
+    episode.agenda_text_url = "https://example.test/agenda.pdf"
+    episode.agenda_text_quality = {
+        "status": "rejected",
+        "eligibility": "unknown",
+        "method": "none",
+        "reason": "ambiguous-native-and-ocr",
+        "pipeline_version": "2",
+        "document_hash": "abc",
+        "assessment_attempts": 3,
+    }
+    restored = record_to_episode(episode_to_record(episode))
+    assert restored.agenda_text_quality == episode.agenda_text_quality
+
+
 def test_provider_minutes_link_overrides_persisted_agenda_derived_link():
     persisted = Episode("g", "Meeting", datetime.now(UTC), "video", body="Council")
     persisted.links = {
@@ -126,6 +146,134 @@ def test_agenda_text_backoff_is_nonzero_after_failure():
     episode.agenda_text_attempts = 1
     episode.agenda_text_last_attempt = datetime.now(UTC).isoformat()
     assert agenda_text_backoff_until(episode) is not None
+
+
+def test_quality_classifier_preserves_short_notice_and_rejects_viewer_shell():
+    assert classify_agenda_text("Meeting canceled due to weather") == "short-notice"
+    assert classify_agenda_text("Loading…") == "viewer-placeholder"
+    assert classify_agenda_text("https://example.test/documentviewer.php") == "viewer-placeholder"
+
+
+def test_quality_classifier_preserves_line_structure_for_real_agenda_text():
+    text = (
+        "Public meeting information\n"
+        "1. Housing and neighborhood improvements\n"
+        "2. Budget and transportation planning\n"
+        "3. Public safety capital program update\n"
+        + ("The loading dock report is included in the supporting materials.\n" * 12)
+    )
+    assert classify_agenda_text(text) == "complete"
+
+
+def test_pdf_quality_gate_keeps_good_native_text_without_ocr():
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+    calls = []
+
+    def ocr(*args, **kwargs):
+        calls.append((args, kwargs))
+        return "", None
+
+    assessment, _ = assess_agenda_document(
+        content,
+        content_type="application/pdf",
+        source_url="https://example.test/agenda.pdf",
+        ocr_runner=ocr,
+    )
+    assert assessment.status == "accepted"
+    assert assessment.method == "native"
+    assert calls == []
+
+
+def test_pdf_quality_gate_accepts_ocr_when_embedded_text_is_a_placeholder(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *args, **kwargs: ("Loading…", []))
+    calls = []
+
+    def ocr(_content, pages, *, timeout):
+        calls.append((pages, timeout))
+        return (
+            "AGENDA\n1. Housing approval and neighborhood improvements\n"
+            "2. Street improvements and transportation planning\n"
+            "3. Public safety capital program update",
+            91.0,
+        )
+
+    assessment, _ = assess_agenda_document(
+        content,
+        content_type="application/pdf",
+        source_url="https://example.test/agenda.pdf",
+        ocr_runner=ocr,
+    )
+    assert assessment.status == "accepted"
+    assert assessment.method == "ocr"
+    assert assessment.reason == "ocr-materially-better"
+    assert len(calls) == 2
+    assert calls[1][1] >= OCR_FULL_SECONDS_PER_PAGE * len(calls[1][0])
+
+
+def test_pdf_quality_gate_fails_closed_when_ocr_is_ambiguous(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+    monkeypatch.setattr(
+        agenda_text,
+        "extract_document",
+        lambda *args, **kwargs: ("Short embedded message", []),
+    )
+    assessment, _ = assess_agenda_document(
+        content,
+        content_type="application/pdf",
+        source_url="https://example.test/agenda.pdf",
+        ocr_runner=lambda *args, **kwargs: ("Unclear", 42.0),
+    )
+    assert assessment.status == "rejected"
+    assert assessment.reason == "ambiguous-native-and-ocr"
+
+
+def test_pdf_quality_gate_records_ocr_unavailability(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *args, **kwargs: ("Loading…", []))
+    monkeypatch.setattr(agenda_text.shutil, "which", lambda name: None)
+    assessment, _ = assess_agenda_document(
+        content,
+        content_type="application/pdf",
+        source_url="https://example.test/agenda.pdf",
+    )
+    assert assessment.status == "rejected"
+    assert assessment.reason == "ocr-unavailable"
+
+
+def test_pdf_quality_gate_fails_closed_when_full_ocr_times_out(monkeypatch):
+    import citypods.agenda_text as agenda_text
+
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *args, **kwargs: ("Loading…", []))
+    calls = 0
+
+    def ocr(_content, pages, *, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise subprocess.TimeoutExpired("ocr", timeout)
+        return (
+            "AGENDA\n1. Housing approval and neighborhood improvements\n"
+            "2. Street improvements and transportation planning\n"
+            "3. Public safety capital program update",
+            91.0,
+        )
+
+    assessment, _ = assess_agenda_document(
+        content,
+        content_type="application/pdf",
+        source_url="https://example.test/agenda.pdf",
+        ocr_runner=ocr,
+    )
+    assert assessment.status == "rejected"
+    assert assessment.reason == "ocr-timeout"
 
 
 def test_extract_html_no_longer_gates_backup_links_on_english_keywords():

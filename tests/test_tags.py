@@ -288,6 +288,7 @@ def test_agenda_text_survives_a_snapped_chapter():
             {"start": 700, "title": "Housing plan"},
         ],
         links={"agenda_backup_artifact_key": "agenda-backup-key"},
+        agenda_text_quality={"status": "accepted", "eligibility": "agenda"},
         timeline=Timeline(
             version="silence-v1",
             segments=(
@@ -578,6 +579,7 @@ def test_episode_tag_inputs_strips_preamble_and_includes_backup_text():
             "agenda_text_artifact_key": "agenda-key",
             "agenda_backup_artifact_key": "backup-key",
         },
+        agenda_text_quality={"status": "accepted", "eligibility": "agenda"},
     )
     titles, agenda_text, _transcript = episode_tag_inputs(ep, Storage())
     assert "555-1234" not in agenda_text
@@ -589,6 +591,31 @@ def test_episode_tag_inputs_strips_preamble_and_includes_backup_text():
     # from.
     assert "I. Call to Order" in agenda_text
     assert "i. call to order" not in agenda_text
+
+
+def test_episode_tag_inputs_excludes_rejected_and_notice_agendas():
+    class Storage:
+        def exists(self, key):
+            return key == "agenda-key"
+
+        def get_file(self, key, path):
+            path.write_text("1. A visible agenda item")
+            return True
+
+    for quality in (
+        {"status": "rejected", "eligibility": "unknown"},
+        {"status": "accepted", "eligibility": "notice"},
+    ):
+        ep = Episode(
+            "g1",
+            "Meeting",
+            datetime(2026, 1, 1, tzinfo=UTC),
+            "https://example.test/video",
+            links={"agenda_text_artifact_key": "agenda-key"},
+        )
+        ep.agenda_text_quality = quality
+        _titles, agenda_text, _transcript = episode_tag_inputs(ep, Storage())
+        assert agenda_text == ""
 
 
 def test_llm_tag_suggestions_admits_material_larger_than_one_tpm_minute():
