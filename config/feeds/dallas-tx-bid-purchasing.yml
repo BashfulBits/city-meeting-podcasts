@@ -1,0 +1,10 @@
+slug: dallas-tx-bid-purchasing
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: "Bid Purchasing"
+podcast_title: "Dallas: Bid Purchasing"
+podcast_author: "City of Dallas, TX"
+podcast_email: ""
+podcast_description: "Bid Purchasing meetings for Dallas."

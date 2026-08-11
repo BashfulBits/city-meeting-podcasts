@@ -4,6 +4,11 @@ provider: swagit
 source:
   list_url: https://austintx.new.swagit.com/views/117/water-and-wastewater-commission
   body: "Water and Wastewater Commission"
+  body_any:
+    - "Water and Waste Water Commission"
+  body_includes:
+    - provider_guid: "50462"
+      body: "Joint Committee on Austin Water's Financial Plan"
 podcast_title: "Austin: Water and Wastewater Commission"
 podcast_author: "City of Austin, TX"
 podcast_email: ""

@@ -1,0 +1,12 @@
+slug: pflugerville-tx-finance-and-budget-committee
+city: pflugerville-tx
+provider: granicus
+source:
+  feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
+  body: "Finance and Budget Committee"
+  body_any:
+    - "Finance and Budget"
+podcast_title: "Pflugerville: Finance and Budget Committee"
+podcast_author: "City of Pflugerville, TX"
+podcast_email: ""
+podcast_description: "Finance and Budget Committee meetings for Pflugerville."
