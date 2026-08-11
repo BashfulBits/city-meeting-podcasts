@@ -18,7 +18,12 @@ from citypods.compute.llm_budget import (
     load_llm_budget_cas,
     serialize_llm_budget,
 )
-from citypods.compute.llm_policy import ROUTE_REGISTRY, LLMRequestPolicy, LLMRoute
+from citypods.compute.llm_policy import (
+    ROUTE_REGISTRY,
+    LLMRequestPolicy,
+    LLMRoute,
+    canonical_model,
+)
 
 
 @dataclass(frozen=True)
@@ -295,7 +300,11 @@ def select_route(
     """
     rejected: list[tuple[str, str]] = []
     candidates: list[tuple[LLMRoute, str, float, datetime, float, int, int, str]] = []
-    allowed = set(policy.allowed_models) if policy.allowed_models is not None else None
+    allowed = (
+        {canonical_model(model) for model in policy.allowed_models}
+        if policy.allowed_models is not None
+        else None
+    )
     # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
     # only *temporarily* unavailable -- a rate schedule full, daily quota spent, or under a real
     # 429 block -- is predicted to free up again. A pacing caller sleeps until this rather than

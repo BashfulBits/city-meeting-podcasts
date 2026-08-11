@@ -28,13 +28,10 @@ generated_chapters_enabled: false
 tagging:
   enabled: true
   llm_model: "gemini/gemini-3.1-flash-lite"
-  # Routes the scheduler may draw on, primary (== llm_model) first. The extra models are
-  # independent free-tier quota pools the run spills onto for throughput once the primary's
-  # per-minute/daily window fills (~1000 tags/day, 30 rpm combined). llm_model stays the stable
-  # recipe/calibration route; each candidate still records the model that actually answered.
+  # Keep tagging pinned to the stable/calibrated Gemini 3.1 route. Gemini 3.5 Flash Lite is
+  # reserved for the production chapter locator's long-context workload.
   llm_models:
     - "gemini/gemini-3.1-flash-lite"
-    - "gemini/gemini-3.5-flash-lite"
   # direct | dispatch. Tags do not need a same-run response, so keep provider calls off the
   # Actions runner and let the asynchronous dispatch Worker pace and retry them. The tag workflow
   # must provide LLM_DISPATCH_URL/LLM_DISPATCH_AUTH_TOKEN; provider keys remain Worker secrets.

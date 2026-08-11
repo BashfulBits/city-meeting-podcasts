@@ -18,7 +18,8 @@ The HTTP API is intentionally asynchronous:
 2. `GET /v1/requests/{id}` returns `202` while pending and returns the upstream OpenAI-shaped JSON
    with `200` after completion.
 3. `GET /v1/models` advertises the Worker's configured default route (`MODEL_ID`).
-4. `GET /v1/queue/estimate?model=<canonical model>` reports the current pending backlog for that model.
+4. `GET /v1/queue/estimate?model=<canonical model or configured alias>` reports the current pending
+   backlog for that logical model and returns its canonical key.
 5. `GET /healthz` is an unauthenticated liveness check and does not inspect R2.
 
 `stream: true` is rejected. The Worker never returns provider error bodies, request prompts, API keys,
@@ -35,7 +36,10 @@ Provider/account/route data is **not** Wrangler config any more — it's compile
 no network call, so the deployed artifact always matches what's committed). Each provider block gives
 its own `api_base`/`chat_path` and one or more `accounts` (each with an `api_key_env` naming a Worker
 secret); each route in `routes:` maps a canonical `model` (the same string the Python `ROUTES` table
-uses) to one `provider`/`account_id`/`upstream_model` plus its own `rpm`/`rpd`/`tpm`/pricing. Two
+uses) to one `provider`/`account_id`/`upstream_model` plus its own `rpm`/`rpd`/`tpm`/pricing. A route
+may declare `model_key` when its provider-qualified selector is an alias for a shared logical model;
+the compiler emits `model_aliases` and the Worker canonicalizes both chat requests and queue
+estimates before route lookup. Two
 accounts of the same provider (e.g. `project_primary`/`project_secondary` for Gemini) compile to two
 separate `route_id`s with **independent ledger entries** — this is what makes account rotation real:
 exhausting one account's window rolls dispatch onto the other rather than blocking the model.

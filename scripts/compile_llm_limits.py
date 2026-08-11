@@ -88,7 +88,11 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
         if provider_cfg.get("rpm") is not None:
             route["provider_rpm"] = provider_cfg["rpm"]
         routes.append(route)
-    return {"_metadata": compiled["_metadata"], "routes": routes}
+    return {
+        "_metadata": compiled["_metadata"],
+        "model_aliases": compiled.get("model_aliases", {}),
+        "routes": routes,
+    }
 
 
 def fetch_openrouter_models(provider_cfg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -205,21 +209,55 @@ def run_discovery(raw: dict[str, Any], providers_requested: list[str]) -> bool:
     return changed
 
 
-def _validated_routes(routes: list[Any]) -> tuple[dict[str, dict[str, Any]], dict[str, list[str]]]:
-    """Pre-index routes by canonical model / route_id for O(1) Worker lookup.
+def _validated_routes(
+    routes: list[Any],
+) -> tuple[
+    list[dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, list[str]],
+    dict[str, str],
+]:
+    """Normalize and pre-index routes by logical model / route_id for O(1) Worker lookup.
+
+    ``model`` is the backwards-compatible selector written by a provider route author.
+    ``model_key`` optionally assigns that route to a shared logical model family. The compiled
+    route list stores the shared key in ``model`` and ``model_aliases`` preserves the old selector,
+    so existing callers keep working while the scheduler can pool equivalent provider routes.
 
     Raises a clear ``ValueError`` naming the offending route index for a hand-authored YAML route
     missing either required key, instead of letting an opaque ``KeyError`` surface right before
     ``wrangler deploy``.
     """
+    normalized_routes: list[dict[str, Any]] = []
     routes_by_id: dict[str, dict[str, Any]] = {}
     model_routes_map: dict[str, list[str]] = {}
+    model_aliases: dict[str, str] = {}
+    physical_routes: dict[tuple[str, str, str], tuple[str, dict[str, Any]]] = {}
+
+    def register_alias(source_model: str, canonical_model: str, index: int) -> None:
+        if source_model == canonical_model:
+            return
+        prior = model_aliases.get(source_model)
+        if prior is not None and prior != canonical_model:
+            raise ValueError(
+                f"route #{index} assigns model alias {source_model!r} to both "
+                f"{prior!r} and {canonical_model!r}"
+            )
+        model_aliases[source_model] = canonical_model
+
     for index, route in enumerate(routes):
         try:
             r_id = route["route_id"]
-            c_model = route["model"]
+            source_model = route["model"]
         except (KeyError, TypeError) as exc:
             raise ValueError(f"route #{index} is missing 'route_id' or 'model': {route!r}") from exc
+        if not isinstance(r_id, str) or not r_id.strip():
+            raise ValueError(f"route #{index} has an invalid route_id: {r_id!r}")
+        if not isinstance(source_model, str) or not source_model.strip():
+            raise ValueError(f"route #{index} has an invalid model: {source_model!r}")
+        c_model = route.get("model_key", source_model)
+        if not isinstance(c_model, str) or not c_model.strip():
+            raise ValueError(f"route #{index} has an invalid model_key: {c_model!r}")
         if r_id in routes_by_id:
             # Same class of bug already fixed for discovery (`_openrouter_routes`'s
             # `existing_route_ids` dedup): two hand-authored routes sharing a route_id would
@@ -227,9 +265,53 @@ def _validated_routes(routes: list[Any]) -> tuple[dict[str, dict[str, Any]], dic
             # `model_routes_map`, overcounting `_metadata.routes_count` and making one route
             # unreachable (CodeRabbit, review/41).
             raise ValueError(f"route #{index} redeclares route_id {r_id!r}")
-        routes_by_id[r_id] = route
+        normalized = dict(route)
+        normalized["model"] = c_model
+        normalized.pop("model_key", None)
+
+        # A provider/account/upstream tuple is one physical quota bucket. A second YAML entry
+        # that differs only by its selector is an alias, not another capacity pool; compiling it
+        # as a route would let the Worker reserve the same credential twice. Require complete
+        # physical identity and identical limits before coalescing, so a real quota/configuration
+        # conflict fails loudly instead of silently choosing one entry.
+        physical_identity = tuple(
+            str(normalized.get(field, "")) for field in ("provider", "account_id", "upstream_model")
+        )
+        physical_settings = {
+            key: value for key, value in normalized.items() if key not in {"route_id", "model"}
+        }
+        if all(physical_identity):
+            prior_physical = physical_routes.get(physical_identity)
+            if prior_physical is not None:
+                prior_model, prior_settings = prior_physical
+                if c_model != prior_model:
+                    raise ValueError(
+                        f"route #{index} reuses physical provider/account/upstream tuple "
+                        f"{physical_identity!r} with conflicting model_key {c_model!r}; "
+                        f"existing key is {prior_model!r}"
+                    )
+                if physical_settings != prior_settings:
+                    raise ValueError(
+                        f"route #{index} reuses physical provider/account/upstream tuple "
+                        f"{physical_identity!r} with conflicting limits or settings"
+                    )
+                register_alias(source_model, prior_model, index)
+                continue
+            physical_routes[physical_identity] = (c_model, physical_settings)
+
+        normalized_routes.append(normalized)
+        routes_by_id[r_id] = normalized
         model_routes_map.setdefault(c_model, []).append(r_id)
-    return routes_by_id, model_routes_map
+        register_alias(source_model, c_model, index)
+
+    canonical_models = set(model_routes_map)
+    conflicts = sorted(alias for alias in model_aliases if alias in canonical_models)
+    if conflicts:
+        alias = conflicts[0]
+        raise ValueError(
+            f"model alias {alias!r} is also a canonical model; use one model_key consistently"
+        )
+    return normalized_routes, routes_by_id, model_routes_map, model_aliases
 
 
 def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
@@ -250,18 +332,19 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
 
     providers = raw.get("providers", {})
     routes = raw.get("routes", [])
-    routes_by_id, model_routes_map = _validated_routes(routes)
+    normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
 
     compiled = {
         "_metadata": {
             "source": str(INPUT_YAML.relative_to(REPO_ROOT)),
-            "routes_count": len(routes),
+            "routes_count": len(normalized_routes),
             "providers_count": len(providers),
         },
         "providers": providers,
-        "routes": routes,
+        "routes": normalized_routes,
         "routes_by_id": routes_by_id,
         "model_routes_map": model_routes_map,
+        "model_aliases": model_aliases,
     }
     return compiled
 
