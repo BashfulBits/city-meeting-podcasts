@@ -128,12 +128,12 @@ class LLMRoute:
 _DEEPSEEK_WINDOW = PeakWindow("UTC", time(16, 30), time(0, 30), 0.5)
 
 
-def _load_generated_routes() -> list[LLMRoute]:
+def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
     path = Path(__file__).with_name("llm_routes.json")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return []
+        return [], {}
     except json.JSONDecodeError as exc:
         raise RuntimeError(
             f"Invalid generated LLM route catalog at {path}; rerun scripts/compile_llm_limits.py"
@@ -171,10 +171,26 @@ def _load_generated_routes() -> list[LLMRoute]:
                 account_id=str(item.get("account_id", "")),
             )
         )
-    return result
+    aliases = {
+        str(source): str(target)
+        for source, target in (raw.get("model_aliases") or {}).items()
+        if str(source) and str(target)
+    }
+    return result, aliases
 
 
-_GENERATED_ROUTES = _load_generated_routes()
+_GENERATED_ROUTES, MODEL_ALIASES = _load_generated_catalog()
+
+
+def canonical_model(model: str) -> str:
+    """Return the shared logical model key for a legacy/provider-qualified selector."""
+    current = model
+    seen: set[str] = set()
+    while current in MODEL_ALIASES and current not in seen:
+        seen.add(current)
+        current = MODEL_ALIASES[current]
+    return current
+
 
 # Physical route registry used for selection and the shared ledger.  ``ROUTES`` remains the
 # stable logical-model compatibility view: one deterministic primary route per model for callers
@@ -361,11 +377,13 @@ __all__ = [
     "DeferredLLMRequest",
     "LLMRequestPolicy",
     "LLMRoute",
+    "MODEL_ALIASES",
     "PeakWindow",
     "PricingPolicy",
     "QuotaPolicy",
     "ROUTES",
     "ROUTE_CANDIDATES",
     "ROUTE_REGISTRY",
+    "canonical_model",
     "estimate_tokens",
 ]

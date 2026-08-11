@@ -4,6 +4,8 @@ provider: swagit
 source:
   list_url: https://austintx.new.swagit.com/views/117/electric-utility-commission
   body: "Electric Utility Commission"
+  body_any:
+    - "Electric Utility and Resource Management Commissions Special Joint Meeting"
 podcast_title: "Austin: Electric Utility Commission"
 podcast_author: "City of Austin, TX"
 podcast_email: ""

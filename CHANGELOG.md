@@ -28,6 +28,21 @@ Phase R (Research-Tool Surface)._
   while ASR artifacts are not invalidated. Provider-selected episodes then enter a separate
   `transcript-asr-comparison` queue only after the ordinary ASR queue drains; it retains full ASR
   artifacts for H15 without replacing the served provider route.
+  
+- **Equivalent provider model selectors now share canonical logical keys.** The limits compiler
+  emits a `model_aliases` map, coalesces selector-only duplicates for one physical provider/account
+  quota bucket, and normalizes route entries before generating the Python and Worker
+  catalogs. DeepSeek V4 Flash 0731 aliases now share one logical candidate pool across DeepSeek,
+  SiliconFlow, and OpenCode; the equivalent OpenRouter/Kilo/OpenCode Nemotron free routes are
+  likewise unified. Physical `route_id` entries remain separate, so provider/account quotas and ledger
+  reservations are not merged. Existing provider-qualified selectors remain accepted through the
+  alias map; no stored LLM result or pipeline artifact is invalidated, and no backfill is required.
+
+- **Topic tagging is now pinned to Gemini 3.1 Flash Lite only.** Gemini 3.5 Flash Lite remains
+  reserved for production chapter locating, preserving its independent free-tier capacity for the
+  long-context locator workload. This changes the tag route allowlist only; tag prompts, recipe
+  hashes, visibility calibration, and stored artifacts are unchanged, so no pipeline-version bump
+  or catalog backfill is required.
 
 - **Topic tagging now uses the asynchronous LLM dispatch Worker.** The tag workflow enqueues Gemini
   requests instead of holding a GitHub Actions runner while waiting for local quota windows; the

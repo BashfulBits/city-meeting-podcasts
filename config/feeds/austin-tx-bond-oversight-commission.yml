@@ -4,6 +4,8 @@ provider: swagit
 source:
   list_url: https://austintx.new.swagit.com/views/117/bond-oversight-commission
   body: "Bond Oversight Commission"
+  body_any:
+    - "Bond Oversight Committee"
 podcast_title: "Austin: Bond Oversight Commission"
 podcast_author: "City of Austin, TX"
 podcast_email: ""

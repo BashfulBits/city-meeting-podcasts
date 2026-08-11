@@ -93,6 +93,17 @@ function requiredString(value, name) {
   return result;
 }
 
+function canonicalModelName(model, dispatchLimits = DISPATCH_LIMITS) {
+  let current = model;
+  const seen = new Set();
+  const aliases = dispatchLimits?.model_aliases || {};
+  while (typeof aliases[current] === "string" && !seen.has(current)) {
+    seen.add(current);
+    current = aliases[current];
+  }
+  return current;
+}
+
 function modelName(model) {
   return model.split("/").pop() || model;
 }
@@ -314,16 +325,16 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
 
   const requestedModel =
     typeof body.model === "string" && body.model.trim() ? body.model.trim() : cfg.model;
-  let canonicalModel = requestedModel;
+  let canonicalModel = canonicalModelName(requestedModel, dispatchLimits);
   if (!dispatchLimits.model_routes_map?.[canonicalModel]) {
     const matchingRoute = (dispatchLimits.routes || []).find(
       (r) =>
         r.upstream_model === requestedModel || r.model === `${cfg.provider}/${requestedModel}`,
     );
     if (matchingRoute) {
-      canonicalModel = matchingRoute.model;
+      canonicalModel = canonicalModelName(matchingRoute.model, dispatchLimits);
     } else if (requestedModel === cfg.upstreamModel) {
-      canonicalModel = cfg.model;
+      canonicalModel = canonicalModelName(cfg.model, dispatchLimits);
     }
   }
 
@@ -955,7 +966,8 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
 }
 
 function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
-  const routeIds = dispatchLimits.model_routes_map?.[canonicalModel] || [];
+  const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
+  const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
   const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
   const freeRanked = rankRoutes(candidates.filter((route) => route.free));
   const paidRanked = rankRoutes(candidates.filter((route) => !route.free));
@@ -1074,6 +1086,13 @@ async function dispatchBatch(
         const rec = loaded.value;
         if (rec.status !== "pending") continue;
         if (rec.available_at && parseTime(rec.available_at) > now.getTime()) continue;
+        const logicalModel = canonicalModelName(rec.model, DISPATCH_LIMITS);
+        if (logicalModel !== rec.model) {
+          rec.model = logicalModel;
+          if (rec.request && typeof rec.request === "object") {
+            rec.request.model = logicalModel;
+          }
+        }
         claimable.push({ key: obj.key, object: loaded.object, record: rec });
       }
 
@@ -1580,7 +1599,8 @@ async function handleRequest(request, env) {
   }
 
   if (url.pathname === "/v1/queue/estimate" && request.method === "GET") {
-    const model = url.searchParams.get("model") || cfg.model;
+    const requestedModel = url.searchParams.get("model") || cfg.model;
+    const model = canonicalModelName(requestedModel, DISPATCH_LIMITS);
     let count = 0;
     let cursor = undefined;
     do {
@@ -1589,14 +1609,17 @@ async function handleRequest(request, env) {
       for (const obj of objects) {
         const meta = obj.customMetadata || {};
         if (meta.status) {
-          if (meta.status === "pending" && (!model || meta.model === model)) {
+          if (
+            meta.status === "pending" &&
+            (!model || canonicalModelName(meta.model, DISPATCH_LIMITS) === model)
+          ) {
             count += 1;
           }
           continue;
         }
         const loaded = await getJson(env.LLM_QUEUE, obj.key);
         if (loaded && loaded.value && loaded.value.status === "pending") {
-          if (!model || loaded.value.model === model) {
+          if (!model || canonicalModelName(loaded.value.model, DISPATCH_LIMITS) === model) {
             count += 1;
           }
         }

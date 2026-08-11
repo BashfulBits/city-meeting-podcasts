@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "City Council"
+  body_includes:
+    - provider_guid: "112591"
+      body: "Denton State of the City"
 podcast_title: "Denton: City Council"
 podcast_author: "City of Denton, TX"
 podcast_email: ""

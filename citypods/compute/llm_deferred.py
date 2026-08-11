@@ -88,14 +88,20 @@ def _index_models(data: Mapping[str, Any]) -> tuple[str, ...]:
     """
     if data.get("status") != "pending":
         return ()
-    from citypods.compute.llm_policy import ROUTES
+    from citypods.compute.llm_policy import ROUTES, canonical_model
 
     resolved = data.get("model")
-    if isinstance(resolved, str) and resolved in ROUTES:
-        return (resolved,)
+    if isinstance(resolved, str):
+        resolved = canonical_model(resolved)
+        if resolved in ROUTES:
+            return (resolved,)
     policy = data.get("policy")
     allowed = policy.get("allowed_models") if isinstance(policy, Mapping) else None
-    candidates = set(allowed) if isinstance(allowed, list | tuple) else set(ROUTES)
+    candidates = (
+        {canonical_model(model) for model in allowed}
+        if isinstance(allowed, list | tuple)
+        else set(ROUTES)
+    )
     allow_paid = bool(policy.get("allow_paid", False)) if isinstance(policy, Mapping) else False
     return tuple(
         sorted(
@@ -557,12 +563,12 @@ def _release_abandoned_reservation(storage, data: Mapping[str, Any], *, now: dat
         return
     try:
         from citypods.compute.llm_budget import release_route_reservation
-        from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTE_REGISTRY
+        from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTE_REGISTRY, canonical_model
 
         route_id = data.get("route_id")
         route = ROUTE_REGISTRY.get(route_id) if isinstance(route_id, str) else None
         if route is None:
-            route = next(iter(ROUTE_CANDIDATES.get(model, ())), None)
+            route = next(iter(ROUTE_CANDIDATES.get(canonical_model(model), ())), None)
         if route is None:
             return
         release_route_reservation(storage, owner, route.route_id or model, route=route, now=now)

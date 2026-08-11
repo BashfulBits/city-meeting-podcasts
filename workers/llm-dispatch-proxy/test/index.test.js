@@ -348,29 +348,29 @@ test("provider RPM paces different models through one shared schedule", async (t
   assert.deepEqual(calls, ["codestral-2508", "mistral-small-2603"]);
 });
 
-test("a paid-only model with allow_paid=false fails permanently instead of dispatching anyway", async () => {
-  // CodeRabbit index.js:541 -- the exact bug: every route for deepseek-v4-flash is paid, so a
-  // caller that disallowed paid must get a terminal failure, not a silent fallback dispatch.
+test("legacy DeepSeek aliases use the unified free candidate pool", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(
-    chatRequest(undefined, "paid-disallowed", "deepseek/deepseek-v4-flash"),
+    chatRequest(undefined, "deepseek-alias", "opencode/deepseek-v4-flash-free"),
     env,
   );
   const body = await queued.json();
 
-  const posted = { count: 0 };
-  const upstream = async () => {
-    posted.count += 1;
-    return new Response(JSON.stringify({ id: "should-not-happen", choices: [] }), { status: 200 });
+  const calls = [];
+  const upstream = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ id: "deepseek-free", choices: [] }), { status: 200 });
   };
 
   const result = await dispatchOne(env, upstream, new Date());
-  assert.equal(result.status, "failed");
-  assert.equal(posted.count, 0);
+  assert.equal(result.status, "completed");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
+  assert.equal(calls[0].body.model, "deepseek-v4-flash-0731");
   const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
   const record = await stored.json();
-  assert.equal(record.status, "failed");
-  assert.equal(record.error.code, "no_eligible_route");
+  assert.equal(record.status, "completed");
+  assert.equal(record.model, "deepseek/deepseek-v4-flash");
 });
 
 test("a request for a canonical model with no configured route fails permanently", async () => {
@@ -626,6 +626,10 @@ test("GET /v1/queue/estimate reports backlog_count for pending records of the re
     "requests/gemini-pending.json",
     JSON.stringify(record("chatcmpl-g1", "gemini/gemini-3-flash-preview", "pending")),
   );
+  await env.LLM_QUEUE.put(
+    "requests/deepseek-alias-pending.json",
+    JSON.stringify(record("chatcmpl-d1", "opencode/deepseek-v4-flash-free", "pending")),
+  );
 
   const response = await handleRequest(
     request("https://dispatch.example/v1/queue/estimate?model=mistral%2Fmistral-large-2512", {
@@ -637,6 +641,18 @@ test("GET /v1/queue/estimate reports backlog_count for pending records of the re
   const body = await response.json();
   assert.equal(body.model, "mistral/mistral-large-2512");
   assert.equal(body.backlog_count, 2);
+
+  const aliasResponse = await handleRequest(
+    request(
+      "https://dispatch.example/v1/queue/estimate?model=opencode%2Fdeepseek-v4-flash-free",
+      { method: "GET" },
+    ),
+    env,
+  );
+  assert.equal(aliasResponse.status, 200);
+  const aliasBody = await aliasResponse.json();
+  assert.equal(aliasBody.model, "deepseek/deepseek-v4-flash");
+  assert.equal(aliasBody.backlog_count, 1);
 });
 
 test("deadline-based paid elevation only fires when waiting for free capacity would miss the deadline", async () => {
