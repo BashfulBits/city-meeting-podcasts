@@ -41,12 +41,19 @@ separate `route_id`s with **independent ledger entries** — this is what makes 
 exhausting one account's window rolls dispatch onto the other rather than blocking the model.
 
 `dispatchOne`'s route selection ranks a request's candidate routes free-before-paid, then cheapest,
-checks each against `state/dispatch_budget.json` (R2, per-`route_id` minute/day counters, optional
-cost fields, `inflight` reservations, and a reactive `blocked_until`, mirroring
+checks each against `state/dispatch_budget.json` (R2, per-`route_id` request pacing/day counters,
+optional cost fields, `inflight` reservations, and a reactive `blocked_until`, mirroring
 `citypods/compute/llm_budget.py`'s shape), and reserves the first with real
 capacity. A request whose caller disallowed paid and whose model has no free route left fails
 permanently; one that's merely temporarily out of capacity is left `pending` for a later tick — never
 silently dispatched on a fallback default.
+
+RPM is interpreted as a continuous pace: `rpm: 60` means the next submission is eligible one second
+after the previous reservation, rather than allowing a burst of 60 requests at a wall-clock minute
+boundary. A provider-level `rpm` in `config/provider_limits.yml` is shared by every model and account
+for that provider; a route-level `rpm` remains an additional model/account gate. The compiler carries
+provider settings into `dispatch_limits.json` and the Python route catalog, so the pacing values are
+configuration data rather than provider-specific Worker logic.
 
 **Auto-discovery of a provider's live model/pricing catalog (OpenRouter today) is opt-in and
 maintainer-run only** — `python scripts/compile_llm_limits.py --discover openrouter` (or bare
@@ -96,7 +103,7 @@ Cloudflare deployment secrets as the existing media proxy.
 ## Scheduling lanes
 
 Each scheduled invocation claims up to `MAX_TOTAL_REQUESTS` records in batches of
-`BATCH_CONCURRENCY`, subject to the route ledger and the effective deadline. Fast-lane requests are
+`BATCH_CONCURRENCY`, subject to the route/provider pacing ledgers and the effective deadline. Fast-lane requests are
 ordered before long-lane requests so a backlog of quick calls drains first, except that a fresh run
 reserves one first-batch slot for a long request that can fit. With the deployed values, the long-lane
 start window is `820 - 720 - 20 = 80` seconds: starting it in that first batch lets the remaining

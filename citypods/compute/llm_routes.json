@@ -582,7 +582,8 @@
       "api_base": "https://api.mistral.ai",
       "chat_path": "/v1/chat/completions",
       "api_key_env": "MISTRAL_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 60
     },
     {
       "route_id": "mistral_devstral_2512_primary",
@@ -601,7 +602,8 @@
       "api_base": "https://api.mistral.ai",
       "chat_path": "/v1/chat/completions",
       "api_key_env": "MISTRAL_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 60
     },
     {
       "route_id": "mistral_small_2603_primary",
@@ -620,7 +622,8 @@
       "api_base": "https://api.mistral.ai",
       "chat_path": "/v1/chat/completions",
       "api_key_env": "MISTRAL_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 60
     },
     {
       "route_id": "mistral_medium_2508_primary",
@@ -639,7 +642,8 @@
       "api_base": "https://api.mistral.ai",
       "chat_path": "/v1/chat/completions",
       "api_key_env": "MISTRAL_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 60
     },
     {
       "route_id": "mistral_medium_2505_primary",
@@ -658,7 +662,8 @@
       "api_base": "https://api.mistral.ai",
       "chat_path": "/v1/chat/completions",
       "api_key_env": "MISTRAL_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 60
     },
     {
       "route_id": "mistral_large_2512_primary",
@@ -677,7 +682,8 @@
       "api_base": "https://api.mistral.ai",
       "chat_path": "/v1/chat/completions",
       "api_key_env": "MISTRAL_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 60
     },
     {
       "route_id": "mistral_large_3_primary",
@@ -696,7 +702,8 @@
       "api_base": "https://api.mistral.ai",
       "chat_path": "/v1/chat/completions",
       "api_key_env": "MISTRAL_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 60
     },
     {
       "route_id": "mistral_labs_leanstral_1_5_1_primary",
@@ -715,7 +722,8 @@
       "api_base": "https://api.mistral.ai",
       "chat_path": "/v1/chat/completions",
       "api_key_env": "MISTRAL_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 60
     },
     {
       "route_id": "zai_glm_4_7_flash_primary",

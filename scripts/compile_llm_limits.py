@@ -85,6 +85,8 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
                 ),
             }
         )
+        if provider_cfg.get("rpm") is not None:
+            route["provider_rpm"] = provider_cfg["rpm"]
         routes.append(route)
     return {"_metadata": compiled["_metadata"], "routes": routes}
 

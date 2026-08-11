@@ -655,6 +655,7 @@ function ledgerEntry(budget, routeId) {
     budget.routes[routeId] = {
       requests_minute: 0,
       tokens_minute: 0,
+      requests_available_at: "",
       tokens_available_at: "",
       requests_minute_key: "",
       requests_day: 0,
@@ -713,8 +714,18 @@ function routeAvailable(entry, route, { requests, tokens }, now) {
   if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
     return false;
   }
-  if (route.rpm != null && entry.requests_minute + requests > route.rpm) {
-    return false;
+  if (route.rpm != null) {
+    const nextRequestAt = entry.requests_available_at
+      ? parseTime(entry.requests_available_at)
+      : null;
+    // New reservations use a continuous pacing schedule. The minute counter remains as a
+    // compatibility fallback for ledgers written by older Worker versions.
+    if (
+      (nextRequestAt != null && nextRequestAt > now.getTime()) ||
+      (nextRequestAt == null && entry.requests_minute + requests > route.rpm)
+    ) {
+      return false;
+    }
   }
   if (route.rpd != null && entry.requests_day + requests > route.rpd) {
     return false;
@@ -742,8 +753,19 @@ function reserveRouteCapacity(
   { owner = null, reservedAt = null, expiresAt = null } = {},
 ) {
   const tokensMinuteBefore = entry.tokens_minute;
+  const requestScheduleBefore = entry.requests_available_at || "";
   entry.requests_minute += requests;
   entry.tokens_minute += tokens;
+  let requestScheduleAfter = requestScheduleBefore;
+  if (route.rpm != null) {
+    const intervalMs = 60_000 / route.rpm;
+    const reservedMs = Date.parse(reservedAt || new Date().toISOString());
+    const readyMs = requestScheduleBefore ? parseTime(requestScheduleBefore) : reservedMs;
+    requestScheduleAfter = new Date(
+      Math.max(reservedMs, readyMs) + intervalMs * requests,
+    ).toISOString();
+    entry.requests_available_at = requestScheduleAfter;
+  }
   const tokenScheduleBefore = entry.tokens_available_at || "";
   const totalTokens = tokensMinuteBefore + tokens;
   const tokenScheduleAfter =
@@ -762,6 +784,8 @@ function reserveRouteCapacity(
       requests,
       tokens,
       cost: 0,
+      requests_available_at_before: requestScheduleBefore,
+      requests_available_at_after: requestScheduleAfter,
       tokens_available_at_before: tokenScheduleBefore,
       tokens_available_at_after: tokenScheduleAfter,
       tokens_minute_before: tokensMinuteBefore,
@@ -769,6 +793,47 @@ function reserveRouteCapacity(
       expires_at: expiresAt,
     };
   }
+}
+
+function providerRpm(route, dispatchLimits = DISPATCH_LIMITS) {
+  const raw = dispatchLimits.providers?.[route?.provider]?.rpm;
+  if (raw == null) return null;
+  const rpm = Number(raw);
+  if (!Number.isFinite(rpm) || rpm <= 0) {
+    throw new Error(`provider ${route.provider} rpm must be a positive number`);
+  }
+  return rpm;
+}
+
+function providerLedgerEntry(budget, provider) {
+  if (!budget.providers) budget.providers = {};
+  if (!budget.providers[provider]) {
+    budget.providers[provider] = { requests_available_at: "" };
+  }
+  return budget.providers[provider];
+}
+
+function providerAvailable(budget, route, now, dispatchLimits = DISPATCH_LIMITS) {
+  if (providerRpm(route, dispatchLimits) == null) return true;
+  const entry = budget.providers?.[route.provider];
+  const nextRequestAt = entry?.requests_available_at
+    ? parseTime(entry.requests_available_at)
+    : null;
+  return nextRequestAt == null || nextRequestAt <= now.getTime();
+}
+
+function reserveProviderCapacity(budget, route, requests, now, dispatchLimits = DISPATCH_LIMITS) {
+  const rpm = providerRpm(route, dispatchLimits);
+  if (rpm == null) return;
+  const entry = providerLedgerEntry(budget, route.provider);
+  const intervalMs = 60_000 / rpm;
+  const nowMs = now.getTime();
+  const readyMs = entry.requests_available_at
+    ? parseTime(entry.requests_available_at)
+    : nowMs;
+  entry.requests_available_at = new Date(
+    Math.max(nowMs, readyMs) + intervalMs * requests,
+  ).toISOString();
 }
 
 async function releaseRouteReservation(bucket, routeId, owner) {
@@ -799,7 +864,7 @@ function timeoutSecondsForRecord(record, cfg) {
     : cfg.fastUpstreamTimeoutSeconds;
 }
 
-function nextRouteReset(entry, route, now) {
+function nextRouteReset(entry, route, now, dispatchLimits = DISPATCH_LIMITS, budget = null) {
   if (entry.blocked_until) {
     const blockedMs = parseTime(entry.blocked_until);
     if (blockedMs > now.getTime()) {
@@ -808,8 +873,20 @@ function nextRouteReset(entry, route, now) {
   }
   const candidates = [];
   const nextMinuteMs = Math.floor(now.getTime() / 60000) * 60000 + 60000;
-  if (route.rpm != null && entry.requests_minute >= route.rpm) {
-    candidates.push(new Date(nextMinuteMs));
+  if (route.rpm != null) {
+    if (entry.requests_available_at) {
+      const requestReadyMs = parseTime(entry.requests_available_at);
+      if (requestReadyMs > now.getTime()) candidates.push(new Date(requestReadyMs));
+    } else if (entry.requests_minute >= route.rpm) {
+      candidates.push(new Date(nextMinuteMs));
+    }
+  }
+  if (providerRpm(route, dispatchLimits) != null) {
+    const providerReady = budget?.providers?.[route.provider]?.requests_available_at;
+    if (providerReady) {
+      const providerReadyMs = parseTime(providerReady);
+      if (providerReadyMs > now.getTime()) candidates.push(new Date(providerReadyMs));
+    }
   }
   if (route.tpm != null && entry.tokens_available_at) {
     const tokenReadyMs = parseTime(entry.tokens_available_at);
@@ -889,8 +966,10 @@ function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPA
     for (const route of ranked) {
       const entry = ledgerEntry(budget, route.route_id);
       rollLedgerWindows(entry, route, now);
-      if (routeAvailable(entry, route, reservationSize, now)) {
-        return { chosenRoute: route, entry };
+      if (providerAvailable(budget, route, now, dispatchLimits)) {
+        if (routeAvailable(entry, route, reservationSize, now)) {
+          return { chosenRoute: route, entry };
+        }
       }
     }
     return null;
@@ -918,7 +997,7 @@ function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPA
   }
 
   const freeResets = freeRanked.map((route) =>
-    nextRouteReset(ledgerEntry(budget, route.route_id), route, now).getTime(),
+    nextRouteReset(ledgerEntry(budget, route.route_id), route, now, dispatchLimits, budget).getTime(),
   );
   const earliestFreeReset = Math.min(...freeResets);
 
@@ -1093,6 +1172,11 @@ async function dispatchBatch(
 
       const entry = ledgerEntry(budget, chosenRoute.route_id);
       rollLedgerWindows(entry, chosenRoute, now);
+      if (!providerAvailable(budget, chosenRoute, now)) {
+        await requeue(bucket, claimed, now);
+        lastRequeuedId = claimed.record.id;
+        continue;
+      }
       if (!routeAvailable(entry, chosenRoute, reservationSize, now)) {
         await requeue(bucket, claimed, now);
         lastRequeuedId = claimed.record.id;
@@ -1100,6 +1184,7 @@ async function dispatchBatch(
       }
 
       const reservationOwner = claimed.record.id;
+      reserveProviderCapacity(budget, chosenRoute, reservationSize.requests, now);
       reserveRouteCapacity(entry, chosenRoute, reservationSize, {
         owner: reservationOwner,
         reservedAt: now.toISOString(),
@@ -1159,12 +1244,22 @@ async function dispatchBatch(
         budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
         const freshBudget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
         for (const item of candidatesToDispatch) {
+          if (!providerAvailable(freshBudget, item.chosenRoute, now)) {
+            freshCapacityFailed = true;
+            break;
+          }
           const entry = ledgerEntry(freshBudget, item.chosenRoute.route_id);
           rollLedgerWindows(entry, item.chosenRoute, now);
           if (!routeAvailable(entry, item.chosenRoute, item.reservationSize, now)) {
             freshCapacityFailed = true;
             break;
           }
+          reserveProviderCapacity(
+            freshBudget,
+            item.chosenRoute,
+            item.reservationSize.requests,
+            now,
+          );
           reserveRouteCapacity(entry, item.chosenRoute, item.reservationSize, {
             owner: item.reservationOwner,
             reservedAt: now.toISOString(),
@@ -1508,8 +1603,15 @@ async function handleRequest(request, env) {
     } while (cursor);
     const routeIds = DISPATCH_LIMITS.model_routes_map?.[model] || [];
     const fastestRpm = routeIds
-      .map((id) => DISPATCH_LIMITS.routes_by_id[id]?.rpm)
-      .filter((rpm) => typeof rpm === "number" && rpm > 0);
+      .map((id) => {
+        const route = DISPATCH_LIMITS.routes_by_id[id];
+        const limits = [
+          route?.rpm,
+          DISPATCH_LIMITS.providers?.[route?.provider]?.rpm,
+        ].filter((rpm) => typeof rpm === "number" && rpm > 0);
+        return limits.length > 0 ? Math.min(...limits) : null;
+      })
+      .filter((rpm) => rpm != null);
     const perRequestSeconds = fastestRpm.length > 0 ? 60 / Math.max(...fastestRpm) : 60;
     const estSeconds = Math.ceil(count * perRequestSeconds);
     return jsonResponse({

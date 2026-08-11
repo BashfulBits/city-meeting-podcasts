@@ -8,6 +8,7 @@
     "mistral": {
       "api_base": "https://api.mistral.ai",
       "chat_path": "/v1/chat/completions",
+      "rpm": 60,
       "monthly_tpm": 1000000000,
       "reset_day": 1,
       "accounts": [

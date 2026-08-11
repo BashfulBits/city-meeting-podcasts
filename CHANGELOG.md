@@ -20,7 +20,7 @@ Phase R (Research-Tool Surface)._
 - **LLM TPM admission now models average throughput instead of a hard one-minute request ceiling.**
   The Python CAS ledger and LLM dispatch Worker admit requests larger than one minute's declared
   TPM and persist an oversized-request cooldown proportional to `tokens / TPM`; ordinary smaller
-  requests retain their normal per-minute burst. Rollover-only RPM/RPD/token bookkeeping is now
+  requests retain their normal token-rate burst. Rollover-only RPM/RPD/token bookkeeping is now
   persisted even when selection finds no route, so quota state does not remain on an old day key.
   This changes only ephemeral coordination state (`state/llm_budget.json` and the dispatch Worker
   budget); no durable catalog artifact is invalidated or backfilled.
@@ -33,6 +33,13 @@ Phase R (Research-Tool Surface)._
   RAM. Beam's configured runtime rate is correspondingly updated to include GPU, CPU, and RAM pricing
   (`$0.0002672/s`). This is an operational admission/telemetry change only: no pipeline version was
   bumped, existing artifacts were not invalidated, and no backfill is required.
+
+- **LLM RPM limits now pace submissions continuously.** Route-level RPM values and provider-level
+  RPM values are translated into persisted `requests_available_at` schedules instead of burstable
+  wall-clock-minute counters. Mistral is configured at a shared provider limit of 60 RPM (one
+  submission per second) across all models and accounts. This changes only ephemeral coordination
+  state (`state/llm_budget.json` and the dispatch Worker budget); no durable catalog artifact is
+  invalidated or backfilled.
 
 - **Dallas City Council feed now includes special-called full-council sessions** (GH#1121). A
   source may now declare `body_any` for explicit alternative provider labels; the shared selector

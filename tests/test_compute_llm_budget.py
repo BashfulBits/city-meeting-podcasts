@@ -95,6 +95,51 @@ def test_tpm_is_a_rate_and_allows_a_burst_larger_than_one_minute():
     assert budget.routes[route.model].tokens_available_at == ""
 
 
+def test_rpm_is_a_continuous_request_pace():
+    route = LLMRoute(
+        model="paced/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=5),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    budget.reserve("first", route.model, route=route, requests=1, tokens=1, cost=0, now=NOW)
+    assert not budget.available(
+        route.model, route=route, requests=1, tokens=1, cost=0, now=NOW + timedelta(seconds=11)
+    )
+    assert budget.available(
+        route.model, route=route, requests=1, tokens=1, cost=0, now=NOW + timedelta(seconds=12)
+    )
+
+
+def test_provider_rpm_is_shared_across_models():
+    first = LLMRoute(
+        model="provider/first",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=120),
+        pricing=PricingPolicy(),
+        provider="provider",
+        provider_rpm=60,
+    )
+    second = LLMRoute(
+        model="provider/second",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=120),
+        pricing=PricingPolicy(),
+        provider="provider",
+        provider_rpm=60,
+    )
+    budget = LLMBudget()
+    budget.reserve("first", first.model, route=first, requests=1, tokens=1, cost=0, now=NOW)
+    assert not budget.available(second.model, route=second, requests=1, tokens=1, cost=0, now=NOW)
+    assert budget.available(
+        second.model, route=second, requests=1, tokens=1, cost=0, now=NOW + timedelta(seconds=1)
+    )
+
+
 def test_serialized_ledger_matches_worker_shape():
     budget = LLMBudget()
     budget.reserve("owner", ROUTE.model, route=ROUTE, requests=1, tokens=10, cost=0.1, now=NOW)
@@ -109,6 +154,7 @@ def test_serialized_ledger_matches_worker_shape():
         "requests_minute",
         "tokens_minute",
         "requests_minute_key",
+        "requests_available_at",
         "requests_day",
         "requests_day_key",
         "tokens_available_at",

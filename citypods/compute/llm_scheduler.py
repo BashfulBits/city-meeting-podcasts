@@ -127,12 +127,19 @@ def _next_local_midnight(reset_timezone: str, now: datetime) -> datetime:
 
 
 def _next_quota_reset(
-    route: LLMRoute, ledger, now: datetime, *, requests: int, tokens: int, cost: float
+    route: LLMRoute,
+    ledger,
+    now: datetime,
+    *,
+    requests: int,
+    tokens: int,
+    cost: float,
+    provider_ledger=None,
 ) -> datetime:
     """The soonest time an axis actually keeping ``model`` unavailable right now will reset.
 
     Only offers a candidate for an axis genuinely responsible for the current ``available()``
-    failure. RPM remains a wall-clock minute bucket; TPM is an average throughput rate and uses
+    failure. RPM is a continuous request-rate schedule; TPM is an average throughput rate and uses
     the route's persisted oversized-request cooldown instead of comparing one request with a hard
     one-minute bucket. RPD remains a daily reset.
 
@@ -151,10 +158,19 @@ def _next_quota_reset(
     resets: list[datetime] = []
     quota = route.quota
     pricing = route.pricing
-    per_minute_binding = quota.rpm is not None and ledger.requests_minute + requests > quota.rpm
-    if per_minute_binding:
-        current = now.astimezone(UTC)
-        resets.append(current.replace(second=0, microsecond=0) + timedelta(minutes=1))
+    if quota.rpm is not None:
+        if ledger.requests_available_at:
+            request_ready_at = datetime.fromisoformat(ledger.requests_available_at)
+            if request_ready_at > now.astimezone(UTC):
+                resets.append(request_ready_at)
+        elif ledger.requests_minute + requests > quota.rpm:
+            current = now.astimezone(UTC)
+            resets.append(current.replace(second=0, microsecond=0) + timedelta(minutes=1))
+    if route.provider_rpm is not None and provider_ledger is not None:
+        if provider_ledger.requests_available_at:
+            provider_ready_at = datetime.fromisoformat(provider_ledger.requests_available_at)
+            if provider_ready_at > now.astimezone(UTC):
+                resets.append(provider_ready_at)
     if quota.tpm is not None and ledger.tokens_available_at:
         token_ready_at = datetime.fromisoformat(ledger.tokens_available_at)
         if token_ready_at > now.astimezone(UTC):
@@ -326,6 +342,7 @@ def select_route(
                 requests=route_requests,
                 tokens=route_tokens,
                 cost=cost,
+                provider_ledger=ledger._provider_ledger(route, create=False),
             )
             retry_ats.append(predicted)
             reason = "quota or budget exhausted"

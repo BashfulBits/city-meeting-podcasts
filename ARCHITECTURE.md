@@ -217,7 +217,8 @@ total on `/admin/status`.
 - **Stage Protocol + `default_stages()`** — a new per-episode feature is a new stage.
 - **LLM TPM is average throughput** — per-route token limits preserve ordinary burst capacity up to
   the configured TPM, while an oversized request creates a persisted cooldown proportional to
-  `tokens / TPM`; RPM, RPD, concurrency, and reactive provider blocks remain independent gates.
+  `tokens / TPM`; RPM is likewise a persisted continuous request pace (`60 / RPM` seconds between
+  submissions), while RPD, concurrency, and reactive provider blocks remain independent gates.
 - **LLM coordination rollover is durable** — quota-window/day-key refreshes are CAS-persisted even
   when selection finds no eligible route, so diagnostics cannot remain pinned to stale state.
 - **Split hashes** — `audio_spec_hash` (bytes) and `feed_content_hash` (RSS) invalidate independently.
@@ -353,7 +354,7 @@ total on `/admin/status`.
   design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests; a
   per-minute Cron Trigger claims a bounded batch of ready requests with an R2 conditional write, ranks each request's
   canonical model's candidate routes (free before paid, then cheapest) against a **per-route/per-account
-  ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s versioned minute/day
+  ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s versioned request-pacing/day
   window, cost, `blocked_until`, and `inflight` shape),
   reserves capacity on the first route with room, resolves that route's own provider config
   (`config/provider_limits.yml` → compiled `dispatch_limits.json`: `api_base`/`chat_path`/account

@@ -684,7 +684,7 @@ def test_select_and_reserve_owner_is_unique_per_direct_attempt():
         routes={route.model: route},
         available_transports=DIRECT,
         estimated_tokens=10,
-        now=NOW,
+        now=NOW + timedelta(seconds=12),
     )
     assert first.owner != second.owner
     budget, _ = load_llm_budget_cas(storage)
