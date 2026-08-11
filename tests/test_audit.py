@@ -259,6 +259,24 @@ def test_check_staleness_ignores_healthy_and_low_sample_feeds():
     assert check_staleness("s", [_ep(400), _ep(800)], NOW) is None  # too few samples
 
 
+def test_check_staleness_allows_five_intervals_for_biweekly_feed():
+    # Five 14-day intervals gives a 70-day threshold; a 69-day-old feed is still within it.
+    healthy = [_ep(69), _ep(83), _ep(97), _ep(111), _ep(125)]
+    assert check_staleness("s", healthy, NOW) is None
+
+    overdue = [_ep(71), _ep(85), _ep(99), _ep(113), _ep(127)]
+    assert check_staleness("s", overdue, NOW) is not None
+
+
+def test_check_staleness_uses_longer_absolute_floor_for_weekly_feed():
+    # Five weekly intervals would be 35 days, so the 45-day floor controls the threshold.
+    healthy = [_ep(44), _ep(51), _ep(58), _ep(65), _ep(72)]
+    assert check_staleness("s", healthy, NOW) is None
+
+    overdue = [_ep(46), _ep(53), _ep(60), _ep(67), _ep(74)]
+    assert check_staleness("s", overdue, NOW) is not None
+
+
 def test_check_staleness_floor_suppresses_bursty_false_positive():
     # Several same-day meetings -> near-zero median cadence; a normal 10-day gap since the
     # last one must NOT flag (the absolute floor dominates the tiny median).

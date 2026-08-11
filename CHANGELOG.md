@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Feed-health stale alerts now allow five median cadence intervals with a 45-day floor.**
+  This replaces the previous 3×/30-day rule, reducing alerts during ordinary multi-week recesses
+  while still flagging prolonged outages. It changes audit classification only; no catalog
+  artifacts, pipeline versions, or backfill behavior are changed.
+
 - **Provider transcript alignment now preserves word-boundary provenance.** Provider endpoints are
   probed for every discovered episode. A VTT with inline word timestamps is served as
   `provider-native`; cue-only VTT/SRT/TXT is aligned with stable-ts and served as

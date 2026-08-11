@@ -202,9 +202,9 @@ def check_staleness(
     now: datetime,
     *,
     archive_newest: datetime | None = None,
-    factor: float = 3.0,
+    factor: float = 5.0,
     min_samples: int = 4,
-    floor_days: float = 30.0,
+    floor_days: float = 45.0,
 ) -> Finding | None:
     """Flag a feed whose newest episode is much older than its own typical cadence.
 
