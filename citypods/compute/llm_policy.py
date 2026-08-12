@@ -41,6 +41,10 @@ class LLMRequestPolicy:
     # its documented same-run-completion design) that motivated making this opt-in rather than
     # "dispatch whenever a Worker happens to be configured."
     allow_dispatch_overflow: bool = False
+    # Durable Worker-queue admission. The caller submits work to the dispatch Worker and lets
+    # that Worker's ledger decide when it reaches a provider. Enqueueing must not consume the
+    # runner's provider RPD/RPM/TPM reservation.
+    queue_only: bool = False
     # Worker dispatch lane.  ``fast`` drains short requests before a scheduled invocation risks
     # starting work it cannot finish; ``long`` opts into the bounded long-context timeout lane.
     timeout_class: Literal["fast", "long"] = "long"

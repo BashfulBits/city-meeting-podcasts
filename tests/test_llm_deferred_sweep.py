@@ -245,3 +245,27 @@ def test_sweep_overrides_stale_deferred_deadline_for_retries():
 
     assert updated.deferred_request.policy.deadline_at == sweep_deadline
     assert original.deferred_request.policy.deadline_at == old_deadline
+
+
+def test_sweep_upgrades_legacy_topic_tag_deferral_to_durable_queue():
+    original = JobHandle(
+        task="tag",
+        recipe_hash="legacy-tag",
+        backend="litellm",
+        ref="deferred:legacy-tag",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "meeting text"},),
+            policy=LLMRequestPolicy(
+                purpose="topic-tags",
+                deadline_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ),
+        ),
+    )
+
+    upgraded = llm_deferred_sweep._with_sweep_deadline(
+        original, datetime(2026, 7, 24, 12, tzinfo=UTC)
+    )
+
+    assert upgraded.deferred_request.policy.queue_only is True
+    assert upgraded.deferred_request.policy.deadline_at is None
+    assert original.deferred_request.policy.queue_only is False

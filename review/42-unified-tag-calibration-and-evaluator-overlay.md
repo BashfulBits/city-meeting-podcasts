@@ -208,11 +208,22 @@ blanket catalog recall. Superseded and legacy episode-level LLM rows are retaine
 historical ledger entries rather than deleted, so evidence and review identity survive a chapter-only
 or recipe transition.
 
-The production secret boundary is explicit: `.github/workflows/tag.yml` supplies primary/secondary
-Gemini keys plus dispatch URL/auth secrets for the configured tag lane. Build & Deploy's `Render
-feeds` step supplies storage/proxy secrets only; `run.py` skips LLM backend construction when
+The production secret boundary is explicit: `.github/workflows/tag.yml` supplies only dispatch
+URL/auth and storage secrets for the configured tag lane; the Cloudflare Worker owns provider keys,
+including both Gemini accounts. Build & Deploy's `Render feeds` step supplies storage/proxy secrets
+only; `run.py` skips LLM backend construction when
 `phase == render`, so render-only publication does not require an LLM dispatch URL or report a
 misleading rules-only tagging fallback.
 
 The implementation updates `review/11`, `review/14`, `review/34`, `review/35`, `ROADMAP.md`,
 `CHANGELOG.md`, and `ARCHITECTURE.md` as required by the repository lifecycle contract.
+
+### Post-implementation queue correction (2026-08-12)
+
+Topic tagging and pre-labeling are durable backlog jobs, not deadline-bound direct retries. Their
+`queue_only` policy bypasses the runner-side provider quota ledger and posts directly to the Worker;
+the Worker is the single owner of eventual provider routing and capacity. Legacy topic-tag B2
+handles are upgraded to that policy by the deferred sweep. The Worker keeps a pending-only index
+beside retained request history so bounded cron scans cannot starve ready records behind terminal
+objects; the authenticated reindex operation repairs existing queue rows in place. This changes no
+candidate, admission, or display semantics.

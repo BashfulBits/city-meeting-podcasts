@@ -169,6 +169,7 @@ def _serialize_policy(policy: LLMRequestPolicy) -> dict[str, Any]:
         "deadline_at": policy.deadline_at.isoformat() if policy.deadline_at is not None else None,
         "purpose": policy.purpose,
         "timeout_class": policy.timeout_class,
+        "queue_only": policy.queue_only,
     }
 
 
@@ -181,6 +182,7 @@ def _deserialize_policy(data: Mapping[str, Any]) -> LLMRequestPolicy:
         deadline_at=datetime.fromisoformat(deadline) if deadline else None,
         purpose=str(data.get("purpose", "")),
         timeout_class=("fast" if data.get("timeout_class") == "fast" else "long"),
+        queue_only=bool(data.get("queue_only", False)),
     )
 
 

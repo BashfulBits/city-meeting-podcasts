@@ -66,6 +66,17 @@ def _with_sweep_deadline(handle, deadline_at: datetime):
     deferred = handle.deferred_request
     if not isinstance(deferred, DeferredLLMRequest):
         return handle
+    # Topic tagging is durable queue work.  A record which was deferred before it reached the
+    # Worker must be enqueued now, not retried through the runner's direct LiteLLM transport and
+    # not discarded because the producer run's deadline has elapsed.
+    if handle.task == "tag" and deferred.policy.purpose.startswith("topic-tags"):
+        return replace(
+            handle,
+            deferred_request=DeferredLLMRequest(
+                messages=deferred.messages,
+                policy=replace(deferred.policy, deadline_at=None, queue_only=True),
+            ),
+        )
     return replace(
         handle,
         deferred_request=DeferredLLMRequest(
@@ -168,6 +179,9 @@ def main(argv: list[str] | None = None) -> int:
     # regardless of LLM_MODE -- this is exactly the caller `_available_transports()` was built for
     # (see citypods/compute/llm.py), since the sweep services a mixed bag of records regardless of
     # which route originally claimed them.
+    # This workflow services a mix of direct and dispatch records.  Tag records are explicitly
+    # upgraded to queue_only above; that path posts to LLM_DISPATCH_URL itself, while every other
+    # deferred record preserves its original policy-selected behavior.
     backend = LiteLLMBackend(LLMBackendConfig.from_env(), storage=storage)
     _register_known_contracts()
 

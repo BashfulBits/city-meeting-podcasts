@@ -1333,6 +1333,44 @@ def test_dual_transport_route_dispatches_with_explicit_overflow_and_reserves_by_
     assert recipe_hash in ledger.inflight
 
 
+def test_queue_only_policy_enqueues_without_a_runner_quota_reservation():
+    """Durable backlog work is accepted by the Worker, not locally rate-limited first."""
+
+    class PendingSession(requests.Session):
+        def post(self, _url, json=None, headers=None, timeout=None):
+            assert json["model"] == "gemini/gemini-3-flash-preview"
+            assert headers["idempotency-key"] == "test-durable-queue"
+            response = requests.Response()
+            response.status_code = 202
+            response._content = b'{"id":"chatcmpl-durable"}'
+            response.headers["location"] = "/v1/requests/chatcmpl-durable"
+            return response
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=PendingSession(),
+        storage=MemStorage(),
+    )
+    result = backend.run_inference(
+        InferenceJob(
+            task="tag",
+            recipe_hash="test-durable-queue",
+            inputs={
+                "content": "meeting text",
+                "llm_policy": LLMRequestPolicy(
+                    allowed_models=("gemini/gemini-3-flash-preview",), queue_only=True
+                ),
+            },
+        )
+    )
+    assert isinstance(result, JobHandle)
+    assert result.owner is None
+
+
 def test_require_direct_policy_bypasses_dispatch():
     posted = False
 

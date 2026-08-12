@@ -843,7 +843,9 @@ class LiteLLMBackend(Backend):
             return self._run_without_policy(job, structured)
         if not isinstance(policy, LLMRequestPolicy):
             raise ValueError("LLM inputs.llm_policy must be an LLMRequestPolicy")
-        if self.storage is None or not getattr(self.storage, "cas_capable", False):
+        if self.storage is None or (
+            not policy.queue_only and not getattr(self.storage, "cas_capable", False)
+        ):
             raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
         if not job.recipe_hash:
             raise LLMBackendError("policy-bearing LLM jobs require a non-empty recipe_hash")
@@ -864,6 +866,63 @@ class LiteLLMBackend(Backend):
         write_deferred(self.storage, job.recipe_hash, result)
         return result
 
+    def _enqueue_durable_policy_job(
+        self,
+        job: InferenceJob,
+        policy: LLMRequestPolicy,
+        structured: tuple[str, ResponseModel] | None,
+        messages: list[dict[str, Any]],
+    ) -> JobResult | JobHandle:
+        """Submit durable backlog work without reserving runner-side provider capacity."""
+        if not self.config.dispatch_url:
+            raise LLMBackendError("durable queue policy requires LLM_DISPATCH_URL")
+        allowed = policy.allowed_models or (self.config.model,)
+        resolved_model = canonical_model(allowed[0])
+        structured_name, model = structured if structured else (None, None)
+        payload = self._payload(
+            job,
+            model,
+            resolved_model=resolved_model,
+            policy=policy,
+            estimated_tokens=estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN,
+        )
+        headers = {"content-type": "application/json", "idempotency-key": job.recipe_hash}
+        if self.config.dispatch_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
+        try:
+            response = self._session.post(
+                urljoin(self.config.dispatch_url.rstrip("/") + "/", "v1/chat/completions"),
+                json=payload,
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch enqueue failed") from exc
+        if response.status_code == 200:
+            return self._completed_dispatch_result(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output=response.json(),
+                structured_output=structured_name,
+                model=resolved_model,
+            )
+        if response.status_code != 202:
+            raise LLMBackendError(f"LLM dispatch enqueue returned HTTP {response.status_code}")
+        body = response.json()
+        ref = response.headers.get("location")
+        if not ref and isinstance(body, Mapping):
+            ref = body.get("id")
+        if not ref:
+            raise LLMBackendError("LLM dispatch response omitted a request reference")
+        return JobHandle(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            backend=self.name,
+            ref=ref,
+            structured_output=structured_name,
+            model=resolved_model,
+        )
+
     def _run_policy_job(
         self,
         job: InferenceJob,
@@ -875,6 +934,8 @@ class LiteLLMBackend(Backend):
         `run_inference` (first attempt) and `_reconcile_deferred` (retrying a deferred handle) --
         a retry re-evaluates every gate fresh, exactly like a first attempt, rather than polling
         something already submitted."""
+        if policy.queue_only:
+            return self._enqueue_durable_policy_job(job, policy, structured, messages)
         available_transports = self._available_transports()
         if policy.require_direct:
             # ``require_direct`` is an explicit capability override for GH Actions callers.  It

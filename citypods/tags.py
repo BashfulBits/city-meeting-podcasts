@@ -1072,7 +1072,8 @@ def llm_tag_suggestions(
             allowed_models=allowed_models,
             allow_paid=allow_paid,
             purpose=purpose,
-            deadline_at=deadline_at,
+            deadline_at=None,
+            queue_only=True,
             timeout_class="fast",
         )
     outcome = backend.run_inference(
@@ -1318,7 +1319,8 @@ def llm_prelabel_candidates(
                 allowed_models=(model,),
                 allow_paid=allow_paid,
                 purpose="topic-tags:prelabeler",
-                deadline_at=deadline_at,
+                deadline_at=None,
+                queue_only=True,
                 timeout_class="fast",
             )
         batch_recipe = hashlib.sha1(
