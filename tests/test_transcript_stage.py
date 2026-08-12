@@ -42,6 +42,7 @@ from citypods.stages import (
     TranscriptStage,
     _asr_fits_remaining_budget,
     _asr_timeout_seconds,
+    _provider_alignment_artifact_is_reusable,
     _provider_alignment_inputs,
     _provider_source_text,
     _provider_transcript_probe_due,
@@ -274,6 +275,18 @@ class TestTranscriptStageASRStubbed:
 
 
 class TestTranscriptStageVTT:
+    def test_legacy_txt_provider_alignment_is_not_reused(self):
+        assert not _provider_alignment_artifact_is_reusable({"format": "txt"})
+        assert not _provider_alignment_artifact_is_reusable(
+            {"format": "txt", "align_pipeline_version": "2"}
+        )
+
+    @pytest.mark.parametrize("source_format", ["vtt", "srt"])
+    def test_legacy_cue_timed_provider_alignment_remains_reusable(self, source_format):
+        assert _provider_alignment_artifact_is_reusable(
+            {"format": source_format, "align_pipeline_version": "2"}
+        )
+
     def test_word_timed_vtt_keeps_leading_unmarked_words_and_align_text_strips_markers(self):
         words = json.loads(_provider_vtt_words_json(WORD_VTT_WITH_LEADING_TEXT).decode())
         assert [word["w"] for word in words["segments"][0]["words"]] == ["Hello", "world"]
@@ -313,6 +326,80 @@ class TestTranscriptStageVTT:
 
         assert text == "Hello world here"
         assert timed_segments == [{"start": 2.0, "end": 5.0, "text": "Hello world here"}]
+
+    def test_swagit_text_anchors_become_coarse_alignment_windows(self):
+        ep = _ep()
+        ep.duration = 600
+
+        text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"* provider disclaimer\n"
+            b"[CALL TO ORDER]\n"
+            b"[00:00:04]\n"
+            b"THE MEETING IS CALLED TO ORDER.\n"
+            b"[00:05:01]\n"
+            b"THANK YOU, MAYOR. THE NEXT ITEM IS BUDGET.\n",
+            "txt",
+        )
+
+        assert text == (
+            "THE MEETING IS CALLED TO ORDER.\nTHANK YOU, MAYOR. THE NEXT ITEM IS BUDGET."
+        )
+        assert timed_segments == [
+            {"start": 4.0, "end": 301.0, "text": "THE MEETING IS CALLED TO ORDER."},
+            {"start": 301.0, "end": 600.0, "text": "THANK YOU, MAYOR. THE NEXT ITEM IS BUDGET."},
+        ]
+
+    def test_sparse_swagit_text_anchors_fall_back_to_full_alignment(self):
+        ep = _ep()
+        ep.duration = 3600
+
+        text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"[00:00:04]\nTHE MEETING IS CALLED TO ORDER.\n[00:30:01]\nTHANK YOU, MAYOR.\n",
+            "txt",
+        )
+
+        assert timed_segments is None
+        assert "THE MEETING IS CALLED TO ORDER." in text
+
+    def test_swagit_coarse_windows_are_remapped_from_source_to_served_time(self):
+        ep = _ep()
+        ep.duration = 30
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref="https://src/vid.mp4",
+                media_kind="direct",
+                duration=30.0,
+                watch_url=None,
+            )
+        ]
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=10.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=10.0,
+                    source_end=20.0,
+                ),
+            ),
+        )
+
+        _text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"[00:00:12]\nKEPT WORDS HERE.\n[00:00:15]\nMORE KEPT WORDS HERE.\n",
+            "txt",
+        )
+
+        assert timed_segments == [
+            {"start": 2.0, "end": 5.0, "text": "KEPT WORDS HERE."},
+            {"start": 5.0, "end": 10.0, "text": "MORE KEPT WORDS HERE."},
+        ]
 
     def _run_with_content(self, tmp_path, content: bytes, url="https://provider/t.vtt"):
         from unittest.mock import patch

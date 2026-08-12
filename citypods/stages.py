@@ -135,6 +135,7 @@ from citypods.transcript_quality import (
     quality_body_key,
     record_l1_sample,
 )
+from citypods.transcript_versions import PROVIDER_ALIGN_PIPELINE_VERSION
 
 
 def _materialize_set(
@@ -3010,7 +3011,6 @@ AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
 MINUTES_VOTES_PIPELINE_VERSION = "1"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
-PROVIDER_ALIGN_PIPELINE_VERSION = "2"
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
@@ -3084,6 +3084,10 @@ def _provider_native_words_object_key(src_key: str, uid: str, spec: str) -> str:
 
 
 _VTT_WORD_TIMESTAMP_RE = re.compile(r"<(?P<time>(?:(?:\d{2}:)?\d{2}:\d{2})[\.,]\d{3})>")
+_SWAGIT_INLINE_TIMESTAMP_RE = re.compile(
+    r"^\s*\[\s*(?P<time>\d{1,2}:\d{2}(?::\d{2}(?:[\.,]\d{1,3})?)?)\s*\]\s*$"
+)
+_SWAGIT_COARSE_MAX_GAP_SECONDS = 15 * 60
 
 
 def _has_word_timing_vtt(content: bytes) -> bool:
@@ -3096,6 +3100,31 @@ def _has_word_timing_vtt(content: bytes) -> bool:
     if not content.lstrip().startswith(b"WEBVTT"):
         return False
     return any(_VTT_WORD_TIMESTAMP_RE.finditer(content.decode("utf-8-sig", errors="replace")))
+
+
+def _provider_alignment_artifact_is_reusable(artifact: dict) -> bool:
+    """Return whether a computed provider alignment may be reused under the current recipe.
+
+    Cue-timed VTT/SRT source documents are already governed by their explicit cue timestamps, so
+    their existing computed artifacts remain reusable across this TXT-only recipe change. Plain
+    TXT sources require the current marker because their new coarse-window interpretation changes
+    the stable-ts inputs; missing markers are legacy and therefore stale.
+    """
+    source_format = str(artifact.get("format") or "").lower()
+    return source_format in {"vtt", "srt"} or (
+        artifact.get("align_pipeline_version") == PROVIDER_ALIGN_PIPELINE_VERSION
+    )
+
+
+def _provider_alignment_source_format(registry: object) -> str | None:
+    """Return the source format selected by the provider registry, if one is available."""
+    if not isinstance(registry, dict):
+        return None
+    for artifact in (registry.get("candidate"), registry.get("known_good")):
+        if isinstance(artifact, dict) and artifact.get("key"):
+            source_format = str(artifact.get("format") or "").lower()
+            return source_format or None
+    return None
 
 
 def _provider_vtt_words_json(content: bytes, *, basis: str = "served") -> bytes | None:
@@ -3171,6 +3200,74 @@ def _provider_source_text(content: bytes, fmt: str) -> str:
         joined = _VTT_WORD_TIMESTAMP_RE.sub("", joined)
         return _preprocess_align_text(joined)
     return _preprocess_align_text(content.decode("utf-8", errors="replace"))
+
+
+def _provider_source_duration_hint(ep: Episode) -> float | None:
+    """Return a source-clock duration suitable for closing a coarse transcript window."""
+    duration = episode_source_duration_seconds(ep)
+    if duration is not None:
+        return duration
+    if ep.timeline is not None:
+        source_ends = [
+            float(segment.source_end)
+            for segment in ep.timeline.segments
+            if segment.kind == "source" and segment.source_end is not None
+        ]
+        if source_ends:
+            return max(source_ends)
+        return None
+    return episode_served_duration_seconds(ep)
+
+
+def _parse_swagit_coarse_cues(ep: Episode, content: bytes) -> list[dict]:
+    """Parse Swagit's standalone bracket timestamps into source-time cue windows.
+
+    Swagit TXT transcripts put a timestamp on its own line, usually about every five minutes,
+    rather than using VTT/SRT ``start --> end`` cues.  These are useful as broad alignment
+    windows, but only when there are at least two monotonic anchors and a known source duration to
+    close the final window.  Agenda/section lines are structural annotations, not spoken text, so
+    standalone bracketed lines are removed from each block.
+    """
+    text = content.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
+    anchors: list[tuple[float, list[str]]] = []
+    for raw in text.split("\n"):
+        line = raw.strip()
+        match = _SWAGIT_INLINE_TIMESTAMP_RE.fullmatch(line)
+        if match:
+            try:
+                timestamp = _parse_transcript_time(match.group("time"))
+            except (TypeError, ValueError):
+                return []
+            anchors.append((timestamp, []))
+            continue
+        if not anchors:
+            # This excludes the provider disclaimer and any leading agenda heading before the
+            # first timed block. The first marker is the first reliable audio anchor.
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            continue
+        anchors[-1][1].append(raw.rstrip())
+
+    if len(anchors) < 2:
+        return []
+    duration = _provider_source_duration_hint(ep)
+    if duration is None or duration <= 0:
+        return []
+
+    cues: list[dict] = []
+    for index, (start, lines) in enumerate(anchors):
+        end = anchors[index + 1][0] if index + 1 < len(anchors) else duration
+        if start < 0 or end <= start or end > duration + 1.0:
+            return []
+        if end - start > _SWAGIT_COARSE_MAX_GAP_SECONDS:
+            return []
+        block = _preprocess_align_text("\n".join(lines))
+        if block:
+            cues.append({"start": float(start), "end": float(end), "text": block})
+
+    # A single usable block is no better than full alignment: it provides no meaningful search
+    # partition, so deliberately use the existing safe fallback.
+    return cues if len(cues) >= 2 else []
 
 
 def _provider_diarize_spec_hash(ep: Episode, artifact: dict) -> str:
@@ -3479,9 +3576,28 @@ def _provider_alignment_inputs(
     Provider VTT/SRT timestamps are based on the source recording.  The hosted audio may instead
     be an edited/served timeline, so remap the cue windows before giving them to stable-ts.  Keep
     the cleaned cue text alongside each window so ``align_words()`` receives the exact wording
-    represented by those windows.  A malformed/empty cue set deliberately returns plain text and
-    ``None`` so the caller uses the slower, unconstrained ``align()`` path.
+    represented by those windows. Swagit's TXT format gets the same treatment when its standalone
+    ``[HH:MM:SS]`` anchors form valid coarse windows. A malformed/empty cue set deliberately
+    returns plain text and ``None`` so the caller uses the slower, unconstrained ``align()`` path.
     """
+    if fmt == "txt":
+        coarse = _parse_swagit_coarse_cues(ep, content)
+        if coarse:
+            remapped, _confidence = _remap_provider_cues(ep, coarse)
+            timed_segments = [
+                {
+                    "start": float(cue["start"]),
+                    "end": float(cue["end"]),
+                    "text": str(cue.get("text") or "").strip(),
+                }
+                for cue in remapped
+                if cue.get("text") and cue.get("start") is not None and cue.get("end") is not None
+            ]
+            timed_segments = [cue for cue in timed_segments if cue["end"] > cue["start"]]
+            if len(timed_segments) >= 2:
+                return "\n".join(cue["text"] for cue in timed_segments), timed_segments
+        return _provider_source_text(content, fmt), None
+
     if fmt not in {"vtt", "srt"}:
         return _provider_source_text(content, fmt), None
 
@@ -3937,10 +4053,10 @@ class TranscriptStage:
 
     Note on remapping: for identity timelines, provider transcript timestamps are
     already in served time (source == served), so ``transcript_basis = "served"``.
-    For non-identity timelines, a full VTT/SRT parser + remap is required (pending;
-    see INFRA-5). Until then, non-identity episodes carry ``basis = "source:s0"`` and
-    ``synced = False`` to prevent mis-alignment.  ASR-generated transcripts always
-    use ``basis = "served"`` because ASR runs on the hosted (served) audio.
+    VTT/SRT cue windows and Swagit TXT coarse windows are remapped through non-identity
+    timelines before stable-ts sees them. Untimed provider text remains ``synced = False``
+    until computed alignment produces a served-time artifact. ASR-generated transcripts
+    always use ``basis = "served"`` because ASR runs on the hosted (served) audio.
     """
 
     name = "transcript"
@@ -4028,6 +4144,7 @@ class TranscriptStage:
                     "aligned_words_key": words_key,
                     "aligned_words_url": words_url,
                     "align_spec_hash": align_spec,
+                    "align_pipeline_version": PROVIDER_ALIGN_PIPELINE_VERSION,
                     "align_coverage": artifacts.coverage,
                     "status": "known_good",
                 }
@@ -4211,6 +4328,8 @@ class TranscriptStage:
                 None,
             )
             if artifact is None:
+                return False
+            if not _provider_alignment_artifact_is_reusable(artifact):
                 return False
             key = artifact.get("aligned_key")
             words_key = artifact.get("aligned_words_key")
@@ -4473,7 +4592,21 @@ class TranscriptStage:
                         if not provider_url and not force_provider_selection:
                             continue
                 else:
-                    if force_asr_selection:
+                    provider_align_stale = (
+                        str(ep.transcript_pipeline_version or "").startswith("provider-align:")
+                        and ep.transcript_pipeline_version
+                        != f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+                        and _provider_alignment_source_format(provider_registry)
+                        not in {"vtt", "srt"}
+                    )
+                    if provider_align_stale:
+                        # A provider-align pipeline change can alter the alignment inputs (for
+                        # example, by discovering coarse Swagit TXT windows). Do not re-adopt the
+                        # old computed artifact; let the provider wording flow through the current
+                        # alignment recipe below.
+                        redo_stale_asr = True
+                        active_is_provider = True
+                    elif force_asr_selection:
                         redo_stale_asr = True
                         active_is_provider = True
                     else:
