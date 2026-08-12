@@ -1339,7 +1339,7 @@ def test_queue_only_policy_enqueues_without_a_runner_quota_reservation():
     class PendingSession(requests.Session):
         def post(self, _url, json=None, headers=None, timeout=None):
             assert json["model"] == "gemini/gemini-3-flash-preview"
-            assert headers["idempotency-key"] == "test-durable-queue"
+            assert headers["idempotency-key"] == "test-durable-queue:durable-tag-v1"
             response = requests.Response()
             response.status_code = 202
             response._content = b'{"id":"chatcmpl-durable"}'
