@@ -946,10 +946,26 @@ class _FakeAsr:
         self.transcribe_calls.append({"model": model_or_name, "prompt": prompt})
         return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
-    def align(self, audio_path, text, model_or_name, language, cpu_threads):
+    def align(
+        self,
+        audio_path,
+        text,
+        model_or_name,
+        language,
+        cpu_threads,
+        compute_type="int8",
+        **kwargs,
+    ):
         if self.fail:
             raise RuntimeError("align failed")
-        self.align_calls.append({"text": text, "model": model_or_name})
+        self.align_calls.append(
+            {
+                "text": text,
+                "model": model_or_name,
+                "compute_type": compute_type,
+                **kwargs,
+            }
+        )
         return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
     def asr_spec_hash(self, audio_spec_hash, model, align_hash, version, **kwargs):
@@ -2089,7 +2105,11 @@ class TestTranscriptStageASR:
         assert stats.ran == 2  # provider text fetch + computed alignment
         assert stats.aligned == 1
         assert fake_asr.align_calls == [
-            {"text": "These are the meeting minutes.", "model": fake_asr._FAKE_MODEL}
+            {
+                "text": "These are the meeting minutes.",
+                "model": fake_asr._FAKE_MODEL,
+                "compute_type": "int8",
+            }
         ]
         assert fake_asr.transcribe_calls == []
         assert "alignment-disabled" not in out
@@ -2148,6 +2168,12 @@ class TestTranscriptStageASR:
         assert ep.transcript_selection == "provider-aligned"
         assert stats.aligned == 1
         assert stats.transcribed == 0
+        assert len(fake_asr.align_calls) == 1
+        assert fake_asr.align_calls[0] == {
+            "text": "These are the meeting minutes.",
+            "model": fake_asr._FAKE_MODEL,
+            "compute_type": "int8",
+        }
 
     def test_alignment_error_falls_back_to_transcription(self, tmp_path, capsys):
         """Any Path A alignment failure still produces a fresh ASR transcript."""
@@ -2185,8 +2211,24 @@ class TestTranscriptStageASR:
                 return _R()
 
         class _AlignFailingAsr(_FakeAsr):
-            def align(self, audio_path, text, model_or_name, language, cpu_threads):
-                self.align_calls.append({"text": text, "model": model_or_name})
+            def align(
+                self,
+                audio_path,
+                text,
+                model_or_name,
+                language,
+                cpu_threads,
+                compute_type="int8",
+                **kwargs,
+            ):
+                self.align_calls.append(
+                    {
+                        "text": text,
+                        "model": model_or_name,
+                        "compute_type": compute_type,
+                        **kwargs,
+                    }
+                )
                 raise AttributeError("'WhisperModel' object has no attribute 'align'")
 
         fake_asr = _AlignFailingAsr()
@@ -2201,6 +2243,11 @@ class TestTranscriptStageASR:
 
         out = capsys.readouterr().out
         assert len(fake_asr.align_calls) == 1
+        assert fake_asr.align_calls[0] == {
+            "text": "These are the meeting minutes.",
+            "model": fake_asr._FAKE_MODEL,
+            "compute_type": "int8",
+        }
         assert len(fake_asr.transcribe_calls) == 1
         assert ep.transcript_synced is True
         assert ep.transcript_basis == "served"

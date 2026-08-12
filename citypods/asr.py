@@ -253,15 +253,18 @@ def _load_alignment_model(model_or_path: str, compute_type: str | None, cpu_thre
             "Install it with: pip install 'citypods[asr-align]'"
         ) from exc
 
-    cache_key = ("stable-faster-whisper", model_or_path, compute_type, cpu_threads)
+    resolved_compute_type = compute_type or "int8"
+    cache_key = ("stable-faster-whisper", model_or_path, resolved_compute_type, cpu_threads)
     if cache_key in _model_cache:
         return _model_cache[cache_key]
 
     with _model_lock:
         if cache_key not in _model_cache:
-            options: dict[str, object] = {"device": "cpu", "cpu_threads": cpu_threads}
-            if compute_type:
-                options["compute_type"] = compute_type
+            options: dict[str, object] = {
+                "device": "cpu",
+                "cpu_threads": cpu_threads,
+                "compute_type": resolved_compute_type,
+            }
             _model_cache[cache_key] = stable_whisper.load_faster_whisper(
                 model_or_path,
                 **options,
@@ -344,6 +347,10 @@ def align(
     model_or_name: object,
     language: str | None,
     cpu_threads: int,
+    compute_type: str = "int8",
+    *,
+    vad: bool = True,
+    fast_mode: bool = True,
 ) -> TranscriptArtifacts:
     """Force-align *text* to *audio_path* using stable-ts; return a ``TranscriptArtifacts``
     (segment WebVTT + word-level JSON sidecar).
@@ -358,19 +365,25 @@ def align(
     if isinstance(model_or_name, str):
         wm = _load_alignment_model(
             _configured_model_or_path(model_or_name),
-            None,
+            compute_type,
             cpu_threads,
         )
     elif isinstance(model_or_name, _LoadedAsrModel):
         wm = _load_alignment_model(
             model_or_name.model_or_path,
-            model_or_name.compute_type,
+            compute_type or model_or_name.compute_type,
             model_or_name.cpu_threads,
         )
     else:
         wm = model_or_name  # pre-loaded instance
 
-    result = wm.align(str(audio_path), text, language=language or "en")
+    result = wm.align(
+        str(audio_path),
+        text,
+        language=language or "en",
+        vad=vad,
+        fast_mode=fast_mode,
+    )
 
     # Quality check: count words that received a valid timestamp.
     total_words = sum(len(seg.words) for seg in result.segments if hasattr(seg, "words"))

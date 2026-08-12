@@ -249,7 +249,25 @@ class TestAlignByteIdentical:
                 },
             )
         )
-        fake.align.assert_called_once_with("a.m4a", "TEXT", "MODEL", "en", 2)
+        fake.align.assert_called_once_with("a.m4a", "TEXT", "MODEL", "en", 2, "int8")
+
+    def test_passes_inputs_through_unchanged_custom_compute_type(self):
+        fake = MagicMock()
+        fake.align.return_value = TranscriptArtifacts(vtt=b"v", words=b"w")
+        LocalBackend(asr=fake).run_inference(
+            InferenceJob(
+                task="align",
+                inputs={
+                    "audio_path": "a.m4a",
+                    "text": "TEXT",
+                    "model": "MODEL",
+                    "language": "en",
+                    "cpu_threads": 2,
+                    "compute_type": "float32",
+                },
+            )
+        )
+        fake.align.assert_called_once_with("a.m4a", "TEXT", "MODEL", "en", 2, "float32")
 
     def test_alignment_quality_error_propagates(self):
         # The stage's align→transcribe fallback depends on the backend surfacing the asr exception

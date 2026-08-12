@@ -3167,7 +3167,7 @@ def _preprocess_align_text(text: str) -> str:
             continue
         lines_out.append(s)
 
-    cleaned = " ".join(lines_out)
+    cleaned = "\n".join(lines_out)
     orig_words = len(text.split())
     clean_words = len(cleaned.split())
     # Safety valve: if we stripped > 80 % of the words the heuristics were too aggressive —
@@ -4552,6 +4552,7 @@ class TranscriptStage:
                                             "text": _at,
                                             "model": _asr_model,
                                             "language": city.asr_language or None,
+                                            "compute_type": city.asr_compute_type,
                                             "cpu_threads": cpu_threads,
                                         },
                                         recipe_hash=_recipe,

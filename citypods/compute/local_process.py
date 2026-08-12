@@ -57,6 +57,7 @@ def _run_job(asr, job: InferenceJob) -> JobResult:
             model_name,
             inp["language"],
             inp["cpu_threads"],
+            inp.get("compute_type", "int8"),
         )
     else:
         raise ValueError(f"process-local backend does not implement task {job.task!r}")

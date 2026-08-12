@@ -359,6 +359,14 @@ defaults:
           min_runtime_seconds: 180
           fixed_runtime_seconds_per_run: 0
           fixed_runtime_seconds_per_claim: 0
+        provider-transcript-align:
+          # Forced alignment using stable-ts with INT8 quantization, VAD, and fast_mode.
+          # Substantially faster than fresh transcription because it only evaluates acoustic fit
+          # for known wording without vocabulary generation.
+          estimated_runtime_seconds_per_audio_second: 0.15
+          min_runtime_seconds: 60
+          fixed_runtime_seconds_per_run: 0
+          fixed_runtime_seconds_per_claim: 0
     modal:
       hardware:
         gpu_type: L4
@@ -379,6 +387,13 @@ defaults:
           fresh_within_days: 7
           estimated_runtime_seconds_per_audio_second: 0.023
           min_runtime_seconds: 240
+          fixed_runtime_seconds_per_run: 0
+          fixed_runtime_seconds_per_claim: 0
+        provider-transcript-align:
+          prefer_min_duration_hours: 4
+          fresh_within_days: 7
+          estimated_runtime_seconds_per_audio_second: 0.010
+          min_runtime_seconds: 60
           fixed_runtime_seconds_per_run: 0
           fixed_runtime_seconds_per_claim: 0
     beam:
@@ -404,6 +419,13 @@ defaults:
           fresh_within_days: 7
           estimated_runtime_seconds_per_audio_second: 0.0175
           min_runtime_seconds: 180
+          fixed_runtime_seconds_per_run: 0
+          fixed_runtime_seconds_per_claim: 0
+        provider-transcript-align:
+          prefer_min_duration_hours: 4
+          fresh_within_days: 7
+          estimated_runtime_seconds_per_audio_second: 0.008
+          min_runtime_seconds: 60
           fixed_runtime_seconds_per_run: 0
           fixed_runtime_seconds_per_claim: 0
   # Stage-2 work-lease reaper (H17 / review/18 §4.2). The per-item R2 lease ledger external pull
