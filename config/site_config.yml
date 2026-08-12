@@ -42,10 +42,20 @@ tagging:
     fallback_confidence: 1.0
     required_precision: 0.90
     minimum_reviews: 12
-    review_batch_size: 20
+    prelabeler_required_precision: 0.95
+    prelabeler_minimum_reviews: 50
+    # Both actionable evaluator branches need independent support before overlay automation is
+    # enabled; this prevents a single likely-incorrect example from enabling suppression.
+    prelabeler_minimum_decision_reviews: 5
+    review_batch_size: 80
+    max_reviews_per_subject_stratum: 8
     fallbacks:
       topic-tags:
         "litellm:gemini/gemini-3.1-flash-lite": 1.0
+  prelabeler:
+    enabled: true
+    model: "google/gemma-4-31b-it"
+    prompt_version: "1"
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)

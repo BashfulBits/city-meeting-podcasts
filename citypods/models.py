@@ -145,6 +145,10 @@ class Episode:
     # the model.  Future LLM features should use the generic evaluator state rather than adding
     # feature-specific confidence gates to this model.
     llm_tag_candidates: list[dict] = field(default_factory=list)
+    # Durable telemetry for tagger/evaluator calls that produced no candidate or were deferred.
+    # Successful candidate calls also copy this metadata onto their candidate rows; this compact
+    # attempt ledger closes the provenance gap for empty, pending, oversized, and failed calls.
+    tags_llm_call_attempts: list[dict] = field(default_factory=list)
     tags_llm_recipe_hash: str | None = None
     tags_spec_hash: str | None = None
     # Cheap (I/O-free) stand-in for the inputs `tag_recipe_hash` hashes -- content-addressed

@@ -12,6 +12,7 @@ from citypods.tags import (
     load_taxonomy,
     merge_tag_sources,
     rollup_tags,
+    rule_phrase_audit,
     tag_episode,
     tag_input_fingerprint,
     taxonomy_from_dict,
@@ -95,6 +96,161 @@ def test_rules_are_explainable_and_preserve_agenda_transcript_location():
             "evidence": [{"where": "agenda", "span": "Street trees"}],
         }
     ]
+
+
+def test_rule_metadata_preserves_authored_phrase_and_matched_text():
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [
+                {
+                    "id": "housing",
+                    "source_refs": ["example"],
+                    "rules": {"include": ["housing supply"]},
+                }
+            ],
+        }
+    )
+    tags = tag_episode("Housing   Supply", "", taxonomy, include_rule_metadata=True)
+    assert tags[0]["rule_patterns"] == ["housing supply"]
+    assert tags[0]["rule_match_texts"] == ["Housing   Supply"]
+
+
+def test_rule_phrase_audit_surfaces_include_and_exclude_hits():
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [
+                {
+                    "id": "housing",
+                    "source_refs": ["example"],
+                    "rules": {
+                        "include": ["housing supply"],
+                        "exclude": ["not housing supply"],
+                    },
+                }
+            ],
+        }
+    )
+    observations = rule_phrase_audit("Housing supply discussion; not housing supply", "", taxonomy)
+    assert {(item["kind"], item["pattern"]) for item in observations} == {
+        ("include", "housing supply"),
+        ("exclude", "not housing supply"),
+    }
+    assert all(item["match_count"] >= 1 for item in observations)
+    assert all(len(item["match_texts"]) <= 3 for item in observations)
+
+
+def test_prelabeler_excerpt_keeps_transcript_order_across_evidence():
+    from citypods.tags import _prelabel_source_excerpt
+
+    chapter = {
+        "chapter_id": "ch-1",
+        "title": "Housing",
+        "agenda_text": "",
+        "transcript_text": "early item\nlate item",
+        "transcript_segments": [
+            {"start": 0.0, "end": 1.0, "text": "early item"},
+            {"start": 90.0, "end": 91.0, "text": "late item"},
+        ],
+    }
+    excerpt = _prelabel_source_excerpt(
+        {
+            "evidence": [
+                {"where": "transcript", "quote": "late item", "start": 90.0, "end": 91.0},
+                {"where": "transcript", "quote": "early item", "start": 0.0, "end": 1.0},
+            ]
+        },
+        chapter,
+        fallback_agenda="",
+        fallback_transcript="",
+    )
+    assert excerpt.index("early item") < excerpt.index("late item")
+
+
+def test_prelabeler_excerpt_centers_tail_evidence():
+    import json
+
+    from citypods.compute.base import JobResult
+    from citypods.tags import llm_prelabel_candidates
+
+    captured = {}
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [
+                {
+                    "id": "housing",
+                    "source_refs": ["example"],
+                    "rules": {"include": ["housing"]},
+                }
+            ],
+        }
+    )
+    candidate = {
+        "candidate_id": "subject-1",
+        "id": "housing",
+        "source_kind": "llm",
+        "scope": "chapter",
+        "chapter_id": "ch-1",
+        "evidence": [{"where": "transcript", "quote": "target evidence"}],
+        "explanation": "The chapter discusses housing.",
+    }
+    transcript = "prefix " * 3000 + " target evidence " + "suffix " * 100
+
+    class Backend:
+        def run_inference(self, job):
+            captured["messages"] = job.inputs["messages"]
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "assessments": [
+                                            {
+                                                "candidate_id": "subject-1",
+                                                "decision": "likely_correct",
+                                                "confidence": 0.9,
+                                                "reason": "supported",
+                                                "evidence_supported": True,
+                                            }
+                                        ]
+                                    }
+                                )
+                            }
+                        }
+                    ]
+                },
+            )
+
+    result, pending, _ = llm_prelabel_candidates(
+        Backend(),
+        candidates=[candidate],
+        taxonomy=taxonomy,
+        chapters=[
+            {
+                "chapter_id": "ch-1",
+                "title": "Housing",
+                "agenda_text": "housing agenda",
+                "transcript_text": transcript,
+                "transcript_segments": [],
+            }
+        ],
+        recipe_hash="recipe",
+        model="reviewer",
+    )
+    assert not pending
+    assert result["subject-1"]["prelabeler_decision"] == "likely_correct"
+    payload = json.loads(captured["messages"][1]["content"])
+    excerpt = payload["candidates"][0]["source_excerpt"]
+    assert "target evidence" in excerpt
 
 
 def test_exclude_terms_suppress_a_match_found_in_a_different_source():
@@ -368,7 +524,8 @@ def test_llm_evidence_is_a_quoted_region_with_transcript_timing_and_document_lin
                         {
                             "message": {
                                 "content": (
-                                    '{"tags":[{"id":"housing","confidence":0.82,'
+                                    '{"tags":[{"id":"housing","chapter_id":"ch-1",'
+                                    '"confidence":0.82,'
                                     '"explanation":"The item discusses housing.","evidence":['
                                     '{"where":"transcript","quote":"housing supply"},'
                                     '{"where":"agenda","quote":"housing plan",'
@@ -404,12 +561,19 @@ def test_llm_evidence_is_a_quoted_region_with_transcript_timing_and_document_lin
         agenda_documents=[{"title": "Agenda", "url": "https://example.test/agenda"}],
     )
     assert not dispatched
-    assert chapter_tags == {}
-    assert tags[0]["evidence"] == [
-        {"where": "transcript", "quote": "housing supply", "start": 10.0, "end": 13.0},
+    assert tags == []
+    assert chapter_tags["ch-1"][0]["evidence"] == [
+        {
+            "where": "transcript",
+            "quote": "housing supply",
+            "chapter_id": "ch-1",
+            "start": 10.0,
+            "end": 13.0,
+        },
         {
             "where": "agenda",
             "quote": "housing plan",
+            "chapter_id": "ch-1",
             "document_url": "https://example.test/agenda",
             "document_locator": "Item 4",
         },
@@ -659,8 +823,8 @@ def test_llm_tag_suggestions_admits_material_larger_than_one_tpm_minute():
     )
     assert tags == []
     assert chapter_tags == {}
-    assert dispatched is False
-    assert resolved_model is None
+    assert dispatched is True
+    assert resolved_model == "payload-too-large"
 
 
 def test_llm_tag_suggestions_dispatches_when_material_fits_one_tpm_capped_route():

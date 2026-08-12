@@ -1,0 +1,123 @@
+name: R5 tag benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Run the shadow benchmark or package its current state for review"
+        required: true
+        default: run
+        type: choice
+        options:
+          - run
+          - package
+          - approve
+      sample_size:
+        description: "Frozen chapter sample size (200–300)"
+        required: false
+        default: "200"
+        type: string
+      models:
+        description: "Comma-separated candidate tagger routes"
+        required: false
+        default: "gemini/gemini-3.1-flash-lite,google/gemma-4-26b-it,zai/glm-4.7-flash"
+        type: string
+      prelabeler_model:
+        description: "Independent pre-labeler route"
+        required: false
+        default: "google/gemma-4-31b-it"
+        type: string
+      allow_paid:
+        description: "Allow paid routes explicitly for this benchmark"
+        required: false
+        default: false
+        type: boolean
+      refresh:
+        description: "Discard the prior frozen sample and create a new one"
+        required: false
+        default: false
+        type: boolean
+      pairwise_samples:
+        description: "Optional number of examples for order-swapped pairwise judging"
+        required: false
+        default: "0"
+        type: string
+      judge_model:
+        description: "Independent judge route; required when pairwise_samples is nonzero"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r5-tag-benchmark
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+      - name: Run or package R5 shadow benchmark
+        env:
+          BENCHMARK_OPERATION: ${{ inputs.operation }}
+          BENCHMARK_SAMPLE_SIZE: ${{ inputs.sample_size }}
+          BENCHMARK_MODELS: ${{ inputs.models }}
+          BENCHMARK_PRELABELER: ${{ inputs.prelabeler_model }}
+          BENCHMARK_ALLOW_PAID: ${{ inputs.allow_paid }}
+          BENCHMARK_REFRESH: ${{ inputs.refresh }}
+          BENCHMARK_PAIRWISE_SAMPLES: ${{ inputs.pairwise_samples }}
+          BENCHMARK_JUDGE_MODEL: ${{ inputs.judge_model }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
+          LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          mkdir -p r5-benchmark
+          if [ "$BENCHMARK_OPERATION" = "run" ]; then
+            args=(
+              --sample-size "$BENCHMARK_SAMPLE_SIZE"
+              --models "$BENCHMARK_MODELS"
+              --prelabeler-model "$BENCHMARK_PRELABELER"
+              --pairwise-samples "$BENCHMARK_PAIRWISE_SAMPLES"
+            )
+            if [ "$BENCHMARK_ALLOW_PAID" = "true" ]; then args+=(--allow-paid); fi
+            if [ "$BENCHMARK_REFRESH" = "true" ]; then args+=(--refresh); fi
+            if [ -n "$BENCHMARK_JUDGE_MODEL" ]; then
+              args+=(--judge-model "$BENCHMARK_JUDGE_MODEL")
+            fi
+            python -m citypods.r5_benchmark run "${args[@]}"
+          elif [ "$BENCHMARK_OPERATION" = "approve" ]; then
+            python -m citypods.r5_benchmark approve --actor "$GITHUB_ACTOR"
+          fi
+          python -m citypods.r5_benchmark package --out-dir r5-benchmark
+      - name: Upload R5 benchmark artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: r5-tag-benchmark-${{ github.run_id }}
+          path: r5-benchmark
+          retention-days: 90

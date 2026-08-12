@@ -717,7 +717,7 @@ class TagsStage:
     """
 
     name = "tags"
-    version = "1"
+    version = "2"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -734,20 +734,76 @@ class TagsStage:
         )
         from citypods.tags import (
             TAG_PROMPT_VERSION,
+            TAGGER_VERSION,
             agenda_document_context,
             chapter_tag_inputs,
             decorate_llm_candidates,
+            decorate_rule_candidates,
             episode_tag_inputs,
+            llm_prelabel_candidates,
             llm_tag_suggestions,
             load_taxonomy,
             merge_tag_sources,
             rollup_tags,
+            rule_phrase_audit,
             tag_episode,
             tag_input_fingerprint,
             tag_recipe_hash,
         )
 
         stats = StageStats(self.name)
+
+        def remember_call_attempt(
+            episode: Episode,
+            *,
+            purpose: str,
+            recipe_hash: str,
+            status: str,
+            metadata: dict[str, Any] | None = None,
+            model: str = "",
+            reason: str = "",
+        ) -> None:
+            """Persist compact provenance for every actual tag/evaluator call.
+
+            Candidate rows carry the same metadata when a call returns a candidate. This sidecar
+            list covers empty, deferred, oversized, and failed calls without creating synthetic tag
+            candidates that could enter calibration or public projection.
+            """
+            payload = dict(metadata or {})
+            payload.update(
+                {
+                    "purpose": purpose,
+                    "recipe_hash": recipe_hash,
+                    "status": status,
+                    "model": model or payload.get("prelabeler_model") or "",
+                    "reason": reason,
+                    "attempted_at": datetime.now(UTC).isoformat(),
+                }
+            )
+            # Rule observations are deterministic for a recipe/scope and can be re-encountered
+            # while an unrelated evaluator call is pending. Keep one such audit instead of
+            # copying the same telemetry into the record on every scheduled run.
+            if purpose == "topic-tags:rules" and any(
+                prior.get("purpose") == purpose
+                and prior.get("recipe_hash") == recipe_hash
+                and prior.get("scope") == payload.get("scope")
+                and prior.get("chapter_id") == payload.get("chapter_id")
+                for prior in episode.tags_llm_call_attempts
+                if isinstance(prior, dict)
+            ):
+                return
+            # One model invocation is one durable event. Bound this sidecar because records are
+            # restored wholesale; candidate history itself remains append-only for audit.
+            payload["attempt_id"] = (
+                "tag-attempt-"
+                + hashlib.sha1(
+                    json.dumps(payload, sort_keys=True, default=str).encode()
+                ).hexdigest()[:20]
+            )
+            episode.tags_llm_call_attempts = [
+                *episode.tags_llm_call_attempts,
+                payload,
+            ][-200:]
 
         # Load the taxonomy + calibration state at most ONCE for the whole run (cached on `ctx`,
         # which is the same object across every one of this lane's per-episode process() calls --
@@ -813,6 +869,12 @@ class TagsStage:
             evaluation_config = cache["evaluation_config"]
             evaluation_state = cache["evaluation_state"]
             admission_policy = cache["admission_policy"]
+            prelabeler_config = ctx.llm_evaluation_config.get("prelabeler") or {}
+            prelabeler_enabled = bool(prelabeler_config.get("enabled", False)) and (
+                ctx.tag_backend is not None
+            )
+            prelabeler_model = str(prelabeler_config.get("model") or "")
+            prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
 
         for ep in _materialize_set(
             episodes,
@@ -828,6 +890,38 @@ class TagsStage:
                 else ""
             )
             llm_enabled = ctx.tag_backend is not None
+            from citypods.llm_evaluation import candidate_id
+
+            persisted_candidates: list[dict[str, Any]] = []
+            for raw_candidate in ep.llm_tag_candidates or []:
+                if not isinstance(raw_candidate, dict):
+                    continue
+                candidate = dict(raw_candidate)
+                candidate.setdefault("source_kind", "llm")
+                candidate.setdefault("assessment_kind", "tagger-admission")
+                candidate.setdefault(
+                    "scope", "chapter" if candidate.get("chapter_id") else "episode"
+                )
+                candidate["candidate_id"] = str(
+                    candidate.get("candidate_id") or candidate_id(candidate)
+                )
+                persisted_candidates.append(candidate)
+            prelabeler_pending = prelabeler_enabled and any(
+                candidate.get("candidate_state") != "historical"
+                and (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id"))
+                and (
+                    candidate.get("prelabeler_model") != prelabeler_model
+                    or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
+                    or candidate.get("prelabeler_decision")
+                    not in {
+                        "likely_correct",
+                        "needs_human_review",
+                        "likely_incorrect",
+                    }
+                )
+                for candidate in persisted_candidates
+            )
+            ledger_missing = bool(ep.tags or ep.chapter_tags) and not persisted_candidates
             cheap_fingerprint = tag_input_fingerprint(
                 ep,
                 taxonomy,
@@ -854,7 +948,12 @@ class TagsStage:
             # Rules tags don't need the LLM, so an LLM-disabled run is never "pending".
             llm_pending = llm_enabled and ep.tags_llm_recipe_hash is None
 
-            if inputs_unchanged and not llm_pending:
+            if (
+                inputs_unchanged
+                and not llm_pending
+                and not prelabeler_pending
+                and not ledger_missing
+            ):
                 # Fully resolved for the current inputs (or LLM disabled). Nothing to do -- skip
                 # WITHOUT any storage fetch. This is the steady state for the whole catalog and has
                 # to stay an in-memory O(1) check, never a storage round trip.
@@ -903,9 +1002,12 @@ class TagsStage:
             )
             llm_recipe = tag_recipe_hash(
                 taxonomy,
-                agenda_item_titles=titles,
-                agenda_text=agenda_text,
-                transcript_text=transcript_text,
+                # The initial production LLM contract is chapter-only. Chapter title, mapped
+                # agenda evidence, transcript window, and timestamped segments are supplied below;
+                # episode-wide/backup text remains deterministic-only context.
+                agenda_item_titles="",
+                agenda_text="",
+                transcript_text="",
                 llm_enabled=llm_enabled,
                 chapter_inputs=chapter_fingerprint,
                 llm_route=llm_route,
@@ -922,7 +1024,12 @@ class TagsStage:
                 prompt_version=TAG_PROMPT_VERSION,
                 admission_policy=admission_policy,
             )
-            if ep.tags_spec_hash == projection_hash and (not chapters or ep.chapter_tags):
+            if (
+                ep.tags_spec_hash == projection_hash
+                and (not chapters or ep.chapter_tags)
+                and not prelabeler_pending
+                and not ledger_missing
+            ):
                 # Backfill the cheap fingerprint so the pre-check above can short-circuit this
                 # episode next run without the storage fetch just paid for above. Without this,
                 # every episode that was already fully resolved *before* tags_input_fingerprint
@@ -937,14 +1044,96 @@ class TagsStage:
                     stats.reused += 1
                 continue
 
-            rule_tags = tag_episode(titles + "\n" + agenda_text, transcript_text, taxonomy)
+            def project_visible_tags(
+                candidates: list[dict[str, Any]], annotations: list[dict[str, Any]]
+            ) -> list[dict[str, Any]]:
+                """Project the active ledger consistently after every state transition."""
+                projectable = [
+                    candidate
+                    for candidate in candidates
+                    if candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")
+                ]
+                visible = (
+                    visible_candidates(
+                        projectable, config=evaluation_config, state=evaluation_state
+                    )
+                    if projectable
+                    else []
+                )
+                episode_tags = merge_tag_sources(
+                    [], [tag for tag in visible if not tag.get("chapter_id")]
+                )
+                for annotation in annotations:
+                    annotation["tags"] = merge_tag_sources(
+                        [],
+                        [
+                            tag
+                            for tag in visible
+                            if tag.get("chapter_id") == annotation["chapter_id"]
+                        ],
+                    )
+                return rollup_tags(episode_tags, annotations, taxonomy)
+
+            def rule_audit_for(
+                tags: list[dict[str, Any]], agenda: str, transcript: str
+            ) -> list[dict[str, Any]]:
+                # `tag_episode(..., include_rule_metadata=True)` already scanned includes to
+                # produce rule evidence. Reuse those observations and scan only excludes here.
+                includes = [
+                    observation
+                    for tag in tags
+                    for observation in tag.get("rule_audit", [])
+                    if isinstance(observation, dict)
+                ]
+                return includes + rule_phrase_audit(agenda, transcript, taxonomy, include=False)
+
+            rule_tags = tag_episode(
+                titles + "\n" + agenda_text,
+                transcript_text,
+                taxonomy,
+                include_rule_metadata=True,
+            )
+            episode_rule_audit = rule_audit_for(
+                rule_tags, titles + "\n" + agenda_text, transcript_text
+            )
+            if episode_rule_audit:
+                remember_call_attempt(
+                    ep,
+                    purpose="topic-tags:rules",
+                    recipe_hash=rules_hash,
+                    status="resolved",
+                    metadata={
+                        "scope": "episode",
+                        "rule_audit": episode_rule_audit,
+                    },
+                    model=f"rule:{TAGGER_VERSION}",
+                )
             chapter_annotations = []
             for chapter in chapters:
                 chapter_rules = tag_episode(
                     chapter["title"] + "\n" + chapter.get("agenda_text", ""),
                     chapter.get("transcript_text", ""),
                     taxonomy,
+                    include_rule_metadata=True,
                 )
+                chapter_rule_audit = rule_audit_for(
+                    chapter_rules,
+                    chapter["title"] + "\n" + chapter.get("agenda_text", ""),
+                    chapter.get("transcript_text", ""),
+                )
+                if chapter_rule_audit:
+                    remember_call_attempt(
+                        ep,
+                        purpose="topic-tags:rules",
+                        recipe_hash=rules_hash,
+                        status="resolved",
+                        metadata={
+                            "scope": "chapter",
+                            "chapter_id": chapter["chapter_id"],
+                            "rule_audit": chapter_rule_audit,
+                        },
+                        model=f"rule:{TAGGER_VERSION}",
+                    )
                 for tag in chapter_rules:
                     for evidence in tag.get("evidence", []):
                         evidence["chapter_id"] = chapter["chapter_id"]
@@ -960,11 +1149,72 @@ class TagsStage:
                 chapter_annotations.append(
                     {"chapter_id": chapter["chapter_id"], "tags": chapter_rules}
                 )
-            completed_llm_recipe = ep.tags_llm_recipe_hash
-            if llm_enabled:
-                candidate_tags = (
-                    list(ep.llm_tag_candidates) if completed_llm_recipe == llm_recipe else []
+            rule_candidates = decorate_rule_candidates(
+                rule_tags,
+                episode_uid=ep.uid,
+                episode_title=ep.title,
+                taxonomy=taxonomy,
+                recipe_hash=rules_hash,
+            )
+            for annotation in chapter_annotations:
+                rule_candidates.extend(
+                    decorate_rule_candidates(
+                        annotation["tags"],
+                        episode_uid=ep.uid,
+                        episode_title=ep.title,
+                        taxonomy=taxonomy,
+                        recipe_hash=rules_hash,
+                        chapter_id_value=annotation["chapter_id"],
+                    )
                 )
+            completed_llm_recipe = ep.tags_llm_recipe_hash
+            persisted_rule_candidates = [
+                dict(candidate)
+                for candidate in persisted_candidates
+                if candidate.get("source_kind") == "rule"
+            ]
+            persisted_llm_candidates = [
+                dict(candidate)
+                for candidate in persisted_candidates
+                if candidate.get("source_kind", "llm") != "rule"
+            ]
+            prior_by_id = {
+                str(candidate.get("candidate_id")): candidate
+                for candidate in persisted_rule_candidates
+                if candidate.get("candidate_id")
+            }
+            # A deterministic match with the same recipe identity keeps its evaluator result and
+            # review provenance when the stage re-projects it. New rule candidates still receive
+            # fresh source evidence, while old identities remain available for the historical lane.
+            for current in rule_candidates:
+                prior = prior_by_id.get(str(current.get("candidate_id")))
+                if prior is not None:
+                    for field in (
+                        "prelabeler_model",
+                        "prelabeler_prompt_version",
+                        "prelabeler_decision",
+                        "prelabeler_confidence",
+                        "prelabeler_reason",
+                        "prelabeler_evidence_supported",
+                        "prelabeler_input_digest",
+                        "prelabeler_batch_index",
+                    ):
+                        if field in prior:
+                            current[field] = prior[field]
+            active_candidate_ids: set[str] = set()
+            if llm_enabled:
+                active_cached = [
+                    candidate
+                    for candidate in persisted_llm_candidates
+                    if completed_llm_recipe == llm_recipe
+                    # R5's LLM projection is chapter-only. Keep legacy episode-level rows in the
+                    # ledger for audit/backfill, but never feed them back into public projection.
+                    and candidate.get("chapter_id")
+                ]
+                candidate_tags = active_cached
+                active_candidate_ids = {
+                    str(candidate.get("candidate_id") or "") for candidate in active_cached
+                }
             elif ep.llm_tag_candidates:
                 # llm disabled/unavailable this run (dry run, misconfigured LLM_MODEL, ...) must
                 # still validate persisted candidates against current inputs, not republish them
@@ -975,47 +1225,64 @@ class TagsStage:
                 # prompt_version rather than this run's (there may be none) -- if every other input
                 # is unchanged, this reproduces completed_llm_recipe exactly; if not, it correctly
                 # diverges and the stale candidates are dropped.
-                cached = ep.llm_tag_candidates[0]
-                cached_recipe = tag_recipe_hash(
-                    taxonomy,
-                    agenda_item_titles=titles,
-                    agenda_text=agenda_text,
-                    transcript_text=transcript_text,
-                    llm_enabled=True,
-                    chapter_inputs=chapter_fingerprint,
-                    llm_route=str(cached.get("provider_model") or ""),
-                    prompt_version=str(cached.get("prompt_version") or TAG_PROMPT_VERSION),
+                cached = next(
+                    (
+                        candidate
+                        for candidate in ep.llm_tag_candidates
+                        if candidate.get("source_kind", "llm") != "rule"
+                    ),
+                    None,
                 )
-                candidate_tags = (
-                    list(ep.llm_tag_candidates) if completed_llm_recipe == cached_recipe else []
-                )
+                if cached is None:
+                    candidate_tags = []
+                else:
+                    cached_recipe = tag_recipe_hash(
+                        taxonomy,
+                        agenda_item_titles="",
+                        agenda_text="",
+                        transcript_text="",
+                        llm_enabled=True,
+                        chapter_inputs=chapter_fingerprint,
+                        llm_route=str(cached.get("provider_model") or ""),
+                        prompt_version=str(cached.get("prompt_version") or TAG_PROMPT_VERSION),
+                    )
+                    candidate_tags = (
+                        [
+                            candidate
+                            for candidate in persisted_llm_candidates
+                            if completed_llm_recipe == cached_recipe and candidate.get("chapter_id")
+                        ]
+                        if completed_llm_recipe == cached_recipe
+                        else []
+                    )
+                    active_candidate_ids = {
+                        str(candidate.get("candidate_id") or "") for candidate in candidate_tags
+                    }
             else:
                 candidate_tags = []
+            historical_candidates = [
+                {
+                    **candidate,
+                    "candidate_state": "historical",
+                    "display": False,
+                }
+                for candidate in [*persisted_rule_candidates, *persisted_llm_candidates]
+                if str(candidate.get("candidate_id") or "") not in active_candidate_ids
+                and str(candidate.get("candidate_id") or "")
+                not in {str(item.get("candidate_id") or "") for item in rule_candidates}
+            ]
+            candidate_tags = rule_candidates + candidate_tags
             # Visibility is a pure projection of whatever candidates are already on hand, not of
             # whether *this* run can dispatch a new LLM call: gating it on ``llm_enabled`` would
             # strip already-admitted candidates from ``ep.tags``/``ep.chapter_tags`` the moment
             # tagging is disabled or a dry run has no live backend, even though candidate_tags
             # (preserved above) is untouched.
-            visible_llm = (
-                visible_candidates(candidate_tags, config=evaluation_config, state=evaluation_state)
-                if candidate_tags
-                else []
-            )
-            merged_episode = merge_tag_sources(
-                rule_tags,
-                [tag for tag in visible_llm if not tag.get("chapter_id")],
-            )
-            for annotation in chapter_annotations:
-                chapter_visible = [
-                    tag for tag in visible_llm if tag.get("chapter_id") == annotation["chapter_id"]
-                ]
-                annotation["tags"] = merge_tag_sources(annotation["tags"], chapter_visible)
-            final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
+            final_tags = project_visible_tags(candidate_tags, chapter_annotations)
             final_hash = projection_hash if completed_llm_recipe == llm_recipe else rules_hash
-            if llm_enabled and completed_llm_recipe != llm_recipe:
+            if llm_enabled and completed_llm_recipe != llm_recipe and chapters:
                 if ctx.stop is not None and ctx.stop():
                     stats.defer("tag-llm-stop", sample=ep.uid or ep.guid)
-                    candidate_tags = []
+                    candidate_tags = rule_candidates
                     completed_llm_recipe = None
                 else:
                     # Peek the deferred registry for THIS exact recipe before dispatching.
@@ -1047,6 +1314,7 @@ class TagsStage:
                         # indistinguishable from a genuinely stuck run: both showed "no tracked
                         # work active" for the heartbeat's whole run. This is the one call in the
                         # tag lane actually worth tracking (network round trip + pacing waits).
+                        tag_call_metadata: dict[str, Any] = {}
                         with PROGRESS.track(
                             source=city.slug,
                             uid=str(ep.uid or ep.guid),
@@ -1060,9 +1328,9 @@ class TagsStage:
                             ) = llm_tag_suggestions(
                                 ctx.tag_backend,
                                 taxonomy=taxonomy,
-                                agenda_item_titles=titles,
-                                agenda_text=agenda_text,
-                                transcript_text=transcript_text,
+                                agenda_item_titles="",
+                                agenda_text="",
+                                transcript_text="",
                                 recipe_hash=llm_recipe,
                                 chapter_inputs=chapters,
                                 agenda_documents=agenda_document_context(ep),
@@ -1071,9 +1339,19 @@ class TagsStage:
                                 # across minute windows instead of bursting one window and
                                 # stopping.
                                 deadline_at=ctx.tag_llm_deadline,
+                                call_metadata_out=tag_call_metadata,
                             )
+                        remember_call_attempt(
+                            ep,
+                            purpose="topic-tags:tagger",
+                            recipe_hash=llm_recipe,
+                            status="deferred" if dispatched else "resolved",
+                            metadata=tag_call_metadata,
+                            model=resolved_model or llm_route,
+                            reason=(resolved_model or "") if dispatched else "",
+                        )
                         if dispatched:
-                            candidate_tags = []
+                            candidate_tags = rule_candidates
                             completed_llm_recipe = None
                             stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
                             if not had_cached_pending:
@@ -1098,14 +1376,6 @@ class TagsStage:
                                 if resolved_model
                                 else llm_route
                             )
-                            episode_candidates = decorate_llm_candidates(
-                                suggestions,
-                                episode_uid=ep.uid,
-                                episode_title=ep.title,
-                                provider_model=candidate_provider_model,
-                                taxonomy=taxonomy,
-                                recipe_hash=llm_recipe,
-                            )
                             chapter_candidates: list[dict[str, Any]] = []
                             for chapter in chapters:
                                 chapter_candidates.extend(
@@ -1118,30 +1388,138 @@ class TagsStage:
                                         recipe_hash=llm_recipe,
                                     )
                                 )
-                            candidate_tags = episode_candidates + chapter_candidates
+                            # Episode-level LLM suggestions are rejected by the contract; keep the
+                            # variable for compatibility with deferred/old responses, but the new
+                            # rollout persists only chapter candidates alongside fresh rule rows.
+                            candidate_tags = rule_candidates + chapter_candidates
                             completed_llm_recipe = llm_recipe
-                            visible_llm = visible_candidates(
-                                candidate_tags,
-                                config=evaluation_config,
-                                state=evaluation_state,
-                            )
-                            merged_episode = merge_tag_sources(
-                                rule_tags,
-                                [tag for tag in visible_llm if not tag.get("chapter_id")],
-                            )
-                            for annotation in chapter_annotations:
-                                extra = [
-                                    tag
-                                    for tag in visible_llm
-                                    if tag.get("chapter_id") == annotation["chapter_id"]
-                                ]
-                                annotation["tags"] = merge_tag_sources(annotation["tags"], extra)
-                            final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
+                            final_tags = project_visible_tags(candidate_tags, chapter_annotations)
                             final_hash = projection_hash
                     except Exception as exc:  # noqa: BLE001 — one bad model reply is item-local
+                        remember_call_attempt(
+                            ep,
+                            purpose="topic-tags:tagger",
+                            recipe_hash=llm_recipe,
+                            status="error",
+                            metadata=tag_call_metadata,
+                            model=llm_route,
+                            reason=str(exc)[:500],
+                        )
                         stats.errors.append(f"{ep.uid or ep.guid}: LLM tagging failed: {exc}")
-                        candidate_tags = []
+                        candidate_tags = rule_candidates
                         completed_llm_recipe = None
+            elif llm_enabled and completed_llm_recipe != llm_recipe and not chapters:
+                # A chapter-only LLM rollout has no valid subject when the chapter finder has not
+                # produced usable chapters yet. Mark the empty LLM projection resolved for this
+                # input so the stage does not dispatch the same empty request on every run; the
+                # chapter fingerprint will invalidate it naturally when chapters arrive.
+                completed_llm_recipe = llm_recipe
+                final_hash = projection_hash
+
+            if prelabeler_enabled and prelabeler_model and candidate_tags:
+                projectable_candidates = [
+                    candidate
+                    for candidate in candidate_tags
+                    if candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")
+                ]
+                pending_prelabels = [
+                    candidate
+                    for candidate in projectable_candidates
+                    if candidate.get("prelabeler_model") != prelabeler_model
+                    or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
+                    or candidate.get("prelabeler_decision")
+                    not in {
+                        "likely_correct",
+                        "needs_human_review",
+                        "likely_incorrect",
+                    }
+                ]
+                if pending_prelabels:
+                    if ctx.stop is not None and ctx.stop():
+                        stats.defer("tag-prelabeler-stop", sample=ep.uid or ep.guid)
+                    else:
+                        prelabel_recipe = hashlib.sha1(
+                            json.dumps(
+                                {
+                                    "llm_recipe": llm_recipe,
+                                    "model": prelabeler_model,
+                                    "prompt_version": prelabeler_prompt_version,
+                                    "candidates": sorted(
+                                        str(item.get("candidate_id")) for item in pending_prelabels
+                                    ),
+                                },
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ).encode()
+                        ).hexdigest()[:16]
+                        try:
+                            prelabel_call_metadata: dict[str, Any] = {}
+                            with PROGRESS.track(
+                                source=city.slug,
+                                uid=str(ep.uid or ep.guid),
+                                phase="tag-prelabeler-dispatch",
+                            ):
+                                (
+                                    prelabels,
+                                    prelabel_dispatched,
+                                    _prelabel_resolved_model,
+                                ) = llm_prelabel_candidates(
+                                    ctx.tag_backend,
+                                    candidates=pending_prelabels,
+                                    taxonomy=taxonomy,
+                                    chapters=chapters,
+                                    agenda_text=agenda_text,
+                                    transcript_text=transcript_text,
+                                    recipe_hash=prelabel_recipe,
+                                    model=prelabeler_model,
+                                    prompt_version=prelabeler_prompt_version,
+                                    deadline_at=ctx.tag_llm_deadline,
+                                    call_metadata_out=prelabel_call_metadata,
+                                )
+                            remember_call_attempt(
+                                ep,
+                                purpose="topic-tags:prelabeler",
+                                recipe_hash=prelabel_recipe,
+                                status="deferred" if prelabel_dispatched else "resolved",
+                                metadata=prelabel_call_metadata,
+                                model=_prelabel_resolved_model or prelabeler_model,
+                                reason=(
+                                    _prelabel_resolved_model
+                                    if prelabel_dispatched and _prelabel_resolved_model
+                                    else ""
+                                ),
+                            )
+                            if prelabels:
+                                candidate_tags = [
+                                    {
+                                        **candidate,
+                                        **prelabels.get(str(candidate.get("candidate_id")), {}),
+                                    }
+                                    for candidate in candidate_tags
+                                ]
+                            if prelabel_dispatched:
+                                stats.defer(
+                                    "tag-prelabeler-oversized"
+                                    if _prelabel_resolved_model == "payload-too-large"
+                                    else "tag-prelabeler-dispatch",
+                                    sample=ep.uid or ep.guid,
+                                )
+                        except Exception as exc:  # noqa: BLE001 — evaluator is item-local
+                            remember_call_attempt(
+                                ep,
+                                purpose="topic-tags:prelabeler",
+                                recipe_hash=prelabel_recipe,
+                                status="error",
+                                metadata=prelabel_call_metadata,
+                                model=prelabeler_model,
+                                reason=str(exc)[:500],
+                            )
+                            stats.errors.append(f"{ep.uid or ep.guid}: pre-labeler failed: {exc}")
+
+            # Re-project after the evaluator attempt. This is intentionally cheap and makes the
+            # overlay a pure function of the persisted ledger + calibration state; a deferred or
+            # failed evaluator therefore leaves the previous display decision intact.
+            final_tags = project_visible_tags(candidate_tags, chapter_annotations)
 
             if llm_enabled and completed_llm_recipe == llm_recipe:
                 candidate_tags = [
@@ -1149,6 +1527,22 @@ class TagsStage:
                     for tag in candidate_tags
                 ]
                 final_hash = projection_hash
+
+            # Keep superseded/legacy LLM rows in the canonical append-oriented ledger. They are
+            # intentionally excluded from `projectable_candidates` above and marked hidden here,
+            # so recipe/chapter changes never erase audit evidence or make an old episode-level row
+            # public again. Deterministic rows and the active current-recipe candidates remain the
+            # live projection set.
+            ledger_by_id: dict[str, dict[str, Any]] = {}
+            for candidate in historical_candidates + candidate_tags:
+                key = str(candidate.get("candidate_id") or "")
+                if not key:
+                    from citypods.llm_evaluation import candidate_id
+
+                    key = candidate_id(candidate)
+                    candidate = {**candidate, "candidate_id": key}
+                ledger_by_id[key] = candidate
+            ledger_candidates = list(ledger_by_id.values())
 
             # Cache the input fingerprint whenever this run captured the current inputs -- INCLUDING
             # when the LLM dispatch is still pending (`final_hash == rules_hash`, not
@@ -1163,14 +1557,14 @@ class TagsStage:
             if (
                 ep.tags != final_tags
                 or ep.chapter_tags != chapter_annotations
-                or ep.llm_tag_candidates != candidate_tags
+                or ep.llm_tag_candidates != ledger_candidates
                 or ep.tags_llm_recipe_hash != completed_llm_recipe
                 or ep.tags_spec_hash != final_hash
                 or ep.tags_input_fingerprint != fingerprint_after
             ):
                 ep.tags = final_tags
                 ep.chapter_tags = chapter_annotations
-                ep.llm_tag_candidates = candidate_tags
+                ep.llm_tag_candidates = ledger_candidates
                 ep.tags_llm_recipe_hash = completed_llm_recipe
                 ep.tags_spec_hash = final_hash
                 ep.tags_input_fingerprint = fingerprint_after
