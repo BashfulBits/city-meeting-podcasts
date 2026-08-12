@@ -1,6 +1,6 @@
 # review/14 — Topic Tags & Strong Towns Lens (Phase R)
 
-**Maturity: Implemented locally · shadow dispatch rollout 2026-07-16 · matured 2026-07-14, grounded against current `main` · breakout of
+**Maturity: Implemented locally with unified calibration overlay · shadow dispatch rollout 2026-07-16 · matured 2026-07-14, grounded against current `main` · breakout of
 [`review/11`](11-technical-design-roadmap.md) Phase R (#4) · ROADMAP R5 · no PR yet**
 
 > Topic tags turn the catalog from "meetings you can listen to" into "meetings you can *track by issue*."
@@ -18,9 +18,10 @@
    records directly.
 3. **AI is additive and untrusted** (SECURITY.md). LLM classification is layered on *after* transcripts
    are stable, and only ever **adds** validated candidates with a **confidence + explanation**; it never
-   edits official data (titles, dates, votes, links, transcript text) and never silently removes a
-   human/rule tag. Candidates are collected in dispatch mode as shadow data until the reusable LLM
-   calibration policy admits them.
+   edits official data (titles, dates, votes, links, transcript text). Deterministic and LLM candidates
+   share one persisted ledger; the initial 12-review/90%-precision gate controls LLM admission, while a
+   separately calibrated pre-labeler can later suppress a likely-incorrect display projection without
+   deleting the underlying candidate, rule phrase, or evidence.
 
 ## Implemented rollout and calibration behavior (2026-07-16)
 
@@ -35,7 +36,7 @@ since the module is feature-independent by design, not R5-specific. What follows
 concrete wiring; see review/35 for the matrix/admission algorithm, state shape, human-review workflow,
 security hardening, and the module's structural limits.
 
-**R5's concrete instance:** feature `topic-tags`, route `litellm:gemini/gemini-3-flash-preview`, initial
+**R5's concrete instance:** feature `topic-tags`, route `litellm:gemini/gemini-3.1-flash-lite`, initial
 fallback `1.0` (so ordinary uncalibrated suggestions remain shadow-only), matrix dimensions feature ×
 provider/model route × prompt/schema version × taxonomy version × tag ID × episode/chapter scope, human
 review decisions in `state/llm_evaluation.json`, 90% required precision, 12 minimum reviews per row
@@ -44,7 +45,12 @@ weekly [`llm-tag-review.yml`](../.github/workflows/llm-tag-review.yml) workflow 
 actionable child issues (bounded quoted transcript region with derived timestamps, or a bounded
 agenda/document quote with an allowlisted official document link); review decisions are ingested by
 [`llm-tag-review-ingest.yml`](../.github/workflows/llm-tag-review-ingest.yml), which refreshes the matrix
-and makes newly qualified tags visible on the next normal build without another LLM call.
+and makes newly qualified tags visible on the next normal build without another LLM call. The current
+rollout is chapter-only for LLM candidates: episode-level LLM suggestions are ignored, while
+deterministic episode/chapter rules remain unchanged. Deterministic candidates remain public until
+their pre-labeler overlay qualifies at 50 reviewed examples and 95% precision for both actionable
+decisions; qualified likely-incorrect results suppress display only. The weekly packet defaults to 80
+items with per-tag/source/scope stratification and reports distance to both gates.
 
 **This is *not* the same mechanism as the still-unbuilt quality tournament/champion routing
 ([`review/34`](34-llm-quality-tournament-champion-routing.md), `review/27` §6's old home) — see review/34
@@ -373,7 +379,9 @@ the normal enrich phase and tags every retained episode over the following sched
 first pass for episodes without a transcript yet, full pass once transcripts exist), the same gradual
 pattern H12's version-aware re-transcribe already established — not a special-cased bulk job.
 
-LLM jobs follow the same gradual schedule. Results are stored as shadow candidates. **Precisely, since
+LLM jobs follow the same gradual schedule and the initial LLM contract is chapter-only: legacy
+episode-level LLM rows remain as hidden historical evidence while episodes with usable chapters are
+tagged lazily. Results are stored as shadow candidates. **Precisely, since
 `tag_recipe_hash()` computes two different hashes for two different gates:** the *dispatch* gate
 (`llm_recipe`, used for `ep.tags_llm_recipe_hash`) never includes the admission policy, so a policy
 change alone never re-triggers a vendor call — cached candidates are reused as-is. The *cache-skip* gate

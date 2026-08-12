@@ -500,6 +500,49 @@ class TestTranscriptStageVTT:
         assert provider.calls == 1
         assert "transcript" not in second.links
 
+    def test_swagit_recheck_uses_probe_path_and_records_denial(self, tmp_path):
+        class SwagitProbeProvider(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def transcript_url(self, episode):
+                return "https://swagit.example/videos/100/transcript"
+
+            def probe_transcript(self, episode, source):
+                self.calls += 1
+                if self.calls == 1:
+                    return TranscriptProbe(
+                        url=self.transcript_url(episode), status_code=200, content=VTT_CONTENT
+                    )
+                return TranscriptProbe(
+                    url=self.transcript_url(episode), status_code=403, content=b""
+                )
+
+        provider = SwagitProbeProvider()
+        city = _city(
+            provider="swagit",
+            source={"list_url": "https://swagit.example/archive"},
+            asr_enabled=False,
+        )
+        ep = _ep(links={"canonical_video": "https://swagit.example/videos/100"})
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        ep.provider_transcript["probe"]["next_retry_at"] = (
+            datetime.now(UTC) - timedelta(seconds=1)
+        ).isoformat()
+
+        with patch(
+            "citypods.http.make_session",
+            side_effect=AssertionError("scheduled Swagit recheck must use probe_transcript"),
+        ):
+            TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+
+        assert provider.calls == 2
+        probe = ep.provider_transcript["probe"]
+        assert probe["status"] == "error"
+        assert probe["status_code"] == 403
+        assert datetime.fromisoformat(probe["next_retry_at"]) > datetime.now(UTC)
+
     def test_unchanged_refetch_refreshes_checked_at_without_new_candidate(self, tmp_path):
         ep, _ = self._run_with_content(tmp_path, VTT_CONTENT)
         first = dict(ep.provider_transcript["candidate"])

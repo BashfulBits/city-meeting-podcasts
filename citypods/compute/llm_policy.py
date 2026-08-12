@@ -116,6 +116,9 @@ class LLMRoute:
     chat_path: str = "/v1/chat/completions"
     api_key_env: str = ""
     account_id: str = ""
+    # Conservative default for hand-authored/test routes. Generated route catalogs may override
+    # this when a provider publishes a smaller context window.
+    context_limit: int = 32768
 
     def __post_init__(self) -> None:
         # Hand-built fallback and test routes intentionally omit provider adapter metadata.  They
@@ -169,6 +172,7 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
                 chat_path=str(item.get("chat_path", "/v1/chat/completions")),
                 api_key_env=str(item.get("api_key_env", "")),
                 account_id=str(item.get("account_id", "")),
+                context_limit=max(1, int(item.get("context_limit", 32768) or 32768)),
             )
         )
     aliases = {

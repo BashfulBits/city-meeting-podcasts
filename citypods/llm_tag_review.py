@@ -1,4 +1,4 @@
-"""Package and ingest the weekly R5 LLM-tag calibration review.
+"""Package and ingest the weekly R5 unified tag calibration review.
 
 This feature adapter discovers R5 candidates from episode records and supplies the GitHub
 workflow's files; :mod:`citypods.llm_evaluation` owns the calibration matrix and issue-evidence
@@ -14,9 +14,11 @@ from pathlib import Path
 
 from citypods.config import load_city_configs, load_site_config
 from citypods.llm_evaluation import (
+    candidate_id,
     config_from_mapping,
     ingest_review_body,
     load_state,
+    prelabeler_review_candidate,
     refresh_matrix,
     render_digest,
     render_review_body,
@@ -27,6 +29,7 @@ from citypods.records import load_records, record_to_episode, source_key
 from citypods.state import resolve_state_dir
 from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
+from citypods.tags import load_taxonomy
 
 
 def _log(msg: str) -> None:
@@ -55,14 +58,80 @@ def collect_candidates(state_dir: Path, config_dir: str, site_config: dict) -> l
                 if not isinstance(raw, dict):
                     continue
                 value = dict(raw)
+                # Superseded chapter/recipe rows remain in the canonical ledger for audit, but
+                # they are not active weekly-review subjects. Reviewing them would reintroduce
+                # legacy episode-level candidates into the chapter-only calibration path.
+                if value.get("candidate_state") == "historical":
+                    continue
                 value.setdefault("source_key", source_key(city))
                 value.setdefault("city_slug", city.slug)
                 value.setdefault("episode_uid", episode.uid)
                 value.setdefault("episode_title", episode.title)
-                candidate_key = str(value.get("candidate_id") or "")
-                if candidate_key:
-                    candidates[candidate_key] = value
+                value.setdefault("source_kind", "llm")
+                value.setdefault("assessment_kind", "tagger-admission")
+                value.setdefault("scope", "chapter" if value.get("chapter_id") else "episode")
+                # Records written before the unified ledger did not carry candidate_id.  Give
+                # them their stable compatibility identity here so they remain reviewable instead
+                # of silently disappearing from every future weekly packet.
+                value["candidate_id"] = str(value.get("candidate_id") or candidate_id(value))
+                candidate_key = value["candidate_id"]
+                candidates[candidate_key] = value
+                if value.get("prelabeler_decision") in {
+                    "likely_correct",
+                    "needs_human_review",
+                    "likely_incorrect",
+                }:
+                    audit = prelabeler_review_candidate(value)
+                    audit.setdefault("source_key", source_key(city))
+                    audit.setdefault("city_slug", city.slug)
+                    candidates[str(audit["candidate_id"])] = audit
     return [candidates[key] for key in sorted(candidates)]
+
+
+def collect_rule_audits(state_dir: Path, config_dir: str, site_config: dict) -> list[dict]:
+    """Collect deterministic include/exclude observations without making them review subjects."""
+    audits: list[dict] = []
+    seen: set[tuple[str, str, str, str, str, str, str]] = set()
+    cities = load_city_configs(config_dir, site_config.get("defaults", {}))
+    for city in cities:
+        for record in load_records(state_dir, source_key(city)).values():
+            episode = record_to_episode(record)
+            for attempt in episode.tags_llm_call_attempts:
+                if not isinstance(attempt, dict) or attempt.get("purpose") != "topic-tags:rules":
+                    continue
+                observations = attempt.get("rule_audit")
+                if not isinstance(observations, list):
+                    continue
+                for observation in observations:
+                    if not isinstance(observation, dict):
+                        continue
+                    scope = str(attempt.get("scope") or "episode")
+                    chapter_id = str(attempt.get("chapter_id") or "")
+                    identity = (
+                        str(episode.uid or ""),
+                        chapter_id,
+                        scope,
+                        str(observation.get("tag_id") or ""),
+                        str(observation.get("kind") or ""),
+                        str(observation.get("pattern") or ""),
+                        str(observation.get("where") or ""),
+                    )
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    audits.append(
+                        {
+                            **observation,
+                            "source_key": source_key(city),
+                            "city_slug": city.slug,
+                            "episode_uid": episode.uid,
+                            "episode_title": episode.title,
+                            "scope": scope,
+                            "chapter_id": attempt.get("chapter_id"),
+                            "attempt_id": attempt.get("attempt_id"),
+                        }
+                    )
+    return audits
 
 
 def package(args: argparse.Namespace) -> int:
@@ -72,13 +141,25 @@ def package(args: argparse.Namespace) -> int:
     state = load_state(state_path)
     refresh_matrix(state, config=config)
     candidates = collect_candidates(state_dir, args.config_dir, site_config)
+    rule_audits = collect_rule_audits(state_dir, args.config_dir, site_config)
     selected = select_review_candidates(candidates, state=state, config=config)
+    taxonomy = load_taxonomy(
+        (site_config.get("tagging") or {}).get("taxonomy_path", "config/taxonomy.yml")
+    )
     if args.limit is not None:
         selected = selected[: max(0, args.limit)]
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "parent.md").write_text(
-        render_digest(candidates, selected=selected, config=config, state=state), encoding="utf-8"
+        render_digest(
+            candidates,
+            selected=selected,
+            config=config,
+            state=state,
+            taxonomy=taxonomy,
+            rule_audits=rule_audits,
+        ),
+        encoding="utf-8",
     )
     children = []
     for candidate in selected:
@@ -93,7 +174,7 @@ def package(args: argparse.Namespace) -> int:
     )
     save_state(state_path, state)
     push_state(storage, state_dir, only_paths=[config.state_path], log=_log)
-    print(f"packaged {len(children)} LLM tag review issue(s)")
+    print(f"packaged {len(children)} unified R5 tag review issue(s)")
     return 0
 
 
@@ -138,7 +219,7 @@ def ingest(args: argparse.Namespace) -> int:
                 "candidate_id": review["candidate_id"],
                 "decision": review["decision"],
                 "comment": (
-                    f"Stored LLM calibration decision `{review['decision']}` for "
+                    f"Stored unified R5 calibration decision `{review['decision']}` for "
                     f"`{review['candidate_id']}`."
                 ),
             },

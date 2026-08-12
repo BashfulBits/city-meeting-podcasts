@@ -2005,7 +2005,10 @@ def _build_impl(
     )
     tag_backend = None
     tagging_config = site_config.get("tagging") or {}
-    if tagging_config.get("enabled") and not dry_run:
+    # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
+    # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
+    # merely because tagging is enabled in site_config.yml.
+    if tagging_config.get("enabled") and not dry_run and phase != "render":
         from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 
         try:
@@ -2305,7 +2308,10 @@ def _build_impl(
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
         llm_evaluation_state_path=state_dir
         / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
-        llm_evaluation_config=(tagging_config.get("evaluation") or {}),
+        llm_evaluation_config={
+            **(tagging_config.get("evaluation") or {}),
+            "prelabeler": tagging_config.get("prelabeler") or {},
+        },
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR

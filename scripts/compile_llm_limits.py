@@ -83,6 +83,12 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
                 "reset_timezone": source.get(
                     "reset_timezone", provider_cfg.get("reset_timezone", "UTC")
                 ),
+                # This is the repository's conservative effective input ceiling, not an
+                # assertion about an upstream provider's maximum. Keeping it in the generated
+                # route catalog lets callers record and enforce the exact ceiling used.
+                "context_limit": int(
+                    source.get("context_limit", provider_cfg.get("context_limit", 32768))
+                ),
             }
         )
         if provider_cfg.get("rpm") is not None:

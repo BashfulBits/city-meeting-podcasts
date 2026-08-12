@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
 from citypods.tags import (
     chapter_tag_inputs,
-    episode_tag_inputs,
+    episode_tag_inputs,  # noqa: F401 — compatibility hook; R5 run itself is chapter-only
     llm_tag_suggestions,
     load_taxonomy,
 )
@@ -33,10 +34,11 @@ MODELS = (
     "deepseek/deepseek-v4-flash",
     "mistral/mistral-large-2512",
 )
+JUDGE_MODEL = "google/gemma-4-31b-it"
 CONTESTS = (
-    ("deepseek/deepseek-v4-flash", "gemini/gemini-3.1-flash-lite", "mistral/mistral-large-2512"),
-    ("deepseek/deepseek-v4-flash", "mistral/mistral-large-2512", "gemini/gemini-3.1-flash-lite"),
-    ("gemini/gemini-3.1-flash-lite", "mistral/mistral-large-2512", "deepseek/deepseek-v4-flash"),
+    ("deepseek/deepseek-v4-flash", "gemini/gemini-3.1-flash-lite", JUDGE_MODEL),
+    ("deepseek/deepseek-v4-flash", "mistral/mistral-large-2512", JUDGE_MODEL),
+    ("gemini/gemini-3.1-flash-lite", "mistral/mistral-large-2512", JUDGE_MODEL),
 )
 STATE = "llm_tournament.json"
 JUDGE_CONTRACT = "tournament-tag-judge"
@@ -48,7 +50,9 @@ def contest_plan() -> tuple[tuple[str, str, str], ...]:
     return CONTESTS
 
 
-def persisted_r5_flash_output(record: dict[str, Any]) -> list[dict[str, Any]] | None:
+def persisted_r5_flash_output(
+    record: dict[str, Any], chapter_id: str | None = None
+) -> list[dict[str, Any]] | None:
     """Return the current R5 Flash-Lite shadow output when it is safe to reuse.
 
     ``llm_tag_candidates`` is deliberately shadow-only, but its per-candidate recipe/model
@@ -62,18 +66,48 @@ def persisted_r5_flash_output(record: dict[str, Any]) -> list[dict[str, Any]] | 
         return None
     if not all(isinstance(item, dict) for item in candidates):
         return None
+    filtered = [
+        item
+        for item in candidates
+        if item.get("source_kind", "llm") != "rule"
+        and (chapter_id is None or item.get("chapter_id") == chapter_id)
+    ]
+    if not filtered:
+        return None
     if all(
         item.get("provider_model") == R5_FLASH_MODEL and item.get("recipe_hash") == recipe
-        for item in candidates
+        for item in filtered
     ):
-        return candidates
+        return filtered
     return None
 
 
+@dataclass(frozen=True)
+class PairwiseEvaluatorSpec:
+    """Task-agnostic pairwise comparison contract shared by R5 and future R6 evaluators."""
+
+    task: str
+    purpose: str
+    contract: str = JUDGE_CONTRACT
+    criteria: str = "Compare source support, omissions, overreach, evidence quality, and fit."
+
+
+def blind_candidate(candidate: Any, *, fields: tuple[str, ...] | None = None) -> Any:
+    """Remove route/recipe provenance before presenting a candidate to an independent judge."""
+    if not isinstance(candidate, dict):
+        return candidate
+    fields = fields or ("id", "chapter_id", "source", "confidence", "explanation", "evidence")
+    return {field: candidate[field] for field in fields if field in candidate}
+
+
 def judge_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep tag substance while withholding route/recipe provenance from a blind judge."""
-    fields = ("id", "chapter_id", "source", "confidence", "explanation", "evidence")
-    return [{field: item[field] for field in fields if field in item} for item in candidates]
+    """R5 compatibility wrapper for the generic blind-candidate projection."""
+    return [blind_candidate(item) for item in candidates]
+
+
+def order_swapped_pairs(left: str, right: str) -> tuple[tuple[str, str], tuple[str, str]]:
+    """Return both presentation orders so positional judge bias can be measured."""
+    return (left, right), (right, left)
 
 
 def _digest(value: Any) -> str:
@@ -81,20 +115,111 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
-def _judge_model():
+def comparison_id(
+    *,
+    run_id: str,
+    task: str,
+    subject_id: str,
+    first_model: str,
+    second_model: str,
+    judge_model: str,
+) -> str:
+    """Stable durable identity for an R5 chapter or future R6 freeform comparison."""
+    return _digest(
+        {
+            "run_id": run_id,
+            "task": task,
+            "subject_id": subject_id,
+            "first_model": first_model,
+            "second_model": second_model,
+            "judge_model": judge_model,
+        }
+    )
+
+
+def _judge_model(contract: str = JUDGE_CONTRACT):
     from pydantic import BaseModel, ConfigDict, Field
 
     class Decision(BaseModel):
         model_config = ConfigDict(extra="forbid")
-        winner: str = Field(pattern="^(a|b|tie)$")
+        winner: str = Field(pattern="^(a|b|tie|both_poor)$")
         rationale: str = Field(min_length=1, max_length=500)
 
-    model = getattr(_judge_model, "model", None)
+    models = getattr(_judge_model, "models", {})
+    model = models.get(contract)
     if model is None:
         model = Decision
-        register_response_model(JUDGE_CONTRACT, model)
-        _judge_model.model = model
+        try:
+            register_response_model(contract, model)
+        except ValueError:
+            from citypods.compute.structured import response_model
+
+            model = response_model(contract)
+        models[contract] = model
+        _judge_model.models = models
     return model
+
+
+def pairwise_judge(
+    backend: Any,
+    *,
+    spec: PairwiseEvaluatorSpec,
+    source: Any,
+    candidate_a: Any,
+    candidate_b: Any,
+    judge_model: str,
+    recipe_hash: str,
+    deadline_at: datetime | None = None,
+    allow_paid: bool = True,
+    candidate_models: tuple[str, ...] = (),
+) -> tuple[dict[str, Any] | None, bool]:
+    """Run one blinded pairwise judgment, returning ``(decision, pending)``.
+
+    The engine accepts arbitrary JSON-serializable source/candidate payloads, so an R6 summary
+    comparison can use the same order-swapping and durable-state envelope without pretending that
+    summaries are discrete taxonomy candidates.
+    """
+    if judge_model in set(candidate_models):
+        raise ValueError("pairwise judge route must be independent from candidate routes")
+    _judge_model(spec.contract)
+    job = InferenceJob(
+        task=spec.task,
+        recipe_hash=recipe_hash,
+        inputs={
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        f"Compare candidate A and candidate B for {spec.task}. "
+                        f"{spec.criteria} Return a, b, tie, or both_poor with a short rationale."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "source": source,
+                            "candidate_a": candidate_a,
+                            "candidate_b": candidate_b,
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+            "structured_output": spec.contract,
+            "llm_policy": LLMRequestPolicy(
+                allowed_models=(judge_model,),
+                allow_paid=allow_paid,
+                deadline_at=deadline_at,
+                purpose=spec.purpose,
+            ),
+        },
+    )
+    result = backend.run_inference(job)
+    if isinstance(result, JobHandle):
+        return None, True
+    decision = _judge_model(spec.contract).model_validate_json(_content(result))
+    return {"winner": decision.winner, "rationale": decision.rationale}, False
 
 
 def _backend(model: str, storage) -> LiteLLMBackend:
@@ -121,11 +246,19 @@ def _content(result: JobResult) -> str:
 
 def _state(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return {"version": 1, "results": []}
+        return {"version": 1, "results": [], "comparisons": {}}
     value = json.loads(path.read_text())
     if isinstance(value, dict) and isinstance(value.get("results"), list):
+        value.setdefault("comparisons", {})
         return value
-    return {"version": 1, "results": []}
+    return {"version": 1, "results": [], "comparisons": {}}
+
+
+def _persist_state(state: dict[str, Any], state_path: Path, storage: Any, state_dir: Path) -> None:
+    """Persist the generic comparison store after each completed/pending/error judgment."""
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+    push_state(storage, state_dir, only_paths=[STATE])
 
 
 def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int) -> int:
@@ -137,45 +270,65 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     pull_state(storage, state_dir)
     state_path = state_dir / STATE
     state = _state(state_path)
-    done = {entry.get("episode_uid") for entry in state["results"]}
+    # Old episode-level records are intentionally not considered complete: R5 now compares one
+    # chapter at a time, and the same generic state can later carry R6 summary comparisons.
+    done = {
+        (entry.get("episode_uid"), entry.get("chapter_id"))
+        for entry in state["results"]
+        if entry.get("chapter_id")
+    }
     taxonomy_path = (site.get("tagging") or {}).get("taxonomy_path", "config/taxonomy.yml")
     taxonomy = load_taxonomy(taxonomy_path)
-    episodes: list[tuple[Any, dict[str, Any]]] = []
+    episodes: list[tuple[Any, dict[str, Any], dict[str, Any]]] = []
     for city in load_city_configs(config_dir, site["defaults"]):
         for rec in load_records(state_dir, source_key(city)).values():
             ep = record_to_episode(rec)
-            if ep.uid and ep.uid not in done:
-                episodes.append((ep, rec))
+            if not ep.uid:
+                continue
+            chapters = chapter_tag_inputs(ep, storage)
+            if not chapters:
+                print(f"llm-tournament: skipping {ep.uid!r} (no usable chapters)")
+                continue
+            for chapter in chapters:
+                if chapter.get("chapter_id") and (ep.uid, chapter["chapter_id"]) not in done:
+                    episodes.append((ep, rec, chapter))
     episodes.sort(key=lambda item: (item[0].published, item[0].uid or ""), reverse=True)
     deadline = datetime.now(UTC) + timedelta(minutes=20)
     completed = 0
-    for ep, record in episodes[:samples]:
-        titles, agenda, transcript = episode_tag_inputs(ep, storage)
-        if not (titles or agenda or transcript):
+    for ep, record, chapter in episodes[:samples]:
+        chapter_id = str(chapter["chapter_id"])
+        if not (
+            chapter.get("title") or chapter.get("agenda_text") or chapter.get("transcript_text")
+        ):
+            print(f"llm-tournament: skipping {ep.uid!r} (chapter has no usable source)")
             continue
-        chapters = chapter_tag_inputs(ep, storage)
         source = {
-            "title": ep.title,
-            "agenda": (titles + "\n" + agenda)[:12000],
-            "transcript": transcript[:24000],
+            "episode_title": ep.title,
+            "chapter": chapter,
+            "taxonomy": [
+                {"id": tag.id, "label": tag.label, "description": tag.description}
+                for tag in taxonomy.tags
+            ],
         }
         outputs: dict[str, Any] = {}
         contest_failed = False
         for model in MODELS:
             if model == "gemini/gemini-3.1-flash-lite":
-                persisted = persisted_r5_flash_output(record)
+                persisted = persisted_r5_flash_output(record, chapter_id)
                 if persisted is not None:
                     outputs[model] = persisted
                     continue
-            recipe = _digest({"v": 1, "uid": ep.uid, "model": model, "source": source})
+            recipe = _digest(
+                {"v": 2, "uid": ep.uid, "chapter_id": chapter_id, "model": model, "source": source}
+            )
             try:
-                answer, _, pending, _ = llm_tag_suggestions(
+                _, chapter_tags, pending, _ = llm_tag_suggestions(
                     _backend(model, storage),
                     taxonomy=taxonomy,
-                    agenda_item_titles=titles,
-                    agenda_text=agenda,
-                    transcript_text=transcript,
-                    chapter_inputs=chapters,
+                    agenda_item_titles="",
+                    agenda_text="",
+                    transcript_text="",
+                    chapter_inputs=[chapter],
                     recipe_hash=recipe,
                     allow_paid=True,
                     purpose="tournament:tag",
@@ -194,68 +347,114 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
             if pending:
                 contest_failed = True
                 break
-            outputs[model] = answer
+            outputs[model] = chapter_tags.get(chapter_id, [])
         if contest_failed or len(outputs) != len(MODELS):
             continue
         decisions = []
         judge_pending = False
         for left, right, judge in CONTESTS:
-            for first, second in ((left, right), (right, left)):
-                prompt = {
-                    "source": source,
-                    "candidate_a": judge_candidates(outputs[first]),
-                    "candidate_b": judge_candidates(outputs[second]),
-                }
-                _judge_model()
-                job = InferenceJob(
+            for first, second in order_swapped_pairs(left, right):
+                comparison_key = comparison_id(
+                    run_id=str(ep.uid),
                     task="tag",
-                    recipe_hash=_digest({"v": 1, "judge": judge, "prompt": prompt}),
-                    inputs={
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": (
-                                    "Judge factual topic-tag quality only. Return a, b, or tie."
-                                ),
-                            },
-                            {"role": "user", "content": json.dumps(prompt)},
-                        ],
-                        "structured_output": JUDGE_CONTRACT,
-                        "llm_policy": LLMRequestPolicy(
-                            allowed_models=(judge,),
-                            allow_paid=True,
-                            deadline_at=deadline,
-                            purpose="tournament:tag-judge",
-                        ),
-                    },
+                    subject_id=f"{chapter_id}:{_digest(source)}",
+                    first_model=first,
+                    second_model=second,
+                    judge_model=judge,
                 )
+                comparison_store = state.setdefault("comparisons", {})
+                prior_comparison = comparison_store.get(comparison_key)
+                if (
+                    isinstance(prior_comparison, dict)
+                    and prior_comparison.get("status") == "resolved"
+                ):
+                    prior_record = prior_comparison.get("decision_record")
+                    if isinstance(prior_record, dict):
+                        decisions.append(dict(prior_record))
+                        continue
+                    # A hand-repaired or partially-written state entry must not make a sample
+                    # permanently incomplete. Re-run only this missing comparison and replace the
+                    # malformed envelope with a complete decision record below.
                 try:
-                    result = _backend(judge, storage).run_inference(job)
+                    decision, pending = pairwise_judge(
+                        _backend(judge, storage),
+                        spec=PairwiseEvaluatorSpec(
+                            task="tag",
+                            purpose="tournament:tag-judge",
+                            criteria=(
+                                "Judge source support, omissions, over-tagging, evidence quality, "
+                                "and taxonomy fit."
+                            ),
+                        ),
+                        source=source,
+                        candidate_a=judge_candidates(outputs[first]),
+                        candidate_b=judge_candidates(outputs[second]),
+                        judge_model=judge,
+                        recipe_hash=comparison_key,
+                        deadline_at=deadline,
+                        candidate_models=(left, right),
+                    )
                 except LLMBackendError as exc:
                     print(f"llm-tournament: skipping {ep.uid!r} judge {judge}: {exc}")
-                    judge_pending = True
-                    break
-                if isinstance(result, JobHandle):
-                    judge_pending = True
-                    break
-                decision = _judge_model().model_validate_json(_content(result))
-                decisions.append(
-                    {
-                        "left": left,
-                        "right": right,
-                        "judge": judge,
-                        "first": first,
-                        "winner": decision.winner,
-                        "rationale": decision.rationale,
+                    comparison_store[comparison_key] = {
+                        "status": "error",
+                        "comparison_id": comparison_key,
+                        "task": "tag",
+                        "subject_id": f"{ep.uid}:{chapter_id}",
+                        "error": str(exc)[:500],
                     }
-                )
+                    _persist_state(state, state_path, storage, state_dir)
+                    judge_pending = True
+                    break
+                if pending:
+                    comparison_store[comparison_key] = {
+                        "status": "pending",
+                        "comparison_id": comparison_key,
+                        "task": "tag",
+                        "subject_id": f"{ep.uid}:{chapter_id}",
+                    }
+                    _persist_state(state, state_path, storage, state_dir)
+                    judge_pending = True
+                    break
+                decision_record = {
+                    "left": left,
+                    "right": right,
+                    "judge": judge,
+                    "first": first,
+                    "comparison_id": comparison_key,
+                    "winner": decision["winner"] if decision else "tie",
+                    "rationale": decision["rationale"] if decision else "",
+                }
+                decisions.append(decision_record)
+                comparison_store[comparison_key] = {
+                    "status": "resolved",
+                    "comparison_id": comparison_key,
+                    "task": "tag",
+                    "subject_id": f"{ep.uid}:{chapter_id}",
+                    "decision_record": decision_record,
+                }
+                _persist_state(state, state_path, storage, state_dir)
             if judge_pending:
                 break
         if judge_pending or len(decisions) != 6:
             continue
         state["results"].append(
-            {"episode_uid": ep.uid, "at": datetime.now(UTC).isoformat(), "decisions": decisions}
+            {
+                "task": "tag",
+                "episode_uid": ep.uid,
+                "chapter_id": chapter_id,
+                "scope": "chapter",
+                "judge_model": JUDGE_MODEL,
+                "at": datetime.now(UTC).isoformat(),
+                "decisions": decisions,
+            }
         )
+        # A resolved comparison is needed only to resume an interrupted six-way sample. Once the
+        # result has been durably appended, retain its decision in that result and release the
+        # per-comparison checkpoint so the state file cannot grow for every historical sample.
+        comparison_store = state.setdefault("comparisons", {})
+        for decision in decisions:
+            comparison_store.pop(str(decision["comparison_id"]), None)
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
         push_state(storage, state_dir, only_paths=[STATE])

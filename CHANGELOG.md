@@ -122,32 +122,19 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
-- **Read-Only Chapter Locator Shadow Report & Rollout Controls.** ([`review/40`](review/40-generated-agenda-chapters.md))
-  Added offline quality evaluation reporting and pure, disabled-by-default rollout cohort controls for generated agenda chapters (GH#1078):
-  - `report_locator_shadow.py` joins completed locator shadow runs to hidden gold chapters and scoring crosswalks without mutating episode state, reporting timing-only recall/precision, greedy one-to-one strong-crosswalk item precision, boundary errors, abstentions, and operational metrics.
-  - `evaluate_gate` evaluates operator-supplied quality gates with strict threshold validation (positive integer episode counts and bounded `[0, 1]` rates) and requires explicit `provider_labels_in_requests: false` attestation.
-  - `citypods.chapter_rollout.ChapterRolloutPolicy` provides immutable, bounded rollout controls (`providers`, `bodies`, `max_duration_seconds`, `max_episodes_per_run`) that enforce per-run limits statelessly and downgrade overlay to shadow unless an independent shadow gate passes.
-
-- **Reversible Served-Time Chapter Overlay & Publication Controls.** ([`review/40`](review/40-generated-agenda-chapters.md))
-  Added publication-layer overlay for generated agenda chapters without altering underlying audio bytes or
-  overwriting authoritative provider chapter markers:
-  - `episode_public_chapters` returns canonical provider chapters when present, and overlays validated generated
-    chapters only when `include_generated=True` (controlled by `generated_chapters_enabled` in `config/site_config.yml`).
-  - Chapter start timestamps are strictly validated and normalized against booleans, non-numeric values, negative
-    offsets, and non-finite floats.
-  - Podcasting 2.0 JSON sidecars (`chapters_json`) and meeting permalinks (`render_meeting_page`) consistently round
-    start times to whole-second integers per the Podcasting 2.0 specification.
-  - `feed_content_hash` incorporates `include_generated_chapters` and public chapter state so toggling publication
-    flags triggers sidecar and RSS re-rendering.
-- **GH#1092 agenda-text quality gate and selective OCR.** `AgendaTextStage` now classifies native
-  extraction, probes suspicious PDFs with bounded Poppler/Tesseract OCR, rejects placeholders and
-  ambiguous documents, retains genuine short notices as chapter-ineligible diagnostics, and records
-  versioned quality evidence. The feed-health audit consolidates repeated ambiguity into one
-  maintainer issue and auto-closes it after recovery. The stage/version bump gradually re-evaluates
-  existing agenda artifacts on normal enrich runs; OCR replaces native text only when clearly better,
-  and no separate bulk backfill is performed. A rejected replacement document retains the prior
-  accepted artifact while recording the new diagnostic for feed-health alerting. The audio-runner
-  image is v2 with the OCR binaries; the host fallback and CI smoke checks verify the same tools.
+- **R5 unified tag calibration and evaluator overlay.** ([`review/42`](review/42-unified-tag-calibration-and-evaluator-overlay.md))
+  Deterministic rule matches and chapter-only LLM candidates now share the existing persisted candidate
+  ledger. The tagger keeps its 12-review/90% admission gate; an independent Gemma 4 31B pre-labeler runs
+  in shadow mode and can qualify at 50 reviewed examples with 95% precision for likely-correct and
+  likely-incorrect decisions, suppressing display without deleting evidence. Weekly review defaults to 80
+  stratified candidates and reports distance to both gates. Stored candidates are re-projected after policy
+  changes; the TagsStage version bump backfills the ledger/projection, retains superseded rows as hidden
+  historical evidence, and lazily migrates usable chapters without a blanket catalog recall.
+  Added the manual shadow benchmark workflow (`r5-benchmark.yml`) and separate
+  `r5_tag_benchmark.json` artifact for 200–300 frozen chapters, human ground-truth labels, model
+  disagreement, per-source pre-labeler metrics, evidence fidelity, and call/quota telemetry; an
+  explicit maintainer approval is required before a route recommendation is eligible, and it cannot
+  modify public tags or calibration state.
 
 - **Multi-Provider Cloudflare Worker Dispatch Proxy & Per-Route Ledger.** ([`review/41`](review/41-multi-provider-llm-dispatch.md))
   Extended `workers/llm-dispatch-proxy/` and the Python compute layer to route Gemini/Mistral/DeepSeek/
@@ -206,13 +193,6 @@ Phase R (Research-Tool Surface)._
   work cannot safely fit. See the Worker README's [Scheduling lanes](workers/llm-dispatch-proxy/README.md#scheduling-lanes).
 
 ### Fixed
-
-- **Compact state manifest was incorrectly sent to B2 CAS stubs.** `state/catalog/manifest.json`
-  now routes to the R2 coordination backend, where conditional publication is supported, while the
-  indexed durable state remains on B2. This removes the repeated `backend 'b2' is not cas_capable`
-  warnings and lets fresh workers rebuild/publish the manifest when the R2 copy is absent; no
-  durable state backfill is needed. The ASR reconcile path now seeds a complete R2 manifest after
-  its B2-list fallback restore, and scoped pushes refuse to publish an incomplete first manifest.
 
 - **H15/R5 ingest workflows could double-comment or leave a persisted decision unconfirmed on retry.**
   `asr-quality-ingest.yml` and `llm-tag-review-ingest.yml` each persist a review decision, then separately `gh issue comment` and `gh issue close` the source issue. A GitHub API failure between those steps left a durable decision recorded with no confirmation posted, and a retry re-ran the comment/close pair unconditionally — double-posting the comment if it had actually succeeded before the close call failed. The persist step was already safe to re-run (`record_review()` / `ingest_review_decision()` overwrite by candidate/sample identity, not append), so the fix is confined to the comment/close step: check existing comments for a stable `<!-- h15-ingest:N -->` / `<!-- llm-ingest:N -->` marker before commenting, and check the issue's current state before closing, mirroring the find-or-update comment pattern already used in `dep-bump-smoke.yml`.
