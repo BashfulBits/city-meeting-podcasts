@@ -958,12 +958,14 @@ class _FakeAsr:
     ):
         if self.fail:
             raise RuntimeError("align failed")
-        self.align_calls.append({
-            "text": text,
-            "model": model_or_name,
-            "compute_type": compute_type,
-            **kwargs,
-        })
+        self.align_calls.append(
+            {
+                "text": text,
+                "model": model_or_name,
+                "compute_type": compute_type,
+                **kwargs,
+            }
+        )
         return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
     def asr_spec_hash(self, audio_spec_hash, model, align_hash, version, **kwargs):
@@ -2219,12 +2221,14 @@ class TestTranscriptStageASR:
                 compute_type="int8",
                 **kwargs,
             ):
-                self.align_calls.append({
-                    "text": text,
-                    "model": model_or_name,
-                    "compute_type": compute_type,
-                    **kwargs,
-                })
+                self.align_calls.append(
+                    {
+                        "text": text,
+                        "model": model_or_name,
+                        "compute_type": compute_type,
+                        **kwargs,
+                    }
+                )
                 raise AttributeError("'WhisperModel' object has no attribute 'align'")
 
         fake_asr = _AlignFailingAsr()
