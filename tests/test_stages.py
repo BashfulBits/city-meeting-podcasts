@@ -540,7 +540,9 @@ def test_llm_disabled_run_invalidates_stale_candidates_on_taxonomy_change(tmp_pa
     TagsStage().process(None, _city(), [ep], ctx)
 
     assert [tag["id"] for tag in ep.tags] == []
-    assert ep.llm_tag_candidates == []
+    assert len(ep.llm_tag_candidates) == 1
+    assert ep.llm_tag_candidates[0]["candidate_state"] == "historical"
+    assert ep.llm_tag_candidates[0]["display"] is False
 
 
 def test_tags_stage_skips_storage_on_unchanged_episode(tmp_path):
@@ -1014,6 +1016,7 @@ def test_tag_dispatch_sets_exhausted_flag_only_for_a_fresh_attempt(tmp_path, mon
 
     def _episode_with_content(guid):
         ep = _ep(guid)
+        ep.chapters = [{"start": 0, "title": "Housing plan"}]
         ep.links = {"agenda_text_artifact_key": f"documents/x-tx/uid-{guid}/agenda_text-abc"}
         ep.transcript_key = f"transcripts/x-tx/uid-{guid}-asr-deadbeef.txt"
         ep.transcript_format = "txt"

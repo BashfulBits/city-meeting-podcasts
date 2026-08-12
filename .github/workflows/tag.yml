@@ -49,6 +49,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
+          # Required when tagging.llm_mode is set to dispatch (for example for Mistral/OpenRouter
+          # spill routes). Direct Gemini calls ignore these, but keeping the path here prevents a
+          # configuration change from silently degrading the tag lane to rules-only output.
+          LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
+          LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}

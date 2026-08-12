@@ -34,7 +34,7 @@ jobs:
       - name: Install
         run: pip install -e ".[storage]" -c constraints/prod.txt
 
-      - name: Package R5 LLM tag calibration issues
+      - name: Package R5 unified tag calibration issues
         env:
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
@@ -60,7 +60,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh label create llm-calibration-review --color 5319e7 --force \
-            --description "Bot-managed R5 LLM tag calibration review issue (do not apply manually)"
+            --description "Bot-managed R5 unified tag calibration review issue (do not apply manually)"
 
       - name: Open or update digest issue
         env:
@@ -70,10 +70,10 @@ jobs:
           # requires triage-or-above repo permission, so an arbitrary public issue can never be
           # picked up here or by llm-tag-review-ingest.yml's scheduled sweep merely by matching a
           # guessable title string.
-          title="R5 LLM tag calibration digest"
+          title="R5 unified tag calibration digest"
           existing=$(gh issue list --state open --label llm-calibration-review \
-            --search "in:title $title" --json number,title \
-            | jq -r --arg title "$title" '[.[] | select(.title == $title)] | .[0].number // empty')
+            --json number,title \
+            | jq -r '[.[] | select(.title == "R5 unified tag calibration digest" or .title == "R5 LLM tag calibration digest")] | .[0].number // empty')
           if [ -z "$existing" ]; then
             parent_url=$(gh issue create --title "$title" --label llm-calibration-review \
               --body-file llm-review/parent.md)
@@ -97,10 +97,10 @@ jobs:
           jq -c '.children[]?' llm-review/review-batch.json | while read -r row; do
             candidate_id=$(printf '%s' "$row" | jq -r '.candidate_id')
             body_file=$(printf '%s' "$row" | jq -r '.body_file')
-            title="R5 LLM tag sample $candidate_id"
+            title="R5 unified tag sample $candidate_id"
             existing_child=$(gh issue list --state open --label llm-calibration-review \
-              --search "in:title $title" --json number,title \
-              | jq -r --arg title "$title" '[.[] | select(.title == $title)] | .[0].number // empty')
+              --json number,title \
+              | jq -r --arg candidate_id "$candidate_id" '[.[] | select(.title == ("R5 unified tag sample " + $candidate_id) or .title == ("R5 LLM tag sample " + $candidate_id))] | .[0].number // empty')
             if [ -n "$existing_child" ]; then
               child="$existing_child"
               gh issue edit "$existing_child" --body-file "$body_file"

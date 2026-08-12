@@ -17,6 +17,20 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **R5 unified tag calibration and evaluator overlay.** ([`review/42`](review/42-unified-tag-calibration-and-evaluator-overlay.md))
+  Deterministic rule matches and chapter-only LLM candidates now share the existing persisted candidate
+  ledger. The tagger keeps its 12-review/90% admission gate; an independent Gemma 4 31B pre-labeler runs
+  in shadow mode and can qualify at 50 reviewed examples with 95% precision for likely-correct and
+  likely-incorrect decisions, suppressing display without deleting evidence. Weekly review defaults to 80
+  stratified candidates and reports distance to both gates. Stored candidates are re-projected after policy
+  changes; the TagsStage version bump backfills the ledger/projection, retains superseded rows as hidden
+  historical evidence, and lazily migrates usable chapters without a blanket catalog recall.
+  Added the manual shadow benchmark workflow (`r5-benchmark.yml`) and separate
+  `r5_tag_benchmark.json` artifact for 200–300 frozen chapters, human ground-truth labels, model
+  disagreement, per-source pre-labeler metrics, evidence fidelity, and call/quota telemetry; an
+  explicit maintainer approval is required before a route recommendation is eligible, and it cannot
+  modify public tags or calibration state.
+
 - **Multi-Provider Cloudflare Worker Dispatch Proxy & Per-Route Ledger.** ([`review/41`](review/41-multi-provider-llm-dispatch.md))
   Extended `workers/llm-dispatch-proxy/` and the Python compute layer to route Gemini/Mistral/DeepSeek/
   OpenRouter through one Worker with real multi-account API key rotation, replacing R10's original

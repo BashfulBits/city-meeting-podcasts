@@ -8,14 +8,18 @@ from citypods import llm_tag_review
 from citypods.llm_evaluation import (
     EvaluationConfig,
     apply_admission,
+    candidate_matrix_key,
     config_from_mapping,
     ingest_review_body,
     load_state,
     parse_review,
     policy_fingerprint,
+    prelabeler_review_candidate,
+    record_review,
     refresh_matrix,
     render_review_body,
     select_review_candidates,
+    visible_candidates,
 )
 
 
@@ -216,6 +220,157 @@ def test_review_packaging_prioritizes_unqualified_candidates_and_ingests_decisio
     body = body.replace("- [ ] Correct", "- [x] Correct")
     ingest_review_body(state, body, config=config, actor="reviewer", issue_number=12)
     assert state["reviews"][item["candidate_id"]]["decision"] == "correct"
+
+
+def test_prelabeler_overlay_qualifies_per_source_and_preserves_human_override():
+    config = EvaluationConfig(
+        minimum_reviews=2,
+        prelabeler_minimum_reviews=2,
+        prelabeler_minimum_decision_reviews=1,
+        prelabeler_required_precision=0.95,
+    )
+    state = load_state("/path/that/does/not/exist")
+    base = {
+        "source_kind": "rule",
+        "feature": "topic-tags",
+        "provider_model": "rule:2",
+        "prompt_version": "rule-2",
+        "taxonomy_version": 1,
+        "id": "housing",
+        "scope": "chapter",
+        "chapter_id": "ch-1",
+        "recipe_hash": "rules",
+        "confidence": 1.0,
+        "prelabeler_model": "google/gemma-4-31b-it",
+        "prelabeler_prompt_version": "1",
+    }
+    correct_candidate = {
+        **base,
+        "episode_uid": "ep-correct",
+        "candidate_id": "rule-correct",
+        "prelabeler_decision": "likely_correct",
+        "prelabeler_confidence": 0.9,
+    }
+    incorrect_candidate = {
+        **base,
+        "episode_uid": "ep-incorrect",
+        "candidate_id": "rule-incorrect",
+        "prelabeler_decision": "likely_incorrect",
+        "prelabeler_confidence": 0.9,
+    }
+    for candidate in (correct_candidate, incorrect_candidate):
+        record_review(
+            state,
+            prelabeler_review_candidate(candidate),
+            decision="correct",
+        )
+    refresh_matrix(state, config=config)
+    assert apply_admission(incorrect_candidate, config=config, state=state)["display"] is False
+
+    # A later human audit can reject the evaluator's suppression without mutating the raw result.
+    record_review(
+        state,
+        prelabeler_review_candidate(incorrect_candidate),
+        decision="incorrect",
+    )
+    refresh_matrix(state, config=config)
+    projected = apply_admission(incorrect_candidate, config=config, state=state)
+    assert projected["prelabeler_decision"] == "likely_incorrect"
+    assert projected["display"] is True
+
+
+def test_projection_recomputes_stale_persisted_display_after_tagger_qualification():
+    config = EvaluationConfig(minimum_reviews=1, fallback_confidence=0.8)
+    item = {
+        **candidate(0.8),
+        "display": False,
+    }
+    state = load_state("/path/that/does/not/exist")
+    assert apply_admission(item, config=config, state=state)["display"] is False
+    record_review(state, item, decision="correct")
+    refresh_matrix(state, config=config)
+    projected = apply_admission(item, config=config, state=state)
+    assert projected["admission"] == "admitted"
+    assert projected["display"] is True
+
+
+def test_prelabeler_prompt_version_is_an_independent_matrix_dimension():
+    base = {
+        **candidate(0.9),
+        "source_kind": "rule",
+        "prelabeler_model": "reviewer",
+        "prelabeler_decision": "likely_correct",
+        "prelabeler_confidence": 0.9,
+    }
+    first = prelabeler_review_candidate({**base, "prelabeler_prompt_version": "1"})
+    second = prelabeler_review_candidate({**base, "prelabeler_prompt_version": "2"})
+    assert first["prompt_version"] != second["prompt_version"]
+    assert first["candidate_id"] != second["candidate_id"]
+
+
+def test_prelabeler_retries_keep_one_review_identity_per_subject():
+    base = {
+        **candidate(0.9),
+        "source_kind": "rule",
+        "prelabeler_model": "reviewer",
+        "prelabeler_prompt_version": "1",
+        "prelabeler_decision": "likely_correct",
+        "prelabeler_confidence": 0.9,
+        "prelabeler_reason": "first wording",
+    }
+    first = prelabeler_review_candidate(base)
+    second = prelabeler_review_candidate({**base, "prelabeler_reason": "retry wording"})
+    assert first["candidate_id"] == second["candidate_id"]
+
+
+def test_historical_candidates_are_fail_closed_in_projection():
+    item = {**candidate(1.0), "candidate_state": "historical", "display": True}
+    config = EvaluationConfig(fallback_confidence=0.0)
+    state = load_state("/path/that/does/not/exist")
+    projected = apply_admission(item, config=config, state=state)
+    assert projected["display"] is False
+    assert visible_candidates([item], config=config, state=state) == []
+
+
+def test_weekly_selector_caps_one_subject_stratum():
+    config = EvaluationConfig(review_batch_size=10, max_reviews_per_subject_stratum=2)
+    state = load_state("/path/that/does/not/exist")
+    common = [candidate(0.8, episode=f"common-{index}") for index in range(20)]
+    uncommon = [candidate(0.8, label="parking", episode=f"rare-{index}") for index in range(4)]
+    selected = select_review_candidates(common + uncommon, state=state, config=config)
+    common_count = sum(item["id"] == "housing" for item in selected)
+    assert common_count <= 2
+
+
+def test_legacy_llm_matrix_rows_still_qualify_after_ledger_normalization():
+    item = candidate(0.8)
+    legacy_key = {
+        field: candidate_matrix_key(item)[field]
+        for field in (
+            "feature",
+            "provider_model",
+            "prompt_version",
+            "taxonomy_version",
+            "label",
+            "scope",
+        )
+    }
+    from citypods.llm_evaluation import _json_hash
+
+    state = load_state("/path/that/does/not/exist")
+    state["matrix"] = [
+        {
+            "matrix_id": _json_hash(legacy_key),
+            "key": legacy_key,
+            "qualified": True,
+            "threshold": 0.75,
+        }
+    ]
+    normalized = {**item, "source_kind": "llm", "assessment_kind": "tagger-admission"}
+    assert (
+        apply_admission(normalized, config=EvaluationConfig(), state=state)["admission"]
+        == "admitted"
+    )
 
 
 def test_llm_tag_review_ingest_cli_skips_unreviewed_issue_cleanly(tmp_path, capsys):

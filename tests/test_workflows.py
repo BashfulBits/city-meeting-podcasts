@@ -427,6 +427,28 @@ def test_llm_tag_review_ingest_workflow_is_event_driven_and_guards_stored():
     assert "gh issue close" in stored_branch
 
 
+def test_r5_benchmark_workflow_is_manual_shadow_only_and_packages_state():
+    wf, job = _job("r5-benchmark.yml", job_name="benchmark")
+    triggers = _on(wf)
+    assert set(triggers) == {"workflow_dispatch"}
+    assert job["timeout-minutes"] == 180
+    run = next(
+        step["run"]
+        for step in job["steps"]
+        if step.get("name") == "Run or package R5 shadow benchmark"
+    )
+    assert "python -m citypods.r5_benchmark run" in run
+    assert "python -m citypods.r5_benchmark package" in run
+    assert "--sample-size" in run
+    assert "--prelabeler-model" in run
+    assert "--pairwise-samples" in run
+    upload = next(
+        step for step in job["steps"] if "actions/upload-artifact@" in step.get("uses", "")
+    )
+    assert upload["with"]["path"] == "r5-benchmark"
+    assert "OPENROUTER_API_KEY" in str(next(step for step in job["steps"] if step.get("env")))
+
+
 def test_asr_quality_ingest_schedule_fallback_scans_open_children():
     """The safety-net cron for missed issues.edited/issue_comment webhooks must actually scan
     open H15 child issues, not just resolve to an empty issue list and skip everything."""
@@ -747,6 +769,30 @@ def test_swagit_worker_credentials_reach_provider_fetch_lanes():
         if workflow == "audio.yml":
             assert "--env SWAGIT_PROXY_BASE_URL" in step["run"]
             assert "--env SWAGIT_PROXY_TOKEN" in step["run"]
+
+
+def test_tag_lane_has_all_llm_route_secret_paths():
+    _wf, job = _job("tag.yml", job_name="tag")
+    step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Produce bounded LLM topic-tag candidates"
+    )
+    env = step["env"]
+    assert env["GEMINI_API_KEY"] == "${{ secrets.GEMINI_API_KEY }}"
+    assert env["GEMINI_API_KEY_SECONDARY"] == "${{ secrets.GEMINI_API_KEY_SECONDARY }}"
+    assert env["LLM_DISPATCH_URL"] == "${{ secrets.LLM_DISPATCH_URL }}"
+    assert env["LLM_DISPATCH_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}"
+
+
+def test_r5_benchmark_quotes_free_form_route_inputs():
+    _wf, job = _job("r5-benchmark.yml", job_name="benchmark")
+    step = next(
+        step for step in job["steps"] if step.get("name") == "Run or package R5 shadow benchmark"
+    )
+    run = step["run"]
+    assert 'python -m citypods.r5_benchmark run "${args[@]}"' in run
+    assert "$judge_flag" not in run
 
 
 def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():

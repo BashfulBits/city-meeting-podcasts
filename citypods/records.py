@@ -1158,6 +1158,7 @@ def episode_to_record(ep: Episode) -> dict:
         "tags": ep.tags or None,
         "chapter_tags": ep.chapter_tags or None,
         "llm_tag_candidates": ep.llm_tag_candidates or None,
+        "tags_llm_call_attempts": ep.tags_llm_call_attempts or None,
         "tags_llm_recipe_hash": ep.tags_llm_recipe_hash,
         "tags_spec_hash": ep.tags_spec_hash,
         "tags_input_fingerprint": ep.tags_input_fingerprint,
@@ -1435,6 +1436,11 @@ def record_to_episode(rec: dict) -> Episode:
         llm_tag_candidates=(
             rec.get("llm_tag_candidates") if isinstance(rec.get("llm_tag_candidates"), list) else []
         ),
+        tags_llm_call_attempts=(
+            rec.get("tags_llm_call_attempts")
+            if isinstance(rec.get("tags_llm_call_attempts"), list)
+            else []
+        ),
         tags_llm_recipe_hash=rec.get("tags_llm_recipe_hash"),
         tags_spec_hash=rec.get("tags_spec_hash"),
         tags_input_fingerprint=rec.get("tags_input_fingerprint"),
@@ -1596,6 +1602,7 @@ ARTIFACT_BLOCKS: frozenset[str] = frozenset(
         "tags",
         "chapter_tags",
         "llm_tag_candidates",
+        "tags_llm_call_attempts",
         "tags_llm_recipe_hash",
         "tags_spec_hash",
         "tags_input_fingerprint",
@@ -1630,6 +1637,7 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
             "tags",
             "chapter_tags",
             "llm_tag_candidates",
+            "tags_llm_call_attempts",
             "tags_llm_recipe_hash",
             "tags_spec_hash",
             "tags_input_fingerprint",
@@ -1923,6 +1931,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.tags = rec.get("tags") or ep.tags
         ep.chapter_tags = rec.get("chapter_tags") or ep.chapter_tags
         ep.llm_tag_candidates = rec.get("llm_tag_candidates") or ep.llm_tag_candidates
+        ep.tags_llm_call_attempts = rec.get("tags_llm_call_attempts") or ep.tags_llm_call_attempts
         ep.tags_llm_recipe_hash = rec.get("tags_llm_recipe_hash", ep.tags_llm_recipe_hash)
         ep.tags_spec_hash = rec.get("tags_spec_hash", ep.tags_spec_hash)
         ep.tags_input_fingerprint = rec.get("tags_input_fingerprint", ep.tags_input_fingerprint)
