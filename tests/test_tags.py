@@ -932,3 +932,64 @@ def test_chapter_tagger_batches_large_meetings_and_excludes_episode_backup_conte
     assert all(
         "UNMAPPED BACKUP" not in job.inputs["messages"][1]["content"] for job in backend.jobs
     )
+
+
+def test_chapter_tagger_preserves_evidence_beyond_legacy_cutoffs():
+    """Chapter batching must retain, or explicitly defer, all mapped evidence."""
+    from citypods.compute.base import JobResult
+
+    class Config:
+        model = "gemini/gemini-3.1-flash-lite"
+        additional_models = ()
+
+    class Storage:
+        cas_capable = True
+
+    class Backend:
+        storage = Storage()
+        config = Config()
+
+        def __init__(self):
+            self.job = None
+
+        def run_inference(self, job):
+            self.job = job
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": '{"tags":[]}'}}]},
+            )
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    backend = Backend()
+    llm_tag_suggestions(
+        backend,
+        taxonomy=taxonomy,
+        agenda_item_titles="",
+        agenda_text="",
+        transcript_text="",
+        recipe_hash="complete-chapter",
+        chapter_inputs=[
+            {
+                "chapter_id": "c1",
+                "title": "Chapter",
+                "agenda_text": "a" * 20_000 + " AGENDA-TAIL",
+                "transcript_text": "t" * 30_000 + " TRANSCRIPT-TAIL",
+                "transcript_segments": [
+                    {"start": index, "end": index + 1, "text": "segment"} for index in range(200)
+                ]
+                + [{"start": 201, "end": 202, "text": "x" * 1_200 + " SEGMENT-TAIL"}],
+            }
+        ],
+    )
+
+    content = backend.job.inputs["messages"][1]["content"]
+    assert "AGENDA-TAIL" in content
+    assert "TRANSCRIPT-TAIL" in content
+    assert "SEGMENT-TAIL" in content

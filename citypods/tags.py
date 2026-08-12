@@ -933,15 +933,15 @@ def llm_tag_suggestions(
         {
             "chapter_id": item["chapter_id"],
             "title": item["title"],
-            "agenda_text": item.get("agenda_text", "")[:20_000],
-            "transcript_text": item.get("transcript_text", "")[:30_000],
+            "agenda_text": str(item.get("agenda_text") or ""),
+            "transcript_text": str(item.get("transcript_text") or ""),
             "transcript_segments": [
                 {
                     "start": segment.get("start"),
                     "end": segment.get("end"),
-                    "text": str(segment.get("text") or "")[:1200],
+                    "text": str(segment.get("text") or ""),
                 }
-                for segment in item.get("transcript_segments", [])[:200]
+                for segment in item.get("transcript_segments", [])
                 if isinstance(segment, dict)
             ],
         }
@@ -998,15 +998,10 @@ def llm_tag_suggestions(
     input_digest = hashlib.sha1(
         json.dumps(messages, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     ).hexdigest()[:16]
-    tagger_truncated = (
-        len(agenda_item_titles) > 40_000
-        or len(transcript_text) > 100_000
-        or any(
-            len(str(item.get("agenda_text") or "")) > 20_000
-            or len(str(item.get("transcript_text") or "")) > 30_000
-            or len(item.get("transcript_segments") or []) > 200
-            for item in (chapter_inputs or [])
-        )
+    # Chapter requests retain their complete mapped evidence.  Only the legacy episode request
+    # format applies its explicit bounded-context policy above.
+    tagger_truncated = not chapter_mode and (
+        len(agenda_item_titles) > 40_000 or len(transcript_text) > 100_000
     )
     call_metadata = {
         "input_tokens_estimate": input_tokens_estimate,
@@ -1014,7 +1009,7 @@ def llm_tag_suggestions(
         "route_context_limit": None,
         "request_bytes_estimate": request_bytes,
         "truncation_occurred": tagger_truncated,
-        "truncation_policy": "chapter-tag-v1",
+        "truncation_policy": "chapter-tag-v2-batched",
         "input_digest": input_digest,
     }
 
