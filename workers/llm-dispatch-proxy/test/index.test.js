@@ -529,6 +529,7 @@ test("429 responses retry with bounded backoff and do not expose the provider bo
 
 test("streaming requests and oversized request bodies are rejected", async () => {
   const env = isolatedEnv();
+  assert.equal(config(env).maxRequestBytes, 8 * 1024 * 1024);
   const streaming = await handleRequest(
     request("https://dispatch.example/v1/chat/completions", {
       method: "POST",

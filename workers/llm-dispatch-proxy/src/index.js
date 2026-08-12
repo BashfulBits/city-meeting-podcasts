@@ -4,7 +4,9 @@ const REQUEST_PREFIX = "requests/";
 const PENDING_PREFIX = "pending/";
 const CRON_LOCK_KEY = "locks/cron.json";
 const DISPATCH_BUDGET_KEY = "state/dispatch_budget.json";
-const DEFAULT_MAX_REQUEST_BYTES = 512 * 1024;
+// Chapter-tag batches can legitimately carry several large, source-backed chapter windows. Keep
+// an explicit cap (the Worker parses JSON in memory) but avoid rejecting ordinary long meetings.
+const DEFAULT_MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_QUEUE_SCAN = 1000;
 const DEFAULT_MAX_ATTEMPTS = 5;

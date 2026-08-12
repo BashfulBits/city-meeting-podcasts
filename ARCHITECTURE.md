@@ -182,6 +182,12 @@ Audio and every other workflow that fetches these providers without adding stora
 
 ## Module map (`citypods/`)
 
+> **Tagger input envelope (2026-08-12 correction):** The chapter tagger excludes episode-wide
+> unmapped backup packets. It batches complete chapter subjects deterministically below model/TPM
+> limits and a 7 MiB producer transport guard; the dispatch Worker accepts 8 MiB JSON bodies.
+> Per-batch token/byte estimates and input digests remain persisted for audit. A single chapter
+> that cannot fit remains deferred rather than being silently truncated.
+
 | Area | Modules |
 |---|---|
 

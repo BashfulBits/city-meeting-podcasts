@@ -578,7 +578,7 @@ def test_llm_evidence_is_a_quoted_region_with_transcript_timing_and_document_lin
             "document_locator": "Item 4",
         },
     ]
-    assert TAG_PROMPT_VERSION == "2"
+    assert TAG_PROMPT_VERSION == "3"
 
 
 def test_transcript_region_does_not_span_the_whole_episode_on_a_common_word():
@@ -868,3 +868,67 @@ def test_llm_tag_suggestions_dispatches_when_material_fits_one_tpm_capped_route(
     assert tags == []
     assert chapter_tags == {}
     assert dispatched is False
+
+
+def test_chapter_tagger_batches_large_meetings_and_excludes_episode_backup_context():
+    from citypods.compute.base import JobResult
+
+    class Config:
+        model = "gemini/gemini-3.1-flash-lite"
+        additional_models = ()
+
+    class Storage:
+        cas_capable = True
+
+    class Backend:
+        storage = Storage()
+        config = Config()
+
+        def __init__(self):
+            self.jobs = []
+
+        def run_inference(self, job):
+            self.jobs.append(job)
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": '{"tags":[]}'}}]},
+                model="gemini/gemini-3.1-flash-lite",
+            )
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    chapters = [
+        {
+            "chapter_id": f"c{index}",
+            "title": f"Chapter {index}",
+            "agenda_text": "mapped agenda evidence",
+            "transcript_text": "housing " * 5_000,
+            "transcript_segments": [],
+        }
+        for index in range(40)
+    ]
+    backend = Backend()
+    _tags, chapter_tags, pending, resolved_model = llm_tag_suggestions(
+        backend,
+        taxonomy=taxonomy,
+        agenda_item_titles="unrelated episode titles",
+        agenda_text="UNMAPPED BACKUP SHOULD NOT REACH THE CHAPTER TAGGER " * 10_000,
+        transcript_text="unrelated transcript",
+        recipe_hash="large-meeting",
+        chapter_inputs=chapters,
+    )
+
+    assert pending is False
+    assert chapter_tags == {}
+    assert resolved_model == "gemini/gemini-3.1-flash-lite"
+    assert len(backend.jobs) > 1
+    assert len({job.recipe_hash for job in backend.jobs}) == len(backend.jobs)
+    assert all(
+        "UNMAPPED BACKUP" not in job.inputs["messages"][1]["content"] for job in backend.jobs
+    )

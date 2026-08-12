@@ -25,10 +25,13 @@ TAGGER_VERSION = "2"
 CHAPTER_PIPELINE_VERSION = "1"
 LLM_CONTRACT = "topic-tags"
 PRELABELER_CONTRACT = "topic-tags-prelabeler"
-TAG_PROMPT_VERSION = "2"
+TAG_PROMPT_VERSION = "3"
 PRELABELER_PROMPT_VERSION = "1"
 TAG_FEATURE = "topic-tags"
 PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrect")
+# Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output
+# schema and future envelope fields. This is a transport guard, separate from model context.
+TAGGER_MAX_REQUEST_BYTES = 7 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -912,6 +915,7 @@ def llm_tag_suggestions(
     purpose: str = TAG_FEATURE,
     deadline_at: Any | None = None,
     call_metadata_out: dict[str, Any] | None = None,
+    _batched: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], bool, str | None]:
     """Run and validate additive suggestions; return episode tags, chapter tags, dispatched, and
     the resolved model that produced them (``None`` when dispatched/unresolved). When ``dispatched``
@@ -924,56 +928,72 @@ def llm_tag_suggestions(
     from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy, estimate_tokens
 
     allowed = taxonomy.by_id
-    material = {
-        "agenda_item_titles": agenda_item_titles[:40_000],
-        # No fixed character cap here (unlike the other fields): agenda_text now includes
-        # backup/attachment document text (episode_tag_inputs()), whose size varies a lot
-        # per-episode. Blindly truncating at a small fixed length would silently drop most of
-        # that content before it ever reached the real budget check below. The pre-flight
-        # estimate_tokens() check right after `messages` is assembled is the real backstop now.
-        "agenda_text": agenda_text,
-        "transcript_text": transcript_text[:100_000],
-        "agenda_documents": agenda_documents or [],
-        "taxonomy": [
-            {"id": tag.id, "label": tag.label, "description": tag.description}
-            for tag in taxonomy.tags
-        ],
-        "chapters": [
-            {
-                "chapter_id": item["chapter_id"],
-                "title": item["title"],
-                "agenda_text": item.get("agenda_text", "")[:20_000],
-                "transcript_text": item.get("transcript_text", "")[:30_000],
-                "transcript_segments": [
-                    {
-                        "start": segment.get("start"),
-                        "end": segment.get("end"),
-                        "text": str(segment.get("text") or "")[:1200],
-                    }
-                    for segment in item.get("transcript_segments", [])[:200]
-                    if isinstance(segment, dict)
-                ],
-            }
-            for item in (chapter_inputs or [])
-        ],
-    }
-    messages = [
+    chapter_mode = bool(chapter_inputs)
+    compact_chapters = [
         {
-            "role": "system",
-            "content": (
-                "Return only topic tags from the supplied taxonomy. Use an existing id exactly. "
-                "Suggest a tag only when the evidence supports it; never invent ids. A tag's "
-                "description may explicitly say what it should NOT be used for (often to "
-                "distinguish it from a similarly-worded tag) -- follow that guidance precisely "
-                "even when the material otherwise seems to match. Every evidence item must "
-                "include a short exact quote copied from the supplied agenda or transcript. "
-                "Transcript evidence should include start/end seconds when the chapter segments "
-                "provide them. Agenda evidence may cite only a supplied document URL and should "
-                "include a section/page locator when one is known."
-            ),
-        },
-        {"role": "user", "content": json.dumps(material, ensure_ascii=False)},
+            "chapter_id": item["chapter_id"],
+            "title": item["title"],
+            "agenda_text": item.get("agenda_text", "")[:20_000],
+            "transcript_text": item.get("transcript_text", "")[:30_000],
+            "transcript_segments": [
+                {
+                    "start": segment.get("start"),
+                    "end": segment.get("end"),
+                    "text": str(segment.get("text") or "")[:1200],
+                }
+                for segment in item.get("transcript_segments", [])[:200]
+                if isinstance(segment, dict)
+            ],
+        }
+        for item in (chapter_inputs or [])
     ]
+
+    def messages_for(chapters: list[dict[str, Any]]) -> list[dict[str, str]]:
+        # Chapter-only tagging must not smuggle the episode-wide backup packet into every batch.
+        # `agenda_text` below is only explicit chapter-associated evidence from agenda_item_context.
+        material = {
+            "agenda_item_titles": "" if chapter_mode else agenda_item_titles[:40_000],
+            "agenda_text": "" if chapter_mode else agenda_text,
+            "transcript_text": "" if chapter_mode else transcript_text[:100_000],
+            "agenda_documents": agenda_documents or [],
+            "taxonomy": [
+                {"id": tag.id, "label": tag.label, "description": tag.description}
+                for tag in taxonomy.tags
+            ],
+            "chapters": chapters,
+        }
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "Return only topic tags from the supplied taxonomy. Use an existing id "
+                    "exactly. Suggest a tag only when the evidence supports it; never invent "
+                    "ids. A tag's "
+                    "description may explicitly say what it should NOT be used for (often to "
+                    "distinguish it from a similarly-worded tag) -- follow that guidance precisely "
+                    "even when the material otherwise seems to match. Every evidence item must "
+                    "include a short exact quote copied from the supplied agenda or transcript. "
+                    "Transcript evidence should include start/end seconds when the chapter "
+                    "segments provide them. Agenda evidence may cite only a supplied document URL "
+                    "and should "
+                    "include a section/page locator when one is known."
+                ),
+            },
+            {"role": "user", "content": json.dumps(material, ensure_ascii=False)},
+        ]
+
+    messages = messages_for(compact_chapters)
+    request_bytes = len(
+        json.dumps(
+            {
+                "model": getattr(getattr(backend, "config", None), "model", ""),
+                "messages": messages,
+                "max_tokens": 1024,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode()
+    )
     input_tokens_estimate = estimate_tokens(messages)
     input_digest = hashlib.sha1(
         json.dumps(messages, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
@@ -992,6 +1012,7 @@ def llm_tag_suggestions(
         "input_tokens_estimate": input_tokens_estimate,
         "output_token_budget": 1024,
         "route_context_limit": None,
+        "request_bytes_estimate": request_bytes,
         "truncation_occurred": tagger_truncated,
         "truncation_policy": "chapter-tag-v1",
         "input_digest": input_digest,
@@ -1024,6 +1045,103 @@ def llm_tag_suggestions(
     if route_limits:
         call_metadata["route_context_limit"] = min(route_limits.values())
         publish_call_metadata()
+        # A large meeting is many independent chapter subjects, not one opaque request. Batch
+        # deterministically against both model context and serialized JSON bytes. Child recipes
+        # are durable, so a later pass only polls batches the Worker already accepted.
+        if chapter_mode and not _batched and compact_chapters:
+            route_token_limit = min(route_limits.values()) - 1024
+            route_tpm_limit = min(
+                (
+                    int(ROUTES[candidate].quota.tpm) - 1024
+                    for candidate in route_limits
+                    if ROUTES[candidate].quota.tpm is not None
+                ),
+                default=route_token_limit,
+            )
+            max_input_tokens = max(1, min(route_token_limit, route_tpm_limit))
+            batches: list[list[dict[str, Any]]] = []
+            current: list[dict[str, Any]] = []
+            for chapter in compact_chapters:
+                proposed = current + [chapter]
+                proposed_messages = messages_for(proposed)
+                proposed_bytes = len(
+                    json.dumps(
+                        {"model": backend_model, "messages": proposed_messages, "max_tokens": 1024},
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ).encode()
+                )
+                if current and (
+                    estimate_tokens(proposed_messages) > max_input_tokens
+                    or proposed_bytes > TAGGER_MAX_REQUEST_BYTES
+                ):
+                    batches.append(current)
+                    current = [chapter]
+                else:
+                    current = proposed
+                single_messages = messages_for(current)
+                single_bytes = len(
+                    json.dumps(
+                        {"model": backend_model, "messages": single_messages, "max_tokens": 1024},
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ).encode()
+                )
+                if (
+                    estimate_tokens(single_messages) > max_input_tokens
+                    or single_bytes > TAGGER_MAX_REQUEST_BYTES
+                ):
+                    return [], {}, True, "payload-too-large"
+            if current:
+                batches.append(current)
+            if len(batches) > 1:
+                merged: dict[str, list[dict[str, Any]]] = {}
+                pending = False
+                payload_too_large = False
+                batch_metadata: list[dict[str, Any]] = []
+                resolved_models: list[str] = []
+                for index, batch in enumerate(batches):
+                    metadata: dict[str, Any] = {}
+                    batch_digest = hashlib.sha1(
+                        json.dumps(batch, sort_keys=True, separators=(",", ":")).encode()
+                    ).hexdigest()[:16]
+                    _, chapter_tags, batch_pending, resolved_model = llm_tag_suggestions(
+                        backend,
+                        taxonomy=taxonomy,
+                        agenda_item_titles="",
+                        agenda_text="",
+                        transcript_text="",
+                        recipe_hash=f"{recipe_hash}-tag-batch-{index}-{batch_digest}",
+                        chapter_inputs=batch,
+                        agenda_documents=agenda_documents,
+                        allow_paid=allow_paid,
+                        purpose=purpose,
+                        call_metadata_out=metadata,
+                        _batched=True,
+                    )
+                    batch_metadata.append(metadata)
+                    pending = pending or batch_pending
+                    payload_too_large = payload_too_large or resolved_model == "payload-too-large"
+                    if resolved_model and resolved_model != "payload-too-large":
+                        resolved_models.append(resolved_model)
+                    for chapter_id_value, tags in chapter_tags.items():
+                        merged.setdefault(chapter_id_value, []).extend(tags)
+                call_metadata.update(
+                    {
+                        "input_tokens_estimate": sum(
+                            int(item.get("input_tokens_estimate") or 0) for item in batch_metadata
+                        ),
+                        "tagger_batches": len(batches),
+                        "tagger_batches_metadata": batch_metadata,
+                        "truncation_policy": "chapter-tag-v2-batched",
+                    }
+                )
+                publish_call_metadata()
+                if pending:
+                    return [], {}, True, "payload-too-large" if payload_too_large else None
+                return [], merged, False, resolved_models[-1] if resolved_models else backend_model
+        if request_bytes > TAGGER_MAX_REQUEST_BYTES:
+            return [], {}, True, "payload-too-large"
         if all(input_tokens_estimate + 1024 > limit for limit in route_limits.values()):
             return [], {}, True, "payload-too-large"
     if backend_model and getattr(backend_storage, "cas_capable", False):
@@ -1040,27 +1158,21 @@ def llm_tag_suggestions(
         # storage isn't CAS-capable (local dev/dry runs), so tagging works there as it did pre-R13.
         additional = tuple(getattr(backend_config, "additional_models", ()) or ())
         allowed_models = (backend_model, *(m for m in additional if m != backend_model))
-        # Pre-flight check for the one case the token-aware reservation ledger
-        # (citypods/compute/llm_budget.py) can't already self-resolve: it correctly lets a single
-        # call use an entire otherwise-empty minute's tpm budget (paced throughput is fine to drop
-        # to 1 request/minute for a large episode), but a structured (Instructor) call reserves
-        # estimate_tokens(messages)*2 up front for its worst-case retry accounting
-        # (citypods/compute/llm.py) -- so a payload whose own estimate already exceeds HALF of a
-        # route's tpm can never be reserved on that route, in any window, and would otherwise
-        # retry forever with no distinguishing signal from an ordinary "full this minute" defer.
+        # Queue-only Worker requests make one upstream attempt per reservation. Reject only a
+        # batch that cannot fit a whole route minute at all, not the old direct-path's two-attempt
+        # reservation threshold.
         token_estimate = input_tokens_estimate
         capped_tpm = {
             candidate: ROUTES[candidate].quota.tpm
             for candidate in allowed_models
             if candidate in ROUTES and ROUTES[candidate].quota.tpm is not None
         }
-        if capped_tpm and all(token_estimate > tpm // 2 for tpm in capped_tpm.values()):
+        if capped_tpm and all(token_estimate + 1024 > tpm for tpm in capped_tpm.values()):
             print(
-                f"llm tag budget: material estimate={token_estimate} tokens exceeds half of "
-                f"every tpm-capped allowed route's budget ({capped_tpm}) for recipe_hash="
+                f"llm tag budget: material estimate={token_estimate} tokens exceeds every "
+                f"tpm-capped allowed route's budget ({capped_tpm}) for recipe_hash="
                 f"{recipe_hash} -- this would never fit any window as-is, not just this minute. "
-                "Deferring (see CHANGELOG for the reassign-to-uncapped-route/truncate follow-up, "
-                "gated on how often this actually fires).",
+                "Deferring because one chapter batch cannot fit any configured route.",
                 flush=True,
             )
             # A distinct sentinel, not None (the ordinary "dispatched, unresolved" value) -- see

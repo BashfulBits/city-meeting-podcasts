@@ -233,3 +233,15 @@ recipe and finalized in a later pass: chapter agenda extraction, chapter boundar
 the persisted R5 benchmark/tournament evaluator. The deferred sweep upgrades their legacy handles
 as well. City onboarding research remains `require_direct`: discovery consumes its result in the
 same pass and must defer that pass rather than queueing a response it cannot yet use.
+
+The production chapter tagger sends no episode-wide backup packet. It uses only chapter-mapped
+agenda/backup evidence and batches complete chapter subjects deterministically below both the
+selected routes' token/TPM envelope and a 7 MiB serialized-request guard. The Worker accepts up
+to 8 MiB JSON requests; the margin covers the structured-output envelope and makes an ordinary
+large meeting queueable without silently dropping source. A single chapter that cannot fit either
+bound remains explicitly deferred with recorded size/context telemetry.
+
+This changes the LLM input recipe (`TAG_PROMPT_VERSION = 3`). Existing records are re-projected
+from their retained ledger immediately and LLM candidates are re-run gradually under the new
+chapter-only batch recipe; no candidate evidence is deleted and no blanket synchronous recall is
+performed.

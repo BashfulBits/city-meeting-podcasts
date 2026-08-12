@@ -27,6 +27,13 @@ Phase R (Research-Tool Surface)._
   ready work behind its bounded scan; authenticated `POST /v1/queue/reindex` repairs pre-index
   queue entries after the rollout. No public tag output or calibration policy changes; existing B2
   deferred handles and R2 queue records are retained and re-enqueued/reindexed in place.
+  The Worker request cap is now 8 MiB (up from 512 KiB). Chapter tagging uses deterministic
+  token-and-byte-bounded batches under a 7 MiB producer guard, excludes episode-wide unmapped
+  backup packets, and records per-batch context telemetry; a single oversized chapter remains a
+  distinct deferred condition rather than being silently truncated. `TAG_PROMPT_VERSION` is bumped
+  to `3`, so existing LLM tag candidates are gradually re-run through the new chapter-only recipe;
+  deterministic candidates, prior ledger evidence, and visible output remain available until each
+  replacement completes.
 
 - **R5 unified tag calibration and evaluator overlay.** ([`review/42`](review/42-unified-tag-calibration-and-evaluator-overlay.md))
   Deterministic rule matches and chapter-only LLM candidates now share the existing persisted candidate
