@@ -3167,7 +3167,7 @@ def _preprocess_align_text(text: str) -> str:
             continue
         lines_out.append(s)
 
-    cleaned = " ".join(lines_out)
+    cleaned = "\n".join(lines_out)
     orig_words = len(text.split())
     clean_words = len(cleaned.split())
     # Safety valve: if we stripped > 80 % of the words the heuristics were too aggressive —

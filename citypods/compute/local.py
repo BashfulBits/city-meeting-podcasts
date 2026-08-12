@@ -58,6 +58,7 @@ class LocalBackend:
                 inp["model"],
                 inp["language"],
                 inp["cpu_threads"],
+                inp.get("compute_type", "int8"),
             )
         else:
             raise ValueError(f"local backend does not implement task {job.task!r}")

@@ -946,7 +946,16 @@ class _FakeAsr:
         self.transcribe_calls.append({"model": model_or_name, "prompt": prompt})
         return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
-    def align(self, audio_path, text, model_or_name, language, cpu_threads):
+    def align(
+        self,
+        audio_path,
+        text,
+        model_or_name,
+        language,
+        cpu_threads,
+        compute_type="int8",
+        **kwargs,
+    ):
         if self.fail:
             raise RuntimeError("align failed")
         self.align_calls.append({"text": text, "model": model_or_name})
@@ -2185,7 +2194,16 @@ class TestTranscriptStageASR:
                 return _R()
 
         class _AlignFailingAsr(_FakeAsr):
-            def align(self, audio_path, text, model_or_name, language, cpu_threads):
+            def align(
+                self,
+                audio_path,
+                text,
+                model_or_name,
+                language,
+                cpu_threads,
+                compute_type="int8",
+                **kwargs,
+            ):
                 self.align_calls.append({"text": text, "model": model_or_name})
                 raise AttributeError("'WhisperModel' object has no attribute 'align'")
 

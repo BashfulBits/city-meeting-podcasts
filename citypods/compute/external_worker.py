@@ -1682,6 +1682,7 @@ class ExternalTranscribeWorker:
                 city.asr_model,
                 city.asr_language or None,
                 self.config.cpu_threads,
+                city.asr_compute_type,
             )
         tracker.record("after-asr")
         return artifacts
@@ -2128,7 +2129,7 @@ def run_internal_worker(
     work_class = os.environ.get("CITYPODS_WORKER_WORK_CLASS", "transcript-asr")
     if work_class not in SUPPORTED_WORK_CLASSES:
         raise ValueError(f"unsupported internal worker class: {work_class!r}")
-    policy = backend_policy(site_config, "github-actions")
+    policy = backend_policy(site_config, "github-actions", work_class=work_class)
     cfg = ExternalWorkerConfig(
         backend="github-actions",
         owner=(

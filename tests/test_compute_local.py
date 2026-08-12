@@ -249,7 +249,7 @@ class TestAlignByteIdentical:
                 },
             )
         )
-        fake.align.assert_called_once_with("a.m4a", "TEXT", "MODEL", "en", 2)
+        fake.align.assert_called_once_with("a.m4a", "TEXT", "MODEL", "en", 2, "int8")
 
     def test_alignment_quality_error_propagates(self):
         # The stage's align→transcribe fallback depends on the backend surfacing the asr exception
