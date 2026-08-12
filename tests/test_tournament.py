@@ -1,11 +1,14 @@
 from types import SimpleNamespace
 
 from citypods import tournament
+from citypods.compute.base import JobHandle
 from citypods.compute.llm import LLMStructuredOutputError
 from citypods.tournament import (
     R5_FLASH_MODEL,
+    PairwiseEvaluatorSpec,
     contest_plan,
     judge_candidates,
+    pairwise_judge,
     persisted_r5_flash_output,
 )
 
@@ -48,6 +51,31 @@ def test_judge_prompt_omits_candidate_provenance():
     assert judge_candidates(
         [{"id": "housing", "confidence": 0.9, "provider_model": R5_FLASH_MODEL, "recipe_hash": "x"}]
     ) == [{"id": "housing", "confidence": 0.9}]
+
+
+def test_pairwise_judge_uses_durable_queue_policy():
+    seen = []
+
+    class Backend:
+        def run_inference(self, job):
+            seen.append(job)
+            return JobHandle(task="tag", recipe_hash=job.recipe_hash, backend="test", ref="pending")
+
+    decision, pending = pairwise_judge(
+        Backend(),
+        spec=PairwiseEvaluatorSpec(task="tag", purpose="tournament:tag-judge", criteria="support"),
+        source={"chapter": "source"},
+        candidate_a=[],
+        candidate_b=[],
+        judge_model="google/gemma-4-31b-it",
+        recipe_hash="comparison-1",
+        candidate_models=("gemini/gemini-3.1-flash-lite",),
+    )
+
+    assert decision is None
+    assert pending is True
+    assert seen[0].inputs["llm_policy"].queue_only is True
+    assert seen[0].inputs["llm_policy"].deadline_at is None
 
 
 def test_run_skips_episode_on_llm_backend_error(tmp_path, monkeypatch, capsys):

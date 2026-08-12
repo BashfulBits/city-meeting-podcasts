@@ -227,3 +227,9 @@ handles are upgraded to that policy by the deferred sweep. The Worker keeps a pe
 beside retained request history so bounded cron scans cannot starve ready records behind terminal
 objects; the authenticated reindex operation repairs existing queue rows in place. This changes no
 candidate, admission, or display semantics.
+
+The same queue-only contract applies to every production LLM consumer whose work is stored by
+recipe and finalized in a later pass: chapter agenda extraction, chapter boundary location, and
+the persisted R5 benchmark/tournament evaluator. The deferred sweep upgrades their legacy handles
+as well. City onboarding research remains `require_direct`: discovery consumes its result in the
+same pass and must defer that pass rather than queueing a response it cannot yet use.

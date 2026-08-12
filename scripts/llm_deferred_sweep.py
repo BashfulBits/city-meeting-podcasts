@@ -66,10 +66,19 @@ def _with_sweep_deadline(handle, deadline_at: datetime):
     deferred = handle.deferred_request
     if not isinstance(deferred, DeferredLLMRequest):
         return handle
-    # Topic tagging is durable queue work.  A record which was deferred before it reached the
-    # Worker must be enqueued now, not retried through the runner's direct LiteLLM transport and
-    # not discarded because the producer run's deadline has elapsed.
-    if handle.task == "tag" and deferred.policy.purpose.startswith("topic-tags"):
+    # These producers persist a recipe and can finalize on a later scheduled pass. A record that
+    # predates queue-only mode must therefore be submitted to the Worker now, not retried through
+    # the runner's direct LiteLLM transport or discarded because its producer deadline elapsed.
+    # City onboarding is intentionally absent: it consumes the answer synchronously during the
+    # discovery pass and remains direct by design.
+    durable_purposes = (
+        "topic-tags",
+        "chapter-agenda",
+        "chapter-locator",
+        "tournament:",
+        "r5-benchmark:",
+    )
+    if deferred.policy.purpose.startswith(durable_purposes):
         return replace(
             handle,
             deferred_request=DeferredLLMRequest(

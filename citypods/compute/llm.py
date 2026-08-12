@@ -886,14 +886,14 @@ class LiteLLMBackend(Backend):
             policy=policy,
             estimated_tokens=estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN,
         )
-        # Older tag attempts used the recipe hash directly when they entered the Worker (and
-        # carried a producer-run deadline in their policy).  A Worker idempotency record quite
-        # properly rejects a later request with that same key but a different durable policy.
-        # Keep this migration namespace stable: it makes all durable submissions idempotent with
-        # one another without conflating them with a legacy, deadline-bound submission.
+        # Older calls used the recipe hash directly when they entered the Worker (and carried a
+        # producer-run deadline in their policy). A Worker idempotency record quite properly
+        # rejects a later request with that same key but a different durable policy. Keep this
+        # migration namespace stable: it makes all durable submissions idempotent with one
+        # another without conflating them with a legacy, deadline-bound submission.
         headers = {
             "content-type": "application/json",
-            "idempotency-key": f"{job.recipe_hash}:durable-tag-v1",
+            "idempotency-key": f"{job.recipe_hash}:durable-queue-v1",
         }
         if self.config.dispatch_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"

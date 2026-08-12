@@ -17,14 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
-- **Durable tag dispatch queue recovery.** Topic tagger and pre-labeler work now enters the
+- **Durable resumable-LLM dispatch queue recovery.** Topic tagger/pre-labeler, production chapter
+  agenda extraction/location, and the persisted R5 benchmark/tournament evaluator now enter the
   Cloudflare Worker queue without consuming the runner-side provider-quota ledger or inheriting a
-  producer-run submit deadline. The deferred sweep upgrades legacy pre-dispatch tag handles to the
-  same queue-only path rather than retrying them directly through LiteLLM. The Worker now maintains
-  a pending-only R2 index so retained terminal request history cannot hide ready work behind its
-  bounded scan; authenticated `POST /v1/queue/reindex` repairs pre-index queue entries after the
-  rollout. No public tag output or calibration policy changes; existing B2 deferred handles and R2
-  queue records are retained and re-enqueued/reindexed in place.
+  producer-run submit deadline. The deferred sweep upgrades their legacy pre-dispatch handles to
+  the same queue-only path rather than retrying them directly through LiteLLM. City onboarding
+  discovery remains explicitly direct because its caller must act on the response in that pass.
+  The Worker now maintains a pending-only R2 index so retained terminal request history cannot hide
+  ready work behind its bounded scan; authenticated `POST /v1/queue/reindex` repairs pre-index
+  queue entries after the rollout. No public tag output or calibration policy changes; existing B2
+  deferred handles and R2 queue records are retained and re-enqueued/reindexed in place.
 
 - **R5 unified tag calibration and evaluator overlay.** ([`review/42`](review/42-unified-tag-calibration-and-evaluator-overlay.md))
   Deterministic rule matches and chapter-only LLM candidates now share the existing persisted candidate

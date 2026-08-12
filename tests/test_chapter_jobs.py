@@ -24,6 +24,8 @@ def test_agenda_job_is_pinned_and_idempotent():
     assert first.recipe_hash == second.recipe_hash
     assert first.inputs["structured_output"] == "agenda-chapter-item-extract"
     assert first.inputs["llm_policy"].allowed_models == ("mistral/mistral-medium-2508",)
+    assert first.inputs["llm_policy"].queue_only is True
+    assert first.inputs["llm_policy"].deadline_at is None
 
 
 def test_agenda_job_recipe_changes_with_candidate_hints():
@@ -74,6 +76,8 @@ def test_locator_job_keeps_all_units_and_uses_gemini_lite():
     )
     assert job.task == "agenda-chapter-locate"
     assert job.inputs["llm_policy"].allowed_models == ("gemini/gemini-3.5-flash-lite",)
+    assert job.inputs["llm_policy"].queue_only is True
+    assert job.inputs["llm_policy"].deadline_at is None
     material = json.loads(job.inputs["messages"][1]["content"])
     assert len(material["transcript_units"]) == 1
 

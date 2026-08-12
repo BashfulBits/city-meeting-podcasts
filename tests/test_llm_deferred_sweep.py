@@ -316,3 +316,27 @@ def test_sweep_upgrades_legacy_topic_tag_deferral_to_durable_queue():
     assert upgraded.deferred_request.policy.queue_only is True
     assert upgraded.deferred_request.policy.deadline_at is None
     assert original.deferred_request.policy.queue_only is False
+
+
+def test_sweep_upgrades_other_resumable_production_llm_work_but_not_city_onboarding():
+    deadline = datetime(2026, 7, 24, 12, tzinfo=UTC)
+
+    def handle(purpose: str) -> JobHandle:
+        return JobHandle(
+            task="agenda-item-extract",
+            recipe_hash=purpose,
+            backend="litellm",
+            ref="deferred:" + purpose,
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},),
+                policy=LLMRequestPolicy(purpose=purpose, deadline_at=deadline),
+            ),
+        )
+
+    chapter = llm_deferred_sweep._with_sweep_deadline(handle("chapter-agenda"), deadline)
+    city = llm_deferred_sweep._with_sweep_deadline(handle("city-onboarding"), deadline)
+
+    assert chapter.deferred_request.policy.queue_only is True
+    assert chapter.deferred_request.policy.deadline_at is None
+    assert city.deferred_request.policy.queue_only is False
+    assert city.deferred_request.policy.deadline_at == deadline

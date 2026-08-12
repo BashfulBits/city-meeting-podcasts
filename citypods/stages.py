@@ -423,23 +423,6 @@ class StageContext:
     # so the two ASR models never co-load in one runner. The pass selection lives in run.py; this
     # field tells TranscriptStage which ASR model path to take.
     lane: str | None = None
-    # Run-scoped signal that the LLM tag backend has no dispatch capacity left this run (its
-    # daily/per-minute provider quota is spent -- the first dispatch that comes back deferred sets
-    # it). ``TagsStage`` reads it to stop RE-FETCHING agenda/transcript text for the large backlog
-    # of episodes whose rules tags are already computed and cached and that only await a (now
-    # unavailable) LLM tag: those defer in memory, untouched, and are retried on a later run once
-    # quota frees. New/changed episodes still fetch, since they need the text for their rules tags.
-    # One Event per build, shared across the global queue's per-episode ``process()`` calls; a
-    # monotonic ``set()`` that is safe to race under the worker threads.
-    tag_llm_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
-    # UTC wall-clock deadline handed to the LLM tag scheduler as its dispatch ``deadline_at`` so it
-    # can pace within-run rate limits: it waits out a full per-minute window (draining the daily
-    # quota across successive minutes) but never past this, so it gives up cleanly before the tag
-    # lane's own wall-clock ``stop()`` budget elapses. ``None`` (default / non-tag lanes) disables
-    # pacing -- a single dispatch attempt then defer, the pre-pacing behavior.
-    tag_llm_deadline: datetime | None = None
-    # UTC wall-clock deadline for chapter extraction dispatch.
-    chapter_llm_deadline: datetime | None = None
 
 
 @dataclass
@@ -967,17 +950,6 @@ class TagsStage:
                 stats.defer("tag-budget-stop", sample=ep.uid or ep.guid)
                 continue
 
-            if inputs_unchanged and llm_pending and ctx.tag_llm_dispatch_exhausted.is_set():
-                # Rules tags are already computed and cached (the fingerprint matches); only the
-                # quota-limited LLM tag is outstanding, and the backend has already reported it has
-                # no dispatch capacity left this run. Re-fetching the agenda/transcript text just to
-                # re-attempt a dispatch that will only defer again is the whole-backlog waste this
-                # redesign removes: defer in memory, untouched, and retry on a later run once quota
-                # frees. (A new/changed episode -- `not inputs_unchanged` -- still falls through to
-                # fetch, because it needs the text to compute its rules tags regardless of the LLM.)
-                stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
-                continue
-
             titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
             chapters = chapter_tag_inputs(ep, ctx.storage)
             chapter_fingerprint = [
@@ -1285,27 +1257,6 @@ class TagsStage:
                     candidate_tags = rule_candidates
                     completed_llm_recipe = None
                 else:
-                    # Peek the deferred registry for THIS exact recipe before dispatching.
-                    # `LiteLLMBackend.run_inference` short-circuits to an existing registry entry
-                    # for `recipe_hash` before ever running the live pacing/quota check (so a
-                    # concurrent/prior call for the same recipe can't double-reserve quota) -- so a
-                    # still-pending entry found here means the call below is *guaranteed* to return
-                    # that same stale handle rather than a fresh live check. A stale pending record
-                    # just means the daily deferred sweep hasn't reconciled it yet; it says nothing
-                    # about whether quota is available right now. Only a dispatch that had NO
-                    # pre-existing cached entry can tell us anything about current capacity, so only
-                    # that case is allowed to set `tag_llm_dispatch_exhausted` below.
-                    backend_storage = getattr(ctx.tag_backend, "storage", None)
-                    had_cached_pending = False
-                    if backend_storage is not None and getattr(
-                        backend_storage, "cas_capable", False
-                    ):
-                        from citypods.compute.base import JobHandle
-                        from citypods.compute.llm_deferred import look_up_deferred
-
-                        had_cached_pending = isinstance(
-                            look_up_deferred(backend_storage, llm_recipe), JobHandle
-                        )
                     try:
                         # The tag lane's heartbeat prints PROGRESS's snapshot on every tick
                         # ("active work: ..."), but until now nothing in this stage ever
@@ -1334,11 +1285,6 @@ class TagsStage:
                                 recipe_hash=llm_recipe,
                                 chapter_inputs=chapters,
                                 agenda_documents=agenda_document_context(ep),
-                                # Let the scheduler pace within-run rate limits up to the tag
-                                # lane's wall-clock budget, so a run drains its full daily quota
-                                # across minute windows instead of bursting one window and
-                                # stopping.
-                                deadline_at=ctx.tag_llm_deadline,
                                 call_metadata_out=tag_call_metadata,
                             )
                         remember_call_attempt(
@@ -1354,14 +1300,6 @@ class TagsStage:
                             candidate_tags = rule_candidates
                             completed_llm_recipe = None
                             stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
-                            if not had_cached_pending:
-                                # A fresh dispatch attempt (no pre-existing registry entry) came
-                                # back deferred -- the live pacing loop genuinely found no
-                                # eligible route before the run's deadline. Signal the rest of
-                                # this run's episodes not to re-fetch their text merely to
-                                # re-attempt a dispatch that will also just defer -- see the
-                                # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
-                                ctx.tag_llm_dispatch_exhausted.set()
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to
@@ -1473,7 +1411,6 @@ class TagsStage:
                                     recipe_hash=prelabel_recipe,
                                     model=prelabeler_model,
                                     prompt_version=prelabeler_prompt_version,
-                                    deadline_at=ctx.tag_llm_deadline,
                                     call_metadata_out=prelabel_call_metadata,
                                 )
                             remember_call_attempt(
@@ -5369,7 +5306,6 @@ class AgendaChapterCandidatesStage:
                     episode_uid=uid,
                     agenda_text=agenda_text,
                     agenda_source_hash=source_hash,
-                    deadline_at=getattr(ctx, "chapter_llm_deadline", None),
                 )
                 if ctx.stop is not None and ctx.stop():
                     stats.defer("stop-signal")
@@ -5453,7 +5389,6 @@ class ChapterBoundaryLocatorStage:
                     agenda=agenda,
                     transcript_hash=transcript_hash,
                     units=units,
-                    deadline_at=getattr(ctx, "chapter_llm_deadline", None),
                 )
                 if ctx.stop is not None and ctx.stop():
                     stats.defer("stop-signal")
