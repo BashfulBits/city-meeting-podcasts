@@ -587,6 +587,51 @@ class TestTranscriptStageVTT:
         assert ep.transcript_key is None
         assert ep.provider_transcript["candidate"]["format"] == "vtt"
 
+    def test_word_timed_provider_vtt_on_edited_timeline_uses_provider_alignment(self, tmp_path):
+        ep = _ep_with_audio(links={"transcript": "https://provider/t.vtt"})
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref="https://src/vid.mp4",
+                media_kind="direct",
+                duration=30.0,
+                watch_url=None,
+            )
+        ]
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=10.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=10.0,
+                    source_end=20.0,
+                ),
+            ),
+        )
+        fake_asr = _FakeAsr()
+        edited_word_vtt = (
+            b"WEBVTT\n\n00:00:12.000 --> 00:00:15.000\n<00:00:12.000>Hello <00:00:13.000>world\n"
+        )
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+            patch("citypods.http.make_session", return_value=_fetch(edited_word_vtt)),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert stats.aligned == 1
+        assert stats.transcribed == 0
+        assert ep.transcript_selection == "provider-aligned"
+        assert len(fake_asr.align_calls) == 1
+        assert fake_asr.align_calls[0]["text"] == "Hello world"
+        assert fake_asr.align_calls[0]["timed_segments"] == [
+            {"start": 2.0, "end": 5.0, "text": "Hello world"}
+        ]
+
     def test_worse_provider_candidate_moves_to_history_and_keeps_known_good(self, tmp_path):
         ep = _ep(links={"transcript": "https://provider/t.vtt"})
         ep.audio_key = "audio/src/uid-g1-a.m4a"

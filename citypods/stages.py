@@ -4121,7 +4121,9 @@ class TranscriptStage:
                     provider_word_timed = provider_fmt == "vtt" and (
                         active_provider.get("word_timed") or _has_word_timing_vtt(provider_content)
                     )
-                    if not provider_word_timed:
+                    if not provider_word_timed or (
+                        ep.timeline is not None and timeline_digest(ep.timeline, ep.sources)
+                    ):
                         align_text, align_timed_segments = _provider_alignment_inputs(
                             ep, provider_content, provider_fmt
                         )
