@@ -15,6 +15,111 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **Swagit transcript discovery now fills the provider-link gap.** For Swagit episodes whose video
+  page does not advertise a transcript, the transcript lane derives and probes
+  `/videos/{id}/transcript`, stores non-empty VTT/SRT/TXT responses in the provider registry, and
+  attaches the discovered link to the episode. Probe state is persisted: available endpoints are
+  rechecked after 30 days, confirmed misses use 7-day-to-90-day exponential backoff, transient
+  failures use 1-day-to-7-day backoff, and no more than 500 Swagit transcript requests are made per
+  source per run. This is metadata/provider-source backfill only; no ASR or provider-align pipeline
+  version changed and no stored transcript artifacts are invalidated.
+
+- **Hosted-audio ASR downloads now retry HTTP 429 responses with a capped `Retry-After` delay.**
+  The scheduled ASR matrix is also reduced to three transcribe workers and two provider-align
+  workers to lower concurrent CDN pressure. This changes transport behavior and worker capacity
+  only; no ASR or provider-align pipeline version changed, and no stored artifacts are invalidated
+  or backfilled. Exhausted 429 attempts now defer rather than terminally wedge a lease; reconcile
+  covers all transcript work classes, and an explicit class-scoped recovery command reopens failed
+  leases left by earlier incidents. The manual Transcript Recovery workflow exposes that command
+  with the same B2/R2 credentials used by production Actions.
+
+- **Feed-health stale alerts now allow five median cadence intervals with a 45-day floor.**
+  This replaces the previous 3×/30-day rule, reducing alerts during ordinary multi-week recesses
+  while still flagging prolonged outages. It changes audit classification only; no catalog
+  artifacts, pipeline versions, or backfill behavior are changed.
+
+- **Provider transcript alignment now preserves word-boundary provenance.** Provider endpoints are
+  probed for every discovered episode. A VTT with inline word timestamps is served as
+  `provider-native`; cue-only VTT/SRT/TXT is aligned with stable-ts and served as
+  `provider-aligned`; episodes without provider text use fresh ASR. Active records and the H15
+  report now distinguish provider text/provider timing, provider text/computed timing, and ASR.
+  H15 routing is source/body policy rather than an episode-level publication gate, so a changed
+  route dynamically changes the served transcript. `PROVIDER_ALIGN_PIPELINE_VERSION` was bumped
+  from 1 to 2; existing provider-align artifacts are re-evaluated/adopted under the new semantics,
+  while ASR artifacts are not invalidated. Provider-selected episodes then enter a separate
+  `transcript-asr-comparison` queue only after the ordinary ASR queue drains; it retains full ASR
+  artifacts for H15 without replacing the served provider route.
+  
+- **Equivalent provider model selectors now share canonical logical keys.** The limits compiler
+  emits a `model_aliases` map, coalesces selector-only duplicates for one physical provider/account
+  quota bucket, and normalizes route entries before generating the Python and Worker
+  catalogs. DeepSeek V4 Flash 0731 aliases now share one logical candidate pool across DeepSeek,
+  SiliconFlow, and OpenCode; the equivalent OpenRouter/Kilo/OpenCode Nemotron free routes are
+  likewise unified. Physical `route_id` entries remain separate, so provider/account quotas and ledger
+  reservations are not merged. Existing provider-qualified selectors remain accepted through the
+  alias map; no stored LLM result or pipeline artifact is invalidated, and no backfill is required.
+
+- **Topic tagging is now pinned to Gemini 3.1 Flash Lite only.** Gemini 3.5 Flash Lite remains
+  reserved for production chapter locating, preserving its independent free-tier capacity for the
+  long-context locator workload. This changes the tag route allowlist only; tag prompts, recipe
+  hashes, visibility calibration, and stored artifacts are unchanged, so no pipeline-version bump
+  or catalog backfill is required.
+
+- **Topic tagging now uses the asynchronous LLM dispatch Worker.** The tag workflow enqueues Gemini
+  requests instead of holding a GitHub Actions runner while waiting for local quota windows; the
+  Worker owns provider credentials, pacing, retries, and completion, and the deferred sweep makes
+  results available to a later tag run. This is a transport/configuration change only: prompts,
+  recipe hashes, tag visibility gates, and stored artifacts are unchanged, so no pipeline-version
+  bump or catalog backfill is required. Existing direct deferred records remain compatible with the
+  sweep.
+
+- **LLM TPM admission now models average throughput instead of a hard one-minute request ceiling.**
+  The Python CAS ledger and LLM dispatch Worker admit requests larger than one minute's declared
+  TPM and persist an oversized-request cooldown proportional to `tokens / TPM`; ordinary smaller
+  requests retain their normal token-rate burst. Rollover-only RPM/RPD/token bookkeeping is now
+  persisted even when selection finds no route, so quota state does not remain on an old day key.
+  This changes only ephemeral coordination state (`state/llm_budget.json` and the dispatch Worker
+  budget); no durable catalog artifact is invalidated or backfilled.
+  
+- **External GPU-worker memory and billing telemetry now match the deployed resource model.** Modal
+  settlement uses `Workspace.from_context().billing.report()` instead of the deprecated billing
+  helper, with an explicit fallback when the report cannot be queried or has no matching function
+  call. Modal/Beam workers sample process RSS once per second around claims, including the final
+  sample before settlement, while Beam's scheduled and canary entrypoints now request 1 CPU and 4 GiB
+  RAM. Beam's configured runtime rate is correspondingly updated to include GPU, CPU, and RAM pricing
+  (`$0.0002672/s`). This is an operational admission/telemetry change only: no pipeline version was
+  bumped, existing artifacts were not invalidated, and no backfill is required.
+
+- **LLM RPM limits now pace submissions continuously.** Route-level RPM values and provider-level
+  RPM values are translated into persisted `requests_available_at` schedules instead of burstable
+  wall-clock-minute counters. Mistral is configured at a shared provider limit of 60 RPM (one
+  submission per second) across all models and accounts. This changes only ephemeral coordination
+  state (`state/llm_budget.json` and the dispatch Worker budget); no durable catalog artifact is
+  invalidated or backfilled.
+
+- **Dallas City Council feed now includes special-called full-council sessions** (GH#1121). A
+  source may now declare `body_any` for explicit alternative provider labels; the shared selector
+  is applied consistently by feed rendering, audits, reports, build validation, and search. The
+  Dallas feed keeps `City Council Agenda Meetings` as its primary label and adds
+  `Special Called City Council Meeting`, while continuing to exclude `Council Briefing` and
+  committee bodies. This changes feed membership only: existing audio/transcript artifacts and
+  stable episode UIDs are reused, with no pipeline-version bump or forced artifact backfill.
+
+- **Addison City Council feed now includes Swagit's recurring `Work Session` and `Work Session and
+  Regular Meeting` labels.** These rows were previously excluded by the `City Council` selector,
+  causing the feed to appear stale despite recent council recordings. This changes feed membership
+  only: newly matching rows enter normal discovery/materialization, with no pipeline-version bump or
+  global artifact invalidation.
+
+- **One-off body naming drift now has an exact exception path and audit coverage.** A feed may use
+  `source.body_includes` for provider-GUID-specific rows without permanently broadening its body
+  selector. Feed-health audits suppress historical excluded labels, flag recurrence of a known
+  one-off label with its prior inclusion GUID, and flag newly observed excluded labels so city
+  configurations can stay current. Fort Worth's single `Work Session` recording is covered this
+  way (GH#1005); no pipeline-version bump or artifact backfill is required.
+
 ### Added
 
 - **R5 unified tag calibration and evaluator overlay.** ([`review/42`](review/42-unified-tag-calibration-and-evaluator-overlay.md))

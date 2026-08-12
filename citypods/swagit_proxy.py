@@ -10,8 +10,8 @@ host class (``<tenant>.new.swagit.com`` list pages) than the existing Granicus W
 :mod:`citypods.granicus_proxy`, not a replacement for it.
 
 The official episode metadata parsing remains untouched. This module only maps a strict
-``<tenant-host>/views/...`` or ``/videos/{id}[/download]`` GET to the closed Worker relay after
-the direct GitHub-runner request has already returned HTTP 403.
+``<tenant-host>/views/...`` or ``/videos/{id}[/download|/transcript]`` GET to the closed Worker
+relay after the direct GitHub-runner request has already returned HTTP 403.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from citypods.security import validate_source_url
 
 _WORKER_PATH_PREFIX = "/v1/swagit/"
 _PATH_RE = re.compile(
-    r"^(?:views/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)?|videos/[1-9][0-9]*(?:/download)?)$"
+    r"^(?:views/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)?|videos/[1-9][0-9]*(?:/(?:download|transcript))?)$"
 )
 _PAGE_RE = re.compile(r"^[1-9][0-9]{0,3}$")  # bounded 1..9999, mirrors MAX_ARCHIVE_PAGES
 

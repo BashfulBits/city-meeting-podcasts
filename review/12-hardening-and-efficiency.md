@@ -427,14 +427,17 @@ actually persist to the sidecar; the rest is derived from records each run. This
 feed still missing audio/transcripts?" answerable in the status page, and is the **lease/merge
 substrate** ASR sharding needs.
 
-**ASR lane split and provider probing (updated 2026-08-11).** Use separate work classes for
+**ASR lane split and provider probing (updated 2026-08-12).** Use separate work classes for
 `transcript-asr` (fresh large-v3-turbo transcription for meetings with no provider source) and
 `provider-transcript-align` (stable-ts forced alignment for provider wording). Every discovered
 provider transcript endpoint is probed independently of materialization depth, existing ASR state, or
-feed visibility. Cue timing in VTT/SRT is source evidence only; it is not served timing unless the
-provider VTT contains inline word timestamps. The scheduled ASR workflow runs both lanes, and the
-manifest/status preserve provider text/timing/selection provenance so H15 can measure the three
-outcomes rather than silently mixing them.
+feed visibility, subject to a bounded per-source request budget. Swagit additionally derives
+`/videos/{id}/transcript` when the video page omits the link; successful, absent, and transient probe
+outcomes persist with separate recheck/backoff schedules, so known misses and stored documents are
+not fetched on every run. Cue timing in VTT/SRT is source evidence only; it is not served timing
+unless the provider VTT contains inline word timestamps. The scheduled ASR workflow runs both lanes,
+and the manifest/status preserve provider text/timing/selection provenance so H15 can measure the
+three outcomes rather than silently mixing them.
 
 **(b) Configurable prioritization policy.** A declarative, ordered list of **sort keys** applied
 lexicographically to the pending set; ties fall through to the next key. Config (`site_config.yml`):

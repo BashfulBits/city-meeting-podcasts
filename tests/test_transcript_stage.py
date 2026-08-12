@@ -24,6 +24,7 @@ from citypods.compute.base import InferenceJob, JobHandle
 from citypods.compute.budget import Budget
 from citypods.compute.local import LocalBackend
 from citypods.models import City, Episode
+from citypods.providers.swagit import TranscriptProbe
 from citypods.records import (
     episode_to_record,
     record_to_episode,
@@ -43,7 +44,9 @@ from citypods.stages import (
     _asr_timeout_seconds,
     _provider_alignment_inputs,
     _provider_source_text,
+    _provider_transcript_probe_due,
     _provider_vtt_words_json,
+    _record_provider_transcript_probe,
     default_stages,
     enrich_stages,
 )
@@ -387,6 +390,158 @@ class TestTranscriptStageVTT:
         ep, stats = self._run_with_content(tmp_path, PLAIN_CONTENT)
         assert ep.provider_transcript["candidate"]["synced"] is False
         assert ep.provider_transcript["candidate"]["format"] == "txt"
+
+    def test_swagit_fallback_probe_stores_transcript_and_is_not_repeated(self, tmp_path):
+        class SwagitProbeProvider(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def transcript_url(self, episode):
+                return "https://swagit.example/videos/100/transcript"
+
+            def probe_transcript(self, episode, source):
+                self.calls += 1
+                return TranscriptProbe(
+                    url=self.transcript_url(episode), status_code=200, content=VTT_CONTENT
+                )
+
+        provider = SwagitProbeProvider()
+        city = _city(
+            provider="swagit",
+            source={"list_url": "https://swagit.example/archive"},
+            asr_enabled=False,
+        )
+        ep = _ep(links={"canonical_video": "https://swagit.example/videos/100"})
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        assert provider.calls == 1
+        assert ep.links["transcript"].endswith("/videos/100/transcript")
+        assert ep.provider_transcript["candidate"]["format"] == "vtt"
+        assert ep.provider_transcript["probe"]["status"] == "available"
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        assert provider.calls == 1
+
+    def test_swagit_missing_transcript_probe_uses_absent_backoff(self, tmp_path):
+        class SwagitProbeProvider(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def transcript_url(self, episode):
+                return "https://swagit.example/videos/100/transcript"
+
+            def probe_transcript(self, episode, source):
+                self.calls += 1
+                return TranscriptProbe(
+                    url=self.transcript_url(episode), status_code=404, content=b""
+                )
+
+        provider = SwagitProbeProvider()
+        city = _city(
+            provider="swagit",
+            source={"list_url": "https://swagit.example/archive"},
+            asr_enabled=False,
+        )
+        ep = _ep(links={"canonical_video": "https://swagit.example/videos/100"})
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        assert provider.calls == 1
+        assert "transcript" not in ep.links
+        probe = ep.provider_transcript["probe"]
+        assert probe["status"] == "absent"
+        assert probe["attempts"] == 1
+        next_retry = datetime.fromisoformat(probe["next_retry_at"])
+        assert next_retry - datetime.fromisoformat(probe["checked_at"]) == timedelta(days=7)
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        assert provider.calls == 1
+
+    def test_provider_probe_due_uses_persisted_retry_time(self):
+        ep = _ep()
+        url = "https://swagit.example/videos/100/transcript"
+        checked = datetime(2026, 6, 1, tzinfo=UTC)
+        _record_provider_transcript_probe(
+            ep, url=url, status="absent", now=checked, status_code=404
+        )
+        assert not _provider_transcript_probe_due(
+            ep, url=url, now=checked + timedelta(days=6, hours=23)
+        )
+        assert _provider_transcript_probe_due(ep, url=url, now=checked + timedelta(days=7))
+
+    def test_swagit_probe_cap_is_shared_across_episode_calls(self, tmp_path):
+        class SwagitProbeProvider(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def transcript_url(self, episode):
+                return f"https://swagit.example/videos/{episode.guid}/transcript"
+
+            def probe_transcript(self, episode, source):
+                self.calls += 1
+                return TranscriptProbe(
+                    url=self.transcript_url(episode), status_code=200, content=VTT_CONTENT
+                )
+
+        provider = SwagitProbeProvider()
+        city = _city(
+            provider="swagit",
+            source={"list_url": "https://swagit.example/archive"},
+            asr_enabled=False,
+        )
+        first = _ep(uid="uid-100", links={"canonical_video": "https://swagit.example/videos/100"})
+        first.guid = "100"
+        second = _ep(uid="uid-101", links={"canonical_video": "https://swagit.example/videos/101"})
+        second.guid = "101"
+        ctx = _ctx(tmp_path)
+        ctx.provider_transcript_probes_per_source = 1
+
+        TranscriptStage().process(provider, city, [first], ctx)
+        TranscriptStage().process(provider, city, [second], ctx)
+        assert provider.calls == 1
+        assert "transcript" not in second.links
+
+    def test_swagit_recheck_uses_probe_path_and_records_denial(self, tmp_path):
+        class SwagitProbeProvider(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def transcript_url(self, episode):
+                return "https://swagit.example/videos/100/transcript"
+
+            def probe_transcript(self, episode, source):
+                self.calls += 1
+                if self.calls == 1:
+                    return TranscriptProbe(
+                        url=self.transcript_url(episode), status_code=200, content=VTT_CONTENT
+                    )
+                return TranscriptProbe(
+                    url=self.transcript_url(episode), status_code=403, content=b""
+                )
+
+        provider = SwagitProbeProvider()
+        city = _city(
+            provider="swagit",
+            source={"list_url": "https://swagit.example/archive"},
+            asr_enabled=False,
+        )
+        ep = _ep(links={"canonical_video": "https://swagit.example/videos/100"})
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        ep.provider_transcript["probe"]["next_retry_at"] = (
+            datetime.now(UTC) - timedelta(seconds=1)
+        ).isoformat()
+
+        with patch(
+            "citypods.http.make_session",
+            side_effect=AssertionError("scheduled Swagit recheck must use probe_transcript"),
+        ):
+            TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+
+        assert provider.calls == 2
+        probe = ep.provider_transcript["probe"]
+        assert probe["status"] == "error"
+        assert probe["status_code"] == 403
+        assert datetime.fromisoformat(probe["next_retry_at"]) > datetime.now(UTC)
 
     def test_unchanged_refetch_refreshes_checked_at_without_new_candidate(self, tmp_path):
         ep, _ = self._run_with_content(tmp_path, VTT_CONTENT)

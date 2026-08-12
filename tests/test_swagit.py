@@ -10,7 +10,13 @@ from citypods.bodies import filter_by_body
 from citypods.feeds import build_rss
 from citypods.models import City
 from citypods.providers.base import ProviderError
-from citypods.providers.swagit import MAX_ARCHIVE_PAGES, SwagitProvider, _page_count, parse_list
+from citypods.providers.swagit import (
+    MAX_ARCHIVE_PAGES,
+    SwagitProvider,
+    TranscriptProbe,
+    _page_count,
+    parse_list,
+)
 from citypods.records import assign_uids
 from citypods.security import SecurityError
 from tests.conftest import fixture_bytes
@@ -449,6 +455,33 @@ def test_fetch_chapters_no_transcript_link(monkeypatch):
     ep = parse_list(SAMPLE, ORIGIN)[0]
     chapters, transcript = SwagitProvider().fetch_chapters(ep, {"list_url": f"{ORIGIN}/x"})
     assert chapters and transcript is None
+
+
+def test_probe_transcript_uses_conventional_endpoint(monkeypatch):
+    import citypods.providers.swagit as sw
+
+    class FakeResp:
+        status_code = 200
+        content = b"WEBVTT\n"
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, timeout=None, **kwargs):
+            assert url == f"{ORIGIN}/videos/100/transcript"
+            return FakeResp()
+
+    monkeypatch.setattr(sw, "make_session", lambda: FakeSession())
+    monkeypatch.setattr(sw, "validate_source_url", lambda *a, **kw: None)
+    ep = parse_list(SAMPLE, ORIGIN)[0]
+    result = SwagitProvider().probe_transcript(ep, {})
+    assert result == TranscriptProbe(
+        url=f"{ORIGIN}/videos/100/transcript", status_code=200, content=b"WEBVTT\n"
+    )
 
 
 def test_fetch_chapters_rejects_redirect_response(monkeypatch):
