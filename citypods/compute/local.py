@@ -52,6 +52,9 @@ class LocalBackend:
                 inp["cpu_threads"],
             )
         elif job.task == "align":
+            align_kwargs = {}
+            if inp.get("timed_segments"):
+                align_kwargs["timed_segments"] = inp["timed_segments"]
             output = self._asr.align(
                 inp["audio_path"],
                 inp["text"],
@@ -59,6 +62,7 @@ class LocalBackend:
                 inp["language"],
                 inp["cpu_threads"],
                 inp.get("compute_type", "int8"),
+                **align_kwargs,
             )
         else:
             raise ValueError(f"local backend does not implement task {job.task!r}")

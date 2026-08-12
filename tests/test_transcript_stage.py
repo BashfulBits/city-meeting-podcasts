@@ -41,6 +41,7 @@ from citypods.stages import (
     TranscriptStage,
     _asr_fits_remaining_budget,
     _asr_timeout_seconds,
+    _provider_alignment_inputs,
     _provider_source_text,
     _provider_vtt_words_json,
     default_stages,
@@ -274,6 +275,41 @@ class TestTranscriptStageVTT:
         words = json.loads(_provider_vtt_words_json(WORD_VTT_WITH_LEADING_TEXT).decode())
         assert [word["w"] for word in words["segments"][0]["words"]] == ["Hello", "world"]
         assert _provider_source_text(WORD_VTT_WITH_LEADING_TEXT, "vtt") == "Hello world"
+
+    def test_provider_cue_times_are_remapped_to_served_time_for_alignment(self):
+        ep = _ep()
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref="https://src/vid.mp4",
+                media_kind="direct",
+                duration=30.0,
+                watch_url=None,
+            )
+        ]
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=10.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=10.0,
+                    source_end=20.0,
+                ),
+            ),
+        )
+
+        text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"WEBVTT\n\n00:00:12.000 --> 00:00:15.000\nHello world here\n",
+            "vtt",
+        )
+
+        assert text == "Hello world here"
+        assert timed_segments == [{"start": 2.0, "end": 5.0, "text": "Hello world here"}]
 
     def _run_with_content(self, tmp_path, content: bytes, url="https://provider/t.vtt"):
         from unittest.mock import patch

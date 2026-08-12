@@ -2762,7 +2762,7 @@ def _provider_vtt_words_json(content: bytes, *, basis: str = "served") -> bytes 
 
 
 def _provider_source_text(content: bytes, fmt: str) -> str:
-    """Extract provider wording for our aligner, discarding provider timing as authority."""
+    """Extract provider wording for the full aligner."""
     if fmt in {"vtt", "srt"}:
         joined = "\n".join(
             str(cue.get("text") or "") for cue in _parse_timed_transcript(content, fmt)
@@ -2974,6 +2974,60 @@ def _remap_provider_cues(ep: Episode, cues: list[dict]) -> tuple[list[dict], flo
     else:
         confidence = max(0.0, min(1.0, len(remapped) / len(cues)))
     return remapped, confidence
+
+
+def _provider_alignment_inputs(
+    ep: Episode, content: bytes, fmt: str
+) -> tuple[str, list[dict] | None]:
+    """Return provider alignment text and served-time cue windows when available.
+
+    Provider VTT/SRT timestamps are based on the source recording.  The hosted audio may instead
+    be an edited/served timeline, so remap the cue windows before giving them to stable-ts.  Keep
+    the cleaned cue text alongside each window so ``align_words()`` receives the exact wording
+    represented by those windows.  A malformed/empty cue set deliberately returns plain text and
+    ``None`` so the caller uses the slower, unconstrained ``align()`` path.
+    """
+    if fmt not in {"vtt", "srt"}:
+        return _provider_source_text(content, fmt), None
+
+    prepared: list[dict] = []
+    for cue in _parse_timed_transcript(content, fmt):
+        text = _VTT_WORD_TIMESTAMP_RE.sub("", str(cue.get("text") or "")).strip()
+        text = _preprocess_align_text(text)
+        start = cue.get("start")
+        end = cue.get("end")
+        if not text or start is None or end is None or float(end) <= float(start):
+            continue
+        prepared.append({"start": float(start), "end": float(end), "text": text})
+
+    if not prepared:
+        return _provider_source_text(content, fmt), None
+
+    remapped, _confidence = _remap_provider_cues(ep, prepared)
+    timed_segments = [
+        {
+            "start": float(cue["start"]),
+            "end": float(cue["end"]),
+            "text": str(cue.get("text") or "").strip(),
+        }
+        for cue in remapped
+        if cue.get("text") and cue.get("start") is not None and cue.get("end") is not None
+    ]
+    timed_segments = [cue for cue in timed_segments if cue["end"] > cue["start"]]
+    if not timed_segments:
+        return _provider_source_text(content, fmt), None
+    return "\n".join(cue["text"] for cue in timed_segments), timed_segments
+
+
+def _alignment_input_hash(text: str, timed_segments: list[dict] | None = None) -> str:
+    """Hash wording plus constrained windows so timing changes invalidate alignment artifacts."""
+    if not timed_segments:
+        # Preserve the existing recipe for untimed/plain-text alignment, so introducing the
+        # constrained path does not invalidate every historical full-alignment artifact.
+        return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+    payload: object = {"text": text, "timed_segments": timed_segments}
+    blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:12]
 
 
 def _provider_cues_to_vtt(cues: list[dict]) -> bytes:
@@ -4052,9 +4106,11 @@ class TranscriptStage:
                 continue
 
             # Determine alignment text from any stored provider source transcript. Cue-level
-            # VTT/SRT timing is source evidence, not served timing; stable-ts computes the final
-            # word boundaries. Only a provider-native word-timed VTT bypasses this path.
+            # VTT/SRT timing is source evidence, not served timing; remap it to served time and
+            # use it to constrain stable-ts word alignment. Only a provider-native word-timed VTT
+            # bypasses this path.
             align_text: str | None = None
+            align_timed_segments: list[dict] | None = None
             provider_alignment_requested = isinstance(active_provider, dict) and bool(
                 active_provider.get("key")
             )
@@ -4066,7 +4122,9 @@ class TranscriptStage:
                         active_provider.get("word_timed") or _has_word_timing_vtt(provider_content)
                     )
                     if not provider_word_timed:
-                        align_text = _provider_source_text(provider_content, provider_fmt)
+                        align_text, align_timed_segments = _provider_alignment_inputs(
+                            ep, provider_content, provider_fmt
+                        )
             elif ep.transcript_hosted_url and ep.transcript_format in {"txt", "vtt", "srt"}:
                 # Legacy records may have the URL but not the provider registry yet.
                 try:
@@ -4075,11 +4133,14 @@ class TranscriptStage:
                     with make_session() as sess:
                         r = sess.get(ep.transcript_hosted_url, timeout=30)
                     if r.status_code == 200:
-                        align_text = _provider_source_text(r.content, ep.transcript_format)
+                        align_text, align_timed_segments = _provider_alignment_inputs(
+                            ep, r.content, ep.transcript_format
+                        )
                 except Exception:  # noqa: BLE001
                     pass  # alignment hint unavailable; fall back to fresh transcription
             if force_asr_selection:
                 align_text = None
+                align_timed_segments = None
 
             # Lane gating (H6b): the sharded asr.yml runs a single-model lane so faster-whisper and
             # stable-ts never co-load in one runner. ``transcribe`` forces fresh transcription (drop
@@ -4093,6 +4154,7 @@ class TranscriptStage:
                 continue
             if ctx.lane == "transcribe":
                 align_text = None
+                align_timed_segments = None
             elif ctx.lane == "align" and align_text is None:
                 stats.defer("align-lane-no-source-text")
                 print(
@@ -4119,7 +4181,9 @@ class TranscriptStage:
                 continue
 
             ensure_timeline_audio_repair_token(ep, REPAIR_TRANSCRIPT_REGENERATE)
-            align_hash = hashlib.sha1(align_text.encode()).hexdigest()[:12] if align_text else None
+            align_hash = (
+                _alignment_input_hash(align_text, align_timed_segments) if align_text else None
+            )
             # Alignment falls back to fresh transcription on quality/runtime errors, so keep the
             # fresh prompt/beam inputs in the recipe even when alignment is the primary path.
             initial_prompt = asr_initial_prompt(city.podcast_author, ep.body, ep.title)
@@ -4269,6 +4333,7 @@ class TranscriptStage:
                             "beam_size": city.asr_beam_size if not align_text else None,
                             "initial_prompt": initial_prompt,
                             "text": align_text,
+                            "timed_segments": align_timed_segments,
                         },
                         recipe_hash=recipe,
                     ),
@@ -4508,6 +4573,7 @@ class TranscriptStage:
             def _infer(
                 _ep=ep,
                 _at=align_text,
+                _ats=align_timed_segments,
                 _ep_ref=ep_ref,
                 _audio=audio_path,
                 _audio_tmp=audio_tmp,
@@ -4554,6 +4620,7 @@ class TranscriptStage:
                                             "language": city.asr_language or None,
                                             "compute_type": city.asr_compute_type,
                                             "cpu_threads": cpu_threads,
+                                            "timed_segments": _ats,
                                         },
                                         recipe_hash=_recipe,
                                     )
