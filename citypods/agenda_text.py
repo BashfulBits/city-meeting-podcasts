@@ -6,10 +6,16 @@ the stages decide which link may be persisted and retain source URLs/evidence fo
 
 from __future__ import annotations
 
+import csv
 import io
 import re
+import shutil
+import subprocess
+import tempfile
+import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from pathlib import Path
 from urllib.parse import urljoin
 
 _MINUTES_RE = re.compile(r"\bminutes?\b", re.I)
@@ -26,6 +32,22 @@ MAX_TEXT_CHARS = 1_000_000
 MAX_LINKS = 200
 AGENDA_TEXT_MAX_CHARS = 50_000
 BACKUP_ITEM_MAX_CHARS = 20_000
+# Bumped 2 -> 3 (GH#1092): line-preserving placeholder classification, bounded native/OCR
+# similarity, and scaled OCR budgets change the persisted quality decision.
+AGENDA_TEXT_QUALITY_VERSION = "3"
+OCR_MAX_PAGES = 120
+OCR_MAX_OUTPUT_CHARS = AGENDA_TEXT_MAX_CHARS
+OCR_PROBE_TIMEOUT_SECONDS = 15
+OCR_FULL_TIMEOUT_SECONDS = 60
+OCR_FULL_SECONDS_PER_PAGE = 5
+OCR_MIN_CONFIDENCE = 60.0
+OCR_MIN_ALPHA_CHARS = 100
+_SIMILARITY_SAMPLE_CHARS = 8_000
+_SIMILARITY_ACCEPTANCE_THRESHOLD = 0.6
+
+
+class OcrUnavailableError(RuntimeError):
+    """Raised when the bounded OCR fallback cannot find its required executables."""
 
 
 @dataclass(frozen=True)
@@ -43,6 +65,42 @@ class AgendaTitleCandidate:
 
     title: str
     line_number: int
+
+
+@dataclass(frozen=True)
+class AgendaTextAssessment:
+    """Bounded, explainable admission decision for one agenda candidate."""
+
+    text: str
+    source_url: str
+    source_type: str
+    method: str
+    status: str
+    eligibility: str
+    reason: str
+    pipeline_version: str = AGENDA_TEXT_QUALITY_VERSION
+    native_chars: int = 0
+    ocr_chars: int = 0
+    page_count: int = 0
+    native_ocr_similarity: float | None = None
+    ocr_mean_confidence: float | None = None
+    truncated: bool = False
+
+    def as_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "eligibility": self.eligibility,
+            "method": self.method,
+            "reason": self.reason,
+            "pipeline_version": self.pipeline_version,
+            "source_url": self.source_url,
+            "native_chars": self.native_chars,
+            "ocr_chars": self.ocr_chars,
+            "page_count": self.page_count,
+            "native_ocr_similarity": self.native_ocr_similarity,
+            "ocr_mean_confidence": self.ocr_mean_confidence,
+            "truncated": self.truncated,
+        }
 
 
 _BARE_NUMBER_RE = re.compile(r"^(?:\d+|[IVXLC]+)\.$", re.I)
@@ -112,6 +170,438 @@ def _extract_pdf(
         pass
     text = "\n".join(texts)[:MAX_TEXT_CHARS]
     return text, _dedupe_links(links + _links_from_text(text, source_url))
+
+
+_PLACEHOLDER_RE = re.compile(
+    r"(?:documentviewer\.php|\bloading(?:\.\.\.|…)?\b|not currently published|"
+    r"please wait|javascript (?:is )?required|an error occurred|unable to load)",
+    re.I,
+)
+_NOTICE_RE = re.compile(
+    r"\b(?:cancel(?:led|ed)?|no meeting|meeting (?:is )?(?:postponed|rescheduled)|"
+    r"meeting notice|meeting has been canceled)\b",
+    re.I,
+)
+_AGENDA_NUMBER_RE = re.compile(r"(?:^|\n)\s*(?:\d+|[IVXLC]+)(?:\.[A-Z])?\.", re.I)
+
+
+def _alpha_chars(text: str) -> int:
+    return sum(char.isalpha() for char in text)
+
+
+def _repeated_line_ratio(text: str) -> float:
+    lines = [_normalize_ws(line).casefold() for line in text.splitlines() if _normalize_ws(line)]
+    if len(lines) < 3:
+        return 0.0
+    return 1.0 - (len(set(lines)) / len(lines))
+
+
+def agenda_content_score(text: str) -> int:
+    """Return a small deterministic score for visible agenda-like content."""
+    if not text:
+        return 0
+    normalized = _normalize_ws(text).casefold()
+    score = 0
+    if re.search(r"\bagenda(?: items?)?\b", normalized):
+        score += 1
+    if _AGENDA_NUMBER_RE.search(text):
+        score += 2
+    if extract_agenda_title_candidates(text, max_items=20):
+        score += 2
+    if _alpha_chars(text) >= 500:
+        score += 1
+    return score
+
+
+def _is_placeholder_text(text: str) -> bool:
+    normalized = _normalize_ws(text)
+    if not normalized:
+        return True
+    if _PLACEHOLDER_RE.search(normalized):
+        # A real agenda can contain the word "loading" in a footnote, so only classify it as a
+        # placeholder when the document is otherwise short/boilerplate or the shell signature is
+        # unambiguous.
+        if "documentviewer.php" in normalized.casefold() or "not currently published" in (
+            normalized.casefold()
+        ):
+            return True
+        if len(normalized) <= 500 or agenda_content_score(text) == 0:
+            return True
+    compact = re.sub(r"[^a-z0-9]+", "", normalized.casefold())
+    return (
+        bool(compact)
+        and len(normalized) <= 180
+        and (
+            normalized.lower().startswith(("http://", "https://"))
+            or bool(re.fullmatch(r"[\w./-]+(?:\.pdf)?", normalized, re.I))
+        )
+    )
+
+
+def _is_short_notice(text: str) -> bool:
+    return bool(text and len(text) <= 1_000 and _NOTICE_RE.search(text))
+
+
+def classify_agenda_text(text: str) -> str:
+    """Return the shared coarse class used by production and chapter research."""
+    normalized = _normalize_ws(text)
+    if not normalized:
+        return "empty"
+    if "not currently published" in normalized.casefold():
+        return "unpublished-placeholder"
+    if _is_placeholder_text(text):
+        return "viewer-placeholder"
+    if _is_short_notice(normalized):
+        return "short-notice"
+    return "complete"
+
+
+def agenda_chapter_eligible(quality: dict | None) -> bool:
+    """Whether an accepted artifact is suitable input for agenda-item/chapter extraction."""
+    return bool(
+        isinstance(quality, dict)
+        and quality.get("status") == "accepted"
+        and quality.get("eligibility") == "agenda"
+    )
+
+
+def _pdf_page_count(content: bytes) -> int:
+    try:
+        from pypdf import PdfReader
+
+        return len(PdfReader(io.BytesIO(content)).pages)
+    except Exception:  # noqa: BLE001 - page count is diagnostic, not an extraction prerequisite
+        return 0
+
+
+def _ocr_page_numbers(page_count: int) -> list[int]:
+    if page_count <= 0:
+        return [1]
+    pages = {1, min(page_count, OCR_MAX_PAGES)}
+    if page_count > 2:
+        pages.add((page_count + 1) // 2)
+    return sorted(pages)
+
+
+def _ocr_pdf_pages(
+    content: bytes,
+    pages: list[int],
+    *,
+    timeout: int,
+) -> tuple[str, float | None]:
+    """Render selected PDF pages and return Tesseract text plus mean word confidence."""
+    if not shutil.which("pdftocairo") or not shutil.which("tesseract"):
+        raise OcrUnavailableError
+    with tempfile.TemporaryDirectory(prefix="citypods-ocr-") as temp_dir:
+        root = Path(temp_dir)
+        pdf_path = root / "agenda.pdf"
+        pdf_path.write_bytes(content)
+        texts: list[str] = []
+        confidences: list[float] = []
+        deadline = time.monotonic() + timeout
+        for page in pages:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired("ocr", timeout)
+            image_prefix = root / f"page-{page}"
+            subprocess.run(
+                [
+                    "pdftocairo",
+                    "-png",
+                    "-scale-to",
+                    "2400",
+                    "-singlefile",
+                    "-f",
+                    str(page),
+                    "-l",
+                    str(page),
+                    str(pdf_path),
+                    str(image_prefix),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=remaining,
+            )
+            image_path = image_prefix.with_suffix(".png")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired("ocr", timeout)
+            proc = subprocess.run(
+                ["tesseract", str(image_path), "stdout", "--psm", "6", "tsv"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=remaining,
+            )
+            rows = csv.DictReader(proc.stdout.splitlines(), delimiter="\t")
+            page_words: list[str] = []
+            for row in rows:
+                word = (row.get("text") or "").strip()
+                try:
+                    confidence = float(row.get("conf") or -1)
+                except ValueError:
+                    confidence = -1
+                if word:
+                    page_words.append(word)
+                    if confidence >= 0:
+                        confidences.append(confidence)
+            if page_words:
+                texts.append(" ".join(page_words))
+                if sum(len(item) for item in texts) >= OCR_MAX_OUTPUT_CHARS:
+                    break
+        text = "\n".join(texts)
+        return text[:OCR_MAX_OUTPUT_CHARS], (
+            sum(confidences) / len(confidences) if confidences else None
+        )
+
+
+def assess_agenda_document(
+    content: bytes,
+    *,
+    content_type: str,
+    source_url: str,
+    ocr_runner=None,
+) -> tuple[AgendaTextAssessment, list[DocumentLink]]:
+    """Assess one fetched agenda candidate and optionally recover suspicious PDFs with OCR."""
+    is_pdf = _is_pdf(content_type, source_url)
+    native, discovered = extract_document(content, content_type=content_type, source_url=source_url)
+    page_count = _pdf_page_count(content) if is_pdf else 0
+    native = native[:AGENDA_TEXT_MAX_CHARS]
+    native_alpha = _alpha_chars(native)
+    native_score = agenda_content_score(native)
+    native_suspicious = (
+        _is_placeholder_text(native)
+        or native_alpha < 200
+        or native_score == 0
+        or _repeated_line_ratio(native) > 0.55
+    )
+
+    if _is_short_notice(native) and not _is_placeholder_text(native):
+        return (
+            AgendaTextAssessment(
+                native,
+                source_url,
+                "pdf" if is_pdf else "html",
+                "native",
+                "accepted",
+                "notice",
+                "short-notice",
+                native_chars=len(native),
+                page_count=page_count,
+            ),
+            discovered,
+        )
+    if not is_pdf and not native_suspicious:
+        return (
+            AgendaTextAssessment(
+                native,
+                source_url,
+                "html",
+                "native",
+                "accepted",
+                "agenda",
+                "native-quality-pass",
+                native_chars=len(native),
+            ),
+            discovered,
+        )
+    if is_pdf and not native_suspicious:
+        return (
+            AgendaTextAssessment(
+                native,
+                source_url,
+                "pdf",
+                "native",
+                "accepted",
+                "agenda",
+                "native-quality-pass",
+                native_chars=len(native),
+                page_count=page_count,
+            ),
+            discovered,
+        )
+    if not is_pdf and native_suspicious:
+        return (
+            AgendaTextAssessment(
+                "",
+                source_url,
+                "html",
+                "none",
+                "rejected",
+                "unknown",
+                "placeholder-or-low-quality-html",
+                native_chars=len(native),
+            ),
+            discovered,
+        )
+
+    pages = _ocr_page_numbers(page_count)
+    runner = ocr_runner or _ocr_pdf_pages
+    try:
+        probe_text, probe_confidence = runner(content, pages, timeout=OCR_PROBE_TIMEOUT_SECONDS)
+    except Exception as exc:  # noqa: BLE001 - convert tool failures into durable diagnostics
+        if isinstance(exc, subprocess.TimeoutExpired):
+            reason = "ocr-timeout"
+        elif isinstance(exc, OcrUnavailableError):
+            reason = "ocr-unavailable"
+        else:
+            reason = "ocr-probe-failed"
+        return (
+            AgendaTextAssessment(
+                "",
+                source_url,
+                "pdf",
+                "none",
+                "rejected",
+                "unknown",
+                reason,
+                native_chars=len(native),
+                page_count=page_count,
+            ),
+            discovered,
+        )
+    probe_score = agenda_content_score(probe_text)
+    probe_alpha = _alpha_chars(probe_text)
+    if (
+        probe_alpha < OCR_MIN_ALPHA_CHARS
+        or (probe_confidence is not None and probe_confidence < OCR_MIN_CONFIDENCE)
+        or probe_score == 0
+    ):
+        return (
+            AgendaTextAssessment(
+                "",
+                source_url,
+                "pdf",
+                "none",
+                "rejected",
+                "unknown",
+                "ambiguous-native-and-ocr",
+                native_chars=len(native),
+                ocr_chars=len(probe_text),
+                page_count=page_count,
+                ocr_mean_confidence=probe_confidence,
+            ),
+            discovered,
+        )
+
+    native_similarity = _bounded_text_similarity(native, probe_text)
+    materially_better = (
+        probe_alpha >= max(OCR_MIN_ALPHA_CHARS, native_alpha * 2) and probe_score > native_score
+    )
+    if not materially_better and native_suspicious and native_alpha >= OCR_MIN_ALPHA_CHARS:
+        materially_better = probe_score > native_score and probe_alpha >= native_alpha * 1.5
+    if not materially_better and native_similarity < _SIMILARITY_ACCEPTANCE_THRESHOLD:
+        return (
+            AgendaTextAssessment(
+                "",
+                source_url,
+                "pdf",
+                "none",
+                "rejected",
+                "unknown",
+                "ambiguous-native-and-ocr",
+                native_chars=len(native),
+                ocr_chars=len(probe_text),
+                page_count=page_count,
+                native_ocr_similarity=native_similarity,
+                ocr_mean_confidence=probe_confidence,
+            ),
+            discovered,
+        )
+    if materially_better:
+        try:
+            full_text, full_confidence = runner(
+                content,
+                list(range(1, min(page_count, OCR_MAX_PAGES) + 1)),
+                timeout=max(
+                    OCR_FULL_TIMEOUT_SECONDS,
+                    OCR_FULL_SECONDS_PER_PAGE * max(1, min(page_count, OCR_MAX_PAGES)),
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - required OCR failure is durable and retryable
+            if isinstance(exc, subprocess.TimeoutExpired):
+                reason = "ocr-timeout"
+            elif isinstance(exc, OcrUnavailableError):
+                reason = "ocr-unavailable"
+            else:
+                reason = "ocr-full-failed"
+            return (
+                AgendaTextAssessment(
+                    "",
+                    source_url,
+                    "pdf",
+                    "none",
+                    "rejected",
+                    "unknown",
+                    reason,
+                    native_chars=len(native),
+                    ocr_chars=len(probe_text),
+                    page_count=page_count,
+                    native_ocr_similarity=native_similarity,
+                    ocr_mean_confidence=probe_confidence,
+                ),
+                discovered,
+            )
+        full_text = full_text[:AGENDA_TEXT_MAX_CHARS]
+        full_alpha = _alpha_chars(full_text)
+        if (
+            full_alpha < OCR_MIN_ALPHA_CHARS
+            or (full_confidence is not None and full_confidence < OCR_MIN_CONFIDENCE)
+            or agenda_content_score(full_text) <= native_score
+        ):
+            return (
+                AgendaTextAssessment(
+                    "",
+                    source_url,
+                    "pdf",
+                    "none",
+                    "rejected",
+                    "unknown",
+                    "ocr-full-quality-failed",
+                    native_chars=len(native),
+                    ocr_chars=len(full_text),
+                    page_count=page_count,
+                    native_ocr_similarity=native_similarity,
+                    ocr_mean_confidence=full_confidence,
+                    truncated=len(full_text) >= AGENDA_TEXT_MAX_CHARS,
+                ),
+                discovered,
+            )
+        return (
+            AgendaTextAssessment(
+                full_text,
+                source_url,
+                "pdf",
+                "ocr",
+                "accepted",
+                "agenda",
+                "ocr-materially-better",
+                native_chars=len(native),
+                ocr_chars=len(full_text),
+                page_count=page_count,
+                native_ocr_similarity=native_similarity,
+                ocr_mean_confidence=full_confidence,
+                truncated=len(full_text) >= AGENDA_TEXT_MAX_CHARS,
+            ),
+            discovered,
+        )
+    return (
+        AgendaTextAssessment(
+            native,
+            source_url,
+            "pdf",
+            "native",
+            "accepted",
+            "agenda",
+            "native-ocr-agreement",
+            native_chars=len(native),
+            ocr_chars=len(probe_text),
+            page_count=page_count,
+            native_ocr_similarity=native_similarity,
+            ocr_mean_confidence=probe_confidence,
+        ),
+        discovered,
+    )
 
 
 def extract_pdf_layout_text(content: bytes) -> str:
@@ -360,6 +850,27 @@ def agenda_title_similarity(left: str, right: str) -> float:
     ):
         return 1.0
     return SequenceMatcher(a=left_norm, b=right_norm).ratio()
+
+
+def _bounded_text_similarity(left: str, right: str) -> float:
+    """Compare bounded normalized samples without allowing hostile inputs to consume the run.
+
+    The persisted diagnostic is exact only when both normalized inputs fit the sample bound. When
+    their lengths make the acceptance threshold mathematically impossible, the cheap upper bound is
+    returned instead of running ``SequenceMatcher``. Otherwise the comparison uses a fixed prefix;
+    the quality gate only needs a conservative agreement signal, not a whole-document similarity.
+    """
+    left_norm = _normalize_ws(left).casefold()
+    right_norm = _normalize_ws(right).casefold()
+    if not left_norm or not right_norm:
+        return 0.0
+    upper_bound = 2 * min(len(left_norm), len(right_norm)) / (len(left_norm) + len(right_norm))
+    if upper_bound < _SIMILARITY_ACCEPTANCE_THRESHOLD:
+        return upper_bound
+    return SequenceMatcher(
+        a=left_norm[:_SIMILARITY_SAMPLE_CHARS],
+        b=right_norm[:_SIMILARITY_SAMPLE_CHARS],
+    ).ratio()
 
 
 def attribute_links_to_chapters(

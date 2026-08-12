@@ -4,6 +4,10 @@ provider: granicus
 source:
   feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
   body: "Library Board"
+lifecycle:
+  status: paused
+  recheck_after: 2026-11-30
+  reason: "Summer break"
 podcast_title: "Pflugerville: Library Board"
 podcast_author: "City of Pflugerville, TX"
 podcast_email: ""

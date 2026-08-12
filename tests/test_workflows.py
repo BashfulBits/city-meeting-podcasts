@@ -212,8 +212,16 @@ def test_heavy_workflow_is_sharded_and_lane_pinned(workflow, lane, job_name):
         shards = matrix.get("shard")
         assert "fromJSON(needs.plan.outputs.matrix).shard" in str(shards)
     else:
-        shards = matrix.get("slot")
-        assert shards == [0, 1, 2, 3], f"{workflow} must run four identical pull workers"
+        entries = matrix.get("include") or []
+        assert [
+            (entry.get("lane"), entry.get("slot"), entry.get("workers")) for entry in entries
+        ] == [
+            ("transcribe", 0, 3),
+            ("transcribe", 1, 3),
+            ("transcribe", 2, 3),
+            ("align", 0, 2),
+            ("align", 1, 2),
+        ], f"{workflow} must run three transcribe and two align pull workers"
     step = next(
         s
         for s in job["steps"]
@@ -427,28 +435,6 @@ def test_llm_tag_review_ingest_workflow_is_event_driven_and_guards_stored():
     assert "gh issue close" in stored_branch
 
 
-def test_r5_benchmark_workflow_is_manual_shadow_only_and_packages_state():
-    wf, job = _job("r5-benchmark.yml", job_name="benchmark")
-    triggers = _on(wf)
-    assert set(triggers) == {"workflow_dispatch"}
-    assert job["timeout-minutes"] == 180
-    run = next(
-        step["run"]
-        for step in job["steps"]
-        if step.get("name") == "Run or package R5 shadow benchmark"
-    )
-    assert "python -m citypods.r5_benchmark run" in run
-    assert "python -m citypods.r5_benchmark package" in run
-    assert "--sample-size" in run
-    assert "--prelabeler-model" in run
-    assert "--pairwise-samples" in run
-    upload = next(
-        step for step in job["steps"] if "actions/upload-artifact@" in step.get("uses", "")
-    )
-    assert upload["with"]["path"] == "r5-benchmark"
-    assert "OPENROUTER_API_KEY" in str(next(step for step in job["steps"] if step.get("env")))
-
-
 def test_asr_quality_ingest_schedule_fallback_scans_open_children():
     """The safety-net cron for missed issues.edited/issue_comment webhooks must actually scan
     open H15 child issues, not just resolve to an empty issue list and skip everything."""
@@ -595,6 +581,8 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     assert not image.endswith(":latest")
     assert len(env["FFMPEG_SHA256"]) == 64
     assert wf["permissions"]["packages"] == "read"
+    image_wf, _ = _job("audio-runner-image.yml", job_name="build")
+    assert image == image_wf["env"]["IMAGE"]
 
     select = next(s for s in job["steps"] if s.get("name") == "Select audio runtime")
     # Self-built ffmpeg (scripts/build_ffmpeg_static.sh) vendored to our own B2 bucket, not
@@ -608,6 +596,9 @@ def test_audio_uses_pinned_runner_image_with_verified_host_fallback():
     assert "timeout 300 python scripts/install_static_ffmpeg.py" in select["run"]
     assert '--sha256 "${FFMPEG_SHA256}"' in select["run"]
     assert '"${FFMPEG_FALLBACK_DIR}/bin/ffprobe" -version' in select["run"]
+    assert "poppler-utils tesseract-ocr" in select["run"]
+    assert "pdftocairo -v" in select["run"]
+    assert "tesseract --version" in select["run"]
     # Runtime (non -dev) packages for the codec/TLS libraries build_ffmpeg_static.sh links
     # dynamically -- only needed on the host fallback path, not the container path.
     assert "libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0" in select["run"]
@@ -630,7 +621,7 @@ def test_audio_runner_image_build_is_scheduled_and_publishes_ghcr():
     assert {"schedule", "workflow_dispatch", "push"} <= set(_on(wf))
     assert wf["permissions"]["packages"] == "write"
     assert job["timeout-minutes"] == 30
-    assert wf["env"]["IMAGE"].endswith(":py312-ffmpeg71-v1")
+    assert wf["env"]["IMAGE"].endswith(":py312-ffmpeg71-v2")
     assert not wf["env"]["IMAGE"].endswith(":latest")
 
     build = next(s for s in job["steps"] if "docker/build-push-action" in s.get("uses", ""))
@@ -771,7 +762,7 @@ def test_swagit_worker_credentials_reach_provider_fetch_lanes():
             assert "--env SWAGIT_PROXY_TOKEN" in step["run"]
 
 
-def test_tag_lane_has_all_llm_route_secret_paths():
+def test_tag_lane_uses_async_llm_dispatch_and_keeps_provider_key_off_runner():
     _wf, job = _job("tag.yml", job_name="tag")
     step = next(
         step
@@ -779,20 +770,14 @@ def test_tag_lane_has_all_llm_route_secret_paths():
         if step.get("name") == "Produce bounded LLM topic-tag candidates"
     )
     env = step["env"]
-    assert env["GEMINI_API_KEY"] == "${{ secrets.GEMINI_API_KEY }}"
-    assert env["GEMINI_API_KEY_SECONDARY"] == "${{ secrets.GEMINI_API_KEY_SECONDARY }}"
     assert env["LLM_DISPATCH_URL"] == "${{ secrets.LLM_DISPATCH_URL }}"
     assert env["LLM_DISPATCH_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}"
+    assert "GEMINI_API_KEY" not in env
 
-
-def test_r5_benchmark_quotes_free_form_route_inputs():
-    _wf, job = _job("r5-benchmark.yml", job_name="benchmark")
-    step = next(
-        step for step in job["steps"] if step.get("name") == "Run or package R5 shadow benchmark"
-    )
-    run = step["run"]
-    assert 'python -m citypods.r5_benchmark run "${args[@]}"' in run
-    assert "$judge_flag" not in run
+    site = yaml.safe_load((WORKFLOWS.parent.parent / "config" / "site_config.yml").read_text())
+    assert site["tagging"]["llm_mode"] == "dispatch"
+    assert site["tagging"]["llm_model"] == "gemini/gemini-3.1-flash-lite"
+    assert site["tagging"]["llm_models"] == ["gemini/gemini-3.1-flash-lite"]
 
 
 def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():
@@ -1108,11 +1093,21 @@ def test_clear_materialization_workflow_avoids_injection_and_guards_apply():
 
 def test_reclaim_transcript_workflow_guards_write_to_main():
     wf, job = _job("reclaim-transcript.yml")
-    step = next(s for s in job["steps"] if s.get("name") == "Reclaim transcript")
+    step = next(s for s in job["steps"] if s.get("name") == "Run transcript recovery")
     run = step["run"]
     assert step["env"]["GIT_REF"] == "${{ github.ref }}"
     assert '"$GIT_REF" != "refs/heads/main"' in run
     assert "args+=(--write)" in run
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+    assert inputs["operation"]["type"] == "choice"
+    assert inputs["operation"]["default"] == "reclaim-transcript"
+    assert inputs["source_key"]["required"] is False
+    assert inputs["episode_uid"]["required"] is False
+    assert inputs["work_class"]["default"] == "provider-transcript-align"
+    assert 'python -m citypods.cli compute requeue-failed-work-leases "${args[@]}"' in run
+    assert '"$GIT_REF" != "refs/heads/main"' in run
+    assert "source_key and episode_uid are required" in run
+    assert job["env"]["AUDIO_STORAGE_BACKEND"] == "routing"
     assert set(_on(wf)) == {"workflow_dispatch"}
 
 

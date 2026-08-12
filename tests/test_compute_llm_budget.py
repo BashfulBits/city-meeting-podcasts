@@ -60,6 +60,108 @@ def test_reserve_settle_and_release_round_trip():
     assert ledger.cost_used == pytest.approx(0.1)
 
 
+def test_tpm_is_a_rate_and_allows_a_burst_larger_than_one_minute():
+    route = LLMRoute(
+        model="burst/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+
+    # 950 tokens at 100 TPM consumes 9.5 minutes of token-rate capacity, but it is not
+    # rejected merely because it exceeds one minute's nominal throughput.
+    assert budget.available(route.model, route=route, requests=1, tokens=950, cost=0, now=NOW)
+    budget.reserve("burst", route.model, route=route, requests=1, tokens=950, cost=0, now=NOW)
+    assert not budget.available(route.model, route=route, requests=1, tokens=1, cost=0, now=NOW)
+    assert not budget.available(
+        route.model,
+        route=route,
+        requests=1,
+        tokens=1,
+        cost=0,
+        now=NOW + timedelta(minutes=9, seconds=29),
+    )
+    assert budget.available(
+        route.model,
+        route=route,
+        requests=1,
+        tokens=1,
+        cost=0,
+        now=NOW + timedelta(minutes=9, seconds=31),
+    )
+    budget.release("burst", route.model, route=route, now=NOW)
+    assert budget.routes[route.model].tokens_available_at == ""
+
+
+def test_release_restores_token_counter_after_rollover_before_small_reservation():
+    route = LLMRoute(
+        model="release/burst",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    budget.reserve("oversized", route.model, route=route, requests=1, tokens=150, cost=0, now=NOW)
+
+    rollover = NOW + timedelta(minutes=1)
+    budget.release("oversized", route.model, route=route, now=rollover)
+    ledger = budget.routes[route.model]
+    assert ledger.tokens_minute == 0
+    assert ledger.tokens_available_at == ""
+
+    budget.reserve("small", route.model, route=route, requests=1, tokens=10, cost=0, now=rollover)
+    assert ledger.tokens_minute == 10
+    assert ledger.tokens_available_at == ""
+
+
+def test_rpm_is_a_continuous_request_pace():
+    route = LLMRoute(
+        model="paced/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=5),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    budget.reserve("first", route.model, route=route, requests=1, tokens=1, cost=0, now=NOW)
+    assert not budget.available(
+        route.model, route=route, requests=1, tokens=1, cost=0, now=NOW + timedelta(seconds=11)
+    )
+    assert budget.available(
+        route.model, route=route, requests=1, tokens=1, cost=0, now=NOW + timedelta(seconds=12)
+    )
+
+
+def test_provider_rpm_is_shared_across_models():
+    first = LLMRoute(
+        model="provider/first",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=120),
+        pricing=PricingPolicy(),
+        provider="provider",
+        provider_rpm=60,
+    )
+    second = LLMRoute(
+        model="provider/second",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=120),
+        pricing=PricingPolicy(),
+        provider="provider",
+        provider_rpm=60,
+    )
+    budget = LLMBudget()
+    budget.reserve("first", first.model, route=first, requests=1, tokens=1, cost=0, now=NOW)
+    assert not budget.available(second.model, route=second, requests=1, tokens=1, cost=0, now=NOW)
+    assert budget.available(
+        second.model, route=second, requests=1, tokens=1, cost=0, now=NOW + timedelta(seconds=1)
+    )
+
+
 def test_serialized_ledger_matches_worker_shape():
     budget = LLMBudget()
     budget.reserve("owner", ROUTE.model, route=ROUTE, requests=1, tokens=10, cost=0.1, now=NOW)
@@ -74,8 +176,10 @@ def test_serialized_ledger_matches_worker_shape():
         "requests_minute",
         "tokens_minute",
         "requests_minute_key",
+        "requests_available_at",
         "requests_day",
         "requests_day_key",
+        "tokens_available_at",
         "blocked_until",
         "inflight",
     }

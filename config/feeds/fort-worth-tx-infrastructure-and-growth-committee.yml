@@ -4,6 +4,10 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Infrastructure and Growth Committee"
+lifecycle:
+  status: paused
+  recheck_after: 2026-12-20
+  reason: "new committee, cadence not yet established"
 podcast_title: "Fort Worth: Infrastructure and Growth Committee"
 podcast_author: "City of Fort Worth, TX"
 podcast_email: ""

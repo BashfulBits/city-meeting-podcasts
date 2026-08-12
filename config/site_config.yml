@@ -17,6 +17,10 @@ city_request_form:
 city_discovery:
   llm_model: "gemini/gemini-3-flash-preview"
   llm_mode: "direct"  # direct | dispatch
+# Generated chapter records are persisted by the chapter lanes but remain shadow-only until the
+# frozen provider-chapter validation gate passes. When enabled, the served-time overlay fills only
+# episodes without canonical provider chapter markers; it never changes audio or provider data.
+generated_chapters_enabled: false
 # R5 topic tagging. Rules are always available. Dispatch collects validated LLM candidates in
 # shadow storage; the generic calibration matrix controls visibility. The initial 1.0 fallback is
 # intentionally conservative and can be lowered only after the weekly human-review process has
@@ -24,17 +28,14 @@ city_discovery:
 tagging:
   enabled: true
   llm_model: "gemini/gemini-3.1-flash-lite"
-  # Routes the scheduler may draw on, primary (== llm_model) first. The extra models are
-  # independent free-tier quota pools the run spills onto for throughput once the primary's
-  # per-minute/daily window fills (~1000 tags/day, 30 rpm combined). llm_model stays the stable
-  # recipe/calibration route; each candidate still records the model that actually answered.
+  # Keep tagging pinned to the stable/calibrated Gemini 3.1 route. Gemini 3.5 Flash Lite is
+  # reserved for the production chapter locator's long-context workload.
   llm_models:
     - "gemini/gemini-3.1-flash-lite"
-    - "gemini/gemini-3.5-flash-lite"
-  # direct | dispatch. Gemini's transport under R13's scheduler is "direct" (review/33 §7 — its
-  # free tier doesn't need the Mistral Worker's async pacing); "dispatch" is for a route that
-  # actually needs LLM_DISPATCH_URL configured (environment-only), which this route does not.
-  llm_mode: "direct"
+  # direct | dispatch. Tags do not need a same-run response, so keep provider calls off the
+  # Actions runner and let the asynchronous dispatch Worker pace and retry them. The tag workflow
+  # must provide LLM_DISPATCH_URL/LLM_DISPATCH_AUTH_TOKEN; provider keys remain Worker secrets.
+  llm_mode: "dispatch"
   taxonomy_path: "config/taxonomy.yml"
   evaluation:
     state_path: "llm_evaluation.json"
@@ -397,7 +398,10 @@ defaults:
         monthly_dollars: 24.0           # conservatively below free credit to absorb CPU/RAM billing
         reserve_dollars: 0.7
         rollover_day_of_month: 18       # confirmed against Beam's actual free-credit reset date
-        estimated_dollars_per_runtime_second: 0.000192
+        # RTX4090 GPU ($0.000192) + 1 CPU ($0.0000528) + 4 GiB RAM ($0.0000056/GiB-sec).
+        # Keep this all-in rate aligned with scripts/compute/beam_app.py's explicit resources;
+        # Beam settlement is runtime-rate based because this worker has no per-call billing API.
+        estimated_dollars_per_runtime_second: 0.0002672
         unit_label: dollar
       dispatch:
         max_inflight: 100

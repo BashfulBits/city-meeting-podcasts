@@ -330,6 +330,84 @@ def test_chapters_json_and_podcast_chapters_tag(tmp_path):
     )
 
 
+def test_generated_chapter_overlay_only_fills_an_unchaptered_episode():
+    from datetime import UTC, datetime
+
+    from citypods.chapters import episode_public_chapters
+    from citypods.feeds import chapters_json
+    from citypods.models import Episode
+
+    ep = Episode(
+        guid="generated",
+        uid="generated",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://v.mp4",
+        generated_chapters=[
+            {"start": 45.0, "title": "Second Topic", "generated": True},
+            {"start": 19.9, "title": "First Topic", "generated": True},
+            {"start": 0.4, "title": "Call to Order", "generated": True},
+        ],
+    )
+    # Default is False: no generated chapters exposed publicly.
+    assert episode_public_chapters(ep) == []
+    assert episode_public_chapters(ep, include_generated=False) == []
+
+    # When enabled, public chapters are sorted and validated.
+    public = episode_public_chapters(ep, include_generated=True)
+    assert [c["title"] for c in public] == ["Call to Order", "First Topic", "Second Topic"]
+    assert [c["start"] for c in public] == [0.4, 19.9, 45.0]
+
+    # Exact byte-for-byte Podcasting 2.0 JSON output with rounded whole-second integers.
+    assert chapters_json(ep, include_generated=True) == (
+        '{\n  "version": "1.2.0",\n  "chapters": [\n    {\n      "startTime": 0,\n      '
+        '"title": "Call to Order"\n    },\n    {\n      "startTime": 20,\n      '
+        '"title": "First Topic"\n    },\n    {\n      "startTime": 45,\n      '
+        '"title": "Second Topic"\n    }\n  ]\n}\n'
+    )
+
+    # Canonical provider chapters take precedence unconditionally.
+    ep.chapters = [{"start": 5, "title": "Provider"}]
+    assert [c["title"] for c in episode_public_chapters(ep, include_generated=True)] == ["Provider"]
+    assert chapters_json(ep, include_generated=True) == (
+        '{\n  "version": "1.2.0",\n  "chapters": [\n    {\n      "startTime": 5,\n      '
+        '"title": "Provider"\n    }\n  ]\n}\n'
+    )
+
+
+def test_episode_public_chapters_rejects_malformed_starts():
+    from datetime import UTC, datetime
+
+    from citypods.chapters import episode_public_chapters
+    from citypods.models import Episode
+
+    ep = Episode(
+        guid="generated-malformed",
+        uid="generated-malformed",
+        title="t",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://v.mp4",
+        generated_chapters=[
+            {"start": None, "title": "None start"},
+            {"start": True, "title": "Bool True start"},
+            {"start": False, "title": "Bool False start"},
+            {"start": "not-a-number", "title": "String start"},
+            {"start": -5.0, "title": "Negative start"},
+            {"start": float("nan"), "title": "NaN start"},
+            {"start": float("inf"), "title": "Inf start"},
+            {"start": float("-inf"), "title": "-Inf start"},
+            "not-a-dict",
+            None,
+            {"start": 10.5, "title": "Valid chapter"},
+            {"start": "25.2", "title": "Numeric string chapter"},
+        ],
+    )
+    result = episode_public_chapters(ep, include_generated=True)
+    assert len(result) == 2
+    assert result[0] == {"start": 10.5, "title": "Valid chapter"}
+    assert result[1] == {"start": 25.2, "title": "Numeric string chapter"}
+
+
 def test_chapters_json_prefers_source_chapters_when_timeline_changes():
     from datetime import UTC, datetime
 

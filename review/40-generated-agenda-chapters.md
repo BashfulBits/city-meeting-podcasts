@@ -2439,6 +2439,43 @@ the full benchmark runners, adjudication UIs, scorer variants, and exploratory r
 the public history receives only the pieces that have a clear reusable contract or a production
 correctness justification.
 
+### Phase-10 item 6 implementation slice (2026-08-09)
+
+The first clean implementation slice is intentionally limited to shadow evaluation, monitoring
+signals, and rollout controls. It is based on the PR1135 head (the multi-provider dispatch and
+extended Worker interface) and does not port the accidentally bundled agenda/chapter pipeline from
+PR1136. PR1136 was closed unmerged; its branch remains available as a recoverable research
+archive. The production chapter stages, artifact hydration, and model route wiring remain separate
+future PRs.
+
+`scripts/research/agenda_chapters/report_locator_shadow.py` now consumes a completed
+`run_locator_packet_shadow.py` result plus the separate hidden `gold.json` and optional scoring-only
+crosswalk. It never puts provider labels into a request. Its report keeps these measurements
+distinct:
+
+- timing-only provider-start recall and precision, using one-to-one nearest matching within an
+  explicit tolerance;
+- strong-crosswalk correct-item-plus-valid-boundary precision, with weak/ambiguous crosswalk rows
+  excluded from the item-quality denominator;
+- boundary error, abstention, duplicate/non-monotonic anchors, malformed/failed routes, and
+  available token/cost/latency counters;
+- `suspected_wrong_item` and `suspected_skipped_item_anchors`, explicitly diagnostic signals rather
+  than human-adjudicated false-positive labels.
+
+The report supports only predeclared quality gates supplied by the operator. If a threshold is not
+provided, the gate is `not_configured`; raw model confidence remains diagnostic and cannot admit a
+chapter. `citypods.chapter_rollout.ChapterRolloutPolicy` supplies a pure, disabled-by-default
+provider/body/duration cohort control. It can select `shadow` or a bounded future `overlay`, but an
+overlay is downgraded to shadow unless the independent report gate passes. This module has no
+publication side effect and is ready for a later hydration stage to call.
+
+The PR1135 interface review found no incompatible LLM request contract: the Python client still
+submits OpenAI-shaped `POST /v1/chat/completions` requests with an idempotency key and receives a
+`202` request handle (or a terminal `200`), while the Worker poll remains `GET /v1/requests/{id}`.
+The phase-10 item-6 tooling therefore consumes existing result JSON and does not modify the LLM
+client or Worker. Any future chapter workflow must use the pinned route policy from PR1135 rather
+than historical sleeps or mutable aliases.
+
 ## Open-source landscape check (2026-07-27)
 
 No maintained open-source library was found that operationalizes this exact contract: agenda-item
@@ -2468,3 +2505,98 @@ The implementation should therefore reuse this repository's existing timed artif
 LLM routing/budgeting, and chapter/remap pipeline. The only external method retained for an
 experiment is agenda-to-utterance similarity as an optional candidate-hint variant; its value is
 decided only by the canonical-chapter benchmark against the full-context baseline.
+
+## Approved production agenda-to-chapter implementation (2026-08-08)
+
+This is the implementation record for the maintainer-approved production path. The benchmark
+headline was **Gemini 3.5 Flash Lite**, not regular Gemini 3.5 Flash: it received the complete timed
+transcript plus Mistral-generated agenda candidates and achieved 115 correct-item + valid-boundary
+proposals out of 116 in the adjudicated slice (99.1%). The request did not require compact
+lexical/TF-IDF/HGB/phrase/speech hints. Those remain optional, non-authoritative research inputs.
+
+### 1. Shared contracts and provenance
+
+Versioned, content-addressed artifacts are required for agenda candidates, transcript locator
+units, boundary results, generated chapter records, and job manifests/completion state. Every
+artifact carries the stable episode UID, source hashes, model/route and prompt/schema versions,
+recipe hash, status, and diagnostics. Agenda candidates retain concise generated titles, exact
+source line spans, expanded evidence text, optional display references, and `locator_cues`.
+`locator_cues` are code-derived agenda references and normalized source phrases (IDs, item numbers,
+subsection references, and visible phrases); they are not transcript timestamps, unit IDs, scores,
+or compact retrieval candidates. Provider chapters remain a separate canonical block and are never
+overwritten. Raw transcripts/model payloads and credentials stay in B2/private job storage, not in
+GitHub artifacts.
+
+The recipe hash covers episode UID, agenda/transcript hashes, prompt and schema versions, pinned
+model route, context strategy / fallback identifier, hint mode, and unit-builder version. Identical
+recipes are idempotent: reruns retrieve and finalize existing jobs rather than submitting duplicates.
+
+### 2. Agenda extraction workflow
+
+`.github/workflows/chapter-agenda.yml` discovers stable episodes with source-quality-approved agenda
+artifacts and no completed/pending artifact for the same recipe. Workflow concurrency groups enforce
+single-flight execution. It submits the final `agenda-flow` request through the shared deferred
+scheduler using pinned `mistral/mistral-medium-2508`. Existing agenda evidence
+validation/postprocessing is reused in this order: validate the cited source span, expand an
+immediately preceding identifier-only line, derive `display_ref` and `locator_cues`, then validate
+the expanded evidence contract. Public hearings and multiline/hierarchical references are
+preserved. Consent agendas remain one composite action unless the agenda explicitly schedules a
+child separately; backup attachments support their numbered parent and are not independent items.
+OCR placeholders and suspiciously short artifacts are rejected for the OCR-repair path. Completed,
+pending, rejected, not-found, withdrawn, and consent-subsumed states are persisted. Deferrals
+(budget, quota, retry, or graceful stop via `ctx.stop()`) are recorded as restartable deferred
+states distinct from failures; `ctx.stop()` gates only expensive per-item inference while cheap
+idempotent bookkeeping runs to completion.
+
+### 3. Boundary locator workflow
+
+`.github/workflows/chapter-locator.yml` runs only after agenda candidates and a complete timed
+transcript exist with matching hashes. It submits every agenda candidate (title, expanded evidence,
+display reference, and cues) plus every timed transcript unit built by `build_locator_units` (word
+sidecar preferred, VTT fallback) to pinned `gemini/gemini-3.5-flash-lite`. The model may select only
+supplied unit IDs and must copy transition evidence from the selected or adjacent unit. Agenda order
+is a soft prior: skipped, reordered, revisited, withdrawn, and consent-subsumed items are allowed.
+The full transcript is never silently truncated. A verified context failure is an explicit abstention
+or an explicitly approved long-context fallback.
+
+Optional lexical, TF-IDF, learned, phrase, speech-rate, or neighboring-window hints are labeled
+`retrieval_provenance`; they retain the full transcript, never hard-filter units, and are measured
+as separate research A/B variants. Structural admission validates known item indices and unit IDs,
+copied evidence, uniqueness, strictly increasing selected starts, time basis, and usable evidence.
+One bounded schema-correction retry is allowed; otherwise the rejection reason is durable. Raw
+self-reported confidence is diagnostic only and cannot independently admit a chapter.
+
+### 4. Hydration and served-time publication
+
+A dedicated generated-chapter lane runs after agenda and transcript artifacts. It stores an additive
+generated record with the selected unit, served/source basis, evidence quote, model/prompt provenance,
+diagnostics, and admission status. The initial publication is a reversible served-time overlay that
+fills episodes without provider chapters; provider chapters remain canonical and unchanged. Generated
+chapters do not enter `AudioStage`. Tags may consume admitted generated chapters only afterward.
+
+### 5. Shadow validation and rollout
+
+Before exposure, replay the frozen provider-chapter manifest with provider targets hidden from model
+requests. Report agenda coverage, provider-start recall, correct-item + valid-boundary precision,
+boundary error, skipped/withdrawn false creation, duplicate/non-monotonic rates, abstentions,
+malformed responses, latency, tokens/cost, deferred age, quota failures, and retries. Roll out as
+no-publish shadow, bounded provider/body cohort, reversible served overlay, monitored backfill, then
+broader catalog enablement. Sample providers, bodies, durations/long meetings, OCR quality, hearings,
+consent agendas, procedural segments, and skipped items. Roll back on invalid-boundary or wrong-item
+regressions, schema/route failures, quota exhaustion, unexplained abstention changes, or drift.
+
+### 6. Deferred audio embedding (separate migration)
+
+Embedding generated markers into audio is intentionally later and separately versioned. If approved,
+the order becomes `agenda + transcript → generated chapters → timeline/remap → AudioStage`; the
+pipeline version, audio invalidation/backfill story, provider/generated distinction, and timeline/
+served-time regression tests must be documented before any materialization change.
+
+### 7. Implementation sequence and branch policy
+
+Port stable contracts and tests from the research branch onto clean branches in this order: shared
+schemas/task contracts; route policy/dispatch/deferred finalization; agenda workflow; locator workflow;
+generated-record hydration/overlay; then shadow tooling, monitoring, and rollout controls. The
+research branch remains an archive for benchmark runners, adjudication UIs, scorer variants, and
+prompt/model comparisons. It is not a production dependency. Only stable, tested contracts and
+production behavior are promoted to `main`.

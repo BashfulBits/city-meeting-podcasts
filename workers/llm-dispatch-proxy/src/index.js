@@ -93,6 +93,17 @@ function requiredString(value, name) {
   return result;
 }
 
+function canonicalModelName(model, dispatchLimits = DISPATCH_LIMITS) {
+  let current = model;
+  const seen = new Set();
+  const aliases = dispatchLimits?.model_aliases || {};
+  while (typeof aliases[current] === "string" && !seen.has(current)) {
+    seen.add(current);
+    current = aliases[current];
+  }
+  return current;
+}
+
 function modelName(model) {
   return model.split("/").pop() || model;
 }
@@ -314,16 +325,16 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
 
   const requestedModel =
     typeof body.model === "string" && body.model.trim() ? body.model.trim() : cfg.model;
-  let canonicalModel = requestedModel;
+  let canonicalModel = canonicalModelName(requestedModel, dispatchLimits);
   if (!dispatchLimits.model_routes_map?.[canonicalModel]) {
     const matchingRoute = (dispatchLimits.routes || []).find(
       (r) =>
         r.upstream_model === requestedModel || r.model === `${cfg.provider}/${requestedModel}`,
     );
     if (matchingRoute) {
-      canonicalModel = matchingRoute.model;
+      canonicalModel = canonicalModelName(matchingRoute.model, dispatchLimits);
     } else if (requestedModel === cfg.upstreamModel) {
-      canonicalModel = cfg.model;
+      canonicalModel = canonicalModelName(cfg.model, dispatchLimits);
     }
   }
 
@@ -655,6 +666,8 @@ function ledgerEntry(budget, routeId) {
     budget.routes[routeId] = {
       requests_minute: 0,
       tokens_minute: 0,
+      requests_available_at: "",
+      tokens_available_at: "",
       requests_minute_key: "",
       requests_day: 0,
       requests_day_key: "",
@@ -676,7 +689,9 @@ function rollLedgerWindows(entry, route, now) {
   const mk = minuteKey(now);
   if (entry.requests_minute_key !== mk) {
     entry.requests_minute = 0;
-    entry.tokens_minute = 0;
+    // `tokens_minute` is retained as legacy telemetry; TPM admission uses the continuous
+    // `tokens_available_at` schedule below and must not reset at a wall-clock minute boundary.
+    if (!entry.tokens_available_at) entry.tokens_minute = 0;
     entry.requests_minute_key = mk;
   }
   if (route.rpd != null) {
@@ -685,6 +700,15 @@ function rollLedgerWindows(entry, route, now) {
       entry.requests_day = 0;
       entry.requests_day_key = dk;
     }
+  }
+  if (
+    route.tpm != null &&
+    entry.tokens_available_at &&
+    parseTime(entry.tokens_available_at) <= now.getTime()
+  ) {
+    // An oversized request's token debt has drained. Start a fresh burst budget.
+    entry.tokens_available_at = "";
+    entry.tokens_minute = 0;
   }
 }
 
@@ -701,13 +725,27 @@ function routeAvailable(entry, route, { requests, tokens }, now) {
   if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
     return false;
   }
-  if (route.rpm != null && entry.requests_minute + requests > route.rpm) {
-    return false;
+  if (route.rpm != null) {
+    const nextRequestAt = entry.requests_available_at
+      ? parseTime(entry.requests_available_at)
+      : null;
+    // New reservations use a continuous pacing schedule. The minute counter remains as a
+    // compatibility fallback for ledgers written by older Worker versions.
+    if (
+      (nextRequestAt != null && nextRequestAt > now.getTime()) ||
+      (nextRequestAt == null && entry.requests_minute + requests > route.rpm)
+    ) {
+      return false;
+    }
   }
   if (route.rpd != null && entry.requests_day + requests > route.rpd) {
     return false;
   }
-  if (route.tpm != null && entry.tokens_minute + tokens > route.tpm) {
+  if (
+    route.tpm != null &&
+    entry.tokens_available_at &&
+    parseTime(entry.tokens_available_at) > now.getTime()
+  ) {
     return false;
   }
   if (
@@ -725,8 +763,30 @@ function reserveRouteCapacity(
   { requests, tokens },
   { owner = null, reservedAt = null, expiresAt = null } = {},
 ) {
+  const tokensMinuteBefore = entry.tokens_minute;
+  const requestScheduleBefore = entry.requests_available_at || "";
   entry.requests_minute += requests;
   entry.tokens_minute += tokens;
+  let requestScheduleAfter = requestScheduleBefore;
+  if (route.rpm != null) {
+    const intervalMs = 60_000 / route.rpm;
+    const reservedMs = Date.parse(reservedAt || new Date().toISOString());
+    const readyMs = requestScheduleBefore ? parseTime(requestScheduleBefore) : reservedMs;
+    requestScheduleAfter = new Date(
+      Math.max(reservedMs, readyMs) + intervalMs * requests,
+    ).toISOString();
+    entry.requests_available_at = requestScheduleAfter;
+  }
+  const tokenScheduleBefore = entry.tokens_available_at || "";
+  const totalTokens = tokensMinuteBefore + tokens;
+  const tokenScheduleAfter =
+    route.tpm != null && !tokenScheduleBefore && totalTokens > route.tpm
+      ? new Date(
+          Date.parse(reservedAt || new Date().toISOString()) +
+            (totalTokens * 60_000) / route.tpm,
+        ).toISOString()
+      : tokenScheduleBefore;
+  if (tokenScheduleAfter) entry.tokens_available_at = tokenScheduleAfter;
   if (route.rpd != null) {
     entry.requests_day += requests;
   }
@@ -735,10 +795,56 @@ function reserveRouteCapacity(
       requests,
       tokens,
       cost: 0,
+      requests_available_at_before: requestScheduleBefore,
+      requests_available_at_after: requestScheduleAfter,
+      tokens_available_at_before: tokenScheduleBefore,
+      tokens_available_at_after: tokenScheduleAfter,
+      tokens_minute_before: tokensMinuteBefore,
       reserved_at: reservedAt,
       expires_at: expiresAt,
     };
   }
+}
+
+function providerRpm(route, dispatchLimits = DISPATCH_LIMITS) {
+  const raw = dispatchLimits.providers?.[route?.provider]?.rpm;
+  if (raw == null) return null;
+  const rpm = Number(raw);
+  if (!Number.isFinite(rpm) || rpm <= 0) {
+    throw new Error(`provider ${route.provider} rpm must be a positive number`);
+  }
+  return rpm;
+}
+
+function providerLedgerEntry(budget, provider) {
+  if (!budget.providers) budget.providers = {};
+  if (!budget.providers[provider]) {
+    budget.providers[provider] = { requests_available_at: "" };
+  }
+  return budget.providers[provider];
+}
+
+function providerAvailable(budget, route, now, dispatchLimits = DISPATCH_LIMITS) {
+  if (providerRpm(route, dispatchLimits) == null) return true;
+  const entry = budget.providers?.[route.provider];
+  const nextRequestAt = entry?.requests_available_at
+    ? parseTime(entry.requests_available_at)
+    : null;
+  return nextRequestAt == null || nextRequestAt <= now.getTime();
+}
+
+function reserveProviderCapacity(budget, route, requests, now, dispatchLimits = DISPATCH_LIMITS) {
+  const rpm = providerRpm(route, dispatchLimits);
+  if (rpm == null) return;
+  const entry = providerLedgerEntry(budget, route.provider);
+  const intervalMs = 60_000 / rpm;
+  const nowMs = now.getTime();
+  const readyMs = entry.requests_available_at
+    ? parseTime(entry.requests_available_at)
+    : nowMs;
+  entry.requests_available_at = new Date(
+    Math.max(nowMs, readyMs) + intervalMs * requests,
+  ).toISOString();
 }
 
 async function releaseRouteReservation(bucket, routeId, owner) {
@@ -769,20 +875,33 @@ function timeoutSecondsForRecord(record, cfg) {
     : cfg.fastUpstreamTimeoutSeconds;
 }
 
-function nextRouteReset(entry, route, now) {
+function nextRouteReset(entry, route, now, dispatchLimits = DISPATCH_LIMITS, budget = null) {
+  const candidates = [];
   if (entry.blocked_until) {
     const blockedMs = parseTime(entry.blocked_until);
     if (blockedMs > now.getTime()) {
-      return new Date(blockedMs);
+      candidates.push(new Date(blockedMs));
     }
   }
-  const candidates = [];
   const nextMinuteMs = Math.floor(now.getTime() / 60000) * 60000 + 60000;
-  if (
-    (route.rpm != null && entry.requests_minute >= route.rpm) ||
-    (route.tpm != null && entry.tokens_minute >= route.tpm)
-  ) {
-    candidates.push(new Date(nextMinuteMs));
+  if (route.rpm != null) {
+    if (entry.requests_available_at) {
+      const requestReadyMs = parseTime(entry.requests_available_at);
+      if (requestReadyMs > now.getTime()) candidates.push(new Date(requestReadyMs));
+    } else if (entry.requests_minute >= route.rpm) {
+      candidates.push(new Date(nextMinuteMs));
+    }
+  }
+  if (providerRpm(route, dispatchLimits) != null) {
+    const providerReady = budget?.providers?.[route.provider]?.requests_available_at;
+    if (providerReady) {
+      const providerReadyMs = parseTime(providerReady);
+      if (providerReadyMs > now.getTime()) candidates.push(new Date(providerReadyMs));
+    }
+  }
+  if (route.tpm != null && entry.tokens_available_at) {
+    const tokenReadyMs = parseTime(entry.tokens_available_at);
+    if (tokenReadyMs > now.getTime()) candidates.push(new Date(tokenReadyMs));
   }
   if (route.rpd != null && entry.requests_day >= route.rpd) {
     candidates.push(nextLocalMidnightUTC(now, routeResetTimezone(route)));
@@ -790,7 +909,9 @@ function nextRouteReset(entry, route, now) {
   if (candidates.length === 0) {
     return new Date(nextMinuteMs);
   }
-  return new Date(Math.min(...candidates.map((d) => d.getTime())));
+  // Every candidate is a necessary gate for this route. Returning the earliest one can cause an
+  // immediate retry while another axis (for example RPD) remains exhausted; wait for all of them.
+  return new Date(Math.max(...candidates.map((d) => d.getTime())));
 }
 
 function rankRoutes(routes) {
@@ -845,7 +966,8 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
 }
 
 function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
-  const routeIds = dispatchLimits.model_routes_map?.[canonicalModel] || [];
+  const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
+  const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
   const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
   const freeRanked = rankRoutes(candidates.filter((route) => route.free));
   const paidRanked = rankRoutes(candidates.filter((route) => !route.free));
@@ -858,8 +980,10 @@ function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPA
     for (const route of ranked) {
       const entry = ledgerEntry(budget, route.route_id);
       rollLedgerWindows(entry, route, now);
-      if (routeAvailable(entry, route, reservationSize, now)) {
-        return { chosenRoute: route, entry };
+      if (providerAvailable(budget, route, now, dispatchLimits)) {
+        if (routeAvailable(entry, route, reservationSize, now)) {
+          return { chosenRoute: route, entry };
+        }
       }
     }
     return null;
@@ -887,7 +1011,7 @@ function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPA
   }
 
   const freeResets = freeRanked.map((route) =>
-    nextRouteReset(ledgerEntry(budget, route.route_id), route, now).getTime(),
+    nextRouteReset(ledgerEntry(budget, route.route_id), route, now, dispatchLimits, budget).getTime(),
   );
   const earliestFreeReset = Math.min(...freeResets);
 
@@ -962,6 +1086,13 @@ async function dispatchBatch(
         const rec = loaded.value;
         if (rec.status !== "pending") continue;
         if (rec.available_at && parseTime(rec.available_at) > now.getTime()) continue;
+        const logicalModel = canonicalModelName(rec.model, DISPATCH_LIMITS);
+        if (logicalModel !== rec.model) {
+          rec.model = logicalModel;
+          if (rec.request && typeof rec.request === "object") {
+            rec.request.model = logicalModel;
+          }
+        }
         claimable.push({ key: obj.key, object: loaded.object, record: rec });
       }
 
@@ -1062,6 +1193,11 @@ async function dispatchBatch(
 
       const entry = ledgerEntry(budget, chosenRoute.route_id);
       rollLedgerWindows(entry, chosenRoute, now);
+      if (!providerAvailable(budget, chosenRoute, now)) {
+        await requeue(bucket, claimed, now);
+        lastRequeuedId = claimed.record.id;
+        continue;
+      }
       if (!routeAvailable(entry, chosenRoute, reservationSize, now)) {
         await requeue(bucket, claimed, now);
         lastRequeuedId = claimed.record.id;
@@ -1069,6 +1205,7 @@ async function dispatchBatch(
       }
 
       const reservationOwner = claimed.record.id;
+      reserveProviderCapacity(budget, chosenRoute, reservationSize.requests, now);
       reserveRouteCapacity(entry, chosenRoute, reservationSize, {
         owner: reservationOwner,
         reservedAt: now.toISOString(),
@@ -1090,6 +1227,20 @@ async function dispatchBatch(
     }
 
     if (candidatesToDispatch.length === 0) {
+      // Route selection rolls minute/day/token windows in memory even when every request is
+      // requeued. Persist those bookkeeping changes so the coordination object does not retain
+      // stale quota keys until a later successful reservation.
+      const before = JSON.stringify((budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} });
+      const after = JSON.stringify(budget);
+      if (budgetLoaded && before !== after) {
+        try {
+          await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
+            onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
+          });
+        } catch {
+          // A sibling may have committed fresher rollover state; the request remains requeued.
+        }
+      }
       if (batchFailures.length > 0) {
         return {
           status: "failed",
@@ -1114,12 +1265,22 @@ async function dispatchBatch(
         budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
         const freshBudget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
         for (const item of candidatesToDispatch) {
+          if (!providerAvailable(freshBudget, item.chosenRoute, now)) {
+            freshCapacityFailed = true;
+            break;
+          }
           const entry = ledgerEntry(freshBudget, item.chosenRoute.route_id);
           rollLedgerWindows(entry, item.chosenRoute, now);
           if (!routeAvailable(entry, item.chosenRoute, item.reservationSize, now)) {
             freshCapacityFailed = true;
             break;
           }
+          reserveProviderCapacity(
+            freshBudget,
+            item.chosenRoute,
+            item.reservationSize.requests,
+            now,
+          );
           reserveRouteCapacity(entry, item.chosenRoute, item.reservationSize, {
             owner: item.reservationOwner,
             reservedAt: now.toISOString(),
@@ -1438,7 +1599,8 @@ async function handleRequest(request, env) {
   }
 
   if (url.pathname === "/v1/queue/estimate" && request.method === "GET") {
-    const model = url.searchParams.get("model") || cfg.model;
+    const requestedModel = url.searchParams.get("model") || cfg.model;
+    const model = canonicalModelName(requestedModel, DISPATCH_LIMITS);
     let count = 0;
     let cursor = undefined;
     do {
@@ -1447,14 +1609,17 @@ async function handleRequest(request, env) {
       for (const obj of objects) {
         const meta = obj.customMetadata || {};
         if (meta.status) {
-          if (meta.status === "pending" && (!model || meta.model === model)) {
+          if (
+            meta.status === "pending" &&
+            (!model || canonicalModelName(meta.model, DISPATCH_LIMITS) === model)
+          ) {
             count += 1;
           }
           continue;
         }
         const loaded = await getJson(env.LLM_QUEUE, obj.key);
         if (loaded && loaded.value && loaded.value.status === "pending") {
-          if (!model || loaded.value.model === model) {
+          if (!model || canonicalModelName(loaded.value.model, DISPATCH_LIMITS) === model) {
             count += 1;
           }
         }
@@ -1463,8 +1628,15 @@ async function handleRequest(request, env) {
     } while (cursor);
     const routeIds = DISPATCH_LIMITS.model_routes_map?.[model] || [];
     const fastestRpm = routeIds
-      .map((id) => DISPATCH_LIMITS.routes_by_id[id]?.rpm)
-      .filter((rpm) => typeof rpm === "number" && rpm > 0);
+      .map((id) => {
+        const route = DISPATCH_LIMITS.routes_by_id[id];
+        const limits = [
+          route?.rpm,
+          DISPATCH_LIMITS.providers?.[route?.provider]?.rpm,
+        ].filter((rpm) => typeof rpm === "number" && rpm > 0);
+        return limits.length > 0 ? Math.min(...limits) : null;
+      })
+      .filter((rpm) => rpm != null);
     const perRequestSeconds = fastestRpm.length > 0 ? 60 / Math.max(...fastestRpm) : 60;
     const estSeconds = Math.ceil(count * perRequestSeconds);
     return jsonResponse({

@@ -196,6 +196,13 @@ requires explicit tombstones for deletion. The manifest uses backend CAS when av
 back to the pre-S2 full list/restore path when absent or incompatible; demand planning and
 shard-specific hydration remain separate follow-up work.
 
+**Coordination placement correction (2026-08-10):** the compact manifest is now explicitly routed
+to the R2 coordination backend (`COORDINATION_PREFIXES`) alongside the other CAS-managed objects.
+The durable state files it indexes remain on B2, so an absent/expired R2 manifest is recoverable via
+the existing full-list fallback; the ASR reconcile path seeds the complete R2 index from that
+restored snapshot before its scoped work-state push. Scoped writers never publish a partial first
+manifest, so no state-record backfill or destructive migration is required.
+
 > **Cross-ref:** [`review/18`](18-work-distribution-sharding.md) Stage 2 — external workers **claim**
 > episodes from the lease ledger and write transcript records — is the "external workers read/write records
 > directly" case. With per-uid leasing each block is single-writer, so that path commits through the

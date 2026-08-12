@@ -48,6 +48,7 @@ from citypods.compute.budget import (
     storage_supports_cas,
 )
 from citypods.ops.workqueue import (
+    WORK_CLASSES,
     WorkItem,
     is_leased,
     lease,
@@ -55,6 +56,10 @@ from citypods.ops.workqueue import (
     release,
     save_manifest,
 )
+
+REAPABLE_WORK_CLASSES = frozenset(WORK_CLASSES) - {"audio"}
+ASR_WORK_CLASSES = frozenset({"transcript-asr", "transcript-asr-comparison"})
+ALIGN_WORK_CLASSES = frozenset({"transcript-align", "provider-transcript-align"})
 
 # How long a dispatched job may run before a still-held lease is treated as a dead worker and
 # reaped. Real serverless-GPU transcription finishes in minutes; this generous default tolerates a
@@ -278,21 +283,44 @@ class DispatchCoordinator:
             save_budget(self._state_dir, self._budget)
 
 
-def _asr_artifact_present(storage, src_key: str, uid: str) -> bool:
-    """True if a content-addressed ASR transcript for *uid* is already in the bucket. Mirrors
-    ``stages.py``'s ``{uid}-asr-`` filename match (any recipe — presence, not version, is what
-    tells reconcile the dispatched job completed)."""
+def _transcript_artifact_present(
+    storage, src_key: str, uid: str, work_classes: set[str] | frozenset[str] | None = None
+) -> bool:
+    """True if a content-addressed transcript for *uid* is already in the bucket.
+
+    Work-lease keys do not carry the work class, so callers pass the classes represented by their
+    manifest candidate(s). The provider-align and ASR lanes use different filename prefixes; using
+    the wrong one would make reconcile requeue a completed provider-align lease.
+    """
     if storage is None or not hasattr(storage, "list_objects"):
         return False
-    name_prefix = f"{uid}-asr-"
+    classes = set(work_classes or ())
+    if not classes:
+        # Legacy work.json dispatch leases were ASR-only before provider alignment joined the
+        # pull-based lane. Preserve that callback's old behavior when no manifest class is known.
+        classes = {"transcript-asr"}
+    prefixes: list[str] = []
+    if classes & ASR_WORK_CLASSES:
+        prefixes.append(f"{uid}-asr-")
+    if classes & ALIGN_WORK_CLASSES:
+        prefixes.append(f"{uid}-provider-align-")
+    if "provider-transcript-diarize" in classes:
+        prefixes.append(f"{uid}-provider-diarize-")
+    if not prefixes:
+        return False
     try:
         for key, _ in storage.list_objects(f"transcripts/{src_key}/"):
             fname = key.rsplit("/", 1)[-1]
-            if fname.startswith(name_prefix) and fname.endswith(".vtt"):
+            if any(fname.startswith(prefix) for prefix in prefixes) and fname.endswith(".vtt"):
                 return True
     except Exception:  # noqa: BLE001 — a listing failure must not crash reconcile
         return False
     return False
+
+
+def _asr_artifact_present(storage, src_key: str, uid: str) -> bool:
+    """True if a content-addressed ASR transcript for *uid* is already in the bucket."""
+    return _transcript_artifact_present(storage, src_key, uid, ASR_WORK_CLASSES)
 
 
 def reconcile_compute(
@@ -324,10 +352,11 @@ def reconcile_compute(
 
     ``use_lease_index`` picks which sweep runs once ``sweep_work_leases`` is on: the GH#1018
     active-lease index (:func:`work_leases.reap_indexed`, default) reads a bounded number of index
-    objects instead of GETting every pending ``transcript-asr`` candidate, with a rotating one-run
+    objects instead of GETting every pending transcript candidate, with a rotating one-run
     integrity-sweep partition to recover from a crash between a claim and its index write. Set to
     ``False`` to fall back to the original :func:`work_leases.reap` candidate-probe (``config``
-    rollback path, no code change needed)."""
+    rollback path, no code change needed). All transcript work classes are included so a provider-
+    alignment worker's lease is reconciled just like a fresh-ASR worker's lease."""
     now = now or datetime.now(UTC)
     state_dir = Path(state_dir)
     items = load_manifest(state_dir)
@@ -343,7 +372,7 @@ def reconcile_compute(
             continue
         owner = wi.lease_owner
         backend = owner.split(":", 1)[0]
-        if _asr_artifact_present(storage, wi.source_key, wi.episode_uid):
+        if _transcript_artifact_present(storage, wi.source_key, wi.episode_uid, {wi.work_class}):
             actual = wi.observed_seconds if wi.observed_seconds > 0 else None
             budget_ops.append(lambda b, o=owner, bk=backend, a=actual: b.settle(o, bk, a))
             release(wi)
@@ -377,7 +406,8 @@ def reconcile_compute(
     # done ones, derived from the discovery index — never listing the R2 lease prefix. CAS-only (the
     # ledger lives on R2); a non-CAS backend has no ledger. Gated behind ``sweep_work_leases``
     # because the ledger is dormant until external pull workers exist (see the docstring).
-    # Candidates are the not-yet-done transcript-asr items, so the sweep tracks backlog, not all.
+    # Candidates are the not-yet-done transcript items, so the sweep tracks backlog, not all
+    # records. This must include provider-align: the scheduled matrix claims that class too.
     leases: dict = {"completed": 0, "requeued": 0, "in_flight": 0}
     if cas and sweep_work_leases:
         from citypods.compute.budget import release_reservation, settle_reservation
@@ -391,8 +421,19 @@ def reconcile_compute(
         candidates = [
             (wi.source_key, wi.episode_uid)
             for wi in items
-            if wi.work_class == "transcript-asr" and wi.state != "done"
+            if wi.work_class in REAPABLE_WORK_CLASSES and wi.state != "done"
         ]
+        work_classes_by_key: dict[tuple[str, str], set[str]] = {}
+        for wi in items:
+            if wi.work_class in REAPABLE_WORK_CLASSES and wi.state != "done":
+                work_classes_by_key.setdefault((wi.source_key, wi.episode_uid), set()).add(
+                    wi.work_class
+                )
+
+        def artifact_present(source_key: str, uid: str) -> bool:
+            return _transcript_artifact_present(
+                storage, source_key, uid, work_classes_by_key.get((source_key, uid))
+            )
 
         def on_completed(owner: str) -> None:
             settle_reservation(storage, owner, _backend(owner), now=now)
@@ -406,7 +447,7 @@ def reconcile_compute(
             # 4) without ever probing more than a fixed slice in a single reconcile.
             leases = reap_work_leases_indexed(
                 storage,
-                artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                artifact_present=artifact_present,
                 on_completed=on_completed,
                 on_requeued=on_requeued,
                 now=now,
@@ -417,9 +458,37 @@ def reconcile_compute(
             leases = reap_work_leases(
                 storage,
                 candidates,
-                artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                artifact_present=artifact_present,
                 on_completed=on_completed,
                 on_requeued=on_requeued,
                 now=now,
             )
     return {"reaped": reaped, "settled": settled, "in_flight": in_flight, "leases": leases}
+
+
+def requeue_failed_work_leases(
+    state_dir: str | Path,
+    storage,
+    *,
+    work_class: str,
+    now: datetime | None = None,
+    dry_run: bool = False,
+) -> dict[str, int]:
+    """Explicitly reopen failed leases for one manifest work class.
+
+    This is an operator recovery path for a transient incident that exhausted a worker's retries.
+    It is deliberately separate from :func:`reconcile_compute`: normal reconciliation must not
+    silently retry poison items that a worker marked failed.
+    """
+    if work_class not in REAPABLE_WORK_CLASSES:
+        raise ValueError(f"unsupported requeue work class: {work_class!r}")
+    if not storage_supports_cas(storage):
+        raise RuntimeError("failed work-lease recovery requires CAS-capable storage")
+    candidates = [
+        (wi.source_key, wi.episode_uid)
+        for wi in load_manifest(state_dir)
+        if wi.work_class == work_class and wi.state != "done"
+    ]
+    from citypods.ops import work_leases
+
+    return work_leases.requeue_failed(storage, candidates, now=now, dry_run=dry_run)

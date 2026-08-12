@@ -18,6 +18,74 @@ def test_default_compile_never_touches_the_network(monkeypatch):
     assert "gemini/gemini-3-flash-preview" in compiled["model_routes_map"]
 
 
+def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
+    compiled = compile_llm_limits.compile_limits()
+
+    deepseek_key = "deepseek/deepseek-v4-flash"
+    deepseek_routes = compiled["model_routes_map"][deepseek_key]
+    assert len(deepseek_routes) == 3
+    physical_routes = [compiled["routes_by_id"][route_id] for route_id in deepseek_routes]
+    assert (
+        len(
+            {
+                (route["provider"], route["account_id"], route["upstream_model"])
+                for route in physical_routes
+            }
+        )
+        == 3
+    )
+    assert compiled["model_aliases"]["deepseek/deepseek-v4-flash-0731"] == deepseek_key
+    assert compiled["model_aliases"]["opencode/deepseek-v4-flash-free"] == deepseek_key
+
+    nemotron_key = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert len(compiled["model_routes_map"][nemotron_key]) == 3
+    assert (
+        compiled["model_aliases"]["openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"]
+        == nemotron_key
+    )
+    assert compiled["model_aliases"]["opencode/nemotron-3-ultra-free"] == nemotron_key
+
+
+def test_model_key_aliases_must_not_conflict_with_a_canonical_key():
+    routes = [
+        {
+            "route_id": "alias",
+            "model": "shared/model",
+            "model_key": "other/model",
+        },
+        {
+            "route_id": "canonical",
+            "model": "shared/model",
+        },
+    ]
+    with pytest.raises(ValueError, match="also a canonical model"):
+        compile_llm_limits._validated_routes(routes)
+
+
+def test_physical_aliases_with_conflicting_limits_are_rejected():
+    routes = [
+        {
+            "route_id": "first",
+            "model": "provider/model",
+            "provider": "provider",
+            "account_id": "primary",
+            "upstream_model": "vendor/model",
+            "rpm": 10,
+        },
+        {
+            "route_id": "second",
+            "model": "provider/model-alias",
+            "model_key": "provider/model",
+            "provider": "provider",
+            "account_id": "primary",
+            "upstream_model": "vendor/model",
+            "rpm": 20,
+        },
+    ]
+    with pytest.raises(ValueError, match="conflicting limits"):
+        compile_llm_limits._validated_routes(routes)
+
+
 def test_python_catalog_rejects_an_unknown_route_account():
     compiled = {
         "_metadata": {},

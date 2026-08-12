@@ -108,6 +108,11 @@ class Episode:
     agenda_text_url: str | None = None
     agenda_text_attempts: int = 0
     agenda_text_last_attempt: str | None = None
+    # Bounded, explainable quality decision for the agenda text artifact.  The text itself stays
+    # in the content-addressed sidecar; this small envelope lets chapter extraction and the
+    # feed-health audit distinguish trustworthy agenda text from notices/placeholders without
+    # rereading the document.
+    agenda_text_quality: dict = field(default_factory=dict)
     agenda_backup_url: str | None = None
     agenda_backup_attempts: int = 0
     agenda_backup_last_attempt: str | None = None
@@ -122,6 +127,12 @@ class Episode:
     # reproject them onto a new served clock. Empty for synthetic served-only planners like concat.
     source_chapters: list = field(default_factory=list)
     chapters: list = field(default_factory=list)  # [{"start": secs, "title": str}, ...]
+    # Generated agenda chapters are additive and provenance-bearing.  They are intentionally
+    # separate from ``source_chapters``/``chapters`` so provider markers remain canonical and
+    # audio materialization cannot accidentally consume an unreviewed LLM result.
+    generated_agenda_candidates: dict = field(default_factory=dict)
+    generated_chapters: list[dict] = field(default_factory=list)
+    generated_chapters_spec_hash: str | None = None
     summary: str = ""
     # Versioned catalog taxonomy output.  ``tags_spec_hash`` prevents an enabled LLM path from
     # repeating the same inference when its inputs and taxonomy have not changed.
@@ -170,6 +181,15 @@ class Episode:
     # this holds per-word timings for server-side search / clips / diarization.
     transcript_words_key: str | None = None  # storage object key for the word JSON
     transcript_words_url: str | None = None  # public CDN URL for the word JSON
+    # Independent provenance of the feed-facing transcript.  A provider document can supply
+    # wording while our aligner supplies timing, so one boolean (``transcript_synced``) is not
+    # enough for downstream filtering or H15 routing.
+    transcript_text_source: str | None = None  # "provider" | "asr"
+    transcript_timing_source: str | None = None  # "provider" | "computed"
+    transcript_selection: str | None = None  # "provider-native" | "provider-aligned" | "asr"
+    # Deferred full-ASR rendition of a provider-selected episode.  This stays separate from the
+    # feed-facing transcript until H15 has comparative evidence to change the quality route.
+    transcript_asr_comparison: dict = field(default_factory=dict)
     # ASR pipeline version that produced this transcript (None = provider-supplied or
     # pre-versioning). Drives version-aware re-transcription: an ASR transcript from an
     # older version is re-done; provider transcripts are never invalidated by a bump.

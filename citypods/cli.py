@@ -76,10 +76,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     e.add_argument(
         "--lane",
-        choices=["audio", "transcribe", "align", "tag"],
+        choices=[
+            "audio",
+            "transcribe",
+            "align",
+            "tag",
+            "chapter-agenda",
+            "chapter-locator",
+            "chapter",
+        ],
         help="work class to run: 'audio' materializes audio only; 'transcribe' runs fresh ASR "
         "only; 'align' runs forced-alignment only; 'tag' runs bounded LLM topic tagging only. "
-        "Default runs the full enrich (audio + transcript). The sharded workflows pin one lane "
+        "'chapter-agenda' extracts agenda candidates; 'chapter-locator' locates them in the "
+        "complete timed transcript; 'chapter' runs both chapter lanes. Default runs the full "
+        "enrich (audio + transcript). The sharded workflows pin one lane "
         "so the two ASR models never co-load.",
     )
     e.add_argument(
@@ -278,6 +288,26 @@ def main(argv: list[str] | None = None) -> int:
     crt.add_argument("--config-dir", default="config")
     crt.add_argument("--output-dir", default="docs")
     crt.add_argument("--base-url", help="base URL (for resolving cloud storage)")
+    rwl = cp_sub.add_parser(
+        "requeue-failed-work-leases",
+        help="reopen terminal failed leases for one transcript work class; dry-run unless --write",
+    )
+    rwl.add_argument(
+        "--work-class",
+        required=True,
+        choices=(
+            "transcript-asr",
+            "transcript-asr-comparison",
+            "transcript-align",
+            "provider-transcript-align",
+            "provider-transcript-diarize",
+        ),
+    )
+    rwl.add_argument("--write", action="store_true", help="actually requeue failed leases")
+    rwl.add_argument("--site-config", default="config/site_config.yml")
+    rwl.add_argument("--config-dir", default="config")
+    rwl.add_argument("--output-dir", default="docs")
+    rwl.add_argument("--base-url", help="base URL (for resolving cloud storage)")
     ciw = cp_sub.add_parser(
         "run-internal-worker",
         help="run one pull/claim transcribe worker inside GitHub Actions until the stop budget",
@@ -341,6 +371,8 @@ def main(argv: list[str] | None = None) -> int:
             return _compute_plan_shards(args)
         if args.compute_command == "reclaim-transcript":
             return _compute_reclaim_transcript(args)
+        if args.compute_command == "requeue-failed-work-leases":
+            return _compute_requeue_failed_work_leases(args)
         if args.compute_command == "run-internal-worker":
             return _compute_run_internal_worker(args)
     if args.command == "transcript-quality":
@@ -782,7 +814,7 @@ def _compute_reconcile(args) -> int:
         save_manifest,
     )
     from citypods.state import resolve_state_dir
-    from citypods.statesync import pull_state, push_state
+    from citypods.statesync import ensure_remote_manifest, pull_state, push_state
     from citypods.storage import make_storage
 
     site_config = load_site_config(args.site_config)
@@ -812,7 +844,10 @@ def _compute_reconcile(args) -> int:
         # mixing a durable budget with a possibly-stale local work.json.
         import tempfile
 
-        from citypods.compute.dispatch import _asr_artifact_present
+        from citypods.compute.dispatch import (
+            REAPABLE_WORK_CLASSES,
+            _transcript_artifact_present,
+        )
         from citypods.ops.work_leases import integrity_partition_for
         from citypods.ops.work_leases import reap as reap_work_leases
         from citypods.ops.work_leases import reap_indexed as reap_work_leases_indexed
@@ -834,12 +869,24 @@ def _compute_reconcile(args) -> int:
                 candidates = [
                     (wi.source_key, wi.episode_uid)
                     for wi in manifest
-                    if wi.work_class == "transcript-asr" and wi.state != "done"
+                    if wi.work_class in REAPABLE_WORK_CLASSES and wi.state != "done"
                 ]
+                work_classes_by_key: dict[tuple[str, str], set[str]] = {}
+                for wi in manifest:
+                    if wi.work_class in REAPABLE_WORK_CLASSES and wi.state != "done":
+                        work_classes_by_key.setdefault((wi.source_key, wi.episode_uid), set()).add(
+                            wi.work_class
+                        )
+
+                def artifact_present(source_key: str, uid: str) -> bool:
+                    return _transcript_artifact_present(
+                        storage, source_key, uid, work_classes_by_key.get((source_key, uid))
+                    )
+
                 if use_lease_index:
                     lease_preview = reap_work_leases_indexed(
                         storage,
-                        artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                        artifact_present=artifact_present,
                         now=now,
                         dry_run=True,
                         integrity_candidates=candidates,
@@ -849,7 +896,7 @@ def _compute_reconcile(args) -> int:
                     lease_preview = reap_work_leases(
                         storage,
                         candidates,
-                        artifact_present=lambda s, u: _asr_artifact_present(storage, s, u),
+                        artifact_present=artifact_present,
                         now=now,
                         dry_run=True,
                     )
@@ -876,6 +923,10 @@ def _compute_reconcile(args) -> int:
     summary = reconcile_compute(
         state_dir, storage, sweep_work_leases=sweep_work_leases, use_lease_index=use_lease_index
     )
+    # If the R2 catalog manifest is missing, pull_state() above restored the complete durable
+    # snapshot from B2's listing. Seed the complete R2 index before the scoped work.json push, or
+    # that push could publish only its owned subset and hide the other B2 state files from workers.
+    ensure_remote_manifest(storage, state_dir)
     push_state(storage, state_dir, only_prefixes=["work.json", "compute_budget.json"])
     leases = summary.get("leases", {})
     lease_note = (
@@ -888,6 +939,54 @@ def _compute_reconcile(args) -> int:
         f"compute reconcile: {summary['reaped']} reaped, {summary['settled']} settled, "
         f"{summary['in_flight']} in-flight{lease_note}"
     )
+    return 0
+
+
+def _compute_requeue_failed_work_leases(args) -> int:
+    """Explicitly reopen failed Stage-2 leases for one transcript work class.
+
+    The default is read-only. This is intentionally separate from ``compute reconcile`` so a
+    poison item remains terminal until an operator confirms the failure was transient.
+    """
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from citypods.compute.dispatch import requeue_failed_work_leases
+    from citypods.ops.workqueue import rebuild_manifest_from_state, save_manifest
+    from citypods.state import resolve_state_dir
+    from citypods.statesync import pull_state
+    from citypods.storage import make_storage
+
+    site_config = load_site_config(args.site_config)
+    output_dir = Path(args.output_dir)
+    state_dir = resolve_state_dir(site_config, output_dir)
+    base_url = getattr(args, "base_url", None) or site_config.get("base_url", "")
+    storage = make_storage(site_config, base_url, output_dir)
+    if storage is None:
+        print("error: failed work-lease recovery requires configured storage")
+        return 1
+    # A dry run must not even rewrite the local snapshot: pull and rebuild into a throwaway
+    # directory, then discard it after the read-only lease inspection. Write mode deliberately
+    # keeps the existing resolved state directory behavior for the operator's durable operation.
+    with tempfile.TemporaryDirectory() as temporary_state:
+        recovery_state_dir = state_dir if args.write else Path(temporary_state)
+        pull_state(storage, recovery_state_dir)
+        cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
+        save_manifest(
+            recovery_state_dir,
+            rebuild_manifest_from_state(
+                cities, site_config=site_config, state_dir=recovery_state_dir
+            ),
+        )
+        summary = requeue_failed_work_leases(
+            recovery_state_dir,
+            storage,
+            work_class=args.work_class,
+            dry_run=not args.write,
+        )
+    summary.update({"work_class": args.work_class, "dry_run": not args.write})
+    print(json.dumps(summary, indent=2))
     return 0
 
 
@@ -1059,6 +1158,7 @@ def _compute_plan_shards(args) -> int:
 def _validate_build(args) -> int:
     from pathlib import Path
 
+    from citypods.bodies import record_matches_body, source_body_filter, source_body_inclusions
     from citypods.records import load_records, source_key
     from citypods.validate import validate_build
 
@@ -1072,11 +1172,12 @@ def _validate_build(args) -> int:
         for city in cities:
             key = source_key(city)
             records = load_records(state_dir, key)
-            body = city.source.get("body")
+            body = source_body_filter(city.source)
+            inclusions = source_body_inclusions(city.source)
             hosted = sum(
                 1
                 for r in records.values()
-                if (not body or r.get("body") == body) and (r.get("audio") or {}).get("url")
+                if record_matches_body(r, body, inclusions) and (r.get("audio") or {}).get("url")
             )
             if hosted == 0:
                 known_empty.add(city.slug)

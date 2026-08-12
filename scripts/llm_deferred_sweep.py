@@ -123,6 +123,18 @@ def _register_known_contracts() -> None:
         import citypods.discovery.classify  # noqa: F401 -- registers on import, side effect only
     except ImportError:
         pass
+    try:
+        from citypods.chapter_titles import ensure_agenda_item_extractor_contract
+
+        ensure_agenda_item_extractor_contract()
+    except ImportError:
+        pass
+    try:
+        from citypods.chapter_locator import ensure_locator_contract
+
+        ensure_locator_contract()
+    except ImportError:
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:

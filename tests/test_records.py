@@ -73,6 +73,22 @@ def test_uid_is_stable_across_provider_migration():
     assert e1.uid == e2.uid  # subscribers don't re-download on migration
 
 
+def test_generated_chapter_blocks_round_trip_without_replacing_provider_chapters():
+    ep = _ep("generated")
+    ep.uid = "uid-generated"
+    ep.chapters = [{"start": 12, "title": "Provider item"}]
+    ep.generated_agenda_candidates = {"status": "completed", "recipe": "agenda-recipe"}
+    ep.generated_chapters = [{"start": 24, "title": "Generated item", "generated": True}]
+    ep.generated_chapters_spec_hash = "locator-recipe"
+
+    restored = record_to_episode(episode_to_record(ep))
+
+    assert restored.chapters == ep.chapters
+    assert restored.generated_agenda_candidates == ep.generated_agenda_candidates
+    assert restored.generated_chapters == ep.generated_chapters
+    assert restored.generated_chapters_spec_hash == "locator-recipe"
+
+
 def test_source_id_keeps_record_namespace_stable_across_provider_migration():
     granicus = _city(provider="granicus", source={"feed_url": "G"})
     old_key = source_key(granicus)
@@ -349,6 +365,30 @@ def test_source_key_ignores_body_so_feeds_share_storage():
     assert source_key(combined) == source_key(per_board)
 
 
+def test_source_key_ignores_alternative_body_selectors_so_feeds_share_storage():
+    combined = _city(source={"feed_url": "F"})
+    per_board = _city(
+        source={
+            "feed_url": "F",
+            "body": "City Council Agenda Meetings",
+            "body_any": ["Special Called City Council Meeting"],
+        }
+    )
+    assert source_key(combined) == source_key(per_board)
+
+
+def test_source_key_ignores_one_off_body_inclusions_so_feeds_share_storage():
+    combined = _city(source={"feed_url": "F"})
+    per_board = _city(
+        source={
+            "feed_url": "F",
+            "body": "City Council",
+            "body_includes": [{"provider_guid": "https://example/clip/1", "body": "Work Session"}],
+        }
+    )
+    assert source_key(combined) == source_key(per_board)
+
+
 def test_shard_assignment_is_deterministic_and_in_range():
     # Stable across calls/processes (sorted order, not salted hash()), and always 0 <= i < n.
     keys = ["abc123", "deadbeef", source_key(_city(source={"feed_url": "F"}))]
@@ -511,6 +551,16 @@ def test_feed_hash_reacts_to_notes_but_audio_spec_does_not():
     before = feed_content_hash([ep], "fp")
     ep.summary = "new summary"
     assert feed_content_hash([ep], "fp") != before  # summary re-renders the feed
+
+
+def test_feed_hash_reacts_to_generated_chapters_publication_flag():
+    ep = _ep("g1")
+    ep.uid = "u1"
+    ep.generated_chapters = [{"start": 10, "title": "Gen Chapter", "generated": True}]
+
+    hash_disabled = feed_content_hash([ep], "fp", include_generated_chapters=False)
+    hash_enabled = feed_content_hash([ep], "fp", include_generated_chapters=True)
+    assert hash_disabled != hash_enabled
 
 
 def test_record_store_roundtrip(tmp_path):
@@ -1608,6 +1658,9 @@ def test_protected_blocks_for_lane():
             "tags_llm_recipe_hash",
             "tags_spec_hash",
             "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(
@@ -1628,6 +1681,9 @@ def test_protected_blocks_for_lane():
             "tags_llm_recipe_hash",
             "tags_spec_hash",
             "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     assert protected_blocks_for_lane("align") == frozenset(
@@ -1648,6 +1704,9 @@ def test_protected_blocks_for_lane():
             "tags_llm_recipe_hash",
             "tags_spec_hash",
             "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     assert protected_blocks_for_lane("diarize") == frozenset(
@@ -1668,6 +1727,9 @@ def test_protected_blocks_for_lane():
             "tags_llm_recipe_hash",
             "tags_spec_hash",
             "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     assert protected_blocks_for_lane("tag") == frozenset(
@@ -1683,6 +1745,9 @@ def test_protected_blocks_for_lane():
             "minutes_text",
             "minutes_votes",
             "minutes_roster",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.
@@ -1876,6 +1941,37 @@ def test_merge_preserving_foreign_never_drops_a_block_remote_lacks():
     merged = merge_preserving_foreign(remote, local, frozenset({"transcript"}))
     assert merged["u1"]["transcript"] == {"key": "t1"}  # local transcript kept (remote had none)
     assert merged["u1"]["audio"]["url"] == "OLD"  # audio not protected here → local value
+
+
+def test_merge_preserving_foreign_preserves_remote_cleared_protected_blocks():
+    # When remote explicitly clears or empties a protected block (None, [], {}), that
+    # cleared state must be preserved over a stale local runner's snapshot value.
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_chapters": None,
+            "generated_chapters_spec_hash": "hash_new",
+            "tags": [],
+            "llm_tag_candidates": None,
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "generated_chapters": [{"start": 10.0, "title": "Stale"}],
+            "generated_chapters_spec_hash": "hash_old",
+            "tags": ["stale_tag"],
+            "llm_tag_candidates": [{"tag": "candidate"}],
+            "audio": {"url": "AUDIO_FRESH"},
+        }
+    }
+    protected = protected_blocks_for_lane("audio")
+    merged = merge_preserving_foreign(remote, local, protected)
+    assert merged["u1"]["generated_chapters"] is None
+    assert merged["u1"]["generated_chapters_spec_hash"] == "hash_new"
+    assert merged["u1"]["tags"] == []
+    assert merged["u1"]["llm_tag_candidates"] is None
+    assert merged["u1"]["audio"] == {"url": "AUDIO_FRESH"}
 
 
 def test_merge_preserving_foreign_owned_uids_none_is_unchanged_behavior():

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from citypods.bodies import source_body_filter, source_body_inclusions
 from citypods.models import (
     DEFAULT_FULL_ARTIFACT_EPISODES,
     DEFAULT_MAX_EPISODES,
@@ -267,6 +268,11 @@ def _build_city(
         return default
 
     provider = get_provider(raw["provider"])
+    try:
+        source_body_filter(raw["source"])
+        source_body_inclusions(raw["source"])
+    except ValueError as exc:
+        raise ValueError(f"{source_file.name}: {exc}") from exc
     provider.validate(raw["source"])
     # SSRF/abuse gate: every source URL must be https on an allowed host (audit #S1). No DNS
     # here — the resolve/private-IP check runs at fetch time (citypods.http.GuardedHTTPAdapter).
@@ -417,14 +423,18 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
             raise ValueError(f"{path.name}: duplicate slug {city.slug!r}")
         seen_slugs.add(city.slug)
         if city.source_id:
-            identity_source = {k: v for k, v in city.source.items() if k != "body"}
+            identity_source = {
+                k: v
+                for k, v in city.source.items()
+                if k not in {"body", "body_any", "body_includes"}
+            }
             identity = (city.city_entity, city.provider, identity_source, path.name)
             prior = seen_source_ids.get(city.source_id)
             if prior is not None and prior[:3] != identity[:3]:
                 raise ValueError(
                     f"{path.name}: source_id {city.source_id!r} conflicts with {prior[3]!r}; "
                     "shared source_id values must have the same city, provider, and source "
-                    "configuration apart from body"
+                    "configuration apart from feed-local body selectors"
                 )
             seen_source_ids[city.source_id] = identity
         files[city.slug] = path.name

@@ -67,6 +67,13 @@ jobs:
           "${FFMPEG_DIR}/bin/ffmpeg" -version
           "${FFMPEG_DIR}/bin/ffprobe" -version
 
+      - name: Install OCR runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends poppler-utils tesseract-ocr
+          pdftocairo -v
+          tesseract --version
+
       - name: Lint (ruff)
         run: |
           ruff check .

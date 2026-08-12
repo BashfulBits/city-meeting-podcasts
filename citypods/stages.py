@@ -33,7 +33,7 @@ translation, summarization, any multi-second ASR/LLM/network/CPU job) is::
             stats.reused += 1
             continue
         if ctx.stop is not None and ctx.stop():    # check immediately before the costly work
-            stats.skipped += 1                     # deferred to a later run — not an error
+            stats.defer("wall-clock-budget")        # deferred to a later run — not an error
             continue
         <do the expensive, restartable work for ep, persisting enough to resume next run>
 
@@ -82,6 +82,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urljoin
 
 from citypods import asr as asr_mod
 from citypods.asr import asr_initial_prompt
@@ -124,7 +125,7 @@ from citypods.records import (
     transcript_timeout_backoff_until,
 )
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
-from citypods.security import validate_source_url
+from citypods.security import MAX_REDIRECTS, validate_source_url
 from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
 from citypods.transcript_quality import (
     TranscriptQualityRoute,
@@ -437,6 +438,8 @@ class StageContext:
     # lane's own wall-clock ``stop()`` budget elapses. ``None`` (default / non-tag lanes) disables
     # pacing -- a single dispatch attempt then defer, the pre-pacing behavior.
     tag_llm_deadline: datetime | None = None
+    # UTC wall-clock deadline for chapter extraction dispatch.
+    chapter_llm_deadline: datetime | None = None
 
 
 @dataclass
@@ -465,6 +468,7 @@ class StageStats:
     rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
     defer_reasons: dict[str, int] = field(default_factory=dict)
     defer_samples: list[str] = field(default_factory=list)
+    quality_counts: dict[str, int] = field(default_factory=dict)
 
     def defer(self, reason: str, count: int = 1, *, sample: str | None = None) -> None:
         """Record restartable work left for a later run, grouped by a stable reason token."""
@@ -472,6 +476,9 @@ class StageStats:
         self.defer_reasons[reason] = self.defer_reasons.get(reason, 0) + count
         if sample and len(self.defer_samples) < 5:
             self.defer_samples.append(sample)
+
+    def quality(self, outcome: str, count: int = 1) -> None:
+        self.quality_counts[outcome] = self.quality_counts.get(outcome, 0) + count
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -496,7 +503,18 @@ class EnrichmentStage(Protocol):
 
 
 _STAGE_EMPTY_OK = frozenset(
-    {"chapters", "timeline", "remap", "links", "agenda_text", "minutes_text", "tags"}
+    {
+        "chapters",
+        "timeline",
+        "remap",
+        "links",
+        "agenda_text",
+        "minutes_text",
+        "tags",
+        "chapter_agenda",
+        "chapter_locator",
+        "generated_chapters",
+    }
 )
 
 
@@ -508,6 +526,12 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
         return ep.transcript_key or ep.transcript_hosted_url
     if name == "diarize":
         return ep.speakers_key or ep.speakers_url or ep.speakers_error
+    if name == "chapter_agenda":
+        artifact = ep.generated_agenda_candidates or {}
+        return artifact.get("artifact_key") or artifact.get("recipe")
+    if name in {"chapter_locator", "generated_chapters"}:
+        artifact = ep.generated_agenda_candidates or {}
+        return artifact.get("boundary_artifact_key") or ep.generated_chapters_spec_hash
     return None
 
 
@@ -566,6 +590,30 @@ def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: Cit
             "transcript": ep.transcript_key or ep.transcript_hosted_url,
             "recipe": PROVIDER_DIARIZE_PIPELINE_VERSION,
         }
+    elif name == "chapter_agenda":
+        from citypods.chapter_jobs import AGENDA_PROMPT_VERSION
+        from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
+
+        recipe = (
+            f"{AGENDA_PROMPT_VERSION}:{AGENDA_PRODUCTION_MODEL}:{CHAPTER_AGENDA_PIPELINE_VERSION}"
+        )
+        payload = {
+            **common,
+            "agenda_artifact": (ep.links or {}).get("agenda_text_artifact_key"),
+            "recipe": recipe,
+        }
+    elif name in {"chapter_locator", "generated_chapters"}:
+        from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
+        recipe = f"{LOCATOR_PROMPT_VERSION}:{LOCATOR_MODEL}:{CHAPTER_LOCATOR_PIPELINE_VERSION}"
+        payload = {
+            **common,
+            "agenda_recipe": (ep.generated_agenda_candidates or {}).get("recipe"),
+            "agenda_artifact": (ep.generated_agenda_candidates or {}).get("artifact_key"),
+            "transcript": ep.transcript_key,
+            "transcript_words": ep.transcript_words_key,
+            "recipe": recipe,
+        }
     elif name == "tags":
         payload = {
             **common,
@@ -607,6 +655,19 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
         return bool(ep.speakers_key or ep.speakers_url or ep.speakers_error)
     if name == "tags":
         return ep.tags_input_fingerprint is not None or bool(ep.tags or ep.chapter_tags)
+    if name == "chapter_agenda":
+        return (ep.generated_agenda_candidates or {}).get("status") in {
+            "completed",
+            "accepted",
+            "not_found",
+            "rejected",
+        }
+    if name in {"chapter_locator", "generated_chapters"}:
+        return bool(
+            (ep.generated_agenda_candidates or {}).get("locator_status")
+            in {"completed", "rejected", "not_found"}
+            or ep.generated_chapters_spec_hash
+        )
     return False
 
 
@@ -1259,24 +1320,15 @@ class TagsStage:
                         if dispatched:
                             candidate_tags = rule_candidates
                             completed_llm_recipe = None
-                            if resolved_model == "payload-too-large":
-                                # This episode's own material could never fit any allowed route's
-                                # real token budget -- says nothing about remaining quota, unlike
-                                # an ordinary defer, so it must NOT set
-                                # `tag_llm_dispatch_exhausted` (that would stop every other
-                                # episode in this run from even attempting a dispatch over one
-                                # oversized episode). See llm_tag_suggestions()'s docstring.
-                                stats.defer("tag-llm-oversized", sample=ep.uid or ep.guid)
-                            else:
-                                stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
-                                if not had_cached_pending:
-                                    # A fresh dispatch attempt (no pre-existing registry entry)
-                                    # came back deferred -- the live pacing loop genuinely found
-                                    # no eligible route before the run's deadline. Signal the rest
-                                    # of this run's episodes not to re-fetch their text merely to
-                                    # re-attempt a dispatch that will also just defer -- see the
-                                    # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
-                                    ctx.tag_llm_dispatch_exhausted.set()
+                            stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
+                            if not had_cached_pending:
+                                # A fresh dispatch attempt (no pre-existing registry entry) came
+                                # back deferred -- the live pacing loop genuinely found no
+                                # eligible route before the run's deadline. Signal the rest of
+                                # this run's episodes not to re-fetch their text merely to
+                                # re-attempt a dispatch that will also just defer -- see the
+                                # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
+                                ctx.tag_llm_dispatch_exhausted.set()
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to
@@ -2270,8 +2322,11 @@ class ChaptersStage:
                 # source-time equivalent we can safely remap across multiple sources.
                 stats.reused += 1
                 continue
-            if remaining <= 0 or (ctx.stop is not None and ctx.stop()):
-                stats.skipped += 1
+            if remaining <= 0:
+                stats.defer("per-run-cap")
+                continue
+            if ctx.stop is not None and ctx.stop():
+                stats.defer("wall-clock-budget")
                 continue
             remaining -= 1
             try:
@@ -2279,14 +2334,14 @@ class ChaptersStage:
             except Exception as exc:  # one bad page must not fail the whole source
                 stats.errors.append(f"{ep.uid}: {exc}")
                 continue
+            # Transcript availability is independent of chapter availability. A provider page
+            # with no agenda markers may still expose a transcript endpoint and must not lose it.
+            if transcript and "transcript" not in (ep.links or {}):
+                ep.links = {**(ep.links or {}), "transcript": transcript}
             if chapters:
                 ep.source_chapters = [dict(ch) for ch in chapters]
                 ep.chapters = [dict(ch) for ch in chapters]
                 ep.chapters_basis = "source:s0"
-                # Don't clobber a richer transcript already set (e.g. CivicClerk's published
-                # transcript PDF beats a closed-caption .srt fallback).
-                if transcript and "transcript" not in (ep.links or {}):
-                    ep.links = {**(ep.links or {}), "transcript": transcript}
                 stats.ran += 1
             else:
                 stats.reused += 1  # no agenda items on this page; nothing to embed
@@ -2350,7 +2405,10 @@ class AgendaTextStage:
     # bounded second-hop enumeration-page follow are new manifest fields/behavior. Without this
     # bump, stage_is_dirty()'s generic version check would never re-derive an already-completed
     # episode's backup manifest, leaving it permanently on the old, unattributed shape.
-    version = "2"
+    # Bumped 2 -> 3 (GH#1092): re-assess existing agenda artifacts through the quality gate and
+    # backfill their quality envelope gradually during normal enrichment; no bulk migration run
+    # is required, and only suspicious PDFs invoke OCR.
+    version = "3"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -2360,7 +2418,9 @@ class AgendaTextStage:
 
         from citypods.agenda_text import (
             AGENDA_TEXT_MAX_CHARS,
+            AGENDA_TEXT_QUALITY_VERSION,
             DocumentLink,
+            assess_agenda_document,
             attribute_links_by_content,
             chapter_text_matches,
             extract_document,
@@ -2403,26 +2463,131 @@ class AgendaTextStage:
             if agenda_text_backoff_until(ep) and agenda_text_backoff_until(ep) > now:
                 stats.defer("agenda-text-backoff")
                 continue
-            if ep.agenda_text_url == agenda_url and ep.agenda_backup_url:
+            quality = ep.agenda_text_quality or {}
+            if (
+                ep.agenda_text_url == agenda_url
+                and ep.agenda_backup_url
+                and ep.agenda_text_attempts == 0
+                and quality.get("status") == "accepted"
+                and quality.get("pipeline_version") == AGENDA_TEXT_QUALITY_VERSION
+                and not quality.get("last_assessment")
+            ):
                 stats.reused += 1
                 continue
             if ctx.stop is not None and ctx.stop():
-                stats.skipped += 1
+                stats.defer("wall-clock-budget", sample=ep.uid or ep.guid)
                 continue
             try:
-                content, content_type = fetch(agenda_url)
-                text, discovered = extract_document(
-                    content, content_type=content_type, source_url=agenda_url
-                )
-                text = text[:AGENDA_TEXT_MAX_CHARS]
+                import hashlib
+
+                candidate_urls = []
+                for candidate in (
+                    links_map.get("agenda_portal"),
+                    links_map.get("agenda"),
+                    links_map.get("agenda_packet"),
+                ):
+                    if candidate and candidate not in candidate_urls:
+                        candidate_urls.append(candidate)
+                assessment = None
+                content = b""
+                discovered: list[DocumentLink] = []
+                selected_url = agenda_url
+                for candidate_url in candidate_urls:
+                    try:
+                        candidate_content, candidate_type = fetch(candidate_url)
+                        candidate_assessment, candidate_links = assess_agenda_document(
+                            candidate_content,
+                            content_type=candidate_type,
+                            source_url=candidate_url,
+                        )
+                    except Exception:
+                        continue
+                    content = candidate_content
+                    selected_url = candidate_url
+                    assessment, discovered = candidate_assessment, candidate_links
+                    if assessment.status == "accepted":
+                        break
+                    # A portal shell may expose the actual PDF as a same-origin link.  Follow only
+                    # validated links and keep the bounded candidate list deterministic.
+                    for link in candidate_links:
+                        if (
+                            link.url not in candidate_urls
+                            and _is_valid_document_url(city, link.url)
+                            and ("pdf" in link.url.lower() or link.kind == "backup")
+                        ):
+                            candidate_urls.append(link.url)
+                    if len(candidate_urls) >= 8:
+                        break
+                if assessment is None:
+                    raise RuntimeError("agenda-candidate-fetch-failed")
+                text = assessment.text[:AGENDA_TEXT_MAX_CHARS]
                 links = [
                     link
                     for link in minutes_links(discovered)
                     if _is_valid_document_url(city, link.url)
                 ]
-                ep.agenda_text_url = agenda_url
-                ep.agenda_text_attempts = 0
+                now = datetime.now(UTC)
+                prior_quality = ep.agenda_text_quality or {}
+                prior_assessment = prior_quality.get("last_assessment")
+                if not isinstance(prior_assessment, dict):
+                    prior_assessment = prior_quality
+                quality = assessment.as_dict()
+                document_hash = hashlib.sha256(content).hexdigest()
+                same_document = (
+                    prior_assessment.get("document_hash") == document_hash
+                    and prior_assessment.get("source_url") == selected_url
+                )
+                same_accepted_document = (
+                    prior_quality.get("document_hash") == document_hash
+                    and prior_quality.get("source_url") == selected_url
+                    and prior_quality.get("status") == "accepted"
+                )
+                quality["document_hash"] = document_hash
+                quality["first_seen"] = (
+                    prior_assessment.get("first_seen", now.isoformat())
+                    if same_document
+                    else now.isoformat()
+                )
+                quality["last_seen"] = now.isoformat()
+                quality["assessment_attempts"] = (
+                    int(prior_assessment.get("assessment_attempts", 0) or 0) + 1
+                    if same_document
+                    else 1
+                )
                 ep.agenda_text_last_attempt = datetime.now(UTC).isoformat()
+                if assessment.status != "accepted":
+                    ep.agenda_text_attempts += 1
+                    stats.quality(assessment.reason)
+                    stats.defer(
+                        f"agenda-quality-{assessment.reason}",
+                        sample=ep.uid or ep.guid,
+                    )
+                    had_accepted_artifact = prior_quality.get("status") == "accepted"
+                    if had_accepted_artifact and not same_accepted_document:
+                        # Keep the last known-good artifact eligible while retaining the new
+                        # rejection for audit/diagnostics. A transient portal shell must not make
+                        # an already-published agenda disappear from the feed.
+                        retained_quality = dict(prior_quality)
+                        retained_quality["last_assessment"] = quality
+                        ep.agenda_text_quality = retained_quality
+                    else:
+                        ep.agenda_text_url = selected_url
+                        ep.agenda_text_quality = quality
+                        ep.links = dict(ep.links or {})
+                        ep.links.pop("agenda_text_artifact", None)
+                        ep.links.pop("agenda_text_artifact_key", None)
+                        ep.links.pop("agenda_backup_artifact", None)
+                        ep.links.pop("agenda_backup_artifact_key", None)
+                        ep.agenda_backup_url = None
+                    continue
+                ep.agenda_text_url = selected_url
+                ep.agenda_text_quality = quality
+                ep.agenda_text_attempts = 0
+                stats.quality(
+                    "accepted-notice"
+                    if assessment.eligibility == "notice"
+                    else f"accepted-{assessment.method}"
+                )
                 agenda_artifact_url = _store_document(
                     ctx, src_key, ep.uid or ep.guid, "agenda", text.encode()
                 )
@@ -2624,6 +2789,7 @@ class AgendaTextStage:
                 ep.agenda_text_last_attempt = now.isoformat()
                 ep.agenda_backup_attempts += 1
                 ep.agenda_backup_last_attempt = now.isoformat()
+                stats.quality("fetch-failure")
                 stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
         return stats
 
@@ -2672,7 +2838,7 @@ class MinutesTextStage:
                 stats.defer("minutes-text-backoff")
                 continue
             if ctx.stop is not None and ctx.stop():
-                stats.skipped += 1
+                stats.defer("wall-clock-budget", sample=ep.uid or ep.guid)
                 continue
             try:
                 content, content_type = fetch_document_bytes(
@@ -2844,15 +3010,20 @@ def _document_key(source: str, uid: str, kind: str, content: bytes) -> str:
 
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
-AGENDA_TEXT_PIPELINE_VERSION = "1"
-# Bumped alongside AgendaTextStage.version -- see that class's comment.
+AGENDA_TEXT_PIPELINE_VERSION = "3"
+# Bumped 2 -> 3 alongside AgendaTextStage.version (GH#1092). Existing records are gradually
+# re-assessed during normal enrichment; old artifacts remain available until a replacement is
+# accepted, and suspicious PDFs alone invoke OCR.
 AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
 MINUTES_VOTES_PIPELINE_VERSION = "1"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
-PROVIDER_ALIGN_PIPELINE_VERSION = "1"
+PROVIDER_ALIGN_PIPELINE_VERSION = "2"
+PROVIDER_NATIVE_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
+CHAPTER_AGENDA_PIPELINE_VERSION = "1"
+CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
 # Public (imported by citypods.feeds) so the feed tag and the stored object never disagree.
@@ -2899,6 +3070,8 @@ def _provider_align_spec_hash(ep: Episode, artifact: dict) -> str:
     spec = {
         "v": PROVIDER_ALIGN_PIPELINE_VERSION,
         "provider": artifact.get("spec_hash"),
+        "text": artifact.get("text_hash"),
+        "model": artifact.get("model"),
         "timeline": tl_digest,
         "repair": timeline_audio_repair_token(ep, REPAIR_TRANSCRIPT_REGENERATE),
     }
@@ -2908,6 +3081,104 @@ def _provider_align_spec_hash(ep: Episode, artifact: dict) -> str:
 
 def _provider_align_object_key(src_key: str, uid: str, spec: str) -> str:
     return f"transcripts/{src_key}/{uid}-provider-align-{spec}.vtt"
+
+
+def _provider_align_words_object_key(src_key: str, uid: str, spec: str) -> str:
+    return f"transcripts/{src_key}/{uid}-provider-align-{spec}.words.json"
+
+
+def _provider_native_words_object_key(src_key: str, uid: str, spec: str) -> str:
+    return f"transcripts/{src_key}/{uid}-provider-native-{spec}.words.json"
+
+
+_VTT_WORD_TIMESTAMP_RE = re.compile(r"<(?P<time>(?:(?:\d{2}:)?\d{2}:\d{2})[\.,]\d{3})>")
+
+
+def _has_word_timing_vtt(content: bytes) -> bool:
+    """Return whether a WebVTT source contains inline word timestamps.
+
+    Cue timestamps alone are not sufficient for the downstream word-boundary features.  WebVTT
+    word timing is represented by inline ``<HH:MM:SS.mmm>`` tags inside cue text; SRT never
+    qualifies for the provider-native path.
+    """
+    if not content.lstrip().startswith(b"WEBVTT"):
+        return False
+    return any(_VTT_WORD_TIMESTAMP_RE.finditer(content.decode("utf-8-sig", errors="replace")))
+
+
+def _provider_vtt_words_json(content: bytes, *, basis: str = "served") -> bytes | None:
+    """Convert inline word-timed VTT into the shared word-sidecar shape.
+
+    Provider VTTs vary in whether every word has an explicit marker.  When markers exist, words
+    between adjacent markers are distributed over that interval; this is only used for the
+    provider-native preserve path, never for the computed provider-alignment path.
+    """
+    if not _has_word_timing_vtt(content):
+        return None
+    cues = _parse_timed_transcript(content, "vtt")
+    out_segments: list[dict] = []
+    for cue in cues:
+        raw = str(cue.get("text") or "")
+        markers = list(_VTT_WORD_TIMESTAMP_RE.finditer(raw))
+        if not markers:
+            continue
+        words: list[dict] = []
+        chunks: list[tuple[float, float, str]] = []
+        # Providers commonly timestamp the *second* word onward.  Keep the leading words and
+        # distribute them between the cue start and the first explicit marker.
+        first_start = _parse_transcript_time(markers[0].group("time"))
+        chunks.append((float(cue["start"]), first_start, raw[: markers[0].start()]))
+        for index, marker in enumerate(markers):
+            start = _parse_transcript_time(marker.group("time"))
+            end = (
+                _parse_transcript_time(markers[index + 1].group("time"))
+                if index + 1 < len(markers)
+                else float(cue["end"])
+            )
+            text = raw[
+                marker.end() : markers[index + 1].start() if index + 1 < len(markers) else None
+            ]
+            chunks.append((start, end, text))
+        for start, end, text in chunks:
+            tokens = text.replace("\n", " ").split()
+            if not tokens:
+                continue
+            end = max(start, end)
+            step = (end - start) / len(tokens)
+            for token_index, token in enumerate(tokens):
+                word_start = start + step * token_index
+                word_end = (
+                    end if token_index + 1 == len(tokens) else start + step * (token_index + 1)
+                )
+                words.append({"w": token, "s": round(word_start, 3), "e": round(word_end, 3)})
+        if words:
+            plain = _VTT_WORD_TIMESTAMP_RE.sub("", raw).replace("\n", " ").strip()
+            out_segments.append(
+                {
+                    "start": round(float(cue["start"]), 3),
+                    "end": round(float(cue["end"]), 3),
+                    "text": plain,
+                    "words": words,
+                }
+            )
+    if not out_segments:
+        return None
+    return json.dumps(
+        {"schema": "2", "basis": basis, "segments": out_segments},
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
+def _provider_source_text(content: bytes, fmt: str) -> str:
+    """Extract provider wording for our aligner, discarding provider timing as authority."""
+    if fmt in {"vtt", "srt"}:
+        joined = "\n".join(
+            str(cue.get("text") or "") for cue in _parse_timed_transcript(content, fmt)
+        )
+        joined = _VTT_WORD_TIMESTAMP_RE.sub("", joined)
+        return _preprocess_align_text(joined)
+    return _preprocess_align_text(content.decode("utf-8", errors="replace"))
 
 
 def _provider_diarize_spec_hash(ep: Episode, artifact: dict) -> str:
@@ -2946,6 +3217,7 @@ def _provider_transcript_artifact(
     spec: str,
     fmt: str,
     synced: bool,
+    word_timed: bool = False,
     now: str,
     status: str,
 ) -> dict:
@@ -2957,6 +3229,7 @@ def _provider_transcript_artifact(
         "format": fmt,
         "basis": "source:s0",
         "synced": synced,
+        "word_timed": word_timed,
         "confidence": None,
         "checked_at": now,
         "fetched_at": now,
@@ -3255,6 +3528,9 @@ def _adopt_asr_keys(ep: Episode, storage, asr_key: str, words_key: str, recipe: 
     ep.transcript_format = "vtt"
     ep.transcript_basis = "served"
     ep.transcript_synced = True
+    ep.transcript_text_source = "asr"
+    ep.transcript_timing_source = "computed"
+    ep.transcript_selection = "asr"
     _reset_asr_timeout_backoff(ep)
 
 
@@ -3323,11 +3599,10 @@ def _detect_format(content: bytes) -> str:
 def _download_audio(url: str):
     """Download the hosted audio to a temp file, yield the Path, then clean up.
 
-    Uses a plain ``requests`` session (not ``make_session``) because:
-    - ``ep.hosted_audio_url`` is a URL *we* generated (our own CDN), not untrusted user input,
-      so the SSRF guard in ``GuardedHTTPAdapter`` adds no value here.
-    - Hosted M4A files routinely exceed the 64 MiB ``MAX_RESPONSE_BYTES`` cap that
-      ``make_session`` enforces on Content-Length, which would reject valid audio.
+    Uses a plain ``requests`` session (not ``make_session``) because hosted M4A files routinely
+    exceed the 64 MiB ``MAX_RESPONSE_BYTES`` cap that ``make_session`` enforces on Content-Length.
+    ``_download_audio_file`` retains the SSRF guard by validating the initial URL and every manual
+    redirect hop before issuing the streaming request.
     """
     import tempfile as _tmp2
 
@@ -3370,24 +3645,93 @@ def _download_audio_file(
 ) -> None:
     import requests as _req
 
-    from citypods.http import USER_AGENT
+    from citypods.http import USER_AGENT, clamped_retry_after_seconds
 
+    redirect_statuses = {301, 302, 303, 307, 308}
     last: Exception | None = None
     for attempt in range(max_attempts):
         try:
             with _req.Session() as sess:
                 sess.headers["User-Agent"] = USER_AGENT
-                r = sess.get(url, timeout=300, stream=True)
-                r.raise_for_status()
-                received = 0
-                with open(dest, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=65536):
-                        received += len(chunk)
-                        if received > _MAX_HOSTED_AUDIO_BYTES:
-                            raise HostedAudioTooLargeError(
-                                f"hosted audio exceeded {_MAX_HOSTED_AUDIO_BYTES} bytes: {url}"
+                current_url = url
+                redirects_followed = 0
+                retry_download = False
+                while True:
+                    validate_source_url(current_url, resolve=True)
+                    r = sess.get(
+                        current_url,
+                        timeout=300,
+                        stream=True,
+                        allow_redirects=False,
+                    )
+                    if getattr(r, "status_code", None) in redirect_statuses:
+                        location = getattr(r, "headers", {}).get("Location")
+                        if not location:
+                            close = getattr(r, "close", None)
+                            if close is not None:
+                                close()
+                            raise _req.exceptions.HTTPError(
+                                "redirect response missing Location header", response=r
                             )
-                        f.write(chunk)
+                        if redirects_followed >= MAX_REDIRECTS:
+                            close = getattr(r, "close", None)
+                            if close is not None:
+                                close()
+                            raise _req.exceptions.TooManyRedirects(
+                                f"hosted audio exceeded {MAX_REDIRECTS} redirects", response=r
+                            )
+                        next_url = urljoin(current_url, str(location))
+                        # The next loop iteration validates this Location-derived URL immediately
+                        # before issuing the request, keeping redirect validation adjacent to the
+                        # network boundary without resolving the same host twice.
+                        close = getattr(r, "close", None)
+                        if close is not None:
+                            close()
+                        current_url = next_url
+                        redirects_followed += 1
+                        continue
+                    try:
+                        r.raise_for_status()
+                    except _req.exceptions.HTTPError as exc:
+                        # Large hosted audio cannot use make_session() because its response-size
+                        # cap is intentionally sized for feed/document traffic. Preserve the same
+                        # bounded Retry-After policy here for the CDN's transient 429 responses.
+                        if getattr(r, "status_code", None) != 429:
+                            raise
+                        last = exc
+                        if attempt + 1 >= max_attempts:
+                            retry_download = True
+                            break
+                        retry_after = clamped_retry_after_seconds(getattr(r, "headers", {}))
+                        delay = (
+                            retry_after
+                            if retry_after is not None
+                            else _AUDIO_DOWNLOAD_BACKOFF_SECONDS * (2**attempt)
+                        )
+                        close = getattr(r, "close", None)
+                        if close is not None:
+                            close()
+                        sleep(delay)
+                        retry_download = True
+                        break
+                    received = 0
+                    try:
+                        with open(dest, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=65536):
+                                received += len(chunk)
+                                if received > _MAX_HOSTED_AUDIO_BYTES:
+                                    raise HostedAudioTooLargeError(
+                                        f"hosted audio exceeded {_MAX_HOSTED_AUDIO_BYTES} bytes: "
+                                        f"{url}"
+                                    )
+                                f.write(chunk)
+                    finally:
+                        close = getattr(r, "close", None)
+                        if close is not None:
+                            close()
+                    break
+                if retry_download:
+                    continue
             return
         except (
             _req.exceptions.ChunkedEncodingError,
@@ -3507,6 +3851,61 @@ class TranscriptStage:
             ep.transcript_format = "vtt"
             ep.transcript_basis = "served"
             ep.transcript_synced = True
+            ep.transcript_text_source = "asr"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "asr"
+            _reset_asr_timeout_backoff(ep)
+
+        def _store_provider_align_artifacts(
+            ep: Episode,
+            artifacts,
+            provider_artifact: dict,
+            text_hash: str,
+        ) -> None:
+            """Store computed timing while retaining provider wording provenance."""
+            uid = ep.uid or ep.guid
+            align_artifact = {
+                **provider_artifact,
+                "text_hash": text_hash,
+                "model": city.asr_model,
+            }
+            align_spec = _provider_align_spec_hash(ep, align_artifact)
+            key = _provider_align_object_key(src_key, uid, align_spec)
+            words_key = _provider_align_words_object_key(src_key, uid, align_spec)
+            with _tmp.TemporaryDirectory() as t:
+                vtt_dest = Path(t) / "provider-align.vtt"
+                vtt_dest.write_bytes(artifacts.vtt)
+                url = ctx.storage.put_file(key, vtt_dest, TRANSCRIPT_MIME["vtt"])
+                words_dest = Path(t) / "provider-align.words.json"
+                words_dest.write_bytes(artifacts.words)
+                words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
+
+            known = dict(provider_artifact)
+            known.update(
+                {
+                    "aligned_key": key,
+                    "aligned_url": url,
+                    "aligned_words_key": words_key,
+                    "aligned_words_url": words_url,
+                    "align_spec_hash": align_spec,
+                    "align_coverage": artifacts.coverage,
+                    "status": "known_good",
+                }
+            )
+            _provider_transcript_set_known_good(ep, known)
+
+            ep.transcript_key = key
+            ep.transcript_hosted_url = url
+            ep.transcript_words_key = words_key
+            ep.transcript_words_url = words_url
+            ep.transcript_spec_hash = align_spec
+            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_format = "vtt"
+            ep.transcript_basis = "served"
+            ep.transcript_synced = True
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "provider-aligned"
             _reset_asr_timeout_backoff(ep)
 
         def _maybe_align_provider_transcript(
@@ -3515,7 +3914,13 @@ class TranscriptStage:
             ep_ref: str,
             allow_active: bool,
         ) -> bool:
-            """Promote and optionally publish a timed provider document as served-time VTT."""
+            """Preserve a provider VTT only when it already has word-level timing.
+
+            Cue-level VTT/SRT timing is useful source material for the aligner, but it is not a
+            sufficient served transcript because search, clips, and diarization consume word
+            boundaries.  Non-word-timed provider documents deliberately return ``False`` here and
+            enter the common stable-ts alignment path below.
+            """
             if not (ep.audio_key and ep.hosted_audio_url):
                 return False
             registry = ep.provider_transcript or {}
@@ -3528,7 +3933,6 @@ class TranscriptStage:
                 if (
                     isinstance(artifact, dict)
                     and artifact.get("key")
-                    and artifact.get("synced")
                     and artifact.get("format") in {"vtt", "srt"}
                 ):
                     selected = dict(artifact)
@@ -3539,16 +3943,26 @@ class TranscriptStage:
             content = _read_storage_bytes(ctx.storage, selected["key"])
             if content is None:
                 return False
-            cues = _parse_timed_transcript(content, selected.get("format") or "vtt")
-            remapped_cues, confidence = _remap_provider_cues(ep, cues)
-            if not remapped_cues:
+            word_timed = bool(selected.get("word_timed")) or (
+                selected.get("format") == "vtt" and _has_word_timing_vtt(content)
+            )
+            # A word-timed provider VTT is safe to preserve only on the identity timeline.  On an
+            # edited timeline its word offsets are source-clock values, so the provider wording
+            # goes through stable-ts against the actual served audio instead.
+            if not word_timed or (
+                ep.timeline is not None and timeline_digest(ep.timeline, ep.sources)
+            ):
+                return False
+            native_words = _provider_vtt_words_json(content, basis="served")
+            if native_words is None:
+                # The marker detector is intentionally permissive; require a usable sidecar too
+                # before claiming that a provider-native transcript satisfies word-boundary users.
                 return False
 
-            align_spec = _provider_align_spec_hash(ep, selected)
             selected = {
                 **selected,
-                "confidence": confidence,
-                "align_spec_hash": align_spec,
+                "word_timed": True,
+                "native_spec_hash": selected.get("spec_hash"),
                 "aligned_at": datetime.now(UTC).isoformat(),
             }
 
@@ -3574,41 +3988,108 @@ class TranscriptStage:
             if not allow_active:
                 return False
 
-            key = _provider_align_object_key(src_key, ep.uid or ep.guid, align_spec)
-            if ep.transcript_key == key and ep.transcript_synced and _present(key):
+            key = selected["key"]
+            if (
+                ep.transcript_key == key
+                and ep.transcript_synced
+                and _present(key)
+                and selected.get("words_key")
+                and _present(selected["words_key"])
+            ):
                 ep.transcript_hosted_url = ctx.storage.public_url(key)
+                ep.transcript_words_key = selected.get("words_key")
+                ep.transcript_words_url = (
+                    ctx.storage.public_url(ep.transcript_words_key)
+                    if ep.transcript_words_key and _present(ep.transcript_words_key)
+                    else None
+                )
                 stats.reused += 1
                 return True
 
-            with _tmp.TemporaryDirectory() as t:
-                dest = Path(t) / "provider-aligned.vtt"
-                dest.write_bytes(_provider_cues_to_vtt(remapped_cues))
-                url = ctx.storage.put_file(key, dest, TRANSCRIPT_MIME["vtt"])
+            words_key = selected.get("words_key") or _provider_native_words_object_key(
+                src_key, ep.uid or ep.guid, selected["spec_hash"]
+            )
+            words_url = None
+            words = native_words
+            if words is not None and not _present(words_key):
+                with _tmp.TemporaryDirectory() as t:
+                    words_dest = Path(t) / "provider.words.json"
+                    words_dest.write_bytes(words)
+                    words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
+            elif words is not None:
+                words_url = ctx.storage.public_url(words_key)
 
             provider_registry = dict(ep.provider_transcript or {})
             known = dict(provider_registry.get("known_good") or selected)
-            known["aligned_key"] = key
-            known["aligned_url"] = url
+            known["word_timed"] = True
+            known["native_key"] = key
+            known["native_url"] = selected.get("hosted_url") or ctx.storage.public_url(key)
+            known["words_key"] = words_key if words is not None else None
+            known["words_url"] = words_url or (
+                ctx.storage.public_url(words_key) if words is not None else None
+            )
             provider_registry["known_good"] = known
             ep.provider_transcript = provider_registry
 
             ep.transcript_key = key
-            ep.transcript_hosted_url = url
-            ep.transcript_spec_hash = align_spec
+            ep.transcript_hosted_url = selected.get("hosted_url") or ctx.storage.public_url(key)
+            ep.transcript_spec_hash = selected["spec_hash"]
             ep.transcript_format = "vtt"
             ep.transcript_basis = "served"
             ep.transcript_synced = True
-            ep.transcript_words_key = None
-            ep.transcript_words_url = None
-            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_words_key = words_key if words is not None else None
+            ep.transcript_words_url = known["words_url"]
+            ep.transcript_pipeline_version = f"provider-native:{PROVIDER_NATIVE_PIPELINE_VERSION}"
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "provider"
+            ep.transcript_selection = "provider-native"
             _reset_asr_timeout_backoff(ep)
             stats.ran += 1
-            stats.aligned += 1
             print(
-                f"[enrich] transcript provider-align done {ep_ref} "
-                f"confidence={confidence if confidence is not None else 'unknown'}",
+                f"[enrich] transcript provider-native done {ep_ref} word_timed=true",
                 flush=True,
             )
+            return True
+
+        def _maybe_adopt_provider_alignment(
+            ep: Episode,
+            *,
+            allow_active: bool,
+        ) -> bool:
+            """Switch to an already-computed provider alignment after an H15 route change."""
+            if not allow_active:
+                return False
+            registry = ep.provider_transcript or {}
+            if not isinstance(registry, dict):
+                return False
+            artifact = next(
+                (
+                    item
+                    for item in (registry.get("candidate"), registry.get("known_good"))
+                    if isinstance(item, dict) and item.get("aligned_key")
+                ),
+                None,
+            )
+            if artifact is None:
+                return False
+            key = artifact.get("aligned_key")
+            words_key = artifact.get("aligned_words_key")
+            if not key or not _present(key) or not words_key or not _present(words_key):
+                return False
+            ep.transcript_key = key
+            ep.transcript_hosted_url = artifact.get("aligned_url") or ctx.storage.public_url(key)
+            ep.transcript_words_key = words_key
+            ep.transcript_words_url = artifact.get("aligned_words_url") or ctx.storage.public_url(
+                words_key
+            )
+            ep.transcript_spec_hash = artifact.get("align_spec_hash")
+            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_format = "vtt"
+            ep.transcript_basis = "served"
+            ep.transcript_synced = True
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "provider-aligned"
             return True
 
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
@@ -3646,14 +4127,22 @@ class TranscriptStage:
                         flush=True,
                     )
 
-        for ep in _materialize_set(
+        materialized_episodes = _materialize_set(
             episodes,
             city.full_artifact_episodes,
             feed_visible_per_body=city.max_episodes,
             policy=ctx.backlog_policy,
             city_slug=city.slug,
             work_class="transcript-asr",
-        ):
+        )
+        materialized_uids = {ep.uid or ep.guid for ep in materialized_episodes}
+
+        # Provider discovery is broader than expensive artifact work. A known transcript endpoint
+        # is useful evidence for every discovered episode, including deep-archive rows outside the
+        # current materialization/ASR cohort. We iterate all records below and bound only inference
+        # to the configured materialized set.
+        for ep in episodes:
+            inference_eligible = (ep.uid or ep.guid) in materialized_uids
             quality_body_name = canonical_body(ep.body or "") or ep.body or "(unknown)"
             quality_body_key_value = quality_body_key(quality_body_name)
             route = ctx.transcript_quality_routes.get((src_key, quality_body_key_value))
@@ -3667,6 +4156,11 @@ class TranscriptStage:
             recheck_asr_words_key: str | None = None
             active_synced_reused = False
             provider_url = (ep.links or {}).get("transcript")
+            force_provider_selection = route is not None and route.prefers_provider_align
+            force_asr_selection = route is not None and route.prefers_fresh_asr
+            active_is_provider = ep.transcript_text_source == "provider" or str(
+                ep.transcript_pipeline_version or ""
+            ).startswith("provider-")
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
             #    stop()) so a yielded run still references every already-synced transcript.
             #    Version-aware (H12): an ASR transcript (key carries the ``-asr-`` infix) from an
@@ -3697,7 +4191,7 @@ class TranscriptStage:
                         recipe_ranks=(route.recipe_ranks if route is not None else None),
                     )
                     words_present = not ep.transcript_words_key or _present(ep.transcript_words_key)
-                    if accepted_existing_asr and words_present:
+                    if accepted_existing_asr and words_present and not force_provider_selection:
                         ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                         if ep.transcript_words_key and _present(ep.transcript_words_key):
                             ep.transcript_words_url = ctx.storage.public_url(
@@ -3706,7 +4200,7 @@ class TranscriptStage:
                         _reset_asr_timeout_backoff(ep)
                         stats.reused += 1
                         active_synced_reused = True
-                        if not provider_url:
+                        if not provider_url and not force_provider_selection:
                             continue
                     elif ep.transcript_pipeline_version != ASR_PIPELINE_VERSION:
                         redo_stale_asr = True  # own recipe/version changed; re-transcribe
@@ -3723,17 +4217,23 @@ class TranscriptStage:
                         _reset_asr_timeout_backoff(ep)
                         stats.reused += 1
                         active_synced_reused = True
-                        if not provider_url:
+                        if not provider_url and not force_provider_selection:
                             continue
                 else:
-                    ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
-                    if ep.transcript_words_key and _present(ep.transcript_words_key):
-                        ep.transcript_words_url = ctx.storage.public_url(ep.transcript_words_key)
-                    _reset_asr_timeout_backoff(ep)
-                    stats.reused += 1
-                    active_synced_reused = True
-                    if not provider_url:
-                        continue
+                    if force_asr_selection:
+                        redo_stale_asr = True
+                        active_is_provider = True
+                    else:
+                        ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
+                        if ep.transcript_words_key and _present(ep.transcript_words_key):
+                            ep.transcript_words_url = ctx.storage.public_url(
+                                ep.transcript_words_key
+                            )
+                        _reset_asr_timeout_backoff(ep)
+                        stats.reused += 1
+                        active_synced_reused = True
+                        if not provider_url and not force_provider_selection:
+                            continue
             elif ep.transcript_key and ep.transcript_synced:
                 key_name = ep.transcript_key.rsplit("/", 1)[-1]
                 if key_name.startswith(f"{ep.uid or ep.guid}-asr-"):
@@ -3741,6 +4241,12 @@ class TranscriptStage:
                     if ep.transcript_pipeline_version == ASR_PIPELINE_VERSION:
                         recheck_asr_key = ep.transcript_key
                         recheck_asr_words_key = ep.transcript_words_key
+
+            if active_is_provider and force_asr_selection:
+                # H15 routing is source/body policy, not an episode-level review gate. A route
+                # change must be able to replace a previously served provider artifact.
+                active_synced_reused = False
+                redo_stale_asr = True
 
             # 1b. Untimed stored transcript: re-attach URL so the feed still shows it as a
             #     text note, then fall through to the ASR slot to attempt an upgrade.
@@ -3797,6 +4303,7 @@ class TranscriptStage:
                         ),
                         None,
                     )
+                    url = matched_current.get("hosted_url") if matched_current else None
                     if matched_current is not None:
                         if _provider_transcript_note_checked(
                             ep,
@@ -3819,7 +4326,8 @@ class TranscriptStage:
                             dest.write_bytes(content)
                             mime = TRANSCRIPT_MIME.get(fmt, "text/plain")
                             url = ctx.storage.put_file(key, dest, mime)
-
+                        if not url:
+                            raise RuntimeError("provider transcript storage URL unavailable")
                         artifact = _provider_transcript_artifact(
                             source_url=provider_url,
                             key=key,
@@ -3827,6 +4335,7 @@ class TranscriptStage:
                             spec=spec,
                             fmt=fmt,
                             synced=timed,
+                            word_timed=fmt == "vtt" and _has_word_timing_vtt(content),
                             now=datetime.now(UTC).isoformat(),
                             status="candidate",
                         )
@@ -3837,9 +4346,8 @@ class TranscriptStage:
                             f"fmt={fmt} candidate=true",
                             flush=True,
                         )
-                        # Do not promote or switch the active <podcast:transcript> here. If an
-                        # ASR/provider-aligned transcript is already active, it keeps serving;
-                        # PT-PR3 decides temporary feed exposure for provider documents.
+                        # Do not promote or switch the active <podcast:transcript> here. The
+                        # source/body route below owns that selection.
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: {exc}")
                     print(
@@ -3848,27 +4356,57 @@ class TranscriptStage:
                     )
                     continue
 
-            if provider_url:
-                registry = ep.provider_transcript or {}
-                active_provider = registry.get("known_good") or registry.get("candidate")
-                if (
-                    not ep.transcript_hosted_url
-                    and isinstance(active_provider, dict)
-                    and active_provider.get("hosted_url")
-                    and active_provider.get("format") == "txt"
-                ):
-                    ep.transcript_hosted_url = active_provider["hosted_url"]
-                    ep.transcript_format = "txt"
+            registry = ep.provider_transcript or {}
+            active_provider = (
+                registry.get("candidate") or registry.get("known_good")
+                if isinstance(registry, dict)
+                else None
+            )
+            if (
+                active_provider is None
+                and ep.transcript_key
+                and ep.transcript_format in {"txt", "vtt", "srt"}
+                and not ep.transcript_key.rsplit("/", 1)[-1].startswith(f"{ep.uid or ep.guid}-asr-")
+            ):
+                # Legacy records predate the provider registry. Their non-ASR transcript object is
+                # still provider wording and must receive provider provenance when aligned.
+                active_provider = {
+                    "key": ep.transcript_key,
+                    "format": ep.transcript_format,
+                    "spec_hash": ep.transcript_spec_hash,
+                    "hosted_url": ep.transcript_hosted_url,
+                }
+            if (
+                not ep.transcript_key
+                and isinstance(active_provider, dict)
+                and active_provider.get("hosted_url")
+            ):
+                # Keep the provider source visible as an untimed note while the computed
+                # word-timed artifact is queued; never expose it as the synced feed transcript.
+                ep.transcript_hosted_url = active_provider["hosted_url"]
+                ep.transcript_format = active_provider.get("format") or "txt"
+                ep.transcript_synced = False
 
-            # PT-PR5: timed provider source documents are evaluated in source time, remapped
-            # through the canonical timeline, and promoted to known_good only when their
-            # confidence is at least the previous known_good. Do not replace an already-active
-            # ASR/provider transcript in this rollout; the H15 trust router owns that policy.
+            # Apply the source/body H15 route dynamically. Existing artifacts are enough to switch
+            # the served transcript; an episode does not need its own review decision.
+            if _maybe_adopt_provider_alignment(
+                ep,
+                allow_active=force_provider_selection and not active_synced_reused,
+            ):
+                continue
+
+            # Preserve a provider-native artifact only when its VTT carries word timings. All
+            # other provider documents continue through the common stable-ts path below.
             if _maybe_align_provider_transcript(
                 ep,
                 ep_ref=ep_ref,
-                allow_active=not active_synced_reused,
+                allow_active=not active_synced_reused and not force_asr_selection,
             ):
+                continue
+
+            if not inference_eligible:
+                # The provider source was probed and any already-computed route selection was
+                # applied above; full ASR/align remains bounded by the artifact cohort.
                 continue
 
             # Legacy active provider transcripts remain valid input for alignment. They are not
@@ -3922,24 +4460,34 @@ class TranscriptStage:
                 )
                 continue
 
-            # Determine alignment text from any stored untimed source transcript.
-            # Strip non-spoken minutes content (headers, speaker labels, vote tallies)
-            # before passing to stable-ts — provider "transcripts" are minutes documents
-            # that include text never spoken in the audio, which causes ~50 % alignment
-            # failures when passed verbatim.
+            # Determine alignment text from any stored provider source transcript. Cue-level
+            # VTT/SRT timing is source evidence, not served timing; stable-ts computes the final
+            # word boundaries. Only a provider-native word-timed VTT bypasses this path.
             align_text: str | None = None
-            if ep.transcript_hosted_url and ep.transcript_format == "txt":
+            provider_alignment_requested = isinstance(active_provider, dict) and bool(
+                active_provider.get("key")
+            )
+            if provider_alignment_requested:
+                provider_content = _read_storage_bytes(ctx.storage, active_provider["key"])
+                if provider_content is not None:
+                    provider_fmt = str(active_provider.get("format") or "txt")
+                    provider_word_timed = provider_fmt == "vtt" and (
+                        active_provider.get("word_timed") or _has_word_timing_vtt(provider_content)
+                    )
+                    if not provider_word_timed:
+                        align_text = _provider_source_text(provider_content, provider_fmt)
+            elif ep.transcript_hosted_url and ep.transcript_format in {"txt", "vtt", "srt"}:
+                # Legacy records may have the URL but not the provider registry yet.
                 try:
                     from citypods.http import make_session
 
                     with make_session() as sess:
                         r = sess.get(ep.transcript_hosted_url, timeout=30)
                     if r.status_code == 200:
-                        raw_text = r.content.decode("utf-8", errors="replace")
-                        align_text = _preprocess_align_text(raw_text)
+                        align_text = _provider_source_text(r.content, ep.transcript_format)
                 except Exception:  # noqa: BLE001
                     pass  # alignment hint unavailable; fall back to fresh transcription
-            if route is not None and route.prefers_fresh_asr:
+            if force_asr_selection:
                 align_text = None
 
             # Lane gating (H6b): the sharded asr.yml runs a single-model lane so faster-whisper and
@@ -3949,6 +4497,9 @@ class TranscriptStage:
             # the auto per-episode behavior for a direct ``citypods enrich``. Apply this before the
             # alignment-enabled guard: production's transcribe lane must deliberately ignore source
             # text and generate fresh ASR even while the separate align lane remains disabled.
+            if ctx.lane == "transcribe" and provider_alignment_requested:
+                stats.defer("provider-align-lane")
+                continue
             if ctx.lane == "transcribe":
                 align_text = None
             elif ctx.lane == "align" and align_text is None:
@@ -3964,7 +4515,11 @@ class TranscriptStage:
             # TranscriptQualityRoute / _route_from_row), so it schedules the cheap align lane
             # even while the site-wide asr_alignment_enabled default stays off elsewhere.
             align_lane_unblocked = route is not None and route.prefers_provider_align
-            if align_text and not (city.asr_alignment_enabled or align_lane_unblocked):
+            if (
+                align_text
+                and not provider_alignment_requested
+                and not (city.asr_alignment_enabled or align_lane_unblocked)
+            ):
                 stats.defer("alignment-disabled")
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=alignment-disabled",
@@ -4038,7 +4593,7 @@ class TranscriptStage:
                     flush=True,
                 )
 
-            if not migration_missing and _present(asr_key):
+            if not migration_missing and _present(asr_key) and not force_provider_selection:
                 ep.transcript_key = asr_key
                 ep.transcript_hosted_url = ctx.storage.public_url(asr_key)
                 if _present(words_key):
@@ -4049,6 +4604,9 @@ class TranscriptStage:
                 ep.transcript_format = "vtt"
                 ep.transcript_spec_hash = recipe
                 ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+                ep.transcript_text_source = "asr"
+                ep.transcript_timing_source = "computed"
+                ep.transcript_selection = "asr"
                 _reset_asr_timeout_backoff(ep)
                 stats.reused += 1
                 continue
@@ -4056,7 +4614,19 @@ class TranscriptStage:
             cached_artifacts = ctx.asr_artifact_cache.get(cache_key)
             if cached_artifacts is not None:
                 try:
-                    _store_asr_artifacts(ep, cached_artifacts, recipe)
+                    if (
+                        provider_alignment_requested
+                        and isinstance(active_provider, dict)
+                        and align_text is not None
+                    ):
+                        _store_provider_align_artifacts(
+                            ep,
+                            cached_artifacts,
+                            active_provider,
+                            align_hash,
+                        )
+                    else:
+                        _store_asr_artifacts(ep, cached_artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
                     print(
@@ -4197,7 +4767,19 @@ class TranscriptStage:
                     sem.release()
                     sem = None
                 try:
-                    _store_asr_artifacts(ep, cached_artifacts, recipe)
+                    if (
+                        provider_alignment_requested
+                        and isinstance(active_provider, dict)
+                        and align_text is not None
+                    ):
+                        _store_provider_align_artifacts(
+                            ep,
+                            cached_artifacts,
+                            active_provider,
+                            align_hash,
+                        )
+                    else:
+                        _store_asr_artifacts(ep, cached_artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
                     print(
@@ -4531,7 +5113,20 @@ class TranscriptStage:
             audio_tmp.cleanup()
 
             try:
-                _store_asr_artifacts(ep, artifacts, recipe)
+                if (
+                    _aligned[0]
+                    and provider_alignment_requested
+                    and isinstance(active_provider, dict)
+                    and align_text is not None
+                ):
+                    _store_provider_align_artifacts(
+                        ep,
+                        artifacts,
+                        active_provider,
+                        align_hash,
+                    )
+                else:
+                    _store_asr_artifacts(ep, artifacts, recipe)
                 asr_elapsed = time.monotonic() - _asr_started_at
                 runtime_log.append(
                     transcribe_seconds=asr_elapsed,
@@ -4714,6 +5309,238 @@ class ProviderTranscriptDiarizeStage:
         return stats
 
 
+def _chapter_llm_backend(ctx):
+    """Build one policy-aware chapter backend per run, cached on the shared context."""
+
+    backend = getattr(ctx, "chapter_llm_backend", None)
+    if backend is None:
+        from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+
+        backend = LiteLLMBackend(LLMBackendConfig.from_env(), storage=ctx.storage)
+        ctx.chapter_llm_backend = backend
+    return backend
+
+
+def _write_chapter_json(storage, key: str, value: dict) -> str:
+    """Upload a bounded generated-chapter artifact without exposing its local temp path."""
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "chapter-artifact.json"
+        path.write_text(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+        return storage.put_file(key, path, "application/json")
+
+
+def _chapter_job_result(backend, job):
+    """Submit once and poll/reconcile once; leave longer waits to the deferred sweep."""
+
+    from citypods.compute.base import JobHandle, JobResult
+
+    result = backend.run_inference(job)
+    if isinstance(result, JobHandle):
+        completed = backend.reconcile(result)
+        if isinstance(completed, JobResult):
+            return completed
+        return result
+    return result
+
+
+class AgendaChapterCandidatesStage:
+    """Extract source-grounded agenda candidates through the production Mistral route."""
+
+    name = "chapter_agenda"
+    version = CHAPTER_AGENDA_PIPELINE_VERSION
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.chapter_artifacts import artifact_key
+        from citypods.chapter_jobs import build_agenda_job, finalize_agenda_job
+        from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
+
+        stats = StageStats(self.name)
+        if ctx.dry_run or ctx.storage is None:
+            return stats
+        for ep in _materialize_set(
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+            work_class="chapter-agenda",
+        ):
+            uid = ep.uid or ep.guid
+            source_artifact = (ep.links or {}).get("agenda_text_artifact_key")
+            if not uid or not source_artifact:
+                stats.defer("missing-agenda-artifact")
+                continue
+            raw = _read_storage_bytes(ctx.storage, source_artifact)
+            if raw is None:
+                stats.defer("missing-agenda-artifact")
+                continue
+            agenda_text = raw.decode("utf-8", errors="replace")
+            source_hash = hashlib.sha256(raw).hexdigest()
+            try:
+                job = build_agenda_job(
+                    episode_uid=uid,
+                    agenda_text=agenda_text,
+                    agenda_source_hash=source_hash,
+                    deadline_at=getattr(ctx, "chapter_llm_deadline", None),
+                )
+                if ctx.stop is not None and ctx.stop():
+                    stats.defer("stop-signal")
+                    continue
+                result = _chapter_job_result(_chapter_llm_backend(ctx), job)
+                from citypods.compute.base import JobHandle, JobResult
+
+                if isinstance(result, JobHandle):
+                    ep.generated_agenda_candidates = {
+                        "status": "pending",
+                        "recipe": job.recipe_hash,
+                        "model": AGENDA_PRODUCTION_MODEL,
+                        "source_hash": source_hash,
+                        "job_ref": result.ref,
+                    }
+                    stats.defer("llm-pending")
+                    continue
+                if not isinstance(result, JobResult):
+                    stats.errors.append(f"{uid}: unexpected agenda job result")
+                    continue
+                artifact = finalize_agenda_job(
+                    result,
+                    episode_uid=uid,
+                    agenda_text=agenda_text,
+                    agenda_source_hash=source_hash,
+                )
+                key = artifact_key("agenda", uid, artifact.recipe)
+                url = _write_chapter_json(ctx.storage, key, artifact.to_dict())
+                ep.generated_agenda_candidates = {
+                    **artifact.to_dict(),
+                    "artifact_key": key,
+                    "artifact_url": url,
+                }
+                stats.ran += 1
+            except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort lane
+                stats.errors.append(f"{uid}: agenda chapter extraction: {exc}")
+        return stats
+
+
+class ChapterBoundaryLocatorStage:
+    """Locate agenda candidates in the complete timed transcript."""
+
+    name = "chapter_locator"
+    version = CHAPTER_LOCATOR_PIPELINE_VERSION
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.chapter_artifacts import AgendaCandidatesArtifact, artifact_key
+        from citypods.chapter_jobs import build_locator_job, finalize_locator_job
+        from citypods.chapter_locator import build_locator_units
+
+        stats = StageStats(self.name)
+        if ctx.dry_run or ctx.storage is None:
+            return stats
+        for ep in _materialize_set(
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+            work_class="chapter-locator",
+        ):
+            uid = ep.uid or ep.guid
+            raw_agenda = ep.generated_agenda_candidates or {}
+            if not uid or raw_agenda.get("status") not in {"completed", "accepted"}:
+                stats.defer("agenda-not-complete")
+                continue
+            words = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+            vtt = _read_storage_bytes(ctx.storage, ep.transcript_key)
+            units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
+            if not units:
+                stats.defer("missing-timed-transcript")
+                continue
+            try:
+                agenda = AgendaCandidatesArtifact.from_dict(raw_agenda)
+                selected_data = words if unit_source == "words" else vtt
+                transcript_hash = hashlib.sha256(selected_data or b"").hexdigest()
+                job = build_locator_job(
+                    episode_uid=uid,
+                    agenda=agenda,
+                    transcript_hash=transcript_hash,
+                    units=units,
+                    deadline_at=getattr(ctx, "chapter_llm_deadline", None),
+                )
+                if ctx.stop is not None and ctx.stop():
+                    stats.defer("stop-signal")
+                    continue
+                result = _chapter_job_result(_chapter_llm_backend(ctx), job)
+                from citypods.compute.base import JobHandle, JobResult
+
+                if isinstance(result, JobHandle):
+                    raw_agenda = dict(raw_agenda)
+                    raw_agenda.update(
+                        {
+                            "locator_status": "pending",
+                            "locator_recipe": job.recipe_hash,
+                            "locator_job_ref": result.ref,
+                        }
+                    )
+                    ep.generated_agenda_candidates = raw_agenda
+                    stats.defer("llm-pending")
+                    continue
+                if not isinstance(result, JobResult):
+                    stats.errors.append(f"{uid}: unexpected locator job result")
+                    continue
+                boundary = finalize_locator_job(
+                    result,
+                    episode_uid=uid,
+                    agenda=agenda,
+                    transcript_hash=transcript_hash,
+                    units=units,
+                )
+                boundary_key = artifact_key("boundary", uid, boundary.recipe)
+                boundary_url = _write_chapter_json(ctx.storage, boundary_key, boundary.to_dict())
+                items = {item.index: item for item in agenda.items}
+                generated = []
+                for anchor in boundary.anchors:
+                    item = items.get(anchor.get("agenda_item_index"))
+                    start = anchor.get("start")
+                    # BoundaryResultArtifact schema ensures start is always set, but guard
+                    # defensively so a malformed persisted anchor cannot cause a TypeError in
+                    # episode_public_chapters (which calls float(start) unconditionally).
+                    if item is None or item.status != "accepted" or start is None:
+                        continue
+                    generated.append(
+                        {
+                            "start": start,
+                            "title": item.title,
+                            "agenda_item_index": item.index,
+                            "display_ref": item.display_ref,
+                            "evidence_text": item.evidence_text,
+                            "unit_id": anchor.get("unit_id"),
+                            "transition_quote": anchor.get("transition_quote"),
+                            "basis": anchor.get("basis", "served"),
+                            "generated": True,
+                            "model": boundary.model,
+                            "prompt_version": boundary.prompt_version,
+                            "artifact_key": boundary_key,
+                        }
+                    )
+                ep.generated_chapters = generated
+                ep.generated_chapters_spec_hash = boundary.recipe
+                ep.generated_agenda_candidates = {
+                    **dict(raw_agenda),
+                    "locator_status": "completed",
+                    "boundary_artifact_key": boundary_key,
+                    "boundary_artifact_url": boundary_url,
+                    "transcript_unit_source": unit_source,
+                }
+                stats.ran += 1
+            except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort lane
+                stats.errors.append(f"{uid}: chapter locator: {exc}")
+        return stats
+
+
 def default_stages() -> list[EnrichmentStage]:
     """Ordered: audio-affecting stages must precede ``audio`` so a change re-encodes;
     feed-only stages (``links``) follow it. This is the full list — used by a one-shot
@@ -4798,6 +5625,9 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     "align": frozenset({"transcript"}),
     "diarize": frozenset({"diarize"}),
     "tag": frozenset({"tags"}),
+    "chapter-agenda": frozenset({"chapter_agenda"}),
+    "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
+    "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
 }
 
 

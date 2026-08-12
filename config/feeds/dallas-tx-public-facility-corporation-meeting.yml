@@ -4,6 +4,10 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Public Facility Corporation Meeting"
+lifecycle:
+  status: paused
+  recheck_after: 2026-11-30
+  reason: "appears lumpy"
 podcast_title: "Dallas: Public Facility Corporation Meeting"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

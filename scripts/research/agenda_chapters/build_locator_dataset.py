@@ -33,6 +33,7 @@ except ImportError:  # direct script invocation from this directory
     from audit_chapters import BenchmarkSample, collect_benchmark_cohort
     from build_locator_benchmark import duration_bucket, select_locator_samples
 
+from citypods.agenda_text import classify_agenda_text
 from citypods.bodies import body_key, canonical_body
 from citypods.chapter_titles import assess_agenda_item_extractor_response
 from citypods.config import load_city_configs, load_site_config
@@ -64,13 +65,9 @@ def _body_key(sample: BenchmarkSample) -> str:
 
 def _artifact_class(text: str) -> str:
     """Classify known unusable/partial agenda sidecars without rejecting valid short agendas."""
-    normalized = " ".join(text.casefold().split())
-    if not normalized:
-        return "empty"
-    if "documentviewer.php" in normalized or "loading" in normalized:
-        return "viewer-placeholder"
-    if "not currently published" in normalized:
-        return "unpublished-placeholder"
+    shared_class = classify_agenda_text(text)
+    if shared_class != "complete":
+        return shared_class
     if len(text.encode("utf-8")) >= 50_000:
         return "cap-suspected"
     # A short, ordinary cancellation notice can be valid, so length alone is not an exclusion.

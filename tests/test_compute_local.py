@@ -80,6 +80,8 @@ class TestInterface:
             "tag",
             "soundbite-select",
             "classify-civic-platforms",
+            "agenda-item-extract",
+            "agenda-chapter-locate",
         }
 
     def test_make_compute_defaults_to_local(self):

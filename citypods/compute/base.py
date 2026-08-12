@@ -34,6 +34,8 @@ Task = Literal[
     "tag",
     "soundbite-select",
     "classify-civic-platforms",
+    "agenda-item-extract",
+    "agenda-chapter-locate",
 ]
 
 

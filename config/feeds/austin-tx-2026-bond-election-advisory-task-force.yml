@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://austintx.new.swagit.com/views/117/2026-bond-election-advisory-task-force
   body: "2026 Bond Election Advisory Task Force"
+lifecycle:
+  status: dormant
+  reason: "Temporary board"
 podcast_title: "Austin: Bond Election Advisory Task Force (2026)"
 podcast_author: "City of Austin, TX"
 podcast_email: ""

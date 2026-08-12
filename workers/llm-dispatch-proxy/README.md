@@ -18,7 +18,8 @@ The HTTP API is intentionally asynchronous:
 2. `GET /v1/requests/{id}` returns `202` while pending and returns the upstream OpenAI-shaped JSON
    with `200` after completion.
 3. `GET /v1/models` advertises the Worker's configured default route (`MODEL_ID`).
-4. `GET /v1/queue/estimate?model=<canonical model>` reports the current pending backlog for that model.
+4. `GET /v1/queue/estimate?model=<canonical model or configured alias>` reports the current pending
+   backlog for that logical model and returns its canonical key.
 5. `GET /healthz` is an unauthenticated liveness check and does not inspect R2.
 
 `stream: true` is rejected. The Worker never returns provider error bodies, request prompts, API keys,
@@ -35,18 +36,28 @@ Provider/account/route data is **not** Wrangler config any more — it's compile
 no network call, so the deployed artifact always matches what's committed). Each provider block gives
 its own `api_base`/`chat_path` and one or more `accounts` (each with an `api_key_env` naming a Worker
 secret); each route in `routes:` maps a canonical `model` (the same string the Python `ROUTES` table
-uses) to one `provider`/`account_id`/`upstream_model` plus its own `rpm`/`rpd`/`tpm`/pricing. Two
+uses) to one `provider`/`account_id`/`upstream_model` plus its own `rpm`/`rpd`/`tpm`/pricing. A route
+may declare `model_key` when its provider-qualified selector is an alias for a shared logical model;
+the compiler emits `model_aliases` and the Worker canonicalizes both chat requests and queue
+estimates before route lookup. Two
 accounts of the same provider (e.g. `project_primary`/`project_secondary` for Gemini) compile to two
 separate `route_id`s with **independent ledger entries** — this is what makes account rotation real:
 exhausting one account's window rolls dispatch onto the other rather than blocking the model.
 
 `dispatchOne`'s route selection ranks a request's candidate routes free-before-paid, then cheapest,
-checks each against `state/dispatch_budget.json` (R2, per-`route_id` minute/day counters, optional
-cost fields, `inflight` reservations, and a reactive `blocked_until`, mirroring
+checks each against `state/dispatch_budget.json` (R2, per-`route_id` request pacing/day counters,
+optional cost fields, `inflight` reservations, and a reactive `blocked_until`, mirroring
 `citypods/compute/llm_budget.py`'s shape), and reserves the first with real
 capacity. A request whose caller disallowed paid and whose model has no free route left fails
 permanently; one that's merely temporarily out of capacity is left `pending` for a later tick — never
 silently dispatched on a fallback default.
+
+RPM is interpreted as a continuous pace: `rpm: 60` means the next submission is eligible one second
+after the previous reservation, rather than allowing a burst of 60 requests at a wall-clock minute
+boundary. A provider-level `rpm` in `config/provider_limits.yml` is shared by every model and account
+for that provider; a route-level `rpm` remains an additional model/account gate. The compiler carries
+provider settings into `dispatch_limits.json` and the Python route catalog, so the pacing values are
+configuration data rather than provider-specific Worker logic.
 
 **Auto-discovery of a provider's live model/pricing catalog (OpenRouter today) is opt-in and
 maintainer-run only** — `python scripts/compile_llm_limits.py --discover openrouter` (or bare
@@ -96,7 +107,7 @@ Cloudflare deployment secrets as the existing media proxy.
 ## Scheduling lanes
 
 Each scheduled invocation claims up to `MAX_TOTAL_REQUESTS` records in batches of
-`BATCH_CONCURRENCY`, subject to the route ledger and the effective deadline. Fast-lane requests are
+`BATCH_CONCURRENCY`, subject to the route/provider pacing ledgers and the effective deadline. Fast-lane requests are
 ordered before long-lane requests so a backlog of quick calls drains first, except that a fresh run
 reserves one first-batch slot for a long request that can fit. With the deployed values, the long-lane
 start window is `820 - 720 - 20 = 80` seconds: starting it in that first batch lets the remaining

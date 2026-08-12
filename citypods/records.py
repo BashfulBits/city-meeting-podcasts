@@ -36,7 +36,7 @@ from typing import Literal
 
 from citypods.availability import MediaAvailability
 from citypods.bodies import body_key, canonical_body, rank_by_body
-from citypods.chapters import episode_served_chapters
+from citypods.chapters import episode_public_chapters, episode_served_chapters
 from citypods.durations import (
     episode_duration_hours,
     episode_served_duration_seconds,
@@ -194,7 +194,8 @@ def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
 
 
 def source_key(city: City) -> str:
-    """Stable id for a city's media source, ignoring the per-board ``body`` filter, so the
+    """Stable id for a city's media source, ignoring per-feed body selectors and one-off
+    inclusions, so the
     combined feed and every per-board feed of one city share one record store + audio object.
 
     ``source_id`` is the provider-migration seam: once pinned to the pre-migration key it keeps
@@ -202,7 +203,7 @@ def source_key(city: City) -> str:
     """
     if city.source_id:
         return city.source_id
-    src = {k: v for k, v in city.source.items() if k != "body"}
+    src = {k: v for k, v in city.source.items() if k not in {"body", "body_any", "body_includes"}}
     raw = f"{city.provider}|{json.dumps(src, sort_keys=True)}"
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
@@ -521,7 +522,12 @@ def audio_object_key(city: City, ep: Episode, spec: str) -> str:
     return f"{city.provider}/{source_key(city)}/{ep.uid}-{spec}.m4a"
 
 
-def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
+def feed_content_hash(
+    episodes: list[Episode],
+    fingerprint: str,
+    *,
+    include_generated_chapters: bool = False,
+) -> str:
     """Hash of the render-relevant fields of the (filtered+capped) feed. Drives the
     re-render skip. Includes notes/summary/links/chapters so an enrichment change re-renders.
 
@@ -541,7 +547,9 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
             e.transcript_synced,
             e.transcript_basis,
             sorted((e.links or {}).items()),
-            episode_served_chapters(e),
+            episode_public_chapters(e, include_generated=include_generated_chapters),
+            e.generated_chapters,
+            e.generated_chapters_spec_hash,
             e.chapters_basis,
             episode_source_duration_seconds(e),
             episode_served_duration_seconds(e),
@@ -551,7 +559,12 @@ def feed_content_hash(episodes: list[Episode], fingerprint: str) -> str:
         ]
         for e in sorted(episodes, key=lambda e: e.uid or "")
     ]
-    blob = json.dumps([fingerprint, payload], separators=(",", ":"), sort_keys=True, default=str)
+    blob = json.dumps(
+        [fingerprint, bool(include_generated_chapters), payload],
+        separators=(",", ":"),
+        sort_keys=True,
+        default=str,
+    )
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
@@ -571,6 +584,8 @@ def meeting_page_hash(ep: Episode) -> str:
         "chapter_tags": ep.chapter_tags,
         "links": sorted((ep.links or {}).items()),
         "chapters": episode_served_chapters(ep),
+        "generated_chapters": ep.generated_chapters,
+        "generated_chapters_spec_hash": ep.generated_chapters_spec_hash,
         "chapters_basis": ep.chapters_basis,
         "transcript_url": ep.transcript_hosted_url,
         "transcript_format": ep.transcript_format,
@@ -1123,6 +1138,11 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             words_key = transcript.get("words_key")
             if words_key:
                 keys.add(words_key)
+            comparison = transcript.get("asr_comparison") or {}
+            if isinstance(comparison, dict):
+                for field in ("key", "words_key"):
+                    if comparison.get(field):
+                        keys.add(comparison[field])
             speakers_key = (rec.get("speakers") or {}).get("key")
             if speakers_key:
                 keys.add(speakers_key)
@@ -1130,14 +1150,29 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             if isinstance(provider_transcript, dict):
                 for slot in ("known_good", "candidate"):
                     artifact = provider_transcript.get(slot) or {}
-                    if isinstance(artifact, dict) and artifact.get("key"):
-                        keys.add(artifact["key"])
+                    if isinstance(artifact, dict):
+                        for field in (
+                            "key",
+                            "words_key",
+                            "aligned_key",
+                            "aligned_words_key",
+                        ):
+                            if artifact.get(field):
+                                keys.add(artifact[field])
                 for artifact in provider_transcript.get("history") or []:
-                    if isinstance(artifact, dict) and artifact.get("key"):
-                        keys.add(artifact["key"])
+                    if isinstance(artifact, dict):
+                        for field in ("key", "words_key", "aligned_key", "aligned_words_key"):
+                            if artifact.get(field):
+                                keys.add(artifact[field])
             for link_key, link_value in (rec.get("links") or {}).items():
                 if link_key.endswith("_artifact_key") and isinstance(link_value, str):
                     keys.add(link_value)
+            generated = rec.get("generated_agenda_candidates") or {}
+            if isinstance(generated, dict):
+                for artifact_field in ("artifact_key", "boundary_artifact_key"):
+                    artifact_key = generated.get(artifact_field)
+                    if isinstance(artifact_key, str) and artifact_key:
+                        keys.add(artifact_key)
     return keys
 
 
@@ -1154,6 +1189,9 @@ def episode_to_record(ep: Episode) -> dict:
         "source_chapters": ep.source_chapters or None,
         "chapters": ep.chapters,
         "chapters_basis": ep.chapters_basis,
+        "generated_agenda_candidates": ep.generated_agenda_candidates or None,
+        "generated_chapters": ep.generated_chapters or None,
+        "generated_chapters_spec_hash": ep.generated_chapters_spec_hash,
         "summary": ep.summary,
         "tags": ep.tags or None,
         "chapter_tags": ep.chapter_tags or None,
@@ -1167,8 +1205,9 @@ def episode_to_record(ep: Episode) -> dict:
             "url": ep.agenda_text_url,
             "attempts": ep.agenda_text_attempts,
             "last_attempt": ep.agenda_text_last_attempt,
+            "quality": ep.agenda_text_quality or None,
         }
-        if ep.agenda_text_url or ep.agenda_text_attempts
+        if ep.agenda_text_url or ep.agenda_text_attempts or ep.agenda_text_quality
         else None,
         "agenda_backup": {
             "url": ep.agenda_backup_url,
@@ -1201,6 +1240,10 @@ def episode_to_record(ep: Episode) -> dict:
             "synced": ep.transcript_synced,
             "words_key": ep.transcript_words_key,
             "words_url": ep.transcript_words_url,
+            "text_source": ep.transcript_text_source,
+            "timing_source": ep.transcript_timing_source,
+            "selection": ep.transcript_selection,
+            "asr_comparison": ep.transcript_asr_comparison or None,
             "pipeline_version": ep.transcript_pipeline_version,
             "timeout_attempts": ep.transcript_timeout_attempts,
             "timeout_last_attempt": ep.transcript_timeout_last_attempt,
@@ -1216,6 +1259,7 @@ def episode_to_record(ep: Episode) -> dict:
             or ep.transcript_words_url
             or ep.transcript_timeout_attempts
             or ep.transcript_media_error
+            or ep.transcript_asr_comparison
         )
         else None,
         # Provider/city-supplied source transcript registry.  Separate from the active
@@ -1286,6 +1330,12 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_synced": bool(t.get("synced", False)),
         "transcript_words_key": t.get("words_key"),
         "transcript_words_url": t.get("words_url"),
+        "transcript_text_source": t.get("text_source"),
+        "transcript_timing_source": t.get("timing_source"),
+        "transcript_selection": t.get("selection"),
+        "transcript_asr_comparison": (
+            t.get("asr_comparison") if isinstance(t.get("asr_comparison"), dict) else {}
+        ),
         "transcript_pipeline_version": t.get("pipeline_version"),
         "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
         "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),
@@ -1413,6 +1463,9 @@ def record_to_episode(rec: dict) -> Episode:
         agenda_text_url=agenda.get("url"),
         agenda_text_attempts=_coerce_non_negative_int(agenda.get("attempts")),
         agenda_text_last_attempt=agenda.get("last_attempt"),
+        agenda_text_quality=(
+            agenda.get("quality") if isinstance(agenda.get("quality"), dict) else {}
+        ),
         agenda_backup_url=backup.get("url"),
         agenda_backup_attempts=_coerce_non_negative_int(backup.get("attempts")),
         agenda_backup_last_attempt=backup.get("last_attempt"),
@@ -1425,6 +1478,15 @@ def record_to_episode(rec: dict) -> Episode:
         minutes_roster=roster.get("members") if isinstance(roster.get("members"), list) else [],
         source_chapters=rec.get("source_chapters") or [],
         chapters=rec.get("chapters") or [],
+        generated_agenda_candidates=(
+            rec.get("generated_agenda_candidates")
+            if isinstance(rec.get("generated_agenda_candidates"), dict)
+            else {}
+        ),
+        generated_chapters=(
+            rec.get("generated_chapters") if isinstance(rec.get("generated_chapters"), list) else []
+        ),
+        generated_chapters_spec_hash=rec.get("generated_chapters_spec_hash"),
         provider_transcript=(
             rec.get("provider_transcript")
             if isinstance(rec.get("provider_transcript"), dict)
@@ -1606,6 +1668,9 @@ ARTIFACT_BLOCKS: frozenset[str] = frozenset(
         "tags_llm_recipe_hash",
         "tags_spec_hash",
         "tags_input_fingerprint",
+        "generated_agenda_candidates",
+        "generated_chapters",
+        "generated_chapters_spec_hash",
     }
 )
 PLANNING_FIELDS: frozenset[str] = frozenset(
@@ -1643,6 +1708,17 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
             "tags_input_fingerprint",
         }
     ),
+    "chapter-agenda": frozenset({"generated_agenda_candidates"}),
+    "chapter-locator": frozenset(
+        {"generated_agenda_candidates", "generated_chapters", "generated_chapters_spec_hash"}
+    ),
+    "chapter": frozenset(
+        {
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
+        }
+    ),
 }
 
 _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
@@ -1653,6 +1729,9 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     "align": frozenset({"transcript"}),
     "diarize": frozenset({"diarize"}),
     "tag": frozenset({"tags"}),
+    "chapter-agenda": frozenset({"chapter_agenda"}),
+    "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
+    "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
 }
 
 
@@ -1807,7 +1886,7 @@ def merge_preserving_foreign(
                         merged_status[stage_name] = status
                 rec["stage_completion"] = merged_status
             for block in protected:
-                if remote_rec.get(block):
+                if block in remote_rec:
                     rec[block] = remote_rec[block]
             _preserve_remote_served_duration_if_protected(rec, remote_rec, protected)
             _preserve_remote_planning_if_better(rec, remote_rec, protected)
@@ -1870,7 +1949,11 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
             ep.transcript_synced = transcript_fields["transcript_synced"]
             ep.transcript_words_key = transcript_fields["transcript_words_key"]
             ep.transcript_words_url = transcript_fields["transcript_words_url"]
+            ep.transcript_text_source = transcript_fields["transcript_text_source"]
+            ep.transcript_timing_source = transcript_fields["transcript_timing_source"]
+            ep.transcript_selection = transcript_fields["transcript_selection"]
             ep.transcript_pipeline_version = transcript_fields["transcript_pipeline_version"]
+        ep.transcript_asr_comparison = transcript_fields.get("transcript_asr_comparison", {})
         ep.transcript_timeout_attempts = transcript_fields.get("transcript_timeout_attempts", 0)
         ep.transcript_timeout_last_attempt = transcript_fields.get(
             "transcript_timeout_last_attempt"
@@ -1915,6 +1998,9 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.agenda_text_url = agenda.get("url")
         ep.agenda_text_attempts = _coerce_non_negative_int(agenda.get("attempts"))
         ep.agenda_text_last_attempt = agenda.get("last_attempt")
+        ep.agenda_text_quality = (
+            agenda.get("quality") if isinstance(agenda.get("quality"), dict) else {}
+        )
         ep.agenda_backup_url = backup.get("url")
         ep.agenda_backup_attempts = _coerce_non_negative_int(backup.get("attempts"))
         ep.agenda_backup_last_attempt = backup.get("last_attempt")
@@ -1928,6 +2014,15 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.source_chapters = rec.get("source_chapters") or ep.source_chapters
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)
+        persisted_agenda_candidates = rec.get("generated_agenda_candidates")
+        if isinstance(persisted_agenda_candidates, dict):
+            ep.generated_agenda_candidates = persisted_agenda_candidates
+        persisted_generated = rec.get("generated_chapters")
+        if isinstance(persisted_generated, list):
+            ep.generated_chapters = persisted_generated
+        ep.generated_chapters_spec_hash = rec.get(
+            "generated_chapters_spec_hash", ep.generated_chapters_spec_hash
+        )
         ep.tags = rec.get("tags") or ep.tags
         ep.chapter_tags = rec.get("chapter_tags") or ep.chapter_tags
         ep.llm_tag_candidates = rec.get("llm_tag_candidates") or ep.llm_tag_candidates

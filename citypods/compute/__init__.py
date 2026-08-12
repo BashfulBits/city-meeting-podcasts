@@ -35,6 +35,7 @@ from citypods.compute.dispatch import (
     DispatchCoordinator,
     DispatchTarget,
     reconcile_compute,
+    requeue_failed_work_leases,
     select_backend,
 )
 from citypods.compute.llm import LiteLLMBackend
@@ -118,6 +119,7 @@ __all__ = [
     "JobHandle",
     "JobResult",
     "LocalBackend",
+    "requeue_failed_work_leases",
     "LiteLLMBackend",
     "ProcessLocalBackend",
     "Task",

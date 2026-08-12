@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://addisontx.new.swagit.com/views/128
   body: "Town Meetings"
+lifecycle:
+  status: dormant
+  reason: "old body name"
 podcast_title: "Addison: Town Meetings"
 podcast_author: "City of Addison, TX"
 podcast_email: ""

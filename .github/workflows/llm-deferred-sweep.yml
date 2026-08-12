@@ -46,6 +46,7 @@ jobs:
       - name: Reconcile pending deferred/dispatched LLM requests
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}

@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://addisontx.new.swagit.com/views/128
   body: "City Council"
+  body_any:
+    - "Work Session"
+    - "Work Session and Regular Meeting"
 podcast_title: "Addison: City Council"
 podcast_author: "City of Addison, TX"
 podcast_email: ""

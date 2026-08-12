@@ -4,6 +4,8 @@ provider: swagit
 source:
   list_url: https://addisontx.new.swagit.com/views/128
   body: "Board of Zoning Adjustment"
+  body_any:
+    - "Board of Appeals"
 podcast_title: "Addison: Board of Zoning Adjustment"
 podcast_author: "City of Addison, TX"
 podcast_email: ""

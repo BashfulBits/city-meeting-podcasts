@@ -19,18 +19,20 @@ if str(_REPO_ROOT) not in sys.path:
 
 
 def _runtime_config():
-    from scripts.compute.beam_app import GPU, RUNTIME_ENV, RUNTIME_SECRETS, image
+    from scripts.compute.beam_app import GPU, MEMORY, RUNTIME_ENV, RUNTIME_SECRETS, image
 
-    return GPU, RUNTIME_ENV, RUNTIME_SECRETS, image
+    return GPU, MEMORY, RUNTIME_ENV, RUNTIME_SECRETS, image
 
 
-GPU, RUNTIME_ENV, RUNTIME_SECRETS, image = _runtime_config()
+GPU, MEMORY, RUNTIME_ENV, RUNTIME_SECRETS, image = _runtime_config()
 
 
 @function(
     name="citypods-beam-worker-canary",
     image=image,
     gpu=GPU,
+    cpu=1.0,
+    memory=MEMORY,
     secrets=RUNTIME_SECRETS,
     env=RUNTIME_ENV,
     timeout=24 * 3600,

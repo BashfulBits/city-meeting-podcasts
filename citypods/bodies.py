@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import collections
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TypeVar
 
@@ -84,9 +85,129 @@ def body_key(body: str | None) -> str:
     return " ".join(words)
 
 
-def matches(body: str | None, needle: str) -> bool:
-    """True if ``needle`` matches ``body``, tolerant of spelling/case/plural variants."""
-    return body_key(needle) in body_key(body)
+BodySelector = str | Sequence[str] | None
+
+
+@dataclass(frozen=True)
+class BodyInclusion:
+    """One exact provider row allowed outside a feed's normal body selectors."""
+
+    provider_guid: str
+    body: str
+
+
+def source_body_filter(source: Mapping[str, object]) -> BodySelector:
+    """Return the body selector configured for one feed source.
+
+    ``body`` remains the primary selector for existing feeds. ``body_any`` adds explicit
+    alternatives without broadening a substring filter to unrelated bodies that happen to share
+    words such as ``City Council``.
+    """
+    primary = source.get("body")
+    additional = source.get("body_any")
+    if additional is None:
+        return primary if isinstance(primary, str) and primary.strip() else None
+    if (
+        not isinstance(additional, list)
+        or not additional
+        or any(not isinstance(value, str) or not value.strip() for value in additional)
+    ):
+        raise ValueError("source.body_any must be a non-empty list of non-empty strings")
+    selectors = []
+    if isinstance(primary, str) and primary.strip():
+        selectors.append(primary)
+    selectors.extend(additional)
+    return tuple(selectors) or None
+
+
+def source_body_inclusions(source: Mapping[str, object]) -> tuple[BodyInclusion, ...]:
+    """Return exact provider rows configured as one-off feed inclusions.
+
+    The expected body label is retained with the provider GUID so audits can recognize a later
+    occurrence of the same out-of-band label and report whether it has a known one-off precedent.
+    """
+    raw = source.get("body_includes")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ValueError("source.body_includes must be a list of mappings")
+    inclusions: list[BodyInclusion] = []
+    seen: set[str] = set()
+    for index, item in enumerate(raw):
+        if not isinstance(item, Mapping):
+            raise ValueError(f"source.body_includes[{index}] must be a mapping")
+        provider_guid = item.get("provider_guid")
+        body = item.get("body")
+        if not isinstance(provider_guid, str) or not provider_guid.strip():
+            raise ValueError(
+                f"source.body_includes[{index}].provider_guid must be a non-empty string"
+            )
+        if not isinstance(body, str) or not body.strip():
+            raise ValueError(f"source.body_includes[{index}].body must be a non-empty string")
+        provider_guid = provider_guid.strip()
+        if provider_guid in seen:
+            raise ValueError(
+                f"source.body_includes contains duplicate provider_guid {provider_guid!r}"
+            )
+        seen.add(provider_guid)
+        inclusions.append(BodyInclusion(provider_guid=provider_guid, body=body.strip()))
+    return tuple(inclusions)
+
+
+def _selectors(needle: BodySelector) -> tuple[str, ...]:
+    if needle is None:
+        return ()
+    if isinstance(needle, str):
+        return (needle,) if needle.strip() else ()
+    return tuple(value for value in needle if isinstance(value, str) and value.strip())
+
+
+def matches(body: str | None, needle: BodySelector) -> bool:
+    """True if any configured selector matches ``body``."""
+    body_key_value = body_key(body)
+    return any(body_key(selector) in body_key_value for selector in _selectors(needle))
+
+
+def matches_exact_body_label(body: str | None, expected: str) -> bool:
+    """True for an exact normalized label or a provider-duplicated copy of that label."""
+    actual_words = body_key(body).split()
+    expected_words = body_key(expected).split()
+    if not actual_words or not expected_words or len(actual_words) % len(expected_words):
+        return False
+    repetitions = len(actual_words) // len(expected_words)
+    return actual_words == expected_words * repetitions
+
+
+def _included_guids(inclusions: Iterable[BodyInclusion]) -> set[str]:
+    return {inclusion.provider_guid for inclusion in inclusions}
+
+
+def _provider_guid(item: object) -> str | None:
+    if isinstance(item, Mapping):
+        for key in ("provider_guid", "video_guid", "guid"):
+            value = item.get(key)
+            if isinstance(value, str):
+                return value
+        return None
+    for key in ("guid", "video_guid"):
+        value = getattr(item, key, None)
+        if isinstance(value, str):
+            return value
+    return None
+
+
+def record_matches_body(
+    record: Mapping[str, object],
+    body: BodySelector,
+    inclusions: Iterable[BodyInclusion] = (),
+) -> bool:
+    """Apply normal selectors or an exact provider-GUID inclusion to a persisted record."""
+    inclusions = tuple(inclusions)
+    if not _selectors(body) and not inclusions:
+        return True
+    return matches(record.get("body"), body) or _provider_guid(record) in _included_guids(
+        inclusions
+    )
 
 
 def is_excluded(body: str | None, exclude: list[str]) -> bool:
@@ -94,10 +215,15 @@ def is_excluded(body: str | None, exclude: list[str]) -> bool:
     return any(matches(body, term) for term in exclude)
 
 
-def filter_by_body(episodes: list[Episode], body: str | None) -> list[Episode]:
-    if not body:
+def filter_by_body(
+    episodes: list[Episode],
+    body: BodySelector,
+    inclusions: Iterable[BodyInclusion] = (),
+) -> list[Episode]:
+    included_guids = _included_guids(inclusions)
+    if not _selectors(body) and not included_guids:
         return episodes
-    return [e for e in episodes if matches(e.body, body)]
+    return [e for e in episodes if matches(e.body, body) or _provider_guid(e) in included_guids]
 
 
 def rank_by_body(

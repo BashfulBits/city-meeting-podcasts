@@ -10,6 +10,12 @@ source:
   feed_url: https://example.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
   # Optional: filter a mixed feed to one board/commission (see `citypods bodies <slug>`).
   # body: "City Council"
+  # Optional: add explicit alternative provider labels to the same feed.
+  # body_any: ["Special Called City Council Meeting"]
+  # Optional: include exact provider rows outside the body selectors (one-off naming exceptions).
+  # body_includes:
+  #   - provider_guid: "https://example.granicus.com/MediaPlayer.php?view_id=2&clip_id=1234"
+  #     body: "Work Session"
 # Provider migration only: pin this to the feed's existing computed source key before changing
 # provider/source so the append-only archive stays in one namespace. See review/37.
 # source_id: 0123456789ab

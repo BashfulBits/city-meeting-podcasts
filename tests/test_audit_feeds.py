@@ -971,6 +971,19 @@ def test_reconcile_grouped_creates_new_issue_with_count_in_title():
     assert "[feed-health] drift: 1 feed" in create_calls[0]
 
 
+def test_reconcile_agenda_quality_adds_human_verification_label():
+    f = _finding(slug="cityA", check="agenda-quality", msg="repeated ambiguity")
+    calls = _run_reconcile([f], existing_issues={}, now=_NOW)
+    create_calls = [a for a in calls if len(a) >= 2 and a[1] == "create"]
+    assert create_calls
+    assert {
+        "signal:feed-health",
+        "type:operations",
+        "severity:warn",
+        "needs:human-verification",
+    } <= set(create_calls[0])
+
+
 def test_reconcile_grouped_empty_findings_do_not_open_issue():
     f = _finding(slug="cityA", check="empty", msg="only 1 episode")
     calls = _run_reconcile([f], existing_issues={}, now=_NOW)
