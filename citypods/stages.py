@@ -3102,6 +3102,31 @@ def _has_word_timing_vtt(content: bytes) -> bool:
     return any(_VTT_WORD_TIMESTAMP_RE.finditer(content.decode("utf-8-sig", errors="replace")))
 
 
+def _provider_alignment_artifact_is_reusable(artifact: dict) -> bool:
+    """Return whether a computed provider alignment may be reused under the current recipe.
+
+    Cue-timed VTT/SRT source documents are already governed by their explicit cue timestamps, so
+    their existing computed artifacts remain reusable across this TXT-only recipe change. Plain
+    TXT sources require the current marker because their new coarse-window interpretation changes
+    the stable-ts inputs; missing markers are legacy and therefore stale.
+    """
+    source_format = str(artifact.get("format") or "").lower()
+    return source_format in {"vtt", "srt"} or (
+        artifact.get("align_pipeline_version") == PROVIDER_ALIGN_PIPELINE_VERSION
+    )
+
+
+def _provider_alignment_source_format(registry: object) -> str | None:
+    """Return the source format selected by the provider registry, if one is available."""
+    if not isinstance(registry, dict):
+        return None
+    for artifact in (registry.get("candidate"), registry.get("known_good")):
+        if isinstance(artifact, dict) and artifact.get("key"):
+            source_format = str(artifact.get("format") or "").lower()
+            return source_format or None
+    return None
+
+
 def _provider_vtt_words_json(content: bytes, *, basis: str = "served") -> bytes | None:
     """Convert inline word-timed VTT into the shared word-sidecar shape.
 
@@ -4304,10 +4329,7 @@ class TranscriptStage:
             )
             if artifact is None:
                 return False
-            if (
-                artifact.get("align_pipeline_version") is not None
-                and artifact.get("align_pipeline_version") != PROVIDER_ALIGN_PIPELINE_VERSION
-            ):
+            if not _provider_alignment_artifact_is_reusable(artifact):
                 return False
             key = artifact.get("aligned_key")
             words_key = artifact.get("aligned_words_key")
@@ -4574,6 +4596,8 @@ class TranscriptStage:
                         str(ep.transcript_pipeline_version or "").startswith("provider-align:")
                         and ep.transcript_pipeline_version
                         != f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+                        and _provider_alignment_source_format(provider_registry)
+                        not in {"vtt", "srt"}
                     )
                     if provider_align_stale:
                         # A provider-align pipeline change can alter the alignment inputs (for

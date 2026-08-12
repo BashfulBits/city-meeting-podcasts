@@ -42,6 +42,7 @@ from citypods.stages import (
     TranscriptStage,
     _asr_fits_remaining_budget,
     _asr_timeout_seconds,
+    _provider_alignment_artifact_is_reusable,
     _provider_alignment_inputs,
     _provider_source_text,
     _provider_transcript_probe_due,
@@ -274,6 +275,18 @@ class TestTranscriptStageASRStubbed:
 
 
 class TestTranscriptStageVTT:
+    def test_legacy_txt_provider_alignment_is_not_reused(self):
+        assert not _provider_alignment_artifact_is_reusable({"format": "txt"})
+        assert not _provider_alignment_artifact_is_reusable(
+            {"format": "txt", "align_pipeline_version": "2"}
+        )
+
+    @pytest.mark.parametrize("source_format", ["vtt", "srt"])
+    def test_legacy_cue_timed_provider_alignment_remains_reusable(self, source_format):
+        assert _provider_alignment_artifact_is_reusable(
+            {"format": source_format, "align_pipeline_version": "2"}
+        )
+
     def test_word_timed_vtt_keeps_leading_unmarked_words_and_align_text_strips_markers(self):
         words = json.loads(_provider_vtt_words_json(WORD_VTT_WITH_LEADING_TEXT).decode())
         assert [word["w"] for word in words["segments"][0]["words"]] == ["Hello", "world"]
