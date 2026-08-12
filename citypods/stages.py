@@ -4552,6 +4552,7 @@ class TranscriptStage:
                                             "text": _at,
                                             "model": _asr_model,
                                             "language": city.asr_language or None,
+                                            "compute_type": city.asr_compute_type,
                                             "cpu_threads": cpu_threads,
                                         },
                                         recipe_hash=_recipe,
