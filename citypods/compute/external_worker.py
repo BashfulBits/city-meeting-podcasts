@@ -1994,6 +1994,8 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
         text: str,
         align_spec: str,
         tracker: ResourceTracker,
+        *,
+        timed_segments: list[dict] | None = None,
     ):
         return self._run_local_inference_with_timeout(
             item,
@@ -2007,6 +2009,7 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
                     "language": city.asr_language or None,
                     "compute_type": city.asr_compute_type,
                     "cpu_threads": self.config.cpu_threads,
+                    "timed_segments": timed_segments,
                 },
                 recipe_hash=align_spec,
             ),

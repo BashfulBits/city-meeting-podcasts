@@ -971,6 +971,39 @@ def test_internal_timing_without_handoff_keeps_backstop_only(monkeypatch):
     assert timing.estimated_fits_backstop(100.0) == (True, 100.0)
 
 
+def test_internal_worker_align_passes_timed_segments_to_local_inference(tmp_path, monkeypatch):
+    worker = _internal_worker(tmp_path)
+    captured = {}
+    result = object()
+
+    def _capture(item, ep, job, tracker):
+        captured["job"] = job
+        return result
+
+    monkeypatch.setattr(worker, "_run_local_inference_with_timeout", _capture)
+    city = SimpleNamespace(
+        asr_model="large-v3-turbo",
+        asr_language="en",
+        asr_compute_type="int8",
+    )
+    ep = SimpleNamespace(uid="a", guid="a", duration=3600.0)
+    timed_segments = [{"start": 2.0, "end": 5.0, "text": "Hello world"}]
+
+    actual = worker._align_provider_text(
+        _queued("a"),
+        city,
+        ep,
+        tmp_path / "audio.m4a",
+        "Hello world",
+        "recipe",
+        ew.ResourceTracker(),
+        timed_segments=timed_segments,
+    )
+
+    assert actual is result
+    assert captured["job"].inputs["timed_segments"] == timed_segments
+
+
 def test_internal_worker_timeout_records_backoff_and_defers(tmp_path, monkeypatch):
     terminated = {"value": False}
     timeout_markers: list[str] = []
