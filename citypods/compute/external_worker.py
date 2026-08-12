@@ -40,7 +40,6 @@ The canonical worker env vars parsed here are:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -101,6 +100,7 @@ from citypods.stages import (
     PROVIDER_NATIVE_PIPELINE_VERSION,
     TRANSCRIPT_MIME,
     _adopt_asr_keys,
+    _alignment_input_hash,
     _asr_object_key,
     _asr_recipe_hash,
     _asr_words_object_key,
@@ -110,8 +110,8 @@ from citypods.stages import (
     _provider_align_object_key,
     _provider_align_spec_hash,
     _provider_align_words_object_key,
+    _provider_alignment_inputs,
     _provider_native_words_object_key,
-    _provider_source_text,
     _provider_transcript_artifact,
     _provider_transcript_object_key,
     _provider_transcript_promote_candidate,
@@ -1483,10 +1483,12 @@ class ExternalTranscribeWorker:
                 source_path.parent,
             ):
                 return False
-            text = _provider_source_text(content, str(provider.get("format") or "txt"))
+            text, timed_segments = _provider_alignment_inputs(
+                ep, content, str(provider.get("format") or "txt")
+            )
             if not text:
                 raise RuntimeError(f"empty provider source {provider['key']}")
-            text_hash = hashlib.sha1(text.encode()).hexdigest()[:12]
+            text_hash = _alignment_input_hash(text, timed_segments)
             align_inputs = {**provider, "text_hash": text_hash, "model": city.asr_model}
             align_spec = _provider_align_spec_hash(ep, align_inputs)
             uid = ep.uid or ep.guid
@@ -1501,7 +1503,14 @@ class ExternalTranscribeWorker:
                 _download_audio_file(ep.hosted_audio_url, audio_path)
                 tracker.record("after-audio-download")
                 artifacts = self._align_provider_text(
-                    item, city, ep, audio_path, text, align_spec, tracker
+                    item,
+                    city,
+                    ep,
+                    audio_path,
+                    text,
+                    align_spec,
+                    tracker,
+                    timed_segments=timed_segments,
                 )
                 if not persist_results:
                     return False
@@ -1656,6 +1665,8 @@ class ExternalTranscribeWorker:
         text: str,
         align_spec: str,
         tracker: ResourceTracker,
+        *,
+        timed_segments: list[dict] | None = None,
     ):
         """Run provider-wording alignment; the internal worker overrides the deadline policy."""
         job = InferenceJob(
@@ -1667,10 +1678,12 @@ class ExternalTranscribeWorker:
                 "language": city.asr_language or None,
                 "compute_type": city.asr_compute_type,
                 "cpu_threads": self.config.cpu_threads,
+                "timed_segments": timed_segments,
             },
             recipe_hash=align_spec,
         )
         tracker.record("before-asr")
+        align_kwargs = {"timed_segments": timed_segments} if timed_segments else {}
         if hasattr(self, "local_backend"):
             artifacts = self.local_backend.run_inference(job).output
         else:
@@ -1683,6 +1696,7 @@ class ExternalTranscribeWorker:
                 city.asr_language or None,
                 self.config.cpu_threads,
                 city.asr_compute_type,
+                **align_kwargs,
             )
         tracker.record("after-asr")
         return artifacts

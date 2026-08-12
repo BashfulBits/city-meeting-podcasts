@@ -351,6 +351,7 @@ def align(
     *,
     vad: bool = True,
     fast_mode: bool = True,
+    timed_segments: list[dict] | None = None,
 ) -> TranscriptArtifacts:
     """Force-align *text* to *audio_path* using stable-ts; return a ``TranscriptArtifacts``
     (segment WebVTT + word-level JSON sidecar).
@@ -377,13 +378,33 @@ def align(
     else:
         wm = model_or_name  # pre-loaded instance
 
-    result = wm.align(
-        str(audio_path),
-        text,
-        language=language or "en",
-        vad=vad,
-        fast_mode=fast_mode,
-    )
+    mode = "constrained" if timed_segments else "full"
+    cue_count = len(timed_segments) if timed_segments else 0
+    if timed_segments:
+        window_start = min(float(cue["start"]) for cue in timed_segments)
+        window_end = max(float(cue["end"]) for cue in timed_segments)
+        window_label = f" window_start_s={window_start:.3f} window_end_s={window_end:.3f}"
+    else:
+        window_label = ""
+    print(f"[asr] align mode={mode} cue_count={cue_count}{window_label}", flush=True)
+
+    if timed_segments:
+        # stable-ts can skip the global text-to-audio search when each cue already has a
+        # trustworthy time window.  The windows must be in the same (served) time basis as the
+        # audio; callers remap provider/source cues before passing them here.
+        result = wm.align_words(
+            str(audio_path),
+            timed_segments,
+            language=language or "en",
+        )
+    else:
+        result = wm.align(
+            str(audio_path),
+            text,
+            language=language or "en",
+            vad=vad,
+            fast_mode=fast_mode,
+        )
 
     # Quality check: count words that received a valid timestamp.
     total_words = sum(len(seg.words) for seg in result.segments if hasattr(seg, "words"))
@@ -407,7 +428,17 @@ def align(
 
     # Segment-level VTT (clean cue-per-utterance) for the podcast tag; word JSON sidecar
     # from the same aligned result for server-side features.
-    vtt_str: str = result.to_vtt(segment_level=True, word_level=False)
+    # stable-ts 2.19.x exposes ``to_srt_vtt(..., vtt=True)``; retain the older ``to_vtt``
+    # spelling for test doubles/older compatible builds so a completed inference cannot be lost
+    # during serialization.
+    to_vtt = getattr(result, "to_vtt", None)
+    if callable(to_vtt):
+        vtt_str: str = to_vtt(segment_level=True, word_level=False)
+    else:
+        to_srt_vtt = getattr(result, "to_srt_vtt", None)
+        if not callable(to_srt_vtt):
+            raise AttributeError("stable-ts result has neither to_vtt nor to_srt_vtt")
+        vtt_str = to_srt_vtt(segment_level=True, word_level=False, vtt=True)
     if not vtt_str.startswith("WEBVTT"):
         vtt_str = "WEBVTT\n\n" + vtt_str
     # H15 Layer 1: reuse the gate's own `coverage` (identical semantics to the pass/fail check

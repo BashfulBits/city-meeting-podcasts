@@ -51,6 +51,9 @@ def _run_job(asr, job: InferenceJob) -> JobResult:
             inp["cpu_threads"],
         )
     elif job.task == "align":
+        align_kwargs = {}
+        if inp.get("timed_segments"):
+            align_kwargs["timed_segments"] = inp["timed_segments"]
         output = asr.align(
             inp["audio_path"],
             inp["text"],
@@ -58,6 +61,7 @@ def _run_job(asr, job: InferenceJob) -> JobResult:
             inp["language"],
             inp["cpu_threads"],
             inp.get("compute_type", "int8"),
+            **align_kwargs,
         )
     else:
         raise ValueError(f"process-local backend does not implement task {job.task!r}")
