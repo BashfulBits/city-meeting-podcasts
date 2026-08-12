@@ -207,13 +207,19 @@ def main(argv: list[str] | None = None) -> int:
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
-            signature = _capacity_signature(handle)
+            reconciled_handle = _with_sweep_deadline(handle, deadline_at)
+            deferred = reconciled_handle.deferred_request
+            # A queue-only tag handle remains pending immediately after a successful Worker
+            # submission. That is durable acceptance, not evidence that runner-side provider
+            # capacity is exhausted; never let it suppress the rest of the queued tag backlog.
+            queue_only = isinstance(deferred, DeferredLLMRequest) and deferred.policy.queue_only
+            signature = None if queue_only else _capacity_signature(reconciled_handle)
             if signature in exhausted_capacity:
                 skipped_by_pool[signature] = skipped_by_pool.get(signature, 0) + 1
                 continue
             seen_pending.add(handle.recipe_hash)
             try:
-                result = backend.reconcile(_with_sweep_deadline(handle, deadline_at))
+                result = backend.reconcile(reconciled_handle)
             except Exception as exc:  # noqa: BLE001 -- one bad record must not abort the sweep
                 failed += 1
                 print(f"llm-deferred-sweep: {handle.recipe_hash} failed: {exc}", file=sys.stderr)

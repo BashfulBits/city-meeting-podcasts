@@ -111,7 +111,7 @@ def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
     )
 
     policy = LLMRequestPolicy(
-        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="topic-tags"
+        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="generic-llm-work"
     )
     handles = [
         JobHandle(
@@ -179,7 +179,9 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
         )
 
     handles = [
-        _handle_for("recipe-tag", task="tag", structured_output="topic-tags", purpose="topic-tags"),
+        _handle_for(
+            "recipe-tag", task="tag", structured_output="topic-tags", purpose="generic-llm-work"
+        ),
         _handle_for(
             "recipe-classify",
             task="classify",
@@ -208,6 +210,51 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
     # exhausted -- the second is skipped purely on the shared route pool, despite its different
     # task/structured_output/purpose.
     assert reconciled == ["recipe-tag"]
+
+
+def test_sweep_does_not_skip_durable_topic_tag_submissions(monkeypatch):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot, **_kw: 0,
+    )
+    policy = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="topic-tags"
+    )
+    handles = [
+        JobHandle(
+            task="tag",
+            recipe_hash=f"recipe-{idx}",
+            backend="litellm",
+            ref=f"deferred:recipe-{idx}",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},), policy=policy
+            ),
+        )
+        for idx in range(3)
+    ]
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+    )
+
+    reconciled = []
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, handle):
+            assert handle.deferred_request.policy.queue_only is True
+            reconciled.append(handle.recipe_hash)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert reconciled == ["recipe-0", "recipe-1", "recipe-2"]
 
 
 def test_capacity_signature_normalizes_none_allowed_models_to_every_route():
