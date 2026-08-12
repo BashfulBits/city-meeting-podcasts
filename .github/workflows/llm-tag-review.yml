@@ -72,6 +72,7 @@ jobs:
           # guessable title string.
           title="R5 unified tag calibration digest"
           existing=$(gh issue list --state open --label llm-calibration-review \
+            --limit 500 \
             --json number,title \
             | jq -r '[.[] | select(.title == "R5 unified tag calibration digest" or .title == "R5 LLM tag calibration digest")] | .[0].number // empty')
           if [ -z "$existing" ]; then
@@ -99,6 +100,7 @@ jobs:
             body_file=$(printf '%s' "$row" | jq -r '.body_file')
             title="R5 unified tag sample $candidate_id"
             existing_child=$(gh issue list --state open --label llm-calibration-review \
+              --limit 500 \
               --json number,title \
               | jq -r --arg candidate_id "$candidate_id" '[.[] | select(.title == ("R5 unified tag sample " + $candidate_id) or .title == ("R5 LLM tag sample " + $candidate_id))] | .[0].number // empty')
             if [ -n "$existing_child" ]; then

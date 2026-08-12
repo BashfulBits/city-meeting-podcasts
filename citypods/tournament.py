@@ -449,6 +449,12 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                 "decisions": decisions,
             }
         )
+        # A resolved comparison is needed only to resume an interrupted six-way sample. Once the
+        # result has been durably appended, retain its decision in that result and release the
+        # per-comparison checkpoint so the state file cannot grow for every historical sample.
+        comparison_store = state.setdefault("comparisons", {})
+        for decision in decisions:
+            comparison_store.pop(str(decision["comparison_id"]), None)
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
         push_state(storage, state_dir, only_paths=[STATE])

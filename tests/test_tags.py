@@ -139,6 +139,35 @@ def test_rule_phrase_audit_surfaces_include_and_exclude_hits():
         ("include", "housing supply"),
         ("exclude", "not housing supply"),
     }
+    assert all(item["match_count"] >= 1 for item in observations)
+    assert all(len(item["match_texts"]) <= 3 for item in observations)
+
+
+def test_prelabeler_excerpt_keeps_transcript_order_across_evidence():
+    from citypods.tags import _prelabel_source_excerpt
+
+    chapter = {
+        "chapter_id": "ch-1",
+        "title": "Housing",
+        "agenda_text": "",
+        "transcript_text": "early item\nlate item",
+        "transcript_segments": [
+            {"start": 0.0, "end": 1.0, "text": "early item"},
+            {"start": 90.0, "end": 91.0, "text": "late item"},
+        ],
+    }
+    excerpt = _prelabel_source_excerpt(
+        {
+            "evidence": [
+                {"where": "transcript", "quote": "late item", "start": 90.0, "end": 91.0},
+                {"where": "transcript", "quote": "early item", "start": 0.0, "end": 1.0},
+            ]
+        },
+        chapter,
+        fallback_agenda="",
+        fallback_transcript="",
+    )
+    assert excerpt.index("early item") < excerpt.index("late item")
 
 
 def test_prelabeler_excerpt_centers_tail_evidence():

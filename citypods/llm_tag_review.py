@@ -91,7 +91,7 @@ def collect_candidates(state_dir: Path, config_dir: str, site_config: dict) -> l
 def collect_rule_audits(state_dir: Path, config_dir: str, site_config: dict) -> list[dict]:
     """Collect deterministic include/exclude observations without making them review subjects."""
     audits: list[dict] = []
-    seen: set[tuple[str, str, str, str, str, str, str, str]] = set()
+    seen: set[tuple[str, str, str, str, str, str, str]] = set()
     cities = load_city_configs(config_dir, site_config.get("defaults", {}))
     for city in cities:
         for record in load_records(state_dir, source_key(city)).values():
@@ -114,7 +114,6 @@ def collect_rule_audits(state_dir: Path, config_dir: str, site_config: dict) -> 
                         str(observation.get("tag_id") or ""),
                         str(observation.get("kind") or ""),
                         str(observation.get("pattern") or ""),
-                        str(observation.get("match_text") or ""),
                         str(observation.get("where") or ""),
                     )
                     if identity in seen:

@@ -780,8 +780,20 @@ class TagsStage:
                     "attempted_at": datetime.now(UTC).isoformat(),
                 }
             )
-            # One invocation is one durable event. The timestamp is deliberately part of the id so
-            # a retry of the same recipe is visible rather than silently collapsed.
+            # Rule observations are deterministic for a recipe/scope and can be re-encountered
+            # while an unrelated evaluator call is pending. Keep one such audit instead of
+            # copying the same telemetry into the record on every scheduled run.
+            if purpose == "topic-tags:rules" and any(
+                prior.get("purpose") == purpose
+                and prior.get("recipe_hash") == recipe_hash
+                and prior.get("scope") == payload.get("scope")
+                and prior.get("chapter_id") == payload.get("chapter_id")
+                for prior in episode.tags_llm_call_attempts
+                if isinstance(prior, dict)
+            ):
+                return
+            # One model invocation is one durable event. Bound this sidecar because records are
+            # restored wholesale; candidate history itself remains append-only for audit.
             payload["attempt_id"] = (
                 "tag-attempt-"
                 + hashlib.sha1(
@@ -791,7 +803,7 @@ class TagsStage:
             episode.tags_llm_call_attempts = [
                 *episode.tags_llm_call_attempts,
                 payload,
-            ]
+            ][-200:]
 
         # Load the taxonomy + calibration state at most ONCE for the whole run (cached on `ctx`,
         # which is the same object across every one of this lane's per-episode process() calls --
@@ -1032,14 +1044,57 @@ class TagsStage:
                     stats.reused += 1
                 continue
 
+            def project_visible_tags(
+                candidates: list[dict[str, Any]], annotations: list[dict[str, Any]]
+            ) -> list[dict[str, Any]]:
+                """Project the active ledger consistently after every state transition."""
+                projectable = [
+                    candidate
+                    for candidate in candidates
+                    if candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")
+                ]
+                visible = (
+                    visible_candidates(
+                        projectable, config=evaluation_config, state=evaluation_state
+                    )
+                    if projectable
+                    else []
+                )
+                episode_tags = merge_tag_sources(
+                    [], [tag for tag in visible if not tag.get("chapter_id")]
+                )
+                for annotation in annotations:
+                    annotation["tags"] = merge_tag_sources(
+                        [],
+                        [
+                            tag
+                            for tag in visible
+                            if tag.get("chapter_id") == annotation["chapter_id"]
+                        ],
+                    )
+                return rollup_tags(episode_tags, annotations, taxonomy)
+
+            def rule_audit_for(
+                tags: list[dict[str, Any]], agenda: str, transcript: str
+            ) -> list[dict[str, Any]]:
+                # `tag_episode(..., include_rule_metadata=True)` already scanned includes to
+                # produce rule evidence. Reuse those observations and scan only excludes here.
+                includes = [
+                    observation
+                    for tag in tags
+                    for observation in tag.get("rule_audit", [])
+                    if isinstance(observation, dict)
+                ]
+                return includes + rule_phrase_audit(agenda, transcript, taxonomy, include=False)
+
             rule_tags = tag_episode(
                 titles + "\n" + agenda_text,
                 transcript_text,
                 taxonomy,
                 include_rule_metadata=True,
             )
-            episode_rule_audit = rule_phrase_audit(
-                titles + "\n" + agenda_text, transcript_text, taxonomy
+            episode_rule_audit = rule_audit_for(
+                rule_tags, titles + "\n" + agenda_text, transcript_text
             )
             if episode_rule_audit:
                 remember_call_attempt(
@@ -1061,10 +1116,10 @@ class TagsStage:
                     taxonomy,
                     include_rule_metadata=True,
                 )
-                chapter_rule_audit = rule_phrase_audit(
+                chapter_rule_audit = rule_audit_for(
+                    chapter_rules,
                     chapter["title"] + "\n" + chapter.get("agenda_text", ""),
                     chapter.get("transcript_text", ""),
-                    taxonomy,
                 )
                 if chapter_rule_audit:
                     remember_call_attempt(
@@ -1217,33 +1272,12 @@ class TagsStage:
                 not in {str(item.get("candidate_id") or "") for item in rule_candidates}
             ]
             candidate_tags = rule_candidates + candidate_tags
-            projectable_candidates = [
-                candidate
-                for candidate in candidate_tags
-                if candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")
-            ]
             # Visibility is a pure projection of whatever candidates are already on hand, not of
             # whether *this* run can dispatch a new LLM call: gating it on ``llm_enabled`` would
             # strip already-admitted candidates from ``ep.tags``/``ep.chapter_tags`` the moment
             # tagging is disabled or a dry run has no live backend, even though candidate_tags
             # (preserved above) is untouched.
-            visible_all = (
-                visible_candidates(
-                    projectable_candidates, config=evaluation_config, state=evaluation_state
-                )
-                if projectable_candidates
-                else []
-            )
-            merged_episode = merge_tag_sources(
-                [],
-                [tag for tag in visible_all if not tag.get("chapter_id")],
-            )
-            for annotation in chapter_annotations:
-                chapter_visible = [
-                    tag for tag in visible_all if tag.get("chapter_id") == annotation["chapter_id"]
-                ]
-                annotation["tags"] = merge_tag_sources([], chapter_visible)
-            final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
+            final_tags = project_visible_tags(candidate_tags, chapter_annotations)
             final_hash = projection_hash if completed_llm_recipe == llm_recipe else rules_hash
             if llm_enabled and completed_llm_recipe != llm_recipe and chapters:
                 if ctx.stop is not None and ctx.stop():
@@ -1280,6 +1314,7 @@ class TagsStage:
                         # indistinguishable from a genuinely stuck run: both showed "no tracked
                         # work active" for the heartbeat's whole run. This is the one call in the
                         # tag lane actually worth tracking (network round trip + pacing waits).
+                        tag_call_metadata: dict[str, Any] = {}
                         with PROGRESS.track(
                             source=city.slug,
                             uid=str(ep.uid or ep.guid),
@@ -1304,10 +1339,8 @@ class TagsStage:
                                 # across minute windows instead of bursting one window and
                                 # stopping.
                                 deadline_at=ctx.tag_llm_deadline,
+                                call_metadata_out=tag_call_metadata,
                             )
-                        tag_call_metadata = dict(
-                            getattr(llm_tag_suggestions, "last_call_metadata", {}) or {}
-                        )
                         remember_call_attempt(
                             ep,
                             purpose="topic-tags:tagger",
@@ -1360,28 +1393,7 @@ class TagsStage:
                             # rollout persists only chapter candidates alongside fresh rule rows.
                             candidate_tags = rule_candidates + chapter_candidates
                             completed_llm_recipe = llm_recipe
-                            visible_all = visible_candidates(
-                                [
-                                    candidate
-                                    for candidate in candidate_tags
-                                    if candidate.get("source_kind", "llm") == "rule"
-                                    or candidate.get("chapter_id")
-                                ],
-                                config=evaluation_config,
-                                state=evaluation_state,
-                            )
-                            merged_episode = merge_tag_sources(
-                                [],
-                                [tag for tag in visible_all if not tag.get("chapter_id")],
-                            )
-                            for annotation in chapter_annotations:
-                                extra = [
-                                    tag
-                                    for tag in visible_all
-                                    if tag.get("chapter_id") == annotation["chapter_id"]
-                                ]
-                                annotation["tags"] = merge_tag_sources([], extra)
-                            final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
+                            final_tags = project_visible_tags(candidate_tags, chapter_annotations)
                             final_hash = projection_hash
                     except Exception as exc:  # noqa: BLE001 — one bad model reply is item-local
                         remember_call_attempt(
@@ -1389,9 +1401,7 @@ class TagsStage:
                             purpose="topic-tags:tagger",
                             recipe_hash=llm_recipe,
                             status="error",
-                            metadata=dict(
-                                getattr(llm_tag_suggestions, "last_call_metadata", {}) or {}
-                            ),
+                            metadata=tag_call_metadata,
                             model=llm_route,
                             reason=str(exc)[:500],
                         )
@@ -1443,6 +1453,7 @@ class TagsStage:
                             ).encode()
                         ).hexdigest()[:16]
                         try:
+                            prelabel_call_metadata: dict[str, Any] = {}
                             with PROGRESS.track(
                                 source=city.slug,
                                 uid=str(ep.uid or ep.guid),
@@ -1463,10 +1474,8 @@ class TagsStage:
                                     model=prelabeler_model,
                                     prompt_version=prelabeler_prompt_version,
                                     deadline_at=ctx.tag_llm_deadline,
+                                    call_metadata_out=prelabel_call_metadata,
                                 )
-                            prelabel_call_metadata = dict(
-                                getattr(llm_prelabel_candidates, "last_call_metadata", {}) or {}
-                            )
                             remember_call_attempt(
                                 ep,
                                 purpose="topic-tags:prelabeler",
@@ -1501,9 +1510,7 @@ class TagsStage:
                                 purpose="topic-tags:prelabeler",
                                 recipe_hash=prelabel_recipe,
                                 status="error",
-                                metadata=dict(
-                                    getattr(llm_prelabel_candidates, "last_call_metadata", {}) or {}
-                                ),
+                                metadata=prelabel_call_metadata,
                                 model=prelabeler_model,
                                 reason=str(exc)[:500],
                             )
@@ -1512,29 +1519,7 @@ class TagsStage:
             # Re-project after the evaluator attempt. This is intentionally cheap and makes the
             # overlay a pure function of the persisted ledger + calibration state; a deferred or
             # failed evaluator therefore leaves the previous display decision intact.
-            projectable_candidates = [
-                candidate
-                for candidate in candidate_tags
-                if candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")
-            ]
-            visible_all = visible_candidates(
-                projectable_candidates,
-                config=evaluation_config,
-                state=evaluation_state,
-            )
-            merged_episode = merge_tag_sources(
-                [], [tag for tag in visible_all if not tag.get("chapter_id")]
-            )
-            for annotation in chapter_annotations:
-                annotation["tags"] = merge_tag_sources(
-                    [],
-                    [
-                        tag
-                        for tag in visible_all
-                        if tag.get("chapter_id") == annotation["chapter_id"]
-                    ],
-                )
-            final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
+            final_tags = project_visible_tags(candidate_tags, chapter_annotations)
 
             if llm_enabled and completed_llm_recipe == llm_recipe:
                 candidate_tags = [

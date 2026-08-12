@@ -87,6 +87,7 @@ jobs:
             numbers=$(jq -nc --arg n "$n" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "schedule" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             numbers=$(gh issue list --state open --label llm-calibration-review \
+              --limit 500 \
               --json number,title --jq '[.[] | select(.title | test("^R5 (LLM tag|unified tag) sample ")) | .number]')
           fi
           echo "numbers=$numbers" >> "$GITHUB_OUTPUT"
@@ -211,6 +212,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           parents=$(gh issue list --state open --label llm-calibration-review \
+            --limit 500 \
             --json number,title \
             --jq '[.[] | select(.title == "R5 LLM tag calibration digest" or .title == "R5 unified tag calibration digest")] | .[].number')
           for parent in $parents; do

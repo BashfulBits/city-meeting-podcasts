@@ -1,10 +1,15 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from citypods.r5_benchmark import (
     CHAPTER_PIPELINE_VERSION,
     PRELABELER_PROMPT_VERSION,
     TAG_PROMPT_VERSION,
+    _digest,
+    _execution_complete,
     _run_compatible,
+    _run_pairwise,
     compute_metrics,
     create_dataset,
     labels_template,
@@ -213,6 +218,50 @@ def test_benchmark_metrics_do_not_mark_pending_execution_route_eligible():
     assert metrics["human_review_complete"] is True
     assert metrics["execution_complete"] is False
     assert metrics["route_selection_eligible"] is False
+
+
+def test_pairwise_retries_pending_comparisons_and_completion_waits_for_them(monkeypatch):
+    import citypods.r5_benchmark as benchmark
+
+    dataset = {"examples": [_example("e1")]}
+    run = {
+        "run_id": "run-1",
+        "taggers": {
+            "a": {"examples": {"e1": {"status": "resolved", "tags": []}}},
+            "b": {"examples": {"e1": {"status": "resolved", "tags": []}}},
+        },
+        "prelabeler": {"examples": {"e1": {"status": "resolved"}}},
+        "pairwise": {
+            "results": [
+                {
+                    "comparison_id": _digest(["run-1", "e1", "a", "b", "judge"]),
+                    "status": "pending",
+                }
+            ]
+        },
+    }
+    assert _execution_complete(run, dataset) is False
+    calls = []
+    monkeypatch.setattr(benchmark, "_backend", lambda *_args: object())
+    monkeypatch.setattr(
+        benchmark,
+        "pairwise_judge",
+        lambda *_args, **kwargs: (calls.append(kwargs["recipe_hash"]) or {"winner": "a"}, False),
+    )
+    _run_pairwise(
+        run=run,
+        dataset=dataset,
+        taxonomy=_taxonomy(),
+        storage=None,
+        models=("a", "b"),
+        judge_model="judge",
+        sample_size=1,
+        allow_paid=False,
+        deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+    )
+    assert len(calls) == 2
+    assert len(run["pairwise"]["results"]) == 2
+    assert _execution_complete(run, dataset) is True
 
 
 def test_benchmark_reports_prelabeler_precision_by_source_kind_and_requires_approval():

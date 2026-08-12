@@ -346,7 +346,7 @@ def apply_admission(
             ),
             None,
         )
-        if override and override.get("decision") != "correct":
+        if basis == "calibrated" and override and override.get("decision") != "correct":
             # A human rejection of a likely-correct evaluator result means suppress the candidate;
             # a rejection of likely-incorrect means restore the tagger baseline. Ambiguous keeps
             # the conservative public baseline rather than trusting the evaluator suppression.
@@ -357,7 +357,7 @@ def apply_admission(
             else:
                 value["display"] = tagger_display
             value["prelabeler_basis"] = "human_override"
-        elif override and override.get("decision") == "correct":
+        elif basis == "calibrated" and override and override.get("decision") == "correct":
             value["prelabeler_basis"] = "human_override"
     else:
         value.setdefault("prelabeler_basis", "unqualified")
@@ -1027,8 +1027,9 @@ def render_digest(
         "# R5 unified tag calibration weekly digest",
         "",
         f"Generated: {generated_at}",
-        f"Candidates observed: {len(candidates)} · admitted: {admitted} · "
-        f"not displayed: {len(candidates) - admitted}",
+        f"Candidates observed: {len(tagger_candidates)} · admitted: {admitted} · "
+        f"not displayed: {len(tagger_candidates) - admitted} · "
+        f"overlay audits: {len(prelabel_candidates)}",
         f"Review batch: {len(selected)} · tagger gate: {config.minimum_reviews}/"
         f"{config.required_precision:.1%} · pre-labeler gate: {config.prelabeler_minimum_reviews}/"
         f"{config.prelabeler_required_precision:.1%}",
@@ -1157,7 +1158,7 @@ def render_digest(
             if observation.get("kind") == "exclude"
             else observed_include_counts
         )
-        target[key] = target.get(key, 0) + 1
+        target[key] = target.get(key, 0) + int(observation.get("match_count") or 1)
     # Older records have no rule-observation sidecar. Preserve their positive-match report using
     # candidate provenance, while newer records get exact include/exclude hit counts.
     audited_tag_ids = {key[0] for key in observed_include_counts}

@@ -306,6 +306,7 @@ def _run_taggers(
                 }
             )
             try:
+                metadata: dict[str, Any] = {}
                 _episode_tags, chapter_tags, pending, resolved_model = llm_tag_suggestions(
                     backend,
                     taxonomy=taxonomy,
@@ -318,8 +319,8 @@ def _run_taggers(
                     allow_paid=allow_paid,
                     purpose="r5-benchmark:tag",
                     deadline_at=deadline_at,
+                    call_metadata_out=metadata,
                 )
-                metadata = dict(getattr(llm_tag_suggestions, "last_call_metadata", {}) or {})
                 elapsed_ms = round((time.monotonic() - started) * 1000, 1)
                 if pending:
                     model_run["examples"][example_id] = {
@@ -415,6 +416,7 @@ def _run_prelabeler(
             }
         )
         try:
+            metadata: dict[str, Any] = {}
             assessments, pending, resolved_model = llm_prelabel_candidates(
                 backend,
                 candidates=subjects,
@@ -425,6 +427,7 @@ def _run_prelabeler(
                 prompt_version=PRELABELER_PROMPT_VERSION,
                 allow_paid=allow_paid,
                 deadline_at=deadline_at,
+                call_metadata_out=metadata,
             )
             for candidate_id, assessment in assessments.items():
                 subject = next(
@@ -435,7 +438,6 @@ def _run_prelabeler(
                     assessment["id"] = subject.get("id")
                     assessment["source_model"] = subject.get("provider_model")
                     assessment["source_kind"] = subject.get("source_kind", "llm")
-            metadata = dict(getattr(llm_prelabel_candidates, "last_call_metadata", {}) or {})
             entry = {
                 "status": "pending" if pending else "resolved",
                 "provider_model": resolved_model or model,
@@ -477,11 +479,21 @@ def _run_pairwise(
     )
     pairwise["judge_model"] = judge_model
     pairwise["sample_size"] = sample_size
-    existing = {
+    resolved_ids = {
         str(item.get("comparison_id"))
         for item in pairwise.get("results", [])
-        if isinstance(item, dict)
+        if isinstance(item, dict) and item.get("status") == "resolved"
     }
+
+    def store(entry: dict[str, Any]) -> None:
+        """Replace a retry result in place so a comparison has one durable row."""
+        results = pairwise["results"]
+        for index, item in enumerate(results):
+            if isinstance(item, dict) and item.get("comparison_id") == entry["comparison_id"]:
+                results[index] = entry
+                return
+        results.append(entry)
+
     taggers = run.get("taggers") or {}
     judge_backend = _backend(judge_model, storage)
     selected_examples = dataset.get("examples", [])[: max(0, sample_size)]
@@ -503,7 +515,7 @@ def _run_pairwise(
             right_tags = [blind_candidate(item) for item in right_result.get("tags") or []]
             for first, second in order_swapped_pairs(left, right):
                 comparison_id = _digest([run["run_id"], example_id, first, second, judge_model])
-                if comparison_id in existing:
+                if comparison_id in resolved_ids:
                     continue
                 first_tags = left_tags if first == left else right_tags
                 second_tags = right_tags if second == right else left_tags
@@ -527,21 +539,21 @@ def _run_pairwise(
                         allow_paid=allow_paid,
                         candidate_models=(left, right),
                     )
-                    pairwise["results"].append(
-                        {
-                            "comparison_id": comparison_id,
-                            "example_id": example_id,
-                            "left_model": left,
-                            "right_model": right,
-                            "first_model": first,
-                            "second_model": second,
-                            "status": "pending" if pending else "resolved",
-                            "decision": decision,
-                        }
-                    )
-                    existing.add(comparison_id)
+                    entry = {
+                        "comparison_id": comparison_id,
+                        "example_id": example_id,
+                        "left_model": left,
+                        "right_model": right,
+                        "first_model": first,
+                        "second_model": second,
+                        "status": "pending" if pending else "resolved",
+                        "decision": decision,
+                    }
+                    store(entry)
+                    if entry["status"] == "resolved":
+                        resolved_ids.add(comparison_id)
                 except Exception as exc:  # noqa: BLE001 — preserve tagger metrics on judge failure
-                    pairwise["results"].append(
+                    store(
                         {
                             "comparison_id": comparison_id,
                             "example_id": example_id,
@@ -553,7 +565,6 @@ def _run_pairwise(
                             "error": str(exc)[:500],
                         }
                     )
-                    existing.add(comparison_id)
 
 
 def _latest_run(state: dict[str, Any], sample_digest: str) -> dict[str, Any] | None:
@@ -1200,9 +1211,10 @@ def approve(*, site_config_path: str, output_dir: str, actor: str) -> int:
     metrics = compute_metrics(state, taxonomy)
     if not metrics.get("benchmark_complete"):
         raise ValueError("cannot approve an incomplete R5 benchmark")
+    approved_run = _latest_run(state, str((state.get("dataset") or {}).get("sample_digest") or ""))
     state["approval"] = {
         "sample_digest": (state.get("dataset") or {}).get("sample_digest"),
-        "run_id": (state.get("runs") or [])[-1].get("run_id") if state.get("runs") else None,
+        "run_id": (approved_run or {}).get("run_id"),
         "approved_by": actor.strip(),
         "approved_at": _utc_now(),
     }

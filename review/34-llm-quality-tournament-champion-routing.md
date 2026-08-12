@@ -300,9 +300,10 @@ the switch (and clears itself) via an Action, never automatically or silently. T
 R13's shipped adapter using the identical `LLMRequestPolicy` pattern every other caller uses, and composes
 with, rather than duplicates, review/35's ground-truth calibration matrix.
 
-## Proposed GitHub issues (not filed — batch review pending)
+## Remaining proposed GitHub issue (not filed — batch review pending)
 
-1. Tournament: reusable round-robin pairwise comparison, weekly cadence, bias mitigation (order-swap, tie
-   policy, human-calibration check).
-2. Weekly champion-stats GitHub issue + checkbox-approval Action (quality, cost, back-catalog-cost,
+The reusable tournament engine and R5 runner are implemented in `citypods/tournament.py`; it remains
+human-approved and cannot change production routing. The remaining slice is:
+
+1. Weekly champion-stats GitHub issue + checkbox-approval Action (quality, cost, back-catalog-cost,
    apply-and-clear).

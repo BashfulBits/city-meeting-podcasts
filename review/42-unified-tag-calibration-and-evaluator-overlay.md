@@ -214,5 +214,5 @@ feeds` step supplies storage/proxy secrets only; `run.py` skips LLM backend cons
 `phase == render`, so render-only publication does not require an LLM dispatch URL or report a
 misleading rules-only tagging fallback.
 
-The implementation updates `review/14`, `review/34`, `review/35`, `ROADMAP.md`, `CHANGELOG.md`, and
-`ARCHITECTURE.md` as required by the repository lifecycle contract.
+The implementation updates `review/11`, `review/14`, `review/34`, `review/35`, `ROADMAP.md`,
+`CHANGELOG.md`, and `ARCHITECTURE.md` as required by the repository lifecycle contract.

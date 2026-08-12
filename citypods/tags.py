@@ -142,21 +142,6 @@ def _literal_pattern(pattern: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){expression}(?!\w)", re.IGNORECASE)
 
 
-def _evidence_for(
-    text: str, *, where: Literal["agenda", "transcript"], patterns: tuple[str, ...]
-) -> list[TagEvidence]:
-    evidence: list[TagEvidence] = []
-    seen: set[tuple[str, str]] = set()
-    for pattern in patterns:
-        for match in _literal_pattern(pattern).finditer(text):
-            key = (where, match.group(0).casefold())
-            if key in seen:
-                continue
-            seen.add(key)
-            evidence.append(TagEvidence(where=where, span=match.group(0)))
-    return evidence
-
-
 def tag_episode(
     agenda_item_titles: str,
     transcript_text: str,
@@ -181,19 +166,39 @@ def tag_episode(
         if any(_literal_pattern(pattern).search(combined_text) for pattern in tag.exclude):
             continue
         evidence: list[TagEvidence] = []
+        seen_evidence: set[tuple[str, str]] = set()
         matched_patterns: list[str] = []
         matched_texts: list[str] = []
+        audit_by_key: dict[tuple[str, str], dict[str, Any]] = {}
         for where, text in inputs:
             if not text:
                 continue
-            evidence.extend(_evidence_for(text, where=where, patterns=tag.include))
-            if include_rule_metadata:
-                for pattern in tag.include:
-                    for match in _literal_pattern(pattern).finditer(text):
+            for pattern in tag.include:
+                for match in _literal_pattern(pattern).finditer(text):
+                    matched = match.group(0)
+                    evidence_key = (where, matched.casefold())
+                    if evidence_key not in seen_evidence:
+                        seen_evidence.add(evidence_key)
+                        evidence.append(TagEvidence(where=where, span=matched))
+                    if include_rule_metadata:
                         if pattern not in matched_patterns:
                             matched_patterns.append(pattern)
-                        if match.group(0) not in matched_texts:
-                            matched_texts.append(match.group(0))
+                        if matched not in matched_texts:
+                            matched_texts.append(matched)
+                        audit = audit_by_key.setdefault(
+                            (pattern, where),
+                            {
+                                "tag_id": tag.id,
+                                "kind": "include",
+                                "pattern": pattern,
+                                "where": where,
+                                "match_count": 0,
+                                "match_texts": [],
+                            },
+                        )
+                        audit["match_count"] += 1
+                        if matched not in audit["match_texts"] and len(audit["match_texts"]) < 3:
+                            audit["match_texts"].append(matched)
         if evidence:
             value = {
                 "id": tag.id,
@@ -204,13 +209,19 @@ def tag_episode(
             if include_rule_metadata:
                 value["rule_patterns"] = matched_patterns
                 value["rule_match_texts"] = matched_texts
+                value["rule_audit"] = list(audit_by_key.values())
             result.append(value)
     return result
 
 
 def rule_phrase_audit(
-    agenda_text: str, transcript_text: str, taxonomy: Taxonomy
-) -> list[dict[str, str]]:
+    agenda_text: str,
+    transcript_text: str,
+    taxonomy: Taxonomy,
+    *,
+    include: bool = True,
+    exclude: bool = True,
+) -> list[dict[str, Any]]:
     """Return observed authored include/exclude phrase hits for deterministic-rule reporting.
 
     This is deliberately an observation helper, not another candidate source.  Exclude hits are
@@ -218,23 +229,40 @@ def rule_phrase_audit(
     distinguish "the phrase was never seen" from "the phrase was seen but globally suppressed".
     """
     inputs = (("agenda", agenda_text or ""), ("transcript", transcript_text or ""))
-    observations: list[dict[str, str]] = []
+    # Persisted telemetry must remain bounded even when a boilerplate phrase occurs hundreds of
+    # times.  The report needs the phrase, source, and frequency, not every copy of source text.
+    observations: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     for tag in taxonomy.tags:
-        for kind, patterns in (("include", tag.include), ("exclude", tag.exclude)):
+        sources = []
+        if include:
+            sources.append(("include", tag.include))
+        if exclude:
+            sources.append(("exclude", tag.exclude))
+        for kind, patterns in sources:
             for pattern in patterns:
                 compiled = _literal_pattern(pattern)
                 for where, text in inputs:
                     for match in compiled.finditer(text):
-                        observations.append(
+                        key = (tag.id, kind, pattern, where)
+                        observation = observations.setdefault(
+                            key,
                             {
                                 "tag_id": tag.id,
                                 "kind": kind,
                                 "pattern": pattern,
-                                "match_text": match.group(0),
                                 "where": where,
-                            }
+                                "match_count": 0,
+                                "match_texts": [],
+                            },
                         )
-    return observations
+                        observation["match_count"] += 1
+                        matched = match.group(0)
+                        if (
+                            matched not in observation["match_texts"]
+                            and len(observation["match_texts"]) < 3
+                        ):
+                            observation["match_texts"].append(matched)
+    return list(observations.values())
 
 
 def tag_recipe_hash(
@@ -883,6 +911,7 @@ def llm_tag_suggestions(
     allow_paid: bool = False,
     purpose: str = TAG_FEATURE,
     deadline_at: Any | None = None,
+    call_metadata_out: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], bool, str | None]:
     """Run and validate additive suggestions; return episode tags, chapter tags, dispatched, and
     the resolved model that produced them (``None`` when dispatched/unresolved). When ``dispatched``
@@ -967,9 +996,14 @@ def llm_tag_suggestions(
         "truncation_policy": "chapter-tag-v1",
         "input_digest": input_digest,
     }
-    # Benchmark callers need telemetry even when a valid response contains zero tags. Keep this
-    # as an in-process observation rather than adding another persisted production ledger.
-    llm_tag_suggestions.last_call_metadata = dict(call_metadata)
+
+    def publish_call_metadata() -> None:
+        if call_metadata_out is not None:
+            call_metadata_out.clear()
+            call_metadata_out.update(call_metadata)
+
+    # Caller-owned telemetry avoids cross-episode races in the worker pool.
+    publish_call_metadata()
     inputs: dict[str, Any] = {
         "messages": messages,
         "structured_output": LLM_CONTRACT,
@@ -989,7 +1023,7 @@ def llm_tag_suggestions(
     }
     if route_limits:
         call_metadata["route_context_limit"] = min(route_limits.values())
-        llm_tag_suggestions.last_call_metadata = dict(call_metadata)
+        publish_call_metadata()
         if all(input_tokens_estimate + 1024 > limit for limit in route_limits.values()):
             return [], {}, True, "payload-too-large"
     if backend_model and getattr(backend_storage, "cas_capable", False):
@@ -1020,13 +1054,6 @@ def llm_tag_suggestions(
             for candidate in allowed_models
             if candidate in ROUTES and ROUTES[candidate].quota.tpm is not None
         }
-        context_capped = {
-            candidate: limit for candidate, limit in route_limits.items() if limit > 0
-        }
-        if context_capped and all(
-            token_estimate + 1024 > limit for limit in context_capped.values()
-        ):
-            return [], {}, True, "payload-too-large"
         if capped_tpm and all(token_estimate > tpm // 2 for tpm in capped_tpm.values()):
             print(
                 f"llm tag budget: material estimate={token_estimate} tokens exceeds half of "
@@ -1135,6 +1162,7 @@ def llm_tag_suggestions(
             **call_metadata,
         }
         chapter_suggestions.setdefault(suggestion.chapter_id, []).append(value)
+    publish_call_metadata()
     return suggestions, chapter_suggestions, False, outcome.model
 
 
@@ -1151,6 +1179,7 @@ def llm_prelabel_candidates(
     prompt_version: str = PRELABELER_PROMPT_VERSION,
     allow_paid: bool = False,
     deadline_at: Any | None = None,
+    call_metadata_out: dict[str, Any] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], bool, str | None]:
     """Run the independent discrete evaluator over persisted candidate subjects.
 
@@ -1232,7 +1261,7 @@ def llm_prelabel_candidates(
     for pair in context:
         proposed = current + [pair]
         estimate = estimate_tokens(make_messages([item for _, item in proposed]))
-        if current and estimate > max_input_tokens:
+        if current and (estimate > max_input_tokens or len(current) >= 100):
             batches.append(current)
             current = [pair]
         else:
@@ -1335,7 +1364,7 @@ def llm_prelabel_candidates(
                 "prelabeler_reason": assessment.reason,
                 "prelabeler_evidence_supported": bool(assessment.evidence_supported),
             }
-    llm_prelabel_candidates.last_call_metadata = {
+    metadata = {
         "prelabeler_model": model,
         "prelabeler_prompt_version": prompt_version,
         "prelabeler_input_tokens_estimate": total_estimate,
@@ -1351,6 +1380,9 @@ def llm_prelabel_candidates(
             if item.get("prelabeler_input_digest")
         ],
     }
+    if call_metadata_out is not None:
+        call_metadata_out.clear()
+        call_metadata_out.update(metadata)
     return (
         result,
         pending,

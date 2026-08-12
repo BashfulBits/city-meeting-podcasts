@@ -17,6 +17,7 @@ from citypods.llm_evaluation import (
     prelabeler_review_candidate,
     record_review,
     refresh_matrix,
+    render_digest,
     render_review_body,
     select_review_candidates,
     visible_candidates,
@@ -258,10 +259,10 @@ def test_prelabeler_overlay_qualifies_per_source_and_preserves_human_override():
         "prelabeler_decision": "likely_incorrect",
         "prelabeler_confidence": 0.9,
     }
-    for candidate in (correct_candidate, incorrect_candidate):
+    for review_candidate in (correct_candidate, incorrect_candidate):
         record_review(
             state,
-            prelabeler_review_candidate(candidate),
+            prelabeler_review_candidate(review_candidate),
             decision="correct",
         )
     refresh_matrix(state, config=config)
@@ -277,6 +278,49 @@ def test_prelabeler_overlay_qualifies_per_source_and_preserves_human_override():
     projected = apply_admission(incorrect_candidate, config=config, state=state)
     assert projected["prelabeler_decision"] == "likely_incorrect"
     assert projected["display"] is True
+
+
+def test_prelabeler_override_is_audit_only_until_the_overlay_qualifies():
+    config = EvaluationConfig(
+        fallback_confidence=0.5,
+        prelabeler_minimum_reviews=2,
+        prelabeler_minimum_decision_reviews=1,
+    )
+    state = load_state("/path/that/does/not/exist")
+    item = {
+        **candidate(1.0),
+        "candidate_id": "audit-only",
+        "prelabeler_model": "reviewer",
+        "prelabeler_prompt_version": "1",
+        "prelabeler_decision": "likely_correct",
+        "prelabeler_confidence": 1.0,
+    }
+    record_review(state, prelabeler_review_candidate(item), decision="incorrect")
+    projected = apply_admission(item, config=config, state=state)
+    assert projected["prelabeler_basis"] == "unqualified"
+    assert projected["display"] is True
+
+
+def test_digest_separates_overlay_audits_from_tagger_visibility_counts():
+    config = EvaluationConfig(fallback_confidence=0.5)
+    subject = {**candidate(0.9), "candidate_id": "subject"}
+    audit = prelabeler_review_candidate(
+        {
+            **subject,
+            "prelabeler_model": "reviewer",
+            "prelabeler_prompt_version": "1",
+            "prelabeler_decision": "likely_correct",
+        }
+    )
+    digest = render_digest(
+        [subject, audit],
+        selected=[],
+        config=config,
+        state=load_state("/path/that/does/not/exist"),
+        generated_at="2026-08-12T00:00:00Z",
+    )
+    assert "Candidates observed: 1" in digest
+    assert "overlay audits: 1" in digest
 
 
 def test_projection_recomputes_stale_persisted_display_after_tagger_qualification():
