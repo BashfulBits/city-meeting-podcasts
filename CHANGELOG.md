@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Swagit plain-text transcripts now use coarse constrained alignment when possible.** Standalone
+  ``[HH:MM:SS]`` anchors are parsed into monotonic source-time windows, structural bracket labels
+  are excluded from the alignment text, and the windows are remapped to served time before
+  stable-ts ``align_words()`` runs. Files with too few, invalid, or unmappable anchors retain the
+  full-alignment fallback. ``PROVIDER_ALIGN_PIPELINE_VERSION`` is bumped from 2 to 3; existing
+  TXT provider-align artifacts without the new recipe marker are re-evaluated gradually, while
+  existing VTT/SRT provider-align artifacts are not invalidated.
+
 - **Swagit transcript discovery now fills the provider-link gap.** For Swagit episodes whose video
   page does not advertise a transcript, the transcript lane derives and probes
   `/videos/{id}/transcript`, stores non-empty VTT/SRT/TXT responses in the provider registry, and

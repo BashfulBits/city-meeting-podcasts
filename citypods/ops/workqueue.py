@@ -34,6 +34,7 @@ from citypods.durations import episode_duration_hours, record_duration_hours
 from citypods.models import City, Episode
 from citypods.records import load_records
 from citypods.records import source_key as record_source_key
+from citypods.transcript_versions import PROVIDER_ALIGN_PIPELINE_VERSION
 
 if TYPE_CHECKING:
     from citypods.transcript_quality import TranscriptQualityRoute
@@ -492,6 +493,10 @@ def _episode_work_items(
                 and provider is not None
                 and transcript.get("spec_hash") == provider.get("align_spec_hash")
                 and bool(transcript.get("words_key"))
+                and (
+                    provider.get("format") in {"vtt", "srt"}
+                    or provider.get("align_pipeline_version") == PROVIDER_ALIGN_PIPELINE_VERSION
+                )
             )
             transcript_done = native_done or aligned_done
         else:

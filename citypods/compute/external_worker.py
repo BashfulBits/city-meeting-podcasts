@@ -1533,6 +1533,7 @@ class ExternalTranscribeWorker:
                     "aligned_words_key": words_key,
                     "aligned_words_url": words_url,
                     "align_spec_hash": align_spec,
+                    "align_pipeline_version": PROVIDER_ALIGN_PIPELINE_VERSION,
                     "status": "known_good",
                 }
             )

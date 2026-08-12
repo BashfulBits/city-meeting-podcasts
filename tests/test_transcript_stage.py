@@ -314,6 +314,80 @@ class TestTranscriptStageVTT:
         assert text == "Hello world here"
         assert timed_segments == [{"start": 2.0, "end": 5.0, "text": "Hello world here"}]
 
+    def test_swagit_text_anchors_become_coarse_alignment_windows(self):
+        ep = _ep()
+        ep.duration = 600
+
+        text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"* provider disclaimer\n"
+            b"[CALL TO ORDER]\n"
+            b"[00:00:04]\n"
+            b"THE MEETING IS CALLED TO ORDER.\n"
+            b"[00:05:01]\n"
+            b"THANK YOU, MAYOR. THE NEXT ITEM IS BUDGET.\n",
+            "txt",
+        )
+
+        assert text == (
+            "THE MEETING IS CALLED TO ORDER.\nTHANK YOU, MAYOR. THE NEXT ITEM IS BUDGET."
+        )
+        assert timed_segments == [
+            {"start": 4.0, "end": 301.0, "text": "THE MEETING IS CALLED TO ORDER."},
+            {"start": 301.0, "end": 600.0, "text": "THANK YOU, MAYOR. THE NEXT ITEM IS BUDGET."},
+        ]
+
+    def test_sparse_swagit_text_anchors_fall_back_to_full_alignment(self):
+        ep = _ep()
+        ep.duration = 3600
+
+        text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"[00:00:04]\nTHE MEETING IS CALLED TO ORDER.\n[00:30:01]\nTHANK YOU, MAYOR.\n",
+            "txt",
+        )
+
+        assert timed_segments is None
+        assert "THE MEETING IS CALLED TO ORDER." in text
+
+    def test_swagit_coarse_windows_are_remapped_from_source_to_served_time(self):
+        ep = _ep()
+        ep.duration = 30
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref="https://src/vid.mp4",
+                media_kind="direct",
+                duration=30.0,
+                watch_url=None,
+            )
+        ]
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=10.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=10.0,
+                    source_end=20.0,
+                ),
+            ),
+        )
+
+        _text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"[00:00:12]\nKEPT WORDS HERE.\n[00:00:15]\nMORE KEPT WORDS HERE.\n",
+            "txt",
+        )
+
+        assert timed_segments == [
+            {"start": 2.0, "end": 5.0, "text": "KEPT WORDS HERE."},
+            {"start": 5.0, "end": 10.0, "text": "MORE KEPT WORDS HERE."},
+        ]
+
     def _run_with_content(self, tmp_path, content: bytes, url="https://provider/t.vtt"):
         from unittest.mock import patch
 
