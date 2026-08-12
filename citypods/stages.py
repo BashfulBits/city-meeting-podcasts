@@ -79,7 +79,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urljoin
@@ -119,7 +119,9 @@ from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workit
 from citypods.progress import PROGRESS
 from citypods.records import (
     AUDIO_PIPELINE_VERSION,
+    _capped_exponential_backoff,
     _in_backoff,
+    _parse_iso_utc,
     confirmed_dead_recheck_due,
     transcript_media_hash,
     transcript_timeout_backoff_until,
@@ -306,6 +308,11 @@ class StageContext:
     tag_taxonomy_cache_lock: threading.Lock = field(default_factory=threading.Lock)
     stop: Callable[[], bool] | None = None
     chapters_per_source: int = 10_000  # ~unbounded; build() lowers it only for the PR preview
+    # Swagit transcript endpoint probes are bounded separately because the archive can contain
+    # tens of thousands of old episodes, most of which have no transcript.
+    provider_transcript_probes_per_source: int = 500
+    provider_transcript_probe_remaining: dict[str, int] = field(default_factory=dict)
+    provider_transcript_probe_lock: threading.Lock = field(default_factory=threading.Lock)
     # EBU R128 loudness normalization (#151). Empty string = disabled.
     # e.g. "ebuR128:-16LUFS" normalises to -16 LUFS (Apple Podcasts / Spotify speech standard).
     loudness_profile: str = ""
@@ -2800,6 +2807,100 @@ def _provider_transcript_history(history: object, *, limit: int = 5) -> list[dic
     return [item for item in history if isinstance(item, dict)][:limit]
 
 
+# Swagit transcript discovery is a cheap HTTP operation, but the catalog is large and many old
+# meetings have no transcript endpoint. Persisted probe state keeps those known misses out of every
+# subsequent run while still allowing a provider to add transcripts later.
+SWAGIT_TRANSCRIPT_ABSENT_BACKOFF_BASE = timedelta(days=7)
+SWAGIT_TRANSCRIPT_ABSENT_BACKOFF_MAX = timedelta(days=90)
+SWAGIT_TRANSCRIPT_ERROR_BACKOFF_BASE = timedelta(days=1)
+SWAGIT_TRANSCRIPT_ERROR_BACKOFF_MAX = timedelta(days=7)
+SWAGIT_TRANSCRIPT_AVAILABLE_RECHECK = timedelta(days=30)
+
+
+def _provider_transcript_probe(ep: Episode) -> dict:
+    """Return the persisted Swagit/provider transcript probe envelope, if valid."""
+    registry = ep.provider_transcript or {}
+    probe = registry.get("probe") if isinstance(registry, dict) else None
+    return dict(probe) if isinstance(probe, dict) else {}
+
+
+def _provider_transcript_probe_due(ep: Episode, *, url: str | None, now: datetime) -> bool:
+    """Return whether a provider transcript URL should be fetched again."""
+    probe = _provider_transcript_probe(ep)
+    if not probe:
+        # Pre-probe records already carry checked_at on their candidate/known-good artifact. Treat
+        # that as a successful check so the rollout does not immediately re-download every old
+        # provider transcript merely because the probe envelope was introduced later.
+        registry = ep.provider_transcript or {}
+        for artifact in (
+            registry.get("candidate"),
+            registry.get("known_good"),
+        ):
+            if not isinstance(artifact, dict) or (url and artifact.get("url") != url):
+                continue
+            checked_at = _parse_iso_utc(artifact.get("checked_at"))
+            if checked_at is not None:
+                return now >= checked_at + SWAGIT_TRANSCRIPT_AVAILABLE_RECHECK
+        return True
+    if url and probe.get("url") != url:
+        return True
+    next_retry = _parse_iso_utc(probe.get("next_retry_at"))
+    return next_retry is None or now >= next_retry
+
+
+def _record_provider_transcript_probe(
+    ep: Episode,
+    *,
+    url: str,
+    status: str,
+    now: datetime,
+    status_code: int | None = None,
+) -> None:
+    """Persist provider transcript probe status and its next retry time."""
+    registry = dict(ep.provider_transcript or {})
+    prior = registry.get("probe") if isinstance(registry.get("probe"), dict) else {}
+    same_url = prior.get("url") == url
+    attempts = int(prior.get("attempts") or 0) if same_url else 0
+    if status == "available":
+        attempts = 0
+        delay = SWAGIT_TRANSCRIPT_AVAILABLE_RECHECK
+    elif status == "absent":
+        attempts += 1
+        delay = _capped_exponential_backoff(
+            SWAGIT_TRANSCRIPT_ABSENT_BACKOFF_BASE,
+            SWAGIT_TRANSCRIPT_ABSENT_BACKOFF_MAX,
+            attempts,
+        )
+    else:
+        attempts += 1
+        delay = _capped_exponential_backoff(
+            SWAGIT_TRANSCRIPT_ERROR_BACKOFF_BASE,
+            SWAGIT_TRANSCRIPT_ERROR_BACKOFF_MAX,
+            attempts,
+        )
+    registry["probe"] = {
+        "url": url,
+        "status": status,
+        "status_code": status_code,
+        "attempts": attempts,
+        "checked_at": now.isoformat(),
+        "next_retry_at": (now + delay).isoformat(),
+    }
+    ep.provider_transcript = registry
+
+
+def _claim_provider_transcript_probe(ctx: StageContext, source: str) -> bool:
+    """Atomically consume one per-source provider probe from this build's shared budget."""
+    with ctx.provider_transcript_probe_lock:
+        remaining = ctx.provider_transcript_probe_remaining.setdefault(
+            source, max(0, ctx.provider_transcript_probes_per_source)
+        )
+        if remaining <= 0:
+            return False
+        ctx.provider_transcript_probe_remaining[source] = remaining - 1
+        return True
+
+
 def _provider_transcript_artifact(
     *,
     source_url: str,
@@ -3800,7 +3901,101 @@ class TranscriptStage:
             recheck_asr_key: str | None = None
             recheck_asr_words_key: str | None = None
             active_synced_reused = False
+            provider_registry = ep.provider_transcript or {}
+            provider_source = next(
+                (
+                    artifact
+                    for artifact in (
+                        provider_registry.get("candidate"),
+                        provider_registry.get("known_good"),
+                    )
+                    if isinstance(artifact, dict) and artifact.get("url")
+                ),
+                None,
+            )
             provider_url = (ep.links or {}).get("transcript")
+            # A persisted provider artifact is authoritative even for older records whose
+            # resource link was not retained. Re-attach its source URL without doing a network
+            # probe; the artifact itself is already the durable transcript source.
+            if not provider_url and isinstance(provider_source, dict):
+                provider_url = provider_source.get("url")
+                if provider_url:
+                    ep.links = {**(ep.links or {}), "transcript": provider_url}
+            provider_content: bytes | None = None
+            provider_fetch_due = bool(provider_url)
+            stored_provider_transcript = bool(
+                ep.transcript_key
+                and ep.transcript_synced
+                and _present(ep.transcript_key)
+                and not ep.transcript_key.rsplit("/", 1)[-1].startswith(f"{ep.uid or ep.guid}-asr-")
+            )
+            swagit_probe_method = getattr(provider, "probe_transcript", None)
+            swagit_probe_url: str | None = None
+            if city.provider == "swagit" and callable(swagit_probe_method):
+                try:
+                    swagit_probe_url = provider.transcript_url(ep)
+                except Exception as exc:  # noqa: BLE001 -- malformed legacy record; keep ASR alive
+                    print(f"[enrich] transcript probe unavailable {ep_ref}: {exc}", flush=True)
+                if not provider_url and not stored_provider_transcript:
+                    if swagit_probe_url and _provider_transcript_probe_due(
+                        ep, url=swagit_probe_url, now=datetime.now(UTC)
+                    ):
+                        if ctx.stop is not None and ctx.stop():
+                            stats.defer("stop-signal", sample=ep_ref)
+                        elif not _claim_provider_transcript_probe(ctx, src_key):
+                            stats.defer("provider-transcript-probe-cap", sample=ep_ref)
+                        else:
+                            try:
+                                probe = swagit_probe_method(ep, city.source)
+                                if 200 <= probe.status_code < 300 and probe.content.strip():
+                                    provider_url = probe.url
+                                    provider_content = probe.content
+                                    ep.links = {**(ep.links or {}), "transcript": provider_url}
+                                elif probe.status_code in {404, 410} or (
+                                    200 <= probe.status_code < 300 and not probe.content.strip()
+                                ):
+                                    _record_provider_transcript_probe(
+                                        ep,
+                                        url=probe.url,
+                                        status="absent",
+                                        status_code=probe.status_code,
+                                        now=datetime.now(UTC),
+                                    )
+                                    print(
+                                        f"[enrich] transcript probe absent {ep_ref} "
+                                        f"status={probe.status_code}",
+                                        flush=True,
+                                    )
+                                else:
+                                    _record_provider_transcript_probe(
+                                        ep,
+                                        url=probe.url,
+                                        status="error",
+                                        status_code=probe.status_code,
+                                        now=datetime.now(UTC),
+                                    )
+                                    print(
+                                        f"[enrich] transcript probe unavailable {ep_ref} "
+                                        f"status={probe.status_code}",
+                                        flush=True,
+                                    )
+                            except Exception as exc:  # noqa: BLE001 -- retryable provider probe
+                                _record_provider_transcript_probe(
+                                    ep,
+                                    url=swagit_probe_url,
+                                    status="error",
+                                    now=datetime.now(UTC),
+                                )
+                                print(
+                                    f"[enrich] transcript probe error {ep_ref}: {exc}",
+                                    flush=True,
+                                )
+                if provider_url:
+                    # A successful fallback probe already supplied the bytes; do not spend a
+                    # second request (or a second probe-budget unit) fetching the same endpoint.
+                    provider_fetch_due = provider_content is not None or (
+                        _provider_transcript_probe_due(ep, url=provider_url, now=datetime.now(UTC))
+                    )
             force_provider_selection = route is not None and route.prefers_provider_align
             force_asr_selection = route is not None and route.prefers_fresh_asr
             active_is_provider = ep.transcript_text_source == "provider" or str(
@@ -3899,10 +4094,15 @@ class TranscriptStage:
                 ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                 # fall through to step 3
 
-            # 2. Provider source transcript slot: fetch every pass that reaches the item and
-            #    retain changed bytes as a candidate. PT-PR2 does not promote to known_good; the
-            #    later provider-transcript-align/scoring path owns that decision.
-            if provider_url:
+            # 2. Provider source transcript slot: fetch due links and retain changed bytes as a
+            #    candidate. PT-PR2 does not promote to known_good; the later provider-transcript-
+            #    align/scoring path owns that decision. Swagit links are rechecked on a persisted
+            #    schedule rather than on every run.
+            if provider_url and provider_fetch_due:
+                if city.provider == "swagit" and provider_content is None:
+                    if not _claim_provider_transcript_probe(ctx, src_key):
+                        stats.defer("provider-transcript-probe-cap", sample=ep_ref)
+                        continue
                 if ctx.stop is not None and ctx.stop():
                     if not active_synced_reused:
                         stats.defer("stop-signal")
@@ -3915,15 +4115,36 @@ class TranscriptStage:
                         f"[enrich] transcript provider-fetch start {ep_ref}",
                         flush=True,
                     )
-                    validate_source_url(provider_url, resolve=True)
-                    with make_session() as sess:
-                        resp = sess.get(provider_url, timeout=30)
-                    if resp.status_code >= 400:
-                        stats.errors.append(f"{ep.uid}: HTTP {resp.status_code} for {provider_url}")
+                    if provider_content is None:
+                        validate_source_url(provider_url, resolve=True)
+                        with make_session() as sess:
+                            resp = sess.get(provider_url, timeout=30)
+                        response_status = resp.status_code
+                        content = resp.content
+                    else:
+                        response_status = 200
+                        content = provider_content
+                    if response_status >= 400:
+                        if city.provider == "swagit":
+                            _record_provider_transcript_probe(
+                                ep,
+                                url=provider_url,
+                                status=("absent" if response_status in {404, 410} else "error"),
+                                status_code=response_status,
+                                now=datetime.now(UTC),
+                            )
+                        stats.errors.append(f"{ep.uid}: HTTP {response_status} for {provider_url}")
                         continue
 
-                    content = resp.content
                     if not content.strip():
+                        if city.provider == "swagit":
+                            _record_provider_transcript_probe(
+                                ep,
+                                url=provider_url,
+                                status="absent",
+                                status_code=response_status,
+                                now=datetime.now(UTC),
+                            )
                         stats.errors.append(
                             f"{ep.uid}: empty provider transcript for {provider_url}"
                         )
@@ -3985,6 +4206,14 @@ class TranscriptStage:
                             status="candidate",
                         )
                         _provider_transcript_promote_candidate(ep, artifact)
+                        if city.provider == "swagit":
+                            _record_provider_transcript_probe(
+                                ep,
+                                url=provider_url,
+                                status="available",
+                                status_code=response_status,
+                                now=datetime.now(UTC),
+                            )
                         stats.ran += 1
                         print(
                             f"[enrich] transcript provider-fetch done {ep_ref} "
@@ -3993,6 +4222,18 @@ class TranscriptStage:
                         )
                         # Do not promote or switch the active <podcast:transcript> here. The
                         # source/body route below owns that selection.
+                    else:
+                        # ``matched_current`` can turn an unchanged response into an empty local
+                        # write after the response was validated. It is still an available
+                        # endpoint and should get the long recheck interval.
+                        if city.provider == "swagit":
+                            _record_provider_transcript_probe(
+                                ep,
+                                url=provider_url,
+                                status="available",
+                                status_code=response_status,
+                                now=datetime.now(UTC),
+                            )
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: {exc}")
                     print(

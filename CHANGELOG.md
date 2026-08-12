@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Swagit transcript discovery now fills the provider-link gap.** For Swagit episodes whose video
+  page does not advertise a transcript, the transcript lane derives and probes
+  `/videos/{id}/transcript`, stores non-empty VTT/SRT/TXT responses in the provider registry, and
+  attaches the discovered link to the episode. Probe state is persisted: available endpoints are
+  rechecked after 30 days, confirmed misses use 7-day-to-90-day exponential backoff, transient
+  failures use 1-day-to-7-day backoff, and no more than 500 Swagit transcript requests are made per
+  source per run. This is metadata/provider-source backfill only; no ASR or provider-align pipeline
+  version changed and no stored transcript artifacts are invalidated.
+
 - **Hosted-audio ASR downloads now retry HTTP 429 responses with a capped `Retry-After` delay.**
   The scheduled ASR matrix is also reduced to three transcribe workers and two provider-align
   workers to lower concurrent CDN pressure. This changes transport behavior and worker capacity

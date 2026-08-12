@@ -1,8 +1,8 @@
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-// Archive list pages plus the numeric video page and download endpoint used by enrichment.
-const PATH_RE = /^(?:views\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?|videos\/[1-9][0-9]*(?:\/download)?)$/;
+// Archive list pages plus numeric video, download, and transcript endpoints used by enrichment.
+const PATH_RE = /^(?:views\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?|videos\/[1-9][0-9]*(?:\/(?:download|transcript))?)$/;
 const PAGE_RE = /^[1-9][0-9]{0,3}$/; // bounded 1..9999, mirrors swagit.py's MAX_ARCHIVE_PAGES
 const FORWARDED_RESPONSE_HEADERS = ["content-length", "content-type"];
 

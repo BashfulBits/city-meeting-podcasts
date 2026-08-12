@@ -43,6 +43,9 @@ def test_proxy_url_accepts_only_supported_tenant_pages(monkeypatch):
     assert fallback.proxy_url("https://austintx.new.swagit.com/videos/12345/download") == (
         "https://worker.example/v1/swagit/austintx.new.swagit.com/videos/12345/download"
     )
+    assert fallback.proxy_url("https://austintx.new.swagit.com/videos/12345/transcript") == (
+        "https://worker.example/v1/swagit/austintx.new.swagit.com/videos/12345/transcript"
+    )
     assert fallback.proxy_url("https://austintx.new.swagit.com/videos/0") is None
     assert fallback.proxy_url("https://austintx.new.swagit.com/videos/12345/agenda") is None
     assert fallback.proxy_url("https://austintx.new.swagit.com/play/12345/10") is None
