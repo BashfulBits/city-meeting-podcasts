@@ -17,6 +17,10 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch queue reindex now backs off on R2 throttling.** The one-time migration uses four
+  concurrent object operations and retries transient R2 429/5xx responses with jittered exponential
+  backoff, so a temporary bucket read-pressure response does not abort an otherwise healthy scan.
+
 - **Free-plan LLM dispatch cron now has a queue-depth-independent ready index.** Pending R2
   requests write date-ordered compact `ready/` markers, so a scheduled invocation lists one marker
   and reads only its canonical request instead of scanning and parsing up to 1,000 queue records.
