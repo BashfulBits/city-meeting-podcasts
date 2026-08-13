@@ -636,6 +636,27 @@ def test_get_file_retries_transfer_failures_then_succeeds(tmp_path, monkeypatch)
     assert client.calls == 2
 
 
+def test_get_file_retries_etag_race_then_succeeds(tmp_path, monkeypatch):
+    from s3transfer.exceptions import S3DownloadFailedError
+
+    store = _s3_with_fake_client()
+    client = _FakeDownloadClient(
+        [
+            S3DownloadFailedError(
+                'Contents of stored object "state/k.json" did not match expected ETag.'
+            )
+        ]
+    )
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    dest = tmp_path / "state.json"
+
+    assert store.get_file("state/k.json", dest) is True
+    assert dest.read_text() == "b:state/k.json"
+    assert client.calls == 2
+
+
 def test_transient_storage_error_accepts_sdk_independent_injection(monkeypatch):
     from citypods.storage import s3 as s3_module
 

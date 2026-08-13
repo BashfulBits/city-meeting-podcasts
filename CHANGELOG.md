@@ -27,6 +27,11 @@ Phase R (Research-Tool Surface)._
   GitHub Action; canonical prompts/results are unchanged, and no Citypods pipeline version or
   artifact backfill is involved.
 
+- **Durable state restores now retry B2 ETag races.** `s3transfer`'s protective `If-Match` check can
+  observe an object changing between its metadata request and ranged download; that specific
+  download failure is now treated as transient and retried with a fresh ETag. No pipeline version,
+  stored artifact, or backfill behavior changes.
+
 - **Known-text provider alignment now uses WhisperX with a separate artifact lane.** Untimed Swagit
   and similar provider documents are cleaned of bracketed source-time markers, remapped to served
   time, and aligned with the configurable `WAV2VEC2_ASR_BASE_960H` model. The 90% gate is measured
