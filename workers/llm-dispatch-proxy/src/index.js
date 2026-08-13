@@ -517,6 +517,9 @@ async function enqueue(bucket, normalized, cfg, now = new Date(), idempotencyKey
     policy: normalized.policy,
   };
 
+  // Write the index first. A crash before the canonical write leaves a harmless marker that the
+  // scheduler removes; the reverse order would strand an otherwise-valid pending request forever.
+  const markerKey = await markReady(bucket, record);
   const putResult = await putJson(bucket, key, record, {
     onlyIf: { etagDoesNotMatch: "*" },
     customMetadata: requestMetadata(record),
@@ -530,15 +533,26 @@ async function enqueue(bucket, normalized, cfg, now = new Date(), idempotencyKey
       const sameRequest = JSON.stringify(stored.request) === JSON.stringify(normalized.request);
       const samePolicy = JSON.stringify(stored.policy || {}) === JSON.stringify(normalized.policy || {});
       if (!sameModel || !sameRequest || !samePolicy) {
+        // A concurrent writer may have created the canonical record after this invocation wrote
+        // its marker. Restore that writer's marker before rejecting this idempotency collision.
+        if (stored.status === "pending") {
+          const storedMarkerKey = await markReady(bucket, stored);
+          if (storedMarkerKey !== markerKey) await unmarkReady(bucket, markerKey);
+        } else {
+          await unmarkReady(bucket, markerKey);
+        }
         throw new HttpError(409, "idempotency key collision with different payload or policy");
       }
-      if (stored.status === "pending") await markReady(bucket, stored);
+      if (stored.status === "pending") {
+        const storedMarkerKey = await markReady(bucket, stored);
+        if (storedMarkerKey !== markerKey) await unmarkReady(bucket, markerKey);
+      } else {
+        await unmarkReady(bucket, markerKey);
+      }
       return stored;
     }
     throw new HttpError(503, "could not persist queued request");
   }
-
-  await markReady(bucket, record);
 
   return record;
 }
@@ -600,11 +614,19 @@ async function saveFailure(bucket, claimed, status, now, code = "upstream_error"
   if (saved) await unmarkReady(bucket, claimed.readyKey || readyKey(claimed.record));
 }
 
-async function requeue(bucket, claimed, now, availableAt = now.toISOString()) {
+async function requeue(
+  bucket,
+  claimed,
+  now,
+  availableAt = now.toISOString(),
+  { releaseAttempt = false } = {},
+) {
   const released = {
     ...claimed.record,
     status: "pending",
-    attempts: Math.max(0, claimed.record.attempts - 1),
+    attempts: releaseAttempt
+      ? Math.max(0, (claimed.record.attempts || 0) - 1)
+      : claimed.record.attempts || 0,
     updated_at: now.toISOString(),
     available_at: availableAt,
     processing_started_at: undefined,
@@ -1053,7 +1075,7 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
   return { apiKey, url, upstreamModel: route.upstream_model };
 }
 
-function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+function eligibleRoutesForModel(canonicalModel, policy, dispatchLimits = DISPATCH_LIMITS) {
   const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
   const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
   const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
@@ -1064,8 +1086,20 @@ function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits
       inputTokens <= (route.input_context_limit || 32768) &&
       outputTokens <= (route.output_context_limit || 1024),
   );
-  const freeRanked = rankRoutes(contextCompatible.filter((route) => route.free));
-  const paidRanked = rankRoutes(contextCompatible.filter((route) => !route.free));
+  return {
+    candidates,
+    contextCompatible,
+    freeRanked: rankRoutes(contextCompatible.filter((route) => route.free)),
+    paidRanked: rankRoutes(contextCompatible.filter((route) => !route.free)),
+  };
+}
+
+function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+  const { candidates, contextCompatible, freeRanked, paidRanked } = eligibleRoutesForModel(
+    canonicalModel,
+    policy,
+    dispatchLimits,
+  );
   const allowPaid = Boolean(policy?.allow_paid);
   const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
   const tokens = policy?.estimated_tokens || 1024;
@@ -1143,22 +1177,30 @@ function selectRoute(budget, canonicalModels, policy, now, dispatchLimits = DISP
 
 function nextCapacityRetryAt(budget, canonicalModels, policy, now, dispatchLimits = DISPATCH_LIMITS) {
   const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
-  const inputTokens = policy?.input_tokens_estimate ?? policy?.estimated_tokens ?? 1024;
-  const outputTokens = policy?.output_token_budget ?? 0;
   const allowPaid = Boolean(policy?.allow_paid);
+  const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
   const resets = [];
   for (const model of [...new Set(models)]) {
-    const logicalModel = canonicalModelName(model, dispatchLimits);
-    const routes = (dispatchLimits.model_routes_map?.[logicalModel] || [])
-      .map((id) => dispatchLimits.routes_by_id[id])
-      .filter(
-        (route) =>
-          route &&
-          (allowPaid || route.free) &&
-          inputTokens <= (route.input_context_limit || 32768) &&
-          outputTokens <= (route.output_context_limit || 1024),
-      );
-    for (const route of routes) {
+    const { freeRanked, paidRanked } = eligibleRoutesForModel(model, policy, dispatchLimits);
+    const freeResets = freeRanked.map((route) =>
+      nextRouteReset(
+        ledgerEntry(budget, route.route_id),
+        route,
+        now,
+        dispatchLimits,
+        budget,
+      ).getTime(),
+    );
+    resets.push(...freeResets);
+
+    // This must mirror selectRouteForModel: paid routes become relevant only when no free route
+    // exists, or when waiting for every free route would miss the caller's deadline.
+    const canUsePaid =
+      allowPaid &&
+      (freeRanked.length === 0 ||
+        (deadlineAt != null && Math.min(...freeResets) >= deadlineAt));
+    if (!canUsePaid) continue;
+    for (const route of paidRanked) {
       resets.push(
         nextRouteReset(
           ledgerEntry(budget, route.route_id),
@@ -1177,7 +1219,14 @@ async function loadReadyHead(bucket, now) {
   const listed = await bucket.list({ prefix: READY_PREFIX, limit: 1 });
   const object = listed?.objects?.[0];
   if (!object) return null;
-  const marker = await getJson(bucket, object.key);
+  let marker;
+  try {
+    marker = await getJson(bucket, object.key);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    await unmarkReady(bucket, object.key);
+    return { invalid: true };
+  }
   const record = marker?.value;
   if (!record || record.version !== 1 || typeof record.id !== "string") {
     await unmarkReady(bucket, object.key);
@@ -1248,7 +1297,7 @@ async function dispatchBatch(
     // key.  Never dispatch based on stale routing policy or a stale eligibility timestamp.
     if (
       head.key !== readyKey(canonical) ||
-      head.record.model !== canonical.model ||
+      canonicalModelName(head.record.model, DISPATCH_LIMITS) !== logicalModel ||
       JSON.stringify(head.record.policy || {}) !== JSON.stringify(canonical.policy || {})
     ) {
       await replaceReadyMarker(bucket, canonical, head.key);
@@ -1465,7 +1514,7 @@ async function dispatchBatch(
         }),
       );
       for (const item of candidatesToDispatch) {
-        await requeue(bucket, item.claimed, now);
+        await requeue(bucket, item.claimed, now, now.toISOString(), { releaseAttempt: true });
       }
       return {
         status: "no_capacity",
@@ -1934,12 +1983,14 @@ export {
   dispatchBatch,
   dispatchOne,
   handleRequest,
+  nextCapacityRetryAt,
   nextLocalMidnightUTC,
   nextRouteReset,
   normalizeChatRequest,
   rankRoutes,
   releaseCronLease,
   readyKey,
+  readyMarker,
   renewCronLease,
   runScheduled,
   requestKey,

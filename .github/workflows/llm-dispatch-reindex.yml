@@ -23,6 +23,9 @@ concurrency:
 
 jobs:
   reindex:
+    # workflow_dispatch can target arbitrary refs. Never expose production R2 credentials to code
+    # outside the reviewed default branch, including for a nominally read-only dry-run.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

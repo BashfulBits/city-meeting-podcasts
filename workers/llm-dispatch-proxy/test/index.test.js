@@ -7,11 +7,13 @@ import {
   dispatchBatch,
   dispatchOne,
   handleRequest,
+  nextCapacityRetryAt,
   nextLocalMidnightUTC,
   nextRouteReset,
   rankRoutes,
   releaseCronLease,
   readyKey,
+  readyMarker,
   renewCronLease,
   resolveProviderCredentials,
   routeAvailable,
@@ -174,6 +176,23 @@ test("queues an OpenAI-shaped request, reuses an idempotency key, and rejects a 
     env,
   );
   assert.equal(conflict.status, 409);
+});
+
+test("enqueue writes its ready marker before the canonical pending record", async () => {
+  class MarkerFirstBucket extends FakeBucket {
+    async put(key, value, options = {}) {
+      if (key.startsWith("requests/")) {
+        assert.ok(
+          [...this.objects.keys()].some((candidate) => candidate.startsWith("ready/")),
+          "a request write must have a recoverable ready marker already",
+        );
+      }
+      return super.put(key, value, options);
+    }
+  }
+  const env = { ...ENV, LLM_QUEUE: new MarkerFirstBucket() };
+  const response = await handleRequest(chatRequest(undefined, "marker-first"), env);
+  assert.equal(response.status, 202);
 });
 
 test("schema retry clones only a completed request and appends one corrective instruction", async () => {
@@ -369,6 +388,11 @@ test("a route with no capacity anywhere is requeued (no_capacity), not permanent
     await handleRequest(chatRequest(undefined, `req-${i}`), env);
   }
   await handleRequest(chatRequest(undefined, "fifth"), env);
+  for (const object of (await env.LLM_QUEUE.list({ prefix: "requests/" })).objects) {
+    const record = await (await env.LLM_QUEUE.get(object.key)).json();
+    record.attempts = 3;
+    await env.LLM_QUEUE.put(object.key, JSON.stringify(record));
+  }
   const now = new Date("2026-08-06T12:00:00.000Z");
 
   for (let i = 0; i < 4; i += 1) {
@@ -380,7 +404,7 @@ test("a route with no capacity anywhere is requeued (no_capacity), not permanent
   const stored = await env.LLM_QUEUE.get(`requests/${exhausted.requestId}.json`);
   const record = await stored.json();
   assert.equal(record.status, "pending");
-  assert.equal(record.attempts, 0); // not counted as a real attempt
+  assert.equal(record.attempts, 3); // capacity deferral is not a real attempt
 
   // The next paced slot and minute boundary free Mistral's capacity back up.
   const nextMinute = new Date(now.getTime() + 60_000);
@@ -453,10 +477,7 @@ test("a request for a canonical model with no configured route fails permanently
     policy: { estimated_tokens: 100, allow_paid: true },
   };
   await env.LLM_QUEUE.put(`requests/${record.id}.json`, JSON.stringify(record));
-  await env.LLM_QUEUE.put(readyKey(record), JSON.stringify({
-    version: 1, id: record.id, model: record.model, created_at: record.created_at,
-    available_at: record.available_at, policy: record.policy,
-  }));
+  await env.LLM_QUEUE.put(readyKey(record), JSON.stringify(readyMarker(record)));
 
   const result = await dispatchOne(env, okUpstream(), now);
   assert.equal(result.status, "failed");
@@ -478,15 +499,61 @@ test("ordered ready index drains work without reading terminal request history",
   };
   await env.LLM_QUEUE.put("requests/000-terminal.json", JSON.stringify(terminal));
   await env.LLM_QUEUE.put("requests/chatcmpl-ready.json", JSON.stringify(pending));
-  await env.LLM_QUEUE.put(readyKey(pending), JSON.stringify({
-    version: 1, id: pending.id, model: pending.model, created_at: pending.created_at,
-    available_at: pending.available_at, policy: pending.policy,
-  }));
+  await env.LLM_QUEUE.put(readyKey(pending), JSON.stringify(readyMarker(pending)));
 
   const result = await dispatchOne(env, okUpstream(), now);
   assert.equal(result.status, "completed");
   assert.equal(result.requestId, pending.id);
   assert.equal(await env.LLM_QUEUE.get(readyKey(pending)), null);
+});
+
+test("malformed ready markers are removed instead of blocking the queue head", async () => {
+  const env = isolatedEnv();
+  const key = "ready/000000000000000-1-fast-000000000000000-malformed.json";
+  await env.LLM_QUEUE.put(key, "not JSON");
+
+  const result = await dispatchOne(env, okUpstream(), new Date());
+  assert.equal(result.status, "index_repaired");
+  assert.equal(await env.LLM_QUEUE.get(key), null);
+});
+
+test("ready keys order eligibility before priority and priority within a tie", () => {
+  const at = "2026-08-13T19:20:00.000Z";
+  const records = [
+    { id: "long-early", created_at: at, available_at: "2026-08-13T19:19:00.000Z", policy: { timeout_class: "long" } },
+    { id: "long", created_at: at, available_at: at, policy: { timeout_class: "long" } },
+    { id: "fast", created_at: at, available_at: at, policy: {} },
+    { id: "urgent", created_at: at, available_at: at, policy: { submit_next: true } },
+  ];
+  const orderedIds = [...records]
+    .sort((left, right) => readyKey(left).localeCompare(readyKey(right)))
+    .map((record) => record.id);
+  assert.deepEqual(orderedIds, ["long-early", "urgent", "fast", "long"]);
+});
+
+test("an aliased ready marker dispatches without an index-repair delay", async () => {
+  const env = isolatedEnv();
+  const now = new Date("2026-08-13T19:20:00.000Z");
+  const record = {
+    id: "chatcmpl-aliased-ready",
+    status: "pending",
+    model: "opencode/deepseek-v4-flash-free",
+    request: {
+      model: "opencode/deepseek-v4-flash-free",
+      messages: [{ role: "user", content: "x" }],
+      stream: false,
+    },
+    created_at: now.toISOString(),
+    updated_at: now.toISOString(),
+    available_at: now.toISOString(),
+    attempts: 0,
+    policy: {},
+  };
+  await env.LLM_QUEUE.put(`requests/${record.id}.json`, JSON.stringify(record));
+  await env.LLM_QUEUE.put(readyKey(record), JSON.stringify(readyMarker(record)));
+
+  const result = await dispatchOne(env, okUpstream(), now);
+  assert.equal(result.status, "completed");
 });
 
 test("queue reindex endpoint is authenticated but intentionally delegated to the offline migrator", async () => {
@@ -714,10 +781,7 @@ test("ready lookup remains one list and two object reads with 10,000 queued requ
       attempts: 0, policy: {},
     };
     await bucket.put(`requests/${record.id}.json`, JSON.stringify(record));
-    await bucket.put(readyKey(record), JSON.stringify({
-      version: 1, id: record.id, model: record.model, created_at: record.created_at,
-      available_at: record.available_at, policy: record.policy,
-    }));
+    await bucket.put(readyKey(record), JSON.stringify(readyMarker(record)));
   }
   const result = await dispatchOne(env, okUpstream(), now);
   assert.equal(result.status, "completed");
@@ -799,6 +863,33 @@ test("deadline-based paid elevation only fires when waiting for free capacity wo
     dispatchLimits,
   );
   assert.equal(disallowedPaid.reason, "no_capacity");
+});
+
+test("capacity retry does not wake for a paid route before paid elevation is allowed", () => {
+  const dispatchLimits = {
+    providers: { free_co: { reset_timezone: "UTC" }, paid_co: {} },
+    model_routes_map: { "svc/model": ["free_route", "paid_route"] },
+    routes_by_id: {
+      free_route: { route_id: "free_route", provider: "free_co", free: true, rpd: 1 },
+      paid_route: { route_id: "paid_route", provider: "paid_co", free: false },
+    },
+  };
+  const now = new Date("2026-08-06T12:00:00Z");
+  const budget = {
+    routes: {
+      free_route: { requests_day: 1, requests_day_key: "2026-08-06" },
+      paid_route: { blocked_until: "2026-08-06T12:00:10Z" },
+    },
+  };
+  const policy = {
+    allow_paid: true,
+    deadline_at: "2026-08-07T01:00:00Z", // after the free route's midnight reset
+  };
+  assert.equal(selectRoute(budget, "svc/model", policy, now, dispatchLimits).reason, "no_capacity");
+  assert.equal(
+    nextCapacityRetryAt(budget, "svc/model", policy, now, dispatchLimits).toISOString(),
+    "2026-08-07T00:00:00.000Z",
+  );
 });
 
 test("selectRoute ranks free before paid and cheapest paid first, deterministically", () => {
