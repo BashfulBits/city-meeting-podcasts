@@ -1165,7 +1165,8 @@ def _try_preload_asr_model(defaults: dict, *, lane: str | None = None) -> None:
     loading.
 
     ``lane`` selects which single model to warm so the two never co-load on a sharded runner
-    (H6b): ``"align"`` pre-loads the stable-ts alignment model; ``"transcribe"`` / ``None`` (the
+    (H6b): ``"align"`` pre-loads the WhisperX known-text alignment model; ``"transcribe"`` /
+    ``None`` (the
     combined enrich) pre-load the faster-whisper transcription model.
     """
     if not defaults.get("asr_enabled", True):
@@ -1180,8 +1181,13 @@ def _try_preload_asr_model(defaults: dict, *, lane: str | None = None) -> None:
         asr_workers = int(defaults.get("asr_workers", 1))
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / asr_workers))
         if lane == "align":
-            print(f"[asr] pre-loading stable-ts align model {model} ({cpu_threads}t)…", flush=True)
-            asr_mod._load_alignment_model(model, compute_type, cpu_threads)
+            align_model = str(defaults.get("asr_alignment_model", "WAV2VEC2_ASR_BASE_960H"))
+            language = str(defaults.get("asr_language", "en"))
+            print(
+                f"[asr] pre-loading WhisperX align model {align_model} ({cpu_threads}t)…",
+                flush=True,
+            )
+            asr_mod.load_alignment_model(align_model, language, cpu_threads)
         else:
             print(f"[asr] pre-loading {model} ({compute_type}, {cpu_threads} threads)…", flush=True)
             asr_mod.load_model(model, compute_type, cpu_threads)
@@ -2490,7 +2496,7 @@ def _build_impl(
             resource_admission=ctx.resource_admission,
         ) as _hb:
             # Pre-load only the ASR model the active lane will use, so a transcribe shard never
-            # pulls in stable-ts and an align shard never pulls in faster-whisper (H6b). The audio
+            # pulls in WhisperX and an align shard never pulls in faster-whisper (H6b). The audio
             # and tag lanes load nothing -- neither runs TranscriptStage (LANE_STAGES).
             # ``lane=None`` (combined enrich) keeps the faster-whisper preload as before.
             if (

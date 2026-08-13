@@ -103,6 +103,7 @@ from citypods.integrity import (
     needs_timeline_audio_repair,
     timeline_audio_repair_token,
 )
+from citypods.known_text import provider_align_ineligible, provider_sections
 from citypods.media import (
     AudioArtifactCache,
     HostedKeysCache,
@@ -218,6 +219,12 @@ _TIMELINE_BACKOFF_ERRORS = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class _CachedAsrArtifacts:
+    artifacts: object
+    aligned: bool
+
+
 class AsrArtifactCache:
     """Thread-safe run-local reuse for identical stable-uid + ASR-recipe work.
 
@@ -228,14 +235,14 @@ class AsrArtifactCache:
 
     def __init__(self) -> None:
         self._condition = threading.Condition()
-        self._values: dict[tuple[str, str], object] = {}
+        self._values: dict[tuple[str, str], _CachedAsrArtifacts] = {}
         self._inflight: set[tuple[str, str]] = set()
 
-    def get(self, key: tuple[str, str]) -> object | None:
+    def get(self, key: tuple[str, str]) -> _CachedAsrArtifacts | None:
         with self._condition:
             return self._values.get(key)
 
-    def claim(self, key: tuple[str, str]) -> tuple[bool, object | None]:
+    def claim(self, key: tuple[str, str]) -> tuple[bool, _CachedAsrArtifacts | None]:
         """Wait for an in-flight leader, or reserve ``key`` for the caller.
 
         Returns ``(True, None)`` to the leader that must run inference, or
@@ -250,9 +257,9 @@ class AsrArtifactCache:
             self._inflight.add(key)
             return True, None
 
-    def complete(self, key: tuple[str, str], value: object) -> None:
+    def complete(self, key: tuple[str, str], artifacts: object, *, aligned: bool) -> None:
         with self._condition:
-            self._values[key] = value
+            self._values[key] = _CachedAsrArtifacts(artifacts=artifacts, aligned=aligned)
             self._inflight.discard(key)
             self._condition.notify_all()
 
@@ -284,7 +291,7 @@ class StageContext:
     max_kbps: int
     dry_run: bool
     # GPU/ASR execution backend (H13). The pluggable seam ``TranscriptStage`` routes inference
-    # through — ``local`` (in-process faster-whisper/stable-ts) by default; H14 swaps in the
+    # through — ``local`` (in-process faster-whisper/WhisperX) by default; H14 swaps in the
     # Modal/Beam dispatch adapters here with no stage change. None ⇒ build an in-process
     # ``LocalBackend`` on the stage's ``asr_mod`` (keeps the default path behavior-preserving).
     compute_backend: object | None = None
@@ -426,8 +433,8 @@ class StageContext:
     fast_yield_exit: Callable[[], None] | None = None
     # Work-class lane for the sharded H6b workflows. None ⇒ the combined behavior (audio pass +
     # auto align/transcribe per episode). ``"audio"`` runs only the audio pass; ``"transcribe"``
-    # runs the transcript pass forcing fresh faster-whisper transcription (never loads stable-ts);
-    # ``"align"`` runs the transcript pass align-only (stable-ts, episodes with a source transcript)
+    # runs the transcript pass forcing fresh faster-whisper transcription (never loads WhisperX);
+    # ``"align"`` runs the transcript pass align-only (WhisperX, episodes with a source transcript)
     # so the two ASR models never co-load in one runner. The pass selection lives in run.py; this
     # field tells TranscriptStage which ASR model path to take.
     lane: str | None = None
@@ -495,7 +502,7 @@ class StageStats:
     credited: int = 0
     # Transcript-only breakdown of ``ran``: forced-alignment (Path A) vs fresh transcription
     # (Path B). Shown in the status dashboard as ``Naln·Nasr`` alongside the stage row.
-    aligned: int = 0  # Path A: stable-ts forced alignment from source text
+    aligned: int = 0  # Path A: WhisperX known-text alignment from source text
     transcribed: int = 0  # Path B: fresh faster-whisper transcription
     dispatched: int = 0  # H14a: handed to an external GPU backend (off-runner); pending next render
     asr_migration_copied: int = 0
@@ -3016,6 +3023,7 @@ AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
 MINUTES_VOTES_PIPELINE_VERSION = "1"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
+KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
@@ -3108,17 +3116,8 @@ def _has_word_timing_vtt(content: bytes) -> bool:
 
 
 def _provider_alignment_artifact_is_reusable(artifact: dict) -> bool:
-    """Return whether a computed provider alignment may be reused under the current recipe.
-
-    Cue-timed VTT/SRT source documents are already governed by their explicit cue timestamps, so
-    their existing computed artifacts remain reusable across this TXT-only recipe change. Plain
-    TXT sources require the current marker because their new coarse-window interpretation changes
-    the stable-ts inputs; missing markers are legacy and therefore stale.
-    """
-    source_format = str(artifact.get("format") or "").lower()
-    return source_format in {"vtt", "srt"} or (
-        artifact.get("align_pipeline_version") == PROVIDER_ALIGN_PIPELINE_VERSION
-    )
+    """Return whether a computed provider alignment has the current WhisperX recipe."""
+    return artifact.get("align_pipeline_version") == PROVIDER_ALIGN_PIPELINE_VERSION
 
 
 def _provider_alignment_source_format(registry: object) -> str | None:
@@ -3635,6 +3634,25 @@ def _provider_alignment_inputs(
     return "\n".join(cue["text"] for cue in timed_segments), timed_segments
 
 
+def _provider_alignment_sections(ep: Episode, content: bytes, fmt: str) -> list[dict]:
+    """Prepare provider wording and served-time windows for WhisperX alignment."""
+    source_id = ep.sources[0].id if ep.sources else None
+    if fmt in {"vtt", "srt"}:
+        text = "\n".join(
+            _VTT_WORD_TIMESTAMP_RE.sub("", str(cue.get("text") or ""))
+            for cue in _parse_timed_transcript(content, fmt)
+        )
+    else:
+        text = content.decode("utf-8-sig", errors="replace")
+    return provider_sections(
+        text,
+        duration=episode_served_duration_seconds(ep),
+        source_duration=episode_source_duration_seconds(ep),
+        timeline=ep.timeline,
+        source_id=source_id,
+    )
+
+
 def _alignment_input_hash(text: str, timed_segments: list[dict] | None = None) -> str:
     """Hash wording plus constrained windows so timing changes invalidate alignment artifacts."""
     if not timed_segments:
@@ -3749,17 +3767,26 @@ def _asr_words_object_key(src_key: str, uid: str, recipe: str) -> str:
     return f"transcripts/{src_key}/{uid}-asr-{recipe}.words.json"
 
 
-def _asr_recipe_hash(city: City, ep: Episode, align_hash: str | None) -> str:
+def _asr_recipe_hash(
+    city: City,
+    ep: Episode,
+    align_hash: str | None,
+    *,
+    align_model: str | None = None,
+    interpolate_method: str | None = None,
+) -> str:
     """ASR recipe hash keyed on transcript media/timeline inputs, not audio-byte recipes."""
     return asr_mod.asr_spec_hash(
         transcript_media_hash(ep),
         city.asr_model,
         align_hash,
-        ASR_PIPELINE_VERSION,
+        KNOWN_TEXT_ALIGN_PIPELINE_VERSION if align_hash is not None else ASR_PIPELINE_VERSION,
         language=city.asr_language or None,
         compute_type=city.asr_compute_type,
         beam_size=city.asr_beam_size,
         initial_prompt=asr_initial_prompt(city.podcast_author, ep.body, ep.title),
+        align_model=align_model,
+        interpolate_method=interpolate_method,
     )
 
 
@@ -3801,7 +3828,7 @@ def _preprocess_align_text(text: str) -> str:
     Provider transcripts (CivicClerk, etc.) are *minutes documents*, not pure
     speech transcripts.  They include agenda headers, speaker attribution labels
     (``COUNCIL MEMBER SMITH:``), coarse timestamps, motion/vote boilerplate, and
-    legal text that was never spoken aloud.  Passing that verbatim to stable-ts
+    legal text that was never spoken aloud.  Passing that verbatim to a known-text aligner
     causes ~50 % alignment failures because half the words don't appear in the audio.
 
     Strategy:
@@ -4040,7 +4067,7 @@ class TranscriptStage:
          If untimed (txt), fall through to step 3 so ASR can upgrade it.
       3. ASR slot (issue #110): produce a timed VTT in *served time* from the hosted
          audio.  Two sub-paths:
-           A. Forced alignment (stable-ts) — when a stored untimed source transcript
+           A. WhisperX known-text alignment — when a stored untimed source transcript
               is available.  Preserves official wording; faster than full transcription.
            B. Fresh transcription (faster-whisper) — when no source text exists.
               Uses episode title/body as ``initial_prompt`` to prime proper nouns.
@@ -4128,7 +4155,7 @@ class TranscriptStage:
             align_artifact = {
                 **provider_artifact,
                 "text_hash": text_hash,
-                "model": city.asr_model,
+                "model": city.asr_alignment_model,
             }
             align_spec = _provider_align_spec_hash(ep, align_artifact)
             key = _provider_align_object_key(src_key, uid, align_spec)
@@ -4150,6 +4177,7 @@ class TranscriptStage:
                     "aligned_words_url": words_url,
                     "align_spec_hash": align_spec,
                     "align_pipeline_version": PROVIDER_ALIGN_PIPELINE_VERSION,
+                    "alignment_method": "whisperx",
                     "align_coverage": artifacts.coverage,
                     "status": "known_good",
                 }
@@ -4169,6 +4197,23 @@ class TranscriptStage:
             ep.transcript_timing_source = "computed"
             ep.transcript_selection = "provider-aligned"
             _reset_asr_timeout_backoff(ep)
+
+        def _mark_provider_align_ineligible(ep: Episode, recipe: str, reason: str) -> None:
+            """Route a failed known-text candidate to the ordinary full-ASR queue."""
+            registry = dict(ep.provider_transcript or {})
+            slot = "candidate" if isinstance(registry.get("candidate"), dict) else "known_good"
+            artifact = dict(registry.get(slot) or {})
+            artifact.update(
+                {
+                    "align_ineligible_pipeline_version": (
+                        f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+                    ),
+                    "align_ineligible_reason": reason,
+                    "align_spec_hash": recipe,
+                }
+            )
+            registry[slot] = artifact
+            ep.provider_transcript = registry
 
         def _maybe_align_provider_transcript(
             ep: Episode,
@@ -4378,6 +4423,10 @@ class TranscriptStage:
         if city.asr_enabled:
             if getattr(backend, "isolates_inference", False):
                 _asr_model = city.asr_model
+            elif ctx.lane == "align":
+                # The align lane must not load the full Whisper transcription model. The
+                # per-job WhisperX loader owns its cached CTC model instead.
+                _asr_model = city.asr_alignment_model
             else:
                 try:
                     _asr_model = asr_mod.load_model(
@@ -4601,8 +4650,6 @@ class TranscriptStage:
                         str(ep.transcript_pipeline_version or "").startswith("provider-align:")
                         and ep.transcript_pipeline_version
                         != f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
-                        and _provider_alignment_source_format(provider_registry)
-                        not in {"vtt", "srt"}
                     )
                     if provider_align_stale:
                         # A provider-align pipeline change can alter the alignment inputs (for
@@ -4833,7 +4880,7 @@ class TranscriptStage:
                 continue
 
             # Preserve a provider-native artifact only when its VTT carries word timings. All
-            # other provider documents continue through the common stable-ts path below.
+            # other provider documents continue through the common WhisperX path below.
             if _maybe_align_provider_transcript(
                 ep,
                 ep_ref=ep_ref,
@@ -4897,12 +4944,10 @@ class TranscriptStage:
                 )
                 continue
 
-            # Determine alignment text from any stored provider source transcript. Cue-level
-            # VTT/SRT timing is source evidence, not served timing; remap it to served time and
-            # use it to constrain stable-ts word alignment. Only a provider-native word-timed VTT
-            # bypasses this path.
-            align_text: str | None = None
-            align_timed_segments: list[dict] | None = None
+            # Determine served-time WhisperX sections from the persisted provider wording. A
+            # word-timed native VTT remains native on the identity timeline; all other formats
+            # receive computed timings against the hosted (served-time) audio.
+            align_sections: list[dict] | None = None
             provider_alignment_requested = isinstance(active_provider, dict) and bool(
                 active_provider.get("key")
             )
@@ -4916,7 +4961,7 @@ class TranscriptStage:
                     if not provider_word_timed or (
                         ep.timeline is not None and timeline_digest(ep.timeline, ep.sources)
                     ):
-                        align_text, align_timed_segments = _provider_alignment_inputs(
+                        align_sections = _provider_alignment_sections(
                             ep, provider_content, provider_fmt
                         )
             elif ep.transcript_hosted_url and ep.transcript_format in {"txt", "vtt", "srt"}:
@@ -4927,29 +4972,39 @@ class TranscriptStage:
                     with make_session() as sess:
                         r = sess.get(ep.transcript_hosted_url, timeout=30)
                     if r.status_code == 200:
-                        align_text, align_timed_segments = _provider_alignment_inputs(
+                        align_sections = _provider_alignment_sections(
                             ep, r.content, ep.transcript_format
                         )
-                except Exception:  # noqa: BLE001
-                    pass  # alignment hint unavailable; fall back to fresh transcription
+                except Exception as exc:  # noqa: BLE001
+                    print(
+                        f"[enrich] transcript align-sections unavailable {ep_ref}: {exc}",
+                        flush=True,
+                    )
             if force_asr_selection:
-                align_text = None
-                align_timed_segments = None
+                align_sections = None
 
-            # Lane gating (H6b): the sharded asr.yml runs a single-model lane so faster-whisper and
-            # stable-ts never co-load in one runner. ``transcribe`` forces fresh transcription (drop
-            # the alignment hint → never load stable-ts); ``align`` only handles episodes with a
-            # source transcript (others defer to a transcribe lane). The default (None) lane keeps
+            if align_sections:
+                if provider_align_ineligible(ep.provider_transcript):
+                    stats.defer("alignment-ineligible")
+                    continue
+
+            # Lane gating (H6b): the sharded asr.yml runs a single-model lane so WhisperX and
+            # faster-whisper never co-load in one runner. ``transcribe`` forces fresh
+            # transcription (drop the alignment hint → never load WhisperX); ``align`` only handles
+            # source transcripts (others defer to a transcribe lane). The default (None) lane keeps
             # the auto per-episode behavior for a direct ``citypods enrich``. Apply this before the
             # alignment-enabled guard: production's transcribe lane must deliberately ignore source
             # text and generate fresh ASR even while the separate align lane remains disabled.
-            if ctx.lane == "transcribe" and provider_alignment_requested:
+            if (
+                ctx.lane == "transcribe"
+                and provider_alignment_requested
+                and not provider_align_ineligible(ep.provider_transcript)
+            ):
                 stats.defer("provider-align-lane")
                 continue
             if ctx.lane == "transcribe":
-                align_text = None
-                align_timed_segments = None
-            elif ctx.lane == "align" and align_text is None:
+                align_sections = None
+            elif ctx.lane == "align" and not align_sections:
                 stats.defer("align-lane-no-source-text")
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=align-lane-no-source-text",
@@ -4963,7 +5018,7 @@ class TranscriptStage:
             # even while the site-wide asr_alignment_enabled default stays off elsewhere.
             align_lane_unblocked = route is not None and route.prefers_provider_align
             if (
-                align_text
+                align_sections
                 and not provider_alignment_requested
                 and not (city.asr_alignment_enabled or align_lane_unblocked)
             ):
@@ -4976,12 +5031,22 @@ class TranscriptStage:
 
             ensure_timeline_audio_repair_token(ep, REPAIR_TRANSCRIPT_REGENERATE)
             align_hash = (
-                _alignment_input_hash(align_text, align_timed_segments) if align_text else None
+                hashlib.sha1(
+                    json.dumps(align_sections, separators=(",", ":"), sort_keys=True).encode()
+                ).hexdigest()[:12]
+                if align_sections
+                else None
             )
             # Alignment falls back to fresh transcription on quality/runtime errors, so keep the
             # fresh prompt/beam inputs in the recipe even when alignment is the primary path.
             initial_prompt = asr_initial_prompt(city.podcast_author, ep.body, ep.title)
-            recipe = _asr_recipe_hash(city, ep, align_hash)
+            recipe = _asr_recipe_hash(
+                city,
+                ep,
+                align_hash,
+                align_model=city.asr_alignment_model if align_sections else None,
+                interpolate_method=city.asr_alignment_interpolate if align_sections else None,
+            )
             asr_key = _asr_object_key(src_key, ep.uid or ep.guid, recipe)
             words_key = _asr_words_object_key(src_key, ep.uid or ep.guid, recipe)
             cache_key = (ep.uid or ep.guid, recipe)
@@ -4998,7 +5063,7 @@ class TranscriptStage:
                     _adopt_asr_keys(ep, ctx.storage, asr_key, words_key, recipe)
                     stats.reused += 1
                     continue
-                if provider_url and align_text is None:
+                if provider_url and not align_sections:
                     ep.transcript_hosted_url = ctx.storage.public_url(recheck_asr_key)
                     if recheck_asr_words_key and _present(recheck_asr_words_key):
                         ep.transcript_words_url = ctx.storage.public_url(recheck_asr_words_key)
@@ -5063,19 +5128,13 @@ class TranscriptStage:
             cached_artifacts = ctx.asr_artifact_cache.get(cache_key)
             if cached_artifacts is not None:
                 try:
-                    if (
-                        provider_alignment_requested
-                        and isinstance(active_provider, dict)
-                        and align_text is not None
-                    ):
+                    if cached_artifacts.aligned:
+                        assert isinstance(active_provider, dict)
                         _store_provider_align_artifacts(
-                            ep,
-                            cached_artifacts,
-                            active_provider,
-                            align_hash,
+                            ep, cached_artifacts.artifacts, active_provider, align_hash or ""
                         )
                     else:
-                        _store_asr_artifacts(ep, cached_artifacts, recipe)
+                        _store_asr_artifacts(ep, cached_artifacts.artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
                     print(
@@ -5097,8 +5156,8 @@ class TranscriptStage:
             #     above reconciles on a later run — so it skips the on-runner ASR semaphore / native
             #     gate / audio download. ``try_dispatch`` returns ``None`` when it would overflow to
             #     ``local``, and the synchronous on-runner path below then runs unchanged.
-            if dispatcher is not None and dispatcher.dispatch_enabled:
-                work_class = "transcript-align" if align_text else "transcript-asr"
+            if dispatcher is not None and dispatcher.dispatch_enabled and not align_sections:
+                work_class = "transcript-align" if align_sections else "transcript-asr"
                 disp_uid = ep.uid or ep.guid
                 if dispatcher.is_inflight(src_key, disp_uid, work_class):
                     stats.defer("dispatched-prior-run")
@@ -5117,17 +5176,17 @@ class TranscriptStage:
                         body=ep.body or "",
                     ),
                     InferenceJob(
-                        task="align" if align_text else "transcribe",
+                        task="align" if align_sections else "transcribe",
                         inputs={
                             "audio_url": ep.hosted_audio_url,
                             "audio_key": ep.audio_key,
                             "language": city.asr_language or None,
-                            "model": city.asr_model,
+                            "model": city.asr_alignment_model if align_sections else city.asr_model,
                             "compute_type": city.asr_compute_type,
-                            "beam_size": city.asr_beam_size if not align_text else None,
+                            "beam_size": city.asr_beam_size if not align_sections else None,
                             "initial_prompt": initial_prompt,
-                            "text": align_text,
-                            "timed_segments": align_timed_segments,
+                            "sections": align_sections,
+                            "interpolate_method": city.asr_alignment_interpolate,
                         },
                         recipe_hash=recipe,
                     ),
@@ -5217,19 +5276,13 @@ class TranscriptStage:
                     sem.release()
                     sem = None
                 try:
-                    if (
-                        provider_alignment_requested
-                        and isinstance(active_provider, dict)
-                        and align_text is not None
-                    ):
+                    if cached_artifacts.aligned:
+                        assert isinstance(active_provider, dict)
                         _store_provider_align_artifacts(
-                            ep,
-                            cached_artifacts,
-                            active_provider,
-                            align_hash,
+                            ep, cached_artifacts.artifacts, active_provider, align_hash or ""
                         )
                     else:
-                        _store_asr_artifacts(ep, cached_artifacts, recipe)
+                        _store_asr_artifacts(ep, cached_artifacts.artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
                     print(
@@ -5300,7 +5353,7 @@ class TranscriptStage:
             if probe_source == "hosted":
                 duration_source = "hosted"
             duration_label = f"{dur_h:.1f}" if duration_source != "unknown" else "unknown"
-            mode = "align" if align_text else "transcribe"
+            mode = "align" if align_sections else "transcribe"
             if not _asr_local_duration_eligible(ctx, dur_h):
                 ctx.asr_artifact_cache.abort(cache_key)
                 audio_tmp.cleanup()
@@ -5358,6 +5411,8 @@ class TranscriptStage:
             _artifacts: list = []
             _err: list[Exception] = []
             _aligned: list[bool] = []
+            _needs_fresh_asr: list[bool] = []
+            _alignment_ineligible_reason: list[str] = []
             _release_abandoned_asr_slot = threading.Event()
             _release_abandoned_native_gate = threading.Event()
 
@@ -5365,15 +5420,15 @@ class TranscriptStage:
             # current values, not a reference that may change in future loop iterations
             # (ruff B023).  The thread calls _infer() with no positional args.
             def _infer(
-                _ep=ep,
-                _at=align_text,
-                _ats=align_timed_segments,
+                _at=align_sections,
                 _ep_ref=ep_ref,
                 _audio=audio_path,
                 _audio_tmp=audio_tmp,
                 _result=_artifacts,
                 _errors=_err,
                 _was_aligned=_aligned,
+                _needs_fresh=_needs_fresh_asr,
+                _ineligible_reason=_alignment_ineligible_reason,
                 _sem=sem,
                 _release_abandoned=_release_abandoned_asr_slot,
                 _native_gate=ctx.native_work_gate,
@@ -5409,12 +5464,12 @@ class TranscriptStage:
                                         task="align",
                                         inputs={
                                             "audio_path": _audio,
-                                            "text": _at,
-                                            "model": _asr_model,
+                                            "sections": _at,
+                                            "model": city.asr_alignment_model,
                                             "language": city.asr_language or None,
                                             "compute_type": city.asr_compute_type,
                                             "cpu_threads": cpu_threads,
-                                            "timed_segments": _ats,
+                                            "interpolate_method": city.asr_alignment_interpolate,
                                         },
                                         recipe_hash=_recipe,
                                     )
@@ -5426,9 +5481,25 @@ class TranscriptStage:
                             if _quality_error is not None and isinstance(
                                 _align_exc, _quality_error
                             ):
-                                reason = "alignment-low-quality"
-                            else:
-                                reason = "alignment-error"
+                                _ineligible_reason.append("raw-coverage-below-90-percent")
+                                _needs_fresh.append(True)
+                                print(
+                                    f"[enrich] transcript alignment-ineligible {_ep_ref}; "
+                                    "queued for full ASR: "
+                                    f"{_align_exc}",
+                                    flush=True,
+                                )
+                                return
+                            reason = "alignment-error"
+                            if ctx.lane == "align":
+                                _ineligible_reason.append(reason)
+                                _needs_fresh.append(True)
+                                print(
+                                    f"[enrich] transcript {reason} {_ep_ref}; "
+                                    f"queued for full ASR: {_align_exc}",
+                                    flush=True,
+                                )
+                                return
                             print(
                                 f"[enrich] transcript {reason} {_ep_ref}, "
                                 f"retrying as transcribe: {_align_exc}",
@@ -5436,6 +5507,7 @@ class TranscriptStage:
                             )
                             _result.append(_transcribe_fresh())
                             _was_aligned.append(False)
+                            _ineligible_reason.append(reason)
                     else:
                         _result.append(_transcribe_fresh())
                         _was_aligned.append(False)
@@ -5522,6 +5594,27 @@ class TranscriptStage:
                     ctx.fast_yield_exit()
                 continue
 
+            if _needs_fresh_asr:
+                _mark_provider_align_ineligible(
+                    ep,
+                    recipe,
+                    _alignment_ineligible_reason[0],
+                )
+                ctx.asr_artifact_cache.abort(cache_key)
+                if sem is not None:
+                    sem.release()
+                    sem = None
+                if native_gate_acquired and ctx.native_work_gate is not None:
+                    ctx.native_work_gate.release(kind="asr")
+                    native_gate_acquired = False
+                audio_tmp.cleanup()
+                stats.defer(
+                    "alignment-low-quality"
+                    if _alignment_ineligible_reason[0] == "raw-coverage-below-90-percent"
+                    else "alignment-error"
+                )
+                continue
+
             if _err:
                 ctx.asr_artifact_cache.abort(cache_key)
                 if sem is not None:
@@ -5555,8 +5648,10 @@ class TranscriptStage:
                 continue
 
             artifacts = _artifacts[0]
+            if _alignment_ineligible_reason:
+                _mark_provider_align_ineligible(ep, recipe, _alignment_ineligible_reason[0])
             # Publish before releasing the ASR slot so every follower observes completed bytes.
-            ctx.asr_artifact_cache.complete(cache_key, artifacts)
+            ctx.asr_artifact_cache.complete(cache_key, artifacts, aligned=_aligned[0])
             if sem is not None:
                 sem.release()
                 sem = None
@@ -5566,17 +5661,13 @@ class TranscriptStage:
             audio_tmp.cleanup()
 
             try:
-                if (
-                    _aligned[0]
-                    and provider_alignment_requested
-                    and isinstance(active_provider, dict)
-                    and align_text is not None
-                ):
+                if _aligned[0] and align_sections:
+                    assert isinstance(active_provider, dict)
                     _store_provider_align_artifacts(
                         ep,
                         artifacts,
                         active_provider,
-                        align_hash,
+                        align_hash or "",
                     )
                 else:
                     _store_asr_artifacts(ep, artifacts, recipe)

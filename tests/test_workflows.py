@@ -682,7 +682,7 @@ def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
     assert "faster-whisper-large-v3-turbo" in str(job["steps"])
     install = next(s for s in job["steps"] if s.get("name") == "Install")
     assert 'pip install -e ".[asr-transcribe,storage]"' in install["run"]
-    assert "asr-align" not in install["run"]
+    assert 'pip install -e ".[asr-align,storage]"' in install["run"]
 
 
 def test_granicus_sustained_probe_is_manual_isolated_and_archived():

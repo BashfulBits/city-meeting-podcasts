@@ -42,7 +42,7 @@ jobs:
 
       - name: Install
         # asr-align2 (H15 L2's independent CTC judge) folds into the same asr.txt lock as `asr` --
-        # torch/torchaudio are already a transitive pin there via stable-ts[fw], so torchcodec is
+        # torch/torchaudio are already a transitive pin there via WhisperX, so torchcodec is
         # the only incremental download this adds.
         run: pip install -e ".[asr,asr-align2,storage]" -c constraints/asr.txt
 

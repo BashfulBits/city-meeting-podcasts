@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-# Provider alignment now understands Swagit's standalone ``[HH:MM:SS]`` text anchors and
-# converts them into served-time coarse windows before stable-ts alignment.
-PROVIDER_ALIGN_PIPELINE_VERSION = "3"
+# WhisperX replaces stable-ts for computed provider alignment. The new recipe applies to every
+# provider source format, so all prior provider-align artifacts are gradually regenerated.
+PROVIDER_ALIGN_PIPELINE_VERSION = "4"

@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 
 from citypods.bodies import body_key, canonical_body, rank_by_body
 from citypods.durations import episode_duration_hours, record_duration_hours
+from citypods.known_text import provider_align_ineligible
 from citypods.models import City, Episode
 from citypods.records import load_records
 from citypods.records import source_key as record_source_key
@@ -440,6 +441,10 @@ def _transcript_class(rec: dict, *, route: TranscriptQualityRoute | None = None)
     """
     if route is not None and route.prefers_fresh_asr:
         return "transcript-asr"
+    if provider_align_ineligible(rec.get("provider_transcript")):
+        # The align lane deliberately does not run a second expensive attempt. The normal ASR
+        # queue owns this item next and produces a fresh full transcription.
+        return "transcript-asr"
     if _provider_transcript_entry(rec.get("provider_transcript")) is not None:
         return "provider-transcript-align"
     has_source_text = bool((rec.get("links") or {}).get("transcript"))
@@ -493,10 +498,7 @@ def _episode_work_items(
                 and provider is not None
                 and transcript.get("spec_hash") == provider.get("align_spec_hash")
                 and bool(transcript.get("words_key"))
-                and (
-                    provider.get("format") in {"vtt", "srt"}
-                    or provider.get("align_pipeline_version") == PROVIDER_ALIGN_PIPELINE_VERSION
-                )
+                and provider.get("align_pipeline_version") == PROVIDER_ALIGN_PIPELINE_VERSION
             )
             transcript_done = native_done or aligned_done
         else:

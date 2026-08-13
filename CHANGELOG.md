@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Known-text provider alignment now uses WhisperX with a separate artifact lane.** Untimed Swagit
+  and similar provider documents are cleaned of bracketed source-time markers, remapped to served
+  time, and aligned with the configurable `WAV2VEC2_ASR_BASE_960H` model. The 90% gate is measured
+  before interpolation; below-gate candidates are marked ineligible and deferred to full
+  `large-v3-turbo` ASR on a later pass. Provider-aligned VTT/word sidecars no longer share full-ASR
+  keys, and the existing H15 provider-align/asr-challenger evaluation records now measure the new
+  output with the independent CTC judge. `provider-align` version 4 causes existing provider
+  alignments to be reprocessed gradually; full-ASR artifacts are not invalidated by this change.
+
 - **Topic tagging lane now optimizes candidate scheduling and removes dispatch deadlines.** In the
   dedicated `tag` lane (`enrich --lane tag`, `tag.yml`), `_run_enrich_global_queue` pre-filters candidate
   episodes in memory so the thread pool only evaluates items that genuinely need rules derivation or LLM

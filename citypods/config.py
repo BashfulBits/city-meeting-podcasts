@@ -85,6 +85,16 @@ def _validate_asr_workers(asr_workers: int, *, source_file: Path) -> int:
     return asr_workers
 
 
+def _validate_alignment_interpolate(value: object, *, source_file: Path) -> str:
+    """Validate the post-precedence WhisperX timestamp interpolation policy."""
+    if not isinstance(value, str) or value not in {"linear", "nearest", "ignore"}:
+        raise ValueError(
+            f"{source_file.name}: asr_alignment_interpolate must be one of "
+            f"linear, nearest, ignore; got {value!r}"
+        )
+    return value
+
+
 def _parse_source_id(raw: object, *, source_file: Path) -> str | None:
     if raw is None:
         return None
@@ -320,6 +330,8 @@ def _build_city(
             "asr_workers",
             "asr_beam_size",
             "asr_alignment_enabled",
+            "asr_alignment_model",
+            "asr_alignment_interpolate",
         }
     )
     try:
@@ -384,6 +396,16 @@ def _build_city(
         asr_beam_size=int(_get("asr_beam_size", defaults.get("asr_beam_size", 5))),
         asr_alignment_enabled=bool(
             _get("asr_alignment_enabled", defaults.get("asr_alignment_enabled", False))
+        ),
+        asr_alignment_model=str(
+            _get(
+                "asr_alignment_model",
+                defaults.get("asr_alignment_model", "WAV2VEC2_ASR_BASE_960H"),
+            )
+        ),
+        asr_alignment_interpolate=_validate_alignment_interpolate(
+            _get("asr_alignment_interpolate", defaults.get("asr_alignment_interpolate", "linear")),
+            source_file=source_file,
         ),
     )
 

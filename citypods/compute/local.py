@@ -1,6 +1,6 @@
 """In-process GPU/ASR backend — the only adapter that must exist at 1.0.
 
-A pure move of the faster-whisper / stable-ts calls that ``TranscriptStage`` used to make
+A pure move of the faster-whisper / WhisperX calls that ``TranscriptStage`` used to make
 directly on :mod:`citypods.asr`: this wraps them behind the :class:`~citypods.compute.base.Backend`
 protocol with **byte-identical output**. The heavy lifting (model load/cache, VTT + word-JSON
 emit, alignment-quality gate) stays in ``asr.py``; this adapter only routes the ``transcribe`` /
@@ -16,11 +16,12 @@ from __future__ import annotations
 
 from types import ModuleType
 
+from citypods.compute.align import run_alignment
 from citypods.compute.base import InferenceJob, JobResult
 
 
 class LocalBackend:
-    """Synchronous backend running faster-whisper / stable-ts in this process."""
+    """Synchronous backend running faster-whisper / WhisperX in this process."""
 
     name = "local"
 
@@ -38,7 +39,7 @@ class LocalBackend:
 
         * ``transcribe`` — ``audio_path, model, language, compute_type, beam_size,
           initial_prompt, cpu_threads``
-        * ``align`` — ``audio_path, text, model, language, cpu_threads``
+        * ``align`` — ``audio_path, sections, model, language, cpu_threads, interpolate_method``
         """
         inp = job.inputs
         if job.task == "transcribe":
@@ -52,18 +53,7 @@ class LocalBackend:
                 inp["cpu_threads"],
             )
         elif job.task == "align":
-            align_kwargs = {}
-            if inp.get("timed_segments"):
-                align_kwargs["timed_segments"] = inp["timed_segments"]
-            output = self._asr.align(
-                inp["audio_path"],
-                inp["text"],
-                inp["model"],
-                inp["language"],
-                inp["cpu_threads"],
-                inp.get("compute_type", "int8"),
-                **align_kwargs,
-            )
+            output = run_alignment(self._asr, inp)
         else:
             raise ValueError(f"local backend does not implement task {job.task!r}")
         return JobResult(task=job.task, recipe_hash=job.recipe_hash, output=output)

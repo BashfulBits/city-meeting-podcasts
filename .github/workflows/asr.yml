@@ -2,7 +2,7 @@ name: ASR
 
 # Transcript lanes: identical pull workers claim transcript work from the shared Stage-2 lease
 # ledger until their stop budget. The transcription and provider-alignment lanes remain separate
-# matrix entries so faster-whisper and stable-ts never co-load on one runner.
+# matrix entries so faster-whisper and WhisperX never co-load on one runner.
 
 on:
   schedule:
@@ -57,7 +57,7 @@ jobs:
       - name: Install
         run: |
           if [ "${{ matrix.lane }}" = "align" ]; then
-            pip install -e ".[asr,storage]" -c constraints/asr.txt
+            pip install -e ".[asr-align,storage]" -c constraints/asr.txt
           else
             pip install -e ".[asr-transcribe,storage]" -c constraints/asr.txt
           fi
@@ -86,7 +86,8 @@ jobs:
           "${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null
           echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
 
-      # Restore + download the large-v3-turbo weights (4-step cascade in the script).
+      # Restore + download the large-v3-turbo weights (4-step cascade in the script). The
+      # transcribe lane only loads faster-whisper; the align lane only loads WhisperX.
       - name: Cache Whisper model (large-v3-turbo)
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:

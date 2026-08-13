@@ -62,7 +62,15 @@
     {
       // Named Python inference/imaging libs that affect produced bytes.
       matchManagers: ["pep621", "pip_requirements", "pip-compile"],
-      matchPackageNames: ["faster-whisper", "ctranslate2", "stable-ts", "Pillow"],
+      matchPackageNames: [
+        "faster-whisper",
+        "ctranslate2",
+        "whisperx",
+        "torch",
+        "torchaudio",
+        "torchcodec",
+        "Pillow",
+      ],
       groupName: "output-affecting: python (needs approval + smoke)",
       dependencyDashboardApproval: true,
       automerge: false,
