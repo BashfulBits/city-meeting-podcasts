@@ -9,6 +9,7 @@ Asserting the workflow wiring here fails the PR's ``test`` job the moment that r
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -18,6 +19,7 @@ import yaml
 _PINNED_SHA = re.compile(r"@[0-9a-f]{40}(?:\s|$)")
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+REPO_ROOT = WORKFLOWS.parents[1]
 
 
 def _job(workflow_file: str, job_name: str | None = None) -> tuple[dict, dict]:
@@ -178,6 +180,35 @@ def test_external_worker_deploys_use_secret_scoped_environments(
     env = job.get("env", {})
     for name in secret_names:
         assert env.get(name) == f"${{{{ secrets.{name} }}}}"
+
+
+def test_beam_transcribe_packages_are_all_pinned_in_the_asr_lock():
+    """A lock refresh must not leave Beam indexing a removed transitive package.
+
+    Beam resolves its minimal transcribe image package list from ``constraints/asr.txt`` before
+    the deployment reaches the provider. Keep that list a subset of the shared lock so the CI
+    test fails before a production deployment can raise a ``KeyError``.
+    """
+    app_tree = ast.parse((REPO_ROOT / "scripts/compute/beam_app.py").read_text())
+    package_assignment = next(
+        statement
+        for statement in app_tree.body
+        if isinstance(statement, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "_TRANSCRIBE_PACKAGES"
+            for target in statement.targets
+        )
+    )
+    packages = set(ast.literal_eval(package_assignment.value))
+    pins = set(
+        re.findall(
+            r"^([A-Za-z0-9_.-]+)==",
+            (REPO_ROOT / "constraints/asr.txt").read_text(),
+            flags=re.MULTILINE,
+        )
+    )
+    missing = packages - pins
+    assert not missing, f"Beam packages missing from constraints/asr.txt: {missing}"
 
 
 @pytest.mark.parametrize("workflow,lane,job_name", HEAVY_WORKFLOWS)
