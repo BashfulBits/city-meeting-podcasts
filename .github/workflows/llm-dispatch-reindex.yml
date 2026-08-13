@@ -27,7 +27,7 @@ jobs:
     # outside the reviewed default branch, including for a nominally read-only dry-run.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -53,11 +53,11 @@ jobs:
           # R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}  # enable for a jurisdiction-specific endpoint
         run: |
           set -o pipefail
-          ARGS=(--bucket citypods-llm-dispatch)
+          ARGS=(--bucket citypods-llm-dispatch --workers 4 --r2-retries 5)
           if [ "$APPLY_INPUT" != "true" ]; then
             ARGS+=(--dry-run)
           elif [ "$GIT_REF" != "refs/heads/main" ]; then
             echo "::error::apply can only write the production dispatch queue from main"
             exit 1
           fi
-          python scripts/reindex_llm_dispatch_queue.py "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+          python -u scripts/reindex_llm_dispatch_queue.py "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

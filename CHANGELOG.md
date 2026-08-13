@@ -21,6 +21,17 @@ Phase R (Research-Tool Surface)._
   index maintenance now uses the same bounded retry path as ordinary uploads, so a temporary R2
   `PutObject/InternalError` does not leave an index prune or update to a later sweep. No pipeline
   version, stored artifact, or backfill behavior changes.
+  
+- **LLM dispatch queue reindex now backs off on R2 throttling.** The one-time migration uses four
+  concurrent object operations and retries transient R2 429/5xx responses with jittered exponential
+  backoff, so a temporary bucket read-pressure response does not abort an otherwise healthy scan.
+
+- **Provider-align workers now load the configured WhisperX CTC model.** The internal worker no
+  longer passes the faster-whisper `large-v3-turbo` transcription model to WhisperX; alignment
+  recipes and both worker backends use `asr_alignment_model` (`WAV2VEC2_ASR_BASE_960H`). The ASR
+  workflow also skips faster-whisper cache/download steps for align runners. `provider-align`
+  version 5 reopens all prior provider-align work for gradual recomputation; full-ASR artifacts are
+  not invalidated.
 
 - **Free-plan LLM dispatch cron now has a queue-depth-independent ready index.** Pending R2
   requests write date-ordered compact `ready/` markers, so a scheduled invocation lists one marker
