@@ -17,6 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Free-plan LLM dispatch cron now has a queue-depth-independent ready index.** Pending R2
+  requests write date-ordered compact `ready/` markers, so a scheduled invocation lists one marker
+  and reads only its canonical request instead of scanning and parsing up to 1,000 queue records.
+  The deployed worker dispatches one request per cron tick; ledger-blocked work moves to its next
+  eligible marker. The historical Worker reindex and exact-estimate endpoints are retired to prevent
+  unbounded scans. Existing R2 pending requests require the one-time
+  `scripts/reindex_llm_dispatch_queue.py` marker migration, available as a dry-run-first manual
+  GitHub Action; canonical prompts/results are unchanged, and no Citypods pipeline version or
+  artifact backfill is involved.
+
 - **Known-text provider alignment now uses WhisperX with a separate artifact lane.** Untimed Swagit
   and similar provider documents are cleaned of bracketed source-time markers, remapped to served
   time, and aligned with the configurable `WAV2VEC2_ASR_BASE_960H` model. The 90% gate is measured
