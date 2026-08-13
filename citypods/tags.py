@@ -365,6 +365,41 @@ def tag_input_fingerprint(
     ).hexdigest()[:16]
 
 
+def episode_needs_tagging(
+    ep: Any,
+    taxonomy: Taxonomy,
+    *,
+    llm_enabled: bool,
+    llm_route: str = "",
+    prompt_version: str = TAG_PROMPT_VERSION,
+    admission_policy: str = "",
+) -> bool:
+    """Return whether this episode requires rule-tag derivation, LLM suggestion dispatch,
+    or chapter tagging.
+
+    An episode is fully current (returns False) when its cached tags_input_fingerprint matches
+    the current inputs, its tags_spec_hash is populated, chapter tags exist if chapters are present,
+    and (if LLM is enabled) its tags_llm_recipe_hash is populated.
+    """
+    has_chapters = bool(episode_served_chapters(ep))
+    cheap_fingerprint = tag_input_fingerprint(
+        ep,
+        taxonomy,
+        llm_enabled=llm_enabled,
+        llm_route=llm_route,
+        prompt_version=prompt_version,
+        admission_policy=admission_policy,
+    )
+    inputs_unchanged = (
+        ep.tags_input_fingerprint is not None
+        and ep.tags_input_fingerprint == cheap_fingerprint
+        and ep.tags_spec_hash is not None
+        and (not has_chapters or ep.chapter_tags)
+    )
+    llm_pending = llm_enabled and ep.tags_llm_recipe_hash is None
+    return not (inputs_unchanged and not llm_pending)
+
+
 def _read_storage_bytes(storage: Any, key: str | None) -> bytes | None:
     if not key or storage is None or not hasattr(storage, "exists") or not storage.exists(key):
         return None

@@ -1078,3 +1078,49 @@ def test_chapter_tagger_admits_a_batch_that_fits_an_additional_allowed_route(mon
     assert resolved_model == fallback
     assert int(metadata["input_tokens_estimate"]) > primary_route.input_context_limit
     assert int(metadata["input_tokens_estimate"]) <= fallback_route.input_context_limit
+
+
+def test_episode_needs_tagging_evaluates_correctly():
+    from citypods.tags import episode_needs_tagging, tag_input_fingerprint
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    ep = Episode(
+        "g1",
+        "Meeting",
+        datetime(2026, 1, 1, tzinfo=UTC),
+        "https://example.test/video",
+        uid="ep1",
+    )
+    # 1. Un-tagged episode needs tagging
+    assert episode_needs_tagging(ep, taxonomy, llm_enabled=False) is True
+
+    # 2. Episode with matching fingerprint and tags_spec_hash (rules only)
+    # does NOT need tagging when LLM is disabled.
+    fp = tag_input_fingerprint(ep, taxonomy, llm_enabled=False)
+    ep.tags_input_fingerprint = fp
+    ep.tags_spec_hash = "spec-hash-1"
+    assert episode_needs_tagging(ep, taxonomy, llm_enabled=False) is False
+
+    # 3. Episode with rules done but LLM enabled and tags_llm_recipe_hash is None DOES need tagging
+    fp_llm = tag_input_fingerprint(ep, taxonomy, llm_enabled=True, llm_route="test:model")
+    ep.tags_input_fingerprint = fp_llm
+    assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route="test:model") is True
+
+    # 4. Episode with both rules and LLM resolved does NOT need tagging
+    ep.tags_llm_recipe_hash = "llm-hash-1"
+    assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route="test:model") is False
+
+    # 5. Episode with chapter added needs tagging if chapter_tags is empty
+    ep.source_chapters = [{"start": 0, "title": "Intro"}]
+    assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route="test:model") is True
+    ep.chapter_tags = {"ch-1": [{"id": "housing"}]}
+    # Fingerprint changes due to chapters
+    fp_chap = tag_input_fingerprint(ep, taxonomy, llm_enabled=True, llm_route="test:model")
+    ep.tags_input_fingerprint = fp_chap
+    assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route="test:model") is False

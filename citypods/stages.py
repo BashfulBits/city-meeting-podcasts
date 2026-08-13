@@ -431,6 +431,23 @@ class StageContext:
     # so the two ASR models never co-load in one runner. The pass selection lives in run.py; this
     # field tells TranscriptStage which ASR model path to take.
     lane: str | None = None
+    # Run-scoped signal that the LLM tag backend has no dispatch capacity left this run (its
+    # daily/per-minute provider quota is spent -- the first dispatch that comes back deferred sets
+    # it). ``TagsStage`` reads it to stop RE-FETCHING agenda/transcript text for the large backlog
+    # of episodes whose rules tags are already computed and cached and that only await a (now
+    # unavailable) LLM tag: those defer in memory, untouched, and are retried on a later run once
+    # quota frees. New/changed episodes still fetch, since they need the text for their rules tags.
+    # One Event per build, shared across the global queue's per-episode ``process()`` calls; a
+    # monotonic ``set()`` that is safe to race under the worker threads.
+    tag_llm_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
+    # Per-run cap on newly queued dispatches to avoid flooding worker queues on broad backfills.
+    tag_max_dispatches: int | None = None
+    tag_dispatches_count: int = 0
+    tag_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
+    # UTC wall-clock deadline handed to the LLM tag scheduler as its dispatch ``deadline_at``.
+    # Topic tags use asynchronous dispatch without an artificial deadline (None), avoiding
+    # runner-side sleep pacing and preventing queued worker tasks from timing out.
+    tag_llm_deadline: datetime | None = None
 
 
 @dataclass
@@ -1264,6 +1281,10 @@ class TagsStage:
                     stats.defer("tag-llm-stop", sample=ep.uid or ep.guid)
                     candidate_tags = rule_candidates
                     completed_llm_recipe = None
+                elif ctx.tag_llm_dispatch_exhausted.is_set():
+                    stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
+                    candidate_tags = []
+                    completed_llm_recipe = None
                 else:
                     try:
                         # The tag lane's heartbeat prints PROGRESS's snapshot on every tick
@@ -1294,6 +1315,9 @@ class TagsStage:
                                 chapter_inputs=chapters,
                                 agenda_documents=agenda_document_context(ep),
                                 call_metadata_out=tag_call_metadata,
+                                # Non-interactive tagging: dispatch calls are unpaced on the runner
+                                # and should not carry an expiring deadline to the worker queue.
+                                deadline_at=None,
                             )
                         remember_call_attempt(
                             ep,
@@ -1308,6 +1332,19 @@ class TagsStage:
                             candidate_tags = rule_candidates
                             completed_llm_recipe = None
                             stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
+                            with ctx.tag_dispatches_lock:
+                                ctx.tag_dispatches_count += 1
+                                if (
+                                    ctx.tag_max_dispatches is not None
+                                    and ctx.tag_dispatches_count >= ctx.tag_max_dispatches
+                                    and not ctx.tag_llm_dispatch_exhausted.is_set()
+                                ):
+                                    print(
+                                        f"[tags] reached dispatch cap ({ctx.tag_max_dispatches}); "
+                                        "deferring remaining LLM tag candidates",
+                                        flush=True,
+                                    )
+                                    ctx.tag_llm_dispatch_exhausted.set()
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to

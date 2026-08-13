@@ -36,6 +36,8 @@ tagging:
   # Actions runner and let the asynchronous dispatch Worker pace and retry them. The tag workflow
   # must provide LLM_DISPATCH_URL/LLM_DISPATCH_AUTH_TOKEN; provider keys remain Worker secrets.
   llm_mode: "dispatch"
+  # Bounded batch of new dispatches per workflow run (prevents flooding the Worker on taxonomy/prompt bumps).
+  max_dispatches_per_run: 2000
   taxonomy_path: "config/taxonomy.yml"
   evaluation:
     state_path: "llm_evaluation.json"
@@ -174,20 +176,10 @@ defaults:
   asr_handoff_minutes: 300
   asr_handoff_reserve_minutes: 10
   asr_backstop_minutes: 350
-  # The `tag` lane (tag.yml) runs daily with its own *job* timeout, not the 4h-scale cron
-  # `run_time_budget_minutes` is sized for -- reusing that default left `stop()` never tripping
-  # inside this lane's job, so a slow run got hard-killed by GitHub with nothing persisted instead
-  # of yielding gracefully. Was 18m against a 25m job timeout, but that pair still let real runs
-  # get hard-cancelled: `_run_enrich_global_queue`'s source-prepare pass (fetch_merge over every
-  # unique source in scope) runs to completion unconditionally before `stop()` is ever checked, so
-  # a slow-fetching backlog (many-committee cities, Cloudflare Worker fallback relay latency) can
-  # alone exceed a tight job timeout regardless of how well-tuned this window is. `tag.yml`'s job
-  # timeout is now 240m (mirrors `llm-deferred-sweep.yml`) to give prepare much more room to
-  # finish -- not a guarantee, that pass still has no bound of its own (see `citypods/run.py`).
-  # This window matches `run_time_budget_minutes` so the same `budget_safety` gives it the same
-  # ~36m tail. Window = tag_run_time_budget_minutes × budget_safety; keep it comfortably under the
-  # job's `timeout-minutes`.
-  tag_run_time_budget_minutes: 240
+  # Wall-clock budget for the dedicated `tag` lane (enrich --lane tag, tag.yml). Runs are fast
+  # because candidate pre-filtering skips untouched episodes and dispatch mode enqueues work
+  # asynchronously without runner-side sleep pacing. Window = tag_run_time_budget_minutes × budget_safety.
+  tag_run_time_budget_minutes: 20
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
   # `citypods build --chapters-cap N` to keep its sanity-check fast — see .github/workflows/preview.yml.)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC

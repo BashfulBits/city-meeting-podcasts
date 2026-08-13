@@ -1006,6 +1006,94 @@ def test_tags_stage_pending_episode_rechecks_durable_worker_job(tmp_path):
     assert ctx.storage.reads > 0
 
 
+def test_tag_dispatch_cap_triggers_exhausted_and_defers(tmp_path, monkeypatch):
+    """When tag_max_dispatches is reached, tag_llm_dispatch_exhausted is set and further
+    episodes are deferred under tag-llm-no-quota."""
+    import citypods.tags as tags_mod
+    from citypods.compute.base import InferenceJob, JobHandle
+    from citypods.stages import TagsStage
+    from tests._cas_fake import MemStorage
+
+    monkeypatch.setattr(tags_mod, "ensure_llm_contract", lambda: None)
+
+    class _DispatchingBackend:
+        name = "litellm"
+
+        class config:
+            model = "gemini/gemini-3.1-flash-lite"
+
+        def __init__(self, storage):
+            self.storage = storage
+
+        def run_inference(self, job: InferenceJob):
+            return JobHandle(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                backend="litellm",
+                ref=f"deferred:{job.recipe_hash}",
+            )
+
+    ctx = _ctx(tmp_path)
+    ctx.tag_backend = _DispatchingBackend(MemStorage())
+    ctx.tag_max_dispatches = 1
+
+    ep1 = _ep("guid1")
+    ep1.source_chapters = [{"start": 0, "title": "Intro"}]
+    ep1.links = {"agenda_text_artifact_key": "doc1"}
+    ctx.storage.put_file("doc1", _write_temp(tmp_path, "doc1.txt", b"Item: housing"), "text/plain")
+
+    ep2 = _ep("guid2")
+    ep2.source_chapters = [{"start": 0, "title": "Intro"}]
+    ep2.links = {"agenda_text_artifact_key": "doc2"}
+    ctx.storage.put_file("doc2", _write_temp(tmp_path, "doc2.txt", b"Item: transit"), "text/plain")
+
+    stats1 = TagsStage().process(None, _city(), [ep1], ctx)
+    assert ctx.tag_dispatches_count == 1
+    assert ctx.tag_llm_dispatch_exhausted.is_set()
+    assert stats1.defer_reasons.get("tag-llm-dispatch") == 1
+
+    # Second episode is deferred under tag-llm-no-quota because cap is reached
+    stats2 = TagsStage().process(None, _city(), [ep2], ctx)
+    assert ctx.tag_dispatches_count == 1
+    assert stats2.defer_reasons.get("tag-llm-no-quota") == 1
+
+
+def test_tag_stage_passes_none_deadline_at(tmp_path, monkeypatch):
+    """TagsStage passes deadline_at=None to llm_tag_suggestions so dispatch is unpaced and
+    does not timeout on the worker."""
+    import citypods.tags as tags_mod
+    from citypods.stages import TagsStage
+
+    captured = {}
+
+    def _fake_suggestions(*args, **kwargs):
+        captured["deadline_at"] = kwargs.get("deadline_at")
+        return [], {}, False, "model"
+
+    monkeypatch.setattr(tags_mod, "llm_tag_suggestions", _fake_suggestions)
+
+    class _Backend:
+        name = "litellm"
+
+        class config:
+            model = "gemini/gemini-3.1-flash-lite"
+
+    ctx = _ctx(tmp_path)
+    ctx.tag_backend = _Backend()
+    ctx.tag_llm_deadline = None
+
+    ep = _ep("guid-dl")
+    ep.source_chapters = [{"start": 0, "title": "Intro"}]
+    ep.links = {"agenda_text_artifact_key": "doc-dl"}
+    ctx.storage.put_file(
+        "doc-dl", _write_temp(tmp_path, "doc-dl.txt", b"Item: zoning"), "text/plain"
+    )
+
+    TagsStage().process(None, _city(), [ep], ctx)
+    assert "deadline_at" in captured
+    assert captured["deadline_at"] is None
+
+
 def _write_temp(tmp_path, name, content: bytes):
     path = tmp_path / "_uploads" / name
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -328,7 +328,8 @@ class TestTranscribeMocked:
         audio = tmp_path / "a.m4a"
         audio.write_bytes(b"fake")
 
-        saved = sys.modules.pop("faster_whisper", None)
+        saved = sys.modules.get("faster_whisper")
+        sys.modules["faster_whisper"] = None
         try:
             try:
                 transcribe(audio, "base.en", "en", "int8", 5, None, 4)
@@ -338,6 +339,8 @@ class TestTranscribeMocked:
         finally:
             if saved is not None:
                 sys.modules["faster_whisper"] = saved
+            else:
+                sys.modules.pop("faster_whisper", None)
 
 
 # ── align() — mocked ─────────────────────────────────────────────────────────

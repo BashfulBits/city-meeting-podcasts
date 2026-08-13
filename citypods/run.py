@@ -1623,6 +1623,61 @@ def _run_enrich_global_queue(
             state["persisted"],
             state.get("dirty_uids"),
         )
+    # For the dedicated `tag` lane, pre-filter candidate episodes in memory:
+    # only episodes that require rule-tag computation, LLM suggestion dispatch, or chapter tagging
+    # enter the global queue. Fully resolved/untouched episodes are omitted from the queue up front
+    # (avoiding tens of thousands of idle worker tasks), while retained_episodes remains intact for
+    # append-only persistence.
+    if ctx.lane == "tag":
+        from citypods.llm_evaluation import config_from_mapping, load_state, policy_fingerprint
+        from citypods.tags import TAG_PROMPT_VERSION, episode_needs_tagging, load_taxonomy
+
+        with ctx.tag_taxonomy_cache_lock:
+            cache = ctx.tag_taxonomy_cache
+            if "taxonomy" not in cache and "taxonomy_error" not in cache:
+                try:
+                    cache["taxonomy"] = load_taxonomy(ctx.taxonomy_path)
+                except Exception as exc:  # noqa: BLE001
+                    cache["taxonomy_error"] = str(exc)
+            if "evaluation_state" not in cache and "eval_error" not in cache:
+                try:
+                    evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
+                    evaluation_state = (
+                        load_state(ctx.llm_evaluation_state_path)
+                        if ctx.llm_evaluation_state_path is not None
+                        else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
+                    )
+                    cache["evaluation_config"] = evaluation_config
+                    cache["evaluation_state"] = evaluation_state
+                    cache["admission_policy"] = policy_fingerprint(
+                        evaluation_config, evaluation_state
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    cache["eval_error"] = str(exc)
+            taxonomy = cache.get("taxonomy")
+            admission_policy = cache.get("admission_policy", "")
+
+        if taxonomy is not None:
+            llm_route = (
+                f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
+                f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
+                if ctx.tag_backend is not None
+                else ""
+            )
+            llm_enabled = ctx.tag_backend is not None
+            for state in prepared.values():
+                state["candidate_episodes"] = [
+                    ep
+                    for ep in state["candidate_episodes"]
+                    if episode_needs_tagging(
+                        ep,
+                        taxonomy,
+                        llm_enabled=llm_enabled,
+                        llm_route=llm_route,
+                        prompt_version=TAG_PROMPT_VERSION,
+                        admission_policy=admission_policy,
+                    )
+                ]
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
     # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). Neither
     # ProviderTranscriptDiarizeStage (works purely off an already-aligned transcript's text) nor
@@ -2005,6 +2060,7 @@ def _build_impl(
     )
     tag_backend = None
     tagging_config = site_config.get("tagging") or {}
+    tag_max_dispatches = int(tagging_config.get("max_dispatches_per_run", 2000))
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
@@ -2105,6 +2161,7 @@ def _build_impl(
     deadline: float | None = None
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
+    tag_llm_deadline: datetime | None = None
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
         window_min = float(defaults.get("run_time_budget_minutes", 0))
@@ -2146,7 +2203,7 @@ def _build_impl(
             # why `tag.yml`'s job timeout was widened to 240m (mirroring `llm-deferred-sweep.yml`)
             # rather than tuning this number alone. If prepare itself ever needs a hard bound, it
             # needs its own `ctx.stop()` check inside that loop -- this deadline can't reach it.
-            tag_window_min = float(defaults.get("tag_run_time_budget_minutes", 240))
+            tag_window_min = float(defaults.get("tag_run_time_budget_minutes", 20))
             tag_deadline_secs = tag_window_min * 60 * safety
             remaining_secs = max(0.0, tag_deadline_secs - (time.monotonic() - enrich_phase_start))
             deadline = (time.monotonic() + remaining_secs) if tag_window_min > 0 else None
@@ -2155,6 +2212,9 @@ def _build_impl(
                 print(
                     f"budget: tag window {tag_window_min:.0f}m × {safety} (+ yield if superseded)"
                 )
+            # Topic tag dispatch is asynchronous and not time-critical; omitting tag_llm_deadline
+            # prevents runner-side sleep pacing and ensures worker queue items don't timeout.
+            tag_llm_deadline = None
         elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
             # Chapter jobs are queued rather than held on a runner. The wall-clock stop bounds
             # this producer pass only; accepted Worker jobs remain durable and drain afterward.
@@ -2368,6 +2428,8 @@ def _build_impl(
             else None
         ),
         lane=lane,
+        tag_llm_deadline=tag_llm_deadline,
+        tag_max_dispatches=tag_max_dispatches,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
