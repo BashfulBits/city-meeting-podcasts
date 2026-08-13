@@ -54,7 +54,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from citypods.asr import transcribe
+from citypods.asr import AlignmentQualityError, transcribe
 from citypods.compute.base import InferenceJob
 from citypods.compute.budget import (
     cycle_key,
@@ -361,6 +361,24 @@ class CompletedClaim:
 
 class ClaimDeferred(RuntimeError):
     """A claimed item should return to the queue/backoff path, not settle terminally failed."""
+
+
+def _mark_provider_align_ineligible(ep: Episode, recipe: str, reason: str) -> None:
+    """Record a provider-align rejection so manifest rebuild routes the item to full ASR."""
+    registry = dict(ep.provider_transcript or {})
+    slot = "candidate" if isinstance(registry.get("candidate"), dict) else "known_good"
+    artifact = dict(registry.get(slot) or {})
+    artifact.update(
+        {
+            "align_ineligible_pipeline_version": (
+                f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ),
+            "align_ineligible_reason": reason,
+            "align_spec_hash": recipe,
+        }
+    )
+    registry[slot] = artifact
+    ep.provider_transcript = registry
 
 
 def _is_deterministic_media_decode_error(exc: BaseException) -> bool:
@@ -1368,6 +1386,26 @@ class ExternalTranscribeWorker:
         tracker.record("after-asr")
         return artifacts
 
+    def _log_alignment_speed(self, item: WorkItem, ep: Episode, started: float) -> None:
+        """Log per-file provider alignment throughput in audio-realtime multiples."""
+        try:
+            duration_hours, _source = episode_duration_hours(ep)
+        except AttributeError:
+            # Keep this diagnostic side effect non-fatal for narrow test doubles and legacy
+            # episode objects that predate the consolidated duration fields.
+            duration_hours = max(0.0, float(getattr(ep, "duration", 0.0) or 0.0) / 3600.0)
+        audio_seconds = max(0.0, float(duration_hours or 0.0) * 3600.0)
+        elapsed = max(0.001, time.monotonic() - started)
+        if audio_seconds <= 0:
+            return
+        print(
+            f"[{self.config.backend}-worker] provider-align done "
+            f"{item.source_key}/{item.episode_uid} "
+            f"audio_s={audio_seconds:.1f} elapsed_s={elapsed:.1f} "
+            f"realtime_x={audio_seconds / elapsed:.2f}",
+            flush=True,
+        )
+
     def _push_owned_transcript_record(
         self,
         item: WorkItem,
@@ -1519,16 +1557,29 @@ class ExternalTranscribeWorker:
                 audio_path = Path(td) / "audio.m4a"
                 _download_audio_file(ep.hosted_audio_url, audio_path)
                 tracker.record("after-audio-download")
-                artifacts = self._align_provider_text(
-                    item,
-                    city,
-                    ep,
-                    audio_path,
-                    text,
-                    align_spec,
-                    tracker,
-                    timed_segments=timed_segments,
-                )
+                try:
+                    artifacts = self._align_provider_text(
+                        item,
+                        city,
+                        ep,
+                        audio_path,
+                        text,
+                        align_spec,
+                        tracker,
+                        timed_segments=timed_segments,
+                    )
+                except AlignmentQualityError as exc:
+                    if persist_results:
+                        _mark_provider_align_ineligible(
+                            ep, align_spec, "alignment-window-or-coverage"
+                        )
+                        self._queue_transcript_record(item, ep, records, ref_uid=uid)
+                    print(
+                        f"[{self.config.backend}-worker] provider-align ineligible "
+                        f"{item.source_key}/{item.episode_uid}: {exc}",
+                        flush=True,
+                    )
+                    return False
                 if not persist_results:
                     return False
                 vtt_path = Path(td) / "provider-align.vtt"
@@ -1701,6 +1752,7 @@ class ExternalTranscribeWorker:
             recipe_hash=align_spec,
         )
         tracker.record("before-asr")
+        started = time.monotonic()
         align_kwargs = {"timed_segments": timed_segments} if timed_segments else {}
         if hasattr(self, "local_backend"):
             artifacts = self.local_backend.run_inference(job).output
@@ -1717,6 +1769,7 @@ class ExternalTranscribeWorker:
                 **align_kwargs,
             )
         tracker.record("after-asr")
+        self._log_alignment_speed(item, ep, started)
         return artifacts
 
     def _run_transcribe_item(
@@ -2056,6 +2109,7 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
             except BaseException as exc:  # noqa: BLE001
                 errors.append(exc)
 
+        inference_started = time.monotonic()
         thread = threading.Thread(
             target=_infer,
             name=f"citypods-internal-asr-{item.episode_uid[:8]}",
@@ -2079,6 +2133,8 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
             if isinstance(exc, InferenceProcessTerminated):
                 raise ClaimDeferred("local-worker-terminated") from exc
             raise exc
+        if job.task == "align":
+            self._log_alignment_speed(item, ep, inference_started)
         return result[0]
 
     def _record_timeout_backoff(self, item: WorkItem) -> None:

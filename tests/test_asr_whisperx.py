@@ -174,6 +174,35 @@ def test_open_final_section_is_closed_from_loaded_audio(tmp_path: Path, monkeypa
     assert artifacts.coverage == 1.0
 
 
+def test_align_preserves_provider_timed_sections_for_whisperx(tmp_path: Path, monkeypatch):
+    audio = tmp_path / "audio.m4a"
+    audio.write_bytes(b"audio")
+    timed_segments = [{"start": 12.0, "end": 15.0, "text": "Hello world"}]
+    captured = {}
+
+    monkeypatch.setitem(sys.modules, "stable_whisper", None)
+
+    def _capture(*args, **kwargs):
+        captured["sections"] = args[1]
+        return "aligned"
+
+    monkeypatch.setattr(asr, "align_known_text", _capture)
+    result = asr.align(
+        audio, "Hello world", "WAV2VEC2_ASR_BASE_960H", "en", 1, timed_segments=timed_segments
+    )
+
+    assert result == "aligned"
+    assert captured["sections"] is timed_segments
+
+
+def test_oversized_alignment_window_fails_before_whisperx_call():
+    with pytest.raises(asr.AlignmentQualityError, match="too long"):
+        asr._bounded_alignment_sections(
+            [{"start": 0.0, "end": 301.0, "text": "long section"}],
+            [0.0] * (301 * 16_000),
+        )
+
+
 def test_finite_alignment_section_end_is_clamped_to_loaded_audio():
     bounded = asr._bounded_alignment_sections(
         [{"start": 0.25, "end": 9.0, "text": "stale duration"}],
