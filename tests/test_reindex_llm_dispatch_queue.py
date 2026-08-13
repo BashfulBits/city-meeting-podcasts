@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 
-from scripts.reindex_llm_dispatch_queue import migrate, ready_key
+from botocore.exceptions import ClientError
+
+from scripts.reindex_llm_dispatch_queue import _r2_with_retry, migrate, ready_key
 
 
 class _Body:
@@ -88,3 +90,27 @@ def test_migrate_writes_ready_markers_in_apply_mode():
     assert len(client.puts) == 1
     assert client.puts[0]["Key"] == ready_key(record)
     assert json.loads(client.puts[0]["Body"])["id"] == "1"
+
+
+def test_transient_r2_errors_are_retried_with_backoff(monkeypatch, capsys):
+    attempts = 0
+
+    def operation():
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise ClientError(
+                {
+                    "Error": {"Code": "ServiceUnavailable", "Message": "busy"},
+                    "ResponseMetadata": {"HTTPStatusCode": 503},
+                },
+                "GetObject",
+            )
+        return "ok"
+
+    monkeypatch.setattr("scripts.reindex_llm_dispatch_queue.time.sleep", lambda _delay: None)
+    monkeypatch.setattr("scripts.reindex_llm_dispatch_queue.random.uniform", lambda *_args: 0.0)
+
+    assert _r2_with_retry(operation, key="requests/1.json", retries=2) == "ok"
+    assert attempts == 3
+    assert "retrying object: key=requests/1.json attempt=1/2" in capsys.readouterr().out

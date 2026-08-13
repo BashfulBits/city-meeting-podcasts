@@ -17,16 +17,25 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import time
+from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime
 from typing import Any
 
 REQUEST_PREFIX = "requests/"
 READY_PREFIX = "ready/"
-DEFAULT_WORKERS = 16
+DEFAULT_WORKERS = 4
 DEFAULT_PROGRESS_EVERY = 100
 DEFAULT_PROGRESS_SECONDS = 30
+DEFAULT_R2_RETRIES = 5
+TRANSIENT_R2_CODES = {
+    "InternalError",
+    "ServiceUnavailable",
+    "SlowDown",
+    "TooManyRequests",
+}
 
 
 def _client(*, workers: int = DEFAULT_WORKERS):
@@ -90,27 +99,72 @@ def ready_marker(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _inspect_object(client: Any, bucket: str, item: dict[str, Any], *, dry_run: bool) -> str:
+def _transient_r2_error(exc: BaseException) -> bool:
+    from botocore.exceptions import ClientError
+
+    if not isinstance(exc, ClientError):
+        return False
+    response = exc.response
+    error = response.get("Error", {})
+    code = str(error.get("Code", ""))
+    status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    return code in TRANSIENT_R2_CODES or status in {429, 500, 502, 503, 504}
+
+
+def _r2_with_retry(
+    operation: Callable[[], Any], *, key: str, retries: int = DEFAULT_R2_RETRIES
+) -> Any:
+    for attempt in range(retries + 1):
+        try:
+            return operation()
+        except Exception as exc:
+            if not _transient_r2_error(exc) or attempt >= retries:
+                raise
+            delay = min(30.0, 2**attempt) + random.uniform(0.0, 0.5)
+            print(
+                f"retrying object: key={key} attempt={attempt + 1}/{retries} "
+                f"delay={delay:.2f}s error={exc}",
+                flush=True,
+            )
+            time.sleep(delay)
+
+
+def _inspect_object(
+    client: Any,
+    bucket: str,
+    item: dict[str, Any],
+    *,
+    dry_run: bool,
+    r2_retries: int = DEFAULT_R2_RETRIES,
+) -> str:
     """Read one canonical record and optionally write its ready marker."""
     key = item["Key"]
-    body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
+    body = _r2_with_retry(
+        lambda: client.get_object(Bucket=bucket, Key=key)["Body"].read(),
+        key=key,
+        retries=r2_retries,
+    )
     try:
         record = json.loads(body)
     except json.JSONDecodeError:
-        return "invalid_json", key
+        return "invalid_json"
     if not isinstance(record, dict) or record.get("status") != "pending":
-        return "ignored", key
+        return "ignored"
     if not isinstance(record.get("id"), str) or not record["id"]:
-        return "missing_id", key
+        return "missing_id"
 
     marker_key = ready_key(record)
     if not dry_run:
-        client.put_object(
-            Bucket=bucket,
-            Key=marker_key,
-            Body=json.dumps(ready_marker(record), separators=(",", ":")).encode(),
-            ContentType="application/json",
-            Metadata={"id": record["id"], "status": "pending"},
+        _r2_with_retry(
+            lambda: client.put_object(
+                Bucket=bucket,
+                Key=marker_key,
+                Body=json.dumps(ready_marker(record), separators=(",", ":")).encode(),
+                ContentType="application/json",
+                Metadata={"id": record["id"], "status": "pending"},
+            ),
+            key=marker_key,
+            retries=r2_retries,
         )
     return "pending"
 
@@ -142,6 +196,7 @@ def migrate(
     workers: int = DEFAULT_WORKERS,
     progress_every: int = DEFAULT_PROGRESS_EVERY,
     progress_seconds: int = DEFAULT_PROGRESS_SECONDS,
+    r2_retries: int = DEFAULT_R2_RETRIES,
 ) -> tuple[int, int, int]:
     if workers < 1:
         raise ValueError("workers must be at least 1")
@@ -149,6 +204,8 @@ def migrate(
         raise ValueError("progress_every must be at least 1")
     if progress_seconds < 1:
         raise ValueError("progress_seconds must be at least 1")
+    if r2_retries < 0:
+        raise ValueError("r2_retries must be non-negative")
 
     paginator = client.get_paginator("list_objects_v2")
     scanned = pending = written = 0
@@ -164,7 +221,14 @@ def migrate(
             listed += len(items)
             print(f"listed page: listed={listed} queued={len(items)}", flush=True)
             futures = {
-                executor.submit(_inspect_object, client, bucket, item, dry_run=dry_run): item["Key"]
+                executor.submit(
+                    _inspect_object,
+                    client,
+                    bucket,
+                    item,
+                    dry_run=dry_run,
+                    r2_retries=r2_retries,
+                ): item["Key"]
                 for item in items
             }
             while futures:
@@ -242,6 +306,12 @@ def main() -> int:
         default=DEFAULT_PROGRESS_SECONDS,
         help="emit a heartbeat after this many quiet seconds (default: %(default)s)",
     )
+    parser.add_argument(
+        "--r2-retries",
+        type=int,
+        default=DEFAULT_R2_RETRIES,
+        help="retries for transient R2 errors (default: %(default)s)",
+    )
     args = parser.parse_args()
     required = ("CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
     missing = [name for name in required if not os.environ.get(name)]
@@ -254,6 +324,7 @@ def main() -> int:
         workers=args.workers,
         progress_every=args.progress_every,
         progress_seconds=args.progress_seconds,
+        r2_retries=args.r2_retries,
     )
     mode = "would write" if args.dry_run else "wrote"
     print(f"scanned={scanned} pending={pending} {mode}={written} ready markers")
