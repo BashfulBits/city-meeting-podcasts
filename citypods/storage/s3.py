@@ -66,13 +66,22 @@ def transient_download_errors(
             ReadTimeoutError,
             SSLError,
         )
-        from s3transfer.exceptions import RetriesExceededError as TransferRetriesExceededError
+        from s3transfer.exceptions import (
+            RetriesExceededError as TransferRetriesExceededError,
+        )
+        from s3transfer.exceptions import (
+            S3DownloadFailedError as TransferDownloadFailedError,
+        )
     except ImportError:
         return extra_errors
     return (
         *extra_errors,
         boto3.exceptions.RetriesExceededError,
         TransferRetriesExceededError,
+        # s3transfer raises this specifically when its protective If-Match check
+        # observes that an object changed between its HEAD and ranged GET. A fresh
+        # download attempt gets a new ETag and is safe for this idempotent read.
+        TransferDownloadFailedError,
         ConnectTimeoutError,
         EndpointConnectionError,
         ReadTimeoutError,
