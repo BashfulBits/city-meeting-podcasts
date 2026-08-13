@@ -37,7 +37,7 @@ def test_provider_sections_accept_inline_bracketed_markers():
 
 
 def test_provider_align_version_is_explicit():
-    assert PROVIDER_ALIGN_PIPELINE_VERSION == "2"
+    assert PROVIDER_ALIGN_PIPELINE_VERSION == "4"
 
 
 def test_clean_provider_text_falls_back_for_plain_transcript():

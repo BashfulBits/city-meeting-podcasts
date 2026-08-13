@@ -3191,7 +3191,7 @@ class TestTranscriptVersionAwareReuse:
         assert stats.reused == 1
         assert fake_asr.transcribe_calls == []
 
-    def test_stale_provider_align_keeps_active_vtt_while_v2_is_deferred(self, tmp_path):
+    def test_stale_provider_align_keeps_active_vtt_when_source_is_unavailable(self, tmp_path):
         ep = _ep_with_audio()
         city = _city(asr_alignment_enabled=False)
         src_key = source_key(city)
@@ -3231,7 +3231,7 @@ class TestTranscriptVersionAwareReuse:
         ):
             stats = TranscriptStage().process(FakeProvider(), city, [ep], _ctx(tmp_path))
 
-        assert stats.defer_reasons == {"alignment-disabled": 1}
+        assert stats.defer_reasons == {}
         assert ep.transcript_key == old_key
         assert ep.transcript_hosted_url == old_url
         assert ep.transcript_synced is True

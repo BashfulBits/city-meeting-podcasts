@@ -497,6 +497,7 @@ def test_build_status_provider_transcript_rollout_metrics(tmp_path):
             "format": "vtt",
             "confidence": 0.96,
             "align_spec_hash": "align-done",
+            "align_pipeline_version": "4",
             "diarize_spec_hash": "speaker-done",
             "diarize_confidence": 1.0,
         }
@@ -539,6 +540,7 @@ def test_build_status_provider_transcript_rollout_metrics(tmp_path):
             "format": "vtt",
             "confidence": 0.8,
             "align_spec_hash": "align-failed",
+            "align_pipeline_version": "4",
             "diarize_status": "no-speaker-labels",
         }
     }
