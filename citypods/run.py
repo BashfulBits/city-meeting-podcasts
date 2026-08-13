@@ -1665,6 +1665,12 @@ def _run_enrich_global_queue(
                 else ""
             )
             llm_enabled = ctx.tag_backend is not None
+            prelabeler_config = ctx.llm_evaluation_config.get("prelabeler") or {}
+            prelabeler_enabled = bool(prelabeler_config.get("enabled", False)) and (
+                ctx.tag_backend is not None
+            )
+            prelabeler_model = str(prelabeler_config.get("model") or "")
+            prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
             for state in prepared.values():
                 state["candidate_episodes"] = [
                     ep
@@ -1676,6 +1682,9 @@ def _run_enrich_global_queue(
                         llm_route=llm_route,
                         prompt_version=TAG_PROMPT_VERSION,
                         admission_policy=admission_policy,
+                        prelabeler_enabled=prelabeler_enabled and bool(prelabeler_model),
+                        prelabeler_model=prelabeler_model,
+                        prelabeler_prompt_version=prelabeler_prompt_version,
                     )
                 ]
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout

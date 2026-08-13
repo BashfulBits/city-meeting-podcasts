@@ -1058,6 +1058,120 @@ def test_tag_dispatch_cap_triggers_exhausted_and_defers(tmp_path, monkeypatch):
     assert stats2.defer_reasons.get("tag-llm-no-quota") == 1
 
 
+def test_tag_no_quota_preserves_rule_tags_and_candidate_ledger(tmp_path):
+    """A run-level dispatch cap defers only the LLM request; deterministic tags and their ledger
+    rows must survive the persistence projection unchanged."""
+    from citypods.stages import TagsStage
+    from citypods.tags import load_taxonomy
+
+    taxonomy_path = tmp_path / "taxonomy.yml"
+    taxonomy_path.write_text(
+        "version: 1\n"
+        "source_refs: {x: 'https://example.test'}\n"
+        "tags:\n"
+        "  - id: housing\n"
+        "    label: Housing\n"
+        "    description: Housing\n"
+        "    group: land-use\n"
+        "    source_refs: [x]\n"
+        "    rules: {include: [housing]}\n"
+    )
+    ep = _ep("quota")
+    ep.source_chapters = [{"start": 0, "title": "Housing"}]
+    ep.links = {"agenda_text_artifact_key": "agenda-quota"}
+    ctx = _ctx(tmp_path)
+    ctx.taxonomy_path = taxonomy_path
+    ctx.tag_backend = _FakeTagBackend()
+    ctx.tag_llm_dispatch_exhausted.set()
+    ctx.storage.put_file(
+        "agenda-quota",
+        _write_temp(tmp_path, "agenda-quota.txt", b"Housing plan"),
+        "text/plain",
+    )
+    _mark_pending(ep, ctx, load_taxonomy(taxonomy_path))
+
+    stats = TagsStage().process(None, _city(), [ep], ctx)
+
+    assert stats.defer_reasons.get("tag-llm-no-quota") == 1
+    assert any(candidate.get("source_kind") == "rule" for candidate in ep.llm_tag_candidates)
+    assert any(tag.get("id") == "housing" for tag in ep.tags)
+    assert any(
+        tag.get("id") == "housing"
+        for annotation in ep.chapter_tags
+        for tags in [annotation.get("tags", [])]
+        for tag in tags
+    )
+
+
+def test_tag_dispatch_cap_is_reserved_across_concurrent_workers(tmp_path, monkeypatch):
+    """Concurrent tag workers may submit at most one job when the run cap is one."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    import citypods.tags as tags_mod
+    from citypods.compute.base import InferenceJob, JobHandle
+    from citypods.stages import TagsStage
+    from tests._cas_fake import MemStorage
+
+    monkeypatch.setattr(tags_mod, "ensure_llm_contract", lambda: None)
+
+    class _BlockingDispatchingBackend:
+        name = "litellm"
+
+        class config:
+            model = "gemini/gemini-3.1-flash-lite"
+
+        def __init__(self):
+            self.entered = threading.Event()
+            self.release = threading.Event()
+            self.calls = 0
+            self.lock = threading.Lock()
+            self.storage = MemStorage()
+
+        def run_inference(self, job: InferenceJob):
+            with self.lock:
+                self.calls += 1
+            self.entered.set()
+            assert self.release.wait(5)
+            return JobHandle(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                backend="litellm",
+                ref=f"deferred:{job.recipe_hash}",
+            )
+
+    ctx = _ctx(tmp_path)
+    backend = _BlockingDispatchingBackend()
+    ctx.tag_backend = backend
+    ctx.tag_max_dispatches = 1
+    stage = TagsStage()
+    episodes = []
+    for index in range(2):
+        ep = _ep(f"concurrent-{index}")
+        ep.source_chapters = [{"start": 0, "title": "Intro"}]
+        key = f"doc-concurrent-{index}"
+        ep.links = {"agenda_text_artifact_key": key}
+        ctx.storage.put_file(
+            key,
+            _write_temp(tmp_path, f"{key}.txt", b"Item: housing"),
+            "text/plain",
+        )
+        episodes.append(ep)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(stage.process, None, _city(), [episodes[0]], ctx)
+        assert backend.entered.wait(5)
+        second = pool.submit(stage.process, None, _city(), [episodes[1]], ctx)
+        second_stats = second.result(timeout=5)
+        assert second_stats.defer_reasons.get("tag-llm-no-quota") == 1
+        assert backend.calls == 1
+        backend.release.set()
+        first.result(timeout=5)
+
+    assert ctx.tag_dispatches_count == 1
+    assert ctx.tag_dispatches_reserved == 0
+
+
 def test_tag_stage_passes_none_deadline_at(tmp_path, monkeypatch):
     """TagsStage passes deadline_at=None to llm_tag_suggestions so dispatch is unpaced and
     does not timeout on the worker."""

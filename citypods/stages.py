@@ -443,11 +443,40 @@ class StageContext:
     # Per-run cap on newly queued dispatches to avoid flooding worker queues on broad backfills.
     tag_max_dispatches: int | None = None
     tag_dispatches_count: int = 0
+    tag_dispatches_reserved: int = 0
     tag_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
     # UTC wall-clock deadline handed to the LLM tag scheduler as its dispatch ``deadline_at``.
     # Topic tags use asynchronous dispatch without an artificial deadline (None), avoiding
     # runner-side sleep pacing and preventing queued worker tasks from timing out.
     tag_llm_deadline: datetime | None = None
+
+    def reserve_tag_dispatch(self) -> bool:
+        """Atomically reserve one per-run tag dispatch slot before submitting work."""
+        with self.tag_dispatches_lock:
+            if self.tag_llm_dispatch_exhausted.is_set():
+                return False
+            if (
+                self.tag_max_dispatches is not None
+                and self.tag_dispatches_count + self.tag_dispatches_reserved
+                >= self.tag_max_dispatches
+            ):
+                self.tag_llm_dispatch_exhausted.set()
+                return False
+            self.tag_dispatches_reserved += 1
+            return True
+
+    def settle_tag_dispatch(self, dispatched: bool) -> None:
+        """Release a reservation and count it only when a deferred job was actually queued."""
+        with self.tag_dispatches_lock:
+            self.tag_dispatches_reserved = max(0, self.tag_dispatches_reserved - 1)
+            if not dispatched:
+                return
+            self.tag_dispatches_count += 1
+            if (
+                self.tag_max_dispatches is not None
+                and self.tag_dispatches_count >= self.tag_max_dispatches
+            ):
+                self.tag_llm_dispatch_exhausted.set()
 
 
 @dataclass
@@ -1283,9 +1312,15 @@ class TagsStage:
                     completed_llm_recipe = None
                 elif ctx.tag_llm_dispatch_exhausted.is_set():
                     stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
-                    candidate_tags = []
+                    # The LLM request is the only unavailable part of this episode. Keep the
+                    # deterministic rules and any applicable cached candidates in the ledger and
+                    # projection; only the unresolved recipe remains unset for a later run.
+                    completed_llm_recipe = None
+                elif not ctx.reserve_tag_dispatch():
+                    stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
                     completed_llm_recipe = None
                 else:
+                    dispatch_settled = False
                     try:
                         # The tag lane's heartbeat prints PROGRESS's snapshot on every tick
                         # ("active work: ..."), but until now nothing in this stage ever
@@ -1319,6 +1354,9 @@ class TagsStage:
                                 # and should not carry an expiring deadline to the worker queue.
                                 deadline_at=None,
                             )
+                        queued_dispatch = bool(dispatched and resolved_model != "payload-too-large")
+                        ctx.settle_tag_dispatch(queued_dispatch)
+                        dispatch_settled = True
                         remember_call_attempt(
                             ep,
                             purpose="topic-tags:tagger",
@@ -1329,22 +1367,13 @@ class TagsStage:
                             reason=(resolved_model or "") if dispatched else "",
                         )
                         if dispatched:
-                            candidate_tags = rule_candidates
                             completed_llm_recipe = None
-                            stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
-                            with ctx.tag_dispatches_lock:
-                                ctx.tag_dispatches_count += 1
-                                if (
-                                    ctx.tag_max_dispatches is not None
-                                    and ctx.tag_dispatches_count >= ctx.tag_max_dispatches
-                                    and not ctx.tag_llm_dispatch_exhausted.is_set()
-                                ):
-                                    print(
-                                        f"[tags] reached dispatch cap ({ctx.tag_max_dispatches}); "
-                                        "deferring remaining LLM tag candidates",
-                                        flush=True,
-                                    )
-                                    ctx.tag_llm_dispatch_exhausted.set()
+                            stats.defer(
+                                "tag-llm-oversized"
+                                if resolved_model == "payload-too-large"
+                                else "tag-llm-dispatch",
+                                sample=ep.uid or ep.guid,
+                            )
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to
@@ -1379,6 +1408,8 @@ class TagsStage:
                             final_tags = project_visible_tags(candidate_tags, chapter_annotations)
                             final_hash = projection_hash
                     except Exception as exc:  # noqa: BLE001 — one bad model reply is item-local
+                        if not dispatch_settled:
+                            ctx.settle_tag_dispatch(False)
                         remember_call_attempt(
                             ep,
                             purpose="topic-tags:tagger",

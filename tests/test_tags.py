@@ -1124,3 +1124,27 @@ def test_episode_needs_tagging_evaluates_correctly():
     fp_chap = tag_input_fingerprint(ep, taxonomy, llm_enabled=True, llm_route="test:model")
     ep.tags_input_fingerprint = fp_chap
     assert episode_needs_tagging(ep, taxonomy, llm_enabled=True, llm_route="test:model") is False
+
+    # 6. A current LLM recipe is not enough when the pre-labeler model/prompt changed: the global
+    # tag queue must admit the episode so TagsStage can refresh the candidate metadata.
+    ep.llm_tag_candidates = [
+        {
+            "source_kind": "rule",
+            "candidate_state": "active",
+            "prelabeler_model": "old-model",
+            "prelabeler_prompt_version": "1",
+            "prelabeler_decision": "likely_correct",
+        }
+    ]
+    assert (
+        episode_needs_tagging(
+            ep,
+            taxonomy,
+            llm_enabled=True,
+            llm_route="test:model",
+            prelabeler_enabled=True,
+            prelabeler_model="new-model",
+            prelabeler_prompt_version="2",
+        )
+        is True
+    )
