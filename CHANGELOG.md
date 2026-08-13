@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Provider-align workers now preserve bounded timing windows through the local backend.** The
+  internal process previously dropped the provider's coarse served-time segments, causing
+  WhisperX to feed an entire meeting into one CTC convolution and request roughly 40 GB for a
+  1.7-hour recording. Timed segments now reach WhisperX on both worker paths; any remaining
+  section over five minutes is rejected before inference so the item can follow the normal ASR
+  route instead of exhausting runner memory. Provider-align version 6 reopens prior provider
+  alignments for gradual recomputation; full-ASR artifacts are not invalidated. Per-file logs now
+  report audio seconds, elapsed alignment seconds, and realtime throughput.
+
 - **LLM dispatch queue reindex now backs off on R2 throttling.** The one-time migration uses four
   concurrent object operations and retries transient R2 429/5xx responses with jittered exponential
   backoff, so a temporary bucket read-pressure response does not abort an otherwise healthy scan.

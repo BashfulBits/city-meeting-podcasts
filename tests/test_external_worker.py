@@ -1030,6 +1030,38 @@ def test_internal_worker_align_passes_timed_segments_to_local_inference(tmp_path
     assert captured["job"].inputs["model"] == "WAV2VEC2_ASR_BASE_960H"
 
 
+def test_provider_align_logs_per_file_realtime_speed(tmp_path, capsys):
+    worker = _loop_worker(tmp_path, ["a"])
+    item = _queued("a", work_class="provider-transcript-align")
+    ep = SimpleNamespace(
+        duration=3600.0,
+        source_duration_seconds=None,
+        served_duration_seconds=None,
+        audio_duration_served=None,
+    )
+
+    worker._log_alignment_speed(item, ep, time.monotonic() - 2.0)
+
+    output = capsys.readouterr().out
+    assert "provider-align done src/a" in output
+    assert "audio_s=3600.0" in output
+    assert "elapsed_s=" in output
+    assert "realtime_x=" in output
+
+
+def test_provider_align_ineligible_routes_future_manifest_to_asr():
+    ep = SimpleNamespace(
+        provider_transcript={"candidate": {"key": "provider.txt", "status": "candidate"}}
+    )
+
+    ew._mark_provider_align_ineligible(ep, "recipe", "alignment-window-or-coverage")
+
+    candidate = ep.provider_transcript["candidate"]
+    assert candidate["align_ineligible_pipeline_version"] == "provider-align:6"
+    assert candidate["align_ineligible_reason"] == "alignment-window-or-coverage"
+    assert candidate["align_spec_hash"] == "recipe"
+
+
 def test_external_worker_align_uses_alignment_model(monkeypatch, tmp_path):
     worker = _loop_worker(tmp_path, ["a"])
     captured = {}
