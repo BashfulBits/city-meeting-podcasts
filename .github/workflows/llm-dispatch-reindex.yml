@@ -1,0 +1,57 @@
+name: Reindex LLM dispatch queue
+
+# One-time recovery action for upgrading the dispatch Worker to its date-ordered ready index.
+# Dispatch dry-run first, inspect the count, then dispatch again with `apply` checked.  The script
+# reads only this private dispatch bucket's canonical request records and writes compact `ready/`
+# markers; it never changes prompts, completed results, or request status.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Write ready markers (unchecked = dry-run)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-dispatch-reindex
+  cancel-in-progress: false
+
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install R2 client
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+
+      - name: Build ready markers
+        env:
+          APPLY_INPUT: ${{ inputs.apply }}
+          GIT_REF: ${{ github.ref }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          # R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}  # enable for a jurisdiction-specific endpoint
+        run: |
+          ARGS=(--bucket citypods-llm-dispatch)
+          if [ "$APPLY_INPUT" != "true" ]; then
+            ARGS+=(--dry-run)
+          elif [ "$GIT_REF" != "refs/heads/main" ]; then
+            echo "::error::apply can only write the production dispatch queue from main"
+            exit 1
+          fi
+          python scripts/reindex_llm_dispatch_queue.py "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -24,7 +24,6 @@
     "MODEL_ID": "mistral/mistral-large-2512",
     "MAX_REQUEST_BYTES": "8388608",
     "MAX_RESPONSE_BYTES": "2097152",
-    "MAX_QUEUE_SCAN": "1000",
     // A dispatch request is one model attempt. Retries would make the caller's CAS-backed
     // 20-attempt/day cap undercount real provider API calls during the cautious rollout.
     "MAX_ATTEMPTS": "1",
@@ -39,8 +38,10 @@
     "FAST_UPSTREAM_TIMEOUT_SECONDS": "90",
     "UPSTREAM_TIMEOUT_SECONDS": "720",
     "FINALIZATION_RESERVE_SECONDS": "20",
-    "BATCH_CONCURRENCY": "4",
-    "MAX_TOTAL_REQUESTS": "16"
+    // The free plan permits only 10ms of CPU for this per-minute cron.  Dispatch one durable
+    // request at a time; the ready-marker lookup is O(1) in the number of queued records.
+    "BATCH_CONCURRENCY": "1",
+    "MAX_TOTAL_REQUESTS": "1"
   },
   "observability": {
     "enabled": true,

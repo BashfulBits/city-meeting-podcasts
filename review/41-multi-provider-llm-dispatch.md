@@ -210,15 +210,14 @@ plugs in the same way, gated identically.
   string become unreachable after deploy — both are already documented as loss-tolerant
   (review/33 §10.4/§10.6: re-initializes to zero, worst case is one over-count window before the
   provider's own throttling corrects it, never a lost artifact).
-- **`GET /v1/queue/estimate` and the cron claim scan still page through every object under
-  `requests/`, forever.** `customMetadata` (§3.2's sibling optimization) removes the per-object body
-  fetch for a terminal record and the cursor loop removes the old 1000-object truncation, but neither
-  prunes anything — a bucket holding months of `completed`/`failed` records still costs one full
-  authenticated listing scan per estimate call and per cron tick, on a Worker with a CPU budget, to
-  find a backlog that in practice is a handful of items. A real fix (CodeRabbit, review/41) is either
-  a bounded per-tick retention step under the existing cron lease, or a small R2 counter object
-  `enqueue`/the terminal writes adjust directly instead of re-deriving the count by listing. Not built
-  in this pass — flagged here rather than silently left undocumented.
+- **Resolved 2026-08-13 — date-ordered ready index replaces queue scans.** Pending records now have a
+  compact `ready/<eligible-time>-<priority>-…` marker. The cron reads one lexicographic head marker
+  and one canonical request, independent of `requests/` depth; it never falls back to a legacy scan.
+  The Free-plan deployment dispatches one request per tick. `GET /v1/queue/estimate` is deliberately
+  retired rather than retaining a second unbounded Worker scan, and the offline
+  `scripts/reindex_llm_dispatch_queue.py` creates markers for pre-index pending records. The marker
+  body contains routing policy but never the prompt; canonical state is re-read before dispatch, so a
+  stale marker from a crash is safe and self-repairs.
 - **The two ingest workflows (`asr-quality-ingest.yml`, `llm-tag-review-ingest.yml`) are not
   replay-safe.** Both persist a decision (`citypods transcript-quality ingest-review` /
   `citypods llm-evaluation ingest`) and then comment on and close the source issue as two separate,
@@ -242,8 +241,9 @@ permissive `lambda **_:` to a strict one per CodeRabbit) that dispatch-only poli
 credential-disclosure regression test), per-route-ledger-driven account rotation across a real 10-request
 Gemini burst, `no_capacity` (temporary, requeued) vs. permanent-failure (`no_configured_route`/
 `no_eligible_route`) outcomes, deadline-based paid elevation against synthetic mixed-tier route
-fixtures (§3.2), owner-token cron-lease release semantics, the queue-scan counter bound, and
-`GET /v1/queue/estimate` backlog accuracy against mixed pending/completed/other-model records.
+fixtures (§3.2), owner-token cron-lease release semantics,
+the bounded ready-index lifecycle (including a 10,000-record queue that uses one list and reads only
+one marker plus one canonical request), and retirement of the historical reindex/estimate scans.
 
 ## §6. Acceptance
 

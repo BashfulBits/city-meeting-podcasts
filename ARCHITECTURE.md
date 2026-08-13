@@ -347,8 +347,10 @@ total on `/admin/status`.
   (`_run_gemini_structured_direct`).
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
-  design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests; a
-  per-minute Cron Trigger claims a bounded batch of ready requests with an R2 conditional write, ranks each request's
+  design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests
+  plus a compact date-ordered `ready/` marker; a per-minute Free-plan Cron Trigger lists one marker
+  and reads its one canonical request (constant in queue depth) before claiming at most one request,
+  ranks each request's
   canonical model's candidate routes (free before paid, then cheapest) against a **per-route/per-account
   ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s versioned minute/day
   window, cost, `blocked_until`, and `inflight` shape),
