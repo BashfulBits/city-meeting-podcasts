@@ -845,6 +845,31 @@ test("selectRoute spills a durable request to its next allowed model when the pr
   assert.equal(result.chosenRoute?.route_id, "backup");
 });
 
+test("selectRoute skips allowed routes whose input or output context cannot fit the request", () => {
+  const dispatchLimits = {
+    providers: { primary: {}, backup: {} },
+    model_routes_map: { "svc/primary": ["primary"], "svc/backup": ["backup"] },
+    routes_by_id: {
+      primary: {
+        route_id: "primary", provider: "primary", free: true,
+        input_context_limit: 10_000, output_context_limit: 1_024,
+      },
+      backup: {
+        route_id: "backup", provider: "backup", free: true,
+        input_context_limit: 100_000, output_context_limit: 8_192,
+      },
+    },
+  };
+  const result = selectRoute(
+    { routes: {} },
+    ["svc/primary", "svc/backup"],
+    { allow_paid: false, input_tokens_estimate: 20_000, output_token_budget: 2_048 },
+    new Date("2026-08-06T12:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(result.chosenRoute?.route_id, "backup");
+});
+
 test("routeAvailable respects rpm/rpd/tpm/blocked_until independently", () => {
   const now = new Date("2026-08-06T12:00:30Z");
   const route = { rpm: 2, rpd: 5, tpm: 100 };

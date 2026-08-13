@@ -11,7 +11,8 @@
       "rpm": 60,
       "monthly_tpm": 1000000000,
       "reset_day": 1,
-      "context_limit": 32768,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384,
       "accounts": [
         {
           "id": "primary",
@@ -23,7 +24,8 @@
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
       "chat_path": "/chat/completions",
       "reset_timezone": "America/Los_Angeles",
-      "context_limit": 32768,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384,
       "accounts": [
         {
           "id": "project_primary",
@@ -39,7 +41,8 @@
       "api_base": "https://api.deepseek.com/v1",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
-      "context_limit": 131072,
+      "input_context_limit": 131072,
+      "output_context_limit": 16384,
       "accounts": [
         {
           "id": "primary",
@@ -51,7 +54,8 @@
       "api_base": "https://api.siliconflow.com/v1",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
-      "context_limit": 32768,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384,
       "accounts": [
         {
           "id": "primary",
@@ -63,7 +67,8 @@
       "api_base": "https://api.groq.com/openai/v1",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
-      "context_limit": 32768,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384,
       "accounts": [
         {
           "id": "primary",
@@ -75,7 +80,8 @@
       "api_base": "https://api.sambanova.ai/v1",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
-      "context_limit": 32768,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384,
       "accounts": [
         {
           "id": "primary",
@@ -87,7 +93,8 @@
       "api_base": "https://api.z.ai/api/paas/v4",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
-      "context_limit": 32768,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384,
       "accounts": [
         {
           "id": "primary",
@@ -99,7 +106,8 @@
       "api_base": "https://openrouter.ai/api/v1",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
-      "context_limit": 32768,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384,
       "discovery": {
         "endpoint": "https://openrouter.ai/api/v1/models"
       },
@@ -114,7 +122,8 @@
       "api_base": "https://api.kilo.ai/api/gateway",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
-      "context_limit": 32768,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384,
       "accounts": [
         {
           "id": "primary",
@@ -126,7 +135,8 @@
       "api_base": "https://opencode.ai/zen/v1",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
-      "context_limit": 32768,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384,
       "accounts": [
         {
           "id": "primary",
@@ -145,7 +155,9 @@
       "rpm": 15,
       "rpd": 500,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_3_5_flash_lite_secondary",
@@ -156,7 +168,9 @@
       "rpm": 15,
       "rpd": 500,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_3_1_flash_lite_primary",
@@ -167,7 +181,9 @@
       "rpm": 15,
       "rpd": 500,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_3_1_flash_lite_secondary",
@@ -178,7 +194,9 @@
       "rpm": 15,
       "rpd": 500,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemma_4_26b_primary",
@@ -189,7 +207,9 @@
       "rpm": 30,
       "rpd": 14400,
       "tpm": 16000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemma_4_26b_secondary",
@@ -200,7 +220,9 @@
       "rpm": 30,
       "rpd": 14400,
       "tpm": 16000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemma_4_31b_primary",
@@ -211,7 +233,9 @@
       "rpm": 30,
       "rpd": 14400,
       "tpm": 16000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemma_4_31b_secondary",
@@ -222,7 +246,9 @@
       "rpm": 30,
       "rpd": 14400,
       "tpm": 16000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_3_flash_preview_primary",
@@ -233,7 +259,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_3_flash_preview_secondary",
@@ -244,7 +272,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_3_6_flash_primary",
@@ -255,7 +285,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_3_6_flash_secondary",
@@ -266,7 +298,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_3_5_flash_primary",
@@ -277,7 +311,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_3_5_flash_secondary",
@@ -288,7 +324,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_2_5_flash_primary",
@@ -299,7 +337,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_2_5_flash_secondary",
@@ -310,7 +350,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_2_5_flash_lite_primary",
@@ -321,7 +363,9 @@
       "rpm": 10,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "gemini_2_5_flash_lite_secondary",
@@ -332,7 +376,9 @@
       "rpm": 10,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "groq_llama_3_3_70b_versatile_primary",
@@ -343,7 +389,9 @@
       "rpm": 30,
       "rpd": 1000,
       "tpm": 6000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "sambanova_llama_3_3_70b_instruct_primary",
@@ -354,7 +402,9 @@
       "rpm": 20,
       "rpd": 1000,
       "tpm": 100000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "openrouter_meta_llama_llama_3_3_70b_instruct",
@@ -365,7 +415,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 1e-07,
-      "output_per_token": 4e-07
+      "output_per_token": 4e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "sambanova_qwen_2_5_72b_instruct_primary",
@@ -376,7 +428,9 @@
       "rpm": 20,
       "rpd": 1000,
       "tpm": 100000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "siliconflow_qwen_2_5_72b_primary",
@@ -387,7 +441,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 7e-08,
-      "output_per_token": 2.8e-07
+      "output_per_token": 2.8e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "siliconflow_deepseek_v4_flash_primary",
@@ -398,7 +454,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 4.9e-08,
-      "output_per_token": 1.96e-07
+      "output_per_token": 1.96e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "deepseek_v4_flash_primary",
@@ -409,7 +467,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 1.4e-07,
-      "output_per_token": 2.8e-07
+      "output_per_token": 2.8e-07,
+      "input_context_limit": 131072,
+      "output_context_limit": 16384
     },
     {
       "route_id": "deepseek_v4_pro_primary",
@@ -420,7 +480,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 4.35e-07,
-      "output_per_token": 8.7e-07
+      "output_per_token": 8.7e-07,
+      "input_context_limit": 131072,
+      "output_context_limit": 16384
     },
     {
       "route_id": "mistral_codestral_2508_primary",
@@ -430,7 +492,9 @@
       "account_id": "primary",
       "rpm": 124,
       "tpm": 625000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "mistral_devstral_2512_primary",
@@ -440,7 +504,9 @@
       "account_id": "primary",
       "rpm": 49,
       "tpm": 1000000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "mistral_small_2603_primary",
@@ -450,7 +516,9 @@
       "account_id": "primary",
       "rpm": 49,
       "tpm": 50000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "mistral_medium_2508_primary",
@@ -460,7 +528,9 @@
       "account_id": "primary",
       "rpm": 22,
       "tpm": 356250,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "mistral_medium_2505_primary",
@@ -470,7 +540,9 @@
       "account_id": "primary",
       "rpm": 25,
       "tpm": 375000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "mistral_large_2512_primary",
@@ -480,7 +552,9 @@
       "account_id": "primary",
       "rpm": 4,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "mistral_large_3_primary",
@@ -490,7 +564,9 @@
       "account_id": "primary",
       "rpm": 4,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "mistral_labs_leanstral_1_5_1_primary",
@@ -500,7 +576,9 @@
       "account_id": "primary",
       "rpm": 37,
       "tpm": 5000000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "zai_glm_4_7_flash_primary",
@@ -513,7 +591,9 @@
       "concurrency": 2,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "zai_glm_4_5_flash_primary",
@@ -526,7 +606,9 @@
       "concurrency": 2,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "zai_glm_4_7_flashx_primary",
@@ -537,7 +619,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 7e-08,
-      "output_per_token": 4e-07
+      "output_per_token": 4e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "zai_glm_4_7_primary",
@@ -548,7 +632,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 6e-07,
-      "output_per_token": 2.2e-06
+      "output_per_token": 2.2e-06,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "zai_glm_5_primary",
@@ -559,7 +645,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 1e-06,
-      "output_per_token": 3.2e-06
+      "output_per_token": 3.2e-06,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "openrouter_google_gemma_4_31b_it_free",
@@ -572,7 +660,9 @@
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "openrouter_google_gemma_4_26b_a4b_it_free",
@@ -585,7 +675,9 @@
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -598,7 +690,9 @@
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
@@ -611,7 +705,9 @@
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "openrouter_qwen_qwen3_235b_a22b_2507",
@@ -622,7 +718,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 9e-08,
-      "output_per_token": 3.6e-07
+      "output_per_token": 3.6e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "openrouter_mistralai_mistral_small_3_2_24b_instruct",
@@ -633,7 +731,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 9e-08,
-      "output_per_token": 2.7e-07
+      "output_per_token": 2.7e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "openrouter_openai_gpt_4o_mini",
@@ -644,7 +744,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 1.5e-07,
-      "output_per_token": 6e-07
+      "output_per_token": 6e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "kilo_stepfun_step_3_7_flash_free",
@@ -657,7 +759,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -670,7 +774,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "opencode_deepseek_v4_flash_free",
@@ -683,7 +789,9 @@
       "tpm": 250000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "opencode_mimo_v2_5_free",
@@ -696,7 +804,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "opencode_longcat_2_0_free",
@@ -709,7 +819,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     {
       "route_id": "opencode_nemotron_3_ultra_free",
@@ -722,7 +834,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     }
   ],
   "routes_by_id": {
@@ -735,7 +849,9 @@
       "rpm": 15,
       "rpd": 500,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_3_5_flash_lite_secondary": {
       "route_id": "gemini_3_5_flash_lite_secondary",
@@ -746,7 +862,9 @@
       "rpm": 15,
       "rpd": 500,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_3_1_flash_lite_primary": {
       "route_id": "gemini_3_1_flash_lite_primary",
@@ -757,7 +875,9 @@
       "rpm": 15,
       "rpd": 500,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_3_1_flash_lite_secondary": {
       "route_id": "gemini_3_1_flash_lite_secondary",
@@ -768,7 +888,9 @@
       "rpm": 15,
       "rpd": 500,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemma_4_26b_primary": {
       "route_id": "gemma_4_26b_primary",
@@ -779,7 +901,9 @@
       "rpm": 30,
       "rpd": 14400,
       "tpm": 16000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemma_4_26b_secondary": {
       "route_id": "gemma_4_26b_secondary",
@@ -790,7 +914,9 @@
       "rpm": 30,
       "rpd": 14400,
       "tpm": 16000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemma_4_31b_primary": {
       "route_id": "gemma_4_31b_primary",
@@ -801,7 +927,9 @@
       "rpm": 30,
       "rpd": 14400,
       "tpm": 16000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemma_4_31b_secondary": {
       "route_id": "gemma_4_31b_secondary",
@@ -812,7 +940,9 @@
       "rpm": 30,
       "rpd": 14400,
       "tpm": 16000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_3_flash_preview_primary": {
       "route_id": "gemini_3_flash_preview_primary",
@@ -823,7 +953,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_3_flash_preview_secondary": {
       "route_id": "gemini_3_flash_preview_secondary",
@@ -834,7 +966,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_3_6_flash_primary": {
       "route_id": "gemini_3_6_flash_primary",
@@ -845,7 +979,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_3_6_flash_secondary": {
       "route_id": "gemini_3_6_flash_secondary",
@@ -856,7 +992,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_3_5_flash_primary": {
       "route_id": "gemini_3_5_flash_primary",
@@ -867,7 +1005,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_3_5_flash_secondary": {
       "route_id": "gemini_3_5_flash_secondary",
@@ -878,7 +1018,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_2_5_flash_primary": {
       "route_id": "gemini_2_5_flash_primary",
@@ -889,7 +1031,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_2_5_flash_secondary": {
       "route_id": "gemini_2_5_flash_secondary",
@@ -900,7 +1044,9 @@
       "rpm": 5,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_2_5_flash_lite_primary": {
       "route_id": "gemini_2_5_flash_lite_primary",
@@ -911,7 +1057,9 @@
       "rpm": 10,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "gemini_2_5_flash_lite_secondary": {
       "route_id": "gemini_2_5_flash_lite_secondary",
@@ -922,7 +1070,9 @@
       "rpm": 10,
       "rpd": 20,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "groq_llama_3_3_70b_versatile_primary": {
       "route_id": "groq_llama_3_3_70b_versatile_primary",
@@ -933,7 +1083,9 @@
       "rpm": 30,
       "rpd": 1000,
       "tpm": 6000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "sambanova_llama_3_3_70b_instruct_primary": {
       "route_id": "sambanova_llama_3_3_70b_instruct_primary",
@@ -944,7 +1096,9 @@
       "rpm": 20,
       "rpd": 1000,
       "tpm": 100000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "openrouter_meta_llama_llama_3_3_70b_instruct": {
       "route_id": "openrouter_meta_llama_llama_3_3_70b_instruct",
@@ -955,7 +1109,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 1e-07,
-      "output_per_token": 4e-07
+      "output_per_token": 4e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "sambanova_qwen_2_5_72b_instruct_primary": {
       "route_id": "sambanova_qwen_2_5_72b_instruct_primary",
@@ -966,7 +1122,9 @@
       "rpm": 20,
       "rpd": 1000,
       "tpm": 100000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "siliconflow_qwen_2_5_72b_primary": {
       "route_id": "siliconflow_qwen_2_5_72b_primary",
@@ -977,7 +1135,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 7e-08,
-      "output_per_token": 2.8e-07
+      "output_per_token": 2.8e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "siliconflow_deepseek_v4_flash_primary": {
       "route_id": "siliconflow_deepseek_v4_flash_primary",
@@ -988,7 +1148,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 4.9e-08,
-      "output_per_token": 1.96e-07
+      "output_per_token": 1.96e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "deepseek_v4_flash_primary": {
       "route_id": "deepseek_v4_flash_primary",
@@ -999,7 +1161,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 1.4e-07,
-      "output_per_token": 2.8e-07
+      "output_per_token": 2.8e-07,
+      "input_context_limit": 131072,
+      "output_context_limit": 16384
     },
     "deepseek_v4_pro_primary": {
       "route_id": "deepseek_v4_pro_primary",
@@ -1010,7 +1174,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 4.35e-07,
-      "output_per_token": 8.7e-07
+      "output_per_token": 8.7e-07,
+      "input_context_limit": 131072,
+      "output_context_limit": 16384
     },
     "mistral_codestral_2508_primary": {
       "route_id": "mistral_codestral_2508_primary",
@@ -1020,7 +1186,9 @@
       "account_id": "primary",
       "rpm": 124,
       "tpm": 625000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "mistral_devstral_2512_primary": {
       "route_id": "mistral_devstral_2512_primary",
@@ -1030,7 +1198,9 @@
       "account_id": "primary",
       "rpm": 49,
       "tpm": 1000000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "mistral_small_2603_primary": {
       "route_id": "mistral_small_2603_primary",
@@ -1040,7 +1210,9 @@
       "account_id": "primary",
       "rpm": 49,
       "tpm": 50000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "mistral_medium_2508_primary": {
       "route_id": "mistral_medium_2508_primary",
@@ -1050,7 +1222,9 @@
       "account_id": "primary",
       "rpm": 22,
       "tpm": 356250,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "mistral_medium_2505_primary": {
       "route_id": "mistral_medium_2505_primary",
@@ -1060,7 +1234,9 @@
       "account_id": "primary",
       "rpm": 25,
       "tpm": 375000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "mistral_large_2512_primary": {
       "route_id": "mistral_large_2512_primary",
@@ -1070,7 +1246,9 @@
       "account_id": "primary",
       "rpm": 4,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "mistral_large_3_primary": {
       "route_id": "mistral_large_3_primary",
@@ -1080,7 +1258,9 @@
       "account_id": "primary",
       "rpm": 4,
       "tpm": 250000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "mistral_labs_leanstral_1_5_1_primary": {
       "route_id": "mistral_labs_leanstral_1_5_1_primary",
@@ -1090,7 +1270,9 @@
       "account_id": "primary",
       "rpm": 37,
       "tpm": 5000000,
-      "free": true
+      "free": true,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "zai_glm_4_7_flash_primary": {
       "route_id": "zai_glm_4_7_flash_primary",
@@ -1103,7 +1285,9 @@
       "concurrency": 2,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "zai_glm_4_5_flash_primary": {
       "route_id": "zai_glm_4_5_flash_primary",
@@ -1116,7 +1300,9 @@
       "concurrency": 2,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "zai_glm_4_7_flashx_primary": {
       "route_id": "zai_glm_4_7_flashx_primary",
@@ -1127,7 +1313,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 7e-08,
-      "output_per_token": 4e-07
+      "output_per_token": 4e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "zai_glm_4_7_primary": {
       "route_id": "zai_glm_4_7_primary",
@@ -1138,7 +1326,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 6e-07,
-      "output_per_token": 2.2e-06
+      "output_per_token": 2.2e-06,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "zai_glm_5_primary": {
       "route_id": "zai_glm_5_primary",
@@ -1149,7 +1339,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 1e-06,
-      "output_per_token": 3.2e-06
+      "output_per_token": 3.2e-06,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "openrouter_google_gemma_4_31b_it_free": {
       "route_id": "openrouter_google_gemma_4_31b_it_free",
@@ -1162,7 +1354,9 @@
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "openrouter_google_gemma_4_26b_a4b_it_free": {
       "route_id": "openrouter_google_gemma_4_26b_a4b_it_free",
@@ -1175,7 +1369,9 @@
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -1188,7 +1384,9 @@
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "openrouter_nvidia_nemotron_3_super_120b_a12b_free": {
       "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
@@ -1201,7 +1399,9 @@
       "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "openrouter_qwen_qwen3_235b_a22b_2507": {
       "route_id": "openrouter_qwen_qwen3_235b_a22b_2507",
@@ -1212,7 +1412,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 9e-08,
-      "output_per_token": 3.6e-07
+      "output_per_token": 3.6e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "openrouter_mistralai_mistral_small_3_2_24b_instruct": {
       "route_id": "openrouter_mistralai_mistral_small_3_2_24b_instruct",
@@ -1223,7 +1425,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 9e-08,
-      "output_per_token": 2.7e-07
+      "output_per_token": 2.7e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "openrouter_openai_gpt_4o_mini": {
       "route_id": "openrouter_openai_gpt_4o_mini",
@@ -1234,7 +1438,9 @@
       "concurrency": 5,
       "free": false,
       "input_per_token": 1.5e-07,
-      "output_per_token": 6e-07
+      "output_per_token": 6e-07,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "kilo_stepfun_step_3_7_flash_free": {
       "route_id": "kilo_stepfun_step_3_7_flash_free",
@@ -1247,7 +1453,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "kilo_nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -1260,7 +1468,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "opencode_deepseek_v4_flash_free": {
       "route_id": "opencode_deepseek_v4_flash_free",
@@ -1273,7 +1483,9 @@
       "tpm": 250000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "opencode_mimo_v2_5_free": {
       "route_id": "opencode_mimo_v2_5_free",
@@ -1286,7 +1498,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "opencode_longcat_2_0_free": {
       "route_id": "opencode_longcat_2_0_free",
@@ -1299,7 +1513,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     },
     "opencode_nemotron_3_ultra_free": {
       "route_id": "opencode_nemotron_3_ultra_free",
@@ -1312,7 +1528,9 @@
       "tpm": 100000,
       "free": true,
       "input_per_token": 0.0,
-      "output_per_token": 0.0
+      "output_per_token": 0.0,
+      "input_context_limit": 32768,
+      "output_context_limit": 16384
     }
   },
   "model_routes_map": {

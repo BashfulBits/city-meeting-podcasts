@@ -1242,6 +1242,8 @@ def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
     assert post_json["deadline_at"] == deadline.isoformat()
     assert "estimated_tokens" in post_json
     assert post_json["estimated_tokens"] > 0
+    assert post_json["input_tokens_estimate"] > 0
+    assert post_json["output_token_budget"] == 1024
 
 
 def test_dual_transport_route_prefers_direct_without_opt_in():

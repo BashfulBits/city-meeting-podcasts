@@ -1003,30 +1003,28 @@ def test_chapter_tagger_admits_a_batch_that_fits_an_additional_allowed_route(mon
 
     primary = "test/primary"
     fallback = "test/fallback"
-    monkeypatch.setitem(
-        llm_policy.ROUTES,
-        primary,
-        LLMRoute(
-            model=primary,
-            transport="llm-dispatch",
-            free=True,
-            quota=QuotaPolicy(tpm=10_000),
-            pricing=PricingPolicy(),
-            context_limit=10_000,
-        ),
+    primary_route = LLMRoute(
+        model=primary,
+        transport="llm-dispatch",
+        free=True,
+        quota=QuotaPolicy(tpm=10_000),
+        pricing=PricingPolicy(),
+        input_context_limit=10_000,
+        output_context_limit=1_024,
     )
-    monkeypatch.setitem(
-        llm_policy.ROUTES,
-        fallback,
-        LLMRoute(
-            model=fallback,
-            transport="llm-dispatch",
-            free=True,
-            quota=QuotaPolicy(tpm=100_000),
-            pricing=PricingPolicy(),
-            context_limit=100_000,
-        ),
+    fallback_route = LLMRoute(
+        model=fallback,
+        transport="llm-dispatch",
+        free=True,
+        quota=QuotaPolicy(tpm=100_000),
+        pricing=PricingPolicy(),
+        input_context_limit=100_000,
+        output_context_limit=1_024,
     )
+    monkeypatch.setitem(llm_policy.ROUTES, primary, primary_route)
+    monkeypatch.setitem(llm_policy.ROUTES, fallback, fallback_route)
+    monkeypatch.setitem(llm_policy.ROUTE_CANDIDATES, primary, (primary_route,))
+    monkeypatch.setitem(llm_policy.ROUTE_CANDIDATES, fallback, (fallback_route,))
 
     class Config:
         model = primary

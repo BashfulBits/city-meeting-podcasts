@@ -34,6 +34,9 @@ Phase R (Research-Tool Surface)._
   to `3`, so existing LLM tag candidates are gradually re-run through the new chapter-only recipe;
   deterministic candidates, prior ledger evidence, and visible output remain available until each
   replacement completes.
+  Each physical provider route now compiles separate input and output context limits from
+  `config/provider_limits.yml`; queue and direct selection compare the two request estimates before
+  quota admission, so a batch fitting only a larger allowed route cannot be sent to a smaller route.
 
 - **R5 unified tag calibration and evaluator overlay.** ([`review/42`](review/42-unified-tag-calibration-and-evaluator-overlay.md))
   Deterministic rule matches and chapter-only LLM candidates now share the existing persisted candidate

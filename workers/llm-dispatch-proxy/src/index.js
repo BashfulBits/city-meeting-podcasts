@@ -411,6 +411,16 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
   if (typeof body.estimated_tokens === "number" && body.estimated_tokens > 0) {
     policy.estimated_tokens = Math.floor(body.estimated_tokens);
   }
+  for (const field of ["input_tokens_estimate", "output_token_budget"]) {
+    if (body[field] === undefined) continue;
+    if (typeof body[field] !== "number" || !Number.isFinite(body[field]) || body[field] < 0) {
+      throw new HttpError(400, `${field} must be a non-negative number`);
+    }
+    policy[field] = Math.floor(body[field]);
+  }
+  if (policy.input_tokens_estimate === undefined && policy.estimated_tokens !== undefined) {
+    policy.input_tokens_estimate = policy.estimated_tokens;
+  }
   if (body.allowed_models !== undefined) {
     if (!Array.isArray(body.allowed_models) || body.allowed_models.length === 0) {
       throw new HttpError(400, "allowed_models must be a non-empty array when provided");
@@ -1012,8 +1022,15 @@ function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits
   const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
   const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
   const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
-  const freeRanked = rankRoutes(candidates.filter((route) => route.free));
-  const paidRanked = rankRoutes(candidates.filter((route) => !route.free));
+  const inputTokens = policy?.input_tokens_estimate ?? policy?.estimated_tokens ?? 1024;
+  const outputTokens = policy?.output_token_budget ?? 0;
+  const contextCompatible = candidates.filter(
+    (route) =>
+      inputTokens <= (route.input_context_limit || 32768) &&
+      outputTokens <= (route.output_context_limit || 1024),
+  );
+  const freeRanked = rankRoutes(contextCompatible.filter((route) => route.free));
+  const paidRanked = rankRoutes(contextCompatible.filter((route) => !route.free));
   const allowPaid = Boolean(policy?.allow_paid);
   const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
   const tokens = policy?.estimated_tokens || 1024;
@@ -1035,6 +1052,10 @@ function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits
   const freePick = tryRoutes(freeRanked);
   if (freePick) {
     return freePick;
+  }
+
+  if (candidates.length > 0 && contextCompatible.length === 0) {
+    return { chosenRoute: null, reason: "context_limit" };
   }
 
   if (freeRanked.length === 0 && paidRanked.length === 0) {

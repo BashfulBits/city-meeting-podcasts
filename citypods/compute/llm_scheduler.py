@@ -283,6 +283,8 @@ def select_route(
     ledger: LLMBudget,
     available_transports: Set[str],
     estimated_tokens: int,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
     requests: int = 1,
     now: datetime,
 ) -> SelectionResult:
@@ -297,6 +299,8 @@ def select_route(
     ``requests``/``estimated_tokens`` should already reflect the *worst-case* number of provider
     attempts a single logical dispatch can make -- e.g. 2 for a structured call, since Instructor's
     corrective retry can send a second request (see ``llm.py``'s ``run_inference``) -- not just 1.
+    ``input_tokens`` and ``output_tokens`` describe one attempt and are checked against each
+    physical route's independent context ceilings before quota admission.
     """
     rejected: list[tuple[str, str]] = []
     candidates: list[tuple[LLMRoute, str, float, datetime, float, int, int, str]] = []
@@ -312,6 +316,8 @@ def select_route(
     # a route gated only on a price window is available *now*, just not at its cheapest, so pacing
     # against it would stall a free request for a discount it doesn't need.
     retry_ats: list[datetime] = []
+    input_tokens = estimated_tokens if input_tokens is None else input_tokens
+    output_tokens = 0 if output_tokens is None else output_tokens
 
     for route_key, route in sorted(routes.items()):
         model = route.model
@@ -320,6 +326,12 @@ def select_route(
             continue
         if allowed is not None and model not in allowed:
             rejected.append((model, "allowlist gate"))
+            continue
+        if input_tokens > route.input_context_limit:
+            rejected.append((model, "input context limit"))
+            continue
+        if output_tokens > route.output_context_limit:
+            rejected.append((model, "output context limit"))
             continue
         if not policy.allow_paid and not route.free:
             rejected.append((model, "paid model disallowed"))
@@ -425,6 +437,8 @@ def select_and_reserve(
     routes: Mapping[str, LLMRoute] = ROUTE_REGISTRY,
     available_transports: Set[str],
     estimated_tokens: int,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
     requests: int = 1,
     now: datetime | None = None,
     max_attempts: int = 8,
@@ -484,6 +498,8 @@ def select_and_reserve(
             ledger=ledger,
             available_transports=available_transports,
             estimated_tokens=estimated_tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             requests=requests,
             now=attempt_now,
         )

@@ -925,7 +925,12 @@ def llm_tag_suggestions(
     quota exhaustion for the whole run, since it says nothing about remaining capacity."""
     model = ensure_llm_contract()
     from citypods.compute.base import InferenceJob, JobHandle, JobResult
-    from citypods.compute.llm_policy import ROUTES, LLMRequestPolicy, estimate_tokens
+    from citypods.compute.llm_policy import (
+        ROUTE_CANDIDATES,
+        ROUTES,
+        LLMRequestPolicy,
+        estimate_tokens,
+    )
 
     allowed = taxonomy.by_id
     chapter_mode = bool(chapter_inputs)
@@ -1006,7 +1011,8 @@ def llm_tag_suggestions(
     call_metadata = {
         "input_tokens_estimate": input_tokens_estimate,
         "output_token_budget": 1024,
-        "route_context_limit": None,
+        "route_input_context_limit": None,
+        "route_output_context_limit": None,
         "request_bytes_estimate": request_bytes,
         "truncation_occurred": tagger_truncated,
         "truncation_policy": "chapter-tag-v2-batched",
@@ -1033,12 +1039,19 @@ def llm_tag_suggestions(
         if backend_model
         else ()
     )
-    route_limits = {
-        candidate: int(getattr(ROUTES.get(candidate), "context_limit", 32768))
+    candidate_routes = [
+        route
         for candidate in configured_models
-    }
-    if route_limits:
-        call_metadata["route_context_limit"] = max(route_limits.values())
+        for route in ROUTE_CANDIDATES.get(candidate, (ROUTES.get(candidate),))
+        if route is not None
+    ]
+    if candidate_routes:
+        call_metadata["route_input_context_limit"] = max(
+            route.input_context_limit for route in candidate_routes
+        )
+        call_metadata["route_output_context_limit"] = max(
+            route.output_context_limit for route in candidate_routes
+        )
         publish_call_metadata()
         # A large meeting is many independent chapter subjects, not one opaque request. Batch
         # deterministically against both model context and serialized JSON bytes. Child recipes
@@ -1050,9 +1063,10 @@ def llm_tag_suggestions(
                     return False
                 tokens = estimate_tokens(candidate_messages) + 1024
                 return any(
-                    tokens <= context_limit
-                    and (ROUTES[model].quota.tpm is None or tokens <= int(ROUTES[model].quota.tpm))
-                    for model, context_limit in route_limits.items()
+                    tokens <= route.input_context_limit
+                    and 1024 <= route.output_context_limit
+                    and (route.quota.tpm is None or tokens <= int(route.quota.tpm))
+                    for route in candidate_routes
                 )
 
             batches: list[list[dict[str, Any]]] = []
@@ -1132,7 +1146,10 @@ def llm_tag_suggestions(
                 return [], merged, False, resolved_models[-1] if resolved_models else backend_model
         if request_bytes > TAGGER_MAX_REQUEST_BYTES:
             return [], {}, True, "payload-too-large"
-        if all(input_tokens_estimate + 1024 > limit for limit in route_limits.values()):
+        if candidate_routes and all(
+            input_tokens_estimate > route.input_context_limit or 1024 > route.output_context_limit
+            for route in candidate_routes
+        ):
             return [], {}, True, "payload-too-large"
     if backend_model and getattr(backend_storage, "cas_capable", False):
         # Allow the scheduler exactly the calibrated tag route(s): the primary ``model`` plus any
@@ -1153,9 +1170,9 @@ def llm_tag_suggestions(
         # reservation threshold.
         token_estimate = input_tokens_estimate
         capped_tpm = {
-            candidate: ROUTES[candidate].quota.tpm
-            for candidate in allowed_models
-            if candidate in ROUTES and ROUTES[candidate].quota.tpm is not None
+            route.route_id or route.model: route.quota.tpm
+            for route in candidate_routes
+            if route.quota.tpm is not None
         }
         if capped_tpm and all(token_estimate + 1024 > tpm for tpm in capped_tpm.values()):
             print(
@@ -1330,12 +1347,13 @@ def llm_prelabel_candidates(
         )
     backend_storage = getattr(backend, "storage", None)
     route = ROUTES.get(model)
-    context_limit = int(getattr(route, "context_limit", 32768))
+    input_context_limit = int(getattr(route, "input_context_limit", 32768))
+    output_context_limit = int(getattr(route, "output_context_limit", 1024))
     if getattr(route, "quota", None) is not None and route.quota.tpm is not None:
-        context_limit = min(context_limit, int(route.quota.tpm // 2))
+        input_context_limit = min(input_context_limit, int(route.quota.tpm // 2))
     # Keep a response/output reserve. The evaluator may receive many candidates, but it must
     # never silently drop the tail or rely on a provider-specific implicit truncation.
-    max_input_tokens = max(1, context_limit - 1024)
+    max_input_tokens = max(1, input_context_limit)
     system_content = (
         "Audit each proposed topic-tag candidate independently. Return one assessment "
         "for each candidate_id. likely_correct means the proposed tag is supported by "
@@ -1400,14 +1418,15 @@ def llm_prelabel_candidates(
             "prelabeler_prompt_version": prompt_version,
             "prelabeler_input_tokens_estimate": input_tokens_estimate,
             "prelabeler_output_token_budget": 1024,
-            "prelabeler_route_context_limit": context_limit,
+            "prelabeler_route_input_context_limit": input_context_limit,
+            "prelabeler_route_output_context_limit": output_context_limit,
             "prelabeler_truncation_occurred": batch_truncated,
             "prelabeler_truncation_policy": "candidate-evidence-v2-batched",
             "prelabeler_input_digest": input_digest,
             "prelabeler_batch_index": batch_index,
         }
         batch_metadata.append(dict(call_metadata))
-        if input_tokens_estimate + 1024 > context_limit:
+        if input_tokens_estimate > input_context_limit or 1024 > output_context_limit:
             pending = True
             payload_too_large = True
             continue
@@ -1474,7 +1493,8 @@ def llm_prelabel_candidates(
         "prelabeler_input_tokens_estimate": total_estimate,
         "prelabeler_max_batch_input_tokens": max_estimate,
         "prelabeler_batches": batch_count,
-        "prelabeler_route_context_limit": context_limit,
+        "prelabeler_route_input_context_limit": input_context_limit,
+        "prelabeler_route_output_context_limit": output_context_limit,
         "prelabeler_truncation_occurred": truncation,
         "prelabeler_truncation_policy": "candidate-evidence-v2-batched",
         "prelabeler_batches_metadata": batch_metadata,

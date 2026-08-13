@@ -83,12 +83,16 @@ gate. A human override is stored as a separate review row.
 LLM tagger context prioritizes taxonomy definitions/exclusions, chapter title, mapped agenda
 evidence, chapter transcript segments, bounded surrounding context, and explicitly mapped backup
 evidence. It should retain the richest safe context and record token estimates, output budget,
-context ceiling, truncation policy/version, truncation status, and final input digest.
+the allowed physical routes' separate input/output context ceilings, truncation policy/version,
+truncation status, and final input digest. The dispatch contract carries the input estimate and
+output budget separately; the Worker and direct scheduler only select a physical provider route
+whose own limits accept both. A larger-route admission therefore never falls through to a smaller
+route with available quota.
 
 The pre-labeler may use a smaller payload: proposed tag definition, chapter title, tagger explanation
 and evidence, bounded transcript surroundings, mapped agenda evidence, and only explicitly linked
 backup excerpts. Whole backup packets are not sent to either model. Its requests are greedily split
-against the configured route context/TPM ceiling; an individually oversized subject is deferred with
+against the configured route input/output-context and TPM ceilings; an individually oversized subject is deferred with
 `payload-too-large` and never silently truncated. Every batch records its token estimate, route limit,
 batch index, truncation policy, and input digest. Payload-too-large remains distinct from ordinary
 quota deferral.

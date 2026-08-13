@@ -574,6 +574,8 @@ class LiteLLMBackend(Backend):
         resolved_model: str,
         policy: LLMRequestPolicy | None = None,
         estimated_tokens: int | None = None,
+        input_tokens_estimate: int | None = None,
+        output_token_budget: int | None = None,
         route=None,
     ) -> dict[str, Any]:
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
@@ -597,12 +599,40 @@ class LiteLLMBackend(Backend):
                 # Durable requests are routed by the Worker.  Retain every permitted logical
                 # model there so independent quota pools can be used when the first is full.
                 payload["allowed_models"] = list(policy.allowed_models)
+            if input_tokens_estimate is not None:
+                payload["input_tokens_estimate"] = input_tokens_estimate
+            if output_token_budget is not None:
+                payload["output_token_budget"] = output_token_budget
             if policy.deadline_at is not None:
                 payload["deadline_at"] = policy.deadline_at.isoformat()
         if estimated_tokens is not None:
             payload["estimated_tokens"] = estimated_tokens
         payload.update(self._provider_options(job, resolved_model, route=route))
         return payload
+
+    @staticmethod
+    def _output_token_budget(job: InferenceJob) -> int:
+        value = job.inputs.get("max_tokens", DEFAULT_OUTPUT_TOKEN_MARGIN)
+        return max(1, int(value)) if isinstance(value, int) else DEFAULT_OUTPUT_TOKEN_MARGIN
+
+    @staticmethod
+    def _assert_route_context(
+        route: LLMRoute | None, messages: list[dict[str, Any]], output_tokens: int
+    ) -> None:
+        """Fail locally before a direct provider call that cannot fit its physical route."""
+        if route is None:
+            return
+        input_tokens = estimate_tokens(messages)
+        if input_tokens > route.input_context_limit:
+            raise LLMBackendError(
+                "LLM input exceeds route context limit "
+                f"({input_tokens}>{route.input_context_limit})"
+            )
+        if output_tokens > route.output_context_limit:
+            raise LLMBackendError(
+                f"LLM output budget exceeds route context limit "
+                f"({output_tokens}>{route.output_context_limit})"
+            )
 
     def _run_structured_direct(
         self,
@@ -834,7 +864,11 @@ class LiteLLMBackend(Backend):
             backend=self.name,
             ref=f"deferred:{job.recipe_hash}",
             structured_output=(structured[0] if structured else None),
-            deferred_request=DeferredLLMRequest(messages=tuple(messages), policy=policy),
+            deferred_request=DeferredLLMRequest(
+                messages=tuple(messages),
+                policy=policy,
+                output_token_budget=self._output_token_budget(job),
+            ),
         )
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
@@ -888,7 +922,9 @@ class LiteLLMBackend(Backend):
             model,
             resolved_model=resolved_model,
             policy=policy,
-            estimated_tokens=estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN,
+            estimated_tokens=estimate_tokens(messages) + self._output_token_budget(job),
+            input_tokens_estimate=estimate_tokens(messages),
+            output_token_budget=self._output_token_budget(job),
         )
         # Older calls used the recipe hash directly when they entered the Worker (and carried a
         # producer-run deadline in their policy). A Worker idempotency record quite properly
@@ -959,7 +995,9 @@ class LiteLLMBackend(Backend):
         # TPM can never be breached even when both attempts happen; settling afterwards to the
         # single terminal response's actual usage only ever releases back what wasn't needed.
         max_provider_attempts = 2 if structured else 1
-        per_attempt_tokens = estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN
+        input_tokens = estimate_tokens(messages)
+        output_tokens = self._output_token_budget(job)
+        per_attempt_tokens = input_tokens + output_tokens
         selection = select_and_reserve(
             self.storage,
             job.recipe_hash,
@@ -967,6 +1005,8 @@ class LiteLLMBackend(Backend):
             routes=ROUTE_REGISTRY,
             available_transports=available_transports,
             estimated_tokens=per_attempt_tokens * max_provider_attempts,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             requests=max_provider_attempts,
         )
         if selection.model is None or selection.route is None:
@@ -1080,6 +1120,8 @@ class LiteLLMBackend(Backend):
                     resolved_model=resolved_model,
                     policy=policy,
                     estimated_tokens=per_attempt_tokens * max_provider_attempts,
+                    input_tokens_estimate=input_tokens,
+                    output_token_budget=output_tokens,
                 )
                 headers = {"content-type": "application/json"}
                 if self.config.dispatch_auth_token:
@@ -1194,7 +1236,7 @@ class LiteLLMBackend(Backend):
             result = self._run_policy_job(job, policy, structured, messages)
             if isinstance(result, JobResult) or policy.deadline_at is None:
                 return result
-            selection = self._next_dispatch_eligibility(policy, structured, messages)
+            selection = self._next_dispatch_eligibility(job, policy, structured, messages)
             if selection.model is None:
                 wait = _pacing_wait_seconds(selection.retry_at, policy.deadline_at, self._now())
                 if wait is None:
@@ -1221,6 +1263,7 @@ class LiteLLMBackend(Backend):
 
     def _next_dispatch_eligibility(
         self,
+        job: InferenceJob,
         policy: LLMRequestPolicy,
         structured: tuple[str, ResponseModel] | None,
         messages: list[dict[str, Any]],
@@ -1233,13 +1276,17 @@ class LiteLLMBackend(Backend):
         names why each allowed route was passed over (pacing log visibility)."""
         ledger, _ = load_llm_budget_cas(self.storage)
         max_provider_attempts = 2 if structured else 1
-        per_attempt_tokens = estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN
+        input_tokens = estimate_tokens(messages)
+        output_tokens = self._output_token_budget(job)
+        per_attempt_tokens = input_tokens + output_tokens
         return select_route(
             policy,
             routes=ROUTE_REGISTRY,
             ledger=ledger,
             available_transports=self._available_transports(),
             estimated_tokens=per_attempt_tokens * max_provider_attempts,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             requests=max_provider_attempts,
             now=self._now(),
         )
@@ -1252,7 +1299,7 @@ class LiteLLMBackend(Backend):
         deferred = handle.deferred_request
         assert deferred is not None
         messages = [dict(message) for message in deferred.messages]
-        inputs: dict[str, Any] = {"messages": messages}
+        inputs: dict[str, Any] = {"messages": messages, "max_tokens": deferred.output_token_budget}
         if handle.structured_output:
             inputs["structured_output"] = handle.structured_output
         job = InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
@@ -1270,6 +1317,7 @@ class LiteLLMBackend(Backend):
         logical_model = canonical_model(self.config.model)
         if self.config.mode == "direct":
             route = (ROUTE_CANDIDATES.get(logical_model) or (None,))[0]
+            self._assert_route_context(route, _messages(job), self._output_token_budget(job))
             direct_model = route.direct_model if route is not None else logical_model
             if structured:
                 result = self._run_structured_direct(
