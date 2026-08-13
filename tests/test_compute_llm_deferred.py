@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_budget import mutate_llm_budget
 from citypods.compute.llm_deferred import (
+    DEFAULT_FAILURE_MARKER_TTL_DAYS,
     DEFAULT_TTL_DAYS,
     DEFERRED_FAILURE_PREFIX,
     DEFERRED_INDEX_MIGRATION_KEY,
@@ -161,6 +162,26 @@ def test_schema_correction_marker_is_retryable_until_a_second_malformed_reply_ex
 
     discard_terminal_failure(storage, snapshot, handle, error, exhausted=True, now=NOW)
     assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is False
+
+
+def test_repair_prunes_only_expired_terminal_failure_markers():
+    storage = MemStorage()
+    old_handle = _pending_handle("old-failure")
+    fresh_handle = _pending_handle("fresh-failure")
+    record_schema_correction(
+        storage,
+        old_handle,
+        RuntimeError("old terminal failure"),
+        now=NOW - timedelta(days=DEFAULT_FAILURE_MARKER_TTL_DAYS + 1),
+    )
+    record_schema_correction(storage, fresh_handle, RuntimeError("fresh terminal failure"), now=NOW)
+    _write_json(storage, deferred_failure_key("unparseable"), b"{not json")
+
+    assert repair_deferred_index(storage, now=NOW) == 0
+    assert storage.keys(DEFERRED_FAILURE_PREFIX) == [
+        deferred_failure_key("fresh-failure"),
+        deferred_failure_key("unparseable"),
+    ]
 
 
 def test_a_retry_narrowing_the_candidate_models_drops_only_the_stale_pointer():

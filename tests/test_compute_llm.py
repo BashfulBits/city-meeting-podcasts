@@ -425,6 +425,70 @@ def test_reconcile_settles_actual_requests_after_a_202_dispatch():
     assert ledger.requests_minute == 1
 
 
+def test_reconcile_settles_reservation_before_rejecting_malformed_dispatch_output():
+    """A malformed completed reply still consumed its one Worker/provider request.
+
+    The sweep will submit a separate bounded correction, so the original reservation must be
+    settled before local schema validation propagates its error.
+    """
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"value": 3}'}}]}
+
+    class Session:
+        def get(self, _url, **_kwargs):
+            return Response()
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=Session(),
+        storage=storage,
+    )
+    route = ROUTES["mistral/mistral-large-2512"]
+    owner = "malformed-owner"
+    mutate_llm_budget(
+        storage,
+        lambda budget, now: budget.reserve(
+            owner,
+            route.route_id or route.model,
+            requests=1,
+            tokens=10,
+            cost=0.0,
+            route=route,
+            now=now,
+        ),
+    )
+
+    with pytest.raises(LLMStructuredOutputError, match="Pydantic validation"):
+        backend.reconcile(
+            JobHandle(
+                task="tag",
+                recipe_hash="recipe-malformed",
+                backend="litellm",
+                ref="chatcmpl-malformed123",
+                structured_output="test-output",
+                model="mistral/mistral-large-2512",
+                owner=owner,
+                route_id=route.route_id,
+                attempted_requests=1,
+            )
+        )
+
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = _ledger_for(budget, "mistral/mistral-large-2512")
+    assert ledger.inflight == {}
+    assert ledger.requests_minute == 1
+
+
 def test_usage_tokens_returns_none_not_zero_for_missing_or_invalid_usage():
     assert _usage_tokens({}) is None
     assert _usage_tokens({"usage": {}}) is None
@@ -1082,6 +1146,31 @@ def test_schema_correction_enqueue_uses_a_separate_idempotency_key():
             },
         )
     ]
+
+
+def test_schema_correction_rejects_an_invalid_dispatch_reference_before_posting():
+    class Session:
+        def post(self, *_args, **_kwargs):
+            raise AssertionError("invalid refs must not be sent to the Worker")
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=Session(),
+    )
+
+    with pytest.raises(LLMBackendError, match="valid dispatch request reference"):
+        backend.retry_malformed_dispatched(
+            JobHandle(
+                task="tag",
+                recipe_hash="recipe-invalid-ref",
+                backend="litellm",
+                ref="not-a-dispatch-request",
+            )
+        )
 
 
 def test_dispatch_unknown_response_contract_remains_a_version_skew_error():

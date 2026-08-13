@@ -171,6 +171,51 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
     assert "submitted one schema correction" in out.err
 
 
+def test_sweep_exhausts_a_second_malformed_reply_without_submitting_another_correction(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: storage)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage: _snapshot([_handle("recipe-1")]),
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep, "prune_expired_deferred_snapshot", lambda *_args, **_kwargs: 0
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "schema_correction_attempted", lambda *_args: True)
+    exhausted = []
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "discard_terminal_failure",
+        lambda _storage, _snapshot, handle, _error, **kwargs: (
+            exhausted.append((handle.recipe_hash, kwargs["exhausted"])) or 2
+        ),
+    )
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, _handle):
+            raise LLMStructuredOutputError(
+                "structured dispatched response failed Pydantic validation"
+            )
+
+        def retry_malformed_dispatched(self, _handle):
+            raise AssertionError("a second malformed response must not be corrected again")
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    out = capsys.readouterr()
+    assert exhausted == [("recipe-1", True)]
+    assert "1 failed (1 terminally recovered)" in out.out
+    assert "malformed correction exhausted" in out.err
+
+
 def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     fake_storage = SimpleNamespace(cas_capable=True)

@@ -18,6 +18,7 @@ import importlib
 import json
 import math
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -928,7 +929,8 @@ class LiteLLMBackend(Backend):
         if not terminal_failure_retry_allowed(self.storage, job.recipe_hash):
             raise LLMBackendError(
                 "LLM terminal failure retry limit reached for this recipe; "
-                "change the input/recipe or clear its failure marker after investigating"
+                "change the input/recipe, clear its failure marker after investigating, "
+                "or wait for the marker's audit retention to expire"
             )
 
         messages = _messages(job)
@@ -1524,11 +1526,12 @@ class LiteLLMBackend(Backend):
                 if response.status_code in {404, 502}:
                     raise LLMDispatchTerminalError(msg)
                 raise LLMBackendError(msg)
+            output = response.json()
             try:
                 result = self._completed_dispatch_result(
                     task=handle.task,
                     recipe_hash=handle.recipe_hash,
-                    output=response.json(),
+                    output=output,
                     structured_output=handle.structured_output,
                     model=handle.model,
                 )
@@ -1536,15 +1539,49 @@ class LiteLLMBackend(Backend):
                 # The deferred sweep owns the one schema-correction retry. Leave the completed
                 # Worker record intact here so it can clone the exact original request before
                 # replacing this handle with the corrective attempt.
+                self._settle_dispatched_reservation(handle, output)
                 raise
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch poll failed") from exc
+
+        self._settle_dispatched_reservation(handle, result.output)
 
         # A policy-tracked handle (§10.2/§10 in review/33) left its reservation inflight at
         # dispatch time specifically so it could be settled to *actual* usage here, once the
         # Worker's terminal response is available, instead of staying frozen at the estimate for
         # the job's entire lifetime. A handle from `_run_without_policy` has no `owner` and is a
         # no-op here, unchanged from the pre-R13 behavior.
+        if (
+            handle.owner is not None
+            and handle.model is not None
+            and self.storage is not None
+            and getattr(self.storage, "cas_capable", False)
+        ):
+            write_deferred(self.storage, handle.recipe_hash, result)
+            # Layer 1 Verified Consumption: purge R2 object only after B2 write succeeds
+            try:
+                self._session.delete(
+                    candidate, headers=headers, timeout=self.config.timeout_seconds
+                )
+            except Exception:
+                pass
+        elif self.storage is not None and getattr(self.storage, "cas_capable", False):
+            write_deferred(self.storage, handle.recipe_hash, result)
+            try:
+                self._session.delete(
+                    candidate, headers=headers, timeout=self.config.timeout_seconds
+                )
+            except Exception:
+                pass
+        return result
+
+    def _settle_dispatched_reservation(self, handle: JobHandle, output: Mapping[str, Any]) -> None:
+        """Settle a Worker-owned reservation from its terminal raw response.
+
+        This deliberately precedes structured-output validation at reconciliation time: malformed
+        output still consumed the provider request and must not leave its quota reservation
+        inflight while the sweep submits its bounded corrective retry.
+        """
         if handle.owner is not None and handle.model is not None and self.storage is not None:
             route = ROUTE_REGISTRY.get(handle.route_id) if handle.route_id else None
             if route is None:
@@ -1572,12 +1609,12 @@ class LiteLLMBackend(Backend):
                 # a handle that predates this field rather than guessing a rate.
                 if handle.input_per_token is not None and handle.output_per_token is not None:
                     actual_tokens, actual_cost = _priced_actual(
-                        result.output,
+                        output,
                         input_per_token=handle.input_per_token,
                         output_per_token=handle.output_per_token,
                     )
                 else:
-                    actual_tokens, actual_cost = _usage_tokens(result.output), None
+                    actual_tokens, actual_cost = _usage_tokens(output), None
                 settle_route_reservation(
                     self.storage,
                     handle.owner,
@@ -1590,23 +1627,6 @@ class LiteLLMBackend(Backend):
                     # for `actual_tokens`/`actual_cost` on an unpriced legacy handle.
                     actual_requests=handle.attempted_requests,
                 )
-                write_deferred(self.storage, handle.recipe_hash, result)
-                # Layer 1 Verified Consumption: purge R2 object only after B2 write succeeds
-                try:
-                    self._session.delete(
-                        candidate, headers=headers, timeout=self.config.timeout_seconds
-                    )
-                except Exception:
-                    pass
-        elif self.storage is not None and getattr(self.storage, "cas_capable", False):
-            write_deferred(self.storage, handle.recipe_hash, result)
-            try:
-                self._session.delete(
-                    candidate, headers=headers, timeout=self.config.timeout_seconds
-                )
-            except Exception:
-                pass
-        return result
 
     def delete_dispatched_ref(self, ref: str) -> None:
         """Best-effort deletion of a remote dispatched request from R2."""
@@ -1614,8 +1634,6 @@ class LiteLLMBackend(Backend):
             return
         # Normalize the ref: handles store either a bare ID ("chatcmpl-..."), a path
         # ("/v1/requests/chatcmpl-..."), or a full URL. Extract the bare ID for all cases.
-        import re
-
         match = re.search(r"(chatcmpl-[A-Za-z0-9-]{8,96})", ref)
         if not match:
             return
@@ -1635,7 +1653,12 @@ class LiteLLMBackend(Backend):
         if not self.config.dispatch_url:
             raise LLMBackendError("schema correction requires LLM_DISPATCH_URL")
         base = self.config.dispatch_url.rstrip("/") + "/"
-        request_id = handle.ref.rsplit("/", 1)[-1]
+        match = re.search(r"(chatcmpl-[A-Za-z0-9-]{8,96})", handle.ref)
+        if not match:
+            raise LLMBackendError(
+                "LLM schema-correction requires a valid dispatch request reference"
+            )
+        request_id = match.group(1)
         url = urljoin(base, f"v1/requests/{request_id}/schema-retry")
         headers = {
             "content-type": "application/json",

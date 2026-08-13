@@ -182,6 +182,15 @@ test("schema retry clones only a completed request and appends one corrective in
     env,
   );
   const { id } = await queued.json();
+  const tooEarly = await handleRequest(
+    request(`https://dispatch.example/v1/requests/${id}/schema-retry`, {
+      method: "POST",
+      headers: { "idempotency-key": "schema-correction" },
+      body: "{}",
+    }),
+    env,
+  );
+  assert.equal(tooEarly.status, 409);
   await dispatchOne(env, okUpstream("malformed"), new Date());
 
   const retry = await handleRequest(
@@ -210,6 +219,22 @@ test("schema retry clones only a completed request and appends one corrective in
   );
   assert.equal(repeated.status, 202);
   assert.equal((await repeated.json()).id, body.id);
+
+  const noPrompt = await handleRequest(chatRequest(undefined, "schema-no-prompt"), env);
+  const { id: noPromptId } = await noPrompt.json();
+  const stored = await (await env.LLM_QUEUE.get(`requests/${noPromptId}.json`)).json();
+  stored.status = "completed";
+  stored.request.messages = [];
+  await env.LLM_QUEUE.put(`requests/${noPromptId}.json`, JSON.stringify(stored));
+  const noPromptRetry = await handleRequest(
+    request(`https://dispatch.example/v1/requests/${noPromptId}/schema-retry`, {
+      method: "POST",
+      headers: { "idempotency-key": "schema-no-prompt-correction" },
+      body: "{}",
+    }),
+    env,
+  );
+  assert.equal(noPromptRetry.status, 409);
 });
 
 test("the stored record's model is the canonical requested model, not an upstream-shaped string", async () => {

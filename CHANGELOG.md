@@ -38,7 +38,7 @@ Phase R (Research-Tool Surface)._
   `config/provider_limits.yml`; queue and direct selection compare the two request estimates before
   quota admission, so a batch fitting only a larger allowed route cannot be sent to a smaller route.
   Terminal Worker failures now clear their unusable deferred handle and retain one bounded per-recipe
-  failure audit record, permitting up to three later fresh submissions before pausing that unchanged
+  failure audit record, tolerating up to three terminal failures in total before pausing that unchanged
   recipe for investigation. A locally detected malformed structured reply instead gets one immediate
   schema-correction clone through the Worker; a second malformed reply exhausts that recipe. Transient
   dispatch/transport failures remain pending for Worker-owned retry; no existing public tags are invalidated.

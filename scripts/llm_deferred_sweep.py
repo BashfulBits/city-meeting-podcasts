@@ -37,6 +37,7 @@ from citypods.compute.llm_deferred import (
     discard_terminal_failure,
     load_deferred_snapshot,
     prune_expired_deferred_snapshot,
+    prune_expired_failure_markers,
     record_schema_correction,
     repair_deferred_index,
     schema_correction_attempted,
@@ -223,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     skipped_by_pool: dict[tuple, int] = {}
 
     snapshot = load_deferred_snapshot(storage)
+    prune_expired_failure_markers(storage)
     if datetime.now(UTC) < deadline_at:
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
@@ -257,10 +259,13 @@ def main(argv: list[str] | None = None) -> int:
                     corrected = backend.retry_malformed_dispatched(handle)
                     write_deferred(storage, handle.recipe_hash, corrected)
                     snapshot.replace_pending(handle.recipe_hash, corrected)
+                    # Persist the one-correction guard before deleting the completed request.
+                    # A marker-write failure must leave the original intact, not permit a second
+                    # correction of the same malformed result on the next sweep.
+                    record_schema_correction(storage, handle, exc)
                     # The Worker clone is durable before the bad response is removed. If this
                     # cleanup races, it leaves only harmless retained audit history.
                     backend.delete_dispatched_ref(handle.ref)
-                    record_schema_correction(storage, handle, exc)
                     print(
                         f"llm-deferred-sweep: {handle.recipe_hash} submitted one schema correction",
                         file=sys.stderr,

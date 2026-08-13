@@ -46,6 +46,10 @@ MAX_TERMINAL_FAILURE_RETRIES = 3
 # hit right after a rollover) plus slack for the sweep's own daily cadence. `prune_expired_deferred`
 # never deletes a record before this *or* the caller's own `deadline_at`, whichever is later.
 DEFAULT_TTL_DAYS = 38
+# Failure markers are audit records rather than live work, but must not grow indefinitely for
+# recipe lineages which are never revisited. Maintenance passes prune only markers whose latest
+# failure is older than this retention period.
+DEFAULT_FAILURE_MARKER_TTL_DAYS = 90
 
 
 @dataclass
@@ -207,6 +211,35 @@ def schema_correction_attempted(storage, recipe_hash: str) -> bool:
     """Whether this exact recipe has already received its one corrective retry."""
     data = _read_json(storage, deferred_failure_key(recipe_hash))
     return bool(isinstance(data, Mapping) and data.get("schema_correction_attempted"))
+
+
+def prune_expired_failure_markers(storage, *, now: datetime | None = None) -> int:
+    """Delete terminal-failure audit markers beyond their bounded retention period."""
+    current = now or datetime.now(UTC)
+    deleted = 0
+    try:
+        listing = storage.list_objects(DEFERRED_FAILURE_PREFIX)
+    except Exception:  # noqa: BLE001 -- audit cleanup must never block a sweep
+        return 0
+    for key, _ in listing:
+        data = _read_json(storage, key)
+        if not isinstance(data, Mapping):
+            continue
+        raw = data.get("last_failed_at")
+        try:
+            last_failed_at = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            last_failed_at = None
+        if last_failed_at is None or current <= last_failed_at + timedelta(
+            days=DEFAULT_FAILURE_MARKER_TTL_DAYS
+        ):
+            continue
+        try:
+            storage.delete(key)
+        except Exception:  # noqa: BLE001 -- maintenance cleanup remains best-effort
+            continue
+        deleted += 1
+    return deleted
 
 
 def record_schema_correction(storage, handle: JobHandle, error: BaseException, *, now=None) -> None:
@@ -599,6 +632,7 @@ def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
     The pass is idempotent. It intentionally lists the canonical prefix only when invoked by an
     operator/maintenance run; ordinary sweeps use the narrow index listings.
     """
+    current = now or datetime.now(UTC)
     repaired = 0
     desired: set[str] = set()
     for key, _ in storage.list_objects(DEFERRED_PREFIX):
@@ -618,6 +652,7 @@ def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
                 storage.delete(key)
             except Exception:  # noqa: BLE001 -- cleanup remains best-effort
                 pass
+    prune_expired_failure_markers(storage, now=current)
     _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 1}\n')
     return repaired
 
@@ -735,6 +770,7 @@ def _release_abandoned_reservation(storage, data: Mapping[str, Any], *, now: dat
 
 __all__ = [
     "DEFAULT_TTL_DAYS",
+    "DEFAULT_FAILURE_MARKER_TTL_DAYS",
     "DEFERRED_FAILURE_PREFIX",
     "DEFERRED_PREFIX",
     "DEFERRED_INDEX_PREFIX",
@@ -750,6 +786,7 @@ __all__ = [
     "iter_pending_deferred",
     "prune_expired_deferred",
     "prune_expired_deferred_snapshot",
+    "prune_expired_failure_markers",
     "repair_deferred_index",
     "record_schema_correction",
     "schema_correction_attempted",
