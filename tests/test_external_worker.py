@@ -1007,6 +1007,7 @@ def test_internal_worker_align_passes_timed_segments_to_local_inference(tmp_path
     monkeypatch.setattr(worker, "_run_local_inference_with_timeout", _capture)
     city = SimpleNamespace(
         asr_model="large-v3-turbo",
+        asr_alignment_model="WAV2VEC2_ASR_BASE_960H",
         asr_language="en",
         asr_compute_type="int8",
     )
@@ -1026,6 +1027,48 @@ def test_internal_worker_align_passes_timed_segments_to_local_inference(tmp_path
 
     assert actual is result
     assert captured["job"].inputs["timed_segments"] == timed_segments
+    assert captured["job"].inputs["model"] == "WAV2VEC2_ASR_BASE_960H"
+
+
+def test_external_worker_align_uses_alignment_model(monkeypatch, tmp_path):
+    worker = _loop_worker(tmp_path, ["a"])
+    captured = {}
+    result = object()
+
+    def _align(audio_path, text, model, language, cpu_threads, compute_type, **kwargs):
+        captured.update(
+            audio_path=audio_path,
+            text=text,
+            model=model,
+            language=language,
+            cpu_threads=cpu_threads,
+            compute_type=compute_type,
+            kwargs=kwargs,
+        )
+        return result
+
+    import citypods.asr as asr_mod
+
+    monkeypatch.setattr(asr_mod, "align", _align)
+    city = SimpleNamespace(
+        asr_model="large-v3-turbo",
+        asr_alignment_model="WAV2VEC2_ASR_BASE_960H",
+        asr_language="en",
+        asr_compute_type="int8",
+    )
+
+    actual = worker._align_provider_text(
+        _queued("a"),
+        city,
+        SimpleNamespace(uid="a", guid="a", duration=60.0),
+        tmp_path / "audio.m4a",
+        "Hello world",
+        "recipe",
+        ew.ResourceTracker(),
+    )
+
+    assert actual is result
+    assert captured["model"] == "WAV2VEC2_ASR_BASE_960H"
 
 
 def test_internal_worker_timeout_records_backoff_and_defers(tmp_path, monkeypatch):

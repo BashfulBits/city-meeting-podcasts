@@ -205,7 +205,7 @@ Audio and every other workflow that fetches these providers without adding stora
 
 > **Transcript update:** Computed provider alignment now uses WhisperX rather than stable-ts. Provider
 > source wording is cleaned and source-time markers are remapped to served time, with a 90% raw
-> word-coverage gate before interpolation. `PROVIDER_ALIGN_PIPELINE_VERSION=4` reprocesses every
+> word-coverage gate before interpolation. `PROVIDER_ALIGN_PIPELINE_VERSION=5` reprocesses every
 > computed provider alignment gradually; full-ASR artifacts remain separate and unchanged.
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
 | **Static search** | `search.py` builds deterministic per-source JSON shards from durable records and content-addressed transcript/agenda/backup/minutes sidecars; unchanged source hashes skip sidecar reads, retired shards are pruned, and every available transcript is indexed. Chapter entries carry stable IDs and topic tags; timed transcript segments carry their chapter ID, enabling future topic-scoped quote/highlight results while episode tags remain the fast facet. The manifest carries exact transcripted/retained-meeting counts per shard and body; `templates/search.html.j2` aggregates them only into user-facing whole-catalog/city/body coverage, supports city/body/topic/date/availability filters, deduplicates cross-source UIDs, and links playable results to stable meeting pages with transcript/chapter timestamps. |
