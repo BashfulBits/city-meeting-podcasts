@@ -411,6 +411,23 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
   if (typeof body.estimated_tokens === "number" && body.estimated_tokens > 0) {
     policy.estimated_tokens = Math.floor(body.estimated_tokens);
   }
+  if (body.allowed_models !== undefined) {
+    if (!Array.isArray(body.allowed_models) || body.allowed_models.length === 0) {
+      throw new HttpError(400, "allowed_models must be a non-empty array when provided");
+    }
+    const allowedModels = [...new Set(body.allowed_models.map((candidate) => {
+      if (typeof candidate !== "string" || !candidate.trim()) {
+        throw new HttpError(400, "allowed_models entries must be non-empty strings");
+      }
+      const canonical = canonicalModelName(candidate.trim(), dispatchLimits);
+      if (!configuredModels.includes(canonical)) {
+        throw new HttpError(400, `unknown allowed model: ${candidate}`);
+      }
+      return canonical;
+    }))];
+    if (!allowedModels.includes(canonicalModel)) allowedModels.unshift(canonicalModel);
+    policy.allowed_models = allowedModels;
+  }
 
   return {
     model: canonicalModel,
@@ -529,11 +546,13 @@ async function saveFailure(bucket, claimed, status, now, code = "upstream_error"
     completed_at: now.toISOString(),
     error: errObj,
   };
-  await putJson(bucket, claimed.key, updated, {
+  const saved = await putJson(bucket, claimed.key, updated, {
     etagMatches: claimed.object.etag,
     customMetadata: requestMetadata(updated),
   });
-  await unmarkPending(bucket, updated.id);
+  // A lost conditional write means another worker owns the newer canonical state.  Its pending
+  // marker is still needed until that state is observed and finalized.
+  if (saved) await unmarkPending(bucket, updated.id);
 }
 
 async function requeue(bucket, claimed, now) {
@@ -989,7 +1008,7 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
   return { apiKey, url, upstreamModel: route.upstream_model };
 }
 
-function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
   const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
   const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
   const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
@@ -1046,6 +1065,19 @@ function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPA
 
   const paidPick = tryRoutes(paidRanked);
   return paidPick || { chosenRoute: null, reason: "no_capacity" };
+}
+
+function selectRoute(budget, canonicalModels, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+  const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
+  let lastSelection = { chosenRoute: null, reason: "no_configured_route" };
+  for (const model of [...new Set(models)]) {
+    const selection = selectRouteForModel(budget, model, policy, now, dispatchLimits);
+    if (selection.chosenRoute) return selection;
+    // Preserve "no capacity" when an earlier, valid model is merely full rather than allowing
+    // a later unknown model to misclassify the durable request as permanently invalid.
+    if (selection.reason !== "no_configured_route") lastSelection = selection;
+  }
+  return lastSelection;
 }
 
 async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
@@ -1185,7 +1217,12 @@ async function dispatchBatch(
     for (const claimed of claimable) {
       if (candidatesToDispatch.length >= maxBatch) break;
 
-      const selection = selectRoute(budget, claimed.record.model, claimed.record.policy, now);
+      const selection = selectRoute(
+        budget,
+        claimed.record.policy?.allowed_models || claimed.record.model,
+        claimed.record.policy,
+        now,
+      );
       if (!selection.chosenRoute) {
         if (selection.reason === "no_capacity") {
           await requeue(bucket, claimed, now);
@@ -1472,11 +1509,11 @@ async function dispatchBatch(
           completed_at: new Date().toISOString(),
           response: responseJson,
         };
-        await putJson(bucket, claimed.key, completed, {
+        const saved = await putJson(bucket, claimed.key, completed, {
           etagMatches: claimed.object.etag,
           customMetadata: requestMetadata(completed),
         });
-        await unmarkPending(bucket, completed.id);
+        if (saved) await unmarkPending(bucket, completed.id);
         return {
           status: "completed",
           requestId: claimed.record.id,

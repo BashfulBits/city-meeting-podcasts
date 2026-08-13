@@ -1038,22 +1038,23 @@ def llm_tag_suggestions(
         for candidate in configured_models
     }
     if route_limits:
-        call_metadata["route_context_limit"] = min(route_limits.values())
+        call_metadata["route_context_limit"] = max(route_limits.values())
         publish_call_metadata()
         # A large meeting is many independent chapter subjects, not one opaque request. Batch
         # deterministically against both model context and serialized JSON bytes. Child recipes
         # are durable, so a later pass only polls batches the Worker already accepted.
         if chapter_mode and not _batched and compact_chapters:
-            route_token_limit = min(route_limits.values()) - 1024
-            route_tpm_limit = min(
-                (
-                    int(ROUTES[candidate].quota.tpm) - 1024
-                    for candidate in route_limits
-                    if ROUTES[candidate].quota.tpm is not None
-                ),
-                default=route_token_limit,
-            )
-            max_input_tokens = max(1, min(route_token_limit, route_tpm_limit))
+
+            def fits_any_allowed_route(candidate_messages: list[dict[str, str]], size: int) -> bool:
+                if size > TAGGER_MAX_REQUEST_BYTES:
+                    return False
+                tokens = estimate_tokens(candidate_messages) + 1024
+                return any(
+                    tokens <= context_limit
+                    and (ROUTES[model].quota.tpm is None or tokens <= int(ROUTES[model].quota.tpm))
+                    for model, context_limit in route_limits.items()
+                )
+
             batches: list[list[dict[str, Any]]] = []
             current: list[dict[str, Any]] = []
             for chapter in compact_chapters:
@@ -1066,10 +1067,7 @@ def llm_tag_suggestions(
                         separators=(",", ":"),
                     ).encode()
                 )
-                if current and (
-                    estimate_tokens(proposed_messages) > max_input_tokens
-                    or proposed_bytes > TAGGER_MAX_REQUEST_BYTES
-                ):
+                if current and not fits_any_allowed_route(proposed_messages, proposed_bytes):
                     batches.append(current)
                     current = [chapter]
                 else:
@@ -1082,10 +1080,7 @@ def llm_tag_suggestions(
                         separators=(",", ":"),
                     ).encode()
                 )
-                if (
-                    estimate_tokens(single_messages) > max_input_tokens
-                    or single_bytes > TAGGER_MAX_REQUEST_BYTES
-                ):
+                if not fits_any_allowed_route(single_messages, single_bytes):
                     return [], {}, True, "payload-too-large"
             if current:
                 batches.append(current)

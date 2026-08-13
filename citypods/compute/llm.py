@@ -593,6 +593,10 @@ class LiteLLMBackend(Backend):
             payload["allow_batch"] = policy.allow_batch
             payload["submit_next"] = policy.submit_next
             payload["timeout_class"] = policy.timeout_class
+            if policy.queue_only and policy.allowed_models:
+                # Durable requests are routed by the Worker.  Retain every permitted logical
+                # model there so independent quota pools can be used when the first is full.
+                payload["allowed_models"] = list(policy.allowed_models)
             if policy.deadline_at is not None:
                 payload["deadline_at"] = policy.deadline_at.isoformat()
         if estimated_tokens is not None:

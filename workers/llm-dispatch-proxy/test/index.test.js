@@ -459,6 +459,65 @@ test("pending-only index drains ready work even when terminal request history so
   assert.equal(await env.LLM_QUEUE.get("pending/chatcmpl-ready.json"), null);
 });
 
+test("queue reindex is authenticated and indexes pending records only", async () => {
+  const env = isolatedEnv();
+  const now = new Date().toISOString();
+  const pending = {
+    id: "chatcmpl-reindex-pending",
+    status: "pending",
+    model: "mistral/mistral-large-2512",
+    created_at: now,
+    updated_at: now,
+    available_at: now,
+  };
+  const terminal = { ...pending, id: "chatcmpl-reindex-terminal", status: "completed" };
+  await env.LLM_QUEUE.put("requests/chatcmpl-reindex-pending.json", JSON.stringify(pending));
+  await env.LLM_QUEUE.put("requests/chatcmpl-reindex-terminal.json", JSON.stringify(terminal));
+
+  const missingAuth = await handleRequest(
+    new Request("https://dispatch.example/v1/queue/reindex", { method: "POST" }),
+    env,
+  );
+  assert.equal(missingAuth.status, 401);
+  const invalidAuth = await handleRequest(
+    new Request("https://dispatch.example/v1/queue/reindex", {
+      method: "POST",
+      headers: { authorization: "Bearer wrong" },
+    }),
+    env,
+  );
+  assert.equal(invalidAuth.status, 401);
+
+  const response = await handleRequest(
+    request("https://dispatch.example/v1/queue/reindex", { method: "POST" }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { scanned: 2, pending: 1 });
+  assert.ok(await env.LLM_QUEUE.get("pending/chatcmpl-reindex-pending.json"));
+  assert.equal(await env.LLM_QUEUE.get("pending/chatcmpl-reindex-terminal.json"), null);
+});
+
+test("a lost terminal write preserves the pending marker for a later retry", async () => {
+  class RejectTerminalWriteBucket extends FakeBucket {
+    async put(key, value, options = {}) {
+      if (key.startsWith("requests/") && options.onlyIf?.etagMatches) {
+        const record = JSON.parse(typeof value === "string" ? value : await new Response(value).text());
+        if (record.status === "completed") return null;
+      }
+      return super.put(key, value, options);
+    }
+  }
+
+  const env = { ...ENV, LLM_QUEUE: new RejectTerminalWriteBucket() };
+  const queued = await handleRequest(chatRequest(undefined, "lost-terminal-write"), env);
+  const { id } = await queued.json();
+  await dispatchOne(env, okUpstream(), new Date());
+
+  assert.ok(await env.LLM_QUEUE.get(`pending/${id}.json`));
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${id}.json`)).json()).status, "pending");
+});
+
 test("a terminal record's customMetadata lets the scan skip it without ever fetching its body", async () => {
   // CodeRabbit's perf finding: both queue scans used to read every listed object's full body just
   // to check `status`. `putJson` now mirrors status/model/available_at into R2 customMetadata
@@ -764,6 +823,26 @@ test("selectRoute ranks free before paid and cheapest paid first, deterministica
     ranked.map((route) => route.route_id),
     ["free_b", "cheap", "pricey"],
   );
+});
+
+test("selectRoute spills a durable request to its next allowed model when the primary is full", () => {
+  const dispatchLimits = {
+    providers: { primary: {}, backup: {} },
+    model_routes_map: { "svc/primary": ["primary"], "svc/backup": ["backup"] },
+    routes_by_id: {
+      primary: { route_id: "primary", provider: "primary", free: true, rpm: 1 },
+      backup: { route_id: "backup", provider: "backup", free: true, rpm: 1 },
+    },
+  };
+  const now = new Date("2026-08-06T12:00:00Z");
+  const result = selectRoute(
+    { routes: { primary: { requests_available_at: "2026-08-06T12:01:00Z" } } },
+    ["svc/primary", "svc/backup"],
+    { allow_paid: false, estimated_tokens: 100 },
+    now,
+    dispatchLimits,
+  );
+  assert.equal(result.chosenRoute?.route_id, "backup");
 });
 
 test("routeAvailable respects rpm/rpd/tpm/blocked_until independently", () => {

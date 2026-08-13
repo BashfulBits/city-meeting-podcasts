@@ -1339,6 +1339,10 @@ def test_queue_only_policy_enqueues_without_a_runner_quota_reservation():
     class PendingSession(requests.Session):
         def post(self, _url, json=None, headers=None, timeout=None):
             assert json["model"] == "gemini/gemini-3-flash-preview"
+            assert json["allowed_models"] == [
+                "gemini/gemini-3-flash-preview",
+                "gemini/gemini-3.1-flash-lite",
+            ]
             assert headers["idempotency-key"] == "test-durable-queue:durable-queue-v1"
             response = requests.Response()
             response.status_code = 202
@@ -1362,7 +1366,11 @@ def test_queue_only_policy_enqueues_without_a_runner_quota_reservation():
             inputs={
                 "content": "meeting text",
                 "llm_policy": LLMRequestPolicy(
-                    allowed_models=("gemini/gemini-3-flash-preview",), queue_only=True
+                    allowed_models=(
+                        "gemini/gemini-3-flash-preview",
+                        "gemini/gemini-3.1-flash-lite",
+                    ),
+                    queue_only=True,
                 ),
             },
         )

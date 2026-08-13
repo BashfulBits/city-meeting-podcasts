@@ -993,3 +993,86 @@ def test_chapter_tagger_preserves_evidence_beyond_legacy_cutoffs():
     assert "AGENDA-TAIL" in content
     assert "TRANSCRIPT-TAIL" in content
     assert "SEGMENT-TAIL" in content
+
+
+def test_chapter_tagger_admits_a_batch_that_fits_an_additional_allowed_route(monkeypatch):
+    """A smaller primary route must not reject work that an allowed fallback can accept."""
+    from citypods.compute import llm_policy
+    from citypods.compute.base import JobResult
+    from citypods.compute.llm_policy import LLMRoute, PricingPolicy, QuotaPolicy
+
+    primary = "test/primary"
+    fallback = "test/fallback"
+    monkeypatch.setitem(
+        llm_policy.ROUTES,
+        primary,
+        LLMRoute(
+            model=primary,
+            transport="llm-dispatch",
+            free=True,
+            quota=QuotaPolicy(tpm=10_000),
+            pricing=PricingPolicy(),
+            context_limit=10_000,
+        ),
+    )
+    monkeypatch.setitem(
+        llm_policy.ROUTES,
+        fallback,
+        LLMRoute(
+            model=fallback,
+            transport="llm-dispatch",
+            free=True,
+            quota=QuotaPolicy(tpm=100_000),
+            pricing=PricingPolicy(),
+            context_limit=100_000,
+        ),
+    )
+
+    class Config:
+        model = primary
+        additional_models = (fallback,)
+
+    class Storage:
+        cas_capable = True
+
+    class Backend:
+        storage = Storage()
+        config = Config()
+
+        def run_inference(self, job):
+            assert job.inputs["llm_policy"].allowed_models == (primary, fallback)
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": '{"tags":[]}'}}]},
+                model=fallback,
+            )
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"x": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
+        }
+    )
+    _tags, chapter_tags, pending, resolved_model = llm_tag_suggestions(
+        Backend(),
+        taxonomy=taxonomy,
+        agenda_item_titles="",
+        agenda_text="",
+        transcript_text="",
+        recipe_hash="fallback-route",
+        chapter_inputs=[
+            {
+                "chapter_id": "c1",
+                "title": "Chapter",
+                "agenda_text": "housing " * 5_000,
+                "transcript_text": "",
+                "transcript_segments": [],
+            }
+        ],
+    )
+
+    assert chapter_tags == {}
+    assert pending is False
+    assert resolved_model == fallback
