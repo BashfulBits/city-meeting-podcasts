@@ -17,6 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Topic tagging lane now optimizes candidate scheduling and removes dispatch deadlines.** In the
+  dedicated `tag` lane (`enrich --lane tag`, `tag.yml`), `_run_enrich_global_queue` pre-filters candidate
+  episodes in memory so the thread pool only evaluates items that genuinely need rules derivation or LLM
+  tagging, while preserving the full retained episode list for append-only records persistence. Tag LLM
+  dispatches are submitted without an artificial wall-clock deadline (`deadline_at=None`), eliminating
+  runner-side sleep pacing and ensuring queued jobs do not timeout while waiting on the Cloudflare Worker.
+  A configurable per-run dispatch cap (`max_dispatches_per_run: 2000`) prevents worker queue flooding,
+  and the tag workflow budget is reduced to 20 minutes (30-minute job timeout). This changes only runner
+  orchestration and scheduling: no stored artifacts are invalidated, and no catalog backfill is required.
+
 - **Swagit plain-text transcripts now use coarse constrained alignment when possible.** Standalone
   ``[HH:MM:SS]`` anchors are parsed into monotonic source-time windows, structural bracket labels
   are excluded from the alignment text, and the windows are remapped to served time before
@@ -59,7 +69,6 @@ Phase R (Research-Tool Surface)._
   while ASR artifacts are not invalidated. Provider-selected episodes then enter a separate
   `transcript-asr-comparison` queue only after the ordinary ASR queue drains; it retains full ASR
   artifacts for H15 without replacing the served provider route.
-  
 - **Equivalent provider model selectors now share canonical logical keys.** The limits compiler
   emits a `model_aliases` map, coalesces selector-only duplicates for one physical provider/account
   quota bucket, and normalizes route entries before generating the Python and Worker

@@ -328,7 +328,9 @@ class TestTranscribeMocked:
         audio = tmp_path / "a.m4a"
         audio.write_bytes(b"fake")
 
-        saved = sys.modules.pop("faster_whisper", None)
+        had_module_key = "faster_whisper" in sys.modules
+        saved = sys.modules.get("faster_whisper")
+        sys.modules["faster_whisper"] = None
         try:
             try:
                 transcribe(audio, "base.en", "en", "int8", 5, None, 4)
@@ -336,8 +338,10 @@ class TestTranscribeMocked:
             except ImportError as exc:
                 assert "citypods[asr-transcribe]" in str(exc)
         finally:
-            if saved is not None:
+            if had_module_key:
                 sys.modules["faster_whisper"] = saved
+            else:
+                sys.modules.pop("faster_whisper", None)
 
 
 # ── align() — mocked ─────────────────────────────────────────────────────────

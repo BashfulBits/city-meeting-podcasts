@@ -20,18 +20,8 @@ concurrency:
 jobs:
   tag:
     runs-on: ubuntu-latest
-    # Was 25m: still hard-cancelled runs (no persist, no summary) even after several rounds of
-    # narrowing specific in-pass cost sinks (state restore, duration-heal gating, fingerprint
-    # short-circuiting -- see CHANGELOG), because none of those touch _run_enrich_global_queue's
-    # source-prepare pass (fetch_merge over every unique source in scope): it runs unconditionally
-    # to completion before ctx.stop() is ever checked, so a slow-fetching backlog (many-committee
-    # cities, a Cloudflare Worker fallback relay adding latency) can alone burn the whole job
-    # before the tag-lane's own graceful budget below gets a chance to matter. Mirrors
-    # llm-deferred-sweep.yml's headroom: give the job much more wall-clock room for prepare to
-    # finish (not a guarantee -- that pass still has no bound of its own, see citypods/run.py),
-    # so tag_run_time_budget_minutes (site_config.yml) can then do its job -- stop dispatching,
-    # persist what's done, and exit cleanly well before this outer limit.
-    timeout-minutes: 240
+    # Sized comfortably above tag_run_time_budget_minutes (20m) and source-prepare scraping.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
