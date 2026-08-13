@@ -16,6 +16,7 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMStructuredOutputError,
     _gemini_schema_safe_model,
+    _messages,
     _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
@@ -24,7 +25,7 @@ from citypods.compute.llm import (
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
-from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTES, LLMRequestPolicy
+from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTES, LLMRequestPolicy, estimate_tokens
 from citypods.compute.structured import register_response_model
 from tests._cas_fake import MemStorage
 
@@ -647,6 +648,22 @@ def test_deepseek_structured_request_includes_schema_in_initial_prompt():
     system = next(message for message in sent["messages"] if message["role"] == "system")
     assert "JSON Schema" in system["content"]
     assert json.dumps(ExampleOutput.model_json_schema(), sort_keys=True) in system["content"]
+
+
+def test_deepseek_queue_payload_counts_the_rendered_schema_message():
+    backend = LiteLLMBackend(LLMBackendConfig(model="deepseek/deepseek-v4-flash"))
+    policy = LLMRequestPolicy(allowed_models=("deepseek/deepseek-v4-flash",), queue_only=True)
+    inference_job = job(content="x", structured_output="test-output", max_tokens=1024)
+    payload = backend._payload(
+        inference_job,
+        ExampleOutput,
+        resolved_model="deepseek/deepseek-v4-flash",
+        policy=policy,
+        estimated_tokens=1,
+        input_tokens_estimate=1,
+        output_token_budget=1024,
+    )
+    assert estimate_tokens(payload["messages"]) > estimate_tokens(_messages(inference_job))
 
 
 def test_gemini_structured_request_relaxes_constraint_keywords_only():

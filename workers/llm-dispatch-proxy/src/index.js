@@ -1091,14 +1091,19 @@ function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits
 function selectRoute(budget, canonicalModels, policy, now, dispatchLimits = DISPATCH_LIMITS) {
   const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
   let lastSelection = { chosenRoute: null, reason: "no_configured_route" };
+  let retryableSelection = null;
   for (const model of [...new Set(models)]) {
     const selection = selectRouteForModel(budget, model, policy, now, dispatchLimits);
     if (selection.chosenRoute) return selection;
     // Preserve "no capacity" when an earlier, valid model is merely full rather than allowing
     // a later unknown model to misclassify the durable request as permanently invalid.
-    if (selection.reason !== "no_configured_route") lastSelection = selection;
+    if (selection.reason === "no_capacity") {
+      retryableSelection = selection;
+    } else if (selection.reason !== "no_configured_route") {
+      lastSelection = selection;
+    }
   }
-  return lastSelection;
+  return retryableSelection || lastSelection;
 }
 
 async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {

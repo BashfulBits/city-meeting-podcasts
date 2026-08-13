@@ -843,6 +843,7 @@ test("selectRoute spills a durable request to its next allowed model when the pr
     dispatchLimits,
   );
   assert.equal(result.chosenRoute?.route_id, "backup");
+
 });
 
 test("selectRoute skips allowed routes whose input or output context cannot fit the request", () => {
@@ -868,6 +869,40 @@ test("selectRoute skips allowed routes whose input or output context cannot fit 
     dispatchLimits,
   );
   assert.equal(result.chosenRoute?.route_id, "backup");
+
+  const outputOnly = selectRoute(
+    { routes: {} },
+    ["svc/primary", "svc/backup"],
+    { allow_paid: false, input_tokens_estimate: 2_000, output_token_budget: 2_048 },
+    new Date("2026-08-06T12:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(outputOnly.chosenRoute?.route_id, "backup");
+});
+
+test("selectRoute preserves a temporarily full allowed route over later context rejection", () => {
+  const dispatchLimits = {
+    providers: { primary: {}, small: {} },
+    model_routes_map: { "svc/primary": ["primary"], "svc/small": ["small"] },
+    routes_by_id: {
+      primary: {
+        route_id: "primary", provider: "primary", free: true, rpm: 1,
+        input_context_limit: 100_000, output_context_limit: 8_192,
+      },
+      small: {
+        route_id: "small", provider: "small", free: true,
+        input_context_limit: 1_000, output_context_limit: 1_024,
+      },
+    },
+  };
+  const result = selectRoute(
+    { routes: { primary: { requests_available_at: "2026-08-06T12:01:00Z" } } },
+    ["svc/primary", "svc/small"],
+    { allow_paid: false, input_tokens_estimate: 2_000, output_token_budget: 1_024 },
+    new Date("2026-08-06T12:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(result.reason, "no_capacity");
 });
 
 test("routeAvailable respects rpm/rpd/tpm/blocked_until independently", () => {

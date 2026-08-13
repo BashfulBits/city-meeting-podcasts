@@ -85,6 +85,19 @@ def test_direct_selection_skips_physical_routes_with_insufficient_context():
     assert result.route is large
     assert ("test/model", "input context limit") in result.rejected
 
+    output_only = select_route(
+        LLMRequestPolicy(allowed_models=("test/model",)),
+        routes={"small": small, "large": large},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=3_000,
+        input_tokens=2_000,
+        output_tokens=2_048,
+        now=NOW,
+    )
+    assert output_only.route is large
+    assert ("test/model", "output context limit") in output_only.rejected
+
 
 def test_paid_route_wins_when_free_quota_cannot_reset_before_deadline():
     result = select_route(

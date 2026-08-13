@@ -579,13 +579,21 @@ class LiteLLMBackend(Backend):
         route=None,
     ) -> dict[str, Any]:
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
+        include_deepseek_schema = model is not None and (
+            resolved_model.startswith("deepseek/")
+            or (
+                policy is not None
+                and any(
+                    canonical_model(candidate).startswith("deepseek/")
+                    for candidate in (policy.allowed_models or ())
+                )
+            )
+        )
         payload: dict[str, Any] = {
             "model": resolved_model,
-            "messages": (
-                _messages_with_schema(_messages(job), model)
-                if model is not None and resolved_model.startswith("deepseek/")
-                else _messages(job)
-            ),
+            "messages": _messages_with_schema(_messages(job), model)
+            if include_deepseek_schema
+            else _messages(job),
             "stream": False,
         }
         if model is not None:
@@ -614,6 +622,20 @@ class LiteLLMBackend(Backend):
     def _output_token_budget(job: InferenceJob) -> int:
         value = job.inputs.get("max_tokens", DEFAULT_OUTPUT_TOKEN_MARGIN)
         return max(1, int(value)) if isinstance(value, int) else DEFAULT_OUTPUT_TOKEN_MARGIN
+
+    @staticmethod
+    def _admission_messages(
+        messages: list[dict[str, Any]],
+        structured: tuple[str, ResponseModel] | None,
+        policy: LLMRequestPolicy,
+    ) -> list[dict[str, Any]]:
+        """Return the conservative request form used before physical-route selection."""
+        if structured and any(
+            canonical_model(candidate).startswith("deepseek/")
+            for candidate in (policy.allowed_models or ())
+        ):
+            return _messages_with_schema(messages, structured[1])
+        return messages
 
     @staticmethod
     def _assert_route_context(
@@ -922,8 +944,11 @@ class LiteLLMBackend(Backend):
             model,
             resolved_model=resolved_model,
             policy=policy,
-            estimated_tokens=estimate_tokens(messages) + self._output_token_budget(job),
-            input_tokens_estimate=estimate_tokens(messages),
+            estimated_tokens=estimate_tokens(self._admission_messages(messages, structured, policy))
+            + self._output_token_budget(job),
+            input_tokens_estimate=estimate_tokens(
+                self._admission_messages(messages, structured, policy)
+            ),
             output_token_budget=self._output_token_budget(job),
         )
         # Older calls used the recipe hash directly when they entered the Worker (and carried a
@@ -995,7 +1020,8 @@ class LiteLLMBackend(Backend):
         # TPM can never be breached even when both attempts happen; settling afterwards to the
         # single terminal response's actual usage only ever releases back what wasn't needed.
         max_provider_attempts = 2 if structured else 1
-        input_tokens = estimate_tokens(messages)
+        admission_messages = self._admission_messages(messages, structured, policy)
+        input_tokens = estimate_tokens(admission_messages)
         output_tokens = self._output_token_budget(job)
         per_attempt_tokens = input_tokens + output_tokens
         selection = select_and_reserve(
@@ -1276,7 +1302,8 @@ class LiteLLMBackend(Backend):
         names why each allowed route was passed over (pacing log visibility)."""
         ledger, _ = load_llm_budget_cas(self.storage)
         max_provider_attempts = 2 if structured else 1
-        input_tokens = estimate_tokens(messages)
+        admission_messages = self._admission_messages(messages, structured, policy)
+        input_tokens = estimate_tokens(admission_messages)
         output_tokens = self._output_token_budget(job)
         per_attempt_tokens = input_tokens + output_tokens
         return select_route(
@@ -1317,7 +1344,12 @@ class LiteLLMBackend(Backend):
         logical_model = canonical_model(self.config.model)
         if self.config.mode == "direct":
             route = (ROUTE_CANDIDATES.get(logical_model) or (None,))[0]
-            self._assert_route_context(route, _messages(job), self._output_token_budget(job))
+            direct_messages = (
+                _messages_with_schema(_messages(job), structured[1])
+                if structured and logical_model.startswith("deepseek/")
+                else _messages(job)
+            )
+            self._assert_route_context(route, direct_messages, self._output_token_budget(job))
             direct_model = route.direct_model if route is not None else logical_model
             if structured:
                 result = self._run_structured_direct(

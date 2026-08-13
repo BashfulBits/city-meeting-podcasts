@@ -1061,11 +1061,12 @@ def llm_tag_suggestions(
             def fits_any_allowed_route(candidate_messages: list[dict[str, str]], size: int) -> bool:
                 if size > TAGGER_MAX_REQUEST_BYTES:
                     return False
-                tokens = estimate_tokens(candidate_messages) + 1024
+                input_tokens = estimate_tokens(candidate_messages)
+                total_tokens = input_tokens + 1024
                 return any(
-                    tokens <= route.input_context_limit
+                    input_tokens <= route.input_context_limit
                     and 1024 <= route.output_context_limit
-                    and (route.quota.tpm is None or tokens <= int(route.quota.tpm))
+                    and (route.quota.tpm is None or total_tokens <= int(route.quota.tpm))
                     for route in candidate_routes
                 )
 
@@ -1350,7 +1351,10 @@ def llm_prelabel_candidates(
     input_context_limit = int(getattr(route, "input_context_limit", 32768))
     output_context_limit = int(getattr(route, "output_context_limit", 1024))
     if getattr(route, "quota", None) is not None and route.quota.tpm is not None:
-        input_context_limit = min(input_context_limit, int(route.quota.tpm // 2))
+        input_context_limit = min(
+            input_context_limit,
+            max(0, int(route.quota.tpm) - 1024),
+        )
     # Keep a response/output reserve. The evaluator may receive many candidates, but it must
     # never silently drop the tail or rely on a provider-specific implicit truncation.
     max_input_tokens = max(1, input_context_limit)

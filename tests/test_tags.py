@@ -1053,6 +1053,7 @@ def test_chapter_tagger_admits_a_batch_that_fits_an_additional_allowed_route(mon
             "tags": [{"id": "housing", "source_refs": ["x"], "rules": {"include": ["housing"]}}],
         }
     )
+    metadata: dict[str, object] = {}
     _tags, chapter_tags, pending, resolved_model = llm_tag_suggestions(
         Backend(),
         taxonomy=taxonomy,
@@ -1060,6 +1061,7 @@ def test_chapter_tagger_admits_a_batch_that_fits_an_additional_allowed_route(mon
         agenda_text="",
         transcript_text="",
         recipe_hash="fallback-route",
+        call_metadata_out=metadata,
         chapter_inputs=[
             {
                 "chapter_id": "c1",
@@ -1074,3 +1076,5 @@ def test_chapter_tagger_admits_a_batch_that_fits_an_additional_allowed_route(mon
     assert chapter_tags == {}
     assert pending is False
     assert resolved_model == fallback
+    assert int(metadata["input_tokens_estimate"]) > primary_route.input_context_limit
+    assert int(metadata["input_tokens_estimate"]) <= fallback_route.input_context_limit
