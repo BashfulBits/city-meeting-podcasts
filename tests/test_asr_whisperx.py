@@ -172,3 +172,11 @@ def test_open_final_section_is_closed_from_loaded_audio(tmp_path: Path, monkeypa
         1,
     )
     assert artifacts.coverage == 1.0
+
+
+def test_finite_alignment_section_end_is_clamped_to_loaded_audio():
+    bounded = asr._bounded_alignment_sections(
+        [{"start": 0.25, "end": 9.0, "text": "stale duration"}],
+        [0.0] * 16_000,
+    )
+    assert bounded == [{"start": 0.25, "end": 1.0, "text": "stale duration"}]

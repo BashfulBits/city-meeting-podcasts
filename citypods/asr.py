@@ -509,7 +509,10 @@ def _bounded_alignment_sections(sections: list[dict], audio) -> list[dict]:
             raise ValueError(f"alignment section has invalid start: {start!r}")
         if end is None:
             end = audio_duration
-        if not _valid_time(end) or float(end) <= float(start):
+        if not _valid_time(end):
+            continue
+        end = min(float(end), audio_duration)
+        if end <= float(start):
             continue
         bounded.append({**section, "start": float(start), "end": float(end)})
     if not bounded:

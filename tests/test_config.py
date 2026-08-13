@@ -395,6 +395,12 @@ def test_asr_alignment_interpolation_rejects_invalid_feed_value(tmp_path, value)
         load_city_configs(tmp_path, DEFAULTS)
 
 
+def test_asr_alignment_interpolation_rejects_unhashable_feed_value(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "asr_alignment_interpolate: [nearest]\n")
+    with pytest.raises(ValueError, match="asr_alignment_interpolate"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
 def test_asr_alignment_interpolation_rejects_invalid_default(tmp_path):
     _write(tmp_path, "foo-tx.yml", VALID)
     with pytest.raises(ValueError, match="asr_alignment_interpolate"):
