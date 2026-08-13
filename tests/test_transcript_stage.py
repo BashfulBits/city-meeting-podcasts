@@ -1938,6 +1938,95 @@ class TestTranscriptStageASR:
         assert not stats.errors
         assert "alignment-error" in out
         assert "method=transcribed" in out
+        assert ep.provider_transcript["known_good"]["align_ineligible_reason"] == "alignment-error"
+
+    def test_align_lane_error_defers_to_full_asr_without_loading_transcription_model(
+        self, tmp_path
+    ):
+        from citypods.records import source_key as _src_key
+
+        sk = _src_key(_city())
+        ep = _ep_with_audio()
+        ep.transcript_key = f"transcripts/{sk}/uid-source.txt"
+        ep.transcript_format = "txt"
+        ep.transcript_synced = False
+        ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
+        root = tmp_path / "audio"
+        (root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / ep.transcript_key).write_bytes(b"The meeting is called to order.")
+
+        class _TextSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def get(self, url, **kwargs):
+                return type(
+                    "R", (), {"status_code": 200, "content": b"The meeting is called to order."}
+                )()
+
+        class _FailingAsr(_FakeAsr):
+            def align(self, *args, **kwargs):
+                raise RuntimeError("ctc unavailable")
+
+        ctx = _ctx(tmp_path)
+        ctx.lane = "align"
+        with (
+            patch("citypods.stages.asr_mod", _FailingAsr()),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+            patch("citypods.http.make_session", return_value=_TextSession()),
+        ):
+            stats = TranscriptStage().process(
+                FakeProvider(), _city(asr_alignment_enabled=True), [ep], ctx
+            )
+
+        assert stats.defer_reasons == {"alignment-error": 1}
+        assert ep.transcript_synced is False
+        assert ep.provider_transcript["known_good"]["align_ineligible_reason"] == "alignment-error"
+
+    def test_known_text_alignment_stays_local_when_dispatch_is_enabled(self, tmp_path):
+        from citypods.records import source_key as _src_key
+
+        sk = _src_key(_city())
+        ep = _ep_with_audio()
+        ep.transcript_key = f"transcripts/{sk}/uid-source.txt"
+        ep.transcript_format = "txt"
+        ep.transcript_synced = False
+        ep.transcript_hosted_url = f"https://cdn/{ep.transcript_key}"
+        root = tmp_path / "audio"
+        (root / ep.transcript_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / ep.transcript_key).write_bytes(b"The meeting is called to order.")
+
+        class _TextSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def get(self, url, **kwargs):
+                return type(
+                    "R", (), {"status_code": 200, "content": b"The meeting is called to order."}
+                )()
+
+        fake_asr = _FakeAsr()
+        external = _FakeDispatchBackend()
+        ctx = _ctx(tmp_path)
+        ctx.compute_backend = _dispatcher(tmp_path, fake_asr, external)
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+            patch("citypods.http.make_session", return_value=_TextSession()),
+        ):
+            stats = TranscriptStage().process(
+                FakeProvider(), _city(asr_alignment_enabled=True), [ep], ctx
+            )
+
+        assert stats.dispatched == 0
+        assert external.submitted == []
+        assert len(fake_asr.align_calls) == 1
 
     def test_skip_when_already_synced(self, tmp_path):
         """synced=True (e.g. from CivicClerk timed VTT) → ASR never called."""
@@ -2457,6 +2546,51 @@ class TestTranscriptVersionAwareReuse:
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
         assert stats.reused == 1
         assert fake_asr.transcribe_calls == []
+
+    def test_stale_provider_align_keeps_active_vtt_while_v2_is_deferred(self, tmp_path):
+        ep = _ep_with_audio()
+        city = _city(asr_alignment_enabled=False)
+        src_key = source_key(city)
+        old_key = f"transcripts/{src_key}/{ep.uid}-provider-align-old.vtt"
+        old_url = f"https://cdn/{old_key}"
+        ep.transcript_key = old_key
+        ep.transcript_hosted_url = old_url
+        ep.transcript_format = "vtt"
+        ep.transcript_basis = "served"
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = "provider-align:1"
+        ep.provider_transcript = {
+            "known_good": {
+                "format": "txt",
+                "hosted_url": "https://cdn/transcripts/provider-source.txt",
+            }
+        }
+        root = tmp_path / "audio"
+        (root / old_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / old_key).write_bytes(ASR_VTT)
+
+        class _TextSession:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def get(self, url, **kwargs):
+                return type(
+                    "R", (), {"status_code": 200, "content": b"The meeting is called to order."}
+                )()
+
+        with (
+            patch("citypods.stages.asr_mod", _FakeAsr()),
+            patch("citypods.http.make_session", return_value=_TextSession()),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), city, [ep], _ctx(tmp_path))
+
+        assert stats.defer_reasons == {"alignment-disabled": 1}
+        assert ep.transcript_key == old_key
+        assert ep.transcript_hosted_url == old_url
+        assert ep.transcript_synced is True
 
     def test_current_version_old_shape_asr_key_is_copied_to_timeline_recipe(self, tmp_path):
         ep = _ep_with_audio()

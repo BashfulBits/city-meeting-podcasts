@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 
 from citypods.bodies import body_key, canonical_body, rank_by_body
 from citypods.durations import episode_duration_hours, record_duration_hours
-from citypods.known_text import PROVIDER_ALIGN_PIPELINE_VERSION
+from citypods.known_text import PROVIDER_ALIGN_PIPELINE_VERSION, provider_align_ineligible
 from citypods.models import City, Episode
 from citypods.records import load_records
 from citypods.records import source_key as record_source_key
@@ -436,17 +436,10 @@ def _transcript_class(rec: dict, *, route: TranscriptQualityRoute | None = None)
         return "transcript-asr"
     if _provider_transcript_entry(rec.get("provider_transcript")) is not None:
         return "provider-transcript-align"
-    registry = rec.get("provider_transcript") or {}
-    if isinstance(registry, dict):
-        for artifact in (registry.get("candidate"), registry.get("known_good")):
-            if (
-                isinstance(artifact, dict)
-                and artifact.get("align_ineligible_pipeline_version")
-                == f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
-            ):
-                # The align lane deliberately does not run a second expensive attempt. The
-                # normal ASR queue owns this item next and produces a fresh full transcription.
-                return "transcript-asr"
+    if provider_align_ineligible(rec.get("provider_transcript")):
+        # The align lane deliberately does not run a second expensive attempt. The normal ASR
+        # queue owns this item next and produces a fresh full transcription.
+        return "transcript-asr"
     has_source_text = bool((rec.get("links") or {}).get("transcript"))
     return "transcript-align" if has_source_text else "transcript-asr"
 
@@ -501,14 +494,7 @@ def _episode_work_items(
         else:
             # An ineligible provider alignment may still be the active transcript from the prior
             # version. Only an actual full-ASR key satisfies the ASR queue's done check.
-            has_ineligible_provider_align = any(
-                isinstance(artifact, dict)
-                and artifact.get("align_ineligible_pipeline_version")
-                == f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
-                for artifact in ((rec.get("provider_transcript") or {}).get("candidate"),
-                                 (rec.get("provider_transcript") or {}).get("known_good"))
-            ) if isinstance(rec.get("provider_transcript"), dict) else False
-            if has_ineligible_provider_align:
+            if provider_align_ineligible(rec.get("provider_transcript")):
                 transcript_name = str(transcript.get("key") or "").rsplit("/", 1)[-1]
                 transcript_done = transcript_name.startswith(f"{uid}-asr-")
             else:

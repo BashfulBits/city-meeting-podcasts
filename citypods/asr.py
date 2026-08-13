@@ -21,6 +21,7 @@ import json
 import math
 import os
 import threading
+from bisect import bisect_left
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -413,14 +414,43 @@ def _whisperx_segments(result: dict, sections: list[dict]) -> list[SimpleNamespa
             )
             for word in result["word_segments"]
         ]
+        if not sections:
+            return normalized
+        buckets: list[list[SimpleNamespace]] = [[] for _ in sections]
+        # Use exact source-position quotas for words without timestamps. Timestamped words take
+        # precedence, so a partial WhisperX result cannot spill every word into every paragraph.
+        quotas = [max(1, len(str(section.get("text") or "").split())) for section in sections]
+        boundaries: list[int] = []
+        total = 0
+        for quota in quotas:
+            total += quota
+            boundaries.append(total)
+        for word_index, word in enumerate(words):
+            if _valid_time(word.start):
+                section_index = next(
+                    (
+                        index
+                        for index, section in enumerate(sections)
+                        if word.start >= float(section.get("start") or 0.0)
+                        and (
+                            section.get("end") is None
+                            or word.start < float(section["end"])
+                            or index == len(sections) - 1
+                        )
+                    ),
+                    len(sections) - 1,
+                )
+            else:
+                section_index = min(bisect_left(boundaries, word_index + 1), len(sections) - 1)
+            buckets[section_index].append(word)
         normalized = [
             SimpleNamespace(
                 start=float(section.get("start") or 0.0),
                 end=float(section.get("end") or section.get("start") or 0.0),
                 text=str(section.get("text") or ""),
-                words=words,
+                words=buckets[index],
             )
-            for section in sections
+            for index, section in enumerate(sections)
         ]
     return normalized
 
@@ -439,17 +469,17 @@ def _interpolate_words(segments: list[SimpleNamespace], method: str) -> None:
     for segment in segments:
         words = segment.words or []
         valid = [
-            i
-            for i, word in enumerate(words)
-            if _valid_time(word.start) and _valid_time(word.end)
+            i for i, word in enumerate(words) if _valid_time(word.start) and _valid_time(word.end)
         ]
         if not valid:
             continue
+        valid_set = set(valid)
         for index, word in enumerate(words):
-            if index in valid:
+            if index in valid_set:
                 continue
-            left = max((item for item in valid if item < index), default=None)
-            right = min((item for item in valid if item > index), default=None)
+            position = bisect_left(valid, index)
+            left = valid[position - 1] if position > 0 else None
+            right = valid[position] if position < len(valid) else None
             if left is None:
                 source = words[right]
                 word.start, word.end = source.start, source.end
@@ -463,6 +493,28 @@ def _interpolate_words(segments: list[SimpleNamespace], method: str) -> None:
                 ratio = (index - left) / (right - left)
                 word.start = words[left].start + ratio * (words[right].start - words[left].start)
                 word.end = words[left].end + ratio * (words[right].end - words[left].end)
+
+
+def _bounded_alignment_sections(sections: list[dict], audio) -> list[dict]:
+    """Validate alignment windows after loading audio, closing an open final section."""
+    try:
+        audio_duration = len(audio) / 16_000.0  # whisperx.load_audio returns mono 16 kHz samples
+    except TypeError as exc:
+        raise ValueError("WhisperX audio did not expose a sample length") from exc
+    bounded: list[dict] = []
+    for section in sections:
+        start = section.get("start")
+        end = section.get("end")
+        if not _valid_time(start):
+            raise ValueError(f"alignment section has invalid start: {start!r}")
+        if end is None:
+            end = audio_duration
+        if not _valid_time(end) or float(end) <= float(start):
+            continue
+        bounded.append({**section, "start": float(start), "end": float(end)})
+    if not bounded:
+        raise ValueError("provider source text produced no bounded alignment sections")
+    return bounded
 
 
 def align_known_text(
@@ -494,8 +546,9 @@ def align_known_text(
         ) from exc
 
     audio = whisperx.load_audio(str(audio_path))
+    bounded_sections = _bounded_alignment_sections(sections, audio)
     result = whisperx.align(
-        list(sections),
+        bounded_sections,
         loaded.model,
         loaded.metadata,
         audio,
@@ -504,7 +557,7 @@ def align_known_text(
         interpolate_method="ignore",
         print_progress=False,
     )
-    segments = _whisperx_segments(result, sections)
+    segments = _whisperx_segments(result, bounded_sections)
     fit = _word_fit_stats(segments)
     if fit["coverage"] < _MIN_ALIGN_COVERAGE:
         raise AlignmentQualityError(

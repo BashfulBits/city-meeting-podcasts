@@ -1231,9 +1231,10 @@ def _generate_provider_align_candidate(
     cpu_threads = max(1, city.asr_workers)
     from citypods.known_text import provider_sections
 
+    duration = sample.get("audio_duration") or sample.get("clip_end")
     sections = provider_sections(
         text,
-        duration=float(sample.get("audio_duration") or sample.get("clip_end") or 0.0),
+        duration=float(duration) if duration else None,
         timeline=sample.get("timeline"),
     )
     if not sections:

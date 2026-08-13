@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from types import ModuleType
 
+from citypods.compute.align import run_alignment
 from citypods.compute.base import InferenceJob, JobResult
 
 
@@ -52,21 +53,7 @@ class LocalBackend:
                 inp["cpu_threads"],
             )
         elif job.task == "align":
-            align_known_text = getattr(self._asr, "align_known_text", None)
-            if callable(align_known_text):
-                output = align_known_text(
-                    inp["audio_path"],
-                    inp["sections"],
-                    inp["model"],
-                    inp["language"],
-                    inp["cpu_threads"],
-                    inp.get("interpolate_method", "linear"),
-                )
-            else:  # compatibility for narrow test doubles and third-party adapters
-                text = " ".join(str(section.get("text") or "") for section in inp["sections"])
-                output = self._asr.align(
-                    inp["audio_path"], text, inp["model"], inp["language"], inp["cpu_threads"]
-                )
+            output = run_alignment(self._asr, inp)
         else:
             raise ValueError(f"local backend does not implement task {job.task!r}")
         return JobResult(task=job.task, recipe_hash=job.recipe_hash, output=output)

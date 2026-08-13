@@ -381,6 +381,26 @@ def test_asr_alignment_defaults_off_and_can_be_enabled(tmp_path):
     assert load_city_configs(tmp_path, DEFAULTS)[0].asr_alignment_enabled is True
 
 
+def test_asr_alignment_interpolation_uses_feed_over_default(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "asr_alignment_interpolate: nearest\n")
+    defaults = {**DEFAULTS, "asr_alignment_interpolate": "ignore"}
+    assert load_city_configs(tmp_path, defaults)[0].asr_alignment_interpolate == "nearest"
+
+
+@pytest.mark.parametrize("value", ["typo", None, 1])
+def test_asr_alignment_interpolation_rejects_invalid_feed_value(tmp_path, value):
+    rendered = "null" if value is None else str(value)
+    _write(tmp_path, "foo-tx.yml", VALID + f"asr_alignment_interpolate: {rendered}\n")
+    with pytest.raises(ValueError, match="asr_alignment_interpolate"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_asr_alignment_interpolation_rejects_invalid_default(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID)
+    with pytest.raises(ValueError, match="asr_alignment_interpolate"):
+        load_city_configs(tmp_path, {**DEFAULTS, "asr_alignment_interpolate": "typo"})
+
+
 def test_production_local_asr_duration_limit_is_four_hours():
     config = load_site_config(Path(__file__).resolve().parents[1] / "config" / "site_config.yml")
     assert config["defaults"]["asr_local_max_duration_hours"] == 4

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import sys
 from types import ModuleType
@@ -322,22 +323,22 @@ class TestTranscribeMocked:
         assert result.word_logprob_mean == pytest.approx(0.8)
         assert result.word_logprob_p10 == pytest.approx(0.7)
 
-    def test_missing_dep_raises_import_error(self, tmp_path):
+    def test_missing_dep_raises_import_error(self, tmp_path, monkeypatch):
         from citypods.asr import transcribe
 
         audio = tmp_path / "a.m4a"
         audio.write_bytes(b"fake")
 
-        saved = sys.modules.pop("faster_whisper", None)
-        try:
-            try:
-                transcribe(audio, "base.en", "en", "int8", 5, None, 4)
-                raise AssertionError("Expected ImportError")
-            except ImportError as exc:
-                assert "citypods[asr-transcribe]" in str(exc)
-        finally:
-            if saved is not None:
-                sys.modules["faster_whisper"] = saved
+        real_import = builtins.__import__
+
+        def _missing_faster_whisper(name, *args, **kwargs):
+            if name == "faster_whisper":
+                raise ImportError("simulated missing dependency")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", _missing_faster_whisper)
+        with pytest.raises(ImportError, match="citypods\\[asr-transcribe\\]"):
+            transcribe(audio, "base.en", "en", "int8", 5, None, 4)
 
 
 # ── align() — mocked ─────────────────────────────────────────────────────────

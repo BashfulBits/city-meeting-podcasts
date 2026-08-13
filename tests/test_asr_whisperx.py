@@ -9,11 +9,13 @@ import pytest
 import citypods.asr as asr
 
 
-def _fake_whisperx(result):
+def _fake_whisperx(monkeypatch, result, *, load_align_model=None):
     module = ModuleType("whisperx")
     module.load_audio = lambda path: [0.0]
     module.align = lambda *args, **kwargs: result
-    sys.modules["whisperx"] = module
+    if load_align_model is not None:
+        module.load_align_model = load_align_model
+    monkeypatch.setitem(sys.modules, "whisperx", module)
 
 
 def _loaded():
@@ -24,10 +26,11 @@ def _sections():
     return [{"start": 0.0, "end": 10.0, "text": "one two three four five six seven eight nine ten"}]
 
 
-def test_raw_coverage_gate_runs_before_interpolation(tmp_path: Path):
+def test_raw_coverage_gate_runs_before_interpolation(tmp_path: Path, monkeypatch):
     audio = tmp_path / "audio.m4a"
     audio.write_bytes(b"audio")
     _fake_whisperx(
+        monkeypatch,
         {
             "segments": [
                 {
@@ -41,16 +44,17 @@ def test_raw_coverage_gate_runs_before_interpolation(tmp_path: Path):
                     ],
                 }
             ]
-        }
+        },
     )
     with pytest.raises(asr.AlignmentQualityError, match="90%"):
         asr.align_known_text(audio, _sections(), _loaded(), "en", 1, "linear")
 
 
-def test_successful_alignment_interpolates_after_gate(tmp_path: Path):
+def test_successful_alignment_interpolates_after_gate(tmp_path: Path, monkeypatch):
     audio = tmp_path / "audio.m4a"
     audio.write_bytes(b"audio")
     _fake_whisperx(
+        monkeypatch,
         {
             "segments": [
                 {
@@ -70,9 +74,101 @@ def test_successful_alignment_interpolates_after_gate(tmp_path: Path):
                     ],
                 }
             ]
-        }
+        },
     )
     artifacts = asr.align_known_text(audio, _sections(), _loaded(), "en", 1, "linear")
     assert artifacts.coverage == 0.9
     assert b"one two three four five six seven eight nine ten" in artifacts.vtt
     assert b'"s":2.0' in artifacts.words
+
+
+def test_nearest_interpolation_and_invalid_method(tmp_path: Path, monkeypatch):
+    audio = tmp_path / "audio.m4a"
+    audio.write_bytes(b"audio")
+    _fake_whisperx(
+        monkeypatch,
+        {
+            "segments": [
+                {
+                    "start": 0.0,
+                    "end": 10.0,
+                    "words": [
+                        {"word": "one", "start": 1.0, "end": 2.0},
+                        {"word": "two", "start": None, "end": None},
+                        {"word": "three", "start": 4.0, "end": 5.0},
+                        *[
+                            {"word": str(index), "start": float(index), "end": float(index) + 0.5}
+                            for index in range(6, 13)
+                        ],
+                    ],
+                }
+            ]
+        },
+    )
+    artifacts = asr.align_known_text(audio, _sections(), _loaded(), "en", 1, "nearest")
+    assert b'"s":1.0' in artifacts.words
+    with pytest.raises(ValueError, match="interpolate_method"):
+        asr._interpolate_words([], "invalid")
+
+
+def test_word_segments_fallback_owns_each_word_once():
+    sections = [
+        {"start": 0.0, "end": 5.0, "text": "one two"},
+        {"start": 5.0, "end": 10.0, "text": "three four"},
+    ]
+    segments = asr._whisperx_segments(
+        {
+            "word_segments": [
+                {"word": "one", "start": 1.0, "end": 1.5},
+                {"word": "two", "start": None, "end": None},
+                {"word": "three", "start": 6.0, "end": 6.5},
+                {"word": "four", "start": None, "end": None},
+            ]
+        },
+        sections,
+    )
+    assert [[word.word for word in segment.words] for segment in segments] == [
+        ["one", "two"],
+        ["three", "four"],
+    ]
+
+
+def test_alignment_model_load_is_cached_by_model_language_and_threads(monkeypatch):
+    calls = []
+    asr._model_cache.clear()
+    _fake_whisperx(
+        monkeypatch,
+        {},
+        load_align_model=lambda **kwargs: calls.append(kwargs) or (object(), {"x": 1}),
+    )
+    first = asr.load_alignment_model("model-a", "en", 2)
+    assert asr.load_alignment_model("model-a", "en", 2) is first
+    asr.load_alignment_model("model-a", "en", 3)
+    assert calls == [
+        {"language_code": "en", "device": "cpu", "model_name": "model-a"},
+        {"language_code": "en", "device": "cpu", "model_name": "model-a"},
+    ]
+
+
+def test_open_final_section_is_closed_from_loaded_audio(tmp_path: Path, monkeypatch):
+    audio = tmp_path / "audio.m4a"
+    audio.write_bytes(b"audio")
+    result = {
+        "segments": [
+            {
+                "words": [
+                    {"word": str(index), "start": float(index), "end": float(index) + 0.5}
+                    for index in range(10)
+                ]
+            }
+        ]
+    }
+    _fake_whisperx(monkeypatch, result)
+    artifacts = asr.align_known_text(
+        audio,
+        [{"start": 0.0, "end": None, "text": "open ended section"}],
+        _loaded(),
+        "en",
+        1,
+    )
+    assert artifacts.coverage == 1.0

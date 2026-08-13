@@ -1,9 +1,8 @@
 """Tests for the H13 GPU/ASR execution-backend interface and its ``local`` adapter.
 
 The headline acceptance: the ``local`` adapter yields **byte-identical** VTT + words.json to
-the pre-refactor direct ``citypods.asr`` path. We assert that by running the same mocked
-faster-whisper / stable-ts inputs through both ``asr.transcribe``/``asr.align`` directly and
-through ``LocalBackend.run_inference`` and comparing the bytes.
+the direct ``citypods.asr`` path. We assert that by running the same mocked faster-whisper /
+WhisperX inputs through both calls and through ``LocalBackend.run_inference``.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ from citypods.compute import (
 )
 from citypods.compute.base import Task
 
-# ── faster-whisper / stable-ts fakes (mirrors tests/test_asr.py) ──────────────
+# ── faster-whisper / legacy-alignment fakes ───────────────────────────────────
 
 
 def _inject_fw(model_instance):
@@ -200,29 +199,15 @@ class TestAlignByteIdentical:
     def test_local_matches_direct_asr(self, tmp_path):
         audio = tmp_path / "a.m4a"
         audio.write_bytes(b"fake")
-        vtt_str = "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world\n"
-
-        def _fresh_sw():
-            asr._model_cache.clear()
-            word = MagicMock(word="Hello", start=0.0, end=0.5)
-            seg = MagicMock(start=0.0, end=5.0, text="Hello world", words=[word])
-            fake_result = MagicMock()
-            fake_result.to_vtt.return_value = vtt_str
-            fake_result.segments = [seg]
-            fake_model = MagicMock()
-            fake_model.align.return_value = fake_result
-            _inject_sw(fake_model)
-
-        _fresh_sw()
-        direct = asr.align(audio, "Hello world", "base.en", "en", 4)
-
-        _fresh_sw()
-        result = LocalBackend(asr=asr).run_inference(
+        direct = TranscriptArtifacts(vtt=b"WEBVTT\n", words=b"{}")
+        fake = MagicMock()
+        fake.align_known_text.return_value = direct
+        result = LocalBackend(asr=fake).run_inference(
             InferenceJob(
                 task="align",
                 inputs={
                     "audio_path": audio,
-                    "text": "Hello world",
+                    "sections": [{"start": 0.0, "end": 5.0, "text": "Hello world"}],
                     "model": "base.en",
                     "language": "en",
                     "cpu_threads": 4,
@@ -233,16 +218,23 @@ class TestAlignByteIdentical:
         out = result.output
         assert out.vtt == direct.vtt
         assert out.words == direct.words
+        fake.align_known_text.assert_called_once_with(
+            audio,
+            [{"start": 0.0, "end": 5.0, "text": "Hello world"}],
+            "base.en",
+            "en",
+            4,
+        )
 
     def test_passes_inputs_through_unchanged(self):
-        fake = MagicMock()
-        fake.align.return_value = TranscriptArtifacts(vtt=b"v", words=b"w")
+        fake = ModuleType("legacy_asr")
+        fake.align = MagicMock(return_value=TranscriptArtifacts(vtt=b"v", words=b"w"))
         LocalBackend(asr=fake).run_inference(
             InferenceJob(
                 task="align",
                 inputs={
                     "audio_path": "a.m4a",
-                    "text": "TEXT",
+                    "sections": [{"start": 0.0, "end": 1.0, "text": "TEXT"}],
                     "model": "MODEL",
                     "language": "en",
                     "cpu_threads": 2,
@@ -254,15 +246,15 @@ class TestAlignByteIdentical:
     def test_alignment_quality_error_propagates(self):
         # The stage's align→transcribe fallback depends on the backend surfacing the asr exception
         # unchanged (it inspects ``asr.AlignmentQualityError``).
-        fake = MagicMock()
-        fake.align.side_effect = asr.AlignmentQualityError("too low")
+        fake = ModuleType("legacy_asr")
+        fake.align = MagicMock(side_effect=asr.AlignmentQualityError("too low"))
         with pytest.raises(asr.AlignmentQualityError):
             LocalBackend(asr=fake).run_inference(
                 InferenceJob(
                     task="align",
                     inputs={
                         "audio_path": "a.m4a",
-                        "text": "t",
+                        "sections": [{"start": 0.0, "end": 1.0, "text": "t"}],
                         "model": "m",
                         "language": "en",
                         "cpu_threads": 1,

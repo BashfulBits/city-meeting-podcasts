@@ -102,7 +102,7 @@ from citypods.integrity import (
     needs_timeline_audio_repair,
     timeline_audio_repair_token,
 )
-from citypods.known_text import PROVIDER_ALIGN_PIPELINE_VERSION
+from citypods.known_text import PROVIDER_ALIGN_PIPELINE_VERSION, provider_align_ineligible
 from citypods.media import (
     AudioArtifactCache,
     HostedKeysCache,
@@ -215,6 +215,12 @@ _TIMELINE_BACKOFF_ERRORS = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class _CachedAsrArtifacts:
+    artifacts: object
+    aligned: bool
+
+
 class AsrArtifactCache:
     """Thread-safe run-local reuse for identical stable-uid + ASR-recipe work.
 
@@ -225,14 +231,14 @@ class AsrArtifactCache:
 
     def __init__(self) -> None:
         self._condition = threading.Condition()
-        self._values: dict[tuple[str, str], object] = {}
+        self._values: dict[tuple[str, str], _CachedAsrArtifacts] = {}
         self._inflight: set[tuple[str, str]] = set()
 
-    def get(self, key: tuple[str, str]) -> object | None:
+    def get(self, key: tuple[str, str]) -> _CachedAsrArtifacts | None:
         with self._condition:
             return self._values.get(key)
 
-    def claim(self, key: tuple[str, str]) -> tuple[bool, object | None]:
+    def claim(self, key: tuple[str, str]) -> tuple[bool, _CachedAsrArtifacts | None]:
         """Wait for an in-flight leader, or reserve ``key`` for the caller.
 
         Returns ``(True, None)`` to the leader that must run inference, or
@@ -247,9 +253,9 @@ class AsrArtifactCache:
             self._inflight.add(key)
             return True, None
 
-    def complete(self, key: tuple[str, str], value: object) -> None:
+    def complete(self, key: tuple[str, str], artifacts: object, *, aligned: bool) -> None:
         with self._condition:
-            self._values[key] = value
+            self._values[key] = _CachedAsrArtifacts(artifacts=artifacts, aligned=aligned)
             self._inflight.discard(key)
             self._condition.notify_all()
 
@@ -3384,6 +3390,7 @@ class TranscriptStage:
             recheck_asr_words_key: str | None = None
             active_synced_reused = False
             provider_url = (ep.links or {}).get("transcript")
+            alignment_source_url: str | None = None
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
             #    stop()) so a yielded run still references every already-synced transcript.
             #    Version-aware (H12): an ASR transcript (key carries the ``-asr-`` infix) from an
@@ -3467,8 +3474,9 @@ class TranscriptStage:
                             None,
                         )
                         if source_artifact is not None:
-                            ep.transcript_hosted_url = source_artifact["hosted_url"]
-                            ep.transcript_format = "txt"
+                            # Preserve the active old VTT while its v2 replacement is pending.
+                            # This URL is only an alignment input; it must not leak into the feed.
+                            alignment_source_url = source_artifact["hosted_url"]
                     else:
                         ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                         if ep.transcript_words_key and _present(ep.transcript_words_key):
@@ -3493,6 +3501,9 @@ class TranscriptStage:
             if ep.transcript_key and not ep.transcript_synced and _present(ep.transcript_key):
                 ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                 # fall through to step 3
+
+            if ep.transcript_hosted_url and ep.transcript_format == "txt":
+                alignment_source_url = ep.transcript_hosted_url
 
             # 2. Provider source transcript slot: fetch every pass that reaches the item and
             #    retain changed bytes as a candidate. PT-PR2 does not promote to known_good; the
@@ -3603,6 +3614,7 @@ class TranscriptStage:
                     and active_provider.get("hosted_url")
                     and active_provider.get("format") == "txt"
                 ):
+                    alignment_source_url = active_provider["hosted_url"]
                     ep.transcript_hosted_url = active_provider["hosted_url"]
                     ep.transcript_format = "txt"
 
@@ -3672,13 +3684,13 @@ class TranscriptStage:
             # source-time paragraph markers are converted to served-time windows; marker text is
             # metadata and is never passed to the acoustic model.
             align_sections: list[dict] | None = None
-            if ep.transcript_hosted_url and ep.transcript_format == "txt":
+            if alignment_source_url:
                 try:
                     from citypods.http import make_session
                     from citypods.known_text import provider_sections
 
                     with make_session() as sess:
-                        r = sess.get(ep.transcript_hosted_url, timeout=30)
+                        r = sess.get(alignment_source_url, timeout=30)
                     if r.status_code == 200:
                         raw_text = r.content.decode("utf-8", errors="replace")
                         align_sections = provider_sections(
@@ -3686,20 +3698,16 @@ class TranscriptStage:
                             duration=episode_served_duration_seconds(ep),
                             timeline=ep.timeline,
                         )
-                except Exception:  # noqa: BLE001
-                    pass  # alignment hint unavailable; fall back to fresh transcription
+                except Exception as exc:  # noqa: BLE001
+                    print(
+                        f"[enrich] transcript align-sections unavailable {ep_ref}: {exc}",
+                        flush=True,
+                    )
             if route is not None and route.prefers_fresh_asr:
                 align_sections = None
 
             if align_sections:
-                registry = ep.provider_transcript or {}
-                blocked = any(
-                    isinstance(artifact, dict)
-                    and artifact.get("align_ineligible_pipeline_version")
-                    == f"provider-align:{KNOWN_TEXT_ALIGN_PIPELINE_VERSION}"
-                    for artifact in (registry.get("candidate"), registry.get("known_good"))
-                )
-                if blocked:
+                if provider_align_ineligible(ep.provider_transcript):
                     if ctx.lane == "align":
                         stats.defer("alignment-ineligible")
                         continue
@@ -3868,10 +3876,11 @@ class TranscriptStage:
             cached_artifacts = ctx.asr_artifact_cache.get(cache_key)
             if cached_artifacts is not None:
                 try:
-                    if align_sections:
-                        _store_provider_align_artifacts(ep, cached_artifacts, recipe)
+                    if cached_artifacts.aligned:
+                        _store_provider_align_artifacts(ep, cached_artifacts.artifacts, recipe)
                     else:
-                        _store_asr_artifacts(ep, cached_artifacts, recipe)
+                        _mark_provider_align_ineligible(ep, recipe, "alignment-error")
+                        _store_asr_artifacts(ep, cached_artifacts.artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
                     print(
@@ -3893,7 +3902,7 @@ class TranscriptStage:
             #     above reconciles on a later run — so it skips the on-runner ASR semaphore / native
             #     gate / audio download. ``try_dispatch`` returns ``None`` when it would overflow to
             #     ``local``, and the synchronous on-runner path below then runs unchanged.
-            if dispatcher is not None and dispatcher.dispatch_enabled:
+            if dispatcher is not None and dispatcher.dispatch_enabled and not align_sections:
                 work_class = "transcript-align" if align_sections else "transcript-asr"
                 disp_uid = ep.uid or ep.guid
                 if dispatcher.is_inflight(src_key, disp_uid, work_class):
@@ -4013,10 +4022,11 @@ class TranscriptStage:
                     sem.release()
                     sem = None
                 try:
-                    if align_sections:
-                        _store_provider_align_artifacts(ep, cached_artifacts, recipe)
+                    if cached_artifacts.aligned:
+                        _store_provider_align_artifacts(ep, cached_artifacts.artifacts, recipe)
                     else:
-                        _store_asr_artifacts(ep, cached_artifacts, recipe)
+                        _mark_provider_align_ineligible(ep, recipe, "alignment-error")
+                        _store_asr_artifacts(ep, cached_artifacts.artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
                     print(
@@ -4146,6 +4156,7 @@ class TranscriptStage:
             _err: list[Exception] = []
             _aligned: list[bool] = []
             _needs_fresh_asr: list[bool] = []
+            _alignment_ineligible_reason: list[str] = []
             _release_abandoned_asr_slot = threading.Event()
             _release_abandoned_native_gate = threading.Event()
 
@@ -4153,7 +4164,6 @@ class TranscriptStage:
             # current values, not a reference that may change in future loop iterations
             # (ruff B023).  The thread calls _infer() with no positional args.
             def _infer(
-                _ep=ep,
                 _at=align_sections,
                 _ep_ref=ep_ref,
                 _audio=audio_path,
@@ -4162,6 +4172,7 @@ class TranscriptStage:
                 _errors=_err,
                 _was_aligned=_aligned,
                 _needs_fresh=_needs_fresh_asr,
+                _ineligible_reason=_alignment_ineligible_reason,
                 _sem=sem,
                 _release_abandoned=_release_abandoned_asr_slot,
                 _native_gate=ctx.native_work_gate,
@@ -4213,11 +4224,7 @@ class TranscriptStage:
                             if _quality_error is not None and isinstance(
                                 _align_exc, _quality_error
                             ):
-                                _mark_provider_align_ineligible(
-                                    _ep,
-                                    _recipe,
-                                    "raw-coverage-below-90-percent",
-                                )
+                                _ineligible_reason.append("raw-coverage-below-90-percent")
                                 _needs_fresh.append(True)
                                 print(
                                     f"[enrich] transcript alignment-ineligible {_ep_ref}; "
@@ -4226,8 +4233,16 @@ class TranscriptStage:
                                     flush=True,
                                 )
                                 return
-                            else:
-                                reason = "alignment-error"
+                            reason = "alignment-error"
+                            if ctx.lane == "align":
+                                _ineligible_reason.append(reason)
+                                _needs_fresh.append(True)
+                                print(
+                                    f"[enrich] transcript {reason} {_ep_ref}; "
+                                    f"queued for full ASR: {_align_exc}",
+                                    flush=True,
+                                )
+                                return
                             print(
                                 f"[enrich] transcript {reason} {_ep_ref}, "
                                 f"retrying as transcribe: {_align_exc}",
@@ -4235,6 +4250,7 @@ class TranscriptStage:
                             )
                             _result.append(_transcribe_fresh())
                             _was_aligned.append(False)
+                            _ineligible_reason.append(reason)
                     else:
                         _result.append(_transcribe_fresh())
                         _was_aligned.append(False)
@@ -4322,6 +4338,11 @@ class TranscriptStage:
                 continue
 
             if _needs_fresh_asr:
+                _mark_provider_align_ineligible(
+                    ep,
+                    recipe,
+                    _alignment_ineligible_reason[0],
+                )
                 ctx.asr_artifact_cache.abort(cache_key)
                 if sem is not None:
                     sem.release()
@@ -4330,7 +4351,11 @@ class TranscriptStage:
                     ctx.native_work_gate.release(kind="asr")
                     native_gate_acquired = False
                 audio_tmp.cleanup()
-                stats.defer("alignment-low-quality")
+                stats.defer(
+                    "alignment-low-quality"
+                    if _alignment_ineligible_reason[0] == "raw-coverage-below-90-percent"
+                    else "alignment-error"
+                )
                 continue
 
             if _err:
@@ -4366,8 +4391,10 @@ class TranscriptStage:
                 continue
 
             artifacts = _artifacts[0]
+            if _alignment_ineligible_reason:
+                _mark_provider_align_ineligible(ep, recipe, _alignment_ineligible_reason[0])
             # Publish before releasing the ASR slot so every follower observes completed bytes.
-            ctx.asr_artifact_cache.complete(cache_key, artifacts)
+            ctx.asr_artifact_cache.complete(cache_key, artifacts, aligned=_aligned[0])
             if sem is not None:
                 sem.release()
                 sem = None

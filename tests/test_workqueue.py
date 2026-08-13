@@ -666,6 +666,29 @@ def test_build_manifest_align_queued_when_enabled():
     assert tx[0].work_class == "transcript-align" and tx[0].state == "queued"
 
 
+def test_build_manifest_ineligible_provider_align_requires_full_asr_artifact():
+    rec = _rec(1, hosted=True, provider_text=True)
+    rec["provider_transcript"] = {
+        "candidate": {
+            "key": "transcripts/s/u-provider-abc.txt",
+            "synced": False,
+            "align_ineligible_pipeline_version": "provider-align:2",
+        }
+    }
+    rec["transcript"] = {
+        "key": "transcripts/s/u-provider-align-old.vtt",
+        "pipeline_version": "provider-align:2",
+    }
+    tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=True), {"u": rec})]))
+    assert tx[0].work_class == "transcript-asr"
+    assert tx[0].state == "queued"
+
+    rec["transcript"] = {"key": "transcripts/s/u-asr-fresh.vtt", "pipeline_version": "3"}
+    tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=True), {"u": rec})]))
+    assert tx[0].work_class == "transcript-asr"
+    assert tx[0].state == "done"
+
+
 def test_build_manifest_transcript_quality_route_unblocks_align_lane():
     """H15's routing payoff: a trusted provider-align route schedules the align lane for that
     source/body even while asr_alignment_enabled stays off site-wide."""
