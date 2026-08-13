@@ -580,6 +580,11 @@ def align(
     model_or_name: object,
     language: str | None,
     cpu_threads: int,
+    compute_type: str = "int8",
+    *,
+    vad: bool = True,
+    fast_mode: bool = True,
+    timed_segments: list[dict] | None = None,
 ) -> TranscriptArtifacts:
     """Backward-compatible wrapper for one full-duration known-text section.
 
@@ -596,6 +601,7 @@ def align(
                 _configured_model_or_path(model_or_name),
                 device="cpu",
                 cpu_threads=cpu_threads,
+                compute_type=compute_type or "int8",
             )
         elif isinstance(model_or_name, _LoadedAsrModel):
             legacy_model = stable_whisper.load_faster_whisper(
@@ -607,7 +613,14 @@ def align(
         else:
             legacy_model = model_or_name
         if hasattr(legacy_model, "align"):
-            result = legacy_model.align(str(audio_path), text, language=language or "en")
+            if timed_segments and hasattr(legacy_model, "align_words"):
+                result = legacy_model.align_words(
+                    str(audio_path), timed_segments, language=language or "en"
+                )
+            else:
+                result = legacy_model.align(
+                    str(audio_path), text, language=language or "en", vad=vad, fast_mode=fast_mode
+                )
             segments = result.segments
             fit = _word_fit_stats(segments)
             if fit["coverage"] < _MIN_ALIGN_COVERAGE:
@@ -615,7 +628,11 @@ def align(
                     f"alignment coverage {fit['coverage']:.0%} < {_MIN_ALIGN_COVERAGE:.0%} "
                     f"({fit['coverage']:.0%}) — provider candidate is ineligible for alignment"
                 )
-            vtt = result.to_vtt(segment_level=True, word_level=False)
+            to_vtt = getattr(result, "to_vtt", None)
+            if callable(to_vtt):
+                vtt = to_vtt(segment_level=True, word_level=False)
+            else:
+                vtt = result.to_srt_vtt(segment_level=True, word_level=False, vtt=True)
             if not vtt.startswith("WEBVTT"):
                 vtt = "WEBVTT\n\n" + vtt
             return TranscriptArtifacts(

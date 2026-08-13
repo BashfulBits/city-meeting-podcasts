@@ -48,7 +48,7 @@ class _PacingBackend(LiteLLMBackend):
         self.attempts += 1
         return self._outcomes.pop(0)
 
-    def _next_dispatch_eligibility(self, policy, structured, messages):
+    def _next_dispatch_eligibility(self, job, policy, structured, messages):
         available_now, retry_at = self._eligibility.pop(0)
         model = "gemini/gemini-3.1-flash-lite" if available_now else None
         return SelectionResult(model, None, "stub", (), retry_at=retry_at)
@@ -114,7 +114,7 @@ def test_waits_out_a_full_minute_window_then_resolves():
             self.attempts += 1
             return _result() if self._clock >= reset else _handle()
 
-        def _next_dispatch_eligibility(self, policy, structured, messages):
+        def _next_dispatch_eligibility(self, job, policy, structured, messages):
             available = self._clock >= reset
             model = "gemini/gemini-3.1-flash-lite" if available else None
             return SelectionResult(model, None, "stub", (), retry_at=None if available else reset)

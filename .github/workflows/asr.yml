@@ -1,9 +1,8 @@
 name: ASR
 
-# Transcription lane: identical pull workers claim transcript work from the shared Stage-2 lease
-# ledger until their stop budget, so GitHub Actions is "just another worker" instead of the static
-# shard-plan owner. WhisperX known-text alignment remains a separate lane so the two
-# ASR models never co-load on one runner (review/18 §4.3 / H19).
+# Transcript lanes: identical pull workers claim transcript work from the shared Stage-2 lease
+# ledger until their stop budget. The transcription and provider-alignment lanes remain separate
+# matrix entries so faster-whisper and WhisperX never co-load on one runner.
 
 on:
   schedule:
@@ -32,8 +31,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 4 identical internal pull workers. The slot only seeds a distinct claim-scan offset.
-        slot: [0, 1, 2, 3]
+        # Keep the known-good transcription capacity close at three while the new provider-
+        # alignment lane gets two workers. Slots seed distinct claim-scan offsets.
+        include:
+          - {slot: 0, lane: transcribe, workers: 3}
+          - {slot: 1, lane: transcribe, workers: 3}
+          - {slot: 2, lane: transcribe, workers: 3}
+          - {slot: 0, lane: align, workers: 2}
+          - {slot: 1, lane: align, workers: 2}
     env:
       # ASR keeps Whisper weights in the existing Actions-cache/B2 cascade, but uses the same
       # checksum-pinned ffmpeg runtime as Audio instead of depending on Ubuntu package mirrors.
@@ -50,8 +55,12 @@ jobs:
           cache: pip
 
       - name: Install
-        # The scheduled lane never aligns, so do not install WhisperX/torch or benchmark-only jiwer.
-        run: pip install -e ".[asr-transcribe,storage]" -c constraints/asr.txt
+        run: |
+          if [ "${{ matrix.lane }}" = "align" ]; then
+            pip install -e ".[asr-align,storage]" -c constraints/asr.txt
+          else
+            pip install -e ".[asr-transcribe,storage]" -c constraints/asr.txt
+          fi
 
       - name: Cache static ffmpeg
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -77,8 +86,8 @@ jobs:
           "${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null
           echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
 
-      # Restore + download the large-v3-turbo weights (4-step cascade in the script). The transcribe
-      # lane only loads faster-whisper, never WhisperX.
+      # Restore + download the large-v3-turbo weights (4-step cascade in the script). The
+      # transcribe lane only loads faster-whisper; the align lane only loads WhisperX.
       - name: Cache Whisper model (large-v3-turbo)
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
@@ -100,7 +109,7 @@ jobs:
 
       # Each worker claims from the shared transcript queue until the start cutoff or a newer run
       # is queued behind it. Completion persists per-item; the next run resumes from storage.
-      - name: ASR worker ${{ matrix.slot }}/4
+      - name: ${{ matrix.lane }} worker ${{ matrix.slot }}/${{ matrix.workers }}
         id: asr
         env:
           # Lets the shard poll the Actions API and yield gracefully when a newer run is queued
@@ -108,6 +117,8 @@ jobs:
           # test_workflows.)
           GITHUB_TOKEN: ${{ github.token }}
           CITYPODS_INTERNAL_WORKER_SLOT: ${{ matrix.slot }}
+          CITYPODS_WORKER_OWNER: github-actions:${{ github.run_id }}:${{ matrix.lane }}:${{ matrix.slot }}
+          CITYPODS_WORKER_WORK_CLASS: ${{ matrix.lane == 'align' && 'provider-transcript-align' || 'transcript-asr' }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}

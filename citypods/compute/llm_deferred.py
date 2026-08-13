@@ -30,6 +30,15 @@ DEFERRED_PREFIX = "state/llm_deferred/"
 DEFERRED_INDEX_PREFIX = "state/llm_deferred_index/"
 DEFERRED_INDEX_PENDING_PREFIX = f"{DEFERRED_INDEX_PREFIX}pending/"
 DEFERRED_INDEX_MIGRATION_KEY = f"{DEFERRED_INDEX_PREFIX}migration-complete.json"
+DEFERRED_FAILURE_PREFIX = "state/llm_deferred_failures/"
+
+# A malformed terminal response is worth retrying: providers occasionally produce a bad JSON
+# object or fail an individual request.  It must not, however, turn every future producer pass
+# into an unbounded loop for the same immutable recipe.  Keep one compact audit record per recipe
+# and stop automatic re-submission after this many terminal failures.  A recipe/input-version
+# change has a new hash and starts a fresh lineage; an operator can also clear the one audit object
+# when a route-level incident is resolved.
+MAX_TERMINAL_FAILURE_RETRIES = 3
 
 # Worst case a record should ever need to sit here: a caller with no deadline_at (or a caller
 # that never asks again, like a Stage whose own recipe_hash changes run to run) waiting out a
@@ -37,6 +46,10 @@ DEFERRED_INDEX_MIGRATION_KEY = f"{DEFERRED_INDEX_PREFIX}migration-complete.json"
 # hit right after a rollover) plus slack for the sweep's own daily cadence. `prune_expired_deferred`
 # never deletes a record before this *or* the caller's own `deadline_at`, whichever is later.
 DEFAULT_TTL_DAYS = 38
+# Failure markers are audit records rather than live work, but must not grow indefinitely for
+# recipe lineages which are never revisited. Maintenance passes prune only markers whose latest
+# failure is older than this retention period.
+DEFAULT_FAILURE_MARKER_TTL_DAYS = 90
 
 
 @dataclass
@@ -74,9 +87,36 @@ class DeferredSnapshot:
                     entry.data = {**entry.data, "status": "completed"}
                 return
 
+    def mark_terminal_failure(self, recipe_hash: str) -> DeferredSnapshotEntry | None:
+        """Remove a terminally unusable handle from this snapshot.
+
+        The caller persists a compact failure marker and deletes the canonical pending record.
+        Keeping the snapshot in sync is important: the end-of-run ``remaining`` count must not
+        report a record which this same sweep deliberately made eligible for a clean resubmit.
+        """
+        for entry in self.entries:
+            if isinstance(entry.decoded, JobHandle) and entry.decoded.recipe_hash == recipe_hash:
+                entry.deleted = True
+                return entry
+        return None
+
+    def replace_pending(self, recipe_hash: str, handle: JobHandle) -> bool:
+        """Replace one pending reference after a successful in-sweep corrective retry."""
+        for entry in self.entries:
+            if isinstance(entry.decoded, JobHandle) and entry.decoded.recipe_hash == recipe_hash:
+                entry.decoded = handle
+                entry.data = None
+                return True
+        return False
+
 
 def deferred_key(recipe_hash: str) -> str:
     return f"{DEFERRED_PREFIX}{recipe_hash}.json"
+
+
+def deferred_failure_key(recipe_hash: str) -> str:
+    """The compact, per-recipe terminal-failure audit object."""
+    return f"{DEFERRED_FAILURE_PREFIX}{recipe_hash}.json"
 
 
 def _index_models(data: Mapping[str, Any]) -> tuple[str, ...]:
@@ -149,6 +189,154 @@ def _best_effort_delete_index(storage, data: Mapping[str, Any], recipe_hash: str
     _delete_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash))
 
 
+def terminal_failure_retry_allowed(storage, recipe_hash: str) -> bool:
+    """Whether another fresh submission is allowed for this recipe lineage.
+
+    The marker is deliberately separate from the canonical deferred record so a failed handle no
+    longer looks pending to the sweep or to ``look_up_deferred``.  Malformed old records are
+    ignored rather than blocking work.
+    """
+    data = _read_json(storage, deferred_failure_key(recipe_hash))
+    if not isinstance(data, Mapping):
+        return True
+    if data.get("status") == "exhausted":
+        return False
+    try:
+        return int(data.get("failure_count", 0)) < MAX_TERMINAL_FAILURE_RETRIES
+    except (TypeError, ValueError):
+        return True
+
+
+def schema_correction_attempted(storage, recipe_hash: str) -> bool:
+    """Whether this exact recipe has already received its one corrective retry."""
+    data = _read_json(storage, deferred_failure_key(recipe_hash))
+    return bool(isinstance(data, Mapping) and data.get("schema_correction_attempted"))
+
+
+def prune_expired_failure_markers(storage, *, now: datetime | None = None) -> int:
+    """Delete terminal-failure audit markers beyond their bounded retention period."""
+    current = now or datetime.now(UTC)
+    deleted = 0
+    try:
+        listing = storage.list_objects(DEFERRED_FAILURE_PREFIX)
+    except Exception:  # noqa: BLE001 -- audit cleanup must never block a sweep
+        return 0
+    for key, _ in listing:
+        data = _read_json(storage, key)
+        if not isinstance(data, Mapping):
+            continue
+        raw = data.get("last_failed_at")
+        try:
+            last_failed_at = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            last_failed_at = None
+        if last_failed_at is None or current <= last_failed_at + timedelta(
+            days=DEFAULT_FAILURE_MARKER_TTL_DAYS
+        ):
+            continue
+        try:
+            storage.delete(key)
+        except Exception:  # noqa: BLE001 -- maintenance cleanup remains best-effort
+            continue
+        deleted += 1
+    return deleted
+
+
+def record_schema_correction(storage, handle: JobHandle, error: BaseException, *, now=None) -> None:
+    """Record the one schema-correction attempt without blocking its new handle."""
+    now = now or datetime.now(UTC)
+    prior = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    marker = {
+        "recipe_hash": handle.recipe_hash,
+        "task": handle.task,
+        "failure_count": prior.get("failure_count", 0) if isinstance(prior, Mapping) else 0,
+        "first_failed_at": (
+            prior.get("first_failed_at")
+            if isinstance(prior, Mapping) and isinstance(prior.get("first_failed_at"), str)
+            else now.isoformat()
+        ),
+        "last_failed_at": now.isoformat(),
+        "last_error_type": type(error).__name__,
+        "last_error": str(error).replace("\n", " ")[:500],
+        "schema_correction_attempted": True,
+        "status": "corrective_retry_submitted",
+    }
+    _write_json(
+        storage,
+        deferred_failure_key(handle.recipe_hash),
+        (json.dumps(marker, indent=2, sort_keys=True) + "\n").encode(),
+    )
+
+
+def discard_terminal_failure(
+    storage,
+    snapshot: DeferredSnapshot,
+    handle: JobHandle,
+    error: BaseException,
+    *,
+    backend=None,
+    exhausted: bool = False,
+    now: datetime | None = None,
+) -> int:
+    """Persist one bounded audit marker and remove a terminally bad pending handle.
+
+    This is intentionally limited to errors whose terminality is established by the Worker
+    (failed dispatch record) or local validation (a completed response violating its contract).
+    A transient transport failure must stay pending for the ordinary retry path.
+    """
+    entry = snapshot.mark_terminal_failure(handle.recipe_hash)
+    if entry is None or not isinstance(entry.data, Mapping):
+        return 0
+    # Do not delete a newer record a producer may have written after this snapshot was loaded.
+    if _read_json(storage, entry.key) != entry.data:
+        entry.deleted = False
+        return 0
+    now = now or datetime.now(UTC)
+    prior = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    try:
+        prior_count = int(prior.get("failure_count", 0)) if isinstance(prior, Mapping) else 0
+    except (TypeError, ValueError):
+        prior_count = 0
+    count = max(0, prior_count) + 1
+    # Adapter exceptions intentionally omit model output/provider bodies.  Cap the stored reason
+    # anyway: this is durable operational metadata, not a transcript/error dump.
+    reason = str(error).replace("\n", " ")[:500]
+    marker = {
+        "recipe_hash": handle.recipe_hash,
+        "task": handle.task,
+        "failure_count": count,
+        "first_failed_at": (
+            prior.get("first_failed_at")
+            if isinstance(prior, Mapping) and isinstance(prior.get("first_failed_at"), str)
+            else now.isoformat()
+        ),
+        "last_failed_at": now.isoformat(),
+        "last_error_type": type(error).__name__,
+        "last_error": reason,
+        "schema_correction_attempted": bool(
+            isinstance(prior, Mapping) and prior.get("schema_correction_attempted")
+        ),
+        "status": (
+            "exhausted" if exhausted or count >= MAX_TERMINAL_FAILURE_RETRIES else "retryable"
+        ),
+    }
+    # Audit first: a storage interruption can leave a stale handle to retry, but cannot make the
+    # terminal failure disappear without a record of why it was removed.
+    _write_json(
+        storage,
+        deferred_failure_key(handle.recipe_hash),
+        (json.dumps(marker, indent=2, sort_keys=True) + "\n").encode(),
+    )
+    if backend is not None and handle.ref:
+        try:
+            backend.delete_dispatched_ref(handle.ref)
+        except Exception:  # noqa: BLE001 -- stale Worker state must not retain the B2 handle
+            pass
+    storage.delete(entry.key)
+    _best_effort_delete_index(storage, entry.data, handle.recipe_hash)
+    return count
+
+
 def _write_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
     _write_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash), recipe_hash)
 
@@ -169,6 +357,7 @@ def _serialize_policy(policy: LLMRequestPolicy) -> dict[str, Any]:
         "deadline_at": policy.deadline_at.isoformat() if policy.deadline_at is not None else None,
         "purpose": policy.purpose,
         "timeout_class": policy.timeout_class,
+        "queue_only": policy.queue_only,
     }
 
 
@@ -181,6 +370,7 @@ def _deserialize_policy(data: Mapping[str, Any]) -> LLMRequestPolicy:
         deadline_at=datetime.fromisoformat(deadline) if deadline else None,
         purpose=str(data.get("purpose", "")),
         timeout_class=("fast" if data.get("timeout_class") == "fast" else "long"),
+        queue_only=bool(data.get("queue_only", False)),
     )
 
 
@@ -442,6 +632,7 @@ def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
     The pass is idempotent. It intentionally lists the canonical prefix only when invoked by an
     operator/maintenance run; ordinary sweeps use the narrow index listings.
     """
+    current = now or datetime.now(UTC)
     repaired = 0
     desired: set[str] = set()
     for key, _ in storage.list_objects(DEFERRED_PREFIX):
@@ -461,6 +652,7 @@ def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
                 storage.delete(key)
             except Exception:  # noqa: BLE001 -- cleanup remains best-effort
                 pass
+    prune_expired_failure_markers(storage, now=current)
     _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 1}\n')
     return repaired
 
@@ -578,17 +770,26 @@ def _release_abandoned_reservation(storage, data: Mapping[str, Any], *, now: dat
 
 __all__ = [
     "DEFAULT_TTL_DAYS",
+    "DEFAULT_FAILURE_MARKER_TTL_DAYS",
+    "DEFERRED_FAILURE_PREFIX",
     "DEFERRED_PREFIX",
     "DEFERRED_INDEX_PREFIX",
     "DeferredSnapshot",
     "DeferredSnapshotEntry",
+    "MAX_TERMINAL_FAILURE_RETRIES",
+    "discard_terminal_failure",
     "deferred_key",
+    "deferred_failure_key",
     "load_deferred_snapshot",
     "list_pending_deferred",
     "look_up_deferred",
     "iter_pending_deferred",
     "prune_expired_deferred",
     "prune_expired_deferred_snapshot",
+    "prune_expired_failure_markers",
     "repair_deferred_index",
+    "record_schema_correction",
+    "schema_correction_attempted",
+    "terminal_failure_retry_allowed",
     "write_deferred",
 ]

@@ -53,6 +53,52 @@ def _deepseek_direct_route(model: str) -> LLMRoute:
     return next(route for route in ROUTE_CANDIDATES[model] if route.provider == "deepseek")
 
 
+def test_direct_selection_skips_physical_routes_with_insufficient_context():
+    small = LLMRoute(
+        model="test/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(),
+        input_context_limit=10_000,
+        output_context_limit=1_024,
+    )
+    large = LLMRoute(
+        model="test/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(),
+        input_context_limit=100_000,
+        output_context_limit=8_192,
+    )
+    result = select_route(
+        LLMRequestPolicy(allowed_models=("test/model",)),
+        routes={"small": small, "large": large},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=22_048,
+        input_tokens=20_000,
+        output_tokens=2_048,
+        now=NOW,
+    )
+    assert result.route is large
+    assert ("test/model", "input context limit") in result.rejected
+
+    output_only = select_route(
+        LLMRequestPolicy(allowed_models=("test/model",)),
+        routes={"small": small, "large": large},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=3_000,
+        input_tokens=2_000,
+        output_tokens=2_048,
+        now=NOW,
+    )
+    assert output_only.route is large
+    assert ("test/model", "output context limit") in output_only.rejected
+
+
 def test_paid_route_wins_when_free_quota_cannot_reset_before_deadline():
     result = select_route(
         LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=1)),

@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://austintx.new.swagit.com/views/117/public-safety-commission
   body: "Public Safety Commission"
+  body_includes:
+    - provider_guid: "373713"
+      body: "Public Safety Committee"
 podcast_title: "Austin: Public Safety Commission"
 podcast_author: "City of Austin, TX"
 podcast_email: ""

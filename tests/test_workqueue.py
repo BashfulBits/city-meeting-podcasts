@@ -577,6 +577,7 @@ def _provider_rec(days_ago, *, align_spec="align-new", transcript_spec=None, dia
             "format": "vtt",
             "synced": True,
             "align_spec_hash": align_spec,
+            "align_pipeline_version": "4",
         }
     }
     if diarize_spec is not None:
@@ -587,6 +588,8 @@ def _provider_rec(days_ago, *, align_spec="align-new", transcript_spec=None, dia
             "spec_hash": transcript_spec,
             "basis": "served",
             "synced": True,
+            "words_key": f"transcripts/s/u-provider-align-{transcript_spec}.words.json",
+            "selection": "provider-aligned",
         }
     if diarize_spec is not None:
         rec["speakers"] = {
@@ -657,13 +660,13 @@ def test_build_manifest_transcript_asr_when_no_source_text():
 def test_build_manifest_alignment_disabled():
     recs = {"u": _rec(1, hosted=True, provider_text=True)}
     tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=False), recs)]))
-    assert tx[0].work_class == "transcript-align" and tx[0].state == "alignment-disabled"
+    assert tx[0].work_class == "provider-transcript-align" and tx[0].state == "queued"
 
 
 def test_build_manifest_align_queued_when_enabled():
     recs = {"u": _rec(1, hosted=True, provider_text=True)}
     tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=True), recs)]))
-    assert tx[0].work_class == "transcript-align" and tx[0].state == "queued"
+    assert tx[0].work_class == "provider-transcript-align" and tx[0].state == "queued"
 
 
 def test_build_manifest_ineligible_provider_align_requires_full_asr_artifact():
@@ -672,12 +675,12 @@ def test_build_manifest_ineligible_provider_align_requires_full_asr_artifact():
         "candidate": {
             "key": "transcripts/s/u-provider-abc.txt",
             "synced": False,
-            "align_ineligible_pipeline_version": "provider-align:2",
+            "align_ineligible_pipeline_version": "provider-align:4",
         }
     }
     rec["transcript"] = {
         "key": "transcripts/s/u-provider-align-old.vtt",
-        "pipeline_version": "provider-align:2",
+        "pipeline_version": "provider-align:4",
     }
     tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=True), {"u": rec})]))
     assert tx[0].work_class == "transcript-asr"
@@ -706,7 +709,7 @@ def test_build_manifest_transcript_quality_route_unblocks_align_lane():
             },
         )
     )
-    assert tx[0].work_class == "transcript-align"
+    assert tx[0].work_class == "provider-transcript-align"
     assert tx[0].state == "queued"
 
 
@@ -743,6 +746,21 @@ def test_build_manifest_provider_transcript_align_done_when_active_spec_matches(
     assert tx[0].state == "done"
 
 
+def test_build_manifest_requeues_legacy_txt_provider_alignment_for_coarse_recipe():
+    recs = {"u": _provider_rec(1, align_spec="align-new", transcript_spec="align-new")}
+    provider = recs["u"]["provider_transcript"]["candidate"]
+    provider["format"] = "txt"
+    provider["key"] = "transcripts/s/u-provider-abc.txt"
+    provider["align_pipeline_version"] = "2"
+    recs["u"]["transcript"]["key"] = "transcripts/s/u-provider-align-align-new.vtt"
+    recs["u"]["transcript"]["pipeline_version"] = "provider-align:2"
+
+    tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
+
+    assert tx[0].work_class == "provider-transcript-align"
+    assert tx[0].state == "queued"
+
+
 def test_build_manifest_provider_transcript_align_not_marked_done_by_stale_asr_key():
     # CR2-CP-23: an old ASR-produced transcript.key (no "-provider-align-" marker) is not proof
     # the provider-transcript-align work is done just because a provider transcript is now
@@ -763,6 +781,7 @@ def test_build_manifest_provider_transcript_diarize_queued_after_align_selected(
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
     assert [(it.work_class, it.state) for it in tx] == [
         ("provider-transcript-align", "done"),
+        ("transcript-asr-comparison", "queued"),
         ("provider-transcript-diarize", "queued"),
     ]
 
@@ -785,6 +804,7 @@ def test_build_manifest_provider_transcript_diarize_done_when_spec_matches():
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
     assert [(it.work_class, it.state) for it in tx] == [
         ("provider-transcript-align", "done"),
+        ("transcript-asr-comparison", "queued"),
         ("provider-transcript-diarize", "done"),
     ]
 
@@ -911,10 +931,10 @@ def test_manifest_counts():
     assert counts["by_work_class"]["audio"]["done"] == 2
     assert counts["by_work_class"]["audio"]["queued"] == 1
     assert counts["by_work_class"]["transcript-asr"]["queued"] == 1
-    assert counts["by_work_class"]["transcript-align"]["alignment-disabled"] == 1
-    assert counts["alignment_disabled"] == 1
+    assert counts["by_work_class"]["provider-transcript-align"]["queued"] == 1
+    assert counts["alignment_disabled"] == 0
     # queued only — alignment-disabled is NOT counted as actionable backlog
-    assert counts["feed_visible_pending"] == 2
+    assert counts["feed_visible_pending"] == 3
     assert counts["archive_backfill_pending"] == 0
     assert counts["deep_archive_items"] == 0
 

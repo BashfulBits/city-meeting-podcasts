@@ -41,6 +41,10 @@ class LLMRequestPolicy:
     # its documented same-run-completion design) that motivated making this opt-in rather than
     # "dispatch whenever a Worker happens to be configured."
     allow_dispatch_overflow: bool = False
+    # Durable Worker-queue admission. The caller submits work to the dispatch Worker and lets
+    # that Worker's ledger decide when it reaches a provider. Enqueueing must not consume the
+    # runner's provider RPD/RPM/TPM reservation.
+    queue_only: bool = False
     # Worker dispatch lane.  ``fast`` drains short requests before a scheduled invocation risks
     # starting work it cannot finish; ``long`` opts into the bounded long-context timeout lane.
     timeout_class: Literal["fast", "long"] = "long"
@@ -61,6 +65,7 @@ class DeferredLLMRequest:
 
     messages: tuple[Mapping[str, Any], ...]
     policy: LLMRequestPolicy
+    output_token_budget: int = DEFAULT_OUTPUT_TOKEN_MARGIN
 
 
 @dataclass(frozen=True)
@@ -116,6 +121,10 @@ class LLMRoute:
     chat_path: str = "/v1/chat/completions"
     api_key_env: str = ""
     account_id: str = ""
+    # Conservative defaults for hand-authored/test routes. Generated route catalogs materialize
+    # provider- or route-specific values for every physical route.
+    input_context_limit: int = 32768
+    output_context_limit: int = 1024
 
     def __post_init__(self) -> None:
         # Hand-built fallback and test routes intentionally omit provider adapter metadata.  They
@@ -169,6 +178,8 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
                 chat_path=str(item.get("chat_path", "/v1/chat/completions")),
                 api_key_env=str(item.get("api_key_env", "")),
                 account_id=str(item.get("account_id", "")),
+                input_context_limit=max(1, int(item.get("input_context_limit", 32768) or 32768)),
+                output_context_limit=max(1, int(item.get("output_context_limit", 1024) or 1024)),
             )
         )
     aliases = {

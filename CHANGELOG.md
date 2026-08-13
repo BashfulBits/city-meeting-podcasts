@@ -23,9 +23,61 @@ Phase R (Research-Tool Surface)._
   before interpolation; below-gate candidates are marked ineligible and deferred to full
   `large-v3-turbo` ASR on a later pass. Provider-aligned VTT/word sidecars no longer share full-ASR
   keys, and the existing H15 provider-align/asr-challenger evaluation records now measure the new
-  output with the independent CTC judge. `provider-align` version 2 causes existing provider
+  output with the independent CTC judge. `provider-align` version 4 causes existing provider
   alignments to be reprocessed gradually; full-ASR artifacts are not invalidated by this change.
 
+- **Topic tagging lane now optimizes candidate scheduling and removes dispatch deadlines.** In the
+  dedicated `tag` lane (`enrich --lane tag`, `tag.yml`), `_run_enrich_global_queue` pre-filters candidate
+  episodes in memory so the thread pool only evaluates items that genuinely need rules derivation or LLM
+  tagging, while preserving the full retained episode list for append-only records persistence. Tag LLM
+  dispatches are submitted without an artificial wall-clock deadline (`deadline_at=None`), eliminating
+  runner-side sleep pacing and ensuring queued jobs do not timeout while waiting on the Cloudflare Worker.
+  A configurable per-run dispatch cap (`max_dispatches_per_run: 2000`) prevents worker queue flooding,
+  and the tag workflow budget is reduced to 20 minutes (30-minute job timeout). This changes only runner
+  orchestration and scheduling: no stored artifacts are invalidated, and no catalog backfill is required.
+
+- **Swagit plain-text transcripts now use coarse constrained alignment when possible.** Standalone
+  ``[HH:MM:SS]`` anchors are parsed into monotonic source-time windows, structural bracket labels
+  are excluded from the alignment text, and the windows are remapped to served time before
+  stable-ts ``align_words()`` runs. Files with too few, invalid, or unmappable anchors retain the
+  full-alignment fallback. ``PROVIDER_ALIGN_PIPELINE_VERSION`` is bumped from 2 to 3; existing
+  TXT provider-align artifacts without the new recipe marker are re-evaluated gradually, while
+  existing VTT/SRT provider-align artifacts are not invalidated.
+
+- **Swagit transcript discovery now fills the provider-link gap.** For Swagit episodes whose video
+  page does not advertise a transcript, the transcript lane derives and probes
+  `/videos/{id}/transcript`, stores non-empty VTT/SRT/TXT responses in the provider registry, and
+  attaches the discovered link to the episode. Probe state is persisted: available endpoints are
+  rechecked after 30 days, confirmed misses use 7-day-to-90-day exponential backoff, transient
+  failures use 1-day-to-7-day backoff, and no more than 500 Swagit transcript requests are made per
+  source per run. This is metadata/provider-source backfill only; no ASR or provider-align pipeline
+  version changed and no stored transcript artifacts are invalidated.
+
+- **Hosted-audio ASR downloads now retry HTTP 429 responses with a capped `Retry-After` delay.**
+  The scheduled ASR matrix is also reduced to three transcribe workers and two provider-align
+  workers to lower concurrent CDN pressure. This changes transport behavior and worker capacity
+  only; no ASR or provider-align pipeline version changed, and no stored artifacts are invalidated
+  or backfilled. Exhausted 429 attempts now defer rather than terminally wedge a lease; reconcile
+  covers all transcript work classes, and an explicit class-scoped recovery command reopens failed
+  leases left by earlier incidents. The manual Transcript Recovery workflow exposes that command
+  with the same B2/R2 credentials used by production Actions.
+
+- **Feed-health stale alerts now allow five median cadence intervals with a 45-day floor.**
+  This replaces the previous 3×/30-day rule, reducing alerts during ordinary multi-week recesses
+  while still flagging prolonged outages. It changes audit classification only; no catalog
+  artifacts, pipeline versions, or backfill behavior are changed.
+
+- **Provider transcript alignment now preserves word-boundary provenance.** Provider endpoints are
+  probed for every discovered episode. A VTT with inline word timestamps is served as
+  `provider-native`; cue-only VTT/SRT/TXT is aligned with stable-ts and served as
+  `provider-aligned`; episodes without provider text use fresh ASR. Active records and the H15
+  report now distinguish provider text/provider timing, provider text/computed timing, and ASR.
+  H15 routing is source/body policy rather than an episode-level publication gate, so a changed
+  route dynamically changes the served transcript. `PROVIDER_ALIGN_PIPELINE_VERSION` was bumped
+  from 1 to 2; existing provider-align artifacts are re-evaluated/adopted under the new semantics,
+  while ASR artifacts are not invalidated. Provider-selected episodes then enter a separate
+  `transcript-asr-comparison` queue only after the ordinary ASR queue drains; it retains full ASR
+  artifacts for H15 without replacing the served provider route.
 - **Equivalent provider model selectors now share canonical logical keys.** The limits compiler
   emits a `model_aliases` map, coalesces selector-only duplicates for one physical provider/account
   quota bucket, and normalizes route entries before generating the Python and Worker
@@ -81,6 +133,12 @@ Phase R (Research-Tool Surface)._
   committee bodies. This changes feed membership only: existing audio/transcript artifacts and
   stable episode UIDs are reused, with no pipeline-version bump or forced artifact backfill.
 
+- **Addison City Council feed now includes Swagit's recurring `Work Session` and `Work Session and
+  Regular Meeting` labels.** These rows were previously excluded by the `City Council` selector,
+  causing the feed to appear stale despite recent council recordings. This changes feed membership
+  only: newly matching rows enter normal discovery/materialization, with no pipeline-version bump or
+  global artifact invalidation.
+
 - **One-off body naming drift now has an exact exception path and audit coverage.** A feed may use
   `source.body_includes` for provider-GUID-specific rows without permanently broadening its body
   selector. Feed-health audits suppress historical excluded labels, flag recurrence of a known
@@ -90,23 +148,45 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
-- **Read-Only Chapter Locator Shadow Report & Rollout Controls.** ([`review/40`](review/40-generated-agenda-chapters.md))
-  Added offline quality evaluation reporting and pure, disabled-by-default rollout cohort controls for generated agenda chapters (GH#1078):
-  - `report_locator_shadow.py` joins completed locator shadow runs to hidden gold chapters and scoring crosswalks without mutating episode state, reporting timing-only recall/precision, greedy one-to-one strong-crosswalk item precision, boundary errors, abstentions, and operational metrics.
-  - `evaluate_gate` evaluates operator-supplied quality gates with strict threshold validation (positive integer episode counts and bounded `[0, 1]` rates) and requires explicit `provider_labels_in_requests: false` attestation.
-  - `citypods.chapter_rollout.ChapterRolloutPolicy` provides immutable, bounded rollout controls (`providers`, `bodies`, `max_duration_seconds`, `max_episodes_per_run`) that enforce per-run limits statelessly and downgrade overlay to shadow unless an independent shadow gate passes.
+- **Durable resumable-LLM dispatch queue recovery.** Topic tagger/pre-labeler, production chapter
+  agenda extraction/location, and the persisted R5 benchmark/tournament evaluator now enter the
+  Cloudflare Worker queue without consuming the runner-side provider-quota ledger or inheriting a
+  producer-run submit deadline. The deferred sweep upgrades their legacy pre-dispatch handles to
+  the same queue-only path rather than retrying them directly through LiteLLM. City onboarding
+  discovery remains explicitly direct because its caller must act on the response in that pass.
+  The Worker now maintains a pending-only R2 index so retained terminal request history cannot hide
+  ready work behind its bounded scan; authenticated `POST /v1/queue/reindex` repairs pre-index
+  queue entries after the rollout. No public tag output or calibration policy changes; existing B2
+  deferred handles and R2 queue records are retained and re-enqueued/reindexed in place.
+  The Worker request cap is now 8 MiB (up from 512 KiB). Chapter tagging uses deterministic
+  token-and-byte-bounded batches under a 7 MiB producer guard, excludes episode-wide unmapped
+  backup packets, and records per-batch context telemetry; a single oversized chapter remains a
+  distinct deferred condition rather than being silently truncated. `TAG_PROMPT_VERSION` is bumped
+  to `3`, so existing LLM tag candidates are gradually re-run through the new chapter-only recipe;
+  deterministic candidates, prior ledger evidence, and visible output remain available until each
+  replacement completes.
+  Each physical provider route now compiles separate input and output context limits from
+  `config/provider_limits.yml`; queue and direct selection compare the two request estimates before
+  quota admission, so a batch fitting only a larger allowed route cannot be sent to a smaller route.
+  Terminal Worker failures now clear their unusable deferred handle and retain one bounded per-recipe
+  failure audit record, tolerating up to three terminal failures in total before pausing that unchanged
+  recipe for investigation. A locally detected malformed structured reply instead gets one immediate
+  schema-correction clone through the Worker; a second malformed reply exhausts that recipe. Transient
+  dispatch/transport failures remain pending for Worker-owned retry; no existing public tags are invalidated.
 
-- **Reversible Served-Time Chapter Overlay & Publication Controls.** ([`review/40`](review/40-generated-agenda-chapters.md))
-  Added publication-layer overlay for generated agenda chapters without altering underlying audio bytes or
-  overwriting authoritative provider chapter markers:
-  - `episode_public_chapters` returns canonical provider chapters when present, and overlays validated generated
-    chapters only when `include_generated=True` (controlled by `generated_chapters_enabled` in `config/site_config.yml`).
-  - Chapter start timestamps are strictly validated and normalized against booleans, non-numeric values, negative
-    offsets, and non-finite floats.
-  - Podcasting 2.0 JSON sidecars (`chapters_json`) and meeting permalinks (`render_meeting_page`) consistently round
-    start times to whole-second integers per the Podcasting 2.0 specification.
-  - `feed_content_hash` incorporates `include_generated_chapters` and public chapter state so toggling publication
-    flags triggers sidecar and RSS re-rendering.
+- **R5 unified tag calibration and evaluator overlay.** ([`review/42`](review/42-unified-tag-calibration-and-evaluator-overlay.md))
+  Deterministic rule matches and chapter-only LLM candidates now share the existing persisted candidate
+  ledger. The tagger keeps its 12-review/90% admission gate; an independent Gemma 4 31B pre-labeler runs
+  in shadow mode and can qualify at 50 reviewed examples with 95% precision for likely-correct and
+  likely-incorrect decisions, suppressing display without deleting evidence. Weekly review defaults to 80
+  stratified candidates and reports distance to both gates. Stored candidates are re-projected after policy
+  changes; the TagsStage version bump backfills the ledger/projection, retains superseded rows as hidden
+  historical evidence, and lazily migrates usable chapters without a blanket catalog recall.
+  Added the manual shadow benchmark workflow (`r5-benchmark.yml`) and separate
+  `r5_tag_benchmark.json` artifact for 200–300 frozen chapters, human ground-truth labels, model
+  disagreement, per-source pre-labeler metrics, evidence fidelity, and call/quota telemetry; an
+  explicit maintainer approval is required before a route recommendation is eligible, and it cannot
+  modify public tags or calibration state.
 
 - **Multi-Provider Cloudflare Worker Dispatch Proxy & Per-Route Ledger.** ([`review/41`](review/41-multi-provider-llm-dispatch.md))
   Extended `workers/llm-dispatch-proxy/` and the Python compute layer to route Gemini/Mistral/DeepSeek/
@@ -165,13 +245,6 @@ Phase R (Research-Tool Surface)._
   work cannot safely fit. See the Worker README's [Scheduling lanes](workers/llm-dispatch-proxy/README.md#scheduling-lanes).
 
 ### Fixed
-
-- **Compact state manifest was incorrectly sent to B2 CAS stubs.** `state/catalog/manifest.json`
-  now routes to the R2 coordination backend, where conditional publication is supported, while the
-  indexed durable state remains on B2. This removes the repeated `backend 'b2' is not cas_capable`
-  warnings and lets fresh workers rebuild/publish the manifest when the R2 copy is absent; no
-  durable state backfill is needed. The ASR reconcile path now seeds a complete R2 manifest after
-  its B2-list fallback restore, and scoped pushes refuse to publish an incomplete first manifest.
 
 - **H15/R5 ingest workflows could double-comment or leave a persisted decision unconfirmed on retry.**
   `asr-quality-ingest.yml` and `llm-tag-review-ingest.yml` each persist a review decision, then separately `gh issue comment` and `gh issue close` the source issue. A GitHub API failure between those steps left a durable decision recorded with no confirmation posted, and a retry re-ran the comment/close pair unconditionally — double-posting the comment if it had actually succeeded before the close call failed. The persist step was already safe to re-run (`record_review()` / `ingest_review_decision()` overwrite by candidate/sample identity, not append), so the fix is confined to the comment/close step: check existing comments for a stable `<!-- h15-ingest:N -->` / `<!-- llm-ingest:N -->` marker before commenting, and check the issue's current state before closing, mirroring the find-or-update comment pattern already used in `dep-bump-smoke.yml`.

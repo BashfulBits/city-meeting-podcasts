@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import html
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
@@ -69,6 +70,15 @@ _SEGMENT_OBJ_RE = re.compile(r'\{[^{}]*"dfile"[^{}]*\}')
 _DFILE_RE = re.compile(r'"dfile":"([^"]+)"')
 _SEQ_RE = re.compile(r'"seq":(\d+)')
 _TITLE_RE = re.compile(r'"title":"([^"]+)"')
+
+
+@dataclass(frozen=True)
+class TranscriptProbe:
+    """Result of probing Swagit's conventional per-video transcript endpoint."""
+
+    url: str
+    status_code: int
+    content: bytes
 
 
 def _attr(tag: str, name: str) -> str | None:
@@ -333,6 +343,33 @@ class SwagitProvider:
         transcript_path = f"/videos/{episode.guid}/transcript"
         transcript = f"{_origin(url)}{transcript_path}" if transcript_path in resp.text else None
         return chapters, transcript
+
+    def transcript_url(self, episode: Episode) -> str:
+        """Return the stable transcript endpoint for a Swagit video page."""
+        url = episode.links.get("canonical_video")
+        if not url:
+            raise ProviderError(f"Swagit episode {episode.guid} has no canonical video URL")
+        parts = urlsplit(url)
+        match = re.fullmatch(r"/videos/([1-9][0-9]*)/?", parts.path)
+        if not match:
+            raise ProviderError(f"invalid Swagit video URL for {episode.guid}: {url}")
+        return f"{_origin(url)}/videos/{match.group(1)}/transcript"
+
+    def probe_transcript(self, episode: Episode, source: dict) -> TranscriptProbe:
+        """Probe Swagit's conventional transcript endpoint and return its response bytes.
+
+        Some Swagit pages expose a transcript download without advertising the link in the video
+        page HTML. The caller owns persistence and retry/backoff state; this adapter only performs
+        the tightly-shaped provider request.
+        """
+        url = self.transcript_url(episode)
+        validate_source_url(url, resolve=True)
+        with make_session() as session:
+            try:
+                resp = get_with_worker_fallback(session, url, timeout=DEFAULT_TIMEOUT)
+            except requests.RequestException as exc:
+                raise ProviderError(f"GET {url} failed: {exc}") from exc
+        return TranscriptProbe(url=url, status_code=resp.status_code, content=resp.content)
 
     def fetch_segment_objects(self, episode: Episode, source: dict) -> list[tuple[str, str]] | None:
         """Return ``(url, title)`` pairs for keyless legacy meetings; ``None`` for modern ones.

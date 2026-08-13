@@ -74,20 +74,21 @@ jobs:
             numbers=$(jq -nc --arg n "$ISSUE_NUMBER_INPUT" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "issues" ] && [ -n "$EVENT_ISSUE_NUMBER" ] \
             && [ "$EVENT_ISSUE_STATE" = "open" ] \
-            && printf '%s\n' "$EVENT_ISSUE_TITLE" | grep -q '^R5 LLM tag sample ' \
+            && printf '%s\n' "$EVENT_ISSUE_TITLE" | grep -qE '^R5 (LLM tag|unified tag) sample ' \
             && printf '%s\n' "$EVENT_ISSUE_LABELS" | jq -e 'index("llm-calibration-review")' >/dev/null; then
             numbers=$(jq -nc --arg n "$EVENT_ISSUE_NUMBER" '[$n | tonumber]')
           elif [ -n "$EVENT_COMMENT_ISSUE_URL" ] \
             && [ "$EVENT_ISSUE_STATE" = "open" ] \
             && printf '%s\n' "$EVENT_COMMENT_BODY" | grep -qiE '^/llm-ingest([[:space:]]|$)' \
             && printf '%s\n' "$EVENT_COMMENT_AUTHOR_ASSOCIATION" | grep -qE '^(OWNER|MEMBER|COLLABORATOR)$' \
-            && printf '%s\n' "$EVENT_ISSUE_TITLE" | grep -q '^R5 LLM tag sample ' \
+            && printf '%s\n' "$EVENT_ISSUE_TITLE" | grep -qE '^R5 (LLM tag|unified tag) sample ' \
             && printf '%s\n' "$EVENT_ISSUE_LABELS" | jq -e 'index("llm-calibration-review")' >/dev/null; then
             n=$(printf '%s' "$EVENT_COMMENT_ISSUE_URL" | awk -F/ '{print $NF}')
             numbers=$(jq -nc --arg n "$n" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "schedule" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             numbers=$(gh issue list --state open --label llm-calibration-review \
-              --search 'in:title "R5 LLM tag sample "' --json number --jq '[.[].number]')
+              --limit 500 \
+              --json number,title --jq '[.[] | select(.title | test("^R5 (LLM tag|unified tag) sample ")) | .number]')
           fi
           echo "numbers=$numbers" >> "$GITHUB_OUTPUT"
 
@@ -211,13 +212,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           parents=$(gh issue list --state open --label llm-calibration-review \
-            --search 'in:title "R5 LLM tag calibration digest"' --json number,title \
-            --jq '[.[] | select(.title == "R5 LLM tag calibration digest")] | .[].number')
+            --limit 500 \
+            --json number,title \
+            --jq '[.[] | select(.title == "R5 LLM tag calibration digest" or .title == "R5 unified tag calibration digest")] | .[].number')
           for parent in $parents; do
             open_children=$(gh issue view "$parent" --repo "$GH_REPO" --json subIssues \
               --jq '[.subIssues.nodes[] | select(.state == "OPEN")] | length')
             if [ "$open_children" -eq 0 ]; then
-              gh issue comment "$parent" --body "All native LLM calibration review sub-issues in this batch are resolved — closing."
+              gh issue comment "$parent" --body "All native unified tag calibration review sub-issues in this batch are resolved — closing."
               gh issue close "$parent"
             fi
           done

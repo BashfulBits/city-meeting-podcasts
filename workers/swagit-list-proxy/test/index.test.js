@@ -80,6 +80,19 @@ test("fetches video pages and rejects query parameters on them", async () => {
   assert.equal(refused.status, 404);
 });
 
+test("fetches transcript endpoints", async () => {
+  const transcriptUrl =
+    "https://proxy.example/v1/swagit/austintx.new.swagit.com/videos/12345/transcript";
+  let captured;
+  const response = await handleRequest(request(transcriptUrl), ENV, async (url, init) => {
+    captured = { url, init };
+    return new Response("WEBVTT\n", { status: 200 });
+  });
+  assert.equal(captured.url, "https://austintx.new.swagit.com/videos/12345/transcript");
+  assert.equal(captured.init.redirect, "manual");
+  assert.equal(response.status, 200);
+});
+
 test("rejects a page value outside the bounded range", async () => {
   for (const page of ["0", "-1", "12345", "abc"]) {
     const response = await handleRequest(request(`${VALID_URL}?page=${page}`), ENV, async () => {

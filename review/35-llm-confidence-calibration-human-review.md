@@ -1,6 +1,6 @@
 # review/35 — Reusable LLM Confidence Calibration & Human Review
 
-**Maturity: Implemented (shipped as part of R5, `citypods/llm_evaluation.py`) · design write-up added
+**Maturity: Implemented with the R5 unified overlay (current change) · design write-up added
 2026-07-17, extracted and generalized from [`review/14`](14-topic-tags-strong-towns-lens.md)'s inline
 description · currently wired only to R5's tagging config — see §9 for the open generalization gap ·
 sibling design to [`review/34`](34-llm-quality-tournament-champion-routing.md)**
@@ -42,18 +42,21 @@ initial 95%, §13).
 
 ## §2. The matrix design — exact keys, sparse rows
 
-`candidate_matrix_key()` (`citypods/llm_evaluation.py:104`) derives the exact calibration dimensions for any
+`candidate_matrix_key()` (`citypods/llm_evaluation.py`) derives the exact calibration dimensions for any
 candidate:
 
 ```python
 {
     "feature": ...,          # e.g. "topic-tags" — which feature/verb this candidate belongs to
-    "provider_model": ...,   # e.g. "litellm:gemini/gemini-3-flash-preview" — exact route
+    "provider_model": ...,   # exact candidate route, or deterministic rule version
     "prompt_version": ...,   # this feature's own prompt/schema version
     "taxonomy_version": ..., # this feature's own content-version (taxonomy, classification schema, ...)
     "label": ...,            # the specific tag ID / classification label this candidate proposes
     "scope": ...,             # "chapter" or "episode" — R5's own scope; other features may use a
                               #   different discrete scope value, or omit the distinction
+    "source_kind": ...,      # rule or llm
+    "assessment_kind": ...,  # tagger admission or pre-labeler overlay
+    "evaluator_model": ...,  # independent route for overlay rows
 }
 ```
 
@@ -135,20 +138,23 @@ irrelevant timestamp bump does not.
 
 `reviews` is keyed by `candidate_id` (`:122`) — a stable hash over the candidate's matrix key plus
 `episode_uid`/`chapter_id`/`recipe_hash`/`confidence`, so the *same* candidate reviewed twice (e.g. a
-re-opened issue edit) overwrites its prior decision rather than double-counting it. `matrix` is fully
-derived (§4) — safe to recompute from `reviews` at any time, never hand-edited. `trend` is a capped rolling
-log for the weekly digest's own historical context.
+re-opened issue edit) overwrites its prior decision rather than double-counting it. Pre-labeler audit
+rows use a separate stable subject identity and intentionally omit the evaluator's changing
+decision/reason/confidence from that identity, so retries do not manufacture additional training
+examples. `matrix` is fully derived (§4) — safe to recompute from `reviews` at any time, never
+hand-edited. `trend` is a capped rolling log for the weekly digest's own historical context.
 
 ## §6. Human review workflow
 
-**Selection** (`select_review_candidates()`/`review_priority()`, `:296`/`:313`): every unreviewed candidate
-(by `candidate_id`) is sorted by priority — unqualified rows first, then rows with zero reviews, then fewer
-reviews, then **closest to the current threshold** (the boundary case most informative to a human reviewer),
-then a stable tiebreak — and the top `review_batch_size` (default 20) are selected for this week's digest.
+**Selection** (`select_review_candidates()`/`review_priority()`): every unreviewed candidate (by
+`candidate_id`) is allocated through 50% tagger calibration, 25% pre-labeler calibration, 15% rare/low-volume,
+and 10% post-admission/deterministic audit strata. Each stratum round-robins by tag/source/scope so common
+labels cannot consume the packet. A hard configurable cap (default eight) applies per
+source/assessment/tag/scope stratum. The default batch is 80 (configurable up to 100).
 
-**Digest + child issues** (`render_digest()`/`render_review_body()`, `:500`/`:345`): a weekly parent issue
-shows the full sparse matrix (reviewed count, precision, threshold, qualified/sparse status per row) plus a
-checklist of this week's selected review candidates; each selected candidate gets its own **native GitHub
+**Digest + child issues** (`render_digest()`/`render_review_body()`): a weekly parent issue shows tagger
+qualification distance, pre-labeler likely-correct/likely-incorrect precision and distance, display state,
+deterministic phrase/audit counts, and a checklist of this week's selected review candidates; each selected candidate gets its own **native GitHub
 sub-issue** with
 the model's explanation (blockquoted — see §7), bounded evidence (quoted transcript span with derived
 timestamp, or an allowlisted document link/locator), and a three-way checkbox (`Correct` / `Incorrect` /
@@ -161,8 +167,20 @@ Once every native child in a batch is resolved, the ingest workflow closes its p
 digest opens a fresh parent, keeping each batch bounded below GitHub's 100-sub-issue limit.
 
 **Wired today as** `.github/workflows/llm-tag-review.yml` (weekly digest packaging + issue open/update) and
-`llm-tag-review-ingest.yml` (scheduled + comment-triggered ingestion), both R5-specific in name and trigger
-condition (see §9).
+`llm-tag-review-ingest.yml` (scheduled + comment-triggered ingestion). The candidate ledger now carries
+`source_kind: rule|llm`, `assessment_kind: tagger-admission|prelabeler-overlay`, display state, and raw
+pre-labeler provenance. A qualified pre-labeler suppresses only likely-incorrect display projections;
+human audit decisions are recorded as overrides and never replace the raw evaluator result.
+
+### §6a. Independent pre-labeler overlay
+
+The evaluator contract is discrete and structured: `likely_correct`, `needs_human_review`, or
+`likely_incorrect`, with confidence, reason, and `evidence_supported`. It is qualified independently per
+source kind, provider/candidate route, evaluator model, prompt, taxonomy, tag, and scope after 50 human
+reviews. Both actionable decision classes must be at least 95% precise; uncertain stays visible and in
+continued sampling. The calibrated evaluator threshold is surfaced as a diagnostic, but the display
+overlay uses the discrete decision only. Before qualification the evaluator is shadow-only, so the
+existing 12/90% tagger gate still admits LLM candidates normally.
 
 ## §7. Security hardening (found and fixed in this branch's review pass)
 

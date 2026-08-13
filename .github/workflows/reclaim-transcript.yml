@@ -1,18 +1,38 @@
 name: Reclaim Transcript
 
 # Manual-only recovery tool (GH#833/#834): re-adopts an ASR artifact already uploaded to storage
-# whose record `transcript` block was lost, without re-transcribing. Dry-run unless `write` is
-# explicitly set to "true" -- defaults to dry-run so an accidental manual trigger never writes.
+# whose record `transcript` block was lost, without re-transcribing. It also reopens terminal failed
+# Stage-2 transcript leases after a transient provider incident. Dry-run unless `write` is explicitly
+# set to "true" -- defaults to dry-run so an accidental manual trigger never writes.
 
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        description: "Recovery operation"
+        required: true
+        type: choice
+        options:
+          - reclaim-transcript
+          - requeue-failed-work-leases
+        default: reclaim-transcript
       source_key:
         description: "Source key owning the episode (e.g. 0134e94361a5)"
-        required: true
+        required: false
       episode_uid:
         description: "Episode uid to reclaim"
-        required: true
+        required: false
+      work_class:
+        description: "Transcript lease class to recover"
+        required: false
+        type: choice
+        options:
+          - transcript-asr
+          - transcript-asr-comparison
+          - transcript-align
+          - provider-transcript-align
+          - provider-transcript-diarize
+        default: provider-transcript-align
       write:
         description: "Actually push the reclaimed record (anything other than 'true' stays dry-run)"
         required: false
@@ -25,6 +45,7 @@ jobs:
   reclaim:
     runs-on: ubuntu-latest
     env:
+      AUDIO_STORAGE_BACKEND: routing
       B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
       B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
       B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
@@ -47,13 +68,33 @@ jobs:
       - name: Install
         run: pip install -e ".[storage]"
 
-      - name: Reclaim transcript
+      - name: Run transcript recovery
         env:
+          OPERATION: ${{ inputs.operation }}
           SOURCE_KEY: ${{ github.event.inputs.source_key }}
           EPISODE_UID: ${{ github.event.inputs.episode_uid }}
+          WORK_CLASS: ${{ inputs.work_class }}
           WRITE: ${{ github.event.inputs.write }}
           GIT_REF: ${{ github.ref }}
         run: |
+          if [ "$OPERATION" = "requeue-failed-work-leases" ]; then
+            args=(--work-class "$WORK_CLASS")
+            if [ "$WRITE" = "true" ]; then
+              # A mutating dispatch may only change production leases from main (MR-GH-01).
+              if [ "$GIT_REF" != "refs/heads/main" ]; then
+                echo "::error::write can only mutate leases from main"
+                exit 1
+              fi
+              args+=(--write)
+            fi
+            python -m citypods.cli compute requeue-failed-work-leases "${args[@]}"
+            exit 0
+          fi
+
+          if [ -z "$SOURCE_KEY" ] || [ -z "$EPISODE_UID" ]; then
+            echo "::error::source_key and episode_uid are required for reclaim-transcript"
+            exit 1
+          fi
           args=(--source-key "$SOURCE_KEY" --episode-uid "$EPISODE_UID")
           if [ "$WRITE" = "true" ]; then
             # A mutating dispatch may only persist state from main (MR-GH-01): a feature-branch

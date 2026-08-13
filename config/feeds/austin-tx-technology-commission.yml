@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://austintx.new.swagit.com/views/117/community-technology-telecommunications-commission
   body: "Technology Commission"
+  body_any:
+    - "Community Technology & Telecommunications Commission"
+    - "Special Community Technology & Telecommunications Commission"
 podcast_title: "Austin: Technology Commission"
 podcast_author: "City of Austin, TX"
 podcast_email: ""

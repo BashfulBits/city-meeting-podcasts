@@ -24,6 +24,7 @@ from citypods.compute.base import InferenceJob, JobHandle
 from citypods.compute.budget import Budget
 from citypods.compute.local import LocalBackend
 from citypods.models import City, Episode
+from citypods.providers.swagit import TranscriptProbe
 from citypods.records import (
     episode_to_record,
     record_to_episode,
@@ -41,6 +42,12 @@ from citypods.stages import (
     TranscriptStage,
     _asr_fits_remaining_budget,
     _asr_timeout_seconds,
+    _provider_alignment_artifact_is_reusable,
+    _provider_alignment_inputs,
+    _provider_source_text,
+    _provider_transcript_probe_due,
+    _provider_vtt_words_json,
+    _record_provider_transcript_probe,
     default_stages,
     enrich_stages,
 )
@@ -124,6 +131,10 @@ class FakeProvider:
 
 
 VTT_CONTENT = b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello world\n"
+WORD_VTT_CONTENT = (
+    b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\n<00:00:01.000>Hello <00:00:02.000>world\n"
+)
+WORD_VTT_WITH_LEADING_TEXT = b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nHello <00:00:02.000>world\n"
 SRT_CONTENT = b"1\n00:00:01,000 --> 00:00:05,000\nHello world\n"
 PLAIN_CONTENT = b"These are the minutes of the meeting. No timestamps."
 
@@ -264,6 +275,132 @@ class TestTranscriptStageASRStubbed:
 
 
 class TestTranscriptStageVTT:
+    def test_legacy_txt_provider_alignment_is_not_reused(self):
+        assert not _provider_alignment_artifact_is_reusable({"format": "txt"})
+        assert not _provider_alignment_artifact_is_reusable(
+            {"format": "txt", "align_pipeline_version": "2"}
+        )
+
+    @pytest.mark.parametrize("source_format", ["vtt", "srt"])
+    def test_legacy_cue_timed_provider_alignment_is_reprocessed(self, source_format):
+        assert not _provider_alignment_artifact_is_reusable(
+            {"format": source_format, "align_pipeline_version": "2"}
+        )
+
+    def test_word_timed_vtt_keeps_leading_unmarked_words_and_align_text_strips_markers(self):
+        words = json.loads(_provider_vtt_words_json(WORD_VTT_WITH_LEADING_TEXT).decode())
+        assert [word["w"] for word in words["segments"][0]["words"]] == ["Hello", "world"]
+        assert _provider_source_text(WORD_VTT_WITH_LEADING_TEXT, "vtt") == "Hello world"
+
+    def test_provider_cue_times_are_remapped_to_served_time_for_alignment(self):
+        ep = _ep()
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref="https://src/vid.mp4",
+                media_kind="direct",
+                duration=30.0,
+                watch_url=None,
+            )
+        ]
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=10.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=10.0,
+                    source_end=20.0,
+                ),
+            ),
+        )
+
+        text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"WEBVTT\n\n00:00:12.000 --> 00:00:15.000\nHello world here\n",
+            "vtt",
+        )
+
+        assert text == "Hello world here"
+        assert timed_segments == [{"start": 2.0, "end": 5.0, "text": "Hello world here"}]
+
+    def test_swagit_text_anchors_become_coarse_alignment_windows(self):
+        ep = _ep()
+        ep.duration = 600
+
+        text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"* provider disclaimer\n"
+            b"[CALL TO ORDER]\n"
+            b"[00:00:04]\n"
+            b"THE MEETING IS CALLED TO ORDER.\n"
+            b"[00:05:01]\n"
+            b"THANK YOU, MAYOR. THE NEXT ITEM IS BUDGET.\n",
+            "txt",
+        )
+
+        assert text == (
+            "THE MEETING IS CALLED TO ORDER.\nTHANK YOU, MAYOR. THE NEXT ITEM IS BUDGET."
+        )
+        assert timed_segments == [
+            {"start": 4.0, "end": 301.0, "text": "THE MEETING IS CALLED TO ORDER."},
+            {"start": 301.0, "end": 600.0, "text": "THANK YOU, MAYOR. THE NEXT ITEM IS BUDGET."},
+        ]
+
+    def test_sparse_swagit_text_anchors_fall_back_to_full_alignment(self):
+        ep = _ep()
+        ep.duration = 3600
+
+        text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"[00:00:04]\nTHE MEETING IS CALLED TO ORDER.\n[00:30:01]\nTHANK YOU, MAYOR.\n",
+            "txt",
+        )
+
+        assert timed_segments is None
+        assert "THE MEETING IS CALLED TO ORDER." in text
+
+    def test_swagit_coarse_windows_are_remapped_from_source_to_served_time(self):
+        ep = _ep()
+        ep.duration = 30
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref="https://src/vid.mp4",
+                media_kind="direct",
+                duration=30.0,
+                watch_url=None,
+            )
+        ]
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=10.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=10.0,
+                    source_end=20.0,
+                ),
+            ),
+        )
+
+        _text, timed_segments = _provider_alignment_inputs(
+            ep,
+            b"[00:00:12]\nKEPT WORDS HERE.\n[00:00:15]\nMORE KEPT WORDS HERE.\n",
+            "txt",
+        )
+
+        assert timed_segments == [
+            {"start": 2.0, "end": 5.0, "text": "KEPT WORDS HERE."},
+            {"start": 5.0, "end": 10.0, "text": "MORE KEPT WORDS HERE."},
+        ]
+
     def _run_with_content(self, tmp_path, content: bytes, url="https://provider/t.vtt"):
         from unittest.mock import patch
 
@@ -303,6 +440,20 @@ class TestTranscriptStageVTT:
         assert candidate["format"] == "vtt"
         assert ep.transcript_key is None
 
+    def test_provider_endpoint_is_probed_outside_materialization_cohort(self, tmp_path):
+        first = _ep(uid="uid-first", links={"transcript": "https://provider/first.vtt"})
+        deep = _ep(uid="uid-deep", links={"transcript": "https://provider/deep.vtt"})
+
+        with (
+            patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)),
+            patch("citypods.stages._materialize_set", return_value=[first]),
+        ):
+            TranscriptStage().process(FakeProvider(), _city(), [first, deep], _ctx(tmp_path))
+
+        assert first.provider_transcript is not None
+        assert deep.provider_transcript is not None
+        assert deep.provider_transcript["candidate"]["format"] == "vtt"
+
     def test_provider_candidate_basis_remains_source_time(self, tmp_path):
         ep, _ = self._run_with_content(tmp_path, VTT_CONTENT)
         assert ep.provider_transcript["candidate"]["basis"] == "source:s0"
@@ -326,6 +477,158 @@ class TestTranscriptStageVTT:
         ep, stats = self._run_with_content(tmp_path, PLAIN_CONTENT)
         assert ep.provider_transcript["candidate"]["synced"] is False
         assert ep.provider_transcript["candidate"]["format"] == "txt"
+
+    def test_swagit_fallback_probe_stores_transcript_and_is_not_repeated(self, tmp_path):
+        class SwagitProbeProvider(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def transcript_url(self, episode):
+                return "https://swagit.example/videos/100/transcript"
+
+            def probe_transcript(self, episode, source):
+                self.calls += 1
+                return TranscriptProbe(
+                    url=self.transcript_url(episode), status_code=200, content=VTT_CONTENT
+                )
+
+        provider = SwagitProbeProvider()
+        city = _city(
+            provider="swagit",
+            source={"list_url": "https://swagit.example/archive"},
+            asr_enabled=False,
+        )
+        ep = _ep(links={"canonical_video": "https://swagit.example/videos/100"})
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        assert provider.calls == 1
+        assert ep.links["transcript"].endswith("/videos/100/transcript")
+        assert ep.provider_transcript["candidate"]["format"] == "vtt"
+        assert ep.provider_transcript["probe"]["status"] == "available"
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        assert provider.calls == 1
+
+    def test_swagit_missing_transcript_probe_uses_absent_backoff(self, tmp_path):
+        class SwagitProbeProvider(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def transcript_url(self, episode):
+                return "https://swagit.example/videos/100/transcript"
+
+            def probe_transcript(self, episode, source):
+                self.calls += 1
+                return TranscriptProbe(
+                    url=self.transcript_url(episode), status_code=404, content=b""
+                )
+
+        provider = SwagitProbeProvider()
+        city = _city(
+            provider="swagit",
+            source={"list_url": "https://swagit.example/archive"},
+            asr_enabled=False,
+        )
+        ep = _ep(links={"canonical_video": "https://swagit.example/videos/100"})
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        assert provider.calls == 1
+        assert "transcript" not in ep.links
+        probe = ep.provider_transcript["probe"]
+        assert probe["status"] == "absent"
+        assert probe["attempts"] == 1
+        next_retry = datetime.fromisoformat(probe["next_retry_at"])
+        assert next_retry - datetime.fromisoformat(probe["checked_at"]) == timedelta(days=7)
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        assert provider.calls == 1
+
+    def test_provider_probe_due_uses_persisted_retry_time(self):
+        ep = _ep()
+        url = "https://swagit.example/videos/100/transcript"
+        checked = datetime(2026, 6, 1, tzinfo=UTC)
+        _record_provider_transcript_probe(
+            ep, url=url, status="absent", now=checked, status_code=404
+        )
+        assert not _provider_transcript_probe_due(
+            ep, url=url, now=checked + timedelta(days=6, hours=23)
+        )
+        assert _provider_transcript_probe_due(ep, url=url, now=checked + timedelta(days=7))
+
+    def test_swagit_probe_cap_is_shared_across_episode_calls(self, tmp_path):
+        class SwagitProbeProvider(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def transcript_url(self, episode):
+                return f"https://swagit.example/videos/{episode.guid}/transcript"
+
+            def probe_transcript(self, episode, source):
+                self.calls += 1
+                return TranscriptProbe(
+                    url=self.transcript_url(episode), status_code=200, content=VTT_CONTENT
+                )
+
+        provider = SwagitProbeProvider()
+        city = _city(
+            provider="swagit",
+            source={"list_url": "https://swagit.example/archive"},
+            asr_enabled=False,
+        )
+        first = _ep(uid="uid-100", links={"canonical_video": "https://swagit.example/videos/100"})
+        first.guid = "100"
+        second = _ep(uid="uid-101", links={"canonical_video": "https://swagit.example/videos/101"})
+        second.guid = "101"
+        ctx = _ctx(tmp_path)
+        ctx.provider_transcript_probes_per_source = 1
+
+        TranscriptStage().process(provider, city, [first], ctx)
+        TranscriptStage().process(provider, city, [second], ctx)
+        assert provider.calls == 1
+        assert "transcript" not in second.links
+
+    def test_swagit_recheck_uses_probe_path_and_records_denial(self, tmp_path):
+        class SwagitProbeProvider(FakeProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def transcript_url(self, episode):
+                return "https://swagit.example/videos/100/transcript"
+
+            def probe_transcript(self, episode, source):
+                self.calls += 1
+                if self.calls == 1:
+                    return TranscriptProbe(
+                        url=self.transcript_url(episode), status_code=200, content=VTT_CONTENT
+                    )
+                return TranscriptProbe(
+                    url=self.transcript_url(episode), status_code=403, content=b""
+                )
+
+        provider = SwagitProbeProvider()
+        city = _city(
+            provider="swagit",
+            source={"list_url": "https://swagit.example/archive"},
+            asr_enabled=False,
+        )
+        ep = _ep(links={"canonical_video": "https://swagit.example/videos/100"})
+
+        TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+        ep.provider_transcript["probe"]["next_retry_at"] = (
+            datetime.now(UTC) - timedelta(seconds=1)
+        ).isoformat()
+
+        with patch(
+            "citypods.http.make_session",
+            side_effect=AssertionError("scheduled Swagit recheck must use probe_transcript"),
+        ):
+            TranscriptStage().process(provider, city, [ep], _ctx(tmp_path))
+
+        assert provider.calls == 2
+        probe = ep.provider_transcript["probe"]
+        assert probe["status"] == "error"
+        assert probe["status_code"] == 403
+        assert datetime.fromisoformat(probe["next_retry_at"]) > datetime.now(UTC)
 
     def test_unchanged_refetch_refreshes_checked_at_without_new_candidate(self, tmp_path):
         ep, _ = self._run_with_content(tmp_path, VTT_CONTENT)
@@ -463,27 +766,31 @@ class TestTranscriptStageVTT:
 
         assert calls == [("https://provider/t.vtt", {"resolve": True})]
 
-    def test_hosted_timed_provider_candidate_aligns_to_active_transcript(self, tmp_path):
+    def test_hosted_word_timed_provider_candidate_is_served_natively(self, tmp_path):
         ep = _ep(links={"transcript": "https://provider/t.vtt"})
         ep.audio_key = "audio/src/uid-g1-a.m4a"
         ep.hosted_audio_url = "https://cdn/audio/src/uid-g1-a.m4a"
 
-        with patch("citypods.http.make_session", return_value=_fetch(VTT_CONTENT)):
+        with patch("citypods.http.make_session", return_value=_fetch(WORD_VTT_CONTENT)):
             stats = TranscriptStage().process(
                 FakeProvider(), _city(asr_enabled=False), [ep], _ctx(tmp_path)
             )
 
-        assert stats.ran == 2  # provider-source fetch + provider-align publish
-        assert stats.aligned == 1
-        assert ep.transcript_key.endswith(".vtt")
-        assert "-provider-align-" in ep.transcript_key
+        assert stats.ran == 2  # provider-source fetch + provider-native sidecar publish
+        assert stats.aligned == 0
+        assert ep.transcript_key.endswith(
+            "-provider-" + ep.provider_transcript["known_good"]["spec_hash"] + ".vtt"
+        )
         assert ep.transcript_synced is True
         assert ep.transcript_basis == "served"
-        assert ep.transcript_pipeline_version == "provider-align:2"
+        assert ep.transcript_pipeline_version == "provider-native:1"
+        assert ep.transcript_text_source == "provider"
+        assert ep.transcript_timing_source == "provider"
+        assert ep.transcript_selection == "provider-native"
         assert "candidate" not in ep.provider_transcript
         known_good = ep.provider_transcript["known_good"]
-        assert known_good["confidence"] == 1.0
-        assert known_good["align_spec_hash"] == ep.transcript_spec_hash
+        assert known_good["word_timed"] is True
+        assert known_good["words_key"]
 
     def test_provider_align_remaps_source_time_through_timeline(self, tmp_path):
         ep = _ep(links={"transcript": "https://provider/t.vtt"})
@@ -519,9 +826,53 @@ class TestTranscriptStageVTT:
                 FakeProvider(), _city(asr_enabled=False), [ep], _ctx(tmp_path)
             )
 
-        stored = (tmp_path / "audio" / ep.transcript_key).read_text()
-        assert "00:00:02.000 --> 00:00:05.000" in stored
-        assert ep.provider_transcript["known_good"]["confidence"] == 1.0
+        assert ep.transcript_key is None
+        assert ep.provider_transcript["candidate"]["format"] == "vtt"
+
+    def test_word_timed_provider_vtt_on_edited_timeline_uses_provider_alignment(self, tmp_path):
+        ep = _ep_with_audio(links={"transcript": "https://provider/t.vtt"})
+        ep.sources = [
+            SourceMedia(
+                id="s0",
+                provider="test",
+                ref="https://src/vid.mp4",
+                media_kind="direct",
+                duration=30.0,
+                watch_url=None,
+            )
+        ]
+        ep.timeline = Timeline(
+            version="cut-v1",
+            segments=(
+                Segment(
+                    served_start=0.0,
+                    served_end=10.0,
+                    kind="source",
+                    source_id="s0",
+                    source_start=10.0,
+                    source_end=20.0,
+                ),
+            ),
+        )
+        fake_asr = _FakeAsr()
+        edited_word_vtt = (
+            b"WEBVTT\n\n00:00:12.000 --> 00:00:15.000\n<00:00:12.000>Hello <00:00:13.000>world\n"
+        )
+        with (
+            patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
+            patch("citypods.http.make_session", return_value=_fetch(edited_word_vtt)),
+        ):
+            stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
+
+        assert stats.aligned == 1
+        assert stats.transcribed == 0
+        assert ep.transcript_selection == "provider-aligned"
+        assert len(fake_asr.align_calls) == 1
+        assert fake_asr.align_calls[0]["text"] == "Hello world"
+        # The WhisperX path receives served-time sections; this legacy fake only observes the
+        # compatibility text projection, not the section payload passed to LocalBackend.
+        assert "timed_segments" not in fake_asr.align_calls[0]
 
     def test_worse_provider_candidate_moves_to_history_and_keeps_known_good(self, tmp_path):
         ep = _ep(links={"transcript": "https://provider/t.vtt"})
@@ -554,8 +905,7 @@ class TestTranscriptStageVTT:
         ctx = _ctx(tmp_path)
         with patch("citypods.http.make_session", return_value=_fetch(known_content)):
             TranscriptStage().process(FakeProvider(), _city(asr_enabled=False), [ep], ctx)
-        known_spec = ep.provider_transcript["known_good"]["spec_hash"]
-        known_key = ep.transcript_key
+        known_spec = ep.provider_transcript["candidate"]["spec_hash"]
 
         worse_content = (
             b"WEBVTT\n\n00:00:06.000 --> 00:00:07.000\nKept\n\n00:00:20.000 --> 00:00:22.000\nCut\n"
@@ -563,10 +913,9 @@ class TestTranscriptStageVTT:
         with patch("citypods.http.make_session", return_value=_fetch(worse_content)):
             TranscriptStage().process(FakeProvider(), _city(asr_enabled=False), [ep], ctx)
 
-        assert ep.provider_transcript["known_good"]["spec_hash"] == known_spec
-        assert ep.transcript_key == known_key
-        assert "candidate" not in ep.provider_transcript
-        assert ep.provider_transcript["history"][0]["status"] == "rejected"
+        assert ep.provider_transcript["candidate"]["spec_hash"] != known_spec
+        assert ep.transcript_key is None
+        assert ep.provider_transcript["history"][0]["spec_hash"] == known_spec
 
 
 def _provider_aligned_ep(tmp_path: Path, content: bytes) -> Episode:
@@ -920,10 +1269,26 @@ class _FakeAsr:
         self.transcribe_calls.append({"model": model_or_name, "prompt": prompt})
         return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
-    def align(self, audio_path, text, model_or_name, language, cpu_threads):
+    def align(
+        self,
+        audio_path,
+        text,
+        model_or_name,
+        language,
+        cpu_threads,
+        compute_type="int8",
+        **kwargs,
+    ):
         if self.fail:
             raise RuntimeError("align failed")
-        self.align_calls.append({"text": text, "model": model_or_name})
+        self.align_calls.append(
+            {
+                "text": text,
+                "model": model_or_name,
+                "compute_type": compute_type,
+                **kwargs,
+            }
+        )
         return TranscriptArtifacts(vtt=self.vtt, words=self.words)
 
     def asr_spec_hash(self, audio_spec_hash, model, align_hash, version, **kwargs):
@@ -1149,6 +1514,244 @@ def test_download_audio_file_retries_response_timeout(tmp_path):
     assert dest.read_bytes() == b"fake audio bytes"
 
 
+def test_download_audio_file_retries_http_429_and_honors_capped_retry_after(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    attempts = {"n": 0}
+
+    class _FakeResponse:
+        status_code = 429
+        headers = {"Retry-After": "300"}
+
+        def raise_for_status(self):
+            raise requests.exceptions.HTTPError(response=self)
+
+        def close(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"fake audio bytes"
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                return _FakeResponse()
+            response = _FakeResponse()
+            response.status_code = 200
+            response.headers = {}
+            response.raise_for_status = lambda: None
+            return response
+
+    sleeps: list[float] = []
+    dest = tmp_path / "audio.m4a"
+    with patch("requests.Session", _FakeSession):
+        stages_mod._download_audio_file("https://example.com/audio.m4a", dest, sleep=sleeps.append)
+
+    assert attempts["n"] == 3
+    assert dest.read_bytes() == b"fake audio bytes"
+    assert sleeps == [120, 120]
+
+
+def test_download_audio_file_raises_http_429_after_retries(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    class _FakeResponse:
+        status_code = 429
+        headers = {"Retry-After": "1"}
+
+        def raise_for_status(self):
+            raise requests.exceptions.HTTPError(response=self)
+
+        def close(self):
+            pass
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", _FakeSession),
+        pytest.raises(requests.exceptions.HTTPError),
+    ):
+        stages_mod._download_audio_file(
+            "https://example.com/audio.m4a", dest, max_attempts=3, sleep=lambda _s: None
+        )
+
+
+def test_download_audio_file_validates_manual_redirects(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+
+    class _FakeResponse:
+        def __init__(self, status_code, headers=None):
+            self.status_code = status_code
+            self.headers = headers or {}
+            self.closed = False
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.exceptions.HTTPError(response=self)
+
+        def iter_content(self, chunk_size):
+            yield b"fake audio bytes"
+
+        def close(self):
+            self.closed = True
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __init__(self):
+            self.calls = []
+            self.responses = iter(
+                [
+                    _FakeResponse(302, {"Location": "/audio.m4a"}),
+                    _FakeResponse(200),
+                ]
+            )
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return next(self.responses)
+
+    sessions = []
+
+    def _session():
+        session = _FakeSession()
+        sessions.append(session)
+        return session
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", side_effect=_session),
+        patch("citypods.stages.validate_source_url") as validate,
+    ):
+        stages_mod._download_audio_file("https://example.com/download", dest)
+
+    assert dest.read_bytes() == b"fake audio bytes"
+    assert [url for url, _kwargs in sessions[0].calls] == [
+        "https://example.com/download",
+        "https://example.com/audio.m4a",
+    ]
+    assert all(kwargs["allow_redirects"] is False for _url, kwargs in sessions[0].calls)
+    assert [args[0] for args, _kwargs in validate.call_args_list] == [
+        "https://example.com/download",
+        "https://example.com/audio.m4a",
+    ]
+
+
+def test_download_audio_file_rejects_unsafe_redirect(tmp_path):
+    import citypods.stages as stages_mod
+    from citypods.security import SecurityError
+
+    class _FakeResponse:
+        status_code = 302
+        headers = {"Location": "http://127.0.0.1/audio.m4a"}
+
+        def close(self):
+            pass
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            return _FakeResponse()
+
+    def _validate(url, *, resolve):
+        if url.startswith("http://127.0.0.1"):
+            raise SecurityError("blocked redirect")
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", _FakeSession),
+        patch("citypods.stages.validate_source_url", side_effect=_validate),
+        pytest.raises(SecurityError),
+    ):
+        stages_mod._download_audio_file("https://example.com/download", dest)
+
+
+def test_download_audio_file_enforces_redirect_limit(tmp_path):
+    import requests
+
+    import citypods.stages as stages_mod
+    from citypods.security import MAX_REDIRECTS
+
+    class _FakeResponse:
+        status_code = 302
+        headers = {"Location": "/next"}
+
+        def close(self):
+            pass
+
+    class _FakeSession:
+        headers: dict = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def get(self, *args, **kwargs):
+            self.calls += 1
+            return _FakeResponse()
+
+    sessions = []
+
+    def _session():
+        session = _FakeSession()
+        sessions.append(session)
+        return session
+
+    dest = tmp_path / "audio.m4a"
+    with (
+        patch("requests.Session", side_effect=_session),
+        patch("citypods.stages.validate_source_url"),
+        pytest.raises(requests.exceptions.TooManyRedirects),
+    ):
+        stages_mod._download_audio_file("https://example.com/download", dest)
+
+    assert sessions[0].calls == MAX_REDIRECTS + 1
+
+
 def test_download_audio_file_exhausts_default_attempt_limit_with_backoff_schedule(tmp_path):
     import requests
 
@@ -1286,7 +1889,8 @@ class TestTranscriptStageASR:
         assert ep.transcript_format == "vtt"
         assert ep.transcript_key is not None
         assert ep.transcript_key.endswith(".vtt")
-        assert "asr-" in ep.transcript_key
+        assert "-asr-" in ep.transcript_key
+        assert ep.transcript_selection == "asr"
         assert stats.ran == 1
         assert stats.transcribed == 1
         assert stats.aligned == 0
@@ -1631,8 +2235,10 @@ class TestTranscriptStageASR:
         assert stats.skipped == 1
         assert "reason=insufficient-budget" in out
 
-    def test_path_a_forced_alignment_skipped_when_disabled(self, tmp_path, capsys):
-        """Stored untimed txt transcript is deferred while alignment is disabled."""
+    def test_path_a_provider_alignment_runs_when_generic_alignment_is_disabled(
+        self, tmp_path, capsys
+    ):
+        """Provider-sourced text uses the provider alignment lane regardless of the generic flag."""
         from citypods.records import source_key as _src_key
 
         sk = _src_key(_city())
@@ -1663,18 +2269,19 @@ class TestTranscriptStageASR:
         fake_asr = _FakeAsr()
         with (
             patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
             patch("citypods.http.make_session", return_value=_TextSession()),
         ):
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
 
         out = capsys.readouterr().out
-        assert ep.transcript_synced is False
-        assert ep.transcript_format == "txt"
-        assert fake_asr.align_calls == []
+        assert ep.transcript_synced is True
+        assert ep.transcript_format == "vtt"
+        assert ep.transcript_selection == "provider-aligned"
+        assert len(fake_asr.align_calls) == 1
         assert fake_asr.transcribe_calls == []
-        assert stats.skipped == 1
-        assert stats.defer_reasons == {"alignment-disabled": 1}
-        assert "reason=alignment-disabled" in out
+        assert stats.aligned == 1
+        assert "alignment-disabled" not in out
 
     def test_trusted_route_unblocks_align_lane_despite_site_wide_disable(self, tmp_path):
         """H15 routing payoff: a provider-align route_mode overrides the site-wide
@@ -1731,8 +2338,8 @@ class TestTranscriptStageASR:
         assert len(fake_asr.align_calls) == 1
         assert stats.defer_reasons.get("alignment-disabled", 0) == 0
 
-    def test_transcribe_lane_ignores_source_text_when_alignment_disabled(self, tmp_path, capsys):
-        """The scheduled transcribe lane forces fresh ASR before applying the align-only guard."""
+    def test_transcribe_lane_defers_provider_text_to_alignment_lane(self, tmp_path, capsys):
+        """The scheduled transcribe lane does not replace provider text with full ASR."""
         from citypods.records import source_key as _src_key
 
         sk = _src_key(_city())
@@ -1772,14 +2379,13 @@ class TestTranscriptStageASR:
 
         out = capsys.readouterr().out
         assert fake_asr.align_calls == []
-        assert len(fake_asr.transcribe_calls) == 1
-        assert ep.transcript_synced is True
-        assert stats.transcribed == 1
-        assert stats.skipped == 0
-        assert "reason=alignment-disabled" not in out
+        assert fake_asr.transcribe_calls == []
+        assert ep.transcript_synced is False
+        assert stats.defer_reasons == {"provider-align-lane": 1}
+        assert out == ""
 
-    def test_provider_text_transcript_defers_alignment_without_fallback(self, tmp_path, capsys):
-        """Newly fetched untimed provider text is stored, then deferred while alignment is off."""
+    def test_provider_text_transcript_always_uses_provider_alignment(self, tmp_path, capsys):
+        """Newly fetched provider text is aligned even when generic alignment is off."""
         ep = _ep_with_audio(links={"transcript": "https://provider/t.txt"})
 
         class _TextSession:
@@ -1805,21 +2411,31 @@ class TestTranscriptStageASR:
         fake_asr = _FakeAsr()
         with (
             patch("citypods.stages.asr_mod", fake_asr),
+            patch("citypods.stages._download_audio_file", side_effect=_fake_audio_download),
             patch("citypods.http.make_session", return_value=_TextSession()),
         ):
             stats = TranscriptStage().process(FakeProvider(), _city(), [ep], _ctx(tmp_path))
 
         out = capsys.readouterr().out
-        candidate = ep.provider_transcript["candidate"]
-        assert candidate["key"].endswith(".txt")
-        assert ep.transcript_key is None
-        assert ep.transcript_format == "txt"
-        assert ep.transcript_synced is False
-        assert stats.ran == 1  # provider text was stored
-        assert stats.skipped == 1  # timed upgrade deferred
-        assert fake_asr.align_calls == []
+        known_good = ep.provider_transcript["known_good"]
+        assert known_good["key"].endswith(".txt")
+        assert "-provider-align-" in ep.transcript_key
+        assert ep.transcript_format == "vtt"
+        assert ep.transcript_synced is True
+        assert ep.transcript_text_source == "provider"
+        assert ep.transcript_timing_source == "computed"
+        assert ep.transcript_selection == "provider-aligned"
+        assert stats.ran == 2  # provider text fetch + computed alignment
+        assert stats.aligned == 1
+        assert fake_asr.align_calls == [
+            {
+                "text": "These are the meeting minutes.",
+                "model": "WAV2VEC2_ASR_BASE_960H",
+                "compute_type": "int8",
+            }
+        ]
         assert fake_asr.transcribe_calls == []
-        assert "reason=alignment-disabled" in out
+        assert "alignment-disabled" not in out
 
     def test_path_a_forced_alignment_with_source_text_when_enabled(self, tmp_path):
         """Stored untimed txt transcript → Path A (alignment) → synced=True."""
@@ -1871,9 +2487,16 @@ class TestTranscriptStageASR:
         assert ep.transcript_synced is True
         assert ep.transcript_basis == "served"
         assert ep.transcript_format == "vtt"
-        assert "asr-" in ep.transcript_key
+        assert "-provider-align-" in ep.transcript_key
+        assert ep.transcript_selection == "provider-aligned"
         assert stats.aligned == 1
         assert stats.transcribed == 0
+        assert len(fake_asr.align_calls) == 1
+        assert fake_asr.align_calls[0] == {
+            "text": "These are the meeting minutes.",
+            "model": "WAV2VEC2_ASR_BASE_960H",
+            "compute_type": "int8",
+        }
 
     def test_alignment_error_falls_back_to_transcription(self, tmp_path, capsys):
         """Any Path A alignment failure still produces a fresh ASR transcript."""
@@ -1911,8 +2534,24 @@ class TestTranscriptStageASR:
                 return _R()
 
         class _AlignFailingAsr(_FakeAsr):
-            def align(self, audio_path, text, model_or_name, language, cpu_threads):
-                self.align_calls.append({"text": text, "model": model_or_name})
+            def align(
+                self,
+                audio_path,
+                text,
+                model_or_name,
+                language,
+                cpu_threads,
+                compute_type="int8",
+                **kwargs,
+            ):
+                self.align_calls.append(
+                    {
+                        "text": text,
+                        "model": model_or_name,
+                        "compute_type": compute_type,
+                        **kwargs,
+                    }
+                )
                 raise AttributeError("'WhisperModel' object has no attribute 'align'")
 
         fake_asr = _AlignFailingAsr()
@@ -1927,6 +2566,11 @@ class TestTranscriptStageASR:
 
         out = capsys.readouterr().out
         assert len(fake_asr.align_calls) == 1
+        assert fake_asr.align_calls[0] == {
+            "text": "These are the meeting minutes.",
+            "model": "WAV2VEC2_ASR_BASE_960H",
+            "compute_type": "int8",
+        }
         assert len(fake_asr.transcribe_calls) == 1
         assert ep.transcript_synced is True
         assert ep.transcript_basis == "served"

@@ -1,9 +1,9 @@
 # review/34 — LLM Quality Tournament & Cost-Gated Champion Routing
 
-**Maturity: L3 (dev-ready) · breakout of [`review/27`](27-llm-backend-and-provider-routing.md) §6, generalized
+**Maturity: Pairwise engine implemented locally · breakout of [`review/27`](27-llm-backend-and-provider-routing.md) §6, generalized
 across verbs and given its own doc 2026-07-17 · depends on R13 (shipped, [`review/33`](33-llm-quota-cost-scheduler.md))
-· sibling design to [`review/35`](35-llm-confidence-calibration-human-review.md) · initial tag runner
-implemented locally 2026-07-20; champion-ticket automation remains follow-up**
+· sibling design to [`review/35`](35-llm-confidence-calibration-human-review.md) · R5 chapter runner and
+reusable evaluator engine implemented in `citypods/tournament.py`; champion-ticket automation remains follow-up**
 
 > **Initial-production rollout decision (maintainer-confirmed 2026-07-20):** retain the original
 > three-provider design, but use `gemini/gemini-3.1-flash-lite` as the Gemini contestant and R5
@@ -48,7 +48,9 @@ from having more than one viable provider:
 This doc designs both: a weekly pairwise tournament (§2–§4) and a cost-gated champion-routing ticket (§5) that
 consumes the tournament's results. The initial `tag` runner now lives in `citypods/tournament.py` and is invoked
 by `llm-tournament.yml`: it records durable comparison decisions but deliberately does not alter production
-routing. The weekly GitHub champion-ticket and checkbox application flow remain the next implementation slice.
+routing. The module exposes a task-agnostic `PairwiseEvaluatorSpec`, blinded candidate projection,
+order-swapped pair generation, and structured `pairwise_judge()` seam so R6 summaries can reuse the same
+flow. The weekly GitHub champion-ticket and checkbox application flow remain the next implementation slice.
 
 ## §2. Method — pairwise comparison, not absolute scoring
 
@@ -66,21 +68,26 @@ B's" is a well-posed, judgeable question regardless.
 
 ## §3. The round-robin structure
 
-With exactly 3 providers and the rule "a judge never grades its own family," round-robin covers all 3 pairs
-with a genuinely independent judge every time, by construction — no configuration needed to avoid
-self-preference bias:
+R5 compares three contestant routes, but uses a fourth, independently configured Gemma route as the
+judge for every pair. This is deliberately safer than making one contestant grade another; the runtime
+rejects a judge route that overlaps a candidate route. The contestant pairs remain:
 
 | Contest | Candidates | Judge |
 |---|---|---|
-| 1 | DeepSeek vs. Gemini | Mistral |
-| 2 | DeepSeek vs. Mistral | Gemini |
-| 3 | Gemini vs. Mistral | DeepSeek |
+| 1 | DeepSeek vs. Gemini | Gemma 4 31B |
+| 2 | DeepSeek vs. Mistral | Gemma 4 31B |
+| 3 | Gemini vs. Mistral | Gemma 4 31B |
+
+R5 is chapter-only: both outputs are generated from the same chapter and taxonomy, and the judge sees
+blind chapter tag sets. R6 can reuse the same task-agnostic call with agenda-item evidence and freeform
+summary candidates.
 
 Run per task-verb, on a **weekly cadence** (matching the stated 1–2/week human-time budget, and directly
 mirroring H15's own periodic-calibration cadence — `review/11` §4 H15 row — same shape, different subject
-matter). **Tool: Promptfoo** (MIT, SQLite-backed, no new infra service, already supports Gemini/DeepSeek/
-Mistral natively) rather than a hand-rolled comparison harness — fits this project's "no extra
-infrastructure" pattern better than building one from scratch.
+matter). **Implementation:** the current runner uses the repository's existing `InferenceJob`/LiteLLM
+adapter and durable JSON state rather than adding a Promptfoo service. Its reusable engine accepts
+arbitrary JSON source and candidate payloads; R5 supplies chapter-tag criteria, while R6 can supply
+freeform summary criteria.
 
 **A design precedent already exists in this codebase for the blind-labeling half of this**, though not in a
 form to import directly: `citypods/transcript_quality.py::_blind_mapping()` does exactly the "assign A/B
@@ -97,7 +104,7 @@ Applied concretely, from research:
   `_blind_mapping()` already applies for ASR comparisons (§3), generalized here to LLM verb output.
 - **Decide tie-handling up front.** Recommend: ties count as half a win each, Elo-style, rather than being
   dropped — dropping ties silently shrinks the sample and can mask a genuinely-close result.
-- **Validate the automated (Promptfoo/LLM-judge) result against the maintainer's own occasional human read**
+- **Validate the automated LLM-judge result against the maintainer's own occasional human read**
   (the stated 1–2/week). If agreement is low, the automated judge isn't trustworthy yet for that verb, and
   champion decisions should lean on the human read until it is.
 
@@ -293,9 +300,10 @@ the switch (and clears itself) via an Action, never automatically or silently. T
 R13's shipped adapter using the identical `LLMRequestPolicy` pattern every other caller uses, and composes
 with, rather than duplicates, review/35's ground-truth calibration matrix.
 
-## Proposed GitHub issues (not filed — batch review pending)
+## Remaining proposed GitHub issue (not filed — batch review pending)
 
-1. Tournament: Promptfoo-based round-robin pairwise comparison, weekly cadence, bias mitigation (order-swap,
-   tie policy, human-calibration check).
-2. Weekly champion-stats GitHub issue + checkbox-approval Action (quality, cost, back-catalog-cost,
+The reusable tournament engine and R5 runner are implemented in `citypods/tournament.py`; it remains
+human-approved and cannot change production routing. The remaining slice is:
+
+1. Weekly champion-stats GitHub issue + checkbox-approval Action (quality, cost, back-catalog-cost,
    apply-and-clear).

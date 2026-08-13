@@ -758,6 +758,20 @@ def test_decode_error_classifier_still_matches_direct_exceptions():
     assert ew._is_deterministic_media_decode_error(ValueError("nope")) is False
 
 
+def test_rate_limit_classifier_unwraps_direct_and_child_process_errors():
+    import requests
+
+    direct = requests.exceptions.HTTPError(
+        "429 Client Error: Too Many Requests", response=SimpleNamespace(status_code=429)
+    )
+    assert ew._is_rate_limited_error(direct) is True
+    wrapped = LocalInferenceWorkerError(
+        "HTTPError", "429 Client Error: Too Many Requests", "Traceback..."
+    )
+    assert ew._is_rate_limited_error(wrapped) is True
+    assert ew._is_rate_limited_error(ValueError("429 unrelated text")) is False
+
+
 def test_admit_claim_retries_when_audio_identity_changed(tmp_path):
     worker = _loop_worker(tmp_path, ["a"])
 
@@ -868,6 +882,31 @@ def test_internal_worker_prefers_shorter_known_eligible_recordings(tmp_path, mon
     assert [item.episode_uid for item in candidates] == ["short", "mid"]
 
 
+def test_transcribe_worker_defers_asr_comparisons_until_normal_asr_is_empty(tmp_path, monkeypatch):
+    worker = _internal_worker(tmp_path)
+    normal = WorkItem(
+        source_key="src",
+        episode_uid="normal",
+        work_class="transcript-asr",
+        state="queued",
+        priority_bucket=BUCKET_FEED_VISIBLE,
+        duration_hours=1.0,
+    )
+    comparison = WorkItem(
+        source_key="src",
+        episode_uid="comparison",
+        work_class="transcript-asr-comparison",
+        state="queued",
+        priority_bucket=BUCKET_FEED_VISIBLE,
+        duration_hours=1.0,
+    )
+    monkeypatch.setattr(worker, "_manifest", lambda: [normal, comparison])
+    assert worker._base_candidates() == [normal]
+
+    monkeypatch.setattr(worker, "_manifest", lambda: [comparison])
+    assert worker._base_candidates() == [comparison]
+
+
 def test_internal_worker_declines_claim_that_cannot_finish_before_backstop(tmp_path):
     worker = _internal_worker(tmp_path)
     worker.timing = InternalJobTiming(
@@ -930,6 +969,39 @@ def test_internal_timing_without_handoff_keeps_backstop_only(monkeypatch):
         timeout_budget_reserve_seconds=0.0,
     )
     assert timing.estimated_fits_backstop(100.0) == (True, 100.0)
+
+
+def test_internal_worker_align_passes_timed_segments_to_local_inference(tmp_path, monkeypatch):
+    worker = _internal_worker(tmp_path)
+    captured = {}
+    result = object()
+
+    def _capture(item, ep, job, tracker):
+        captured["job"] = job
+        return result
+
+    monkeypatch.setattr(worker, "_run_local_inference_with_timeout", _capture)
+    city = SimpleNamespace(
+        asr_model="large-v3-turbo",
+        asr_language="en",
+        asr_compute_type="int8",
+    )
+    ep = SimpleNamespace(uid="a", guid="a", duration=3600.0)
+    timed_segments = [{"start": 2.0, "end": 5.0, "text": "Hello world"}]
+
+    actual = worker._align_provider_text(
+        _queued("a"),
+        city,
+        ep,
+        tmp_path / "audio.m4a",
+        "Hello world",
+        "recipe",
+        ew.ResourceTracker(),
+        timed_segments=timed_segments,
+    )
+
+    assert actual is result
+    assert captured["job"].inputs["timed_segments"] == timed_segments
 
 
 def test_internal_worker_timeout_records_backoff_and_defers(tmp_path, monkeypatch):
@@ -1156,6 +1228,73 @@ def test_adopted_item_pushes_owned_record(tmp_path, monkeypatch):
 
     assert adopted is True
     assert push_calls == [{"sources": ["src"], "owned_uids": {"src": frozenset({"a"})}}]
+
+
+def test_asr_comparison_does_not_replace_the_served_provider_transcript(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a"])
+    _patch_transcribe_item(monkeypatch, worker, exists=True)
+    worker.storage.public_url = lambda key: f"https://cdn/{key}"
+    ep = SimpleNamespace(
+        transcript_key="provider-key",
+        transcript_selection="provider-aligned",
+    )
+
+    worker._store_asr_comparison(ep, "asr-key", "words-key", "recipe")
+
+    assert ep.transcript_key == "provider-key"
+    assert ep.transcript_selection == "provider-aligned"
+    assert ep.transcript_asr_comparison["key"] == "asr-key"
+
+
+def test_provider_align_worker_materializes_a_link_only_provider_source(tmp_path, monkeypatch):
+    worker = _loop_worker(tmp_path, ["a"])
+    objects: dict[str, bytes] = {}
+
+    class _Storage:
+        def exists(self, key):
+            return key in objects
+
+        def put_file(self, key, path, _mime):
+            objects[key] = path.read_bytes()
+            return self.public_url(key)
+
+        @staticmethod
+        def public_url(key):
+            return f"https://cdn/{key}"
+
+    class _Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        @staticmethod
+        def get(_url, timeout):
+            assert timeout == 30
+            return SimpleNamespace(status_code=200, content=b"Provided transcript wording")
+
+    worker.storage = _Storage()
+    ep = SimpleNamespace(
+        uid="a",
+        guid="g",
+        links={"transcript": "https://provider.example/transcript.txt"},
+        provider_transcript={},
+    )
+    validated = []
+    monkeypatch.setattr(ew, "make_session", lambda: _Session())
+    monkeypatch.setattr(
+        ew, "validate_source_url", lambda url, **kwargs: validated.append((url, kwargs))
+    )
+
+    artifact = worker._fetch_provider_source(
+        WorkItem(source_key="src", episode_uid="a", work_class="provider-transcript-align"), ep
+    )
+
+    assert validated == [("https://provider.example/transcript.txt", {"resolve": True})]
+    assert artifact["format"] == "txt"
+    assert objects[artifact["key"]] == b"Provided transcript wording"
+    assert ep.provider_transcript["candidate"]["key"] == artifact["key"]
 
 
 def test_transcript_batch_coalesces_multiple_items_into_one_push(tmp_path, monkeypatch):

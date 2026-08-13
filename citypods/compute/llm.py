@@ -18,6 +18,7 @@ import importlib
 import json
 import math
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -35,7 +36,11 @@ from citypods.compute.llm_budget import (
     release_route_reservation,
     settle_route_reservation,
 )
-from citypods.compute.llm_deferred import look_up_deferred, write_deferred
+from citypods.compute.llm_deferred import (
+    look_up_deferred,
+    terminal_failure_retry_allowed,
+    write_deferred,
+)
 from citypods.compute.llm_policy import (
     DEFAULT_OUTPUT_TOKEN_MARGIN,
     ROUTE_CANDIDATES,
@@ -130,6 +135,10 @@ class LLMBackendError(RuntimeError):
 
 class LLMStructuredOutputError(LLMBackendError):
     """A malformed model reply that a caller may safely defer and retry with fresh evidence."""
+
+
+class LLMDispatchTerminalError(LLMBackendError):
+    """The dispatch Worker recorded a terminal failure for this one request."""
 
 
 @dataclass(frozen=True)
@@ -574,16 +583,26 @@ class LiteLLMBackend(Backend):
         resolved_model: str,
         policy: LLMRequestPolicy | None = None,
         estimated_tokens: int | None = None,
+        input_tokens_estimate: int | None = None,
+        output_token_budget: int | None = None,
         route=None,
     ) -> dict[str, Any]:
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
+        include_deepseek_schema = model is not None and (
+            resolved_model.startswith("deepseek/")
+            or (
+                policy is not None
+                and any(
+                    canonical_model(candidate).startswith("deepseek/")
+                    for candidate in (policy.allowed_models or ())
+                )
+            )
+        )
         payload: dict[str, Any] = {
             "model": resolved_model,
-            "messages": (
-                _messages_with_schema(_messages(job), model)
-                if model is not None and resolved_model.startswith("deepseek/")
-                else _messages(job)
-            ),
+            "messages": _messages_with_schema(_messages(job), model)
+            if include_deepseek_schema
+            else _messages(job),
             "stream": False,
         }
         if model is not None:
@@ -593,12 +612,58 @@ class LiteLLMBackend(Backend):
             payload["allow_batch"] = policy.allow_batch
             payload["submit_next"] = policy.submit_next
             payload["timeout_class"] = policy.timeout_class
+            if policy.queue_only and policy.allowed_models:
+                # Durable requests are routed by the Worker.  Retain every permitted logical
+                # model there so independent quota pools can be used when the first is full.
+                payload["allowed_models"] = list(policy.allowed_models)
+            if input_tokens_estimate is not None:
+                payload["input_tokens_estimate"] = input_tokens_estimate
+            if output_token_budget is not None:
+                payload["output_token_budget"] = output_token_budget
             if policy.deadline_at is not None:
                 payload["deadline_at"] = policy.deadline_at.isoformat()
         if estimated_tokens is not None:
             payload["estimated_tokens"] = estimated_tokens
         payload.update(self._provider_options(job, resolved_model, route=route))
         return payload
+
+    @staticmethod
+    def _output_token_budget(job: InferenceJob) -> int:
+        value = job.inputs.get("max_tokens", DEFAULT_OUTPUT_TOKEN_MARGIN)
+        return max(1, int(value)) if isinstance(value, int) else DEFAULT_OUTPUT_TOKEN_MARGIN
+
+    @staticmethod
+    def _admission_messages(
+        messages: list[dict[str, Any]],
+        structured: tuple[str, ResponseModel] | None,
+        policy: LLMRequestPolicy,
+    ) -> list[dict[str, Any]]:
+        """Return the conservative request form used before physical-route selection."""
+        if structured and any(
+            canonical_model(candidate).startswith("deepseek/")
+            for candidate in (policy.allowed_models or ())
+        ):
+            return _messages_with_schema(messages, structured[1])
+        return messages
+
+    @staticmethod
+    def _assert_route_context(
+        route: LLMRoute | None, messages: list[dict[str, Any]], output_tokens: int
+    ) -> None:
+        """Fail locally before a direct provider call that cannot fit its physical route."""
+        if route is None:
+            return
+        input_tokens = estimate_tokens(messages)
+        if input_tokens > route.input_context_limit:
+            raise LLMBackendError(
+                "LLM input exceeds route context limit "
+                f"({input_tokens}>{route.input_context_limit})"
+            )
+        if output_tokens > route.output_context_limit:
+            raise LLMBackendError(
+                f"LLM output budget exceeds route context limit "
+                f"({output_tokens}>{route.output_context_limit})"
+            )
 
     def _run_structured_direct(
         self,
@@ -830,7 +895,11 @@ class LiteLLMBackend(Backend):
             backend=self.name,
             ref=f"deferred:{job.recipe_hash}",
             structured_output=(structured[0] if structured else None),
-            deferred_request=DeferredLLMRequest(messages=tuple(messages), policy=policy),
+            deferred_request=DeferredLLMRequest(
+                messages=tuple(messages),
+                policy=policy,
+                output_token_budget=self._output_token_budget(job),
+            ),
         )
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
@@ -843,7 +912,9 @@ class LiteLLMBackend(Backend):
             return self._run_without_policy(job, structured)
         if not isinstance(policy, LLMRequestPolicy):
             raise ValueError("LLM inputs.llm_policy must be an LLMRequestPolicy")
-        if self.storage is None or not getattr(self.storage, "cas_capable", False):
+        if self.storage is None or (
+            not policy.queue_only and not getattr(self.storage, "cas_capable", False)
+        ):
             raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
         if not job.recipe_hash:
             raise LLMBackendError("policy-bearing LLM jobs require a non-empty recipe_hash")
@@ -855,6 +926,12 @@ class LiteLLMBackend(Backend):
         existing = look_up_deferred(self.storage, job.recipe_hash)
         if existing is not None:
             return existing
+        if not terminal_failure_retry_allowed(self.storage, job.recipe_hash):
+            raise LLMBackendError(
+                "LLM terminal failure retry limit reached for this recipe; "
+                "change the input/recipe, clear its failure marker after investigating, "
+                "or wait for the marker's audit retention to expire"
+            )
 
         messages = _messages(job)
         result = self._run_policy_job_paced(job, policy, structured, messages)
@@ -863,6 +940,76 @@ class LiteLLMBackend(Backend):
         # the sweep (or a later call) can pick up exactly where this one left off.
         write_deferred(self.storage, job.recipe_hash, result)
         return result
+
+    def _enqueue_durable_policy_job(
+        self,
+        job: InferenceJob,
+        policy: LLMRequestPolicy,
+        structured: tuple[str, ResponseModel] | None,
+        messages: list[dict[str, Any]],
+    ) -> JobResult | JobHandle:
+        """Submit durable backlog work without reserving runner-side provider capacity."""
+        if not self.config.dispatch_url:
+            raise LLMBackendError("durable queue policy requires LLM_DISPATCH_URL")
+        allowed = policy.allowed_models or (self.config.model,)
+        resolved_model = canonical_model(allowed[0])
+        structured_name, model = structured if structured else (None, None)
+        payload = self._payload(
+            job,
+            model,
+            resolved_model=resolved_model,
+            policy=policy,
+            estimated_tokens=estimate_tokens(self._admission_messages(messages, structured, policy))
+            + self._output_token_budget(job),
+            input_tokens_estimate=estimate_tokens(
+                self._admission_messages(messages, structured, policy)
+            ),
+            output_token_budget=self._output_token_budget(job),
+        )
+        # Older calls used the recipe hash directly when they entered the Worker (and carried a
+        # producer-run deadline in their policy). A Worker idempotency record quite properly
+        # rejects a later request with that same key but a different durable policy. Keep this
+        # migration namespace stable: it makes all durable submissions idempotent with one
+        # another without conflating them with a legacy, deadline-bound submission.
+        headers = {
+            "content-type": "application/json",
+            "idempotency-key": f"{job.recipe_hash}:durable-queue-v1",
+        }
+        if self.config.dispatch_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
+        try:
+            response = self._session.post(
+                urljoin(self.config.dispatch_url.rstrip("/") + "/", "v1/chat/completions"),
+                json=payload,
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch enqueue failed") from exc
+        if response.status_code == 200:
+            return self._completed_dispatch_result(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output=response.json(),
+                structured_output=structured_name,
+                model=resolved_model,
+            )
+        if response.status_code != 202:
+            raise LLMBackendError(f"LLM dispatch enqueue returned HTTP {response.status_code}")
+        body = response.json()
+        ref = response.headers.get("location")
+        if not ref and isinstance(body, Mapping):
+            ref = body.get("id")
+        if not ref:
+            raise LLMBackendError("LLM dispatch response omitted a request reference")
+        return JobHandle(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            backend=self.name,
+            ref=ref,
+            structured_output=structured_name,
+            model=resolved_model,
+        )
 
     def _run_policy_job(
         self,
@@ -875,6 +1022,8 @@ class LiteLLMBackend(Backend):
         `run_inference` (first attempt) and `_reconcile_deferred` (retrying a deferred handle) --
         a retry re-evaluates every gate fresh, exactly like a first attempt, rather than polling
         something already submitted."""
+        if policy.queue_only:
+            return self._enqueue_durable_policy_job(job, policy, structured, messages)
         available_transports = self._available_transports()
         if policy.require_direct:
             # ``require_direct`` is an explicit capability override for GH Actions callers.  It
@@ -886,7 +1035,10 @@ class LiteLLMBackend(Backend):
         # TPM can never be breached even when both attempts happen; settling afterwards to the
         # single terminal response's actual usage only ever releases back what wasn't needed.
         max_provider_attempts = 2 if structured else 1
-        per_attempt_tokens = estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN
+        admission_messages = self._admission_messages(messages, structured, policy)
+        input_tokens = estimate_tokens(admission_messages)
+        output_tokens = self._output_token_budget(job)
+        per_attempt_tokens = input_tokens + output_tokens
         selection = select_and_reserve(
             self.storage,
             job.recipe_hash,
@@ -894,6 +1046,8 @@ class LiteLLMBackend(Backend):
             routes=ROUTE_REGISTRY,
             available_transports=available_transports,
             estimated_tokens=per_attempt_tokens * max_provider_attempts,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             requests=max_provider_attempts,
         )
         if selection.model is None or selection.route is None:
@@ -1007,6 +1161,8 @@ class LiteLLMBackend(Backend):
                     resolved_model=resolved_model,
                     policy=policy,
                     estimated_tokens=per_attempt_tokens * max_provider_attempts,
+                    input_tokens_estimate=input_tokens,
+                    output_token_budget=output_tokens,
                 )
                 headers = {"content-type": "application/json"}
                 if self.config.dispatch_auth_token:
@@ -1121,7 +1277,7 @@ class LiteLLMBackend(Backend):
             result = self._run_policy_job(job, policy, structured, messages)
             if isinstance(result, JobResult) or policy.deadline_at is None:
                 return result
-            selection = self._next_dispatch_eligibility(policy, structured, messages)
+            selection = self._next_dispatch_eligibility(job, policy, structured, messages)
             if selection.model is None:
                 wait = _pacing_wait_seconds(selection.retry_at, policy.deadline_at, self._now())
                 if wait is None:
@@ -1148,6 +1304,7 @@ class LiteLLMBackend(Backend):
 
     def _next_dispatch_eligibility(
         self,
+        job: InferenceJob,
         policy: LLMRequestPolicy,
         structured: tuple[str, ResponseModel] | None,
         messages: list[dict[str, Any]],
@@ -1160,13 +1317,18 @@ class LiteLLMBackend(Backend):
         names why each allowed route was passed over (pacing log visibility)."""
         ledger, _ = load_llm_budget_cas(self.storage)
         max_provider_attempts = 2 if structured else 1
-        per_attempt_tokens = estimate_tokens(messages) + DEFAULT_OUTPUT_TOKEN_MARGIN
+        admission_messages = self._admission_messages(messages, structured, policy)
+        input_tokens = estimate_tokens(admission_messages)
+        output_tokens = self._output_token_budget(job)
+        per_attempt_tokens = input_tokens + output_tokens
         return select_route(
             policy,
             routes=ROUTE_REGISTRY,
             ledger=ledger,
             available_transports=self._available_transports(),
             estimated_tokens=per_attempt_tokens * max_provider_attempts,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             requests=max_provider_attempts,
             now=self._now(),
         )
@@ -1179,7 +1341,7 @@ class LiteLLMBackend(Backend):
         deferred = handle.deferred_request
         assert deferred is not None
         messages = [dict(message) for message in deferred.messages]
-        inputs: dict[str, Any] = {"messages": messages}
+        inputs: dict[str, Any] = {"messages": messages, "max_tokens": deferred.output_token_budget}
         if handle.structured_output:
             inputs["structured_output"] = handle.structured_output
         job = InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
@@ -1197,6 +1359,12 @@ class LiteLLMBackend(Backend):
         logical_model = canonical_model(self.config.model)
         if self.config.mode == "direct":
             route = (ROUTE_CANDIDATES.get(logical_model) or (None,))[0]
+            direct_messages = (
+                _messages_with_schema(_messages(job), structured[1])
+                if structured and logical_model.startswith("deepseek/")
+                else _messages(job)
+            )
+            self._assert_route_context(route, direct_messages, self._output_token_budget(job))
             direct_model = route.direct_model if route is not None else logical_model
             if structured:
                 result = self._run_structured_direct(
@@ -1355,32 +1523,65 @@ class LiteLLMBackend(Backend):
                     msg += f" ({err_code})"
                 if err_code == "upstream_timeout":
                     msg += f" timed out after {dur_label}"
+                if response.status_code in {404, 502}:
+                    raise LLMDispatchTerminalError(msg)
                 raise LLMBackendError(msg)
+            output = response.json()
             try:
                 result = self._completed_dispatch_result(
                     task=handle.task,
                     recipe_hash=handle.recipe_hash,
-                    output=response.json(),
+                    output=output,
                     structured_output=handle.structured_output,
                     model=handle.model,
                 )
             except LLMStructuredOutputError:
-                # Layer 2 active purge: delete malformed response to unblock clean re-submission
-                try:
-                    self._session.delete(
-                        candidate, headers=headers, timeout=self.config.timeout_seconds
-                    )
-                except Exception:
-                    pass
+                # The deferred sweep owns the one schema-correction retry. Leave the completed
+                # Worker record intact here so it can clone the exact original request before
+                # replacing this handle with the corrective attempt.
+                self._settle_dispatched_reservation(handle, output)
                 raise
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch poll failed") from exc
+
+        self._settle_dispatched_reservation(handle, result.output)
 
         # A policy-tracked handle (§10.2/§10 in review/33) left its reservation inflight at
         # dispatch time specifically so it could be settled to *actual* usage here, once the
         # Worker's terminal response is available, instead of staying frozen at the estimate for
         # the job's entire lifetime. A handle from `_run_without_policy` has no `owner` and is a
         # no-op here, unchanged from the pre-R13 behavior.
+        if (
+            handle.owner is not None
+            and handle.model is not None
+            and self.storage is not None
+            and getattr(self.storage, "cas_capable", False)
+        ):
+            write_deferred(self.storage, handle.recipe_hash, result)
+            # Layer 1 Verified Consumption: purge R2 object only after B2 write succeeds
+            try:
+                self._session.delete(
+                    candidate, headers=headers, timeout=self.config.timeout_seconds
+                )
+            except Exception:
+                pass
+        elif self.storage is not None and getattr(self.storage, "cas_capable", False):
+            write_deferred(self.storage, handle.recipe_hash, result)
+            try:
+                self._session.delete(
+                    candidate, headers=headers, timeout=self.config.timeout_seconds
+                )
+            except Exception:
+                pass
+        return result
+
+    def _settle_dispatched_reservation(self, handle: JobHandle, output: Mapping[str, Any]) -> None:
+        """Settle a Worker-owned reservation from its terminal raw response.
+
+        This deliberately precedes structured-output validation at reconciliation time: malformed
+        output still consumed the provider request and must not leave its quota reservation
+        inflight while the sweep submits its bounded corrective retry.
+        """
         if handle.owner is not None and handle.model is not None and self.storage is not None:
             route = ROUTE_REGISTRY.get(handle.route_id) if handle.route_id else None
             if route is None:
@@ -1408,12 +1609,12 @@ class LiteLLMBackend(Backend):
                 # a handle that predates this field rather than guessing a rate.
                 if handle.input_per_token is not None and handle.output_per_token is not None:
                     actual_tokens, actual_cost = _priced_actual(
-                        result.output,
+                        output,
                         input_per_token=handle.input_per_token,
                         output_per_token=handle.output_per_token,
                     )
                 else:
-                    actual_tokens, actual_cost = _usage_tokens(result.output), None
+                    actual_tokens, actual_cost = _usage_tokens(output), None
                 settle_route_reservation(
                     self.storage,
                     handle.owner,
@@ -1426,23 +1627,6 @@ class LiteLLMBackend(Backend):
                     # for `actual_tokens`/`actual_cost` on an unpriced legacy handle.
                     actual_requests=handle.attempted_requests,
                 )
-                write_deferred(self.storage, handle.recipe_hash, result)
-                # Layer 1 Verified Consumption: purge R2 object only after B2 write succeeds
-                try:
-                    self._session.delete(
-                        candidate, headers=headers, timeout=self.config.timeout_seconds
-                    )
-                except Exception:
-                    pass
-        elif self.storage is not None and getattr(self.storage, "cas_capable", False):
-            write_deferred(self.storage, handle.recipe_hash, result)
-            try:
-                self._session.delete(
-                    candidate, headers=headers, timeout=self.config.timeout_seconds
-                )
-            except Exception:
-                pass
-        return result
 
     def delete_dispatched_ref(self, ref: str) -> None:
         """Best-effort deletion of a remote dispatched request from R2."""
@@ -1450,8 +1634,6 @@ class LiteLLMBackend(Backend):
             return
         # Normalize the ref: handles store either a bare ID ("chatcmpl-..."), a path
         # ("/v1/requests/chatcmpl-..."), or a full URL. Extract the bare ID for all cases.
-        import re
-
         match = re.search(r"(chatcmpl-[A-Za-z0-9-]{8,96})", ref)
         if not match:
             return
@@ -1466,12 +1648,58 @@ class LiteLLMBackend(Backend):
         except Exception:
             pass
 
+    def retry_malformed_dispatched(self, handle: JobHandle) -> JobHandle:
+        """Ask the Worker to clone a completed request with one corrective schema instruction."""
+        if not self.config.dispatch_url:
+            raise LLMBackendError("schema correction requires LLM_DISPATCH_URL")
+        base = self.config.dispatch_url.rstrip("/") + "/"
+        match = re.search(r"(chatcmpl-[A-Za-z0-9-]{8,96})", handle.ref)
+        if not match:
+            raise LLMBackendError(
+                "LLM schema-correction requires a valid dispatch request reference"
+            )
+        request_id = match.group(1)
+        url = urljoin(base, f"v1/requests/{request_id}/schema-retry")
+        headers = {
+            "content-type": "application/json",
+            # Keep B2's logical recipe stable, but make this one correction idempotent without
+            # colliding with the original Worker submission.
+            "idempotency-key": f"{handle.recipe_hash}:schema-correction-v1",
+        }
+        if self.config.dispatch_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
+        try:
+            response = self._session.post(
+                url, json={}, headers=headers, timeout=self.config.timeout_seconds
+            )
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM schema-correction enqueue failed") from exc
+        if response.status_code not in {200, 202}:
+            raise LLMBackendError(
+                f"LLM schema-correction enqueue returned HTTP {response.status_code}"
+            )
+        body = response.json()
+        ref = response.headers.get("location") or (
+            body.get("id") if isinstance(body, Mapping) else None
+        )
+        if not isinstance(ref, str) or not ref:
+            raise LLMBackendError("LLM schema-correction response omitted a request reference")
+        return JobHandle(
+            task=handle.task,
+            recipe_hash=handle.recipe_hash,
+            backend=self.name,
+            ref=ref,
+            structured_output=handle.structured_output,
+            model=handle.model,
+        )
+
     poll = reconcile
 
 
 __all__ = [
     "LLMBackendConfig",
     "LLMBackendError",
+    "LLMDispatchTerminalError",
     "LLMStructuredOutputError",
     "LLM_TASKS",
     "LiteLLMBackend",

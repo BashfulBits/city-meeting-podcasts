@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.llm import LLMDispatchTerminalError, LLMStructuredOutputError
 from citypods.compute.llm_deferred import DeferredSnapshot, DeferredSnapshotEntry
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
 from scripts import llm_deferred_sweep
@@ -100,6 +101,121 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     assert isinstance(prune_kwargs["backend"], FakeBackend)
 
 
+def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, capsys):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    handles = [_handle("recipe-502"), _handle("recipe-malformed")]
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot, **_kw: 0,
+    )
+    recovered = []
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "discard_terminal_failure",
+        lambda _storage, _snapshot, handle, error, **_kw: (
+            recovered.append((handle.recipe_hash, type(error).__name__)) or 1
+        ),
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "schema_correction_attempted", lambda *_args: False)
+    corrections = []
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "record_schema_correction",
+        lambda _storage, handle, _error: corrections.append(handle.recipe_hash),
+    )
+    rewritten = []
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "write_deferred",
+        lambda _storage, recipe_hash, handle: rewritten.append((recipe_hash, handle.ref)),
+    )
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, handle):
+            if handle.recipe_hash == "recipe-502":
+                raise LLMDispatchTerminalError("LLM dispatch poll returned HTTP 502")
+            raise LLMStructuredOutputError(
+                "structured dispatched response failed Pydantic validation"
+            )
+
+        def retry_malformed_dispatched(self, handle):
+            return JobHandle(
+                task=handle.task,
+                recipe_hash=handle.recipe_hash,
+                backend=handle.backend,
+                ref="corrected:" + handle.recipe_hash,
+                structured_output=handle.structured_output,
+                model=handle.model,
+            )
+
+        def delete_dispatched_ref(self, _ref):
+            pass
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    out = capsys.readouterr()
+    assert recovered == [("recipe-502", "LLMDispatchTerminalError")]
+    assert corrections == ["recipe-malformed"]
+    assert rewritten == [("recipe-malformed", "corrected:recipe-malformed")]
+    assert "2 failed (1 terminally recovered)" in out.out
+    assert "submitted one schema correction" in out.err
+
+
+def test_sweep_exhausts_a_second_malformed_reply_without_submitting_another_correction(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: storage)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage: _snapshot([_handle("recipe-1")]),
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep, "prune_expired_deferred_snapshot", lambda *_args, **_kwargs: 0
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "schema_correction_attempted", lambda *_args: True)
+    exhausted = []
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "discard_terminal_failure",
+        lambda _storage, _snapshot, handle, _error, **kwargs: (
+            exhausted.append((handle.recipe_hash, kwargs["exhausted"])) or 2
+        ),
+    )
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, _handle):
+            raise LLMStructuredOutputError(
+                "structured dispatched response failed Pydantic validation"
+            )
+
+        def retry_malformed_dispatched(self, _handle):
+            raise AssertionError("a second malformed response must not be corrected again")
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    out = capsys.readouterr()
+    assert exhausted == [("recipe-1", True)]
+    assert "1 failed (1 terminally recovered)" in out.out
+    assert "malformed correction exhausted" in out.err
+
+
 def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     fake_storage = SimpleNamespace(cas_capable=True)
@@ -111,7 +227,7 @@ def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
     )
 
     policy = LLMRequestPolicy(
-        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="topic-tags"
+        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="generic-llm-work"
     )
     handles = [
         JobHandle(
@@ -179,7 +295,9 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
         )
 
     handles = [
-        _handle_for("recipe-tag", task="tag", structured_output="topic-tags", purpose="topic-tags"),
+        _handle_for(
+            "recipe-tag", task="tag", structured_output="topic-tags", purpose="generic-llm-work"
+        ),
         _handle_for(
             "recipe-classify",
             task="classify",
@@ -208,6 +326,51 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
     # exhausted -- the second is skipped purely on the shared route pool, despite its different
     # task/structured_output/purpose.
     assert reconciled == ["recipe-tag"]
+
+
+def test_sweep_does_not_skip_durable_topic_tag_submissions(monkeypatch):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot, **_kw: 0,
+    )
+    policy = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="topic-tags"
+    )
+    handles = [
+        JobHandle(
+            task="tag",
+            recipe_hash=f"recipe-{idx}",
+            backend="litellm",
+            ref=f"deferred:recipe-{idx}",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},), policy=policy
+            ),
+        )
+        for idx in range(3)
+    ]
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+    )
+
+    reconciled = []
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, handle):
+            assert handle.deferred_request.policy.queue_only is True
+            reconciled.append(handle.recipe_hash)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert reconciled == ["recipe-0", "recipe-1", "recipe-2"]
 
 
 def test_capacity_signature_normalizes_none_allowed_models_to_every_route():
@@ -245,3 +408,51 @@ def test_sweep_overrides_stale_deferred_deadline_for_retries():
 
     assert updated.deferred_request.policy.deadline_at == sweep_deadline
     assert original.deferred_request.policy.deadline_at == old_deadline
+
+
+def test_sweep_upgrades_legacy_topic_tag_deferral_to_durable_queue():
+    original = JobHandle(
+        task="tag",
+        recipe_hash="legacy-tag",
+        backend="litellm",
+        ref="deferred:legacy-tag",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "meeting text"},),
+            policy=LLMRequestPolicy(
+                purpose="topic-tags",
+                deadline_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ),
+        ),
+    )
+
+    upgraded = llm_deferred_sweep._with_sweep_deadline(
+        original, datetime(2026, 7, 24, 12, tzinfo=UTC)
+    )
+
+    assert upgraded.deferred_request.policy.queue_only is True
+    assert upgraded.deferred_request.policy.deadline_at is None
+    assert original.deferred_request.policy.queue_only is False
+
+
+def test_sweep_upgrades_other_resumable_production_llm_work_but_not_city_onboarding():
+    deadline = datetime(2026, 7, 24, 12, tzinfo=UTC)
+
+    def handle(purpose: str) -> JobHandle:
+        return JobHandle(
+            task="agenda-item-extract",
+            recipe_hash=purpose,
+            backend="litellm",
+            ref="deferred:" + purpose,
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},),
+                policy=LLMRequestPolicy(purpose=purpose, deadline_at=deadline),
+            ),
+        )
+
+    chapter = llm_deferred_sweep._with_sweep_deadline(handle("chapter-agenda"), deadline)
+    city = llm_deferred_sweep._with_sweep_deadline(handle("city-onboarding"), deadline)
+
+    assert chapter.deferred_request.policy.queue_only is True
+    assert chapter.deferred_request.policy.deadline_at is None
+    assert city.deferred_request.policy.queue_only is False
+    assert city.deferred_request.policy.deadline_at == deadline

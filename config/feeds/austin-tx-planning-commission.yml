@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://austintx.new.swagit.com/views/117/planning-commission
   body: "Planning Commission"
+  body_includes:
+    - provider_guid: "167164"
+      body: "Comprehensive Plan Joint Committee"
 podcast_title: "Austin: Planning Commission"
 podcast_author: "City of Austin, TX"
 podcast_email: ""

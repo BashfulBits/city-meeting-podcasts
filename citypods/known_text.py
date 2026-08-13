@@ -11,10 +11,8 @@ from __future__ import annotations
 import re
 
 from citypods.timeline import Segment, Timeline, remap
+from citypods.transcript_versions import PROVIDER_ALIGN_PIPELINE_VERSION
 
-# Shared by the work-queue classifier and stage artifact recipes. Bump when provider-align output
-# must be regenerated for every stored provider document.
-PROVIDER_ALIGN_PIPELINE_VERSION = "2"
 _BRACKET_TIMESTAMP = re.compile(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]")
 _BARE_TIMESTAMP_LINE = re.compile(r"(?m)^[ \t]*(\d{1,2}:\d{2}(?::\d{2})?)[ \t]*$")
 _INLINE_TIMESTAMP = re.compile(r"\[?\d{1,2}:\d{2}(?::\d{2})?\]?")

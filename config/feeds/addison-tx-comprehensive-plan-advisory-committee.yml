@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://addisontx.new.swagit.com/views/128
   body: "Comprehensive Plan Advisory Committee"
+lifecycle:
+  status: dormant
+  reason: "Temporary committee"
 podcast_title: "Addison: Comprehensive Plan Advisory Committee"
 podcast_author: "City of Addison, TX"
 podcast_email: ""

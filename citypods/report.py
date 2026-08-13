@@ -718,11 +718,17 @@ def _sum_stage_totals(rows: list[dict]) -> dict:
     )
     for row in rows:
         for name, stage in (row.get("stages") or {}).items():
-            out = totals.setdefault(name, {**{k: 0 for k in keys}, "defer_reasons": {}})
+            out = totals.setdefault(
+                name, {**{k: 0 for k in keys}, "defer_reasons": {}, "quality_counts": {}}
+            )
             for k in keys:
                 out[k] += stage.get(k, 0) or 0
             for reason, count in (stage.get("defer_reasons") or {}).items():
                 out["defer_reasons"][reason] = out["defer_reasons"].get(reason, 0) + int(count or 0)
+            for outcome, count in (stage.get("quality_counts") or {}).items():
+                out["quality_counts"][outcome] = out["quality_counts"].get(outcome, 0) + int(
+                    count or 0
+                )
     for stage in totals.values():
         if "seconds" in stage:
             stage["seconds"] = round(stage["seconds"], 1)
@@ -1005,8 +1011,24 @@ def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: d
     diarize_conf: list[float] = []
     diarize_done = 0
     diarize_errors: dict[str, int] = {}
+    active_provenance = {
+        "provider-native": 0,
+        "provider-aligned": 0,
+        "asr": 0,
+        "unknown": 0,
+    }
+    active_text_timing: dict[str, int] = {}
     for recs in records_cache.values():
         for rec in recs.values():
+            transcript = rec.get("transcript") or {}
+            if isinstance(transcript, dict) and transcript.get("key"):
+                selection = str(transcript.get("selection") or "unknown")
+                active_provenance[selection] = active_provenance.get(selection, 0) + 1
+                pair = (
+                    f"{transcript.get('text_source') or 'unknown'}+"
+                    f"{transcript.get('timing_source') or 'unknown'}"
+                )
+                active_text_timing[pair] = active_text_timing.get(pair, 0) + 1
             if (rec.get("links") or {}).get("transcript"):
                 fetch["linked"] += 1
             registry = rec.get("provider_transcript") or {}
@@ -1052,6 +1074,8 @@ def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: d
             "work": by_work_class.get("provider-transcript-align", {}),
             "confidence": _confidence_summary(align_conf),
         },
+        "active_provenance": active_provenance,
+        "active_text_timing": active_text_timing,
         "diarize": {
             "work": by_work_class.get("provider-transcript-diarize", {}),
             "done": diarize_done,

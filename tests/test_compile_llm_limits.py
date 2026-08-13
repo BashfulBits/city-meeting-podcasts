@@ -46,6 +46,15 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert compiled["model_aliases"]["opencode/nemotron-3-ultra-free"] == nemotron_key
 
 
+def test_compiled_routes_materialize_provider_specific_input_and_output_limits():
+    compiled = compile_llm_limits.compile_limits()
+    siliconflow = compiled["routes_by_id"]["siliconflow_deepseek_v4_flash_primary"]
+    deepseek = compiled["routes_by_id"]["deepseek_v4_flash_primary"]
+    assert siliconflow["input_context_limit"] == 32768
+    assert deepseek["input_context_limit"] == 131072
+    assert siliconflow["output_context_limit"] == deepseek["output_context_limit"] == 16384
+
+
 def test_model_key_aliases_must_not_conflict_with_a_canonical_key():
     routes = [
         {

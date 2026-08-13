@@ -16,6 +16,7 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMStructuredOutputError,
     _gemini_schema_safe_model,
+    _messages,
     _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
@@ -24,7 +25,7 @@ from citypods.compute.llm import (
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
-from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTES, LLMRequestPolicy
+from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTES, LLMRequestPolicy, estimate_tokens
 from citypods.compute.structured import register_response_model
 from tests._cas_fake import MemStorage
 
@@ -424,6 +425,70 @@ def test_reconcile_settles_actual_requests_after_a_202_dispatch():
     assert ledger.requests_minute == 1
 
 
+def test_reconcile_settles_reservation_before_rejecting_malformed_dispatch_output():
+    """A malformed completed reply still consumed its one Worker/provider request.
+
+    The sweep will submit a separate bounded correction, so the original reservation must be
+    settled before local schema validation propagates its error.
+    """
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"value": 3}'}}]}
+
+    class Session:
+        def get(self, _url, **_kwargs):
+            return Response()
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=Session(),
+        storage=storage,
+    )
+    route = ROUTES["mistral/mistral-large-2512"]
+    owner = "malformed-owner"
+    mutate_llm_budget(
+        storage,
+        lambda budget, now: budget.reserve(
+            owner,
+            route.route_id or route.model,
+            requests=1,
+            tokens=10,
+            cost=0.0,
+            route=route,
+            now=now,
+        ),
+    )
+
+    with pytest.raises(LLMStructuredOutputError, match="Pydantic validation"):
+        backend.reconcile(
+            JobHandle(
+                task="tag",
+                recipe_hash="recipe-malformed",
+                backend="litellm",
+                ref="chatcmpl-malformed123",
+                structured_output="test-output",
+                model="mistral/mistral-large-2512",
+                owner=owner,
+                route_id=route.route_id,
+                attempted_requests=1,
+            )
+        )
+
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = _ledger_for(budget, "mistral/mistral-large-2512")
+    assert ledger.inflight == {}
+    assert ledger.requests_minute == 1
+
+
 def test_usage_tokens_returns_none_not_zero_for_missing_or_invalid_usage():
     assert _usage_tokens({}) is None
     assert _usage_tokens({"usage": {}}) is None
@@ -647,6 +712,22 @@ def test_deepseek_structured_request_includes_schema_in_initial_prompt():
     system = next(message for message in sent["messages"] if message["role"] == "system")
     assert "JSON Schema" in system["content"]
     assert json.dumps(ExampleOutput.model_json_schema(), sort_keys=True) in system["content"]
+
+
+def test_deepseek_queue_payload_counts_the_rendered_schema_message():
+    backend = LiteLLMBackend(LLMBackendConfig(model="deepseek/deepseek-v4-flash"))
+    policy = LLMRequestPolicy(allowed_models=("deepseek/deepseek-v4-flash",), queue_only=True)
+    inference_job = job(content="x", structured_output="test-output", max_tokens=1024)
+    payload = backend._payload(
+        inference_job,
+        ExampleOutput,
+        resolved_model="deepseek/deepseek-v4-flash",
+        policy=policy,
+        estimated_tokens=1,
+        input_tokens_estimate=1,
+        output_token_budget=1024,
+    )
+    assert estimate_tokens(payload["messages"]) > estimate_tokens(_messages(inference_job))
 
 
 def test_gemini_structured_request_relaxes_constraint_keywords_only():
@@ -1014,6 +1095,84 @@ def test_dispatch_rejects_invalid_structured_result():
     assert private_marker not in traceback_text
 
 
+def test_schema_correction_enqueue_uses_a_separate_idempotency_key():
+    calls = []
+
+    class Response:
+        status_code = 202
+        headers = {"location": "/v1/requests/chatcmpl-corrected"}
+
+        def json(self):
+            return {"id": "chatcmpl-corrected"}
+
+    class Session:
+        def post(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+            dispatch_auth_token="dispatch-token",
+        ),
+        http_session=Session(),
+    )
+    corrected = backend.retry_malformed_dispatched(
+        JobHandle(
+            task="tag",
+            recipe_hash="recipe-1",
+            backend="litellm",
+            ref="/v1/requests/chatcmpl-original",
+            structured_output="test-output",
+            model="mistral/mistral-large-2512",
+        )
+    )
+
+    assert corrected.ref == "/v1/requests/chatcmpl-corrected"
+    assert corrected.structured_output == "test-output"
+    assert calls == [
+        (
+            "https://dispatch.example/v1/requests/chatcmpl-original/schema-retry",
+            {
+                "json": {},
+                "headers": {
+                    "content-type": "application/json",
+                    "idempotency-key": "recipe-1:schema-correction-v1",
+                    "authorization": "Bearer dispatch-token",
+                },
+                "timeout": 30.0,
+            },
+        )
+    ]
+
+
+def test_schema_correction_rejects_an_invalid_dispatch_reference_before_posting():
+    class Session:
+        def post(self, *_args, **_kwargs):
+            raise AssertionError("invalid refs must not be sent to the Worker")
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=Session(),
+    )
+
+    with pytest.raises(LLMBackendError, match="valid dispatch request reference"):
+        backend.retry_malformed_dispatched(
+            JobHandle(
+                task="tag",
+                recipe_hash="recipe-invalid-ref",
+                backend="litellm",
+                ref="not-a-dispatch-request",
+            )
+        )
+
+
 def test_dispatch_unknown_response_contract_remains_a_version_skew_error():
     class Response:
         status_code = 200
@@ -1242,6 +1401,8 @@ def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
     assert post_json["deadline_at"] == deadline.isoformat()
     assert "estimated_tokens" in post_json
     assert post_json["estimated_tokens"] > 0
+    assert post_json["input_tokens_estimate"] > 0
+    assert post_json["output_token_budget"] == 1024
 
 
 def test_dual_transport_route_prefers_direct_without_opt_in():
@@ -1331,6 +1492,52 @@ def test_dual_transport_route_dispatches_with_explicit_overflow_and_reserves_by_
     budget, _ = load_llm_budget_cas(storage)
     ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert recipe_hash in ledger.inflight
+
+
+def test_queue_only_policy_enqueues_without_a_runner_quota_reservation():
+    """Durable backlog work is accepted by the Worker, not locally rate-limited first."""
+
+    class PendingSession(requests.Session):
+        def post(self, _url, json=None, headers=None, timeout=None):
+            assert json["model"] == "gemini/gemini-3-flash-preview"
+            assert json["allowed_models"] == [
+                "gemini/gemini-3-flash-preview",
+                "gemini/gemini-3.1-flash-lite",
+            ]
+            assert headers["idempotency-key"] == "test-durable-queue:durable-queue-v1"
+            response = requests.Response()
+            response.status_code = 202
+            response._content = b'{"id":"chatcmpl-durable"}'
+            response.headers["location"] = "/v1/requests/chatcmpl-durable"
+            return response
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=PendingSession(),
+        storage=MemStorage(),
+    )
+    result = backend.run_inference(
+        InferenceJob(
+            task="tag",
+            recipe_hash="test-durable-queue",
+            inputs={
+                "content": "meeting text",
+                "llm_policy": LLMRequestPolicy(
+                    allowed_models=(
+                        "gemini/gemini-3-flash-preview",
+                        "gemini/gemini-3.1-flash-lite",
+                    ),
+                    queue_only=True,
+                ),
+            },
+        )
+    )
+    assert isinstance(result, JobHandle)
+    assert result.owner is None
 
 
 def test_require_direct_policy_bypasses_dispatch():

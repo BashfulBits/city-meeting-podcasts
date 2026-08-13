@@ -466,7 +466,127 @@ class TestAlignMocked:
             cpu_threads=4,
             compute_type="int8",
         )
-        stable_model.align.assert_called_once_with(str(audio), "Hello", language="en")
+        stable_model.align.assert_called_once_with(
+            str(audio), "Hello", language="en", vad=True, fast_mode=True
+        )
+
+    def test_align_string_model_defaults_to_int8_and_fast_mode(self, tmp_path):
+        import citypods.asr as asr
+
+        audio = tmp_path / "a.m4a"
+        audio.write_bytes(b"fake")
+
+        asr._model_cache.clear()
+        fake_result = MagicMock()
+        fake_result.to_vtt.return_value = "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n"
+        fake_result.segments = self._fully_timed_segments()
+        stable_model = MagicMock()
+        stable_model.align.return_value = fake_result
+        _inject_sw(stable_model)
+        sys.modules["stable_whisper"].load_faster_whisper = MagicMock(return_value=stable_model)
+
+        result = asr.align(audio, "Hello", "base.en", "en", 4)
+
+        assert result.vtt.startswith(b"WEBVTT")
+        sys.modules["stable_whisper"].load_faster_whisper.assert_called_once_with(
+            "base.en",
+            device="cpu",
+            cpu_threads=4,
+            compute_type="int8",
+        )
+        stable_model.align.assert_called_once_with(
+            str(audio), "Hello", language="en", vad=True, fast_mode=True
+        )
+
+    def test_align_custom_compute_type_and_flags(self, tmp_path):
+        import citypods.asr as asr
+
+        audio = tmp_path / "a.m4a"
+        audio.write_bytes(b"fake")
+
+        asr._model_cache.clear()
+        fake_result = MagicMock()
+        fake_result.to_vtt.return_value = "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n"
+        fake_result.segments = self._fully_timed_segments()
+        stable_model = MagicMock()
+        stable_model.align.return_value = fake_result
+        _inject_sw(stable_model)
+        sys.modules["stable_whisper"].load_faster_whisper = MagicMock(return_value=stable_model)
+
+        result = asr.align(
+            audio,
+            "Hello",
+            "base.en",
+            "en",
+            4,
+            compute_type="float32",
+            vad=False,
+            fast_mode=False,
+        )
+
+        assert result.vtt.startswith(b"WEBVTT")
+        sys.modules["stable_whisper"].load_faster_whisper.assert_called_once_with(
+            "base.en",
+            device="cpu",
+            cpu_threads=4,
+            compute_type="float32",
+        )
+        stable_model.align.assert_called_once_with(
+            str(audio), "Hello", language="en", vad=False, fast_mode=False
+        )
+
+    def test_align_words_uses_existing_timed_windows(self, tmp_path):
+        import citypods.asr as asr
+
+        audio = tmp_path / "a.m4a"
+        audio.write_bytes(b"fake")
+
+        asr._model_cache.clear()
+        fake_result = MagicMock()
+        fake_result.to_vtt.return_value = "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n"
+        fake_result.segments = self._fully_timed_segments()
+        stable_model = MagicMock()
+        stable_model.align_words.return_value = fake_result
+        _inject_sw(stable_model)
+        sys.modules["stable_whisper"].load_faster_whisper = MagicMock(return_value=stable_model)
+
+        timed_segments = [
+            {"start": 12.0, "end": 15.0, "text": "Hello world"},
+        ]
+        result = asr.align(
+            audio,
+            "Hello world",
+            "base.en",
+            "en",
+            4,
+            timed_segments=timed_segments,
+        )
+
+        assert result.vtt.startswith(b"WEBVTT")
+        stable_model.align_words.assert_called_once_with(str(audio), timed_segments, language="en")
+        stable_model.align.assert_not_called()
+
+    def test_align_serializes_current_stable_ts_result_api(self, tmp_path):
+        import citypods.asr as asr
+
+        audio = tmp_path / "a.m4a"
+        audio.write_bytes(b"fake")
+
+        asr._model_cache.clear()
+        fake_result = MagicMock(spec=["to_srt_vtt", "segments"])
+        fake_result.to_srt_vtt.return_value = "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n"
+        fake_result.segments = self._fully_timed_segments()
+        stable_model = MagicMock()
+        stable_model.align.return_value = fake_result
+        _inject_sw(stable_model)
+        sys.modules["stable_whisper"].load_faster_whisper = MagicMock(return_value=stable_model)
+
+        result = asr.align(audio, "Hello", "base.en", "en", 4)
+
+        assert result.vtt.startswith(b"WEBVTT")
+        fake_result.to_srt_vtt.assert_called_once_with(
+            segment_level=True, word_level=False, vtt=True
+        )
 
 
 # ── vtt_to_text / srt_to_text ────────────────────────────────────────────────

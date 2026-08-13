@@ -11,6 +11,7 @@ from citypods.audit import (
     aggregate_view_cap_findings,
     audit_all,
     audit_city,
+    check_agenda_quality,
     check_dead_audio_aggregate,
     check_deferred_audio_aggregate,
     check_dormant_resumed,
@@ -25,6 +26,7 @@ from citypods.audit import (
     compute_archive_diff,
     count_audio_failures,
 )
+from citypods.bodies import BodyInclusion
 from citypods.models import Episode, FeedLifecycle
 
 NOW = datetime(2026, 5, 30, tzinfo=UTC)
@@ -63,6 +65,155 @@ def test_check_empty_no_diff_baseline():
     assert check_empty("s", [], 3).check == "drift"
     assert check_empty("s", [_ep(1), _ep(8)], 3).check == "empty"
     assert check_empty("s", [_ep(1), _ep(8), _ep(15)], 3) is None
+
+
+def test_check_agenda_quality_requires_repeated_rejection():
+    records = {
+        f"u{i}": {
+            "uid": f"u{i}",
+            "title": f"Meeting {i}",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 3,
+                    "source_url": (
+                        "https://user:password@example.test/agenda.pdf?"
+                        "X-Amz-Signature=secret#page=1"
+                    ),
+                }
+            },
+        }
+        for i in range(3)
+    }
+    finding = check_agenda_quality("council", records, body="City Council")
+    assert finding is not None
+    assert finding.check == "agenda-quality"
+    assert "3 of 3" in finding.message
+    assert "source=https://example.test/agenda.pdf" in finding.message
+    assert "X-Amz-Signature" not in finding.message
+    assert "password@" not in finding.message
+    assert "body=City Council" in finding.message
+
+
+def test_check_agenda_quality_suppresses_one_off_rejection():
+    records = {
+        "u1": {
+            "uid": "u1",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 1,
+                }
+            },
+        }
+    }
+    assert check_agenda_quality("council", records, body="City Council") is None
+
+
+def test_check_agenda_quality_alerts_for_one_episode_after_three_attempts():
+    records = {
+        "u1": {
+            "uid": "u1",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ocr-unavailable",
+                    "assessment_attempts": 3,
+                    "source_url": "https://example.test/agenda.pdf",
+                }
+            },
+        }
+    }
+    finding = check_agenda_quality("council", records, body="City Council")
+    assert finding is not None
+    assert "1 of 1" in finding.message
+
+
+def test_check_agenda_quality_preserves_active_artifact_but_alerts_on_last_rejection():
+    records = {
+        "u1": {
+            "uid": "u1",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "accepted",
+                    "eligibility": "agenda",
+                    "assessment_attempts": 0,
+                    "source_url": "https://example.test/good.pdf",
+                    "last_assessment": {
+                        "status": "rejected",
+                        "reason": "ambiguous-native-and-ocr",
+                        "assessment_attempts": 3,
+                        "source_url": "https://example.test/shell.pdf?token=secret",
+                    },
+                }
+            },
+        }
+    }
+    finding = check_agenda_quality("council", records, body="City Council")
+    assert finding is not None
+    assert "source=https://example.test/shell.pdf" in finding.message
+    assert "token=secret" not in finding.message
+
+
+def test_check_agenda_quality_applies_body_inclusions():
+    records = {
+        "included": {
+            "uid": "included",
+            "guid": "included",
+            "body": "Other Body",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 3,
+                }
+            },
+        },
+        "excluded": {
+            "uid": "excluded",
+            "guid": "excluded",
+            "body": "Other Body",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 3,
+                }
+            },
+        },
+    }
+    finding = check_agenda_quality(
+        "council",
+        records,
+        inclusions=(BodyInclusion("included", "City Council"),),
+    )
+    assert finding is not None
+    assert "uid=included" in finding.message
+    assert "uid=excluded" not in finding.message
+
+
+def test_check_agenda_quality_ignores_stale_assessment_history():
+    records = {
+        "u1": {
+            "uid": "u1",
+            "body": "City Council",
+            "agenda_text": {
+                "quality": {
+                    "status": "rejected",
+                    "reason": "ambiguous-native-and-ocr",
+                    "assessment_attempts": 3,
+                    "last_seen": (NOW - timedelta(days=91)).isoformat(),
+                }
+            },
+        }
+    }
+    assert check_agenda_quality("council", records, body="City Council", now=NOW) is None
 
 
 def test_check_empty_suppresses_drift_when_archive_has_materialized_episodes():
@@ -106,6 +257,24 @@ def test_check_staleness_ignores_healthy_and_low_sample_feeds():
     weekly = [_ep(2), _ep(9), _ep(16), _ep(23), _ep(30)]
     assert check_staleness("s", weekly, NOW) is None
     assert check_staleness("s", [_ep(400), _ep(800)], NOW) is None  # too few samples
+
+
+def test_check_staleness_allows_five_intervals_for_biweekly_feed():
+    # Five 14-day intervals gives a 70-day threshold; a 69-day-old feed is still within it.
+    healthy = [_ep(69), _ep(83), _ep(97), _ep(111), _ep(125)]
+    assert check_staleness("s", healthy, NOW) is None
+
+    overdue = [_ep(71), _ep(85), _ep(99), _ep(113), _ep(127)]
+    assert check_staleness("s", overdue, NOW) is not None
+
+
+def test_check_staleness_uses_longer_absolute_floor_for_weekly_feed():
+    # Five weekly intervals would be 35 days, so the 45-day floor controls the threshold.
+    healthy = [_ep(44), _ep(51), _ep(58), _ep(65), _ep(72)]
+    assert check_staleness("s", healthy, NOW) is None
+
+    overdue = [_ep(46), _ep(53), _ep(60), _ep(67), _ep(74)]
+    assert check_staleness("s", overdue, NOW) is not None
 
 
 def test_check_staleness_floor_suppresses_bursty_false_positive():

@@ -33,7 +33,7 @@ translation, summarization, any multi-second ASR/LLM/network/CPU job) is::
             stats.reused += 1
             continue
         if ctx.stop is not None and ctx.stop():    # check immediately before the costly work
-            stats.skipped += 1                     # deferred to a later run — not an error
+            stats.defer("wall-clock-budget")        # deferred to a later run — not an error
             continue
         <do the expensive, restartable work for ep, persisting enough to resume next run>
 
@@ -79,9 +79,10 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urljoin
 
 from citypods import asr as asr_mod
 from citypods.asr import asr_initial_prompt
@@ -102,7 +103,7 @@ from citypods.integrity import (
     needs_timeline_audio_repair,
     timeline_audio_repair_token,
 )
-from citypods.known_text import PROVIDER_ALIGN_PIPELINE_VERSION, provider_align_ineligible
+from citypods.known_text import provider_align_ineligible, provider_sections
 from citypods.media import (
     AudioArtifactCache,
     HostedKeysCache,
@@ -119,13 +120,15 @@ from citypods.ops.workqueue import BacklogPolicy, WorkItem, sort_key_for, workit
 from citypods.progress import PROGRESS
 from citypods.records import (
     AUDIO_PIPELINE_VERSION,
+    _capped_exponential_backoff,
     _in_backoff,
+    _parse_iso_utc,
     confirmed_dead_recheck_due,
     transcript_media_hash,
     transcript_timeout_backoff_until,
 )
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
-from citypods.security import validate_source_url
+from citypods.security import MAX_REDIRECTS, validate_source_url
 from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
 from citypods.transcript_quality import (
     TranscriptQualityRoute,
@@ -133,6 +136,7 @@ from citypods.transcript_quality import (
     quality_body_key,
     record_l1_sample,
 )
+from citypods.transcript_versions import PROVIDER_ALIGN_PIPELINE_VERSION
 
 
 def _materialize_set(
@@ -312,6 +316,11 @@ class StageContext:
     tag_taxonomy_cache_lock: threading.Lock = field(default_factory=threading.Lock)
     stop: Callable[[], bool] | None = None
     chapters_per_source: int = 10_000  # ~unbounded; build() lowers it only for the PR preview
+    # Swagit transcript endpoint probes are bounded separately because the archive can contain
+    # tens of thousands of old episodes, most of which have no transcript.
+    provider_transcript_probes_per_source: int = 500
+    provider_transcript_probe_remaining: dict[str, int] = field(default_factory=dict)
+    provider_transcript_probe_lock: threading.Lock = field(default_factory=threading.Lock)
     # EBU R128 loudness normalization (#151). Empty string = disabled.
     # e.g. "ebuR128:-16LUFS" normalises to -16 LUFS (Apple Podcasts / Spotify speech standard).
     loudness_profile: str = ""
@@ -438,14 +447,43 @@ class StageContext:
     # One Event per build, shared across the global queue's per-episode ``process()`` calls; a
     # monotonic ``set()`` that is safe to race under the worker threads.
     tag_llm_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
-    # UTC wall-clock deadline handed to the LLM tag scheduler as its dispatch ``deadline_at`` so it
-    # can pace within-run rate limits: it waits out a full per-minute window (draining the daily
-    # quota across successive minutes) but never past this, so it gives up cleanly before the tag
-    # lane's own wall-clock ``stop()`` budget elapses. ``None`` (default / non-tag lanes) disables
-    # pacing -- a single dispatch attempt then defer, the pre-pacing behavior.
+    # Per-run cap on newly queued dispatches to avoid flooding worker queues on broad backfills.
+    tag_max_dispatches: int | None = None
+    tag_dispatches_count: int = 0
+    tag_dispatches_reserved: int = 0
+    tag_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
+    # UTC wall-clock deadline handed to the LLM tag scheduler as its dispatch ``deadline_at``.
+    # Topic tags use asynchronous dispatch without an artificial deadline (None), avoiding
+    # runner-side sleep pacing and preventing queued worker tasks from timing out.
     tag_llm_deadline: datetime | None = None
-    # UTC wall-clock deadline for chapter extraction dispatch.
-    chapter_llm_deadline: datetime | None = None
+
+    def reserve_tag_dispatch(self) -> bool:
+        """Atomically reserve one per-run tag dispatch slot before submitting work."""
+        with self.tag_dispatches_lock:
+            if self.tag_llm_dispatch_exhausted.is_set():
+                return False
+            if (
+                self.tag_max_dispatches is not None
+                and self.tag_dispatches_count + self.tag_dispatches_reserved
+                >= self.tag_max_dispatches
+            ):
+                self.tag_llm_dispatch_exhausted.set()
+                return False
+            self.tag_dispatches_reserved += 1
+            return True
+
+    def settle_tag_dispatch(self, dispatched: bool) -> None:
+        """Release a reservation and count it only when a deferred job was actually queued."""
+        with self.tag_dispatches_lock:
+            self.tag_dispatches_reserved = max(0, self.tag_dispatches_reserved - 1)
+            if not dispatched:
+                return
+            self.tag_dispatches_count += 1
+            if (
+                self.tag_max_dispatches is not None
+                and self.tag_dispatches_count >= self.tag_max_dispatches
+            ):
+                self.tag_llm_dispatch_exhausted.set()
 
 
 @dataclass
@@ -474,6 +512,7 @@ class StageStats:
     rate_limited: int = 0  # audio encodes that hit HTTP 403 / provider throttle (GH#300)
     defer_reasons: dict[str, int] = field(default_factory=dict)
     defer_samples: list[str] = field(default_factory=list)
+    quality_counts: dict[str, int] = field(default_factory=dict)
 
     def defer(self, reason: str, count: int = 1, *, sample: str | None = None) -> None:
         """Record restartable work left for a later run, grouped by a stable reason token."""
@@ -481,6 +520,9 @@ class StageStats:
         self.defer_reasons[reason] = self.defer_reasons.get(reason, 0) + count
         if sample and len(self.defer_samples) < 5:
             self.defer_samples.append(sample)
+
+    def quality(self, outcome: str, count: int = 1) -> None:
+        self.quality_counts[outcome] = self.quality_counts.get(outcome, 0) + count
 
     def note(self) -> str:
         if not (self.ran or self.reused or self.skipped or self.errors):
@@ -719,7 +761,7 @@ class TagsStage:
     """
 
     name = "tags"
-    version = "1"
+    version = "2"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -736,20 +778,76 @@ class TagsStage:
         )
         from citypods.tags import (
             TAG_PROMPT_VERSION,
+            TAGGER_VERSION,
             agenda_document_context,
             chapter_tag_inputs,
             decorate_llm_candidates,
+            decorate_rule_candidates,
             episode_tag_inputs,
+            llm_prelabel_candidates,
             llm_tag_suggestions,
             load_taxonomy,
             merge_tag_sources,
             rollup_tags,
+            rule_phrase_audit,
             tag_episode,
             tag_input_fingerprint,
             tag_recipe_hash,
         )
 
         stats = StageStats(self.name)
+
+        def remember_call_attempt(
+            episode: Episode,
+            *,
+            purpose: str,
+            recipe_hash: str,
+            status: str,
+            metadata: dict[str, Any] | None = None,
+            model: str = "",
+            reason: str = "",
+        ) -> None:
+            """Persist compact provenance for every actual tag/evaluator call.
+
+            Candidate rows carry the same metadata when a call returns a candidate. This sidecar
+            list covers empty, deferred, oversized, and failed calls without creating synthetic tag
+            candidates that could enter calibration or public projection.
+            """
+            payload = dict(metadata or {})
+            payload.update(
+                {
+                    "purpose": purpose,
+                    "recipe_hash": recipe_hash,
+                    "status": status,
+                    "model": model or payload.get("prelabeler_model") or "",
+                    "reason": reason,
+                    "attempted_at": datetime.now(UTC).isoformat(),
+                }
+            )
+            # Rule observations are deterministic for a recipe/scope and can be re-encountered
+            # while an unrelated evaluator call is pending. Keep one such audit instead of
+            # copying the same telemetry into the record on every scheduled run.
+            if purpose == "topic-tags:rules" and any(
+                prior.get("purpose") == purpose
+                and prior.get("recipe_hash") == recipe_hash
+                and prior.get("scope") == payload.get("scope")
+                and prior.get("chapter_id") == payload.get("chapter_id")
+                for prior in episode.tags_llm_call_attempts
+                if isinstance(prior, dict)
+            ):
+                return
+            # One model invocation is one durable event. Bound this sidecar because records are
+            # restored wholesale; candidate history itself remains append-only for audit.
+            payload["attempt_id"] = (
+                "tag-attempt-"
+                + hashlib.sha1(
+                    json.dumps(payload, sort_keys=True, default=str).encode()
+                ).hexdigest()[:20]
+            )
+            episode.tags_llm_call_attempts = [
+                *episode.tags_llm_call_attempts,
+                payload,
+            ][-200:]
 
         # Load the taxonomy + calibration state at most ONCE for the whole run (cached on `ctx`,
         # which is the same object across every one of this lane's per-episode process() calls --
@@ -815,6 +913,12 @@ class TagsStage:
             evaluation_config = cache["evaluation_config"]
             evaluation_state = cache["evaluation_state"]
             admission_policy = cache["admission_policy"]
+            prelabeler_config = ctx.llm_evaluation_config.get("prelabeler") or {}
+            prelabeler_enabled = bool(prelabeler_config.get("enabled", False)) and (
+                ctx.tag_backend is not None
+            )
+            prelabeler_model = str(prelabeler_config.get("model") or "")
+            prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
 
         for ep in _materialize_set(
             episodes,
@@ -830,6 +934,38 @@ class TagsStage:
                 else ""
             )
             llm_enabled = ctx.tag_backend is not None
+            from citypods.llm_evaluation import candidate_id
+
+            persisted_candidates: list[dict[str, Any]] = []
+            for raw_candidate in ep.llm_tag_candidates or []:
+                if not isinstance(raw_candidate, dict):
+                    continue
+                candidate = dict(raw_candidate)
+                candidate.setdefault("source_kind", "llm")
+                candidate.setdefault("assessment_kind", "tagger-admission")
+                candidate.setdefault(
+                    "scope", "chapter" if candidate.get("chapter_id") else "episode"
+                )
+                candidate["candidate_id"] = str(
+                    candidate.get("candidate_id") or candidate_id(candidate)
+                )
+                persisted_candidates.append(candidate)
+            prelabeler_pending = prelabeler_enabled and any(
+                candidate.get("candidate_state") != "historical"
+                and (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id"))
+                and (
+                    candidate.get("prelabeler_model") != prelabeler_model
+                    or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
+                    or candidate.get("prelabeler_decision")
+                    not in {
+                        "likely_correct",
+                        "needs_human_review",
+                        "likely_incorrect",
+                    }
+                )
+                for candidate in persisted_candidates
+            )
+            ledger_missing = bool(ep.tags or ep.chapter_tags) and not persisted_candidates
             cheap_fingerprint = tag_input_fingerprint(
                 ep,
                 taxonomy,
@@ -856,7 +992,12 @@ class TagsStage:
             # Rules tags don't need the LLM, so an LLM-disabled run is never "pending".
             llm_pending = llm_enabled and ep.tags_llm_recipe_hash is None
 
-            if inputs_unchanged and not llm_pending:
+            if (
+                inputs_unchanged
+                and not llm_pending
+                and not prelabeler_pending
+                and not ledger_missing
+            ):
                 # Fully resolved for the current inputs (or LLM disabled). Nothing to do -- skip
                 # WITHOUT any storage fetch. This is the steady state for the whole catalog and has
                 # to stay an in-memory O(1) check, never a storage round trip.
@@ -868,17 +1009,6 @@ class TagsStage:
                 # (untouched, retried next run) so the pass drains cheaply to its end-of-run
                 # persist instead of grinding the backlog's fetches into GitHub's hard job timeout.
                 stats.defer("tag-budget-stop", sample=ep.uid or ep.guid)
-                continue
-
-            if inputs_unchanged and llm_pending and ctx.tag_llm_dispatch_exhausted.is_set():
-                # Rules tags are already computed and cached (the fingerprint matches); only the
-                # quota-limited LLM tag is outstanding, and the backend has already reported it has
-                # no dispatch capacity left this run. Re-fetching the agenda/transcript text just to
-                # re-attempt a dispatch that will only defer again is the whole-backlog waste this
-                # redesign removes: defer in memory, untouched, and retry on a later run once quota
-                # frees. (A new/changed episode -- `not inputs_unchanged` -- still falls through to
-                # fetch, because it needs the text to compute its rules tags regardless of the LLM.)
-                stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
                 continue
 
             titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
@@ -905,9 +1035,12 @@ class TagsStage:
             )
             llm_recipe = tag_recipe_hash(
                 taxonomy,
-                agenda_item_titles=titles,
-                agenda_text=agenda_text,
-                transcript_text=transcript_text,
+                # The initial production LLM contract is chapter-only. Chapter title, mapped
+                # agenda evidence, transcript window, and timestamped segments are supplied below;
+                # episode-wide/backup text remains deterministic-only context.
+                agenda_item_titles="",
+                agenda_text="",
+                transcript_text="",
                 llm_enabled=llm_enabled,
                 chapter_inputs=chapter_fingerprint,
                 llm_route=llm_route,
@@ -924,7 +1057,12 @@ class TagsStage:
                 prompt_version=TAG_PROMPT_VERSION,
                 admission_policy=admission_policy,
             )
-            if ep.tags_spec_hash == projection_hash and (not chapters or ep.chapter_tags):
+            if (
+                ep.tags_spec_hash == projection_hash
+                and (not chapters or ep.chapter_tags)
+                and not prelabeler_pending
+                and not ledger_missing
+            ):
                 # Backfill the cheap fingerprint so the pre-check above can short-circuit this
                 # episode next run without the storage fetch just paid for above. Without this,
                 # every episode that was already fully resolved *before* tags_input_fingerprint
@@ -939,14 +1077,96 @@ class TagsStage:
                     stats.reused += 1
                 continue
 
-            rule_tags = tag_episode(titles + "\n" + agenda_text, transcript_text, taxonomy)
+            def project_visible_tags(
+                candidates: list[dict[str, Any]], annotations: list[dict[str, Any]]
+            ) -> list[dict[str, Any]]:
+                """Project the active ledger consistently after every state transition."""
+                projectable = [
+                    candidate
+                    for candidate in candidates
+                    if candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")
+                ]
+                visible = (
+                    visible_candidates(
+                        projectable, config=evaluation_config, state=evaluation_state
+                    )
+                    if projectable
+                    else []
+                )
+                episode_tags = merge_tag_sources(
+                    [], [tag for tag in visible if not tag.get("chapter_id")]
+                )
+                for annotation in annotations:
+                    annotation["tags"] = merge_tag_sources(
+                        [],
+                        [
+                            tag
+                            for tag in visible
+                            if tag.get("chapter_id") == annotation["chapter_id"]
+                        ],
+                    )
+                return rollup_tags(episode_tags, annotations, taxonomy)
+
+            def rule_audit_for(
+                tags: list[dict[str, Any]], agenda: str, transcript: str
+            ) -> list[dict[str, Any]]:
+                # `tag_episode(..., include_rule_metadata=True)` already scanned includes to
+                # produce rule evidence. Reuse those observations and scan only excludes here.
+                includes = [
+                    observation
+                    for tag in tags
+                    for observation in tag.get("rule_audit", [])
+                    if isinstance(observation, dict)
+                ]
+                return includes + rule_phrase_audit(agenda, transcript, taxonomy, include=False)
+
+            rule_tags = tag_episode(
+                titles + "\n" + agenda_text,
+                transcript_text,
+                taxonomy,
+                include_rule_metadata=True,
+            )
+            episode_rule_audit = rule_audit_for(
+                rule_tags, titles + "\n" + agenda_text, transcript_text
+            )
+            if episode_rule_audit:
+                remember_call_attempt(
+                    ep,
+                    purpose="topic-tags:rules",
+                    recipe_hash=rules_hash,
+                    status="resolved",
+                    metadata={
+                        "scope": "episode",
+                        "rule_audit": episode_rule_audit,
+                    },
+                    model=f"rule:{TAGGER_VERSION}",
+                )
             chapter_annotations = []
             for chapter in chapters:
                 chapter_rules = tag_episode(
                     chapter["title"] + "\n" + chapter.get("agenda_text", ""),
                     chapter.get("transcript_text", ""),
                     taxonomy,
+                    include_rule_metadata=True,
                 )
+                chapter_rule_audit = rule_audit_for(
+                    chapter_rules,
+                    chapter["title"] + "\n" + chapter.get("agenda_text", ""),
+                    chapter.get("transcript_text", ""),
+                )
+                if chapter_rule_audit:
+                    remember_call_attempt(
+                        ep,
+                        purpose="topic-tags:rules",
+                        recipe_hash=rules_hash,
+                        status="resolved",
+                        metadata={
+                            "scope": "chapter",
+                            "chapter_id": chapter["chapter_id"],
+                            "rule_audit": chapter_rule_audit,
+                        },
+                        model=f"rule:{TAGGER_VERSION}",
+                    )
                 for tag in chapter_rules:
                     for evidence in tag.get("evidence", []):
                         evidence["chapter_id"] = chapter["chapter_id"]
@@ -962,11 +1182,72 @@ class TagsStage:
                 chapter_annotations.append(
                     {"chapter_id": chapter["chapter_id"], "tags": chapter_rules}
                 )
-            completed_llm_recipe = ep.tags_llm_recipe_hash
-            if llm_enabled:
-                candidate_tags = (
-                    list(ep.llm_tag_candidates) if completed_llm_recipe == llm_recipe else []
+            rule_candidates = decorate_rule_candidates(
+                rule_tags,
+                episode_uid=ep.uid,
+                episode_title=ep.title,
+                taxonomy=taxonomy,
+                recipe_hash=rules_hash,
+            )
+            for annotation in chapter_annotations:
+                rule_candidates.extend(
+                    decorate_rule_candidates(
+                        annotation["tags"],
+                        episode_uid=ep.uid,
+                        episode_title=ep.title,
+                        taxonomy=taxonomy,
+                        recipe_hash=rules_hash,
+                        chapter_id_value=annotation["chapter_id"],
+                    )
                 )
+            completed_llm_recipe = ep.tags_llm_recipe_hash
+            persisted_rule_candidates = [
+                dict(candidate)
+                for candidate in persisted_candidates
+                if candidate.get("source_kind") == "rule"
+            ]
+            persisted_llm_candidates = [
+                dict(candidate)
+                for candidate in persisted_candidates
+                if candidate.get("source_kind", "llm") != "rule"
+            ]
+            prior_by_id = {
+                str(candidate.get("candidate_id")): candidate
+                for candidate in persisted_rule_candidates
+                if candidate.get("candidate_id")
+            }
+            # A deterministic match with the same recipe identity keeps its evaluator result and
+            # review provenance when the stage re-projects it. New rule candidates still receive
+            # fresh source evidence, while old identities remain available for the historical lane.
+            for current in rule_candidates:
+                prior = prior_by_id.get(str(current.get("candidate_id")))
+                if prior is not None:
+                    for field in (
+                        "prelabeler_model",
+                        "prelabeler_prompt_version",
+                        "prelabeler_decision",
+                        "prelabeler_confidence",
+                        "prelabeler_reason",
+                        "prelabeler_evidence_supported",
+                        "prelabeler_input_digest",
+                        "prelabeler_batch_index",
+                    ):
+                        if field in prior:
+                            current[field] = prior[field]
+            active_candidate_ids: set[str] = set()
+            if llm_enabled:
+                active_cached = [
+                    candidate
+                    for candidate in persisted_llm_candidates
+                    if completed_llm_recipe == llm_recipe
+                    # R5's LLM projection is chapter-only. Keep legacy episode-level rows in the
+                    # ledger for audit/backfill, but never feed them back into public projection.
+                    and candidate.get("chapter_id")
+                ]
+                candidate_tags = active_cached
+                active_candidate_ids = {
+                    str(candidate.get("candidate_id") or "") for candidate in active_cached
+                }
             elif ep.llm_tag_candidates:
                 # llm disabled/unavailable this run (dry run, misconfigured LLM_MODEL, ...) must
                 # still validate persisted candidates against current inputs, not republish them
@@ -977,70 +1258,76 @@ class TagsStage:
                 # prompt_version rather than this run's (there may be none) -- if every other input
                 # is unchanged, this reproduces completed_llm_recipe exactly; if not, it correctly
                 # diverges and the stale candidates are dropped.
-                cached = ep.llm_tag_candidates[0]
-                cached_recipe = tag_recipe_hash(
-                    taxonomy,
-                    agenda_item_titles=titles,
-                    agenda_text=agenda_text,
-                    transcript_text=transcript_text,
-                    llm_enabled=True,
-                    chapter_inputs=chapter_fingerprint,
-                    llm_route=str(cached.get("provider_model") or ""),
-                    prompt_version=str(cached.get("prompt_version") or TAG_PROMPT_VERSION),
+                cached = next(
+                    (
+                        candidate
+                        for candidate in ep.llm_tag_candidates
+                        if candidate.get("source_kind", "llm") != "rule"
+                    ),
+                    None,
                 )
-                candidate_tags = (
-                    list(ep.llm_tag_candidates) if completed_llm_recipe == cached_recipe else []
-                )
+                if cached is None:
+                    candidate_tags = []
+                else:
+                    cached_recipe = tag_recipe_hash(
+                        taxonomy,
+                        agenda_item_titles="",
+                        agenda_text="",
+                        transcript_text="",
+                        llm_enabled=True,
+                        chapter_inputs=chapter_fingerprint,
+                        llm_route=str(cached.get("provider_model") or ""),
+                        prompt_version=str(cached.get("prompt_version") or TAG_PROMPT_VERSION),
+                    )
+                    candidate_tags = (
+                        [
+                            candidate
+                            for candidate in persisted_llm_candidates
+                            if completed_llm_recipe == cached_recipe and candidate.get("chapter_id")
+                        ]
+                        if completed_llm_recipe == cached_recipe
+                        else []
+                    )
+                    active_candidate_ids = {
+                        str(candidate.get("candidate_id") or "") for candidate in candidate_tags
+                    }
             else:
                 candidate_tags = []
+            historical_candidates = [
+                {
+                    **candidate,
+                    "candidate_state": "historical",
+                    "display": False,
+                }
+                for candidate in [*persisted_rule_candidates, *persisted_llm_candidates]
+                if str(candidate.get("candidate_id") or "") not in active_candidate_ids
+                and str(candidate.get("candidate_id") or "")
+                not in {str(item.get("candidate_id") or "") for item in rule_candidates}
+            ]
+            candidate_tags = rule_candidates + candidate_tags
             # Visibility is a pure projection of whatever candidates are already on hand, not of
             # whether *this* run can dispatch a new LLM call: gating it on ``llm_enabled`` would
             # strip already-admitted candidates from ``ep.tags``/``ep.chapter_tags`` the moment
             # tagging is disabled or a dry run has no live backend, even though candidate_tags
             # (preserved above) is untouched.
-            visible_llm = (
-                visible_candidates(candidate_tags, config=evaluation_config, state=evaluation_state)
-                if candidate_tags
-                else []
-            )
-            merged_episode = merge_tag_sources(
-                rule_tags,
-                [tag for tag in visible_llm if not tag.get("chapter_id")],
-            )
-            for annotation in chapter_annotations:
-                chapter_visible = [
-                    tag for tag in visible_llm if tag.get("chapter_id") == annotation["chapter_id"]
-                ]
-                annotation["tags"] = merge_tag_sources(annotation["tags"], chapter_visible)
-            final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
+            final_tags = project_visible_tags(candidate_tags, chapter_annotations)
             final_hash = projection_hash if completed_llm_recipe == llm_recipe else rules_hash
-            if llm_enabled and completed_llm_recipe != llm_recipe:
+            if llm_enabled and completed_llm_recipe != llm_recipe and chapters:
                 if ctx.stop is not None and ctx.stop():
                     stats.defer("tag-llm-stop", sample=ep.uid or ep.guid)
-                    candidate_tags = []
+                    candidate_tags = rule_candidates
+                    completed_llm_recipe = None
+                elif ctx.tag_llm_dispatch_exhausted.is_set():
+                    stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
+                    # The LLM request is the only unavailable part of this episode. Keep the
+                    # deterministic rules and any applicable cached candidates in the ledger and
+                    # projection; only the unresolved recipe remains unset for a later run.
+                    completed_llm_recipe = None
+                elif not ctx.reserve_tag_dispatch():
+                    stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
                     completed_llm_recipe = None
                 else:
-                    # Peek the deferred registry for THIS exact recipe before dispatching.
-                    # `LiteLLMBackend.run_inference` short-circuits to an existing registry entry
-                    # for `recipe_hash` before ever running the live pacing/quota check (so a
-                    # concurrent/prior call for the same recipe can't double-reserve quota) -- so a
-                    # still-pending entry found here means the call below is *guaranteed* to return
-                    # that same stale handle rather than a fresh live check. A stale pending record
-                    # just means the daily deferred sweep hasn't reconciled it yet; it says nothing
-                    # about whether quota is available right now. Only a dispatch that had NO
-                    # pre-existing cached entry can tell us anything about current capacity, so only
-                    # that case is allowed to set `tag_llm_dispatch_exhausted` below.
-                    backend_storage = getattr(ctx.tag_backend, "storage", None)
-                    had_cached_pending = False
-                    if backend_storage is not None and getattr(
-                        backend_storage, "cas_capable", False
-                    ):
-                        from citypods.compute.base import JobHandle
-                        from citypods.compute.llm_deferred import look_up_deferred
-
-                        had_cached_pending = isinstance(
-                            look_up_deferred(backend_storage, llm_recipe), JobHandle
-                        )
+                    dispatch_settled = False
                     try:
                         # The tag lane's heartbeat prints PROGRESS's snapshot on every tick
                         # ("active work: ..."), but until now nothing in this stage ever
@@ -1049,6 +1336,7 @@ class TagsStage:
                         # indistinguishable from a genuinely stuck run: both showed "no tracked
                         # work active" for the heartbeat's whole run. This is the one call in the
                         # tag lane actually worth tracking (network round trip + pacing waits).
+                        tag_call_metadata: dict[str, Any] = {}
                         with PROGRESS.track(
                             source=city.slug,
                             uid=str(ep.uid or ep.guid),
@@ -1062,30 +1350,37 @@ class TagsStage:
                             ) = llm_tag_suggestions(
                                 ctx.tag_backend,
                                 taxonomy=taxonomy,
-                                agenda_item_titles=titles,
-                                agenda_text=agenda_text,
-                                transcript_text=transcript_text,
+                                agenda_item_titles="",
+                                agenda_text="",
+                                transcript_text="",
                                 recipe_hash=llm_recipe,
                                 chapter_inputs=chapters,
                                 agenda_documents=agenda_document_context(ep),
-                                # Let the scheduler pace within-run rate limits up to the tag
-                                # lane's wall-clock budget, so a run drains its full daily quota
-                                # across minute windows instead of bursting one window and
-                                # stopping.
-                                deadline_at=ctx.tag_llm_deadline,
+                                call_metadata_out=tag_call_metadata,
+                                # Non-interactive tagging: dispatch calls are unpaced on the runner
+                                # and should not carry an expiring deadline to the worker queue.
+                                deadline_at=None,
                             )
+                        queued_dispatch = bool(dispatched and resolved_model != "payload-too-large")
+                        ctx.settle_tag_dispatch(queued_dispatch)
+                        dispatch_settled = True
+                        remember_call_attempt(
+                            ep,
+                            purpose="topic-tags:tagger",
+                            recipe_hash=llm_recipe,
+                            status="deferred" if dispatched else "resolved",
+                            metadata=tag_call_metadata,
+                            model=resolved_model or llm_route,
+                            reason=(resolved_model or "") if dispatched else "",
+                        )
                         if dispatched:
-                            candidate_tags = []
                             completed_llm_recipe = None
-                            stats.defer("tag-llm-dispatch", sample=ep.uid or ep.guid)
-                            if not had_cached_pending:
-                                # A fresh dispatch attempt (no pre-existing registry entry) came
-                                # back deferred -- the live pacing loop genuinely found no
-                                # eligible route before the run's deadline. Signal the rest of
-                                # this run's episodes not to re-fetch their text merely to
-                                # re-attempt a dispatch that will also just defer -- see the
-                                # in-memory triage's `tag_llm_dispatch_exhausted` gate above.
-                                ctx.tag_llm_dispatch_exhausted.set()
+                            stats.defer(
+                                "tag-llm-oversized"
+                                if resolved_model == "payload-too-large"
+                                else "tag-llm-dispatch",
+                                sample=ep.uid or ep.guid,
+                            )
                         else:
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to
@@ -1100,14 +1395,6 @@ class TagsStage:
                                 if resolved_model
                                 else llm_route
                             )
-                            episode_candidates = decorate_llm_candidates(
-                                suggestions,
-                                episode_uid=ep.uid,
-                                episode_title=ep.title,
-                                provider_model=candidate_provider_model,
-                                taxonomy=taxonomy,
-                                recipe_hash=llm_recipe,
-                            )
                             chapter_candidates: list[dict[str, Any]] = []
                             for chapter in chapters:
                                 chapter_candidates.extend(
@@ -1120,30 +1407,139 @@ class TagsStage:
                                         recipe_hash=llm_recipe,
                                     )
                                 )
-                            candidate_tags = episode_candidates + chapter_candidates
+                            # Episode-level LLM suggestions are rejected by the contract; keep the
+                            # variable for compatibility with deferred/old responses, but the new
+                            # rollout persists only chapter candidates alongside fresh rule rows.
+                            candidate_tags = rule_candidates + chapter_candidates
                             completed_llm_recipe = llm_recipe
-                            visible_llm = visible_candidates(
-                                candidate_tags,
-                                config=evaluation_config,
-                                state=evaluation_state,
-                            )
-                            merged_episode = merge_tag_sources(
-                                rule_tags,
-                                [tag for tag in visible_llm if not tag.get("chapter_id")],
-                            )
-                            for annotation in chapter_annotations:
-                                extra = [
-                                    tag
-                                    for tag in visible_llm
-                                    if tag.get("chapter_id") == annotation["chapter_id"]
-                                ]
-                                annotation["tags"] = merge_tag_sources(annotation["tags"], extra)
-                            final_tags = rollup_tags(merged_episode, chapter_annotations, taxonomy)
+                            final_tags = project_visible_tags(candidate_tags, chapter_annotations)
                             final_hash = projection_hash
                     except Exception as exc:  # noqa: BLE001 — one bad model reply is item-local
+                        if not dispatch_settled:
+                            ctx.settle_tag_dispatch(False)
+                        remember_call_attempt(
+                            ep,
+                            purpose="topic-tags:tagger",
+                            recipe_hash=llm_recipe,
+                            status="error",
+                            metadata=tag_call_metadata,
+                            model=llm_route,
+                            reason=str(exc)[:500],
+                        )
                         stats.errors.append(f"{ep.uid or ep.guid}: LLM tagging failed: {exc}")
-                        candidate_tags = []
+                        candidate_tags = rule_candidates
                         completed_llm_recipe = None
+            elif llm_enabled and completed_llm_recipe != llm_recipe and not chapters:
+                # A chapter-only LLM rollout has no valid subject when the chapter finder has not
+                # produced usable chapters yet. Mark the empty LLM projection resolved for this
+                # input so the stage does not dispatch the same empty request on every run; the
+                # chapter fingerprint will invalidate it naturally when chapters arrive.
+                completed_llm_recipe = llm_recipe
+                final_hash = projection_hash
+
+            if prelabeler_enabled and prelabeler_model and candidate_tags:
+                projectable_candidates = [
+                    candidate
+                    for candidate in candidate_tags
+                    if candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")
+                ]
+                pending_prelabels = [
+                    candidate
+                    for candidate in projectable_candidates
+                    if candidate.get("prelabeler_model") != prelabeler_model
+                    or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
+                    or candidate.get("prelabeler_decision")
+                    not in {
+                        "likely_correct",
+                        "needs_human_review",
+                        "likely_incorrect",
+                    }
+                ]
+                if pending_prelabels:
+                    if ctx.stop is not None and ctx.stop():
+                        stats.defer("tag-prelabeler-stop", sample=ep.uid or ep.guid)
+                    else:
+                        prelabel_recipe = hashlib.sha1(
+                            json.dumps(
+                                {
+                                    "llm_recipe": llm_recipe,
+                                    "model": prelabeler_model,
+                                    "prompt_version": prelabeler_prompt_version,
+                                    "candidates": sorted(
+                                        str(item.get("candidate_id")) for item in pending_prelabels
+                                    ),
+                                },
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ).encode()
+                        ).hexdigest()[:16]
+                        try:
+                            prelabel_call_metadata: dict[str, Any] = {}
+                            with PROGRESS.track(
+                                source=city.slug,
+                                uid=str(ep.uid or ep.guid),
+                                phase="tag-prelabeler-dispatch",
+                            ):
+                                (
+                                    prelabels,
+                                    prelabel_dispatched,
+                                    _prelabel_resolved_model,
+                                ) = llm_prelabel_candidates(
+                                    ctx.tag_backend,
+                                    candidates=pending_prelabels,
+                                    taxonomy=taxonomy,
+                                    chapters=chapters,
+                                    agenda_text=agenda_text,
+                                    transcript_text=transcript_text,
+                                    recipe_hash=prelabel_recipe,
+                                    model=prelabeler_model,
+                                    prompt_version=prelabeler_prompt_version,
+                                    call_metadata_out=prelabel_call_metadata,
+                                )
+                            remember_call_attempt(
+                                ep,
+                                purpose="topic-tags:prelabeler",
+                                recipe_hash=prelabel_recipe,
+                                status="deferred" if prelabel_dispatched else "resolved",
+                                metadata=prelabel_call_metadata,
+                                model=_prelabel_resolved_model or prelabeler_model,
+                                reason=(
+                                    _prelabel_resolved_model
+                                    if prelabel_dispatched and _prelabel_resolved_model
+                                    else ""
+                                ),
+                            )
+                            if prelabels:
+                                candidate_tags = [
+                                    {
+                                        **candidate,
+                                        **prelabels.get(str(candidate.get("candidate_id")), {}),
+                                    }
+                                    for candidate in candidate_tags
+                                ]
+                            if prelabel_dispatched:
+                                stats.defer(
+                                    "tag-prelabeler-oversized"
+                                    if _prelabel_resolved_model == "payload-too-large"
+                                    else "tag-prelabeler-dispatch",
+                                    sample=ep.uid or ep.guid,
+                                )
+                        except Exception as exc:  # noqa: BLE001 — evaluator is item-local
+                            remember_call_attempt(
+                                ep,
+                                purpose="topic-tags:prelabeler",
+                                recipe_hash=prelabel_recipe,
+                                status="error",
+                                metadata=prelabel_call_metadata,
+                                model=prelabeler_model,
+                                reason=str(exc)[:500],
+                            )
+                            stats.errors.append(f"{ep.uid or ep.guid}: pre-labeler failed: {exc}")
+
+            # Re-project after the evaluator attempt. This is intentionally cheap and makes the
+            # overlay a pure function of the persisted ledger + calibration state; a deferred or
+            # failed evaluator therefore leaves the previous display decision intact.
+            final_tags = project_visible_tags(candidate_tags, chapter_annotations)
 
             if llm_enabled and completed_llm_recipe == llm_recipe:
                 candidate_tags = [
@@ -1151,6 +1547,22 @@ class TagsStage:
                     for tag in candidate_tags
                 ]
                 final_hash = projection_hash
+
+            # Keep superseded/legacy LLM rows in the canonical append-oriented ledger. They are
+            # intentionally excluded from `projectable_candidates` above and marked hidden here,
+            # so recipe/chapter changes never erase audit evidence or make an old episode-level row
+            # public again. Deterministic rows and the active current-recipe candidates remain the
+            # live projection set.
+            ledger_by_id: dict[str, dict[str, Any]] = {}
+            for candidate in historical_candidates + candidate_tags:
+                key = str(candidate.get("candidate_id") or "")
+                if not key:
+                    from citypods.llm_evaluation import candidate_id
+
+                    key = candidate_id(candidate)
+                    candidate = {**candidate, "candidate_id": key}
+                ledger_by_id[key] = candidate
+            ledger_candidates = list(ledger_by_id.values())
 
             # Cache the input fingerprint whenever this run captured the current inputs -- INCLUDING
             # when the LLM dispatch is still pending (`final_hash == rules_hash`, not
@@ -1165,14 +1577,14 @@ class TagsStage:
             if (
                 ep.tags != final_tags
                 or ep.chapter_tags != chapter_annotations
-                or ep.llm_tag_candidates != candidate_tags
+                or ep.llm_tag_candidates != ledger_candidates
                 or ep.tags_llm_recipe_hash != completed_llm_recipe
                 or ep.tags_spec_hash != final_hash
                 or ep.tags_input_fingerprint != fingerprint_after
             ):
                 ep.tags = final_tags
                 ep.chapter_tags = chapter_annotations
-                ep.llm_tag_candidates = candidate_tags
+                ep.llm_tag_candidates = ledger_candidates
                 ep.tags_llm_recipe_hash = completed_llm_recipe
                 ep.tags_spec_hash = final_hash
                 ep.tags_input_fingerprint = fingerprint_after
@@ -1915,8 +2327,11 @@ class ChaptersStage:
                 # source-time equivalent we can safely remap across multiple sources.
                 stats.reused += 1
                 continue
-            if remaining <= 0 or (ctx.stop is not None and ctx.stop()):
-                stats.skipped += 1
+            if remaining <= 0:
+                stats.defer("per-run-cap")
+                continue
+            if ctx.stop is not None and ctx.stop():
+                stats.defer("wall-clock-budget")
                 continue
             remaining -= 1
             try:
@@ -1924,14 +2339,14 @@ class ChaptersStage:
             except Exception as exc:  # one bad page must not fail the whole source
                 stats.errors.append(f"{ep.uid}: {exc}")
                 continue
+            # Transcript availability is independent of chapter availability. A provider page
+            # with no agenda markers may still expose a transcript endpoint and must not lose it.
+            if transcript and "transcript" not in (ep.links or {}):
+                ep.links = {**(ep.links or {}), "transcript": transcript}
             if chapters:
                 ep.source_chapters = [dict(ch) for ch in chapters]
                 ep.chapters = [dict(ch) for ch in chapters]
                 ep.chapters_basis = "source:s0"
-                # Don't clobber a richer transcript already set (e.g. CivicClerk's published
-                # transcript PDF beats a closed-caption .srt fallback).
-                if transcript and "transcript" not in (ep.links or {}):
-                    ep.links = {**(ep.links or {}), "transcript": transcript}
                 stats.ran += 1
             else:
                 stats.reused += 1  # no agenda items on this page; nothing to embed
@@ -1995,7 +2410,10 @@ class AgendaTextStage:
     # bounded second-hop enumeration-page follow are new manifest fields/behavior. Without this
     # bump, stage_is_dirty()'s generic version check would never re-derive an already-completed
     # episode's backup manifest, leaving it permanently on the old, unattributed shape.
-    version = "2"
+    # Bumped 2 -> 3 (GH#1092): re-assess existing agenda artifacts through the quality gate and
+    # backfill their quality envelope gradually during normal enrichment; no bulk migration run
+    # is required, and only suspicious PDFs invoke OCR.
+    version = "3"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -2005,7 +2423,9 @@ class AgendaTextStage:
 
         from citypods.agenda_text import (
             AGENDA_TEXT_MAX_CHARS,
+            AGENDA_TEXT_QUALITY_VERSION,
             DocumentLink,
+            assess_agenda_document,
             attribute_links_by_content,
             chapter_text_matches,
             extract_document,
@@ -2048,26 +2468,131 @@ class AgendaTextStage:
             if agenda_text_backoff_until(ep) and agenda_text_backoff_until(ep) > now:
                 stats.defer("agenda-text-backoff")
                 continue
-            if ep.agenda_text_url == agenda_url and ep.agenda_backup_url:
+            quality = ep.agenda_text_quality or {}
+            if (
+                ep.agenda_text_url == agenda_url
+                and ep.agenda_backup_url
+                and ep.agenda_text_attempts == 0
+                and quality.get("status") == "accepted"
+                and quality.get("pipeline_version") == AGENDA_TEXT_QUALITY_VERSION
+                and not quality.get("last_assessment")
+            ):
                 stats.reused += 1
                 continue
             if ctx.stop is not None and ctx.stop():
-                stats.skipped += 1
+                stats.defer("wall-clock-budget", sample=ep.uid or ep.guid)
                 continue
             try:
-                content, content_type = fetch(agenda_url)
-                text, discovered = extract_document(
-                    content, content_type=content_type, source_url=agenda_url
-                )
-                text = text[:AGENDA_TEXT_MAX_CHARS]
+                import hashlib
+
+                candidate_urls = []
+                for candidate in (
+                    links_map.get("agenda_portal"),
+                    links_map.get("agenda"),
+                    links_map.get("agenda_packet"),
+                ):
+                    if candidate and candidate not in candidate_urls:
+                        candidate_urls.append(candidate)
+                assessment = None
+                content = b""
+                discovered: list[DocumentLink] = []
+                selected_url = agenda_url
+                for candidate_url in candidate_urls:
+                    try:
+                        candidate_content, candidate_type = fetch(candidate_url)
+                        candidate_assessment, candidate_links = assess_agenda_document(
+                            candidate_content,
+                            content_type=candidate_type,
+                            source_url=candidate_url,
+                        )
+                    except Exception:
+                        continue
+                    content = candidate_content
+                    selected_url = candidate_url
+                    assessment, discovered = candidate_assessment, candidate_links
+                    if assessment.status == "accepted":
+                        break
+                    # A portal shell may expose the actual PDF as a same-origin link.  Follow only
+                    # validated links and keep the bounded candidate list deterministic.
+                    for link in candidate_links:
+                        if (
+                            link.url not in candidate_urls
+                            and _is_valid_document_url(city, link.url)
+                            and ("pdf" in link.url.lower() or link.kind == "backup")
+                        ):
+                            candidate_urls.append(link.url)
+                    if len(candidate_urls) >= 8:
+                        break
+                if assessment is None:
+                    raise RuntimeError("agenda-candidate-fetch-failed")
+                text = assessment.text[:AGENDA_TEXT_MAX_CHARS]
                 links = [
                     link
                     for link in minutes_links(discovered)
                     if _is_valid_document_url(city, link.url)
                 ]
-                ep.agenda_text_url = agenda_url
-                ep.agenda_text_attempts = 0
+                now = datetime.now(UTC)
+                prior_quality = ep.agenda_text_quality or {}
+                prior_assessment = prior_quality.get("last_assessment")
+                if not isinstance(prior_assessment, dict):
+                    prior_assessment = prior_quality
+                quality = assessment.as_dict()
+                document_hash = hashlib.sha256(content).hexdigest()
+                same_document = (
+                    prior_assessment.get("document_hash") == document_hash
+                    and prior_assessment.get("source_url") == selected_url
+                )
+                same_accepted_document = (
+                    prior_quality.get("document_hash") == document_hash
+                    and prior_quality.get("source_url") == selected_url
+                    and prior_quality.get("status") == "accepted"
+                )
+                quality["document_hash"] = document_hash
+                quality["first_seen"] = (
+                    prior_assessment.get("first_seen", now.isoformat())
+                    if same_document
+                    else now.isoformat()
+                )
+                quality["last_seen"] = now.isoformat()
+                quality["assessment_attempts"] = (
+                    int(prior_assessment.get("assessment_attempts", 0) or 0) + 1
+                    if same_document
+                    else 1
+                )
                 ep.agenda_text_last_attempt = datetime.now(UTC).isoformat()
+                if assessment.status != "accepted":
+                    ep.agenda_text_attempts += 1
+                    stats.quality(assessment.reason)
+                    stats.defer(
+                        f"agenda-quality-{assessment.reason}",
+                        sample=ep.uid or ep.guid,
+                    )
+                    had_accepted_artifact = prior_quality.get("status") == "accepted"
+                    if had_accepted_artifact and not same_accepted_document:
+                        # Keep the last known-good artifact eligible while retaining the new
+                        # rejection for audit/diagnostics. A transient portal shell must not make
+                        # an already-published agenda disappear from the feed.
+                        retained_quality = dict(prior_quality)
+                        retained_quality["last_assessment"] = quality
+                        ep.agenda_text_quality = retained_quality
+                    else:
+                        ep.agenda_text_url = selected_url
+                        ep.agenda_text_quality = quality
+                        ep.links = dict(ep.links or {})
+                        ep.links.pop("agenda_text_artifact", None)
+                        ep.links.pop("agenda_text_artifact_key", None)
+                        ep.links.pop("agenda_backup_artifact", None)
+                        ep.links.pop("agenda_backup_artifact_key", None)
+                        ep.agenda_backup_url = None
+                    continue
+                ep.agenda_text_url = selected_url
+                ep.agenda_text_quality = quality
+                ep.agenda_text_attempts = 0
+                stats.quality(
+                    "accepted-notice"
+                    if assessment.eligibility == "notice"
+                    else f"accepted-{assessment.method}"
+                )
                 agenda_artifact_url = _store_document(
                     ctx, src_key, ep.uid or ep.guid, "agenda", text.encode()
                 )
@@ -2269,6 +2794,7 @@ class AgendaTextStage:
                 ep.agenda_text_last_attempt = now.isoformat()
                 ep.agenda_backup_attempts += 1
                 ep.agenda_backup_last_attempt = now.isoformat()
+                stats.quality("fetch-failure")
                 stats.errors.append(f"{ep.uid or ep.guid}: {exc}")
         return stats
 
@@ -2317,7 +2843,7 @@ class MinutesTextStage:
                 stats.defer("minutes-text-backoff")
                 continue
             if ctx.stop is not None and ctx.stop():
-                stats.skipped += 1
+                stats.defer("wall-clock-budget", sample=ep.uid or ep.guid)
                 continue
             try:
                 content, content_type = fetch_document_bytes(
@@ -2489,13 +3015,16 @@ def _document_key(source: str, uid: str, kind: str, content: bytes) -> str:
 
 
 TRANSCRIPT_PIPELINE_VERSION = "1"
-AGENDA_TEXT_PIPELINE_VERSION = "1"
-# Bumped alongside AgendaTextStage.version -- see that class's comment.
+AGENDA_TEXT_PIPELINE_VERSION = "3"
+# Bumped 2 -> 3 alongside AgendaTextStage.version (GH#1092). Existing records are gradually
+# re-assessed during normal enrichment; old artifacts remain available until a replacement is
+# accepted, and suspicious PDFs alone invoke OCR.
 AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
 MINUTES_VOTES_PIPELINE_VERSION = "1"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
+PROVIDER_NATIVE_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 CHAPTER_AGENDA_PIPELINE_VERSION = "1"
@@ -2546,6 +3075,8 @@ def _provider_align_spec_hash(ep: Episode, artifact: dict) -> str:
     spec = {
         "v": PROVIDER_ALIGN_PIPELINE_VERSION,
         "provider": artifact.get("spec_hash"),
+        "text": artifact.get("text_hash"),
+        "model": artifact.get("model"),
         "timeline": tl_digest,
         "repair": timeline_audio_repair_token(ep, REPAIR_TRANSCRIPT_REGENERATE),
     }
@@ -2559,6 +3090,188 @@ def _provider_align_object_key(src_key: str, uid: str, spec: str) -> str:
 
 def _provider_align_words_object_key(src_key: str, uid: str, spec: str) -> str:
     return f"transcripts/{src_key}/{uid}-provider-align-{spec}.words.json"
+
+
+def _provider_native_words_object_key(src_key: str, uid: str, spec: str) -> str:
+    return f"transcripts/{src_key}/{uid}-provider-native-{spec}.words.json"
+
+
+_VTT_WORD_TIMESTAMP_RE = re.compile(r"<(?P<time>(?:(?:\d{2}:)?\d{2}:\d{2})[\.,]\d{3})>")
+_SWAGIT_INLINE_TIMESTAMP_RE = re.compile(
+    r"^\s*\[\s*(?P<time>\d{1,2}:\d{2}(?::\d{2}(?:[\.,]\d{1,3})?)?)\s*\]\s*$"
+)
+_SWAGIT_COARSE_MAX_GAP_SECONDS = 15 * 60
+
+
+def _has_word_timing_vtt(content: bytes) -> bool:
+    """Return whether a WebVTT source contains inline word timestamps.
+
+    Cue timestamps alone are not sufficient for the downstream word-boundary features.  WebVTT
+    word timing is represented by inline ``<HH:MM:SS.mmm>`` tags inside cue text; SRT never
+    qualifies for the provider-native path.
+    """
+    if not content.lstrip().startswith(b"WEBVTT"):
+        return False
+    return any(_VTT_WORD_TIMESTAMP_RE.finditer(content.decode("utf-8-sig", errors="replace")))
+
+
+def _provider_alignment_artifact_is_reusable(artifact: dict) -> bool:
+    """Return whether a computed provider alignment has the current WhisperX recipe."""
+    return artifact.get("align_pipeline_version") == PROVIDER_ALIGN_PIPELINE_VERSION
+
+
+def _provider_alignment_source_format(registry: object) -> str | None:
+    """Return the source format selected by the provider registry, if one is available."""
+    if not isinstance(registry, dict):
+        return None
+    for artifact in (registry.get("candidate"), registry.get("known_good")):
+        if isinstance(artifact, dict) and artifact.get("key"):
+            source_format = str(artifact.get("format") or "").lower()
+            return source_format or None
+    return None
+
+
+def _provider_vtt_words_json(content: bytes, *, basis: str = "served") -> bytes | None:
+    """Convert inline word-timed VTT into the shared word-sidecar shape.
+
+    Provider VTTs vary in whether every word has an explicit marker.  When markers exist, words
+    between adjacent markers are distributed over that interval; this is only used for the
+    provider-native preserve path, never for the computed provider-alignment path.
+    """
+    if not _has_word_timing_vtt(content):
+        return None
+    cues = _parse_timed_transcript(content, "vtt")
+    out_segments: list[dict] = []
+    for cue in cues:
+        raw = str(cue.get("text") or "")
+        markers = list(_VTT_WORD_TIMESTAMP_RE.finditer(raw))
+        if not markers:
+            continue
+        words: list[dict] = []
+        chunks: list[tuple[float, float, str]] = []
+        # Providers commonly timestamp the *second* word onward.  Keep the leading words and
+        # distribute them between the cue start and the first explicit marker.
+        first_start = _parse_transcript_time(markers[0].group("time"))
+        chunks.append((float(cue["start"]), first_start, raw[: markers[0].start()]))
+        for index, marker in enumerate(markers):
+            start = _parse_transcript_time(marker.group("time"))
+            end = (
+                _parse_transcript_time(markers[index + 1].group("time"))
+                if index + 1 < len(markers)
+                else float(cue["end"])
+            )
+            text = raw[
+                marker.end() : markers[index + 1].start() if index + 1 < len(markers) else None
+            ]
+            chunks.append((start, end, text))
+        for start, end, text in chunks:
+            tokens = text.replace("\n", " ").split()
+            if not tokens:
+                continue
+            end = max(start, end)
+            step = (end - start) / len(tokens)
+            for token_index, token in enumerate(tokens):
+                word_start = start + step * token_index
+                word_end = (
+                    end if token_index + 1 == len(tokens) else start + step * (token_index + 1)
+                )
+                words.append({"w": token, "s": round(word_start, 3), "e": round(word_end, 3)})
+        if words:
+            plain = _VTT_WORD_TIMESTAMP_RE.sub("", raw).replace("\n", " ").strip()
+            out_segments.append(
+                {
+                    "start": round(float(cue["start"]), 3),
+                    "end": round(float(cue["end"]), 3),
+                    "text": plain,
+                    "words": words,
+                }
+            )
+    if not out_segments:
+        return None
+    return json.dumps(
+        {"schema": "2", "basis": basis, "segments": out_segments},
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
+def _provider_source_text(content: bytes, fmt: str) -> str:
+    """Extract provider wording for the full aligner."""
+    if fmt in {"vtt", "srt"}:
+        joined = "\n".join(
+            str(cue.get("text") or "") for cue in _parse_timed_transcript(content, fmt)
+        )
+        joined = _VTT_WORD_TIMESTAMP_RE.sub("", joined)
+        return _preprocess_align_text(joined)
+    return _preprocess_align_text(content.decode("utf-8", errors="replace"))
+
+
+def _provider_source_duration_hint(ep: Episode) -> float | None:
+    """Return a source-clock duration suitable for closing a coarse transcript window."""
+    duration = episode_source_duration_seconds(ep)
+    if duration is not None:
+        return duration
+    if ep.timeline is not None:
+        source_ends = [
+            float(segment.source_end)
+            for segment in ep.timeline.segments
+            if segment.kind == "source" and segment.source_end is not None
+        ]
+        if source_ends:
+            return max(source_ends)
+        return None
+    return episode_served_duration_seconds(ep)
+
+
+def _parse_swagit_coarse_cues(ep: Episode, content: bytes) -> list[dict]:
+    """Parse Swagit's standalone bracket timestamps into source-time cue windows.
+
+    Swagit TXT transcripts put a timestamp on its own line, usually about every five minutes,
+    rather than using VTT/SRT ``start --> end`` cues.  These are useful as broad alignment
+    windows, but only when there are at least two monotonic anchors and a known source duration to
+    close the final window.  Agenda/section lines are structural annotations, not spoken text, so
+    standalone bracketed lines are removed from each block.
+    """
+    text = content.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
+    anchors: list[tuple[float, list[str]]] = []
+    for raw in text.split("\n"):
+        line = raw.strip()
+        match = _SWAGIT_INLINE_TIMESTAMP_RE.fullmatch(line)
+        if match:
+            try:
+                timestamp = _parse_transcript_time(match.group("time"))
+            except (TypeError, ValueError):
+                return []
+            anchors.append((timestamp, []))
+            continue
+        if not anchors:
+            # This excludes the provider disclaimer and any leading agenda heading before the
+            # first timed block. The first marker is the first reliable audio anchor.
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            continue
+        anchors[-1][1].append(raw.rstrip())
+
+    if len(anchors) < 2:
+        return []
+    duration = _provider_source_duration_hint(ep)
+    if duration is None or duration <= 0:
+        return []
+
+    cues: list[dict] = []
+    for index, (start, lines) in enumerate(anchors):
+        end = anchors[index + 1][0] if index + 1 < len(anchors) else duration
+        if start < 0 or end <= start or end > duration + 1.0:
+            return []
+        if end - start > _SWAGIT_COARSE_MAX_GAP_SECONDS:
+            return []
+        block = _preprocess_align_text("\n".join(lines))
+        if block:
+            cues.append({"start": float(start), "end": float(end), "text": block})
+
+    # A single usable block is no better than full alignment: it provides no meaningful search
+    # partition, so deliberately use the existing safe fallback.
+    return cues if len(cues) >= 2 else []
 
 
 def _provider_diarize_spec_hash(ep: Episode, artifact: dict) -> str:
@@ -2589,6 +3302,100 @@ def _provider_transcript_history(history: object, *, limit: int = 5) -> list[dic
     return [item for item in history if isinstance(item, dict)][:limit]
 
 
+# Swagit transcript discovery is a cheap HTTP operation, but the catalog is large and many old
+# meetings have no transcript endpoint. Persisted probe state keeps those known misses out of every
+# subsequent run while still allowing a provider to add transcripts later.
+SWAGIT_TRANSCRIPT_ABSENT_BACKOFF_BASE = timedelta(days=7)
+SWAGIT_TRANSCRIPT_ABSENT_BACKOFF_MAX = timedelta(days=90)
+SWAGIT_TRANSCRIPT_ERROR_BACKOFF_BASE = timedelta(days=1)
+SWAGIT_TRANSCRIPT_ERROR_BACKOFF_MAX = timedelta(days=7)
+SWAGIT_TRANSCRIPT_AVAILABLE_RECHECK = timedelta(days=30)
+
+
+def _provider_transcript_probe(ep: Episode) -> dict:
+    """Return the persisted Swagit/provider transcript probe envelope, if valid."""
+    registry = ep.provider_transcript or {}
+    probe = registry.get("probe") if isinstance(registry, dict) else None
+    return dict(probe) if isinstance(probe, dict) else {}
+
+
+def _provider_transcript_probe_due(ep: Episode, *, url: str | None, now: datetime) -> bool:
+    """Return whether a provider transcript URL should be fetched again."""
+    probe = _provider_transcript_probe(ep)
+    if not probe:
+        # Pre-probe records already carry checked_at on their candidate/known-good artifact. Treat
+        # that as a successful check so the rollout does not immediately re-download every old
+        # provider transcript merely because the probe envelope was introduced later.
+        registry = ep.provider_transcript or {}
+        for artifact in (
+            registry.get("candidate"),
+            registry.get("known_good"),
+        ):
+            if not isinstance(artifact, dict) or (url and artifact.get("url") != url):
+                continue
+            checked_at = _parse_iso_utc(artifact.get("checked_at"))
+            if checked_at is not None:
+                return now >= checked_at + SWAGIT_TRANSCRIPT_AVAILABLE_RECHECK
+        return True
+    if url and probe.get("url") != url:
+        return True
+    next_retry = _parse_iso_utc(probe.get("next_retry_at"))
+    return next_retry is None or now >= next_retry
+
+
+def _record_provider_transcript_probe(
+    ep: Episode,
+    *,
+    url: str,
+    status: str,
+    now: datetime,
+    status_code: int | None = None,
+) -> None:
+    """Persist provider transcript probe status and its next retry time."""
+    registry = dict(ep.provider_transcript or {})
+    prior = registry.get("probe") if isinstance(registry.get("probe"), dict) else {}
+    same_url = prior.get("url") == url
+    attempts = int(prior.get("attempts") or 0) if same_url else 0
+    if status == "available":
+        attempts = 0
+        delay = SWAGIT_TRANSCRIPT_AVAILABLE_RECHECK
+    elif status == "absent":
+        attempts += 1
+        delay = _capped_exponential_backoff(
+            SWAGIT_TRANSCRIPT_ABSENT_BACKOFF_BASE,
+            SWAGIT_TRANSCRIPT_ABSENT_BACKOFF_MAX,
+            attempts,
+        )
+    else:
+        attempts += 1
+        delay = _capped_exponential_backoff(
+            SWAGIT_TRANSCRIPT_ERROR_BACKOFF_BASE,
+            SWAGIT_TRANSCRIPT_ERROR_BACKOFF_MAX,
+            attempts,
+        )
+    registry["probe"] = {
+        "url": url,
+        "status": status,
+        "status_code": status_code,
+        "attempts": attempts,
+        "checked_at": now.isoformat(),
+        "next_retry_at": (now + delay).isoformat(),
+    }
+    ep.provider_transcript = registry
+
+
+def _claim_provider_transcript_probe(ctx: StageContext, source: str) -> bool:
+    """Atomically consume one per-source provider probe from this build's shared budget."""
+    with ctx.provider_transcript_probe_lock:
+        remaining = ctx.provider_transcript_probe_remaining.setdefault(
+            source, max(0, ctx.provider_transcript_probes_per_source)
+        )
+        if remaining <= 0:
+            return False
+        ctx.provider_transcript_probe_remaining[source] = remaining - 1
+        return True
+
+
 def _provider_transcript_artifact(
     *,
     source_url: str,
@@ -2597,6 +3404,7 @@ def _provider_transcript_artifact(
     spec: str,
     fmt: str,
     synced: bool,
+    word_timed: bool = False,
     now: str,
     status: str,
 ) -> dict:
@@ -2608,6 +3416,7 @@ def _provider_transcript_artifact(
         "format": fmt,
         "basis": "source:s0",
         "synced": synced,
+        "word_timed": word_timed,
         "confidence": None,
         "checked_at": now,
         "fetched_at": now,
@@ -2763,6 +3572,98 @@ def _remap_provider_cues(ep: Episode, cues: list[dict]) -> tuple[list[dict], flo
     return remapped, confidence
 
 
+def _provider_alignment_inputs(
+    ep: Episode, content: bytes, fmt: str
+) -> tuple[str, list[dict] | None]:
+    """Return provider alignment text and served-time cue windows when available.
+
+    Provider VTT/SRT timestamps are based on the source recording.  The hosted audio may instead
+    be an edited/served timeline, so remap the cue windows before giving them to stable-ts.  Keep
+    the cleaned cue text alongside each window so ``align_words()`` receives the exact wording
+    represented by those windows. Swagit's TXT format gets the same treatment when its standalone
+    ``[HH:MM:SS]`` anchors form valid coarse windows. A malformed/empty cue set deliberately
+    returns plain text and ``None`` so the caller uses the slower, unconstrained ``align()`` path.
+    """
+    if fmt == "txt":
+        coarse = _parse_swagit_coarse_cues(ep, content)
+        if coarse:
+            remapped, _confidence = _remap_provider_cues(ep, coarse)
+            timed_segments = [
+                {
+                    "start": float(cue["start"]),
+                    "end": float(cue["end"]),
+                    "text": str(cue.get("text") or "").strip(),
+                }
+                for cue in remapped
+                if cue.get("text") and cue.get("start") is not None and cue.get("end") is not None
+            ]
+            timed_segments = [cue for cue in timed_segments if cue["end"] > cue["start"]]
+            if len(timed_segments) >= 2:
+                return "\n".join(cue["text"] for cue in timed_segments), timed_segments
+        return _provider_source_text(content, fmt), None
+
+    if fmt not in {"vtt", "srt"}:
+        return _provider_source_text(content, fmt), None
+
+    prepared: list[dict] = []
+    for cue in _parse_timed_transcript(content, fmt):
+        text = _VTT_WORD_TIMESTAMP_RE.sub("", str(cue.get("text") or "")).strip()
+        text = _preprocess_align_text(text)
+        start = cue.get("start")
+        end = cue.get("end")
+        if not text or start is None or end is None or float(end) <= float(start):
+            continue
+        prepared.append({"start": float(start), "end": float(end), "text": text})
+
+    if not prepared:
+        return _provider_source_text(content, fmt), None
+
+    remapped, _confidence = _remap_provider_cues(ep, prepared)
+    timed_segments = [
+        {
+            "start": float(cue["start"]),
+            "end": float(cue["end"]),
+            "text": str(cue.get("text") or "").strip(),
+        }
+        for cue in remapped
+        if cue.get("text") and cue.get("start") is not None and cue.get("end") is not None
+    ]
+    timed_segments = [cue for cue in timed_segments if cue["end"] > cue["start"]]
+    if not timed_segments:
+        return _provider_source_text(content, fmt), None
+    return "\n".join(cue["text"] for cue in timed_segments), timed_segments
+
+
+def _provider_alignment_sections(ep: Episode, content: bytes, fmt: str) -> list[dict]:
+    """Prepare provider wording and served-time windows for WhisperX alignment."""
+    source_id = ep.sources[0].id if ep.sources else None
+    if fmt in {"vtt", "srt"}:
+        text = "\n".join(
+            _VTT_WORD_TIMESTAMP_RE.sub("", str(cue.get("text") or ""))
+            for cue in _parse_timed_transcript(content, fmt)
+        )
+    else:
+        text = content.decode("utf-8-sig", errors="replace")
+    return provider_sections(
+        text,
+        duration=episode_served_duration_seconds(ep),
+        source_duration=episode_source_duration_seconds(ep),
+        timeline=ep.timeline,
+        source_id=source_id,
+    )
+
+
+def _alignment_input_hash(text: str, timed_segments: list[dict] | None = None) -> str:
+    """Hash wording plus constrained windows so timing changes invalidate alignment artifacts."""
+    if not timed_segments:
+        # Preserve the existing recipe for untimed/plain-text alignment, so introducing the
+        # constrained path does not invalidate every historical full-alignment artifact.
+        return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+    payload: object = {"text": text, "timed_segments": timed_segments}
+    blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:12]
+
+
 def _provider_cues_to_vtt(cues: list[dict]) -> bytes:
     lines = ["WEBVTT", ""]
     for cue in cues:
@@ -2915,6 +3816,9 @@ def _adopt_asr_keys(ep: Episode, storage, asr_key: str, words_key: str, recipe: 
     ep.transcript_format = "vtt"
     ep.transcript_basis = "served"
     ep.transcript_synced = True
+    ep.transcript_text_source = "asr"
+    ep.transcript_timing_source = "computed"
+    ep.transcript_selection = "asr"
     _reset_asr_timeout_backoff(ep)
 
 
@@ -2960,7 +3864,7 @@ def _preprocess_align_text(text: str) -> str:
             continue
         lines_out.append(s)
 
-    cleaned = " ".join(lines_out)
+    cleaned = "\n".join(lines_out)
     orig_words = len(text.split())
     clean_words = len(cleaned.split())
     # Safety valve: if we stripped > 80 % of the words the heuristics were too aggressive —
@@ -2983,11 +3887,10 @@ def _detect_format(content: bytes) -> str:
 def _download_audio(url: str):
     """Download the hosted audio to a temp file, yield the Path, then clean up.
 
-    Uses a plain ``requests`` session (not ``make_session``) because:
-    - ``ep.hosted_audio_url`` is a URL *we* generated (our own CDN), not untrusted user input,
-      so the SSRF guard in ``GuardedHTTPAdapter`` adds no value here.
-    - Hosted M4A files routinely exceed the 64 MiB ``MAX_RESPONSE_BYTES`` cap that
-      ``make_session`` enforces on Content-Length, which would reject valid audio.
+    Uses a plain ``requests`` session (not ``make_session``) because hosted M4A files routinely
+    exceed the 64 MiB ``MAX_RESPONSE_BYTES`` cap that ``make_session`` enforces on Content-Length.
+    ``_download_audio_file`` retains the SSRF guard by validating the initial URL and every manual
+    redirect hop before issuing the streaming request.
     """
     import tempfile as _tmp2
 
@@ -3030,24 +3933,93 @@ def _download_audio_file(
 ) -> None:
     import requests as _req
 
-    from citypods.http import USER_AGENT
+    from citypods.http import USER_AGENT, clamped_retry_after_seconds
 
+    redirect_statuses = {301, 302, 303, 307, 308}
     last: Exception | None = None
     for attempt in range(max_attempts):
         try:
             with _req.Session() as sess:
                 sess.headers["User-Agent"] = USER_AGENT
-                r = sess.get(url, timeout=300, stream=True)
-                r.raise_for_status()
-                received = 0
-                with open(dest, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=65536):
-                        received += len(chunk)
-                        if received > _MAX_HOSTED_AUDIO_BYTES:
-                            raise HostedAudioTooLargeError(
-                                f"hosted audio exceeded {_MAX_HOSTED_AUDIO_BYTES} bytes: {url}"
+                current_url = url
+                redirects_followed = 0
+                retry_download = False
+                while True:
+                    validate_source_url(current_url, resolve=True)
+                    r = sess.get(
+                        current_url,
+                        timeout=300,
+                        stream=True,
+                        allow_redirects=False,
+                    )
+                    if getattr(r, "status_code", None) in redirect_statuses:
+                        location = getattr(r, "headers", {}).get("Location")
+                        if not location:
+                            close = getattr(r, "close", None)
+                            if close is not None:
+                                close()
+                            raise _req.exceptions.HTTPError(
+                                "redirect response missing Location header", response=r
                             )
-                        f.write(chunk)
+                        if redirects_followed >= MAX_REDIRECTS:
+                            close = getattr(r, "close", None)
+                            if close is not None:
+                                close()
+                            raise _req.exceptions.TooManyRedirects(
+                                f"hosted audio exceeded {MAX_REDIRECTS} redirects", response=r
+                            )
+                        next_url = urljoin(current_url, str(location))
+                        # The next loop iteration validates this Location-derived URL immediately
+                        # before issuing the request, keeping redirect validation adjacent to the
+                        # network boundary without resolving the same host twice.
+                        close = getattr(r, "close", None)
+                        if close is not None:
+                            close()
+                        current_url = next_url
+                        redirects_followed += 1
+                        continue
+                    try:
+                        r.raise_for_status()
+                    except _req.exceptions.HTTPError as exc:
+                        # Large hosted audio cannot use make_session() because its response-size
+                        # cap is intentionally sized for feed/document traffic. Preserve the same
+                        # bounded Retry-After policy here for the CDN's transient 429 responses.
+                        if getattr(r, "status_code", None) != 429:
+                            raise
+                        last = exc
+                        if attempt + 1 >= max_attempts:
+                            retry_download = True
+                            break
+                        retry_after = clamped_retry_after_seconds(getattr(r, "headers", {}))
+                        delay = (
+                            retry_after
+                            if retry_after is not None
+                            else _AUDIO_DOWNLOAD_BACKOFF_SECONDS * (2**attempt)
+                        )
+                        close = getattr(r, "close", None)
+                        if close is not None:
+                            close()
+                        sleep(delay)
+                        retry_download = True
+                        break
+                    received = 0
+                    try:
+                        with open(dest, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=65536):
+                                received += len(chunk)
+                                if received > _MAX_HOSTED_AUDIO_BYTES:
+                                    raise HostedAudioTooLargeError(
+                                        f"hosted audio exceeded {_MAX_HOSTED_AUDIO_BYTES} bytes: "
+                                        f"{url}"
+                                    )
+                                f.write(chunk)
+                    finally:
+                        close = getattr(r, "close", None)
+                        if close is not None:
+                            close()
+                    break
+                if retry_download:
+                    continue
             return
         except (
             _req.exceptions.ChunkedEncodingError,
@@ -3113,10 +4085,10 @@ class TranscriptStage:
 
     Note on remapping: for identity timelines, provider transcript timestamps are
     already in served time (source == served), so ``transcript_basis = "served"``.
-    For non-identity timelines, a full VTT/SRT parser + remap is required (pending;
-    see INFRA-5). Until then, non-identity episodes carry ``basis = "source:s0"`` and
-    ``synced = False`` to prevent mis-alignment.  ASR-generated transcripts always
-    use ``basis = "served"`` because ASR runs on the hosted (served) audio.
+    VTT/SRT cue windows and Swagit TXT coarse windows are remapped through non-identity
+    timelines before stable-ts sees them. Untimed provider text remains ``synced = False``
+    until computed alignment produces a served-time artifact. ASR-generated transcripts
+    always use ``basis = "served"`` because ASR runs on the hosted (served) audio.
     """
 
     name = "transcript"
@@ -3167,48 +4139,63 @@ class TranscriptStage:
             ep.transcript_format = "vtt"
             ep.transcript_basis = "served"
             ep.transcript_synced = True
+            ep.transcript_text_source = "asr"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "asr"
             _reset_asr_timeout_backoff(ep)
 
-        def _store_provider_align_artifacts(ep: Episode, artifacts, recipe: str) -> None:
-            """Store known-text output in the provider registry, never in the full-ASR slot."""
+        def _store_provider_align_artifacts(
+            ep: Episode,
+            artifacts,
+            provider_artifact: dict,
+            text_hash: str,
+        ) -> None:
+            """Store computed timing while retaining provider wording provenance."""
             uid = ep.uid or ep.guid
-            align_key = _provider_align_object_key(src_key, uid, recipe)
-            words_key = _provider_align_words_object_key(src_key, uid, recipe)
+            align_artifact = {
+                **provider_artifact,
+                "text_hash": text_hash,
+                "model": city.asr_alignment_model,
+            }
+            align_spec = _provider_align_spec_hash(ep, align_artifact)
+            key = _provider_align_object_key(src_key, uid, align_spec)
+            words_key = _provider_align_words_object_key(src_key, uid, align_spec)
             with _tmp.TemporaryDirectory() as t:
-                vtt_dest = Path(t) / "provider-aligned.vtt"
+                vtt_dest = Path(t) / "provider-align.vtt"
                 vtt_dest.write_bytes(artifacts.vtt)
-                url = ctx.storage.put_file(align_key, vtt_dest, TRANSCRIPT_MIME["vtt"])
-                words_dest = Path(t) / "provider-aligned.words.json"
+                url = ctx.storage.put_file(key, vtt_dest, TRANSCRIPT_MIME["vtt"])
+                words_dest = Path(t) / "provider-align.words.json"
                 words_dest.write_bytes(artifacts.words)
                 words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
 
-            registry = dict(ep.provider_transcript or {})
-            slot = "candidate" if isinstance(registry.get("candidate"), dict) else "known_good"
-            artifact = dict(registry.get(slot) or {})
-            artifact.update(
+            known = dict(provider_artifact)
+            known.update(
                 {
-                    "aligned_key": align_key,
+                    "aligned_key": key,
                     "aligned_url": url,
                     "aligned_words_key": words_key,
                     "aligned_words_url": words_url,
-                    "align_spec_hash": recipe,
-                    "align_pipeline_version": KNOWN_TEXT_ALIGN_PIPELINE_VERSION,
+                    "align_spec_hash": align_spec,
+                    "align_pipeline_version": PROVIDER_ALIGN_PIPELINE_VERSION,
                     "alignment_method": "whisperx",
-                    "alignment_coverage": artifacts.coverage,
-                    "status": artifact.get("status") or slot,
+                    "align_coverage": artifacts.coverage,
+                    "status": "known_good",
                 }
             )
-            registry[slot] = artifact
-            ep.provider_transcript = registry
-            ep.transcript_key = align_key
+            _provider_transcript_set_known_good(ep, known)
+
+            ep.transcript_key = key
             ep.transcript_hosted_url = url
             ep.transcript_words_key = words_key
             ep.transcript_words_url = words_url
-            ep.transcript_spec_hash = recipe
-            ep.transcript_pipeline_version = f"provider-align:{KNOWN_TEXT_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_spec_hash = align_spec
+            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
             ep.transcript_format = "vtt"
             ep.transcript_basis = "served"
             ep.transcript_synced = True
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "provider-aligned"
             _reset_asr_timeout_backoff(ep)
 
         def _mark_provider_align_ineligible(ep: Episode, recipe: str, reason: str) -> None:
@@ -3219,7 +4206,7 @@ class TranscriptStage:
             artifact.update(
                 {
                     "align_ineligible_pipeline_version": (
-                        f"provider-align:{KNOWN_TEXT_ALIGN_PIPELINE_VERSION}"
+                        f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
                     ),
                     "align_ineligible_reason": reason,
                     "align_spec_hash": recipe,
@@ -3234,7 +4221,13 @@ class TranscriptStage:
             ep_ref: str,
             allow_active: bool,
         ) -> bool:
-            """Promote and optionally publish a timed provider document as served-time VTT."""
+            """Preserve a provider VTT only when it already has word-level timing.
+
+            Cue-level VTT/SRT timing is useful source material for the aligner, but it is not a
+            sufficient served transcript because search, clips, and diarization consume word
+            boundaries.  Non-word-timed provider documents deliberately return ``False`` here and
+            enter the common stable-ts alignment path below.
+            """
             if not (ep.audio_key and ep.hosted_audio_url):
                 return False
             registry = ep.provider_transcript or {}
@@ -3247,7 +4240,6 @@ class TranscriptStage:
                 if (
                     isinstance(artifact, dict)
                     and artifact.get("key")
-                    and artifact.get("synced")
                     and artifact.get("format") in {"vtt", "srt"}
                 ):
                     selected = dict(artifact)
@@ -3258,16 +4250,26 @@ class TranscriptStage:
             content = _read_storage_bytes(ctx.storage, selected["key"])
             if content is None:
                 return False
-            cues = _parse_timed_transcript(content, selected.get("format") or "vtt")
-            remapped_cues, confidence = _remap_provider_cues(ep, cues)
-            if not remapped_cues:
+            word_timed = bool(selected.get("word_timed")) or (
+                selected.get("format") == "vtt" and _has_word_timing_vtt(content)
+            )
+            # A word-timed provider VTT is safe to preserve only on the identity timeline.  On an
+            # edited timeline its word offsets are source-clock values, so the provider wording
+            # goes through stable-ts against the actual served audio instead.
+            if not word_timed or (
+                ep.timeline is not None and timeline_digest(ep.timeline, ep.sources)
+            ):
+                return False
+            native_words = _provider_vtt_words_json(content, basis="served")
+            if native_words is None:
+                # The marker detector is intentionally permissive; require a usable sidecar too
+                # before claiming that a provider-native transcript satisfies word-boundary users.
                 return False
 
-            align_spec = _provider_align_spec_hash(ep, selected)
             selected = {
                 **selected,
-                "confidence": confidence,
-                "align_spec_hash": align_spec,
+                "word_timed": True,
+                "native_spec_hash": selected.get("spec_hash"),
                 "aligned_at": datetime.now(UTC).isoformat(),
             }
 
@@ -3293,41 +4295,110 @@ class TranscriptStage:
             if not allow_active:
                 return False
 
-            key = _provider_align_object_key(src_key, ep.uid or ep.guid, align_spec)
-            if ep.transcript_key == key and ep.transcript_synced and _present(key):
+            key = selected["key"]
+            if (
+                ep.transcript_key == key
+                and ep.transcript_synced
+                and _present(key)
+                and selected.get("words_key")
+                and _present(selected["words_key"])
+            ):
                 ep.transcript_hosted_url = ctx.storage.public_url(key)
+                ep.transcript_words_key = selected.get("words_key")
+                ep.transcript_words_url = (
+                    ctx.storage.public_url(ep.transcript_words_key)
+                    if ep.transcript_words_key and _present(ep.transcript_words_key)
+                    else None
+                )
                 stats.reused += 1
                 return True
 
-            with _tmp.TemporaryDirectory() as t:
-                dest = Path(t) / "provider-aligned.vtt"
-                dest.write_bytes(_provider_cues_to_vtt(remapped_cues))
-                url = ctx.storage.put_file(key, dest, TRANSCRIPT_MIME["vtt"])
+            words_key = selected.get("words_key") or _provider_native_words_object_key(
+                src_key, ep.uid or ep.guid, selected["spec_hash"]
+            )
+            words_url = None
+            words = native_words
+            if words is not None and not _present(words_key):
+                with _tmp.TemporaryDirectory() as t:
+                    words_dest = Path(t) / "provider.words.json"
+                    words_dest.write_bytes(words)
+                    words_url = ctx.storage.put_file(words_key, words_dest, "application/json")
+            elif words is not None:
+                words_url = ctx.storage.public_url(words_key)
 
             provider_registry = dict(ep.provider_transcript or {})
             known = dict(provider_registry.get("known_good") or selected)
-            known["aligned_key"] = key
-            known["aligned_url"] = url
+            known["word_timed"] = True
+            known["native_key"] = key
+            known["native_url"] = selected.get("hosted_url") or ctx.storage.public_url(key)
+            known["words_key"] = words_key if words is not None else None
+            known["words_url"] = words_url or (
+                ctx.storage.public_url(words_key) if words is not None else None
+            )
             provider_registry["known_good"] = known
             ep.provider_transcript = provider_registry
 
             ep.transcript_key = key
-            ep.transcript_hosted_url = url
-            ep.transcript_spec_hash = align_spec
+            ep.transcript_hosted_url = selected.get("hosted_url") or ctx.storage.public_url(key)
+            ep.transcript_spec_hash = selected["spec_hash"]
             ep.transcript_format = "vtt"
             ep.transcript_basis = "served"
             ep.transcript_synced = True
-            ep.transcript_words_key = None
-            ep.transcript_words_url = None
-            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_words_key = words_key if words is not None else None
+            ep.transcript_words_url = known["words_url"]
+            ep.transcript_pipeline_version = f"provider-native:{PROVIDER_NATIVE_PIPELINE_VERSION}"
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "provider"
+            ep.transcript_selection = "provider-native"
             _reset_asr_timeout_backoff(ep)
             stats.ran += 1
-            stats.aligned += 1
             print(
-                f"[enrich] transcript provider-align done {ep_ref} "
-                f"confidence={confidence if confidence is not None else 'unknown'}",
+                f"[enrich] transcript provider-native done {ep_ref} word_timed=true",
                 flush=True,
             )
+            return True
+
+        def _maybe_adopt_provider_alignment(
+            ep: Episode,
+            *,
+            allow_active: bool,
+        ) -> bool:
+            """Switch to an already-computed provider alignment after an H15 route change."""
+            if not allow_active:
+                return False
+            registry = ep.provider_transcript or {}
+            if not isinstance(registry, dict):
+                return False
+            artifact = next(
+                (
+                    item
+                    for item in (registry.get("candidate"), registry.get("known_good"))
+                    if isinstance(item, dict) and item.get("aligned_key")
+                ),
+                None,
+            )
+            if artifact is None:
+                return False
+            if not _provider_alignment_artifact_is_reusable(artifact):
+                return False
+            key = artifact.get("aligned_key")
+            words_key = artifact.get("aligned_words_key")
+            if not key or not _present(key) or not words_key or not _present(words_key):
+                return False
+            ep.transcript_key = key
+            ep.transcript_hosted_url = artifact.get("aligned_url") or ctx.storage.public_url(key)
+            ep.transcript_words_key = words_key
+            ep.transcript_words_url = artifact.get("aligned_words_url") or ctx.storage.public_url(
+                words_key
+            )
+            ep.transcript_spec_hash = artifact.get("align_spec_hash")
+            ep.transcript_pipeline_version = f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+            ep.transcript_format = "vtt"
+            ep.transcript_basis = "served"
+            ep.transcript_synced = True
+            ep.transcript_text_source = "provider"
+            ep.transcript_timing_source = "computed"
+            ep.transcript_selection = "provider-aligned"
             return True
 
         cpu_threads = max(1, math.ceil((os.cpu_count() or 4) / city.asr_workers))
@@ -3369,14 +4440,22 @@ class TranscriptStage:
                         flush=True,
                     )
 
-        for ep in _materialize_set(
+        materialized_episodes = _materialize_set(
             episodes,
             city.full_artifact_episodes,
             feed_visible_per_body=city.max_episodes,
             policy=ctx.backlog_policy,
             city_slug=city.slug,
             work_class="transcript-asr",
-        ):
+        )
+        materialized_uids = {ep.uid or ep.guid for ep in materialized_episodes}
+
+        # Provider discovery is broader than expensive artifact work. A known transcript endpoint
+        # is useful evidence for every discovered episode, including deep-archive rows outside the
+        # current materialization/ASR cohort. We iterate all records below and bound only inference
+        # to the configured materialized set.
+        for ep in episodes:
+            inference_eligible = (ep.uid or ep.guid) in materialized_uids
             quality_body_name = canonical_body(ep.body or "") or ep.body or "(unknown)"
             quality_body_key_value = quality_body_key(quality_body_name)
             route = ctx.transcript_quality_routes.get((src_key, quality_body_key_value))
@@ -3389,8 +4468,125 @@ class TranscriptStage:
             recheck_asr_key: str | None = None
             recheck_asr_words_key: str | None = None
             active_synced_reused = False
+            provider_registry = ep.provider_transcript or {}
+            provider_source = next(
+                (
+                    artifact
+                    for artifact in (
+                        provider_registry.get("candidate"),
+                        provider_registry.get("known_good"),
+                    )
+                    if isinstance(artifact, dict) and artifact.get("url")
+                ),
+                None,
+            )
             provider_url = (ep.links or {}).get("transcript")
-            alignment_source_url: str | None = None
+            # A persisted provider artifact is authoritative even for older records whose
+            # resource link was not retained. Re-attach its source URL without doing a network
+            # probe; the artifact itself is already the durable transcript source.
+            if not provider_url and isinstance(provider_source, dict):
+                provider_url = provider_source.get("url")
+                if provider_url:
+                    ep.links = {**(ep.links or {}), "transcript": provider_url}
+            provider_content: bytes | None = None
+            provider_fetch_due = bool(provider_url)
+            stored_provider_transcript = bool(
+                ep.transcript_key
+                and ep.transcript_synced
+                and _present(ep.transcript_key)
+                and not ep.transcript_key.rsplit("/", 1)[-1].startswith(f"{ep.uid or ep.guid}-asr-")
+            )
+            swagit_probe_method = getattr(provider, "probe_transcript", None)
+            swagit_probe_url: str | None = None
+            swagit_probe_deferred = False
+            if city.provider == "swagit" and callable(swagit_probe_method):
+                try:
+                    swagit_probe_url = provider.transcript_url(ep)
+                except Exception as exc:  # noqa: BLE001 -- malformed legacy record; keep ASR alive
+                    print(f"[enrich] transcript probe unavailable {ep_ref}: {exc}", flush=True)
+                probe_due = bool(
+                    swagit_probe_url
+                    and _provider_transcript_probe_due(
+                        ep, url=swagit_probe_url, now=datetime.now(UTC)
+                    )
+                )
+                should_probe = probe_due and (
+                    (not provider_url and not stored_provider_transcript)
+                    or provider_url == swagit_probe_url
+                )
+                if should_probe:
+                    if ctx.stop is not None and ctx.stop():
+                        stats.defer("stop-signal", sample=ep_ref)
+                        swagit_probe_deferred = True
+                    elif not _claim_provider_transcript_probe(ctx, src_key):
+                        stats.defer("provider-transcript-probe-cap", sample=ep_ref)
+                        swagit_probe_deferred = True
+                    else:
+                        try:
+                            probe = swagit_probe_method(ep, city.source)
+                            if 200 <= probe.status_code < 300 and probe.content.strip():
+                                provider_url = probe.url
+                                provider_content = probe.content
+                                ep.links = {**(ep.links or {}), "transcript": provider_url}
+                            elif probe.status_code in {404, 410} or (
+                                200 <= probe.status_code < 300 and not probe.content.strip()
+                            ):
+                                _record_provider_transcript_probe(
+                                    ep,
+                                    url=probe.url,
+                                    status="absent",
+                                    status_code=probe.status_code,
+                                    now=datetime.now(UTC),
+                                )
+                                print(
+                                    f"[enrich] transcript probe absent {ep_ref} "
+                                    f"status={probe.status_code}",
+                                    flush=True,
+                                )
+                            else:
+                                _record_provider_transcript_probe(
+                                    ep,
+                                    url=probe.url,
+                                    status="error",
+                                    status_code=probe.status_code,
+                                    now=datetime.now(UTC),
+                                )
+                                print(
+                                    f"[enrich] transcript probe unavailable {ep_ref} "
+                                    f"status={probe.status_code}",
+                                    flush=True,
+                                )
+                        except Exception as exc:  # noqa: BLE001 -- retryable provider probe
+                            _record_provider_transcript_probe(
+                                ep,
+                                url=swagit_probe_url,
+                                status="error",
+                                now=datetime.now(UTC),
+                            )
+                            print(
+                                f"[enrich] transcript probe error {ep_ref}: {exc}",
+                                flush=True,
+                            )
+                if provider_url:
+                    if swagit_probe_deferred:
+                        provider_fetch_due = False
+                    elif provider_content is not None:
+                        # A successful probe already supplied the bytes; do not spend a second
+                        # request (or a second probe-budget unit) fetching the same endpoint.
+                        provider_fetch_due = True
+                    elif provider_url == swagit_probe_url:
+                        provider_fetch_due = _provider_transcript_probe_due(
+                            ep, url=provider_url, now=datetime.now(UTC)
+                        )
+                    else:
+                        # Preserve direct fetching for an explicitly advertised Swagit URL that
+                        # is not the conventional transcript endpoint.
+                        provider_fetch_due = True
+            force_provider_selection = route is not None and route.prefers_provider_align
+            force_asr_selection = route is not None and route.prefers_fresh_asr
+            active_is_provider = ep.transcript_text_source == "provider" or str(
+                ep.transcript_pipeline_version or ""
+            ).startswith("provider-")
             # 1. Already synced: re-attach URL and done.  Runs unconditionally (even after
             #    stop()) so a yielded run still references every already-synced transcript.
             #    Version-aware (H12): an ASR transcript (key carries the ``-asr-`` infix) from an
@@ -3421,7 +4617,7 @@ class TranscriptStage:
                         recipe_ranks=(route.recipe_ranks if route is not None else None),
                     )
                     words_present = not ep.transcript_words_key or _present(ep.transcript_words_key)
-                    if accepted_existing_asr and words_present:
+                    if accepted_existing_asr and words_present and not force_provider_selection:
                         ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                         if ep.transcript_words_key and _present(ep.transcript_words_key):
                             ep.transcript_words_url = ctx.storage.public_url(
@@ -3430,7 +4626,7 @@ class TranscriptStage:
                         _reset_asr_timeout_backoff(ep)
                         stats.reused += 1
                         active_synced_reused = True
-                        if not provider_url:
+                        if not provider_url and not force_provider_selection:
                             continue
                     elif ep.transcript_pipeline_version != ASR_PIPELINE_VERSION:
                         redo_stale_asr = True  # own recipe/version changed; re-transcribe
@@ -3447,36 +4643,24 @@ class TranscriptStage:
                         _reset_asr_timeout_backoff(ep)
                         stats.reused += 1
                         active_synced_reused = True
-                        if not provider_url:
+                        if not provider_url and not force_provider_selection:
                             continue
                 else:
-                    is_old_provider_align = (
-                        key_name.startswith(f"{ep.uid or ep.guid}-provider-align-")
+                    provider_align_stale = (
+                        str(ep.transcript_pipeline_version or "").startswith("provider-align:")
                         and ep.transcript_pipeline_version
-                        != f"provider-align:{KNOWN_TEXT_ALIGN_PIPELINE_VERSION}"
+                        != f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
                     )
-                    if is_old_provider_align:
-                        # Keep the old active artifact available until the replacement succeeds,
-                        # but reopen known-text alignment so the version bump reprocesses it.
+                    if provider_align_stale:
+                        # A provider-align pipeline change can alter the alignment inputs (for
+                        # example, by discovering coarse Swagit TXT windows). Do not re-adopt the
+                        # old computed artifact; let the provider wording flow through the current
+                        # alignment recipe below.
                         redo_stale_asr = True
-                        registry = ep.provider_transcript or {}
-                        source_artifact = next(
-                            (
-                                artifact
-                                for artifact in (
-                                    registry.get("candidate"),
-                                    registry.get("known_good"),
-                                )
-                                if isinstance(artifact, dict)
-                                and artifact.get("format") == "txt"
-                                and artifact.get("hosted_url")
-                            ),
-                            None,
-                        )
-                        if source_artifact is not None:
-                            # Preserve the active old VTT while its v2 replacement is pending.
-                            # This URL is only an alignment input; it must not leak into the feed.
-                            alignment_source_url = source_artifact["hosted_url"]
+                        active_is_provider = True
+                    elif force_asr_selection:
+                        redo_stale_asr = True
+                        active_is_provider = True
                     else:
                         ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                         if ep.transcript_words_key and _present(ep.transcript_words_key):
@@ -3486,7 +4670,7 @@ class TranscriptStage:
                         _reset_asr_timeout_backoff(ep)
                         stats.reused += 1
                         active_synced_reused = True
-                        if not provider_url:
+                        if not provider_url and not force_provider_selection:
                             continue
             elif ep.transcript_key and ep.transcript_synced:
                 key_name = ep.transcript_key.rsplit("/", 1)[-1]
@@ -3496,19 +4680,27 @@ class TranscriptStage:
                         recheck_asr_key = ep.transcript_key
                         recheck_asr_words_key = ep.transcript_words_key
 
+            if active_is_provider and force_asr_selection:
+                # H15 routing is source/body policy, not an episode-level review gate. A route
+                # change must be able to replace a previously served provider artifact.
+                active_synced_reused = False
+                redo_stale_asr = True
+
             # 1b. Untimed stored transcript: re-attach URL so the feed still shows it as a
             #     text note, then fall through to the ASR slot to attempt an upgrade.
             if ep.transcript_key and not ep.transcript_synced and _present(ep.transcript_key):
                 ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
                 # fall through to step 3
 
-            if ep.transcript_hosted_url and ep.transcript_format == "txt":
-                alignment_source_url = ep.transcript_hosted_url
-
-            # 2. Provider source transcript slot: fetch every pass that reaches the item and
-            #    retain changed bytes as a candidate. PT-PR2 does not promote to known_good; the
-            #    later provider-transcript-align/scoring path owns that decision.
-            if provider_url:
+            # 2. Provider source transcript slot: fetch due links and retain changed bytes as a
+            #    candidate. PT-PR2 does not promote to known_good; the later provider-transcript-
+            #    align/scoring path owns that decision. Swagit links are rechecked on a persisted
+            #    schedule rather than on every run.
+            if provider_url and provider_fetch_due:
+                if city.provider == "swagit" and provider_content is None:
+                    if not _claim_provider_transcript_probe(ctx, src_key):
+                        stats.defer("provider-transcript-probe-cap", sample=ep_ref)
+                        continue
                 if ctx.stop is not None and ctx.stop():
                     if not active_synced_reused:
                         stats.defer("stop-signal")
@@ -3521,15 +4713,36 @@ class TranscriptStage:
                         f"[enrich] transcript provider-fetch start {ep_ref}",
                         flush=True,
                     )
-                    validate_source_url(provider_url, resolve=True)
-                    with make_session() as sess:
-                        resp = sess.get(provider_url, timeout=30)
-                    if resp.status_code >= 400:
-                        stats.errors.append(f"{ep.uid}: HTTP {resp.status_code} for {provider_url}")
+                    if provider_content is None:
+                        validate_source_url(provider_url, resolve=True)
+                        with make_session() as sess:
+                            resp = sess.get(provider_url, timeout=30)
+                        response_status = resp.status_code
+                        content = resp.content
+                    else:
+                        response_status = 200
+                        content = provider_content
+                    if response_status >= 400:
+                        if city.provider == "swagit":
+                            _record_provider_transcript_probe(
+                                ep,
+                                url=provider_url,
+                                status=("absent" if response_status in {404, 410} else "error"),
+                                status_code=response_status,
+                                now=datetime.now(UTC),
+                            )
+                        stats.errors.append(f"{ep.uid}: HTTP {response_status} for {provider_url}")
                         continue
 
-                    content = resp.content
                     if not content.strip():
+                        if city.provider == "swagit":
+                            _record_provider_transcript_probe(
+                                ep,
+                                url=provider_url,
+                                status="absent",
+                                status_code=response_status,
+                                now=datetime.now(UTC),
+                            )
                         stats.errors.append(
                             f"{ep.uid}: empty provider transcript for {provider_url}"
                         )
@@ -3554,6 +4767,7 @@ class TranscriptStage:
                         ),
                         None,
                     )
+                    url = matched_current.get("hosted_url") if matched_current else None
                     if matched_current is not None:
                         if _provider_transcript_note_checked(
                             ep,
@@ -3576,7 +4790,8 @@ class TranscriptStage:
                             dest.write_bytes(content)
                             mime = TRANSCRIPT_MIME.get(fmt, "text/plain")
                             url = ctx.storage.put_file(key, dest, mime)
-
+                        if not url:
+                            raise RuntimeError("provider transcript storage URL unavailable")
                         artifact = _provider_transcript_artifact(
                             source_url=provider_url,
                             key=key,
@@ -3584,19 +4799,39 @@ class TranscriptStage:
                             spec=spec,
                             fmt=fmt,
                             synced=timed,
+                            word_timed=fmt == "vtt" and _has_word_timing_vtt(content),
                             now=datetime.now(UTC).isoformat(),
                             status="candidate",
                         )
                         _provider_transcript_promote_candidate(ep, artifact)
+                        if city.provider == "swagit":
+                            _record_provider_transcript_probe(
+                                ep,
+                                url=provider_url,
+                                status="available",
+                                status_code=response_status,
+                                now=datetime.now(UTC),
+                            )
                         stats.ran += 1
                         print(
                             f"[enrich] transcript provider-fetch done {ep_ref} "
                             f"fmt={fmt} candidate=true",
                             flush=True,
                         )
-                        # Do not promote or switch the active <podcast:transcript> here. If an
-                        # ASR/provider-aligned transcript is already active, it keeps serving;
-                        # PT-PR3 decides temporary feed exposure for provider documents.
+                        # Do not promote or switch the active <podcast:transcript> here. The
+                        # source/body route below owns that selection.
+                    else:
+                        # ``matched_current`` can turn an unchanged response into an empty local
+                        # write after the response was validated. It is still an available
+                        # endpoint and should get the long recheck interval.
+                        if city.provider == "swagit":
+                            _record_provider_transcript_probe(
+                                ep,
+                                url=provider_url,
+                                status="available",
+                                status_code=response_status,
+                                now=datetime.now(UTC),
+                            )
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: {exc}")
                     print(
@@ -3605,28 +4840,57 @@ class TranscriptStage:
                     )
                     continue
 
-            if provider_url:
-                registry = ep.provider_transcript or {}
-                active_provider = registry.get("known_good") or registry.get("candidate")
-                if (
-                    not ep.transcript_hosted_url
-                    and isinstance(active_provider, dict)
-                    and active_provider.get("hosted_url")
-                    and active_provider.get("format") == "txt"
-                ):
-                    alignment_source_url = active_provider["hosted_url"]
-                    ep.transcript_hosted_url = active_provider["hosted_url"]
-                    ep.transcript_format = "txt"
+            registry = ep.provider_transcript or {}
+            active_provider = (
+                registry.get("candidate") or registry.get("known_good")
+                if isinstance(registry, dict)
+                else None
+            )
+            if (
+                active_provider is None
+                and ep.transcript_key
+                and ep.transcript_format in {"txt", "vtt", "srt"}
+                and not ep.transcript_key.rsplit("/", 1)[-1].startswith(f"{ep.uid or ep.guid}-asr-")
+            ):
+                # Legacy records predate the provider registry. Their non-ASR transcript object is
+                # still provider wording and must receive provider provenance when aligned.
+                active_provider = {
+                    "key": ep.transcript_key,
+                    "format": ep.transcript_format,
+                    "spec_hash": ep.transcript_spec_hash,
+                    "hosted_url": ep.transcript_hosted_url,
+                }
+            if (
+                not ep.transcript_key
+                and isinstance(active_provider, dict)
+                and active_provider.get("hosted_url")
+            ):
+                # Keep the provider source visible as an untimed note while the computed
+                # word-timed artifact is queued; never expose it as the synced feed transcript.
+                ep.transcript_hosted_url = active_provider["hosted_url"]
+                ep.transcript_format = active_provider.get("format") or "txt"
+                ep.transcript_synced = False
 
-            # PT-PR5: timed provider source documents are evaluated in source time, remapped
-            # through the canonical timeline, and promoted to known_good only when their
-            # confidence is at least the previous known_good. Do not replace an already-active
-            # ASR/provider transcript in this rollout; the H15 trust router owns that policy.
+            # Apply the source/body H15 route dynamically. Existing artifacts are enough to switch
+            # the served transcript; an episode does not need its own review decision.
+            if _maybe_adopt_provider_alignment(
+                ep,
+                allow_active=force_provider_selection and not active_synced_reused,
+            ):
+                continue
+
+            # Preserve a provider-native artifact only when its VTT carries word timings. All
+            # other provider documents continue through the common WhisperX path below.
             if _maybe_align_provider_transcript(
                 ep,
                 ep_ref=ep_ref,
-                allow_active=not active_synced_reused,
+                allow_active=not active_synced_reused and not force_asr_selection,
             ):
+                continue
+
+            if not inference_eligible:
+                # The provider source was probed and any already-computed route selection was
+                # applied above; full ASR/align remains bounded by the artifact cohort.
                 continue
 
             # Legacy active provider transcripts remain valid input for alignment. They are not
@@ -3680,38 +4944,49 @@ class TranscriptStage:
                 )
                 continue
 
-            # Determine alignment sections from any stored untimed source transcript. Bracketed
-            # source-time paragraph markers are converted to served-time windows; marker text is
-            # metadata and is never passed to the acoustic model.
+            # Determine served-time WhisperX sections from the persisted provider wording. A
+            # word-timed native VTT remains native on the identity timeline; all other formats
+            # receive computed timings against the hosted (served-time) audio.
             align_sections: list[dict] | None = None
-            if alignment_source_url:
+            provider_alignment_requested = isinstance(active_provider, dict) and bool(
+                active_provider.get("key")
+            )
+            if provider_alignment_requested:
+                provider_content = _read_storage_bytes(ctx.storage, active_provider["key"])
+                if provider_content is not None:
+                    provider_fmt = str(active_provider.get("format") or "txt")
+                    provider_word_timed = provider_fmt == "vtt" and (
+                        active_provider.get("word_timed") or _has_word_timing_vtt(provider_content)
+                    )
+                    if not provider_word_timed or (
+                        ep.timeline is not None and timeline_digest(ep.timeline, ep.sources)
+                    ):
+                        align_sections = _provider_alignment_sections(
+                            ep, provider_content, provider_fmt
+                        )
+            elif ep.transcript_hosted_url and ep.transcript_format in {"txt", "vtt", "srt"}:
+                # Legacy records may have the URL but not the provider registry yet.
                 try:
                     from citypods.http import make_session
-                    from citypods.known_text import provider_sections
 
                     with make_session() as sess:
-                        r = sess.get(alignment_source_url, timeout=30)
+                        r = sess.get(ep.transcript_hosted_url, timeout=30)
                     if r.status_code == 200:
-                        raw_text = r.content.decode("utf-8", errors="replace")
-                        align_sections = provider_sections(
-                            raw_text,
-                            duration=episode_served_duration_seconds(ep),
-                            timeline=ep.timeline,
+                        align_sections = _provider_alignment_sections(
+                            ep, r.content, ep.transcript_format
                         )
                 except Exception as exc:  # noqa: BLE001
                     print(
                         f"[enrich] transcript align-sections unavailable {ep_ref}: {exc}",
                         flush=True,
                     )
-            if route is not None and route.prefers_fresh_asr:
+            if force_asr_selection:
                 align_sections = None
 
             if align_sections:
                 if provider_align_ineligible(ep.provider_transcript):
-                    if ctx.lane == "align":
-                        stats.defer("alignment-ineligible")
-                        continue
-                    align_sections = None
+                    stats.defer("alignment-ineligible")
+                    continue
 
             # Lane gating (H6b): the sharded asr.yml runs a single-model lane so WhisperX and
             # faster-whisper never co-load in one runner. ``transcribe`` forces fresh
@@ -3720,6 +4995,13 @@ class TranscriptStage:
             # the auto per-episode behavior for a direct ``citypods enrich``. Apply this before the
             # alignment-enabled guard: production's transcribe lane must deliberately ignore source
             # text and generate fresh ASR even while the separate align lane remains disabled.
+            if (
+                ctx.lane == "transcribe"
+                and provider_alignment_requested
+                and not provider_align_ineligible(ep.provider_transcript)
+            ):
+                stats.defer("provider-align-lane")
+                continue
             if ctx.lane == "transcribe":
                 align_sections = None
             elif ctx.lane == "align" and not align_sections:
@@ -3735,7 +5017,11 @@ class TranscriptStage:
             # TranscriptQualityRoute / _route_from_row), so it schedules the cheap align lane
             # even while the site-wide asr_alignment_enabled default stays off elsewhere.
             align_lane_unblocked = route is not None and route.prefers_provider_align
-            if align_sections and not (city.asr_alignment_enabled or align_lane_unblocked):
+            if (
+                align_sections
+                and not provider_alignment_requested
+                and not (city.asr_alignment_enabled or align_lane_unblocked)
+            ):
                 stats.defer("alignment-disabled")
                 print(
                     f"[enrich] transcript asr skipped {ep_ref} reason=alignment-disabled",
@@ -3763,10 +5049,6 @@ class TranscriptStage:
             )
             asr_key = _asr_object_key(src_key, ep.uid or ep.guid, recipe)
             words_key = _asr_words_object_key(src_key, ep.uid or ep.guid, recipe)
-            provider_align_key = _provider_align_object_key(src_key, ep.uid or ep.guid, recipe)
-            provider_align_words_key = _provider_align_words_object_key(
-                src_key, ep.uid or ep.guid, recipe
-            )
             cache_key = (ep.uid or ep.guid, recipe)
 
             migrate_asr_key: str | None = None
@@ -3825,40 +5107,7 @@ class TranscriptStage:
                     flush=True,
                 )
 
-            if align_sections:
-                registry = ep.provider_transcript or {}
-                aligned = next(
-                    (
-                        artifact
-                        for artifact in (
-                            registry.get("candidate"),
-                            registry.get("known_good"),
-                        )
-                        if isinstance(artifact, dict)
-                        and artifact.get("align_spec_hash") == recipe
-                        and artifact.get("aligned_key") == provider_align_key
-                        and _present(provider_align_key)
-                        and _present(provider_align_words_key)
-                    ),
-                    None,
-                )
-                if aligned is not None:
-                    ep.transcript_key = provider_align_key
-                    ep.transcript_hosted_url = ctx.storage.public_url(provider_align_key)
-                    ep.transcript_words_key = provider_align_words_key
-                    ep.transcript_words_url = ctx.storage.public_url(provider_align_words_key)
-                    ep.transcript_spec_hash = recipe
-                    ep.transcript_pipeline_version = (
-                        f"provider-align:{KNOWN_TEXT_ALIGN_PIPELINE_VERSION}"
-                    )
-                    ep.transcript_format = "vtt"
-                    ep.transcript_basis = "served"
-                    ep.transcript_synced = True
-                    _reset_asr_timeout_backoff(ep)
-                    stats.reused += 1
-                    continue
-
-            if not align_sections and not migration_missing and _present(asr_key):
+            if not migration_missing and _present(asr_key) and not force_provider_selection:
                 ep.transcript_key = asr_key
                 ep.transcript_hosted_url = ctx.storage.public_url(asr_key)
                 if _present(words_key):
@@ -3869,6 +5118,9 @@ class TranscriptStage:
                 ep.transcript_format = "vtt"
                 ep.transcript_spec_hash = recipe
                 ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+                ep.transcript_text_source = "asr"
+                ep.transcript_timing_source = "computed"
+                ep.transcript_selection = "asr"
                 _reset_asr_timeout_backoff(ep)
                 stats.reused += 1
                 continue
@@ -3877,9 +5129,11 @@ class TranscriptStage:
             if cached_artifacts is not None:
                 try:
                     if cached_artifacts.aligned:
-                        _store_provider_align_artifacts(ep, cached_artifacts.artifacts, recipe)
+                        assert isinstance(active_provider, dict)
+                        _store_provider_align_artifacts(
+                            ep, cached_artifacts.artifacts, active_provider, align_hash or ""
+                        )
                     else:
-                        _mark_provider_align_ineligible(ep, recipe, "alignment-error")
                         _store_asr_artifacts(ep, cached_artifacts.artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
@@ -4023,9 +5277,11 @@ class TranscriptStage:
                     sem = None
                 try:
                     if cached_artifacts.aligned:
-                        _store_provider_align_artifacts(ep, cached_artifacts.artifacts, recipe)
+                        assert isinstance(active_provider, dict)
+                        _store_provider_align_artifacts(
+                            ep, cached_artifacts.artifacts, active_provider, align_hash or ""
+                        )
                     else:
-                        _mark_provider_align_ineligible(ep, recipe, "alignment-error")
                         _store_asr_artifacts(ep, cached_artifacts.artifacts, recipe)
                 except Exception as exc:  # noqa: BLE001
                     stats.errors.append(f"{ep.uid}: ASR dedupe store: {exc}")
@@ -4211,6 +5467,7 @@ class TranscriptStage:
                                             "sections": _at,
                                             "model": city.asr_alignment_model,
                                             "language": city.asr_language or None,
+                                            "compute_type": city.asr_compute_type,
                                             "cpu_threads": cpu_threads,
                                             "interpolate_method": city.asr_alignment_interpolate,
                                         },
@@ -4405,7 +5662,13 @@ class TranscriptStage:
 
             try:
                 if _aligned[0] and align_sections:
-                    _store_provider_align_artifacts(ep, artifacts, recipe)
+                    assert isinstance(active_provider, dict)
+                    _store_provider_align_artifacts(
+                        ep,
+                        artifacts,
+                        active_provider,
+                        align_hash or "",
+                    )
                 else:
                     _store_asr_artifacts(ep, artifacts, recipe)
                 asr_elapsed = time.monotonic() - _asr_started_at
@@ -4665,7 +5928,6 @@ class AgendaChapterCandidatesStage:
                     episode_uid=uid,
                     agenda_text=agenda_text,
                     agenda_source_hash=source_hash,
-                    deadline_at=getattr(ctx, "chapter_llm_deadline", None),
                 )
                 if ctx.stop is not None and ctx.stop():
                     stats.defer("stop-signal")
@@ -4749,7 +6011,6 @@ class ChapterBoundaryLocatorStage:
                     agenda=agenda,
                     transcript_hash=transcript_hash,
                     units=units,
-                    deadline_at=getattr(ctx, "chapter_llm_deadline", None),
                 )
                 if ctx.stop is not None and ctx.stop():
                     stats.defer("stop-signal")
