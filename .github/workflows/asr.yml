@@ -2,7 +2,7 @@ name: ASR
 
 # Transcription lane: identical pull workers claim transcript work from the shared Stage-2 lease
 # ledger until their stop budget, so GitHub Actions is "just another worker" instead of the static
-# shard-plan owner. stable-ts alignment remains a separate, currently-unscheduled lane so the two
+# shard-plan owner. WhisperX known-text alignment remains a separate lane so the two
 # ASR models never co-load on one runner (review/18 §4.3 / H19).
 
 on:
@@ -50,7 +50,7 @@ jobs:
           cache: pip
 
       - name: Install
-        # The scheduled lane never aligns, so do not install stable-ts/torch or benchmark-only jiwer.
+        # The scheduled lane never aligns, so do not install WhisperX/torch or benchmark-only jiwer.
         run: pip install -e ".[asr-transcribe,storage]" -c constraints/asr.txt
 
       - name: Cache static ffmpeg
@@ -78,7 +78,7 @@ jobs:
           echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
 
       # Restore + download the large-v3-turbo weights (4-step cascade in the script). The transcribe
-      # lane only loads faster-whisper, never stable-ts.
+      # lane only loads faster-whisper, never WhisperX.
       - name: Cache Whisper model (large-v3-turbo)
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:

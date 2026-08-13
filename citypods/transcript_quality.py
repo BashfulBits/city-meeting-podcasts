@@ -14,6 +14,7 @@ served transcript unless a later policy explicitly promotes them.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import html
 import json
@@ -833,6 +834,8 @@ def _episode_candidate_pair(city: City, ep, *, config: QualityConfig) -> dict | 
         "episode_title": ep.title,
         "published_at": ep.published.isoformat(),
         "audio_url": ep.hosted_audio_url,
+        "audio_duration": duration,
+        "timeline": dataclasses.asdict(ep.timeline) if ep.timeline is not None else None,
         "clip_start": clip_start,
         "clip_end": clip_end,
         "candidates": [
@@ -1021,7 +1024,7 @@ def _candidate_metrics(
     candidate was generated with — the same "did the words land in the audio, how confidently"
     signal review/12 Layer 1 records on every production run. Timing coverage/density/gap-ratio
     are still computed for the human review page's badges, but no longer drive auto_score:
-    they describe cue *shape*, not acoustic correctness, and stable-ts/faster-whisper always
+    they describe cue *shape*, not acoustic correctness, and WhisperX/faster-whisper always
     time every word they emit, so they were mostly measuring VTT formatting.
 
     ``ctc_fit`` (Layer 2, review/12 §H15 "Open decisions") is an independent, non-Whisper CTC
@@ -1047,7 +1050,7 @@ def _candidate_metrics(
     coverage_score = (
         0.5 if acoustic_coverage is None else max(0.0, min(1.0, float(acoustic_coverage)))
     )
-    # word_logprob_mean is faster-whisper/stable-ts's own per-word `.probability` (already a
+    # word_logprob_mean is faster-whisper's own per-word `.probability` (already a
     # linear 0-1 confidence despite the "logprob" name inherited from review/12's field naming),
     # so no log/exp transform is needed here.
     confidence_score = (
@@ -1201,7 +1204,7 @@ def _provider_source_text(candidate: dict, *, storage=None) -> str:
         cues = _parse_timed_transcript(raw, fmt)
         joined = "\n".join(str(cue.get("text") or "") for cue in cues)
         return _preprocess_align_text(joined)
-    return _preprocess_align_text(raw.decode("utf-8", errors="replace"))
+    return raw.decode("utf-8", errors="replace")
 
 
 def _download_audio_to_path(audio_url: str, dest: Path) -> None:
@@ -1226,22 +1229,29 @@ def _generate_provider_align_candidate(
     audio_path = work_dir / "audio.m4a"
     _download_audio_to_path(sample["audio_url"], audio_path)
     cpu_threads = max(1, city.asr_workers)
-    model = asr_mod.load_model(city.asr_model, city.asr_compute_type, cpu_threads)
-    artifacts = asr_mod.align(
-        audio_path,
+    from citypods.known_text import provider_sections
+
+    sections = provider_sections(
         text,
-        model,
+        duration=float(sample.get("audio_duration") or sample.get("clip_end") or 0.0),
+        timeline=sample.get("timeline"),
+    )
+    if not sections:
+        raise ValueError("provider source text produced no spoken sections")
+    artifacts = asr_mod.align_known_text(
+        audio_path,
+        sections,
+        city.asr_alignment_model,
         city.asr_language or None,
         cpu_threads,
+        city.asr_alignment_interpolate,
     )
-    # The recipe identity recorded here feeds recipe_ranks (see _route_from_row): provider-align
-    # in H15 uses the *current* production model/config, so its recipe identity is meaningfully
-    # the currently-deployed ASR_PIPELINE_VERSION, not a synthetic H15-only hash — that's what
-    # lets an operator's accepted_active_recipes / minimum_quality_rank policy (keyed on
-    # ep.transcript_pipeline_version, a catalog-wide value) ever actually match something real.
-    from citypods.stages import ASR_PIPELINE_VERSION
+    # The recipe identity recorded here feeds recipe_ranks (see _route_from_row). Keep it aligned
+    # with the catalog's provider-align pipeline version so accepted_active_recipes /
+    # minimum_quality_rank policy (keyed on ep.transcript_pipeline_version) can match it.
+    from citypods.stages import KNOWN_TEXT_ALIGN_PIPELINE_VERSION
 
-    recipe = ASR_PIPELINE_VERSION
+    recipe = f"provider-align:{KNOWN_TEXT_ALIGN_PIPELINE_VERSION}"
     vtt_path = _write_bytes(work_dir / "provider-align.vtt", artifacts.vtt)
     words_path = _write_bytes(work_dir / "provider-align.words.json", artifacts.words)
     return {

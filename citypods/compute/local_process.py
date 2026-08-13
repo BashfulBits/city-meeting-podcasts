@@ -1,6 +1,6 @@
 """Killable persistent subprocess backend for local ASR inference.
 
-Native faster-whisper/stable-ts calls cannot be interrupted safely from a Python thread. This
+Native faster-whisper/WhisperX calls cannot be interrupted safely from a Python thread. This
 backend keeps model caches inside one spawned worker process, sends serializable episode jobs over a
 pipe, and lets the parent terminate/restart that process when an item exceeds its wall-clock limit.
 """
@@ -51,13 +51,21 @@ def _run_job(asr, job: InferenceJob) -> JobResult:
             inp["cpu_threads"],
         )
     elif job.task == "align":
-        output = asr.align(
-            inp["audio_path"],
-            inp["text"],
-            model_name,
-            inp["language"],
-            inp["cpu_threads"],
-        )
+        align_known_text = getattr(asr, "align_known_text", None)
+        if callable(align_known_text):
+            output = align_known_text(
+                inp["audio_path"],
+                inp["sections"],
+                model_name,
+                inp["language"],
+                inp["cpu_threads"],
+                inp.get("interpolate_method", "linear"),
+            )
+        else:
+            text = " ".join(str(section.get("text") or "") for section in inp["sections"])
+            output = asr.align(
+                inp["audio_path"], text, model_name, inp["language"], inp["cpu_threads"]
+            )
     else:
         raise ValueError(f"process-local backend does not implement task {job.task!r}")
     return JobResult(task=job.task, recipe_hash=job.recipe_hash, output=output)

@@ -285,7 +285,7 @@ defaults:
   # ASR transcript generation (#110). Runs after audio is hosted; produces timed VTT for
   # <podcast:transcript> and downstream features (summaries, soundbites, search).
   # Two paths per episode:
-  #   A. Forced alignment (stable-ts) when the provider has an untimed source transcript —
+  #   A. Known-text alignment (WhisperX) when the provider has an untimed source transcript —
   #      preserves official wording, faster than full transcription.
   #   B. Fresh transcription (faster-whisper) when no source text is available.
   #
@@ -305,10 +305,12 @@ defaults:
   asr_workers: 1                        # episode-level parallelism (1 model per worker);
                                         # 2 = ~1.7× throughput at 2× RAM; see models.py
   asr_beam_size: 5                      # beam search width; 1 = ~2× faster at quality cost
-  # Temporarily defer forced alignment of untimed provider transcripts. stable-ts alignment loads a
+  # Temporarily defer known-text alignment of untimed provider transcripts. WhisperX alignment loads a
   # separate model and has been the active exit-143 pressure point when overlapped with ffmpeg work.
   # H5/H6 will re-enable it as an align-only backlog/workflow lane with tighter resource isolation.
   asr_alignment_enabled: false
+  asr_alignment_model: "WAV2VEC2_ASR_BASE_960H"
+  asr_alignment_interpolate: "linear"   # applied after the raw 90% coverage gate
   # Bound one ASR item by wall-clock. If native inference stalls, abandon that item, skip
   # remaining ASR for this run, and persist completed enrich work instead of waiting for
   # GitHub Actions to terminate the whole process with exit 143.
@@ -325,7 +327,7 @@ defaults:
   # queued for Modal/Beam instead. Forks with larger self-hosted machines may raise it; <=0 disables.
   asr_local_max_duration_hours: 4
   # GPU/ASR execution backend (H13 — the pre-1.0 "compute is pluggable" lock). Selects where
-  # transcribe/align inference runs. "local" runs faster-whisper/stable-ts in-process on the runner;
+  # transcribe/align inference runs. "local" runs faster-whisper/WhisperX in-process on the runner;
   # "auto" (H14a) routes through the dispatcher below — filling each external free-tier GPU budget
   # first, then overflowing to "local". Override: COMPUTE_BACKEND=local (a hard bypass of the seam).
   compute_backend: "auto"                # "local" | "auto"

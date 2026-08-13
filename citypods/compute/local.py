@@ -1,6 +1,6 @@
 """In-process GPU/ASR backend — the only adapter that must exist at 1.0.
 
-A pure move of the faster-whisper / stable-ts calls that ``TranscriptStage`` used to make
+A pure move of the faster-whisper / WhisperX calls that ``TranscriptStage`` used to make
 directly on :mod:`citypods.asr`: this wraps them behind the :class:`~citypods.compute.base.Backend`
 protocol with **byte-identical output**. The heavy lifting (model load/cache, VTT + word-JSON
 emit, alignment-quality gate) stays in ``asr.py``; this adapter only routes the ``transcribe`` /
@@ -20,7 +20,7 @@ from citypods.compute.base import InferenceJob, JobResult
 
 
 class LocalBackend:
-    """Synchronous backend running faster-whisper / stable-ts in this process."""
+    """Synchronous backend running faster-whisper / WhisperX in this process."""
 
     name = "local"
 
@@ -38,7 +38,7 @@ class LocalBackend:
 
         * ``transcribe`` — ``audio_path, model, language, compute_type, beam_size,
           initial_prompt, cpu_threads``
-        * ``align`` — ``audio_path, text, model, language, cpu_threads``
+        * ``align`` — ``audio_path, sections, model, language, cpu_threads, interpolate_method``
         """
         inp = job.inputs
         if job.task == "transcribe":
@@ -52,13 +52,21 @@ class LocalBackend:
                 inp["cpu_threads"],
             )
         elif job.task == "align":
-            output = self._asr.align(
-                inp["audio_path"],
-                inp["text"],
-                inp["model"],
-                inp["language"],
-                inp["cpu_threads"],
-            )
+            align_known_text = getattr(self._asr, "align_known_text", None)
+            if callable(align_known_text):
+                output = align_known_text(
+                    inp["audio_path"],
+                    inp["sections"],
+                    inp["model"],
+                    inp["language"],
+                    inp["cpu_threads"],
+                    inp.get("interpolate_method", "linear"),
+                )
+            else:  # compatibility for narrow test doubles and third-party adapters
+                text = " ".join(str(section.get("text") or "") for section in inp["sections"])
+                output = self._asr.align(
+                    inp["audio_path"], text, inp["model"], inp["language"], inp["cpu_threads"]
+                )
         else:
             raise ValueError(f"local backend does not implement task {job.task!r}")
         return JobResult(task=job.task, recipe_hash=job.recipe_hash, output=output)

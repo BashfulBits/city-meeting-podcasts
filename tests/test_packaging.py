@@ -21,8 +21,8 @@ def test_align_and_bench_extras_are_explicit():
     extras = _extras()
     align = " ".join(extras["asr-align"]).lower()
     bench = " ".join(extras["asr-bench"]).lower()
-    assert "stable-ts[fw]" in align
-    assert "stable-ts[fw]" in bench
+    assert "whisperx" in align
+    assert "whisperx" in bench
     assert "faster-whisper" in bench
     assert "jiwer" in bench
 
@@ -30,5 +30,5 @@ def test_align_and_bench_extras_are_explicit():
 def test_legacy_asr_extra_remains_the_full_aggregate():
     aggregate = " ".join(_extras()["asr"]).lower()
     assert "faster-whisper" in aggregate
-    assert "stable-ts[fw]" in aggregate
+    assert "whisperx" in aggregate
     assert "jiwer" in aggregate

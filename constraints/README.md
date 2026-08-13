@@ -13,7 +13,7 @@ fully-resolved pins that make installs reproducible. Policy: [`review/22`](../re
 
 `asr-align2` (H15 Layer 2's independent CTC aligner, `torchcodec`) is compiled into `asr.txt`
 rather than its own file: `torch`/`torchaudio` are already a transitive pin there via
-`stable-ts[fw]`'s own `torch`/`openai-whisper` dependency, so a separate lock file would risk two
+WhisperX's own torch/torchaudio dependency, so a separate lock file would risk two
 constraint files disagreeing on the same package's pinned version.
 
 ## Consuming them

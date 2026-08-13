@@ -479,7 +479,7 @@ class TestTranscriptStageVTT:
         assert "-provider-align-" in ep.transcript_key
         assert ep.transcript_synced is True
         assert ep.transcript_basis == "served"
-        assert ep.transcript_pipeline_version == "provider-align:1"
+        assert ep.transcript_pipeline_version == "provider-align:2"
         assert "candidate" not in ep.provider_transcript
         known_good = ep.provider_transcript["known_good"]
         assert known_good["confidence"] == 1.0

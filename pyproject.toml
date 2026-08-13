@@ -26,17 +26,17 @@ asr-transcribe = [
     "faster-whisper>=1.0",          # CTranslate2-optimised fresh transcription (CPU int8)
 ]
 asr-align = [
-    "stable-ts[fw]>=2.17",          # stable-ts forced alignment using its faster-whisper backend
+    "whisperx>=3.8",                # CTC known-text alignment; much faster than full ASR
 ]
 asr-bench = [
     "faster-whisper>=1.0",
-    "stable-ts[fw]>=2.17",
+    "whisperx>=3.8",
     "jiwer>=3.0",                   # WER computation for asr-bench diagnostic
 ]
 # H15 Layer 2 (review/12 §H15): independent, non-Whisper CTC forced-alignment judge, used only
 # by the periodic asr-quality-eval.yml sampler for a bounded rotating subset of samples.
 # torch/torchaudio are listed for correctness if this extra is ever installed standalone, but in
-# practice they're already a transitive pin via stable-ts[fw]'s own torch/openai-whisper
+# practice they're already a transitive pin via WhisperX's torch/torchaudio closure
 # dependency wherever `asr` is installed too — torchcodec is the only genuinely new download.
 # Compiled into the same constraints/asr.txt resolution as `asr` (see
 # scripts/compile_constraints.sh) rather than a separate lock file, so torch/torchaudio never
@@ -49,11 +49,11 @@ asr-align2 = [
 # Backward-compatible aggregate for local contributors that want every ASR surface.
 asr = [
     "faster-whisper>=1.0",
-    "stable-ts[fw]>=2.17",
+    "whisperx>=3.8",
     "jiwer>=3.0",
 ]
 # H15 Layer 3 (review/12 §H15): WER/CER for the gold-anchored calibration report. Deliberately
-# separate from asr-bench/asr — those also pull in faster-whisper/stable-ts, which the weekly
+# separate from asr-bench/asr — those also pull in faster-whisper/WhisperX, which the weekly
 # asr-quality-review.yml workflow (this extra's only consumer) has no other reason to install.
 wer = ["jiwer>=3.0"]
 # Offline-only experiments for generated agenda chapters (GH#1078).  This is deliberately not

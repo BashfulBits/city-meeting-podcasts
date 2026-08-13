@@ -2,7 +2,7 @@
 
 Layer 1 (``citypods/asr.py``) and the periodic A/B sampler (``citypods/transcript_quality.py``)
 both score candidates using the same *kind* of model that produced them: a Whisper-family
-decoder (stable-ts for the provider-align candidate, faster-whisper for the ASR-challenger
+decoder (WhisperX for the provider-align candidate, faster-whisper for the ASR-challenger
 candidate) grading its own output. Review/12 calls this "same-generator-biased" — a real fit
 signal, but never a fair verdict on which transcript the audio actually supports.
 

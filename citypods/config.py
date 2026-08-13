@@ -320,6 +320,8 @@ def _build_city(
             "asr_workers",
             "asr_beam_size",
             "asr_alignment_enabled",
+            "asr_alignment_model",
+            "asr_alignment_interpolate",
         }
     )
     try:
@@ -384,6 +386,15 @@ def _build_city(
         asr_beam_size=int(_get("asr_beam_size", defaults.get("asr_beam_size", 5))),
         asr_alignment_enabled=bool(
             _get("asr_alignment_enabled", defaults.get("asr_alignment_enabled", False))
+        ),
+        asr_alignment_model=str(
+            _get(
+                "asr_alignment_model",
+                defaults.get("asr_alignment_model", "WAV2VEC2_ASR_BASE_960H"),
+            )
+        ),
+        asr_alignment_interpolate=str(
+            _get("asr_alignment_interpolate", defaults.get("asr_alignment_interpolate", "linear"))
         ),
     )
 

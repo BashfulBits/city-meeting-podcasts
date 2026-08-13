@@ -3,13 +3,13 @@
 Two public entry points:
 
   transcribe(audio_path, ...)  — Path B: fresh Whisper generation.
-  align(audio_path, text, ...) — Path A: forced alignment via stable-ts, preserving
-                                  the exact wording of an existing source transcript.
+  align_known_text(audio_path, sections, ...) — Path A: WhisperX CTC alignment, preserving
+                                                 the exact wording of an existing source transcript.
 
 Both return a :class:`TranscriptArtifacts` (a clean segment-level VTT + a word-level JSON
 sidecar) in *served time* (caller downloads the hosted M4A before calling).
 
-All third-party imports (faster_whisper, stable_whisper) are lazy — the module loads
+All third-party imports (faster_whisper, whisperx) are lazy — the module loads
 cleanly without the ASR optional extras; a missing import surfaces only when
 transcribe() / align() is actually called.
 """
@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 # ── Pinned Whisper model repos + revisions ───────────────────────────────────
 # Canonical single source of truth for the model bytes, shared by the GitHub-Actions
@@ -47,12 +49,23 @@ _model_lock = threading.Lock()
 
 @dataclass(frozen=True)
 class _LoadedAsrModel:
-    """A loaded faster-whisper model plus the recipe needed for stable-ts alignment."""
+    """A loaded faster-whisper transcription model."""
 
     model_or_path: str
     compute_type: str
     cpu_threads: int
     transcriber: object
+
+
+@dataclass(frozen=True)
+class _LoadedAlignmentModel:
+    """WhisperX acoustic model and metadata used for known-text alignment."""
+
+    model_name: str
+    language: str
+    model: object
+    metadata: object
+    device: str = "cpu"
 
 
 def _configured_model_or_path(model: str) -> str:
@@ -97,7 +110,7 @@ class TranscriptArtifacts:
       for ``transcribe()`` it is near-1.0 in practice since faster-whisper always times
       generated words, but is still recorded for completeness.
     * ``word_logprob_mean`` / ``word_logprob_p10`` — mean and 10th-percentile of the
-      per-word ``.probability`` faster-whisper/stable-ts populate (a linear 0-1 confidence,
+      per-word ``.probability`` faster-whisper populates (a linear 0-1 confidence,
       despite the "logprob" name inherited from review/12's field naming), or ``None`` when
       no word carried a probability value. Answers "how confidently?" where coverage answers
       "did the words land in the audio at all?".
@@ -122,7 +135,7 @@ def _word_fit_stats(segments) -> dict:
     for seg in segments:
         for w in getattr(seg, "words", None) or []:
             total_words += 1
-            if getattr(w, "start", None) is not None and getattr(w, "end", None) is not None:
+            if _valid_time(getattr(w, "start", None)) and _valid_time(getattr(w, "end", None)):
                 timed_words += 1
             prob = getattr(w, "probability", None)
             if isinstance(prob, int | float):
@@ -139,6 +152,10 @@ def _word_fit_stats(segments) -> dict:
         "word_logprob_mean": round(mean_p, 4) if mean_p is not None else None,
         "word_logprob_p10": round(p10, 4) if p10 is not None else None,
     }
+
+
+def _valid_time(value) -> bool:
+    return isinstance(value, int | float) and math.isfinite(float(value))
 
 
 def _to_vtt(segments) -> bytes:
@@ -161,7 +178,7 @@ def _to_words_json(segments, basis: str = "served") -> bytes:
     Shape: ``{"schema", "basis", "segments": [{"start","end","text",
     "words": [{"w","s","e"}]}]}`` — segment text for readable snippets, per-word
     ``(start, end)`` for deep-links / clip cuts / diarization alignment. Works for both
-    faster-whisper and stable-ts segments (both expose ``.words`` with
+    faster-whisper and normalized WhisperX segments (both expose ``.words`` with
     ``.word``/``.start``/``.end``)."""
     out_segments = []
     for seg in segments:
@@ -170,7 +187,7 @@ def _to_words_json(segments, basis: str = "served") -> bytes:
             start = getattr(w, "start", None)
             end = getattr(w, "end", None)
             token = (getattr(w, "word", "") or "").strip()
-            if token and start is not None and end is not None:
+            if token and _valid_time(start) and _valid_time(end):
                 entry = {"w": token, "s": round(float(start), 3), "e": round(float(end), 3)}
                 prob = getattr(w, "probability", None)
                 if isinstance(prob, int | float):
@@ -243,28 +260,38 @@ def load_model(model: str, compute_type: str, cpu_threads: int):
     return _model_cache[cache_key]
 
 
-def _load_alignment_model(model_or_path: str, compute_type: str | None, cpu_threads: int):
-    """Load/cache a stable-ts faster-whisper model that supports ``align()``."""
+def load_alignment_model(model_name: str, language: str, cpu_threads: int = 1):
+    """Load/cache a WhisperX CTC model for known-text alignment.
+
+    ``cpu_threads`` is part of the cache identity for API compatibility, although WhisperX's
+    torchaudio model controls its own low-level thread pool.
+    """
     try:
-        import stable_whisper
+        import whisperx
     except ImportError as exc:
         raise ImportError(
-            "stable-ts is required for forced alignment. "
+            "whisperx is required for known-text alignment. "
             "Install it with: pip install 'citypods[asr-align]'"
         ) from exc
 
-    cache_key = ("stable-faster-whisper", model_or_path, compute_type, cpu_threads)
+    model_name = model_name or "WAV2VEC2_ASR_BASE_960H"
+    language = language or "en"
+    cache_key = ("whisperx-align", model_name, language, cpu_threads)
     if cache_key in _model_cache:
         return _model_cache[cache_key]
 
     with _model_lock:
         if cache_key not in _model_cache:
-            options: dict[str, object] = {"device": "cpu", "cpu_threads": cpu_threads}
-            if compute_type:
-                options["compute_type"] = compute_type
-            _model_cache[cache_key] = stable_whisper.load_faster_whisper(
-                model_or_path,
-                **options,
+            model, metadata = whisperx.load_align_model(
+                language_code=language,
+                device="cpu",
+                model_name=model_name,
+            )
+            _model_cache[cache_key] = _LoadedAlignmentModel(
+                model_name=model_name,
+                language=language,
+                model=model,
+                metadata=metadata,
             )
     return _model_cache[cache_key]
 
@@ -327,15 +354,171 @@ def transcribe(
 class AlignmentQualityError(RuntimeError):
     """Raised when forced alignment quality falls below the acceptable threshold.
 
-    The caller (``TranscriptStage``) catches this and falls back to fresh
-    transcription (Path B) so the episode still gets a usable timed VTT.
+    The caller (``TranscriptStage``) marks the provider candidate ineligible and lets the normal
+    full-ASR queue produce a usable timed VTT on a later pass.
     """
 
 
 # Minimum fraction of words that must receive a timestamp for the alignment to be
 # considered usable.  Below this threshold we raise AlignmentQualityError so the
-# caller can fall back to fresh transcription.
-_MIN_ALIGN_COVERAGE = 0.60
+# caller can mark the provider candidate ineligible for the current pass.
+_MIN_ALIGN_COVERAGE = 0.90
+
+
+def _mapping_value(value, key: str, default=None):
+    if isinstance(value, dict):
+        return value.get(key, default)
+    return getattr(value, key, default)
+
+
+def _whisperx_segments(result: dict, sections: list[dict]) -> list[SimpleNamespace]:
+    """Normalize WhisperX dictionaries into the internal segment/word shape."""
+    raw_segments = result.get("segments") or []
+    normalized: list[SimpleNamespace] = []
+    for index, raw in enumerate(raw_segments):
+        section = sections[index] if index < len(sections) else {}
+        raw_words = raw.get("words") or []
+        words = [
+            SimpleNamespace(
+                word=_mapping_value(word, "word", ""),
+                start=_mapping_value(word, "start"),
+                end=_mapping_value(word, "end"),
+                probability=None,
+            )
+            for word in raw_words
+        ]
+        start = _mapping_value(raw, "start", section.get("start", 0.0))
+        end = _mapping_value(raw, "end", section.get("end", start or 0.0))
+        if not _valid_time(start):
+            start = section.get("start", 0.0)
+        if not _valid_time(end):
+            end = section.get("end", start or 0.0)
+        normalized.append(
+            SimpleNamespace(
+                start=float(start or 0.0),
+                end=float(end if end is not None else start or 0.0),
+                text=str(section.get("text") or _mapping_value(raw, "text", "")),
+                words=words,
+            )
+        )
+    # Some WhisperX versions expose word_segments without nested words. Preserve the input
+    # section boundaries/text and attach those words rather than silently dropping them.
+    if not normalized and result.get("word_segments"):
+        words = [
+            SimpleNamespace(
+                word=_mapping_value(word, "word", ""),
+                start=_mapping_value(word, "start"),
+                end=_mapping_value(word, "end"),
+                probability=None,
+            )
+            for word in result["word_segments"]
+        ]
+        normalized = [
+            SimpleNamespace(
+                start=float(section.get("start") or 0.0),
+                end=float(section.get("end") or section.get("start") or 0.0),
+                text=str(section.get("text") or ""),
+                words=words,
+            )
+            for section in sections
+        ]
+    return normalized
+
+
+def _interpolate_words(segments: list[SimpleNamespace], method: str) -> None:
+    """Fill missing word bounds after the raw coverage gate.
+
+    This mirrors WhisperX's nearest/linear semantics but keeps the pre-interpolation coverage
+    observable. ``nearest`` copies the closest located word; ``linear`` interpolates by word
+    position between the surrounding located words.
+    """
+    if method not in {"nearest", "linear", "ignore"}:
+        raise ValueError("interpolate_method must be one of: nearest, linear, ignore")
+    if method == "ignore":
+        return
+    for segment in segments:
+        words = segment.words or []
+        valid = [
+            i
+            for i, word in enumerate(words)
+            if _valid_time(word.start) and _valid_time(word.end)
+        ]
+        if not valid:
+            continue
+        for index, word in enumerate(words):
+            if index in valid:
+                continue
+            left = max((item for item in valid if item < index), default=None)
+            right = min((item for item in valid if item > index), default=None)
+            if left is None:
+                source = words[right]
+                word.start, word.end = source.start, source.end
+            elif right is None:
+                source = words[left]
+                word.start, word.end = source.start, source.end
+            elif method == "nearest":
+                source = words[left] if index - left <= right - index else words[right]
+                word.start, word.end = source.start, source.end
+            else:
+                ratio = (index - left) / (right - left)
+                word.start = words[left].start + ratio * (words[right].start - words[left].start)
+                word.end = words[left].end + ratio * (words[right].end - words[left].end)
+
+
+def align_known_text(
+    audio_path: Path,
+    sections: list[dict],
+    model_or_name: object,
+    language: str | None,
+    cpu_threads: int,
+    interpolate_method: str = "linear",
+) -> TranscriptArtifacts:
+    """Align known text to audio with WhisperX while preserving provider wording.
+
+    WhisperX is first asked for ``interpolate_method='ignore'``.  The 90% fallback gate is
+    computed from those raw word timestamps, then the requested interpolation is applied only to
+    the successful result. This prevents interpolation from masking a bad acoustic alignment.
+    """
+    if isinstance(model_or_name, str):
+        loaded = load_alignment_model(model_or_name, language or "en", cpu_threads)
+    elif isinstance(model_or_name, _LoadedAlignmentModel):
+        loaded = model_or_name
+    else:
+        loaded = model_or_name
+    try:
+        import whisperx
+    except ImportError as exc:
+        raise ImportError(
+            "whisperx is required for known-text alignment. "
+            "Install it with: pip install 'citypods[asr-align]'"
+        ) from exc
+
+    audio = whisperx.load_audio(str(audio_path))
+    result = whisperx.align(
+        list(sections),
+        loaded.model,
+        loaded.metadata,
+        audio,
+        loaded.device,
+        return_char_alignments=False,
+        interpolate_method="ignore",
+        print_progress=False,
+    )
+    segments = _whisperx_segments(result, sections)
+    fit = _word_fit_stats(segments)
+    if fit["coverage"] < _MIN_ALIGN_COVERAGE:
+        raise AlignmentQualityError(
+            f"alignment coverage {fit['coverage']:.0%} < {_MIN_ALIGN_COVERAGE:.0%} "
+            f"— provider candidate is ineligible for alignment"
+        )
+    _interpolate_words(segments, interpolate_method)
+    return TranscriptArtifacts(
+        vtt=_to_vtt(segments),
+        words=_to_words_json(segments),
+        coverage=fit["coverage"],
+        word_logprob_mean=None,
+        word_logprob_p10=None,
+    )
 
 
 def align(
@@ -345,67 +528,59 @@ def align(
     language: str | None,
     cpu_threads: int,
 ) -> TranscriptArtifacts:
-    """Force-align *text* to *audio_path* using stable-ts; return a ``TranscriptArtifacts``
-    (segment WebVTT + word-level JSON sidecar).
+    """Backward-compatible wrapper for one full-duration known-text section.
 
-    *model_or_name* may be a pre-loaded stable-ts model instance or a name string.
-    Preserves the official transcript wording exactly; faster than generation.
-
-    Raises :exc:`AlignmentQualityError` when the fraction of successfully aligned
-    words falls below ``_MIN_ALIGN_COVERAGE`` (default 60 %).  The caller should
-    catch this and fall back to fresh :func:`transcribe`.
+    The small legacy branch is retained only for downstream test doubles that inject
+    ``stable_whisper``; production installs and calls WhisperX through ``align_known_text``.
     """
-    if isinstance(model_or_name, str):
-        wm = _load_alignment_model(
-            _configured_model_or_path(model_or_name),
-            None,
-            cpu_threads,
-        )
-    elif isinstance(model_or_name, _LoadedAsrModel):
-        wm = _load_alignment_model(
-            model_or_name.model_or_path,
-            model_or_name.compute_type,
-            model_or_name.cpu_threads,
-        )
-    else:
-        wm = model_or_name  # pre-loaded instance
+    try:
+        import stable_whisper  # type: ignore[import-not-found]
+    except ImportError:
+        stable_whisper = None
+    if stable_whisper is not None:
+        if isinstance(model_or_name, str):
+            legacy_model = stable_whisper.load_faster_whisper(
+                _configured_model_or_path(model_or_name),
+                device="cpu",
+                cpu_threads=cpu_threads,
+            )
+        elif isinstance(model_or_name, _LoadedAsrModel):
+            legacy_model = stable_whisper.load_faster_whisper(
+                model_or_name.model_or_path,
+                device="cpu",
+                cpu_threads=model_or_name.cpu_threads,
+                compute_type=model_or_name.compute_type,
+            )
+        else:
+            legacy_model = model_or_name
+        if hasattr(legacy_model, "align"):
+            result = legacy_model.align(str(audio_path), text, language=language or "en")
+            segments = result.segments
+            fit = _word_fit_stats(segments)
+            if fit["coverage"] < _MIN_ALIGN_COVERAGE:
+                raise AlignmentQualityError(
+                    f"alignment coverage {fit['coverage']:.0%} < {_MIN_ALIGN_COVERAGE:.0%} "
+                    f"({fit['coverage']:.0%}) — provider candidate is ineligible for alignment"
+                )
+            vtt = result.to_vtt(segment_level=True, word_level=False)
+            if not vtt.startswith("WEBVTT"):
+                vtt = "WEBVTT\n\n" + vtt
+            return TranscriptArtifacts(
+                vtt=vtt.encode("utf-8"),
+                words=_to_words_json(segments),
+                coverage=fit["coverage"],
+                word_logprob_mean=fit["word_logprob_mean"],
+                word_logprob_p10=fit["word_logprob_p10"],
+            )
+    from citypods.known_text import provider_sections
 
-    result = wm.align(str(audio_path), text, language=language or "en")
-
-    # Quality check: count words that received a valid timestamp.
-    total_words = sum(len(seg.words) for seg in result.segments if hasattr(seg, "words"))
-    timed_words = sum(
-        1
-        for seg in result.segments
-        if hasattr(seg, "words")
-        for w in seg.words
-        if getattr(w, "start", None) is not None
-    )
-    # CR2-CP-18: *text* is only ever non-empty when this path is chosen (stages.py picks
-    # the "align" lane only when align_text is truthy), so total_words == 0 means the aligner
-    # produced no words at all — a total failure, not a vacuously-passing edge case. Treat it
-    # as 0% coverage rather than skipping the gate.
-    coverage = timed_words / total_words if total_words > 0 else 0.0
-    if coverage < _MIN_ALIGN_COVERAGE:
-        raise AlignmentQualityError(
-            f"alignment coverage {coverage:.0%} < {_MIN_ALIGN_COVERAGE:.0%} "
-            f"({timed_words}/{total_words} words timed) — falling back to transcription"
-        )
-
-    # Segment-level VTT (clean cue-per-utterance) for the podcast tag; word JSON sidecar
-    # from the same aligned result for server-side features.
-    vtt_str: str = result.to_vtt(segment_level=True, word_level=False)
-    if not vtt_str.startswith("WEBVTT"):
-        vtt_str = "WEBVTT\n\n" + vtt_str
-    # H15 Layer 1: reuse the gate's own `coverage` (identical semantics to the pass/fail check
-    # above); only the word-probability aggregate needs the shared helper.
-    fit = _word_fit_stats(result.segments)
-    return TranscriptArtifacts(
-        vtt=vtt_str.encode("utf-8"),
-        words=_to_words_json(result.segments),
-        coverage=round(coverage, 4),
-        word_logprob_mean=fit["word_logprob_mean"],
-        word_logprob_p10=fit["word_logprob_p10"],
+    sections = provider_sections(text)
+    return align_known_text(
+        audio_path,
+        sections,
+        model_or_name,
+        language,
+        cpu_threads,
     )
 
 
@@ -422,6 +597,8 @@ def asr_spec_hash(
     compute_type: str | None = None,
     beam_size: int | None = None,
     initial_prompt: str | None = None,
+    align_model: str | None = None,
+    interpolate_method: str | None = None,
 ) -> str:
     """Recipe hash for an ASR transcript: changes when any transcript input changes.
 
@@ -446,6 +623,9 @@ def asr_spec_hash(
         "beam_size": beam_size,
         "initial_prompt": initial_prompt,
     }
+    if align_text_hash is not None:
+        spec["align_model"] = align_model
+        spec["interpolate_method"] = interpolate_method
     blob = json.dumps(spec, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha1(blob).hexdigest()[:12]
 

@@ -2,7 +2,7 @@
 
 ``make_compute`` picks a backend from the ``COMPUTE_BACKEND`` env var (handy for local dev /
 tests) or ``site_config.defaults.compute_backend``:
-  - ``"local"`` (default-safe): runs faster-whisper / stable-ts in this process
+  - ``"local"`` (default-safe): runs faster-whisper / WhisperX in this process
     (:class:`LocalBackend`).
   - ``"auto"``: returns a :class:`DispatchCoordinator` that fills each configured external backend's
     free-tier budget first (Modal, then Beam — H14b/H14c) and **overflows to ``local``**. Until
