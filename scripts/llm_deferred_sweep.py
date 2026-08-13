@@ -26,11 +26,22 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from citypods.compute.base import JobHandle
-from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+from citypods.compute.llm import (
+    LiteLLMBackend,
+    LLMBackendConfig,
+    LLMDispatchTerminalError,
+    LLMStructuredOutputError,
+)
 from citypods.compute.llm_deferred import (
+    MAX_TERMINAL_FAILURE_RETRIES,
+    discard_terminal_failure,
     load_deferred_snapshot,
     prune_expired_deferred_snapshot,
+    prune_expired_failure_markers,
+    record_schema_correction,
     repair_deferred_index,
+    schema_correction_attempted,
+    write_deferred,
 )
 from citypods.compute.llm_policy import ROUTES, DeferredLLMRequest
 from citypods.config import load_site_config
@@ -204,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
     completed = 0
     still_pending = 0
     failed = 0
+    recovered_terminal_failures = 0
     seen_pending: set[str] = set()
     exhausted_capacity: set[tuple] = set()
     # Per-pool tally, purely for the end-of-run breakdown below -- visibility into which route
@@ -212,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     skipped_by_pool: dict[tuple, int] = {}
 
     snapshot = load_deferred_snapshot(storage)
+    prune_expired_failure_markers(storage)
     if datetime.now(UTC) < deadline_at:
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
@@ -229,6 +242,53 @@ def main(argv: list[str] | None = None) -> int:
             seen_pending.add(handle.recipe_hash)
             try:
                 result = backend.reconcile(reconciled_handle)
+            except LLMStructuredOutputError as exc:
+                failed += 1
+                if schema_correction_attempted(storage, handle.recipe_hash):
+                    marker_count = discard_terminal_failure(
+                        storage, snapshot, handle, exc, backend=backend, exhausted=True
+                    )
+                    recovered_terminal_failures += 1
+                    print(
+                        f"llm-deferred-sweep: {handle.recipe_hash} malformed correction exhausted "
+                        f"(attempt {marker_count}/{MAX_TERMINAL_FAILURE_RETRIES}): {exc}",
+                        file=sys.stderr,
+                    )
+                    continue
+                try:
+                    corrected = backend.retry_malformed_dispatched(handle)
+                    write_deferred(storage, handle.recipe_hash, corrected)
+                    snapshot.replace_pending(handle.recipe_hash, corrected)
+                    # Persist the one-correction guard before deleting the completed request.
+                    # A marker-write failure must leave the original intact, not permit a second
+                    # correction of the same malformed result on the next sweep.
+                    record_schema_correction(storage, handle, exc)
+                    # The Worker clone is durable before the bad response is removed. If this
+                    # cleanup races, it leaves only harmless retained audit history.
+                    backend.delete_dispatched_ref(handle.ref)
+                    print(
+                        f"llm-deferred-sweep: {handle.recipe_hash} submitted one schema correction",
+                        file=sys.stderr,
+                    )
+                except Exception as retry_exc:  # noqa: BLE001 -- retain old handle for retry
+                    print(
+                        f"llm-deferred-sweep: {handle.recipe_hash} schema correction failed: "
+                        f"{retry_exc}",
+                        file=sys.stderr,
+                    )
+                continue
+            except LLMDispatchTerminalError as exc:
+                failed += 1
+                marker_count = discard_terminal_failure(
+                    storage, snapshot, handle, exc, backend=backend
+                )
+                recovered_terminal_failures += 1
+                print(
+                    f"llm-deferred-sweep: {handle.recipe_hash} terminal failure recovered "
+                    f"(attempt {marker_count}/{MAX_TERMINAL_FAILURE_RETRIES}): {exc}",
+                    file=sys.stderr,
+                )
+                continue
             except Exception as exc:  # noqa: BLE001 -- one bad record must not abort the sweep
                 failed += 1
                 print(f"llm-deferred-sweep: {handle.recipe_hash} failed: {exc}", file=sys.stderr)
@@ -256,7 +316,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(
         f"llm-deferred-sweep: {len(seen_pending)} pending seen, {completed} completed, "
-        f"{still_pending} still pending observations, {failed} failed, {pruned} pruned, "
+        f"{still_pending} still pending observations, {failed} failed "
+        f"({recovered_terminal_failures} terminally recovered), {pruned} pruned, "
         f"{remaining} remaining"
     )
     for signature, skipped in sorted(skipped_by_pool.items(), key=lambda item: -item[1]):

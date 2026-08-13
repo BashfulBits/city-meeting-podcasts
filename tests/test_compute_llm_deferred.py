@@ -3,20 +3,27 @@ from datetime import UTC, datetime, timedelta
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_budget import mutate_llm_budget
 from citypods.compute.llm_deferred import (
+    DEFAULT_FAILURE_MARKER_TTL_DAYS,
     DEFAULT_TTL_DAYS,
+    DEFERRED_FAILURE_PREFIX,
     DEFERRED_INDEX_MIGRATION_KEY,
     DEFERRED_INDEX_PENDING_PREFIX,
     DEFERRED_PREFIX,
     _indexed_listing,
     _write_json,
+    deferred_failure_key,
     deferred_key,
+    discard_terminal_failure,
     iter_pending_deferred,
     list_pending_deferred,
     load_deferred_snapshot,
     look_up_deferred,
     prune_expired_deferred,
     prune_expired_deferred_snapshot,
+    record_schema_correction,
     repair_deferred_index,
+    schema_correction_attempted,
+    terminal_failure_retry_allowed,
     write_deferred,
 )
 from citypods.compute.llm_policy import ROUTES, DeferredLLMRequest, LLMRequestPolicy
@@ -101,6 +108,80 @@ def test_completion_removes_old_route_pointers_after_canonical_write():
         now=NOW,
     )
     assert storage.keys(DEFERRED_INDEX_PENDING_PREFIX) == []
+
+
+def test_terminal_failure_removes_pending_handle_and_keeps_bounded_retry_audit():
+    storage = MemStorage()
+    handle = _pending_handle("recipe-terminal")
+    write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+
+    class Backend:
+        deleted = []
+
+        def delete_dispatched_ref(self, ref):
+            self.deleted.append(ref)
+
+    backend = Backend()
+    from citypods.compute.llm import LLMDispatchTerminalError
+
+    for attempt in range(1, 4):
+        if attempt > 1:
+            write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+            snapshot = load_deferred_snapshot(storage, now=NOW)
+        assert (
+            discard_terminal_failure(
+                storage,
+                snapshot,
+                handle,
+                LLMDispatchTerminalError("LLM dispatch poll returned HTTP 502 (upstream_error)"),
+                backend=backend,
+                now=NOW,
+            )
+            == attempt
+        )
+        assert look_up_deferred(storage, handle.recipe_hash) is None
+        assert list(snapshot.pending()) == []
+
+    assert backend.deleted == [handle.ref, handle.ref, handle.ref]
+    assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is False
+    assert storage.keys(DEFERRED_FAILURE_PREFIX) == [deferred_failure_key(handle.recipe_hash)]
+
+
+def test_schema_correction_marker_is_retryable_until_a_second_malformed_reply_exhausts_it():
+    storage = MemStorage()
+    handle = _pending_handle("recipe-schema")
+    write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    from citypods.compute.llm import LLMStructuredOutputError
+
+    error = LLMStructuredOutputError("structured dispatched response failed Pydantic validation")
+    record_schema_correction(storage, handle, error, now=NOW)
+    assert schema_correction_attempted(storage, handle.recipe_hash) is True
+    assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is True
+
+    discard_terminal_failure(storage, snapshot, handle, error, exhausted=True, now=NOW)
+    assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is False
+
+
+def test_repair_prunes_only_expired_terminal_failure_markers():
+    storage = MemStorage()
+    old_handle = _pending_handle("old-failure")
+    fresh_handle = _pending_handle("fresh-failure")
+    record_schema_correction(
+        storage,
+        old_handle,
+        RuntimeError("old terminal failure"),
+        now=NOW - timedelta(days=DEFAULT_FAILURE_MARKER_TTL_DAYS + 1),
+    )
+    record_schema_correction(storage, fresh_handle, RuntimeError("fresh terminal failure"), now=NOW)
+    _write_json(storage, deferred_failure_key("unparseable"), b"{not json")
+
+    assert repair_deferred_index(storage, now=NOW) == 0
+    assert storage.keys(DEFERRED_FAILURE_PREFIX) == [
+        deferred_failure_key("fresh-failure"),
+        deferred_failure_key("unparseable"),
+    ]
 
 
 def test_a_retry_narrowing_the_candidate_models_drops_only_the_stale_pointer():
