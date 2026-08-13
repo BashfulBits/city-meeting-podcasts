@@ -46,10 +46,13 @@ jobs:
           APPLY_INPUT: ${{ inputs.apply }}
           GIT_REF: ${{ github.ref }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          # Dedicated credentials are scoped to the private dispatch bucket.  Do not reuse the
+          # catalog-storage key: it cannot list this bucket.
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_RECLAIM_ACCESS_KEY }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_RECLAIM_SECRET_ACCESS_KEY }}
           # R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}  # enable for a jurisdiction-specific endpoint
         run: |
+          set -o pipefail
           ARGS=(--bucket citypods-llm-dispatch)
           if [ "$APPLY_INPUT" != "true" ]; then
             ARGS+=(--dry-run)
