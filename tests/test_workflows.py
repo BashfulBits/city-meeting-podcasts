@@ -711,6 +711,10 @@ def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
     assert "prepare_whisper.py" in runs
     assert "docker run" not in runs
     assert "faster-whisper-large-v3-turbo" in str(job["steps"])
+    cache = next(s for s in job["steps"] if s.get("name") == "Cache Whisper model (large-v3-turbo)")
+    prepare = next(s for s in job["steps"] if s.get("name") == "Prepare Whisper model")
+    assert cache["if"] == "matrix.lane == 'transcribe'"
+    assert prepare["if"] == "matrix.lane == 'transcribe'"
     install = next(s for s in job["steps"] if s.get("name") == "Install")
     assert 'pip install -e ".[asr-transcribe,storage]"' in install["run"]
     assert 'pip install -e ".[asr-align,storage]"' in install["run"]

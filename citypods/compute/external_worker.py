@@ -1502,7 +1502,11 @@ class ExternalTranscribeWorker:
             if not text:
                 raise RuntimeError(f"empty provider source {provider['key']}")
             text_hash = _alignment_input_hash(text, timed_segments)
-            align_inputs = {**provider, "text_hash": text_hash, "model": city.asr_model}
+            align_inputs = {
+                **provider,
+                "text_hash": text_hash,
+                "model": city.asr_alignment_model,
+            }
             align_spec = _provider_align_spec_hash(ep, align_inputs)
             uid = ep.uid or ep.guid
             vtt_key = _provider_align_object_key(item.source_key, uid, align_spec)
@@ -1688,7 +1692,7 @@ class ExternalTranscribeWorker:
             inputs={
                 "audio_path": audio_path,
                 "text": text,
-                "model": city.asr_model,
+                "model": city.asr_alignment_model,
                 "language": city.asr_language or None,
                 "compute_type": city.asr_compute_type,
                 "cpu_threads": self.config.cpu_threads,
@@ -1706,7 +1710,7 @@ class ExternalTranscribeWorker:
             artifacts = asr_mod.align(
                 audio_path,
                 text,
-                city.asr_model,
+                city.asr_alignment_model,
                 city.asr_language or None,
                 self.config.cpu_threads,
                 city.asr_compute_type,
@@ -2019,7 +2023,7 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
                 inputs={
                     "audio_path": audio_path,
                     "text": text,
-                    "model": city.asr_model,
+                    "model": city.asr_alignment_model,
                     "language": city.asr_language or None,
                     "compute_type": city.asr_compute_type,
                     "cpu_threads": self.config.cpu_threads,
