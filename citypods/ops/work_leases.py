@@ -63,7 +63,9 @@ INDEX_BUCKET_COUNT = 64
 T = TypeVar("T")
 
 # Claimable states: a fresh/abandoned item. ``leased`` is claimable only once expired; ``done`` and
-# ``failed`` are terminal (``failed`` needs operator/attempts attention, never auto-reclaimed here).
+# ``failed`` are terminal for the *same pipeline recipe*. ``claim()`` reopens a terminal lease when
+# the caller supplies a different non-empty recipe version, which lets an artifact-version bump
+# backfill its queued manifest entries without an operator sweep.
 LeaseState = Literal["queued", "leased", "done", "failed"]
 _LEASE_STATES: frozenset[str] = frozenset(("queued", "leased", "done", "failed"))
 # A held lease may only be settled to a terminal state — releasing to ``queued``/``leased`` would
@@ -339,7 +341,13 @@ def claim(
 
     now = now or datetime.now(UTC)
     existing, etag = read_lease(storage, source_key, uid)
-    if existing is not None and not existing.is_claimable(now):
+    stale_terminal = (
+        existing is not None
+        and existing.state in {"done", "failed"}
+        and bool(pipeline_version)
+        and existing.pipeline_version != pipeline_version
+    )
+    if existing is not None and not stale_terminal and not existing.is_claimable(now):
         return None  # held + unexpired, or terminal — skip without spending a Class-A op
     held = WorkLease(
         source_key=source_key,

@@ -156,6 +156,19 @@ _TRANSCRIPT_BATCH_MAX_ITEMS = 5
 _TRANSCRIPT_BATCH_MAX_SECONDS = 1800.0
 
 
+def _lease_pipeline_version(work_class: str) -> str:
+    """Version terminal leases by the artifact recipe that their work class produces.
+
+    A provider-align bump deliberately requeues existing provider text while leaving full-ASR
+    artifacts valid. Its terminal lease must therefore carry the provider-align recipe, not the
+    unrelated full-ASR pipeline version, so ``work_leases.claim`` can reopen only stale provider
+    leases on the next scheduled worker run.
+    """
+    if work_class == "provider-transcript-align":
+        return f"provider-align:{PROVIDER_ALIGN_PIPELINE_VERSION}"
+    return ASR_PIPELINE_VERSION
+
+
 @dataclass(frozen=True)
 class ExternalWorkerConfig:
     backend: str
@@ -897,7 +910,7 @@ class ExternalTranscribeWorker:
                 item.episode_uid,
                 owner=claim_owner,
                 ttl_seconds=self.config.lease_ttl_seconds,
-                pipeline_version=ASR_PIPELINE_VERSION,
+                pipeline_version=_lease_pipeline_version(item.work_class),
                 update_index=True,
             )
             if held is None:
@@ -2361,7 +2374,7 @@ def _run_characterization(
                     item.episode_uid,
                     owner=owner,
                     ttl_seconds=worker.config.lease_ttl_seconds,
-                    pipeline_version=ASR_PIPELINE_VERSION,
+                    pipeline_version=_lease_pipeline_version(item.work_class),
                     update_index=True,
                 )
                 if held is None:

@@ -25,6 +25,9 @@ Phase R (Research-Tool Surface)._
   keys, and the existing H15 provider-align/asr-challenger evaluation records now measure the new
   output with the independent CTC judge. `provider-align` version 4 causes existing provider
   alignments to be reprocessed gradually; full-ASR artifacts are not invalidated by this change.
+  Terminal work leases now carry the provider-align recipe version and reopen automatically on a
+  later provider-align version, so the promised gradual backfill is not blocked by an earlier
+  stable-ts success or failure; active unexpired claims remain protected.
 
 - **Topic tagging lane now optimizes candidate scheduling and removes dispatch deadlines.** In the
   dedicated `tag` lane (`enrich --lane tag`, `tag.yml`), `_run_enrich_global_queue` pre-filters candidate

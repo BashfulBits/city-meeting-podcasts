@@ -46,21 +46,25 @@ class _HangingAsr:
         raise NotImplementedError
 
 
-def _queued(uid: str) -> WorkItem:
+def _queued(uid: str, *, work_class: str = "transcript-asr") -> WorkItem:
     return WorkItem(
         source_key="src",
         episode_uid=uid,
-        work_class="transcript-asr",
+        work_class=work_class,
         state="queued",
         priority_bucket=BUCKET_FEED_VISIBLE,
     )
 
 
-def _loop_worker(tmp_path, uids, *, max_claims=1, max_scan=None):
-    save_manifest(tmp_path, [_queued(u) for u in uids])
+def _loop_worker(tmp_path, uids, *, max_claims=1, max_scan=None, work_class="transcript-asr"):
+    save_manifest(tmp_path, [_queued(u, work_class=work_class) for u in uids])
     return ExternalTranscribeWorker(
         config=ExternalWorkerConfig(
-            backend="modal", owner="modal:test", max_claims=max_claims, max_scan=max_scan
+            backend="modal",
+            owner="modal:test",
+            max_claims=max_claims,
+            max_scan=max_scan,
+            work_class=work_class,
         ),
         site_config={
             "defaults": {
@@ -143,6 +147,26 @@ def test_max_scan_bounds_stale_manifest_scan(tmp_path, monkeypatch):
     assert summary.claimed == 3
     assert summary.adopted == 3
     assert summary.completed == 3
+
+
+def test_provider_align_claim_uses_provider_pipeline_version(tmp_path, monkeypatch):
+    worker = _loop_worker(
+        tmp_path,
+        ["a"],
+        work_class="provider-transcript-align",
+    )
+    _patch_loop(monkeypatch, worker, adopted_uids=set())
+    versions = []
+
+    def claim(*args, **kwargs):
+        versions.append(kwargs["pipeline_version"])
+        return object()
+
+    monkeypatch.setattr(ew.work_leases, "claim", claim)
+
+    worker.run()
+
+    assert versions == [f"provider-align:{ew.PROVIDER_ALIGN_PIPELINE_VERSION}"]
 
 
 def test_config_from_env_reads_max_scan(monkeypatch):
