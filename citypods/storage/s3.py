@@ -154,7 +154,7 @@ def _retry_storage_read(operation):
 
 
 def _retry_storage_write(operation):
-    """Run one idempotent object upload with bounded retries for transient failures.
+    """Run one idempotent object upload or conditional write with bounded retries.
 
     boto3's transfer manager retries individual multipart requests, but can still surface a
     transient ``ServiceUnavailable`` after its own retry budget is exhausted.  Retrying the
@@ -291,7 +291,7 @@ class S3CompatibleStorage:
         if if_match is not None:
             kwargs["IfMatch"] = if_match
         try:
-            resp = self._client.put_object(**kwargs)
+            resp = _retry_storage_write(lambda: self._client.put_object(**kwargs))
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code")
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")

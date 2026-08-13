@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Conditional R2 coordination writes now retry transient backend errors.** CAS-backed active-lease
+  index maintenance now uses the same bounded retry path as ordinary uploads, so a temporary R2
+  `PutObject/InternalError` does not leave an index prune or update to a later sweep. No pipeline
+  version, stored artifact, or backfill behavior changes.
+
 - **Free-plan LLM dispatch cron now has a queue-depth-independent ready index.** Pending R2
   requests write date-ordered compact `ready/` markers, so a scheduled invocation lists one marker
   and reads only its canonical request instead of scanning and parsing up to 1,000 queue records.
