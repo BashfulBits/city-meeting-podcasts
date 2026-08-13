@@ -37,6 +37,11 @@ Phase R (Research-Tool Surface)._
   Each physical provider route now compiles separate input and output context limits from
   `config/provider_limits.yml`; queue and direct selection compare the two request estimates before
   quota admission, so a batch fitting only a larger allowed route cannot be sent to a smaller route.
+  Terminal Worker failures now clear their unusable deferred handle and retain one bounded per-recipe
+  failure audit record, permitting up to three later fresh submissions before pausing that unchanged
+  recipe for investigation. A locally detected malformed structured reply instead gets one immediate
+  schema-correction clone through the Worker; a second malformed reply exhausts that recipe. Transient
+  dispatch/transport failures remain pending for Worker-owned retry; no existing public tags are invalidated.
 
 - **R5 unified tag calibration and evaluator overlay.** ([`review/42`](review/42-unified-tag-calibration-and-evaluator-overlay.md))
   Deterministic rule matches and chapter-only LLM candidates now share the existing persisted candidate

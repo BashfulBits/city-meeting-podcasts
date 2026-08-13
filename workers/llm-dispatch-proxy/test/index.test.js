@@ -175,6 +175,43 @@ test("queues an OpenAI-shaped request, reuses an idempotency key, and rejects a 
   assert.equal(conflict.status, 409);
 });
 
+test("schema retry clones only a completed request and appends one corrective instruction", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest([{ role: "user", content: "Extract tags." }], "schema-original"),
+    env,
+  );
+  const { id } = await queued.json();
+  await dispatchOne(env, okUpstream("malformed"), new Date());
+
+  const retry = await handleRequest(
+    request(`https://dispatch.example/v1/requests/${id}/schema-retry`, {
+      method: "POST",
+      headers: { "idempotency-key": "schema-correction" },
+      body: "{}",
+    }),
+    env,
+  );
+  assert.equal(retry.status, 202);
+  const body = await retry.json();
+  assert.notEqual(body.id, id);
+  const replacement = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(replacement.status, "pending");
+  assert.equal(replacement.request.messages.length, 2);
+  assert.match(replacement.request.messages[1].content, /failed local schema validation/);
+
+  const repeated = await handleRequest(
+    request(`https://dispatch.example/v1/requests/${id}/schema-retry`, {
+      method: "POST",
+      headers: { "idempotency-key": "schema-correction" },
+      body: "{}",
+    }),
+    env,
+  );
+  assert.equal(repeated.status, 202);
+  assert.equal((await repeated.json()).id, body.id);
+});
+
 test("the stored record's model is the canonical requested model, not an upstream-shaped string", async () => {
   // CodeRabbit / review/41: `normalizeChatRequest` used to persist a provider/cfg-shaped model
   // string, which was only harmless because `dispatchOne` overwrote it before use -- it would

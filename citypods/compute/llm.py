@@ -35,7 +35,11 @@ from citypods.compute.llm_budget import (
     release_route_reservation,
     settle_route_reservation,
 )
-from citypods.compute.llm_deferred import look_up_deferred, write_deferred
+from citypods.compute.llm_deferred import (
+    look_up_deferred,
+    terminal_failure_retry_allowed,
+    write_deferred,
+)
 from citypods.compute.llm_policy import (
     DEFAULT_OUTPUT_TOKEN_MARGIN,
     ROUTE_CANDIDATES,
@@ -130,6 +134,10 @@ class LLMBackendError(RuntimeError):
 
 class LLMStructuredOutputError(LLMBackendError):
     """A malformed model reply that a caller may safely defer and retry with fresh evidence."""
+
+
+class LLMDispatchTerminalError(LLMBackendError):
+    """The dispatch Worker recorded a terminal failure for this one request."""
 
 
 @dataclass(frozen=True)
@@ -917,6 +925,11 @@ class LiteLLMBackend(Backend):
         existing = look_up_deferred(self.storage, job.recipe_hash)
         if existing is not None:
             return existing
+        if not terminal_failure_retry_allowed(self.storage, job.recipe_hash):
+            raise LLMBackendError(
+                "LLM terminal failure retry limit reached for this recipe; "
+                "change the input/recipe or clear its failure marker after investigating"
+            )
 
         messages = _messages(job)
         result = self._run_policy_job_paced(job, policy, structured, messages)
@@ -1508,6 +1521,8 @@ class LiteLLMBackend(Backend):
                     msg += f" ({err_code})"
                 if err_code == "upstream_timeout":
                     msg += f" timed out after {dur_label}"
+                if response.status_code in {404, 502}:
+                    raise LLMDispatchTerminalError(msg)
                 raise LLMBackendError(msg)
             try:
                 result = self._completed_dispatch_result(
@@ -1518,13 +1533,9 @@ class LiteLLMBackend(Backend):
                     model=handle.model,
                 )
             except LLMStructuredOutputError:
-                # Layer 2 active purge: delete malformed response to unblock clean re-submission
-                try:
-                    self._session.delete(
-                        candidate, headers=headers, timeout=self.config.timeout_seconds
-                    )
-                except Exception:
-                    pass
+                # The deferred sweep owns the one schema-correction retry. Leave the completed
+                # Worker record intact here so it can clone the exact original request before
+                # replacing this handle with the corrective attempt.
                 raise
         except requests.RequestException as exc:
             raise LLMBackendError("LLM dispatch poll failed") from exc
@@ -1619,12 +1630,53 @@ class LiteLLMBackend(Backend):
         except Exception:
             pass
 
+    def retry_malformed_dispatched(self, handle: JobHandle) -> JobHandle:
+        """Ask the Worker to clone a completed request with one corrective schema instruction."""
+        if not self.config.dispatch_url:
+            raise LLMBackendError("schema correction requires LLM_DISPATCH_URL")
+        base = self.config.dispatch_url.rstrip("/") + "/"
+        request_id = handle.ref.rsplit("/", 1)[-1]
+        url = urljoin(base, f"v1/requests/{request_id}/schema-retry")
+        headers = {
+            "content-type": "application/json",
+            # Keep B2's logical recipe stable, but make this one correction idempotent without
+            # colliding with the original Worker submission.
+            "idempotency-key": f"{handle.recipe_hash}:schema-correction-v1",
+        }
+        if self.config.dispatch_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"
+        try:
+            response = self._session.post(
+                url, json={}, headers=headers, timeout=self.config.timeout_seconds
+            )
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM schema-correction enqueue failed") from exc
+        if response.status_code not in {200, 202}:
+            raise LLMBackendError(
+                f"LLM schema-correction enqueue returned HTTP {response.status_code}"
+            )
+        body = response.json()
+        ref = response.headers.get("location") or (
+            body.get("id") if isinstance(body, Mapping) else None
+        )
+        if not isinstance(ref, str) or not ref:
+            raise LLMBackendError("LLM schema-correction response omitted a request reference")
+        return JobHandle(
+            task=handle.task,
+            recipe_hash=handle.recipe_hash,
+            backend=self.name,
+            ref=ref,
+            structured_output=handle.structured_output,
+            model=handle.model,
+        )
+
     poll = reconcile
 
 
 __all__ = [
     "LLMBackendConfig",
     "LLMBackendError",
+    "LLMDispatchTerminalError",
     "LLMStructuredOutputError",
     "LLM_TASKS",
     "LiteLLMBackend",

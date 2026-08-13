@@ -1031,6 +1031,59 @@ def test_dispatch_rejects_invalid_structured_result():
     assert private_marker not in traceback_text
 
 
+def test_schema_correction_enqueue_uses_a_separate_idempotency_key():
+    calls = []
+
+    class Response:
+        status_code = 202
+        headers = {"location": "/v1/requests/chatcmpl-corrected"}
+
+        def json(self):
+            return {"id": "chatcmpl-corrected"}
+
+    class Session:
+        def post(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="mistral/mistral-large-2512",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+            dispatch_auth_token="dispatch-token",
+        ),
+        http_session=Session(),
+    )
+    corrected = backend.retry_malformed_dispatched(
+        JobHandle(
+            task="tag",
+            recipe_hash="recipe-1",
+            backend="litellm",
+            ref="/v1/requests/chatcmpl-original",
+            structured_output="test-output",
+            model="mistral/mistral-large-2512",
+        )
+    )
+
+    assert corrected.ref == "/v1/requests/chatcmpl-corrected"
+    assert corrected.structured_output == "test-output"
+    assert calls == [
+        (
+            "https://dispatch.example/v1/requests/chatcmpl-original/schema-retry",
+            {
+                "json": {},
+                "headers": {
+                    "content-type": "application/json",
+                    "idempotency-key": "recipe-1:schema-correction-v1",
+                    "authorization": "Bearer dispatch-token",
+                },
+                "timeout": 30.0,
+            },
+        )
+    ]
+
+
 def test_dispatch_unknown_response_contract_remains_a_version_skew_error():
     class Response:
         status_code = 200

@@ -1685,6 +1685,43 @@ async function handlePoll(request, env, id) {
   return responseForRecord(request, loaded.value);
 }
 
+async function handleSchemaRetry(request, env, cfg, id) {
+  if (!env.LLM_QUEUE) return plain(503, "dispatch storage is not configured");
+  const loaded = await getJson(env.LLM_QUEUE, requestKey(id));
+  const record = loaded?.value;
+  if (!record) return plain(404, "request not found");
+  if (record.status !== "completed") {
+    return plain(409, "only a completed request can receive a schema correction");
+  }
+  const messages = record.request?.messages;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return plain(409, "completed request does not retain a retryable prompt");
+  }
+  // Pydantic remains authoritative in Python. The Worker only appends a generic correction,
+  // avoiding transcript/model-output disclosure in the request-management API while preserving
+  // the original response schema and all provider-routing policy fields.
+  const correction = {
+    role: "user",
+    content: (
+      "Retry this task. Your previous response failed local schema validation. " +
+      "Return only one JSON object that exactly matches the requested response schema."
+    ),
+  };
+  const normalized = normalizeChatRequest(
+    {
+      ...record.request,
+      ...record.policy,
+      model: record.model,
+      messages: [...messages, correction],
+    },
+    cfg,
+  );
+  const idempotencyKey = request.headers.get("idempotency-key") || "";
+  if (idempotencyKey.length > 256) throw new HttpError(400, "Idempotency-Key is too long");
+  const replacement = await enqueue(env.LLM_QUEUE, normalized, cfg, new Date(), idempotencyKey);
+  return responseForRecord(request, replacement);
+}
+
 async function reindexPendingRequests(bucket) {
   let cursor = undefined;
   let scanned = 0;
@@ -1786,6 +1823,18 @@ async function handleRequest(request, env) {
   const match = url.pathname.match(/^\/v1\/requests\/(chatcmpl-[A-Za-z0-9-]{8,96})$/);
   if (match && request.method === "GET") {
     return handlePoll(request, env, match[1]);
+  }
+
+  const schemaRetry = url.pathname.match(
+    /^\/v1\/requests\/(chatcmpl-[A-Za-z0-9-]{8,96})\/schema-retry$/,
+  );
+  if (schemaRetry && request.method === "POST") {
+    try {
+      return await handleSchemaRetry(request, env, cfg, schemaRetry[1]);
+    } catch (error) {
+      if (error instanceof HttpError) return plain(error.status, error.message);
+      return plain(503, "schema correction could not be queued");
+    }
   }
 
   if (url.pathname.startsWith("/v1/")) {
