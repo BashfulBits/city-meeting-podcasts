@@ -83,12 +83,16 @@ gate. A human override is stored as a separate review row.
 LLM tagger context prioritizes taxonomy definitions/exclusions, chapter title, mapped agenda
 evidence, chapter transcript segments, bounded surrounding context, and explicitly mapped backup
 evidence. It should retain the richest safe context and record token estimates, output budget,
-context ceiling, truncation policy/version, truncation status, and final input digest.
+the allowed physical routes' separate input/output context ceilings, truncation policy/version,
+truncation status, and final input digest. The dispatch contract carries the input estimate and
+output budget separately; the Worker and direct scheduler only select a physical provider route
+whose own limits accept both. A larger-route admission therefore never falls through to a smaller
+route with available quota.
 
 The pre-labeler may use a smaller payload: proposed tag definition, chapter title, tagger explanation
 and evidence, bounded transcript surroundings, mapped agenda evidence, and only explicitly linked
 backup excerpts. Whole backup packets are not sent to either model. Its requests are greedily split
-against the configured route context/TPM ceiling; an individually oversized subject is deferred with
+against the configured route input/output-context and TPM ceilings; an individually oversized subject is deferred with
 `payload-too-large` and never silently truncated. Every batch records its token estimate, route limit,
 batch index, truncation policy, and input digest. Payload-too-large remains distinct from ordinary
 quota deferral.
@@ -208,11 +212,40 @@ blanket catalog recall. Superseded and legacy episode-level LLM rows are retaine
 historical ledger entries rather than deleted, so evidence and review identity survive a chapter-only
 or recipe transition.
 
-The production secret boundary is explicit: `.github/workflows/tag.yml` supplies primary/secondary
-Gemini keys plus dispatch URL/auth secrets for the configured tag lane. Build & Deploy's `Render
-feeds` step supplies storage/proxy secrets only; `run.py` skips LLM backend construction when
+The production secret boundary is explicit: `.github/workflows/tag.yml` supplies only dispatch
+URL/auth and storage secrets for the configured tag lane; the Cloudflare Worker owns provider keys,
+including both Gemini accounts. Build & Deploy's `Render feeds` step supplies storage/proxy secrets
+only; `run.py` skips LLM backend construction when
 `phase == render`, so render-only publication does not require an LLM dispatch URL or report a
 misleading rules-only tagging fallback.
 
 The implementation updates `review/11`, `review/14`, `review/34`, `review/35`, `ROADMAP.md`,
 `CHANGELOG.md`, and `ARCHITECTURE.md` as required by the repository lifecycle contract.
+
+### Post-implementation queue correction (2026-08-12)
+
+Topic tagging and pre-labeling are durable backlog jobs, not deadline-bound direct retries. Their
+`queue_only` policy bypasses the runner-side provider quota ledger and posts directly to the Worker;
+the Worker is the single owner of eventual provider routing and capacity. Legacy topic-tag B2
+handles are upgraded to that policy by the deferred sweep. The Worker keeps a pending-only index
+beside retained request history so bounded cron scans cannot starve ready records behind terminal
+objects; the authenticated reindex operation repairs existing queue rows in place. This changes no
+candidate, admission, or display semantics.
+
+The same queue-only contract applies to every production LLM consumer whose work is stored by
+recipe and finalized in a later pass: chapter agenda extraction, chapter boundary location, and
+the persisted R5 benchmark/tournament evaluator. The deferred sweep upgrades their legacy handles
+as well. City onboarding research remains `require_direct`: discovery consumes its result in the
+same pass and must defer that pass rather than queueing a response it cannot yet use.
+
+The production chapter tagger sends no episode-wide backup packet. It uses only chapter-mapped
+agenda/backup evidence and batches complete chapter subjects deterministically below both the
+selected routes' token/TPM envelope and a 7 MiB serialized-request guard. The Worker accepts up
+to 8 MiB JSON requests; the margin covers the structured-output envelope and makes an ordinary
+large meeting queueable without silently dropping source. A single chapter that cannot fit either
+bound remains explicitly deferred with recorded size/context telemetry.
+
+This changes the LLM input recipe (`TAG_PROMPT_VERSION = 3`). Existing records are re-projected
+from their retained ledger immediately and LLM candidates are re-run gradually under the new
+chapter-only batch recipe; no candidate evidence is deleted and no blanket synchronous recall is
+performed.

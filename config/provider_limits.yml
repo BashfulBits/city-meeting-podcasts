@@ -15,7 +15,11 @@ providers:
     rpm: 60
     monthly_tpm: 1000000000
     reset_day: 1
-    context_limit: 32768
+    # Routes inherit these effective limits unless an individual physical route overrides them.
+    # Input and output are intentionally separate: the same logical model may have a different
+    # ceiling through another provider/account.
+    input_context_limit: 32768
+    output_context_limit: 16384
     accounts:
       - id: primary
         api_key_env: MISTRAL_API_KEY
@@ -23,7 +27,8 @@ providers:
     api_base: https://generativelanguage.googleapis.com/v1beta/openai
     chat_path: /chat/completions
     reset_timezone: America/Los_Angeles
-    context_limit: 32768
+    input_context_limit: 32768
+    output_context_limit: 16384
     accounts:
       - id: project_primary
         api_key_env: GEMINI_API_KEY
@@ -35,7 +40,8 @@ providers:
     api_base: https://api.deepseek.com/v1
     chat_path: /chat/completions
     reset_timezone: UTC
-    context_limit: 131072
+    input_context_limit: 131072
+    output_context_limit: 16384
     accounts:
       - id: primary
         api_key_env: DEEPSEEK_API_KEY
@@ -43,7 +49,8 @@ providers:
     api_base: https://api.siliconflow.com/v1
     chat_path: /chat/completions
     reset_timezone: UTC
-    context_limit: 32768
+    input_context_limit: 32768
+    output_context_limit: 16384
     accounts:
       - id: primary
         api_key_env: SILICONFLOW_API_KEY
@@ -51,7 +58,8 @@ providers:
     api_base: https://api.groq.com/openai/v1
     chat_path: /chat/completions
     reset_timezone: UTC
-    context_limit: 32768
+    input_context_limit: 32768
+    output_context_limit: 16384
     accounts:
       - id: primary
         api_key_env: GROQ_API_KEY
@@ -59,7 +67,8 @@ providers:
     api_base: https://api.sambanova.ai/v1
     chat_path: /chat/completions
     reset_timezone: UTC
-    context_limit: 32768
+    input_context_limit: 32768
+    output_context_limit: 16384
     accounts:
       - id: primary
         api_key_env: SAMBANOVA_API_KEY
@@ -67,7 +76,8 @@ providers:
     api_base: https://api.z.ai/api/paas/v4
     chat_path: /chat/completions
     reset_timezone: UTC
-    context_limit: 32768
+    input_context_limit: 32768
+    output_context_limit: 16384
     accounts:
       - id: primary
         api_key_env: ZAI_API_KEY
@@ -75,7 +85,8 @@ providers:
     api_base: https://openrouter.ai/api/v1
     chat_path: /chat/completions
     reset_timezone: UTC
-    context_limit: 32768
+    input_context_limit: 32768
+    output_context_limit: 16384
     discovery:
       endpoint: https://openrouter.ai/api/v1/models
     accounts:
@@ -85,7 +96,8 @@ providers:
     api_base: https://api.kilo.ai/api/gateway
     chat_path: /chat/completions
     reset_timezone: UTC
-    context_limit: 32768
+    input_context_limit: 32768
+    output_context_limit: 16384
     accounts:
       - id: primary
         api_key_env: KILO_API_KEY
@@ -93,7 +105,8 @@ providers:
     api_base: https://opencode.ai/zen/v1
     chat_path: /chat/completions
     reset_timezone: UTC
-    context_limit: 32768
+    input_context_limit: 32768
+    output_context_limit: 16384
     accounts:
       - id: primary
         api_key_env: OPENCODE_API_KEY

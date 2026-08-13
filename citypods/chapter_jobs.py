@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from datetime import datetime
 from typing import Any
 
 from citypods.chapter_artifacts import (
@@ -71,7 +70,6 @@ def build_agenda_job(
     agenda_text: str,
     agenda_source_hash: str,
     candidate_hints: Sequence[Mapping[str, object]] = (),
-    deadline_at: datetime | None = None,
 ) -> InferenceJob:
     request = build_production_agenda_item_extraction_request(
         agenda_text, candidate_hints=candidate_hints
@@ -96,8 +94,10 @@ def build_agenda_job(
             "structured_output": AGENDA_ITEM_EXTRACTOR_CONTRACT,
             "llm_policy": LLMRequestPolicy(
                 allowed_models=(AGENDA_PRODUCTION_MODEL,),
-                deadline_at=deadline_at,
                 purpose="chapter-agenda",
+                # This stage persists its pending recipe and finalizes on a later chapter-lane
+                # pass, so Worker-owned queueing is safer than a runner-side deadline.
+                queue_only=True,
             ),
         },
     )
@@ -151,7 +151,6 @@ def build_locator_job(
     transcript_hash: str,
     units: Sequence[LocatorUnit],
     unit_annotations: Mapping[str, Mapping[str, Any]] | None = None,
-    deadline_at: datetime | None = None,
 ) -> InferenceJob:
     locator_items = [
         LocatorAgendaItem(
@@ -192,8 +191,8 @@ def build_locator_job(
             "structured_output": LOCATOR_CONTRACT,
             "llm_policy": LLMRequestPolicy(
                 allowed_models=(LOCATOR_MODEL,),
-                deadline_at=deadline_at,
                 purpose="chapter-locator",
+                queue_only=True,
             ),
         },
     )

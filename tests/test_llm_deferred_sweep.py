@@ -111,7 +111,7 @@ def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
     )
 
     policy = LLMRequestPolicy(
-        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="topic-tags"
+        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="generic-llm-work"
     )
     handles = [
         JobHandle(
@@ -179,7 +179,9 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
         )
 
     handles = [
-        _handle_for("recipe-tag", task="tag", structured_output="topic-tags", purpose="topic-tags"),
+        _handle_for(
+            "recipe-tag", task="tag", structured_output="topic-tags", purpose="generic-llm-work"
+        ),
         _handle_for(
             "recipe-classify",
             task="classify",
@@ -208,6 +210,51 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
     # exhausted -- the second is skipped purely on the shared route pool, despite its different
     # task/structured_output/purpose.
     assert reconciled == ["recipe-tag"]
+
+
+def test_sweep_does_not_skip_durable_topic_tag_submissions(monkeypatch):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot, **_kw: 0,
+    )
+    policy = LLMRequestPolicy(
+        allowed_models=("gemini/gemini-3.1-flash-lite",), purpose="topic-tags"
+    )
+    handles = [
+        JobHandle(
+            task="tag",
+            recipe_hash=f"recipe-{idx}",
+            backend="litellm",
+            ref=f"deferred:recipe-{idx}",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},), policy=policy
+            ),
+        )
+        for idx in range(3)
+    ]
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+    )
+
+    reconciled = []
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, handle):
+            assert handle.deferred_request.policy.queue_only is True
+            reconciled.append(handle.recipe_hash)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert reconciled == ["recipe-0", "recipe-1", "recipe-2"]
 
 
 def test_capacity_signature_normalizes_none_allowed_models_to_every_route():
@@ -245,3 +292,51 @@ def test_sweep_overrides_stale_deferred_deadline_for_retries():
 
     assert updated.deferred_request.policy.deadline_at == sweep_deadline
     assert original.deferred_request.policy.deadline_at == old_deadline
+
+
+def test_sweep_upgrades_legacy_topic_tag_deferral_to_durable_queue():
+    original = JobHandle(
+        task="tag",
+        recipe_hash="legacy-tag",
+        backend="litellm",
+        ref="deferred:legacy-tag",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "meeting text"},),
+            policy=LLMRequestPolicy(
+                purpose="topic-tags",
+                deadline_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ),
+        ),
+    )
+
+    upgraded = llm_deferred_sweep._with_sweep_deadline(
+        original, datetime(2026, 7, 24, 12, tzinfo=UTC)
+    )
+
+    assert upgraded.deferred_request.policy.queue_only is True
+    assert upgraded.deferred_request.policy.deadline_at is None
+    assert original.deferred_request.policy.queue_only is False
+
+
+def test_sweep_upgrades_other_resumable_production_llm_work_but_not_city_onboarding():
+    deadline = datetime(2026, 7, 24, 12, tzinfo=UTC)
+
+    def handle(purpose: str) -> JobHandle:
+        return JobHandle(
+            task="agenda-item-extract",
+            recipe_hash=purpose,
+            backend="litellm",
+            ref="deferred:" + purpose,
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},),
+                policy=LLMRequestPolicy(purpose=purpose, deadline_at=deadline),
+            ),
+        )
+
+    chapter = llm_deferred_sweep._with_sweep_deadline(handle("chapter-agenda"), deadline)
+    city = llm_deferred_sweep._with_sweep_deadline(handle("city-onboarding"), deadline)
+
+    assert chapter.deferred_request.policy.queue_only is True
+    assert chapter.deferred_request.policy.deadline_at is None
+    assert city.deferred_request.policy.queue_only is False
+    assert city.deferred_request.policy.deadline_at == deadline

@@ -22,7 +22,7 @@
     "PROVIDER_NAME": "mistral",
     "UPSTREAM_MODEL": "mistral-large-2512",
     "MODEL_ID": "mistral/mistral-large-2512",
-    "MAX_REQUEST_BYTES": "524288",
+    "MAX_REQUEST_BYTES": "8388608",
     "MAX_RESPONSE_BYTES": "2097152",
     "MAX_QUEUE_SCAN": "1000",
     // A dispatch request is one model attempt. Retries would make the caller's CAS-backed

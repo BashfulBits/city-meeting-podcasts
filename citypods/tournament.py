@@ -210,8 +210,10 @@ def pairwise_judge(
             "llm_policy": LLMRequestPolicy(
                 allowed_models=(judge_model,),
                 allow_paid=allow_paid,
-                deadline_at=deadline_at,
                 purpose=spec.purpose,
+                # Tournament state records pending comparisons by recipe and re-enters this
+                # function on the next run, so the Worker can drain without a runner deadline.
+                queue_only=True,
             ),
         },
     )

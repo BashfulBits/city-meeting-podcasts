@@ -130,6 +130,27 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Durable resumable-LLM dispatch queue recovery.** Topic tagger/pre-labeler, production chapter
+  agenda extraction/location, and the persisted R5 benchmark/tournament evaluator now enter the
+  Cloudflare Worker queue without consuming the runner-side provider-quota ledger or inheriting a
+  producer-run submit deadline. The deferred sweep upgrades their legacy pre-dispatch handles to
+  the same queue-only path rather than retrying them directly through LiteLLM. City onboarding
+  discovery remains explicitly direct because its caller must act on the response in that pass.
+  The Worker now maintains a pending-only R2 index so retained terminal request history cannot hide
+  ready work behind its bounded scan; authenticated `POST /v1/queue/reindex` repairs pre-index
+  queue entries after the rollout. No public tag output or calibration policy changes; existing B2
+  deferred handles and R2 queue records are retained and re-enqueued/reindexed in place.
+  The Worker request cap is now 8 MiB (up from 512 KiB). Chapter tagging uses deterministic
+  token-and-byte-bounded batches under a 7 MiB producer guard, excludes episode-wide unmapped
+  backup packets, and records per-batch context telemetry; a single oversized chapter remains a
+  distinct deferred condition rather than being silently truncated. `TAG_PROMPT_VERSION` is bumped
+  to `3`, so existing LLM tag candidates are gradually re-run through the new chapter-only recipe;
+  deterministic candidates, prior ledger evidence, and visible output remain available until each
+  replacement completes.
+  Each physical provider route now compiles separate input and output context limits from
+  `config/provider_limits.yml`; queue and direct selection compare the two request estimates before
+  quota admission, so a batch fitting only a larger allowed route cannot be sent to a smaller route.
+
 - **R5 unified tag calibration and evaluator overlay.** ([`review/42`](review/42-unified-tag-calibration-and-evaluator-overlay.md))
   Deterministic rule matches and chapter-only LLM candidates now share the existing persisted candidate
   ledger. The tagger keeps its 12-review/90% admission gate; an independent Gemma 4 31B pre-labeler runs

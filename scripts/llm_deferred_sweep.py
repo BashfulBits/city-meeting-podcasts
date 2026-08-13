@@ -66,6 +66,26 @@ def _with_sweep_deadline(handle, deadline_at: datetime):
     deferred = handle.deferred_request
     if not isinstance(deferred, DeferredLLMRequest):
         return handle
+    # These producers persist a recipe and can finalize on a later scheduled pass. A record that
+    # predates queue-only mode must therefore be submitted to the Worker now, not retried through
+    # the runner's direct LiteLLM transport or discarded because its producer deadline elapsed.
+    # City onboarding is intentionally absent: it consumes the answer synchronously during the
+    # discovery pass and remains direct by design.
+    durable_purposes = (
+        "topic-tags",
+        "chapter-agenda",
+        "chapter-locator",
+        "tournament:",
+        "r5-benchmark:",
+    )
+    if deferred.policy.purpose.startswith(durable_purposes):
+        return replace(
+            handle,
+            deferred_request=DeferredLLMRequest(
+                messages=deferred.messages,
+                policy=replace(deferred.policy, deadline_at=None, queue_only=True),
+            ),
+        )
     return replace(
         handle,
         deferred_request=DeferredLLMRequest(
@@ -168,6 +188,9 @@ def main(argv: list[str] | None = None) -> int:
     # regardless of LLM_MODE -- this is exactly the caller `_available_transports()` was built for
     # (see citypods/compute/llm.py), since the sweep services a mixed bag of records regardless of
     # which route originally claimed them.
+    # This workflow services a mix of direct and dispatch records.  Tag records are explicitly
+    # upgraded to queue_only above; that path posts to LLM_DISPATCH_URL itself, while every other
+    # deferred record preserves its original policy-selected behavior.
     backend = LiteLLMBackend(LLMBackendConfig.from_env(), storage=storage)
     _register_known_contracts()
 
@@ -193,13 +216,19 @@ def main(argv: list[str] | None = None) -> int:
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
-            signature = _capacity_signature(handle)
+            reconciled_handle = _with_sweep_deadline(handle, deadline_at)
+            deferred = reconciled_handle.deferred_request
+            # A queue-only tag handle remains pending immediately after a successful Worker
+            # submission. That is durable acceptance, not evidence that runner-side provider
+            # capacity is exhausted; never let it suppress the rest of the queued tag backlog.
+            queue_only = isinstance(deferred, DeferredLLMRequest) and deferred.policy.queue_only
+            signature = None if queue_only else _capacity_signature(reconciled_handle)
             if signature in exhausted_capacity:
                 skipped_by_pool[signature] = skipped_by_pool.get(signature, 0) + 1
                 continue
             seen_pending.add(handle.recipe_hash)
             try:
-                result = backend.reconcile(_with_sweep_deadline(handle, deadline_at))
+                result = backend.reconcile(reconciled_handle)
             except Exception as exc:  # noqa: BLE001 -- one bad record must not abort the sweep
                 failed += 1
                 print(f"llm-deferred-sweep: {handle.recipe_hash} failed: {exc}", file=sys.stderr)

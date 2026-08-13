@@ -16,6 +16,7 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMStructuredOutputError,
     _gemini_schema_safe_model,
+    _messages,
     _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
@@ -24,7 +25,7 @@ from citypods.compute.llm import (
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
-from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTES, LLMRequestPolicy
+from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTES, LLMRequestPolicy, estimate_tokens
 from citypods.compute.structured import register_response_model
 from tests._cas_fake import MemStorage
 
@@ -649,6 +650,22 @@ def test_deepseek_structured_request_includes_schema_in_initial_prompt():
     assert json.dumps(ExampleOutput.model_json_schema(), sort_keys=True) in system["content"]
 
 
+def test_deepseek_queue_payload_counts_the_rendered_schema_message():
+    backend = LiteLLMBackend(LLMBackendConfig(model="deepseek/deepseek-v4-flash"))
+    policy = LLMRequestPolicy(allowed_models=("deepseek/deepseek-v4-flash",), queue_only=True)
+    inference_job = job(content="x", structured_output="test-output", max_tokens=1024)
+    payload = backend._payload(
+        inference_job,
+        ExampleOutput,
+        resolved_model="deepseek/deepseek-v4-flash",
+        policy=policy,
+        estimated_tokens=1,
+        input_tokens_estimate=1,
+        output_token_budget=1024,
+    )
+    assert estimate_tokens(payload["messages"]) > estimate_tokens(_messages(inference_job))
+
+
 def test_gemini_structured_request_relaxes_constraint_keywords_only():
     """Gemini's native schema mode 400s specifically on minLength/maxLength/minimum/maximum/
     minItems/maxItems (confirmed against the live API via citypods/llm_compat_probe.py's
@@ -1242,6 +1259,8 @@ def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
     assert post_json["deadline_at"] == deadline.isoformat()
     assert "estimated_tokens" in post_json
     assert post_json["estimated_tokens"] > 0
+    assert post_json["input_tokens_estimate"] > 0
+    assert post_json["output_token_budget"] == 1024
 
 
 def test_dual_transport_route_prefers_direct_without_opt_in():
@@ -1331,6 +1350,52 @@ def test_dual_transport_route_dispatches_with_explicit_overflow_and_reserves_by_
     budget, _ = load_llm_budget_cas(storage)
     ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert recipe_hash in ledger.inflight
+
+
+def test_queue_only_policy_enqueues_without_a_runner_quota_reservation():
+    """Durable backlog work is accepted by the Worker, not locally rate-limited first."""
+
+    class PendingSession(requests.Session):
+        def post(self, _url, json=None, headers=None, timeout=None):
+            assert json["model"] == "gemini/gemini-3-flash-preview"
+            assert json["allowed_models"] == [
+                "gemini/gemini-3-flash-preview",
+                "gemini/gemini-3.1-flash-lite",
+            ]
+            assert headers["idempotency-key"] == "test-durable-queue:durable-queue-v1"
+            response = requests.Response()
+            response.status_code = 202
+            response._content = b'{"id":"chatcmpl-durable"}'
+            response.headers["location"] = "/v1/requests/chatcmpl-durable"
+            return response
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=PendingSession(),
+        storage=MemStorage(),
+    )
+    result = backend.run_inference(
+        InferenceJob(
+            task="tag",
+            recipe_hash="test-durable-queue",
+            inputs={
+                "content": "meeting text",
+                "llm_policy": LLMRequestPolicy(
+                    allowed_models=(
+                        "gemini/gemini-3-flash-preview",
+                        "gemini/gemini-3.1-flash-lite",
+                    ),
+                    queue_only=True,
+                ),
+            },
+        )
+    )
+    assert isinstance(result, JobHandle)
+    assert result.owner is None
 
 
 def test_require_direct_policy_bypasses_dispatch():

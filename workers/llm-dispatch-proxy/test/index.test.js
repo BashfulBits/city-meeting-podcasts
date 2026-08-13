@@ -166,7 +166,7 @@ test("queues an OpenAI-shaped request, reuses an idempotency key, and rejects a 
   const repeated = await handleRequest(chatRequest(undefined, "meeting-1"), env);
   assert.equal(repeated.status, 202);
   assert.equal((await repeated.json()).id, firstBody.id);
-  assert.equal(env.LLM_QUEUE.objects.size, 1);
+  assert.equal(env.LLM_QUEUE.objects.size, 2); // canonical request + pending-only index
 
   const conflict = await handleRequest(
     chatRequest([{ role: "user", content: "different" }], "meeting-1"),
@@ -428,12 +428,94 @@ test("queue scan limit counts every scanned object, including terminal records",
     policy: { estimated_tokens: 100 },
   };
   await env.LLM_QUEUE.put("requests/000-terminal.json", JSON.stringify(terminal));
-  await env.LLM_QUEUE.put("requests/999-ready.json", JSON.stringify(pending));
+  await env.LLM_QUEUE.put("requests/chatcmpl-ready.json", JSON.stringify(pending));
 
   // Scanning is capped at 1 object, and the terminal record sorts first -- so the ready record is
   // never even reached this tick.
   const result = await dispatchOne(env, okUpstream(), now);
   assert.equal(result.status, "idle");
+});
+
+test("pending-only index drains ready work even when terminal request history sorts first", async () => {
+  const env = { ...isolatedEnv(), MAX_QUEUE_SCAN: "1" };
+  const now = new Date();
+  const timestamp = now.toISOString();
+  const terminal = {
+    id: "chatcmpl-terminal", status: "completed", model: "mistral/mistral-large-2512",
+    created_at: timestamp, updated_at: timestamp, available_at: timestamp, response: { choices: [] },
+  };
+  const pending = {
+    id: "chatcmpl-ready", status: "pending", model: "mistral/mistral-large-2512",
+    request: { model: "mistral/mistral-large-2512", messages: [{ role: "user", content: "ready" }], stream: false },
+    created_at: timestamp, updated_at: timestamp, available_at: timestamp, attempts: 0, policy: {},
+  };
+  await env.LLM_QUEUE.put("requests/000-terminal.json", JSON.stringify(terminal));
+  await env.LLM_QUEUE.put("requests/chatcmpl-ready.json", JSON.stringify(pending));
+  await env.LLM_QUEUE.put("pending/chatcmpl-ready.json", JSON.stringify({ id: pending.id }));
+
+  const result = await dispatchOne(env, okUpstream(), now);
+  assert.equal(result.status, "completed");
+  assert.equal(result.requestId, pending.id);
+  assert.equal(await env.LLM_QUEUE.get("pending/chatcmpl-ready.json"), null);
+});
+
+test("queue reindex is authenticated and indexes pending records only", async () => {
+  const env = isolatedEnv();
+  const now = new Date().toISOString();
+  const pending = {
+    id: "chatcmpl-reindex-pending",
+    status: "pending",
+    model: "mistral/mistral-large-2512",
+    created_at: now,
+    updated_at: now,
+    available_at: now,
+  };
+  const terminal = { ...pending, id: "chatcmpl-reindex-terminal", status: "completed" };
+  await env.LLM_QUEUE.put("requests/chatcmpl-reindex-pending.json", JSON.stringify(pending));
+  await env.LLM_QUEUE.put("requests/chatcmpl-reindex-terminal.json", JSON.stringify(terminal));
+
+  const missingAuth = await handleRequest(
+    new Request("https://dispatch.example/v1/queue/reindex", { method: "POST" }),
+    env,
+  );
+  assert.equal(missingAuth.status, 401);
+  const invalidAuth = await handleRequest(
+    new Request("https://dispatch.example/v1/queue/reindex", {
+      method: "POST",
+      headers: { authorization: "Bearer wrong" },
+    }),
+    env,
+  );
+  assert.equal(invalidAuth.status, 401);
+
+  const response = await handleRequest(
+    request("https://dispatch.example/v1/queue/reindex", { method: "POST" }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { scanned: 2, pending: 1 });
+  assert.ok(await env.LLM_QUEUE.get("pending/chatcmpl-reindex-pending.json"));
+  assert.equal(await env.LLM_QUEUE.get("pending/chatcmpl-reindex-terminal.json"), null);
+});
+
+test("a lost terminal write preserves the pending marker for a later retry", async () => {
+  class RejectTerminalWriteBucket extends FakeBucket {
+    async put(key, value, options = {}) {
+      if (key.startsWith("requests/") && options.onlyIf?.etagMatches) {
+        const record = JSON.parse(typeof value === "string" ? value : await new Response(value).text());
+        if (record.status === "completed") return null;
+      }
+      return super.put(key, value, options);
+    }
+  }
+
+  const env = { ...ENV, LLM_QUEUE: new RejectTerminalWriteBucket() };
+  const queued = await handleRequest(chatRequest(undefined, "lost-terminal-write"), env);
+  const { id } = await queued.json();
+  await dispatchOne(env, okUpstream(), new Date());
+
+  assert.ok(await env.LLM_QUEUE.get(`pending/${id}.json`));
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${id}.json`)).json()).status, "pending");
 });
 
 test("a terminal record's customMetadata lets the scan skip it without ever fetching its body", async () => {
@@ -506,6 +588,7 @@ test("429 responses retry with bounded backoff and do not expose the provider bo
 
 test("streaming requests and oversized request bodies are rejected", async () => {
   const env = isolatedEnv();
+  assert.equal(config(env).maxRequestBytes, 8 * 1024 * 1024);
   const streaming = await handleRequest(
     request("https://dispatch.example/v1/chat/completions", {
       method: "POST",
@@ -740,6 +823,86 @@ test("selectRoute ranks free before paid and cheapest paid first, deterministica
     ranked.map((route) => route.route_id),
     ["free_b", "cheap", "pricey"],
   );
+});
+
+test("selectRoute spills a durable request to its next allowed model when the primary is full", () => {
+  const dispatchLimits = {
+    providers: { primary: {}, backup: {} },
+    model_routes_map: { "svc/primary": ["primary"], "svc/backup": ["backup"] },
+    routes_by_id: {
+      primary: { route_id: "primary", provider: "primary", free: true, rpm: 1 },
+      backup: { route_id: "backup", provider: "backup", free: true, rpm: 1 },
+    },
+  };
+  const now = new Date("2026-08-06T12:00:00Z");
+  const result = selectRoute(
+    { routes: { primary: { requests_available_at: "2026-08-06T12:01:00Z" } } },
+    ["svc/primary", "svc/backup"],
+    { allow_paid: false, estimated_tokens: 100 },
+    now,
+    dispatchLimits,
+  );
+  assert.equal(result.chosenRoute?.route_id, "backup");
+
+});
+
+test("selectRoute skips allowed routes whose input or output context cannot fit the request", () => {
+  const dispatchLimits = {
+    providers: { primary: {}, backup: {} },
+    model_routes_map: { "svc/primary": ["primary"], "svc/backup": ["backup"] },
+    routes_by_id: {
+      primary: {
+        route_id: "primary", provider: "primary", free: true,
+        input_context_limit: 10_000, output_context_limit: 1_024,
+      },
+      backup: {
+        route_id: "backup", provider: "backup", free: true,
+        input_context_limit: 100_000, output_context_limit: 8_192,
+      },
+    },
+  };
+  const result = selectRoute(
+    { routes: {} },
+    ["svc/primary", "svc/backup"],
+    { allow_paid: false, input_tokens_estimate: 20_000, output_token_budget: 2_048 },
+    new Date("2026-08-06T12:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(result.chosenRoute?.route_id, "backup");
+
+  const outputOnly = selectRoute(
+    { routes: {} },
+    ["svc/primary", "svc/backup"],
+    { allow_paid: false, input_tokens_estimate: 2_000, output_token_budget: 2_048 },
+    new Date("2026-08-06T12:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(outputOnly.chosenRoute?.route_id, "backup");
+});
+
+test("selectRoute preserves a temporarily full allowed route over later context rejection", () => {
+  const dispatchLimits = {
+    providers: { primary: {}, small: {} },
+    model_routes_map: { "svc/primary": ["primary"], "svc/small": ["small"] },
+    routes_by_id: {
+      primary: {
+        route_id: "primary", provider: "primary", free: true, rpm: 1,
+        input_context_limit: 100_000, output_context_limit: 8_192,
+      },
+      small: {
+        route_id: "small", provider: "small", free: true,
+        input_context_limit: 1_000, output_context_limit: 1_024,
+      },
+    },
+  };
+  const result = selectRoute(
+    { routes: { primary: { requests_available_at: "2026-08-06T12:01:00Z" } } },
+    ["svc/primary", "svc/small"],
+    { allow_paid: false, input_tokens_estimate: 2_000, output_token_budget: 1_024 },
+    new Date("2026-08-06T12:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(result.reason, "no_capacity");
 });
 
 test("routeAvailable respects rpm/rpd/tpm/blocked_until independently", () => {

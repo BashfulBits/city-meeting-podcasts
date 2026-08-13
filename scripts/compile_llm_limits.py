@@ -83,11 +83,18 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
                 "reset_timezone": source.get(
                     "reset_timezone", provider_cfg.get("reset_timezone", "UTC")
                 ),
-                # This is the repository's conservative effective input ceiling, not an
-                # assertion about an upstream provider's maximum. Keeping it in the generated
-                # route catalog lets callers record and enforce the exact ceiling used.
-                "context_limit": int(
-                    source.get("context_limit", provider_cfg.get("context_limit", 32768))
+                # Effective limits are materialized on every physical route.  A route may
+                # override its provider default, so routing never assumes two providers expose
+                # the same context window for the same logical model.
+                "input_context_limit": int(
+                    source.get(
+                        "input_context_limit", provider_cfg.get("input_context_limit", 32768)
+                    )
+                ),
+                "output_context_limit": int(
+                    source.get(
+                        "output_context_limit", provider_cfg.get("output_context_limit", 1024)
+                    )
                 ),
             }
         )
@@ -339,6 +346,18 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
     providers = raw.get("providers", {})
     routes = raw.get("routes", [])
     normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
+    for route in normalized_routes:
+        provider_cfg = providers.get(route.get("provider"), {})
+        # The Worker consumes this catalog directly, so inherit provider defaults here rather
+        # than only while building the Python-specific derivative below.
+        route["input_context_limit"] = max(
+            1,
+            int(route.get("input_context_limit", provider_cfg.get("input_context_limit", 32768))),
+        )
+        route["output_context_limit"] = max(
+            1,
+            int(route.get("output_context_limit", provider_cfg.get("output_context_limit", 1024))),
+        )
 
     compiled = {
         "_metadata": {

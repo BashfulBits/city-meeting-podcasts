@@ -2105,8 +2105,6 @@ def _build_impl(
     deadline: float | None = None
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
-    tag_llm_deadline = None  # UTC datetime; set for the `tag` lane so the LLM scheduler can pace
-    chapter_llm_deadline = None  # UTC datetime; chapter lanes use route-policy pacing
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
         window_min = float(defaults.get("run_time_budget_minutes", 0))
@@ -2154,17 +2152,12 @@ def _build_impl(
             deadline = (time.monotonic() + remaining_secs) if tag_window_min > 0 else None
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
             if tag_window_min > 0:
-                # Wall-clock (UTC) twin of the monotonic `deadline` above: the LLM tag scheduler
-                # needs an absolute datetime as its `deadline_at` to pace within-run rate limits
-                # (wait out a per-minute window, but never past the run's budget). Same remaining
-                # budget, expressed as a clock time.
-                from datetime import UTC, datetime, timedelta
-
-                tag_llm_deadline = datetime.now(UTC) + timedelta(seconds=remaining_secs)
+                print(
+                    f"budget: tag window {tag_window_min:.0f}m × {safety} (+ yield if superseded)"
+                )
         elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
-            # Chapter jobs are deferred rather than held on a runner.  Give the scheduler the
-            # workflow's remaining wall-clock as a hard stop so a run can submit/finalize work
-            # without waiting beyond the job budget; route pacing itself remains policy-owned.
+            # Chapter jobs are queued rather than held on a runner. The wall-clock stop bounds
+            # this producer pass only; accepted Worker jobs remain durable and drain afterward.
             chapter_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             chapter_deadline_secs = chapter_window_min * 60 * safety
             remaining_secs = max(
@@ -2173,9 +2166,6 @@ def _build_impl(
             deadline = (time.monotonic() + remaining_secs) if chapter_window_min > 0 else None
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
             if chapter_window_min > 0:
-                from datetime import UTC, datetime, timedelta
-
-                chapter_llm_deadline = datetime.now(UTC) + timedelta(seconds=remaining_secs)
                 print(
                     f"budget: {lane} window {chapter_window_min:.0f}m × {safety} "
                     "(+ yield if superseded)"
@@ -2378,8 +2368,6 @@ def _build_impl(
             else None
         ),
         lane=lane,
-        tag_llm_deadline=tag_llm_deadline,
-        chapter_llm_deadline=chapter_llm_deadline,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,

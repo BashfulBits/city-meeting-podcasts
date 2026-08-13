@@ -1,9 +1,12 @@
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 
 const REQUEST_PREFIX = "requests/";
+const PENDING_PREFIX = "pending/";
 const CRON_LOCK_KEY = "locks/cron.json";
 const DISPATCH_BUDGET_KEY = "state/dispatch_budget.json";
-const DEFAULT_MAX_REQUEST_BYTES = 512 * 1024;
+// Chapter-tag batches can legitimately carry several large, source-backed chapter windows. Keep
+// an explicit cap (the Worker parses JSON in memory) but avoid rejecting ordinary long meetings.
+const DEFAULT_MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_QUEUE_SCAN = 1000;
 const DEFAULT_MAX_ATTEMPTS = 5;
@@ -285,6 +288,20 @@ function requestKey(id) {
   return `requests/${id}.json`;
 }
 
+function pendingKey(id) {
+  return `${PENDING_PREFIX}${id}.json`;
+}
+
+async function markPending(bucket, id) {
+  // A compact pending-only index keeps terminal request history from hiding live work behind
+  // MAX_QUEUE_SCAN's bounded legacy object scan. The request object remains canonical.
+  await putJson(bucket, pendingKey(id), { id }, { onlyIf: { etagDoesNotMatch: "*" } });
+}
+
+async function unmarkPending(bucket, id) {
+  await bucket.delete(pendingKey(id));
+}
+
 async function getJson(bucket, key) {
   const object = await bucket.get(key);
   if (!object) {
@@ -394,6 +411,33 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
   if (typeof body.estimated_tokens === "number" && body.estimated_tokens > 0) {
     policy.estimated_tokens = Math.floor(body.estimated_tokens);
   }
+  for (const field of ["input_tokens_estimate", "output_token_budget"]) {
+    if (body[field] === undefined) continue;
+    if (typeof body[field] !== "number" || !Number.isFinite(body[field]) || body[field] < 0) {
+      throw new HttpError(400, `${field} must be a non-negative number`);
+    }
+    policy[field] = Math.floor(body[field]);
+  }
+  if (policy.input_tokens_estimate === undefined && policy.estimated_tokens !== undefined) {
+    policy.input_tokens_estimate = policy.estimated_tokens;
+  }
+  if (body.allowed_models !== undefined) {
+    if (!Array.isArray(body.allowed_models) || body.allowed_models.length === 0) {
+      throw new HttpError(400, "allowed_models must be a non-empty array when provided");
+    }
+    const allowedModels = [...new Set(body.allowed_models.map((candidate) => {
+      if (typeof candidate !== "string" || !candidate.trim()) {
+        throw new HttpError(400, "allowed_models entries must be non-empty strings");
+      }
+      const canonical = canonicalModelName(candidate.trim(), dispatchLimits);
+      if (!configuredModels.includes(canonical)) {
+        throw new HttpError(400, `unknown allowed model: ${candidate}`);
+      }
+      return canonical;
+    }))];
+    if (!allowedModels.includes(canonicalModel)) allowedModels.unshift(canonicalModel);
+    policy.allowed_models = allowedModels;
+  }
 
   return {
     model: canonicalModel,
@@ -421,6 +465,7 @@ async function enqueue(bucket, normalized, cfg, now = new Date(), idempotencyKey
     if (!sameModel || !sameRequest || !samePolicy) {
       throw new HttpError(409, "idempotency key collision with different payload or policy");
     }
+    if (stored.status === "pending") await markPending(bucket, stored.id);
     return stored;
   }
 
@@ -452,10 +497,13 @@ async function enqueue(bucket, normalized, cfg, now = new Date(), idempotencyKey
       if (!sameModel || !sameRequest || !samePolicy) {
         throw new HttpError(409, "idempotency key collision with different payload or policy");
       }
+      if (stored.status === "pending") await markPending(bucket, stored.id);
       return stored;
     }
     throw new HttpError(503, "could not persist queued request");
   }
+
+  await markPending(bucket, record.id);
 
   return record;
 }
@@ -492,6 +540,7 @@ async function saveRetry(bucket, claimed, response, cfg, now, errorDetail = null
     etagMatches: claimed.object.etag,
     customMetadata: requestMetadata(updated),
   });
+  await markPending(bucket, updated.id);
 }
 
 async function saveFailure(bucket, claimed, status, now, code = "upstream_error", errorDetail = null) {
@@ -507,10 +556,13 @@ async function saveFailure(bucket, claimed, status, now, code = "upstream_error"
     completed_at: now.toISOString(),
     error: errObj,
   };
-  await putJson(bucket, claimed.key, updated, {
+  const saved = await putJson(bucket, claimed.key, updated, {
     etagMatches: claimed.object.etag,
     customMetadata: requestMetadata(updated),
   });
+  // A lost conditional write means another worker owns the newer canonical state.  Its pending
+  // marker is still needed until that state is observed and finalized.
+  if (saved) await unmarkPending(bucket, updated.id);
 }
 
 async function requeue(bucket, claimed, now) {
@@ -526,6 +578,7 @@ async function requeue(bucket, claimed, now) {
     etagMatches: claimed.object.etag,
     customMetadata: requestMetadata(released),
   });
+  await markPending(bucket, released.id);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -965,12 +1018,19 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
   return { apiKey, url, upstreamModel: route.upstream_model };
 }
 
-function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
   const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
   const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
   const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
-  const freeRanked = rankRoutes(candidates.filter((route) => route.free));
-  const paidRanked = rankRoutes(candidates.filter((route) => !route.free));
+  const inputTokens = policy?.input_tokens_estimate ?? policy?.estimated_tokens ?? 1024;
+  const outputTokens = policy?.output_token_budget ?? 0;
+  const contextCompatible = candidates.filter(
+    (route) =>
+      inputTokens <= (route.input_context_limit || 32768) &&
+      outputTokens <= (route.output_context_limit || 1024),
+  );
+  const freeRanked = rankRoutes(contextCompatible.filter((route) => route.free));
+  const paidRanked = rankRoutes(contextCompatible.filter((route) => !route.free));
   const allowPaid = Boolean(policy?.allow_paid);
   const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
   const tokens = policy?.estimated_tokens || 1024;
@@ -992,6 +1052,10 @@ function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPA
   const freePick = tryRoutes(freeRanked);
   if (freePick) {
     return freePick;
+  }
+
+  if (candidates.length > 0 && contextCompatible.length === 0) {
+    return { chosenRoute: null, reason: "context_limit" };
   }
 
   if (freeRanked.length === 0 && paidRanked.length === 0) {
@@ -1022,6 +1086,24 @@ function selectRoute(budget, canonicalModel, policy, now, dispatchLimits = DISPA
 
   const paidPick = tryRoutes(paidRanked);
   return paidPick || { chosenRoute: null, reason: "no_capacity" };
+}
+
+function selectRoute(budget, canonicalModels, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+  const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
+  let lastSelection = { chosenRoute: null, reason: "no_configured_route" };
+  let retryableSelection = null;
+  for (const model of [...new Set(models)]) {
+    const selection = selectRouteForModel(budget, model, policy, now, dispatchLimits);
+    if (selection.chosenRoute) return selection;
+    // Preserve "no capacity" when an earlier, valid model is merely full rather than allowing
+    // a later unknown model to misclassify the durable request as permanently invalid.
+    if (selection.reason === "no_capacity") {
+      retryableSelection = selection;
+    } else if (selection.reason !== "no_configured_route") {
+      lastSelection = selection;
+    }
+  }
+  return retryableSelection || lastSelection;
 }
 
 async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
@@ -1060,11 +1142,22 @@ async function dispatchBatch(
     let cursor = undefined;
     let claimable = [];
     let scanned = 0;
+    let scanPrefix = PENDING_PREFIX;
+    let legacyScan = false;
 
     while (scanned < cfg.maxQueueScan) {
       const batchSize = Math.min(100, cfg.maxQueueScan - scanned);
-      const listResult = await bucket.list({ prefix: REQUEST_PREFIX, cursor, limit: batchSize });
+      let listResult = await bucket.list({ prefix: scanPrefix, cursor, limit: batchSize });
       const objects = listResult ? listResult.objects || [] : [];
+      // Backward-compatible bridge for requests written before the pending-only index shipped.
+      // Operators reindex once after deploy; new queues never take this bounded legacy path.
+      if (objects.length === 0 && scanned === 0 && scanPrefix === PENDING_PREFIX) {
+        scanPrefix = REQUEST_PREFIX;
+        legacyScan = true;
+        cursor = undefined;
+        listResult = await bucket.list({ prefix: scanPrefix, cursor, limit: batchSize });
+        objects.push(...(listResult ? listResult.objects || [] : []));
+      }
       if (objects.length === 0) {
         break;
       }
@@ -1072,19 +1165,25 @@ async function dispatchBatch(
       for (const obj of objects) {
         if (claimable.length >= cfg.maxQueueScan) break;
         scanned += 1;
+        const id = obj.key.slice(scanPrefix.length).replace(/\.json$/, "");
+        if (!id) continue;
         const meta = obj.customMetadata || {};
-        if (meta.status && meta.status !== "pending") continue;
+        if (legacyScan && meta.status && meta.status !== "pending") continue;
         if (
+          legacyScan &&
           meta.status === "pending" &&
           meta.available_at &&
           parseTime(meta.available_at) > now.getTime()
         ) {
           continue;
         }
-        const loaded = await getJson(bucket, obj.key);
+        const loaded = await getJson(bucket, requestKey(id));
         if (!loaded || !loaded.value) continue;
         const rec = loaded.value;
-        if (rec.status !== "pending") continue;
+        if (rec.status !== "pending") {
+          if (!legacyScan) await unmarkPending(bucket, id);
+          continue;
+        }
         if (rec.available_at && parseTime(rec.available_at) > now.getTime()) continue;
         const logicalModel = canonicalModelName(rec.model, DISPATCH_LIMITS);
         if (logicalModel !== rec.model) {
@@ -1093,7 +1192,8 @@ async function dispatchBatch(
             rec.request.model = logicalModel;
           }
         }
-        claimable.push({ key: obj.key, object: loaded.object, record: rec });
+        if (legacyScan) await markPending(bucket, id);
+        claimable.push({ key: requestKey(id), object: loaded.object, record: rec });
       }
 
       if (claimable.length >= cfg.maxQueueScan || !listResult.truncated || !listResult.cursor) {
@@ -1143,7 +1243,12 @@ async function dispatchBatch(
     for (const claimed of claimable) {
       if (candidatesToDispatch.length >= maxBatch) break;
 
-      const selection = selectRoute(budget, claimed.record.model, claimed.record.policy, now);
+      const selection = selectRoute(
+        budget,
+        claimed.record.policy?.allowed_models || claimed.record.model,
+        claimed.record.policy,
+        now,
+      );
       if (!selection.chosenRoute) {
         if (selection.reason === "no_capacity") {
           await requeue(bucket, claimed, now);
@@ -1430,10 +1535,11 @@ async function dispatchBatch(
           completed_at: new Date().toISOString(),
           response: responseJson,
         };
-        await putJson(bucket, claimed.key, completed, {
+        const saved = await putJson(bucket, claimed.key, completed, {
           etagMatches: claimed.object.etag,
           customMetadata: requestMetadata(completed),
         });
+        if (saved) await unmarkPending(bucket, completed.id);
         return {
           status: "completed",
           requestId: claimed.record.id,
@@ -1579,6 +1685,28 @@ async function handlePoll(request, env, id) {
   return responseForRecord(request, loaded.value);
 }
 
+async function reindexPendingRequests(bucket) {
+  let cursor = undefined;
+  let scanned = 0;
+  let pending = 0;
+  do {
+    const listed = await bucket.list({ prefix: REQUEST_PREFIX, cursor, limit: 1000 });
+    for (const obj of listed?.objects || []) {
+      scanned += 1;
+      const id = obj.key.slice(REQUEST_PREFIX.length).replace(/\.json$/, "");
+      const meta = obj.customMetadata || {};
+      if (meta.status && meta.status !== "pending") continue;
+      const loaded = await getJson(bucket, obj.key);
+      if (loaded?.value?.status === "pending") {
+        await markPending(bucket, id);
+        pending += 1;
+      }
+    }
+    cursor = listed?.truncated ? listed.cursor : undefined;
+  } while (cursor);
+  return { scanned, pending };
+}
+
 async function handleRequest(request, env) {
   const url = new URL(request.url);
   if (url.pathname === "/healthz" && request.method === "GET") {
@@ -1644,6 +1772,11 @@ async function handleRequest(request, env) {
       backlog_count: count,
       estimated_wait_seconds: estSeconds,
     });
+  }
+
+  if (url.pathname === "/v1/queue/reindex" && request.method === "POST") {
+    if (!env.LLM_QUEUE) return plain(503, "dispatch storage is not configured");
+    return jsonResponse(await reindexPendingRequests(env.LLM_QUEUE));
   }
 
   if (url.pathname === "/v1/chat/completions" && request.method === "POST") {
