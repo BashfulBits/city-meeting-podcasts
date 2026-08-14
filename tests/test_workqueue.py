@@ -577,7 +577,7 @@ def _provider_rec(days_ago, *, align_spec="align-new", transcript_spec=None, dia
             "format": "vtt",
             "synced": True,
             "align_spec_hash": align_spec,
-            "align_pipeline_version": "6",
+            "align_pipeline_version": "7",
         }
     }
     if diarize_spec is not None:
@@ -675,12 +675,12 @@ def test_build_manifest_ineligible_provider_align_requires_full_asr_artifact():
         "candidate": {
             "key": "transcripts/s/u-provider-abc.txt",
             "synced": False,
-            "align_ineligible_pipeline_version": "provider-align:6",
+            "align_ineligible_pipeline_version": "provider-align:7",
         }
     }
     rec["transcript"] = {
         "key": "transcripts/s/u-provider-align-old.vtt",
-        "pipeline_version": "provider-align:6",
+        "pipeline_version": "provider-align:7",
     }
     tx = _tx_items(build_manifest([("s", _city("d", asr_alignment_enabled=True), {"u": rec})]))
     assert tx[0].work_class == "transcript-asr"

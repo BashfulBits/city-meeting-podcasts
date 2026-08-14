@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Provider-align now permits a roughly 4 GiB CTC section envelope.** The safe section limit is
+  increased from five to ten minutes using the observed WhisperX allocation slope, and oversized
+  sections produce a visible GitHub Actions warning before they are routed to full ASR.
+  Provider-align version 7 reopens prior version-6 ineligible items for gradual recomputation;
+  full-ASR artifacts are not invalidated.
+
 - **Provider-align workers now preserve bounded timing windows through the local backend.** The
   internal process previously dropped the provider's coarse served-time segments, causing
   WhisperX to feed an entire meeting into one CTC convolution and request roughly 40 GB for a

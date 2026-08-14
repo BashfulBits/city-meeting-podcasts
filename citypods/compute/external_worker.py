@@ -381,6 +381,15 @@ def _mark_provider_align_ineligible(ep: Episode, recipe: str, reason: str) -> No
     ep.provider_transcript = registry
 
 
+def _warn_oversized_alignment_section(backend: str, exc: BaseException) -> None:
+    """Emit an Actions annotation for the memory guard without affecting other backends."""
+    message = str(exc)
+    if backend != "github-actions" or "alignment section is too long" not in message:
+        return
+    encoded = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    print(f"::warning title=Provider-align section too long::{encoded}", flush=True)
+
+
 def _is_deterministic_media_decode_error(exc: BaseException) -> bool:
     """Identify decoder failures that should be quarantined until audio changes.
 
@@ -1574,6 +1583,7 @@ class ExternalTranscribeWorker:
                             ep, align_spec, "alignment-window-or-coverage"
                         )
                         self._queue_transcript_record(item, ep, records, ref_uid=uid)
+                    _warn_oversized_alignment_section(self.config.backend, exc)
                     print(
                         f"[{self.config.backend}-worker] provider-align ineligible "
                         f"{item.source_key}/{item.episode_uid}: {exc}",

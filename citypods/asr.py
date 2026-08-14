@@ -368,9 +368,13 @@ _MIN_ALIGN_COVERAGE = 0.90
 # WhisperX's CTC model is not memory-bounded internally: the convolutional feature extractor
 # materializes tensors proportional to the audio window passed for each section. A full
 # 1.7-hour recording can therefore request ~40 GB on a hosted CPU runner even though the model
-# itself is small. Provider markers are coarse, so keep a generous five-minute ceiling while
-# refusing an unsafe unbounded/oversized section and letting the normal ASR route handle it.
-_MAX_ALIGN_SECTION_SECONDS = 5 * 60.0
+# itself is small. The observed worst-case allocation was about 6.5 MiB per audio second, so a
+# 4 GiB envelope corresponds to roughly 10.5 minutes; round down to a ten-minute safety limit.
+_ALIGN_MEMORY_BYTES_PER_SECOND = 6.5 * 1024 * 1024
+_MAX_ALIGN_MEMORY_BYTES = 4 * 1024**3
+_MAX_ALIGN_SECTION_SECONDS = (
+    math.floor(_MAX_ALIGN_MEMORY_BYTES / _ALIGN_MEMORY_BYTES_PER_SECOND / 60) * 60.0
+)
 
 
 def _mapping_value(value, key: str, default=None):
