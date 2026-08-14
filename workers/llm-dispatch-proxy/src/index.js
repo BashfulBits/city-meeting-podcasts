@@ -1,9 +1,9 @@
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 
 const REQUEST_PREFIX = "requests/";
-// Ready markers are ordered by their eligibility timestamp. R2 lists keys
-// lexicographically, so finding the next request is one `list({limit: 1})`, irrespective of
-// historical request count.  `pending/` is retained only for the external one-time migration.
+// Ready markers are ordered by their eligibility timestamp. R2 lists keys lexicographically, so
+// finding a bounded set of candidate requests is one fixed-size list, irrespective of historical
+// request count. `pending/` is retained only for the external one-time migration.
 const READY_PREFIX = "ready/";
 const CRON_LOCK_KEY = "locks/cron.json";
 const DISPATCH_BUDGET_KEY = "state/dispatch_budget.json";
@@ -25,10 +25,12 @@ const DEFAULT_FAST_UPSTREAM_TIMEOUT_SECONDS = 90;
 // allowing the 12-minute long lane inside the 13m40s invocation deadline.
 const DEFAULT_FINALIZATION_RESERVE_SECONDS = 20;
 const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
-// Cron triggers on the Workers Free plan have a 10ms CPU allowance.  A single request keeps the
-// scheduled path bounded; upstream wait time is not CPU time, but parsing several large prompts is.
-const DEFAULT_BATCH_CONCURRENCY = 1;
-const DEFAULT_MAX_TOTAL_REQUESTS = 1;
+// Cron triggers on the Workers Free plan have a 10ms CPU allowance.  Ready markers keep queue
+// inspection bounded; upstream wait time is not CPU time, so four independent provider calls can
+// make progress concurrently without returning to the old prompt-scanning design.
+const DEFAULT_BATCH_CONCURRENCY = 4;
+const DEFAULT_MAX_TOTAL_REQUESTS = 4;
+const DEFAULT_READY_LOOKAHEAD = 16;
 
 const COPY_FIELDS = [
   "temperature",
@@ -1215,25 +1217,68 @@ function nextCapacityRetryAt(budget, canonicalModels, policy, now, dispatchLimit
   return new Date(resets.length > 0 ? Math.min(...resets) : now.getTime() + 60_000);
 }
 
-async function loadReadyHead(bucket, now) {
-  const listed = await bucket.list({ prefix: READY_PREFIX, limit: 1 });
-  const object = listed?.objects?.[0];
-  if (!object) return null;
-  let marker;
-  try {
-    marker = await getJson(bucket, object.key);
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) throw error;
-    await unmarkReady(bucket, object.key);
-    return { invalid: true };
+async function loadReadyHeads(bucket, now, limit = DEFAULT_READY_LOOKAHEAD) {
+  const listed = await bucket.list({ prefix: READY_PREFIX, limit });
+  const heads = [];
+  let invalidCount = 0;
+  let future = false;
+  for (const object of listed?.objects || []) {
+    let marker;
+    try {
+      marker = await getJson(bucket, object.key);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      await unmarkReady(bucket, object.key);
+      invalidCount += 1;
+      continue;
+    }
+    const record = marker?.value;
+    if (!record || record.version !== 1 || typeof record.id !== "string") {
+      await unmarkReady(bucket, object.key);
+      invalidCount += 1;
+      continue;
+    }
+    // readyKey() orders by available_at, so a future marker means every later marker is future
+    // too.  Stop before reading more marker bodies, while still allowing malformed/stale markers
+    // before it to be repaired in this pass.
+    if (parseTime(record.available_at) > now.getTime()) {
+      future = true;
+      break;
+    }
+    heads.push({ key: object.key, record });
   }
-  const record = marker?.value;
-  if (!record || record.version !== 1 || typeof record.id !== "string") {
-    await unmarkReady(bucket, object.key);
-    return { invalid: true };
+  return { heads, future, invalidCount };
+}
+
+async function loadReadyClaim(bucket, head, now) {
+  const loaded = await getJson(bucket, requestKey(head.record.id));
+  if (!loaded?.value || loaded.value.status !== "pending") {
+    await unmarkReady(bucket, head.key);
+    return null;
   }
-  if (parseTime(record.available_at) > now.getTime()) return { future: true };
-  return { key: object.key, record };
+  const canonical = loaded.value;
+  if (canonical.available_at && parseTime(canonical.available_at) > now.getTime()) {
+    await replaceReadyMarker(bucket, canonical, head.key);
+    return null;
+  }
+  const logicalModel = canonicalModelName(canonical.model, DISPATCH_LIMITS);
+  if (logicalModel !== canonical.model) {
+    canonical.model = logicalModel;
+    if (canonical.request && typeof canonical.request === "object") {
+      canonical.request.model = logicalModel;
+    }
+  }
+  // A moved marker can survive a crash between creating the replacement and deleting the old
+  // key.  Never dispatch based on stale routing policy or a stale eligibility timestamp.
+  if (
+    head.key !== readyKey(canonical) ||
+    canonicalModelName(head.record.model, DISPATCH_LIMITS) !== logicalModel ||
+    JSON.stringify(head.record.policy || {}) !== JSON.stringify(canonical.policy || {})
+  ) {
+    await replaceReadyMarker(bucket, canonical, head.key);
+    return null;
+  }
+  return { key: requestKey(canonical.id), object: loaded.object, record: canonical, readyKey: head.key };
 }
 
 async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
@@ -1269,43 +1314,17 @@ async function dispatchBatch(
   }
 
   try {
-    // One ordered marker lookup replaces the old 1,000-object scan and 1,000 canonical JSON
-    // reads.  The marker is small; the full request is read only after it becomes the one head
-    // candidate.  Records written before this index deliberately require the offline migrator.
-    const head = await loadReadyHead(bucket, now);
-    if (!head || head.future) return { status: "idle", count: 0 };
-    if (head.invalid) return { status: "index_repaired", count: 0 };
-
-    const loaded = await getJson(bucket, requestKey(head.record.id));
-    if (!loaded?.value || loaded.value.status !== "pending") {
-      await unmarkReady(bucket, head.key);
-      return { status: "index_repaired", count: 0 };
+    // List a small, fixed number of compact markers.  Route selection happens from marker
+    // metadata first, so a provider/model at capacity does not force a full prompt read or stop
+    // the batch at the queue head.  Canonical requests are read only for candidates that can be
+    // dispatched or must be requeued.
+    const ready = await loadReadyHeads(bucket, now);
+    if (ready.heads.length === 0) {
+      return {
+        status: ready.invalidCount > 0 ? "index_repaired" : "idle",
+        count: 0,
+      };
     }
-    const canonical = loaded.value;
-    if (canonical.available_at && parseTime(canonical.available_at) > now.getTime()) {
-      await replaceReadyMarker(bucket, canonical, head.key);
-      return { status: "index_repaired", count: 0 };
-    }
-    const logicalModel = canonicalModelName(canonical.model, DISPATCH_LIMITS);
-    if (logicalModel !== canonical.model) {
-      canonical.model = logicalModel;
-      if (canonical.request && typeof canonical.request === "object") {
-        canonical.request.model = logicalModel;
-      }
-    }
-    // A moved marker can survive a crash between creating the replacement and deleting the old
-    // key.  Never dispatch based on stale routing policy or a stale eligibility timestamp.
-    if (
-      head.key !== readyKey(canonical) ||
-      canonicalModelName(head.record.model, DISPATCH_LIMITS) !== logicalModel ||
-      JSON.stringify(head.record.policy || {}) !== JSON.stringify(canonical.policy || {})
-    ) {
-      await replaceReadyMarker(bucket, canonical, head.key);
-      return { status: "index_repaired", count: 0 };
-    }
-    const claimable = [
-      { key: requestKey(canonical.id), object: loaded.object, record: canonical, readyKey: head.key },
-    ];
 
     let budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
     let budget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
@@ -1316,16 +1335,19 @@ async function dispatchBatch(
     let lastRequeuedId = null;
     let deadlineGuarded = false;
 
-    for (const claimed of claimable) {
+    for (const head of ready.heads) {
       if (candidatesToDispatch.length >= maxBatch) break;
 
       const selection = selectRoute(
         budget,
-        claimed.record.policy?.allowed_models || claimed.record.model,
-        claimed.record.policy,
+        head.record.policy?.allowed_models || head.record.model,
+        head.record.policy,
         now,
       );
+      let claimed;
       if (!selection.chosenRoute) {
+        claimed = await loadReadyClaim(bucket, head, now);
+        if (!claimed) continue;
         if (selection.reason === "no_capacity") {
           await requeue(
             bucket,
@@ -1349,6 +1371,9 @@ async function dispatchBatch(
         }
         continue;
       }
+
+      claimed = await loadReadyClaim(bucket, head, now);
+      if (!claimed) continue;
 
       const { chosenRoute } = selection;
       const timeoutSeconds = timeoutSecondsForRecord(claimed.record, cfg);
@@ -1927,7 +1952,7 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
         env,
         fetchImpl,
         now,
-        cfg.batchConcurrency,
+        Math.min(cfg.batchConcurrency, cfg.maxTotalRequests - totalDispatched),
         leaseOwner,
         deadlineMs,
       );

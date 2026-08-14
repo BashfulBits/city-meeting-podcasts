@@ -42,12 +42,14 @@ Phase R (Research-Tool Surface)._
   version 5 reopens all prior provider-align work for gradual recomputation; full-ASR artifacts are
   not invalidated.
 
-- **Free-plan LLM dispatch cron now has a queue-depth-independent ready index.** Pending R2
-  requests write date-ordered compact `ready/` markers, so a scheduled invocation lists one marker
-  and reads only its canonical request instead of scanning and parsing up to 1,000 queue records.
-  The deployed worker dispatches one request per cron tick; ledger-blocked work moves to its next
-  eligible marker. The historical Worker reindex and exact-estimate endpoints are retired to prevent
-  unbounded scans. Existing R2 pending requests require the one-time
+- **Free-plan LLM dispatch cron now has a queue-depth-independent ready index and bounded parallel
+  routing.** Pending R2 requests write date-ordered compact `ready/` markers, so a scheduled
+  invocation inspects a fixed lookahead of 16 marker bodies and reads canonical prompts only for
+  viable candidates instead of scanning and parsing up to 1,000 queue records. A provider/model at
+  capacity no longer blocks a later eligible route, and up to four independently paced requests are
+  dispatched concurrently (`BATCH_CONCURRENCY=4`, `MAX_TOTAL_REQUESTS=4`). Provider/account ledgers
+  remain authoritative. The historical Worker reindex and exact-estimate endpoints are retired to
+  prevent unbounded scans. Existing R2 pending requests require the one-time
   `scripts/reindex_llm_dispatch_queue.py` marker migration, available as a dry-run-first manual
   GitHub Action; canonical prompts/results are unchanged, and no Citypods pipeline version or
   artifact backfill is involved.

@@ -38,10 +38,11 @@
     "FAST_UPSTREAM_TIMEOUT_SECONDS": "90",
     "UPSTREAM_TIMEOUT_SECONDS": "720",
     "FINALIZATION_RESERVE_SECONDS": "20",
-    // The free plan permits only 10ms of CPU for this per-minute cron.  Dispatch one durable
-    // request at a time; the ready-marker lookup is O(1) in the number of queued records.
-    "BATCH_CONCURRENCY": "1",
-    "MAX_TOTAL_REQUESTS": "1"
+    // The free plan permits only 10ms of CPU for this per-minute cron.  Dispatch up to four
+    // independent provider requests concurrently; compact marker lookahead keeps queue inspection
+    // bounded and avoids parsing prompts just to find a route with capacity.
+    "BATCH_CONCURRENCY": "4",
+    "MAX_TOTAL_REQUESTS": "4"
   },
   "observability": {
     "enabled": true,

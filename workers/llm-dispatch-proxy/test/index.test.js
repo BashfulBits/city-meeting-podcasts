@@ -517,6 +517,58 @@ test("malformed ready markers are removed instead of blocking the queue head", a
   assert.equal(await env.LLM_QUEUE.get(key), null);
 });
 
+test("ready-marker lookahead skips a blocked provider and dispatches a later provider", async () => {
+  const env = isolatedEnv();
+  const first = await handleRequest(
+    chatRequest([{ role: "user", content: "blocked provider" }], "aaa-mistral-blocked"),
+    env,
+  );
+  const second = await handleRequest(
+    chatRequest(
+      [{ role: "user", content: "independent provider" }],
+      "bbb-gemini-ready",
+      "gemini/gemini-3-flash-preview",
+    ),
+    env,
+  );
+  const firstId = (await first.json()).id;
+  const secondId = (await second.json()).id;
+  const now = new Date();
+  await env.LLM_QUEUE.put(
+    "state/dispatch_budget.json",
+    JSON.stringify({
+      version: 1,
+      routes: {
+        mistral_large_2512_primary: {
+          requests_minute: 1,
+          requests_day: 1,
+          tokens_minute: 0,
+          requests_available_at: new Date(now.getTime() + 60_000).toISOString(),
+        },
+      },
+    }),
+  );
+
+  const calls = [];
+  const result = await dispatchBatch(
+    env,
+    async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ id: "gemini-result", choices: [] }), { status: 200 });
+    },
+    now,
+    4,
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.count, 1);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /generativelanguage\.googleapis\.com/);
+  assert.equal(calls[0].body.model, "gemini-3-flash-preview");
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${firstId}.json`)).json()).status, "pending");
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${secondId}.json`)).json()).status, "completed");
+});
+
 test("ready keys order eligibility before priority and priority within a tie", () => {
   const at = "2026-08-13T19:20:00.000Z";
   const records = [
@@ -752,7 +804,7 @@ test("renewing the cron lease is owner-checked and CAS-safe", async () => {
   assert.equal(await renewCronLease(bucket, later, "invocation-a", 30), false);
 });
 
-test("ready lookup remains one list and two object reads with 10,000 queued requests", async () => {
+test("ready lookup remains one list and bounded marker reads with 10,000 queued requests", async () => {
   class CountingBucket extends FakeBucket {
     constructor() {
       super();
@@ -787,7 +839,7 @@ test("ready lookup remains one list and two object reads with 10,000 queued requ
   assert.equal(result.status, "completed");
   assert.equal(bucket.listCalls, 1);
   assert.equal(bucket.getCalls.filter((key) => key.startsWith("requests/")).length, 1);
-  assert.equal(bucket.getCalls.filter((key) => key.startsWith("ready/")).length, 1);
+  assert.equal(bucket.getCalls.filter((key) => key.startsWith("ready/")).length, 16);
 });
 
 test("queue estimate endpoint is retired rather than scanning the whole R2 history", async () => {
@@ -1094,6 +1146,12 @@ test("config() fails fast on a missing required var instead of defaulting to Mis
   assert.throws(() => config(withoutProvider), /PROVIDER_NAME is required/);
 });
 
+test("Free-plan dispatch defaults allow four requests per scheduled batch and run", () => {
+  const settings = config(isolatedEnv());
+  assert.equal(settings.batchConcurrency, 4);
+  assert.equal(settings.maxTotalRequests, 4);
+});
+
 test("config() rejects an upstream timeout that is not comfortably under the lease duration", () => {
   const env = { ...isolatedEnv(), UPSTREAM_TIMEOUT_SECONDS: "90", LEASE_DURATION_SECONDS: "90" };
   assert.throws(() => config(env), /must be less than/);
@@ -1282,6 +1340,39 @@ test("dispatchBatch admits only one same-route request until its RPM interval el
   assert.equal(completedObjects.length, 1);
 });
 
+test("dispatchBatch runs four independently paced routes concurrently", async () => {
+  const env = isolatedEnv();
+  const models = [
+    "mistral/mistral-large-2512",
+    "gemini/gemini-3-flash-preview",
+    "meta-llama/llama-3.3-70b-instruct",
+    "deepseek/deepseek-v4-flash",
+  ];
+  for (const [index, model] of models.entries()) {
+    await handleRequest(
+      chatRequest([{ role: "user", content: `independent route ${index}` }], `route-${index}`, model),
+      env,
+    );
+  }
+
+  const calls = [];
+  const result = await dispatchBatch(
+    env,
+    async (_url, init) => {
+      calls.push(JSON.parse(init.body).model);
+      return new Response(JSON.stringify({ id: `completion-${calls.length}`, choices: [] }), { status: 200 });
+    },
+    new Date(),
+    4,
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.count, 4);
+  assert.equal(result.completedCount, 4);
+  assert.equal(calls.length, 4);
+  assert.equal(new Set(calls).size, 4);
+});
+
 test("a finalization failure records a terminal failure and releases its reservation", async () => {
   class FinalizationFailureBucket extends FakeBucket {
     constructor() {
@@ -1324,7 +1415,7 @@ test("a finalization failure records a terminal failure and releases its reserva
     2,
   );
   assert.equal(result.status, "completed");
-  assert.deepEqual(result.results.map((item) => item.status), ["failed"]);
+  assert.deepEqual(result.results.map((item) => item.status), ["failed", "completed"]);
   const failed = await bucket.get(bucket.failKey);
   assert.equal((await failed.json()).status, "failed");
   const ledger = await bucket.get("state/dispatch_budget.json");
@@ -1333,7 +1424,7 @@ test("a finalization failure records a terminal failure and releases its reserva
   }
 });
 
-test("the single-request Free-plan scheduler prioritizes fast work before long work", async () => {
+test("the Free-plan scheduler prioritizes fast work before long work", async () => {
   const env = isolatedEnv();
   for (let index = 0; index < 4; index += 1) {
     await handleRequest(chatRequest(undefined, `fast-${index}`), env);

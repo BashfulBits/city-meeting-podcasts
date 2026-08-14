@@ -211,10 +211,11 @@ plugs in the same way, gated identically.
   (review/33 §10.4/§10.6: re-initializes to zero, worst case is one over-count window before the
   provider's own throttling corrects it, never a lost artifact).
 - **Resolved 2026-08-13 — date-ordered ready index replaces queue scans.** Pending records now have a
-  compact `ready/<eligible-time>-<priority>-…` marker. The cron reads one lexicographic head marker
-  and one canonical request, independent of `requests/` depth; it never falls back to a legacy scan.
-  The Free-plan deployment dispatches one request per tick. `GET /v1/queue/estimate` is deliberately
-  retired rather than retaining a second unbounded Worker scan, and the offline
+  compact `ready/<eligible-time>-<priority>-…` marker. The cron reads a fixed lookahead of compact
+  markers and their routing metadata, independent of `requests/` depth; it never falls back to a
+  legacy scan. The Free-plan deployment dispatches up to four independently paced requests per tick
+  and skips a blocked provider/model when a later marker has capacity. `GET /v1/queue/estimate` is
+  deliberately retired rather than retaining a second unbounded Worker scan, and the offline
   `scripts/reindex_llm_dispatch_queue.py` creates markers for pre-index pending records. The marker
   body contains routing policy but never the prompt; canonical state is re-read before dispatch, so a
   stale marker from a crash is safe and self-repairs.
@@ -242,8 +243,9 @@ credential-disclosure regression test), per-route-ledger-driven account rotation
 Gemini burst, `no_capacity` (temporary, requeued) vs. permanent-failure (`no_configured_route`/
 `no_eligible_route`) outcomes, deadline-based paid elevation against synthetic mixed-tier route
 fixtures (§3.2), owner-token cron-lease release semantics,
-the bounded ready-index lifecycle (including a 10,000-record queue that uses one list and reads only
-one marker plus one canonical request), and retirement of the historical reindex/estimate scans.
+  the bounded ready-index lifecycle (including a 10,000-record queue that uses one list, a fixed marker
+  lookahead, and only the selected canonical requests), blocked-provider bypass, four-route batch
+  dispatch, and retirement of the historical reindex/estimate scans.
 
 ## §6. Acceptance
 
