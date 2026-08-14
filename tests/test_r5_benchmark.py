@@ -5,6 +5,7 @@ import pytest
 from citypods.r5_benchmark import (
     CHAPTER_PIPELINE_VERSION,
     PRELABELER_PROMPT_VERSION,
+    TAG_LLM_SCHEMA_VERSION,
     TAG_PROMPT_VERSION,
     _digest,
     _execution_complete,
@@ -184,6 +185,7 @@ def test_benchmark_resume_requires_prompt_and_pipeline_identity():
         "models": ["tagger"],
         "prelabeler_model": "reviewer",
         "tag_prompt_version": TAG_PROMPT_VERSION,
+        "llm_schema_version": TAG_LLM_SCHEMA_VERSION,
         "prelabeler_prompt_version": PRELABELER_PROMPT_VERSION,
         "chapter_pipeline_version": CHAPTER_PIPELINE_VERSION,
     }
@@ -195,6 +197,12 @@ def test_benchmark_resume_requires_prompt_and_pipeline_identity():
     )
     assert not _run_compatible(
         {**base, "prelabeler_prompt_version": "old"},
+        sample_digest="sample",
+        models=("tagger",),
+        prelabeler_model="reviewer",
+    )
+    assert not _run_compatible(
+        {**base, "llm_schema_version": "old"},
         sample_digest="sample",
         models=("tagger",),
         prelabeler_model="reviewer",

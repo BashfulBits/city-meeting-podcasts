@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Topic-tag dispatch now versions its structured-output schema.** Bumping the dedicated tag LLM
+  schema version invalidates old recipe/fingerprint identities, so reruns create fresh queue
+  requests after a provider-compatibility schema change. Existing R2 request bodies are not
+  rewritten or requeued automatically.
+
 - **Oversized terminal LLM error bodies now retain bounded diagnostics.** The private R2 record keeps
   the first 8 KiB, observed byte count, and `truncated` marker instead of discarding the diagnostic
   entirely; retryable responses continue to avoid repeated body previews.

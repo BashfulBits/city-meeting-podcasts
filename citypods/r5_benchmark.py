@@ -27,6 +27,7 @@ from citypods.storage import make_storage
 from citypods.tags import (
     CHAPTER_PIPELINE_VERSION,
     PRELABELER_PROMPT_VERSION,
+    TAG_LLM_SCHEMA_VERSION,
     TAG_PROMPT_VERSION,
     chapter_tag_inputs,
     decorate_llm_candidates,
@@ -303,6 +304,7 @@ def _run_taggers(
                     "model": model,
                     "example_id": example_id,
                     "prompt_version": TAG_PROMPT_VERSION,
+                    "llm_schema_version": TAG_LLM_SCHEMA_VERSION,
                 }
             )
             try:
@@ -412,6 +414,7 @@ def _run_prelabeler(
                 "example_id": example_id,
                 "model": model,
                 "prompt_version": PRELABELER_PROMPT_VERSION,
+                "llm_schema_version": TAG_LLM_SCHEMA_VERSION,
                 "subjects": [item.get("candidate_id") for item in subjects],
             }
         )
@@ -589,6 +592,7 @@ def _run_compatible(
         and set(run.get("models") or ()) == set(models)
         and run.get("prelabeler_model") == prelabeler_model
         and run.get("tag_prompt_version") == TAG_PROMPT_VERSION
+        and run.get("llm_schema_version") == TAG_LLM_SCHEMA_VERSION
         and run.get("prelabeler_prompt_version") == PRELABELER_PROMPT_VERSION
         and run.get("chapter_pipeline_version") == CHAPTER_PIPELINE_VERSION
     )
@@ -1100,6 +1104,7 @@ def run(
             "models": list(models),
             "prelabeler_model": prelabeler_model,
             "tag_prompt_version": TAG_PROMPT_VERSION,
+            "llm_schema_version": TAG_LLM_SCHEMA_VERSION,
             "prelabeler_prompt_version": PRELABELER_PROMPT_VERSION,
             "chapter_pipeline_version": CHAPTER_PIPELINE_VERSION,
             "taggers": {},
