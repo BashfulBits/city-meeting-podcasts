@@ -453,7 +453,7 @@ test("legacy DeepSeek aliases use the unified free candidate pool", async () => 
   assert.equal(result.status, "completed");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
-  assert.equal(calls[0].body.model, "deepseek-v4-flash-0731");
+  assert.equal(calls[0].body.model, "deepseek-v4-flash-free");
   const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
   const record = await stored.json();
   assert.equal(record.status, "completed");
