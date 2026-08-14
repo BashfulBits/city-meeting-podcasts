@@ -7,6 +7,7 @@ import {
   dispatchBatch,
   dispatchOne,
   handleRequest,
+  localDateTimeToUTC,
   nextCapacityRetryAt,
   nextLocalMidnightUTC,
   nextRouteReset,
@@ -968,6 +969,195 @@ test("selectRoute ranks free before paid and cheapest paid first, deterministica
   assert.deepEqual(
     ranked.map((route) => route.route_id),
     ["free_b", "cheap", "pricey"],
+  );
+});
+
+test("selectRoute ranks an effective peak price card instead of stale base rates", () => {
+  const dispatchLimits = {
+    providers: { scheduled: {}, steady: {} },
+    model_routes_map: { "svc/model": ["scheduled", "steady"] },
+    routes_by_id: {
+      scheduled: {
+        route_id: "scheduled",
+        provider: "scheduled",
+        free: false,
+        input_per_token: 0.1,
+        output_per_token: 0.1,
+        pricing: {
+          periods: [
+            {
+              effective_at: "2026-08-16T16:00:00Z",
+              input_per_token: 1,
+              output_per_token: 1,
+              windows: [{ tz: "UTC", start: "01:00", end: "04:00", multiplier: 2 }],
+            },
+          ],
+        },
+      },
+      steady: {
+        route_id: "steady",
+        provider: "steady",
+        free: false,
+        input_per_token: 0.3,
+        output_per_token: 0.3,
+      },
+    },
+  };
+  const before = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    new Date("2026-08-16T15:00:00Z"),
+    dispatchLimits,
+  );
+  const peak = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    new Date("2026-08-17T02:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(before.chosenRoute.route_id, "scheduled");
+  assert.equal(peak.chosenRoute.route_id, "steady");
+});
+
+test("selectRoute defers a flexible request until the route's cheapest pricing window", () => {
+  const dispatchLimits = {
+    providers: { scheduled: {} },
+    model_routes_map: { "svc/model": ["scheduled"] },
+    routes_by_id: {
+      scheduled: {
+        route_id: "scheduled",
+        provider: "scheduled",
+        free: false,
+        input_per_token: 0.1,
+        output_per_token: 0.1,
+        pricing: {
+          periods: [
+            {
+              effective_at: "2026-08-16T16:00:00Z",
+              input_per_token: 1,
+              output_per_token: 1,
+              windows: [{ tz: "UTC", start: "01:00", end: "04:00", multiplier: 2 }],
+            },
+          ],
+        },
+      },
+    },
+  };
+  const peak = new Date("2026-08-17T02:00:00Z");
+  const deferred = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    peak,
+    dispatchLimits,
+  );
+  assert.equal(deferred.chosenRoute, null);
+  assert.equal(deferred.reason, "no_capacity");
+  assert.equal(
+    nextCapacityRetryAt(
+      { routes: {} },
+      "svc/model",
+      { allow_paid: true },
+      peak,
+      dispatchLimits,
+    ).toISOString(),
+    "2026-08-17T04:00:00.000Z",
+  );
+
+  const urgent = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true, deadline_at: "2026-08-17T02:30:00Z" },
+    peak,
+    dispatchLimits,
+  );
+  assert.equal(urgent.chosenRoute.route_id, "scheduled");
+
+  const offPeak = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    new Date("2026-08-17T04:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(offPeak.chosenRoute.route_id, "scheduled");
+});
+
+test("price-window retry rechecks at an earlier effective rate-card transition", () => {
+  const dispatchLimits = {
+    providers: { scheduled: {} },
+    model_routes_map: { "svc/model": ["scheduled"] },
+    routes_by_id: {
+      scheduled: {
+        route_id: "scheduled",
+        provider: "scheduled",
+        free: false,
+        pricing: {
+          periods: [
+            {
+              effective_at: "1970-01-01T00:00:00Z",
+              input_per_token: 1,
+              windows: [{ tz: "UTC", start: "01:00", end: "04:00", multiplier: 2 }],
+            },
+            { effective_at: "2026-08-17T03:00:00Z", input_per_token: 0.5 },
+          ],
+        },
+      },
+    },
+  };
+  const now = new Date("2026-08-17T02:00:00Z");
+  assert.equal(
+    nextCapacityRetryAt({ routes: {} }, "svc/model", { allow_paid: true }, now, dispatchLimits).toISOString(),
+    "2026-08-17T03:00:00.000Z",
+  );
+});
+
+test("pricing windows preserve a zero multiplier and respect a non-UTC zone", () => {
+  const dispatchLimits = {
+    providers: { discounted: {}, steady: {} },
+    model_routes_map: { "svc/model": ["discounted", "steady"] },
+    routes_by_id: {
+      discounted: {
+        route_id: "discounted",
+        provider: "discounted",
+        free: false,
+        input_per_token: 1,
+        pricing: {
+          windows: [{ tz: "America/Los_Angeles", start: "18:00", end: "20:00", multiplier: 0 }],
+        },
+      },
+      steady: {
+        route_id: "steady",
+        provider: "steady",
+        free: false,
+        input_per_token: 0.5,
+        rpd: 0,
+      },
+    },
+  };
+  const peak = new Date("2026-08-17T02:00:00Z"); // 19:00 PDT
+  assert.equal(
+    selectRoute({ routes: {} }, "svc/model", { allow_paid: true }, peak, dispatchLimits).chosenRoute.route_id,
+    "discounted",
+  );
+  assert.equal(
+    nextCapacityRetryAt(
+      { routes: {} },
+      "svc/model",
+      { allow_paid: true },
+      new Date("2026-08-17T00:00:00Z"), // 17:00 PDT
+      dispatchLimits,
+    ).toISOString(),
+    "2026-08-17T01:00:00.000Z",
+  );
+});
+
+test("localDateTimeToUTC rejects a nonexistent DST wall-clock time", () => {
+  assert.equal(
+    localDateTimeToUTC({ year: 2026, month: 3, day: 8 }, 2, 30, "America/Los_Angeles"),
+    null,
   );
 });
 

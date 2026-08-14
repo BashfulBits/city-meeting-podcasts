@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from citypods.compute.llm_budget import (
@@ -16,6 +16,8 @@ from citypods.compute.llm_policy import (
     ROUTES,
     LLMRequestPolicy,
     LLMRoute,
+    PeakWindow,
+    PricingPeriod,
     PricingPolicy,
     QuotaPolicy,
 )
@@ -182,7 +184,7 @@ def test_deepseek_off_peak_preference_and_deadline_override():
         now=NOW,
     )
     assert outside.model is None
-    assert "off-peak" in outside.rejected[0][1]
+    assert "price-window" in outside.rejected[0][1]
 
     inside = select_route(
         LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
@@ -205,6 +207,95 @@ def test_deepseek_off_peak_preference_and_deadline_override():
         now=NOW,
     )
     assert urgent.model == model
+
+
+def test_deepseek_peak_waits_for_the_next_cheapest_window():
+    model = "deepseek/deepseek-v4-flash"
+    route = _deepseek_direct_route(model)
+    routes = {route.route_id or route.model: route}
+    peak = datetime(2026, 8, 17, 2, tzinfo=UTC)
+
+    deferred = select_route(
+        LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
+        routes=routes,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=peak,
+    )
+    assert deferred.model is None
+    assert deferred.retry_at == datetime(2026, 8, 17, 4, tzinfo=UTC)
+
+    urgent = select_route(
+        LLMRequestPolicy(
+            allowed_models=(model,), allow_paid=True, deadline_at=peak + timedelta(minutes=30)
+        ),
+        routes=routes,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=peak,
+    )
+    assert urgent.model == model
+
+
+def test_price_gate_rechecks_when_a_new_rate_card_starts_before_the_next_window():
+    route = LLMRoute(
+        model="test/scheduled",
+        transport="direct",
+        free=False,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(
+            periods=(
+                PricingPeriod(
+                    effective_at=datetime(1970, 1, 1, tzinfo=UTC),
+                    input_per_token=1e-3,
+                    windows=(PeakWindow("UTC", time(1), time(4), 2),),
+                ),
+                PricingPeriod(
+                    effective_at=datetime(2026, 8, 17, 3, tzinfo=UTC),
+                    input_per_token=5e-4,
+                ),
+            )
+        ),
+    )
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(route.model,), allow_paid=True),
+        routes={route.model: route},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=100,
+        now=datetime(2026, 8, 17, 2, tzinfo=UTC),
+    )
+    assert result.model is None
+    assert result.retry_at == datetime(2026, 8, 17, 3, tzinfo=UTC)
+
+
+def test_price_gate_precedes_peak_rate_daily_cost_admission():
+    route = LLMRoute(
+        model="test/capped-scheduled",
+        transport="direct",
+        free=False,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(
+            input_per_token=1e-3,
+            daily_cost_cap=0.15,
+            windows=(PeakWindow("UTC", time(1), time(4), 2),),
+        ),
+    )
+    budget = LLMBudget()
+    budget._ledger(route.model, NOW, route=route)
+    result = select_route(
+        LLMRequestPolicy(allowed_models=(route.model,), allow_paid=True),
+        routes={route.model: route},
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=100,
+        now=datetime(2026, 8, 17, 2, tzinfo=UTC),
+    )
+    assert result.model is None
+    assert result.retry_at == datetime(2026, 8, 17, 4, tzinfo=UTC)
+    assert "price-window" in result.rejected[0][1]
 
 
 def test_direct_transport_selects_a_direct_capable_route():
