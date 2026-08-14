@@ -13,6 +13,7 @@ import {
   nextRouteReset,
   rankRoutes,
   releaseCronLease,
+  releaseRouteReservation,
   readyKey,
   readyMarker,
   readyMarkerMetadata,
@@ -1898,4 +1899,296 @@ test("exhausting retry attempts on timeout fails permanently with upstream_timeo
   assert.equal(record.error?.code, "upstream_timeout");
   assert.equal(record.error?.route_id, "mistral_large_2512_primary");
   assert.match(record.error?.message, /timed out/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// CPU-cost regressions.
+//
+// Worker CPU on the Free-plan cron is dominated by how many R2 operations a dispatch performs and
+// how many bytes cross that boundary, not by the time spent waiting on them.  These tests pin the
+// operation shape so a future change cannot quietly reintroduce a redundant round trip.
+// ---------------------------------------------------------------------------------------------
+
+class RecordingBucket extends FakeBucket {
+  constructor() {
+    super();
+    this.ops = [];
+    this.recording = false;
+  }
+  #note(op, key, bytes = 0) {
+    if (this.recording) this.ops.push({ op, key, bytes });
+  }
+  async put(key, value, options) {
+    const result = await super.put(key, value, options);
+    this.#note("put", key, typeof value === "string" ? value.length : 0);
+    return result;
+  }
+  async get(key) {
+    this.#note("get", key);
+    return super.get(key);
+  }
+  async list(options) {
+    this.#note("list", options?.prefix || "");
+    return super.list(options);
+  }
+  async delete(key) {
+    this.#note("delete", key);
+    return super.delete(key);
+  }
+  countFor(key) {
+    return this.ops.filter((op) => op.key === key).length;
+  }
+}
+
+test("a scheduled dispatch touches the cron lock three times, not six", async () => {
+  const env = { ...ENV, LLM_QUEUE: new RecordingBucket(), MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "lease-ops"), env);
+
+  env.LLM_QUEUE.recording = true;
+  const clock = Date.now();
+  const result = await runScheduled(env, { fetchImpl: okUpstream(), nowMs: () => clock });
+  assert.equal(result.status, "dispatched");
+
+  // acquire (get + put) and release (a single CAS put on the ETag acquire returned).  The lease
+  // was just taken for its full duration, so re-proving ownership before the first batch cannot
+  // discover anything and is skipped.
+  assert.deepEqual(
+    env.LLM_QUEUE.ops.filter((op) => op.key === "locks/cron.json").map((op) => op.op),
+    ["get", "put", "put"],
+  );
+});
+
+test("the lease is still renewed once a run has consumed half of it", async () => {
+  const env = {
+    ...ENV,
+    LLM_QUEUE: new RecordingBucket(),
+    MAX_TOTAL_REQUESTS: "2",
+    LEASE_DURATION_SECONDS: "840",
+  };
+  await handleRequest(chatRequest(undefined, "renew-a"), env);
+  await handleRequest(chatRequest(undefined, "renew-b"), env);
+
+  env.LLM_QUEUE.recording = true;
+  const start = Date.now();
+  // The run's clock jumps past half of the 840s lease, so ownership must be re-proved before the
+  // Worker keeps dispatching against a lease another invocation could by then have taken.
+  const ticks = [start, start, start, start];
+  let index = 0;
+  const result = await runScheduled(env, {
+    fetchImpl: okUpstream(),
+    nowMs: () => (index < ticks.length ? ticks[index++] : start + 500_000),
+  });
+  assert.equal(result.totalDispatched, 1);
+  const lock = await env.LLM_QUEUE.get("locks/cron.json");
+  assert.ok((await lock.json()).renewed_at, "a long-running pass must still renew the lease");
+});
+
+test("a stale owner's handle cannot release a lease another invocation now holds", async () => {
+  const bucket = new FakeBucket();
+  const now = new Date();
+  const handleA = { etag: null, lease: null };
+  assert.equal(await acquireCronLease(bucket, now, "invocation-a", 30, handleA), true);
+  assert.ok(handleA.etag, "acquire must hand back the ETag it wrote");
+
+  const later = new Date(now.getTime() + 31_000);
+  assert.equal(await acquireCronLease(bucket, later, "invocation-b", 90), true);
+
+  // A releases using its cached handle; the CAS must fail against B's newer lease.
+  await releaseCronLease(bucket, "invocation-a", handleA);
+  const stillThere = await bucket.get("locks/cron.json");
+  assert.equal((await stillThere.json()).owner, "invocation-b");
+  assert.equal(
+    Date.parse((await stillThere.json()).expires_at) > Date.now(),
+    true,
+    "B's lease must remain live",
+  );
+});
+
+test("renewing through a stale handle falls back to the authoritative read", async () => {
+  const bucket = new FakeBucket();
+  const now = new Date();
+  const handle = { etag: null, lease: null };
+  assert.equal(await acquireCronLease(bucket, now, "invocation-a", 600, handle), true);
+
+  // Another writer bumps the object, invalidating the cached ETag but not the ownership.
+  const current = await bucket.get("locks/cron.json");
+  await bucket.put(
+    "locks/cron.json",
+    JSON.stringify({ ...(await current.json()), note: "touched" }),
+    { onlyIf: { etagMatches: current.etag } },
+  );
+
+  const later = new Date(now.getTime() + 10_000);
+  assert.equal(await renewCronLease(bucket, later, "invocation-a", 600, handle), true);
+  assert.equal((await (await bucket.get("locks/cron.json")).json()).renewed_at, later.toISOString());
+
+  // A handle whose owner no longer holds the lease must not renew it.
+  const stolen = new Date(now.getTime() + 700_000);
+  assert.equal(await acquireCronLease(bucket, stolen, "invocation-b", 600), true);
+  assert.equal(await renewCronLease(bucket, stolen, "invocation-a", 600, handle), false);
+});
+
+test("a batch that dispatches nothing persists a reaped reservation but not a window roll", async () => {
+  // The guard on this write used to compare `JSON.stringify(budget)` with a second stringify of
+  // the same object, so it could never fire.  Making it fire correctly also means being precise
+  // about what is worth a write: window keys are recomputed from `now` on every load, while an
+  // abandoned reservation is durable state nothing else will clear.
+  const route = "mistral_large_2512_primary";
+  // Ahead of the enqueues below, so their markers are already eligible when the batch runs.
+  const now = new Date(Date.now() + 1_000);
+
+  const ledger = (inflight) => ({
+    version: 1,
+    routes: {
+      [route]: {
+        requests_minute: 0,
+        tokens_minute: 0,
+        requests_available_at: "",
+        tokens_available_at: "",
+        requests_minute_key: "1999-01-01T00:00",
+        requests_day: 0,
+        requests_day_key: "1999-01-01",
+        blocked_until: new Date(now.getTime() + 3_600_000).toISOString(),
+        inflight,
+      },
+    },
+  });
+
+  // A stale window key alone is not worth an R2 write.
+  const rollOnly = { ...isolatedEnv(), MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "roll-only"), rollOnly);
+  await rollOnly.LLM_QUEUE.put("state/dispatch_budget.json", JSON.stringify(ledger({})), {});
+  const beforeEtag = (await rollOnly.LLM_QUEUE.get("state/dispatch_budget.json")).etag;
+  assert.equal((await dispatchOne(rollOnly, okUpstream(), now)).status, "no_capacity");
+  assert.equal(
+    (await rollOnly.LLM_QUEUE.get("state/dispatch_budget.json")).etag,
+    beforeEtag,
+    "recomputable window state must not cost an R2 write on every idle minute",
+  );
+
+  // An expired reservation is durable state, so it must be written back.
+  const reapEnv = { ...isolatedEnv(), MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "reap"), reapEnv);
+  await reapEnv.LLM_QUEUE.put(
+    "state/dispatch_budget.json",
+    JSON.stringify(
+      ledger({
+        "chatcmpl-abandoned": {
+          requests: 1,
+          tokens: 1024,
+          expires_at: new Date(now.getTime() - 60_000).toISOString(),
+        },
+      }),
+    ),
+    {},
+  );
+  assert.equal((await dispatchOne(reapEnv, okUpstream(), now)).status, "no_capacity");
+  const stored = await (await reapEnv.LLM_QUEUE.get("state/dispatch_budget.json")).json();
+  assert.deepEqual(
+    stored.routes[route].inflight,
+    {},
+    "an abandoned reservation must be cleared from durable storage",
+  );
+});
+
+test("a ready marker with an unreadable policy is repaired out of the index", async () => {
+  const env = isolatedEnv();
+  await handleRequest(chatRequest(undefined, "bad-policy"), env);
+  const [markerKey] = [...env.LLM_QUEUE.objects.keys()].filter((key) => key.startsWith("ready/"));
+  const marker = env.LLM_QUEUE.objects.get(markerKey);
+  marker.customMetadata = { ...marker.customMetadata, policy: "{not json" };
+
+  const result = await dispatchOne(env, okUpstream(), new Date());
+  assert.equal(result.status, "index_repaired");
+  assert.equal(env.LLM_QUEUE.objects.has(markerKey), false);
+});
+
+test("repeated zoned-date work reuses one Intl formatter per timezone", async () => {
+  // Constructing an Intl.DateTimeFormat costs ~20x what reusing one does, and route selection
+  // computes a zoned day key for every rate-limited route it considers.
+  const RealDateTimeFormat = Intl.DateTimeFormat;
+  let constructions = 0;
+  class CountingDateTimeFormat extends RealDateTimeFormat {
+    constructor(...args) {
+      super(...args);
+      constructions += 1;
+    }
+  }
+  Intl.DateTimeFormat = CountingDateTimeFormat;
+  try {
+    const route = { rpd: 500, provider: "gemini", reset_timezone: "America/Los_Angeles" };
+    const entry = { requests_day: 0, requests_day_key: "", inflight: {} };
+    for (let index = 0; index < 200; index += 1) {
+      nextRouteReset(entry, route, new Date(Date.now() + index * 1000));
+    }
+  } finally {
+    Intl.DateTimeFormat = RealDateTimeFormat;
+  }
+  assert.equal(constructions, 0, "the timezone formatter must already be cached module-wide");
+});
+
+test("a dispatch reads the rate ledger once and writes it twice", async () => {
+  const env = { ...ENV, LLM_QUEUE: new RecordingBucket(), MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "ledger-ops"), env);
+
+  env.LLM_QUEUE.recording = true;
+  const clock = Date.now();
+  const result = await runScheduled(env, { fetchImpl: okUpstream(), nowMs: () => clock });
+  assert.equal(result.status, "dispatched");
+
+  // load, reserve, release.  The release CASes onto the ETag the reservation write returned
+  // rather than re-reading the whole ledger back into the isolate.
+  assert.deepEqual(
+    env.LLM_QUEUE.ops
+      .filter((op) => op.key === "state/dispatch_budget.json")
+      .map((op) => op.op),
+    ["get", "put", "put"],
+  );
+});
+
+test("a released reservation is really gone from the persisted ledger", async () => {
+  const env = { ...isolatedEnv(), MAX_TOTAL_REQUESTS: "1" };
+  const queued = await handleRequest(chatRequest(undefined, "release-durable"), env);
+  const { id } = await queued.json();
+
+  const result = await runScheduled(env, { fetchImpl: okUpstream(), nowMs: () => Date.now() });
+  assert.equal(result.status, "dispatched");
+
+  const budget = await (await env.LLM_QUEUE.get("state/dispatch_budget.json")).json();
+  const entry = budget.routes.mistral_large_2512_primary;
+  assert.deepEqual(entry.inflight, {}, "the reservation must not survive the run");
+  assert.equal(entry.requests_minute, 1, "durable rate usage must survive the release");
+  assert.ok(entry.requests_available_at, "request pacing must survive the release");
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${id}.json`)).json()).status, "completed");
+});
+
+test("a reservation release falls back to a re-read when the ledger moved underneath it", async () => {
+  const bucket = new FakeBucket();
+  const owner = "chatcmpl-conflict";
+  const routeId = "mistral_large_2512_primary";
+  await bucket.put(
+    "state/dispatch_budget.json",
+    JSON.stringify({
+      version: 1,
+      routes: { [routeId]: { requests_minute: 3, inflight: { [owner]: { requests: 1 } } } },
+    }),
+    {},
+  );
+  const current = await bucket.get("state/dispatch_budget.json");
+
+  // A handle whose ETag is stale must not silently drop the release.
+  const released = await releaseRouteReservation(bucket, routeId, owner, {
+    etag: "etag-from-a-previous-life",
+    value: { version: 1, routes: { [routeId]: { inflight: { [owner]: { requests: 1 } } } } },
+  });
+  assert.equal(released, true);
+
+  const stored = await (await bucket.get("state/dispatch_budget.json")).json();
+  assert.deepEqual(stored.routes[routeId].inflight, {});
+  assert.equal(
+    stored.routes[routeId].requests_minute,
+    3,
+    "the fallback must preserve durable usage written by whoever moved the ledger",
+  );
+  assert.notEqual(current.etag, (await bucket.get("state/dispatch_budget.json")).etag);
 });

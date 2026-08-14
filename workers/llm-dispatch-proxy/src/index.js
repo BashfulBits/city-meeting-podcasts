@@ -36,6 +36,14 @@ const DEFAULT_BATCH_CONCURRENCY = 1;
 const DEFAULT_MAX_TOTAL_REQUESTS = 1;
 const DEFAULT_READY_LOOKAHEAD = 16;
 
+// Constructing an `Intl.DateTimeFormat` resolves an ICU locale and time zone: measured at ~43us
+// per construction versus ~2us to reuse one.  Every timezone here comes from the compiled route
+// catalog, so the key space is bounded by configuration; the cap is defence in depth only.
+const MAX_DATE_FORMATTER_CACHE = 64;
+const DATE_FORMATTER_CACHE = new Map();
+// Reused across every decode below; `new TextDecoder()` is not free and the options never vary.
+const TEXT_DECODER = new TextDecoder();
+
 const COPY_FIELDS = [
   "temperature",
   "top_p",
@@ -290,13 +298,18 @@ async function readTextLimitedWithMetadata(stream, limit) {
     reader.releaseLock();
   }
 
+  // A single-chunk body is the common case for provider responses; decoding it directly avoids
+  // allocating and copying a second buffer the same size as the response.
+  if (chunks.length === 1) {
+    return { text: TEXT_DECODER.decode(chunks[0]), bytes };
+  }
   const result = new Uint8Array(bytes);
   let offset = 0;
   for (const chunk of chunks) {
     result.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return { text: new TextDecoder().decode(result), bytes };
+  return { text: TEXT_DECODER.decode(result), bytes };
 }
 
 async function readDiagnosticTextLimited(stream, limit) {
@@ -337,7 +350,7 @@ async function readDiagnosticTextLimited(stream, limit) {
     result.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return { text: new TextDecoder().decode(result), bytes, truncated };
+  return { text: TEXT_DECODER.decode(result), bytes, truncated };
 }
 
 function boundedDiagnosticMessage(value) {
@@ -573,6 +586,10 @@ function readyMarkerMetadata(record) {
   };
 }
 
+// The bounded lookahead lists several markers but usually dispatches the first one.  `policy` is
+// the only field that costs a JSON parse, and eligibility is decided from `available_at` alone, so
+// it is parsed on first access instead of for every listed marker.  An unparseable policy is
+// reported as `null` via `readyMarkerPolicyValid`, matching the previous whole-marker rejection.
 function readyMarkerFromMetadata(metadata) {
   if (
     !metadata ||
@@ -583,23 +600,32 @@ function readyMarkerFromMetadata(metadata) {
   ) {
     return null;
   }
-  let policy = {};
-  try {
-    policy = metadata.policy ? JSON.parse(metadata.policy) : {};
-  } catch {
-    return null;
-  }
-  if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
-    return null;
-  }
+  const raw = metadata.policy;
+  let policy;
+  let parsed = false;
   return {
     version: 1,
     id: metadata.id,
     model: metadata.model,
     created_at: metadata.created_at || "",
     available_at: metadata.available_at,
-    policy,
+    get policy() {
+      if (!parsed) {
+        parsed = true;
+        try {
+          const value = raw ? JSON.parse(raw) : {};
+          policy = value && typeof value === "object" && !Array.isArray(value) ? value : null;
+        } catch {
+          policy = null;
+        }
+      }
+      return policy;
+    },
   };
+}
+
+function readyMarkerPolicyValid(record) {
+  return record?.policy != null;
 }
 
 async function markReady(bucket, record) {
@@ -925,7 +951,12 @@ async function requeue(
 // Cron lease -- single-runner guarantee for dispatch.
 // ---------------------------------------------------------------------------------------------
 
-async function acquireCronLease(bucket, now, owner, leaseDurationSeconds) {
+// An invocation that acquires the lease already knows the object it just wrote.  Passing that
+// state back in as `handle` lets renew and release skip their re-read and issue a single
+// conditional write.  The CAS is unchanged -- it is still gated on the exact ETag this owner last
+// observed -- so a lease taken over by another invocation still fails the write rather than being
+// overwritten.  Callers that hold no handle keep the original read-then-write behaviour.
+async function acquireCronLease(bucket, now, owner, leaseDurationSeconds, handle = null) {
   const existing = await getJson(bucket, CRON_LOCK_KEY);
   if (existing && existing.value && existing.value.expires_at) {
     if (parseTime(existing.value.expires_at) > now.getTime()) {
@@ -941,37 +972,74 @@ async function acquireCronLease(bucket, now, owner, leaseDurationSeconds) {
     const putRes = await putJson(bucket, CRON_LOCK_KEY, lease, {
       onlyIf: existing ? { etagMatches: existing.etag } : { etagDoesNotMatch: "*" },
     });
-    return Boolean(putRes);
+    if (!putRes) return false;
+    if (handle) {
+      handle.etag = putRes.etag;
+      handle.lease = lease;
+    }
+    return true;
   } catch {
     return false;
   }
 }
 
-async function releaseCronLease(bucket, owner) {
+async function releaseCronLease(bucket, owner, handle = null) {
   try {
+    // R2's delete has no ETag precondition.  Deleting after a read would leave a TOCTOU window
+    // in which an expired lease is acquired by another invocation and then removed by this
+    // stale owner.  A CAS-written expired tombstone is immediately acquirable and cannot erase
+    // a newer lease if the object changed after our read.
+    const tombstone = (lease) => ({
+      ...lease,
+      released_at: new Date().toISOString(),
+      expires_at: new Date(0).toISOString(),
+    });
+    if (handle?.etag && handle.lease?.owner === owner) {
+      // A failed CAS here means the lease is no longer the one this invocation wrote, which is
+      // exactly the case where it must not be released.
+      await putJson(bucket, CRON_LOCK_KEY, tombstone(handle.lease), {
+        etagMatches: handle.etag,
+      });
+      return;
+    }
     const current = await getJson(bucket, CRON_LOCK_KEY);
     if (current?.value?.owner === owner) {
-      // R2's delete has no ETag precondition.  Deleting after a read would leave a TOCTOU window
-      // in which an expired lease is acquired by another invocation and then removed by this
-      // stale owner.  A CAS-written expired tombstone is immediately acquirable and cannot erase
-      // a newer lease if the object changed after our read.
-      await putJson(
-        bucket,
-        CRON_LOCK_KEY,
-        {
-          ...current.value,
-          released_at: new Date().toISOString(),
-          expires_at: new Date(0).toISOString(),
-        },
-        { etagMatches: current.etag },
-      );
+      await putJson(bucket, CRON_LOCK_KEY, tombstone(current.value), {
+        etagMatches: current.etag,
+      });
     }
   } catch {
     // Best-effort release; the lease's own expiry is the real backstop.
   }
 }
 
-async function renewCronLease(bucket, now, owner, leaseDurationSeconds) {
+async function renewCronLease(bucket, now, owner, leaseDurationSeconds, handle = null) {
+  const renewalFrom = (lease) => ({
+    ...lease,
+    renewed_at: now.toISOString(),
+    expires_at: new Date(now.getTime() + leaseDurationSeconds * 1000).toISOString(),
+  });
+
+  if (handle?.etag && handle.lease?.owner === owner) {
+    if (parseTime(handle.lease.expires_at) > now.getTime()) {
+      const renewed = renewalFrom(handle.lease);
+      try {
+        const putRes = await putJson(bucket, CRON_LOCK_KEY, renewed, {
+          etagMatches: handle.etag,
+        });
+        if (putRes) {
+          handle.etag = putRes.etag;
+          handle.lease = renewed;
+          return true;
+        }
+      } catch {
+        // Fall through to the authoritative read below.
+      }
+    }
+    // The cached view is stale or expired: re-read before concluding anything about ownership.
+    handle.etag = null;
+  }
+
   const current = await getJson(bucket, CRON_LOCK_KEY);
   if (
     !current ||
@@ -980,15 +1048,16 @@ async function renewCronLease(bucket, now, owner, leaseDurationSeconds) {
   ) {
     return false;
   }
-  const renewed = {
-    ...current.value,
-    renewed_at: now.toISOString(),
-    expires_at: new Date(now.getTime() + leaseDurationSeconds * 1000).toISOString(),
-  };
+  const renewed = renewalFrom(current.value);
   try {
-    return Boolean(
-      await putJson(bucket, CRON_LOCK_KEY, renewed, { etagMatches: current.etag }),
-    );
+    const putRes = await putJson(bucket, CRON_LOCK_KEY, renewed, {
+      etagMatches: current.etag,
+    });
+    if (putRes && handle) {
+      handle.etag = putRes.etag;
+      handle.lease = renewed;
+    }
+    return Boolean(putRes);
   } catch {
     return false;
   }
@@ -1002,14 +1071,39 @@ function minuteKey(date) {
   return date.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM", UTC
 }
 
+// `shape` selects between the date-only key formatter and the date+time formatter used for
+// pricing windows.  Both are pure functions of the time zone, so one instance per (zone, shape)
+// serves every call for the lifetime of the isolate.
+function cachedDateFormatter(timeZone, shape, options) {
+  const cacheKey = `${shape}|${timeZone}`;
+  const cached = DATE_FORMATTER_CACHE.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  let formatter;
+  try {
+    formatter = new Intl.DateTimeFormat("en-US", { timeZone, ...options });
+  } catch {
+    // An invalid time zone must keep throwing for callers that fall back to UTC, but caching the
+    // failure avoids paying the ICU rejection cost again on every later call.
+    formatter = null;
+  }
+  if (DATE_FORMATTER_CACHE.size < MAX_DATE_FORMATTER_CACHE) {
+    DATE_FORMATTER_CACHE.set(cacheKey, formatter);
+  }
+  return formatter;
+}
+
 function zonedDateKey(date, timeZone = "UTC") {
   try {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone,
+    const formatter = cachedDateFormatter(timeZone, "date", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
     });
+    if (!formatter) {
+      return date.toISOString().slice(0, 10);
+    }
     const parts = formatter.formatToParts(date);
     const y = parts.find((p) => p.type === "year")?.value;
     const m = parts.find((p) => p.type === "month")?.value;
@@ -1106,15 +1200,24 @@ function rollLedgerWindows(entry, route, now) {
 }
 
 function reapExpiredInflight(entry, now) {
+  let reaped = false;
   for (const [owner, reservation] of Object.entries(entry.inflight || {})) {
     if (reservation?.expires_at && parseTime(reservation.expires_at) <= now.getTime()) {
       delete entry.inflight[owner];
+      reaped = true;
     }
   }
+  return reaped;
 }
 
-function routeAvailable(entry, route, { requests, tokens }, now) {
-  reapExpiredInflight(entry, now);
+// `changes` collects the durable side effects of an otherwise read-only admission check.  Rolling
+// a minute/day window is derived from `now` and is recomputed on every load, so it never needs to
+// be written back; dropping an abandoned reservation is real state that other readers of the
+// ledger would otherwise keep seeing.
+function routeAvailable(entry, route, { requests, tokens }, now, changes = null) {
+  if (reapExpiredInflight(entry, now) && changes) {
+    changes.reaped = true;
+  }
   if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
     return false;
   }
@@ -1240,24 +1343,38 @@ function reserveProviderCapacity(budget, route, requests, now, dispatchLimits = 
   ).toISOString();
 }
 
-async function releaseRouteReservation(bucket, routeId, owner) {
+// `handle` carries the ledger this invocation last wrote plus the ETag that write returned.  The
+// cron lease makes this invocation the only writer, so releasing a reservation can usually be a
+// single conditional write instead of a read-modify-write of the whole ledger.  The CAS is
+// unchanged, so a ledger that did move under us simply falls back to the re-read path, and each
+// successful release re-arms the handle for the next sibling in a concurrent batch.
+async function releaseRouteReservation(bucket, routeId, owner, handle = null) {
   if (!owner) return true;
+  let loaded = handle?.etag && handle.value ? { etag: handle.etag, value: handle.value } : null;
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const loaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
+    if (!loaded) loaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
     if (!loaded?.value) return true;
     const budget = loaded.value;
     const entry = ledgerEntry(budget, routeId);
     if (!entry.inflight?.[owner]) return true;
     delete entry.inflight[owner];
     try {
-      if (
-        await putJson(bucket, DISPATCH_BUDGET_KEY, budget, { etagMatches: loaded.etag })
-      ) {
+      const putRes = await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
+        etagMatches: loaded.etag,
+      });
+      if (putRes) {
+        if (handle) {
+          handle.etag = putRes.etag;
+          handle.value = budget;
+        }
         return true;
       }
     } catch {
       // Retry after a sibling's CAS update.
     }
+    // The cached view lost its race; the next attempt must re-read the authoritative ledger.
+    loaded = null;
+    if (handle) handle.etag = null;
   }
   return false;
 }
@@ -1335,15 +1452,18 @@ function windowIsActive(window, now) {
 
 function localTimeParts(now, timeZone) {
   try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone,
+    const formatter = cachedDateFormatter(timeZone, "datetime", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       hourCycle: "h23",
-    }).formatToParts(now);
+    });
+    if (!formatter) {
+      return null;
+    }
+    const parts = formatter.formatToParts(now);
     const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
     return {
       year: Number(value.year),
@@ -1513,7 +1633,14 @@ function eligibleRoutesForModel(canonicalModel, policy, now, dispatchLimits = DI
   };
 }
 
-function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+function selectRouteForModel(
+  budget,
+  canonicalModel,
+  policy,
+  now,
+  dispatchLimits = DISPATCH_LIMITS,
+  changes = null,
+) {
   const { candidates, contextCompatible, freeRanked, paidRanked } = eligibleRoutesForModel(
     canonicalModel,
     policy,
@@ -1534,7 +1661,7 @@ function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits
       const entry = ledgerEntry(budget, route.route_id);
       rollLedgerWindows(entry, route, now);
       if (providerAvailable(budget, route, now, dispatchLimits)) {
-        if (routeAvailable(entry, route, reservationSize, now)) {
+        if (routeAvailable(entry, route, reservationSize, now, changes)) {
           return { chosenRoute: route, entry };
         }
       }
@@ -1581,12 +1708,19 @@ function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits
   return paidPick || { chosenRoute: null, reason: "no_capacity" };
 }
 
-function selectRoute(budget, canonicalModels, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+function selectRoute(
+  budget,
+  canonicalModels,
+  policy,
+  now,
+  dispatchLimits = DISPATCH_LIMITS,
+  changes = null,
+) {
   const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
   let lastSelection = { chosenRoute: null, reason: "no_configured_route" };
   let retryableSelection = null;
   for (const model of [...new Set(models)]) {
-    const selection = selectRouteForModel(budget, model, policy, now, dispatchLimits);
+    const selection = selectRouteForModel(budget, model, policy, now, dispatchLimits, changes);
     if (selection.chosenRoute) return selection;
     // Preserve "no capacity" when an earlier, valid model is merely full rather than allowing
     // a later unknown model to misclassify the durable request as permanently invalid.
@@ -1665,6 +1799,12 @@ async function loadReadyHeads(bucket, now, limit = DEFAULT_READY_LOOKAHEAD) {
         continue;
       }
       record = marker?.value;
+      // A marker read from its JSON body carries `policy` as a plain property.  Normalize the
+      // omitted case so the shared validity check does not mistake a legacy marker for a corrupt
+      // one; metadata-backed markers already normalize this inside their accessor.
+      if (record && record.policy === undefined) {
+        record.policy = {};
+      }
     }
     if (!record || record.version !== 1 || typeof record.id !== "string") {
       await unmarkReady(bucket, object.key);
@@ -1745,10 +1885,17 @@ async function dispatchBatch(
   const cfg = config(env);
   let leaseOwner = externalLeaseOwner;
   let acquiredLock = false;
+  const leaseHandle = { etag: null, lease: null };
   if (!leaseOwner) {
     leaseOwner = crypto.randomUUID();
     const leaseStartedAt = profileNow();
-    acquiredLock = await acquireCronLease(bucket, now, leaseOwner, cfg.leaseDurationSeconds);
+    acquiredLock = await acquireCronLease(
+      bucket,
+      now,
+      leaseOwner,
+      cfg.leaseDurationSeconds,
+      leaseHandle,
+    );
     batchProfile.lease_acquire_ms = profileElapsed(leaseStartedAt);
     if (!acquiredLock) {
       return {
@@ -1785,10 +1932,22 @@ async function dispatchBatch(
     const batchFailures = [];
     let lastRequeuedId = null;
     let deadlineGuarded = false;
+    let repairedCount = 0;
+    // Durable ledger side effects observed while deciding admission, used to decide whether a
+    // batch that dispatched nothing still owes R2 a write.
+    const ledgerChanges = { reaped: false };
 
     const candidatePrepareStartedAt = profileNow();
     for (const head of ready.heads) {
       if (candidatesToDispatch.length >= maxBatch) break;
+
+      // First touch of `policy` parses it.  A marker whose policy is unreadable carries no usable
+      // routing state, so it is repaired out of the index exactly as a malformed marker body is.
+      if (!readyMarkerPolicyValid(head.record)) {
+        await unmarkReady(bucket, head.key);
+        repairedCount += 1;
+        continue;
+      }
 
       const candidateProfile = {};
       const candidateStartedAt = profileNow();
@@ -1798,6 +1957,8 @@ async function dispatchBatch(
         head.record.policy?.allowed_models || head.record.model,
         head.record.policy,
         now,
+        DISPATCH_LIMITS,
+        ledgerChanges,
       );
       candidateProfile.route_select_ms = profileElapsed(routeSelectStartedAt);
       let claimed;
@@ -1887,7 +2048,7 @@ async function dispatchBatch(
         lastRequeuedId = claimed.record.id;
         continue;
       }
-      if (!routeAvailable(entry, chosenRoute, reservationSize, now)) {
+      if (!routeAvailable(entry, chosenRoute, reservationSize, now, ledgerChanges)) {
         await requeue(
           bucket,
           claimed,
@@ -1924,12 +2085,14 @@ async function dispatchBatch(
     batchProfile.candidate_prepare_ms = profileElapsed(candidatePrepareStartedAt);
 
     if (candidatesToDispatch.length === 0) {
-      // Route selection rolls minute/day/token windows in memory even when every request is
-      // requeued. Persist those bookkeeping changes so the coordination object does not retain
-      // stale quota keys until a later successful reservation.
-      const before = JSON.stringify((budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} });
-      const after = JSON.stringify(budget);
-      if (budgetLoaded && before !== after) {
+      // A batch that dispatched nothing can still have changed the ledger.
+      //
+      // The previous guard compared `JSON.stringify(budget)` against a second stringify of the
+      // same object -- `budget` is `budgetLoaded.value` -- so the strings always matched, this
+      // write never happened, and two whole-ledger serializations were spent proving it on every
+      // no-capacity invocation.  Window rollover is recomputed from `now` on every load and does
+      // not need persisting; a reaped reservation does, because nothing else will remove it.
+      if (budgetLoaded && ledgerChanges.reaped) {
         try {
           await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
             onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
@@ -1948,8 +2111,17 @@ async function dispatchBatch(
           profile: finishDispatchProfile(batchProfile, batchStartedAt),
         };
       }
+      if (deadlineGuarded) {
+        return {
+          status: "deadline_guard",
+          count: 0,
+          requestId: lastRequeuedId,
+          profile: finishDispatchProfile(batchProfile, batchStartedAt),
+        };
+      }
       return {
-        status: deadlineGuarded ? "deadline_guard" : "no_capacity",
+        // Markers dropped for an unreadable policy are index repairs, not capacity pressure.
+        status: repairedCount > 0 && lastRequeuedId === null ? "index_repaired" : "no_capacity",
         count: 0,
         requestId: lastRequeuedId,
         profile: finishDispatchProfile(batchProfile, batchStartedAt),
@@ -1959,6 +2131,7 @@ async function dispatchBatch(
     // Atomic CAS write of the combined budget reservations
     let ledgerSaved = false;
     let freshCapacityFailed = false;
+    const budgetHandle = { etag: null, value: null };
     const ledgerWriteStartedAt = profileNow();
     for (let attempt = 0; attempt < 3 && !ledgerSaved; attempt += 1) {
       if (attempt > 0) {
@@ -1992,11 +2165,16 @@ async function dispatchBatch(
         if (freshCapacityFailed) break;
         budget = freshBudget;
       }
-      ledgerSaved = Boolean(
-        await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
-          onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
-        }),
-      );
+      const ledgerPut = await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
+        onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
+      });
+      ledgerSaved = Boolean(ledgerPut);
+      if (ledgerSaved) {
+        // Reservations are released against this exact version, so the release path can CAS
+        // straight onto it instead of re-reading the ledger it just wrote.
+        budgetHandle.etag = ledgerPut.etag;
+        budgetHandle.value = budget;
+      }
     }
     batchProfile.ledger_write_ms = profileElapsed(ledgerWriteStartedAt);
 
@@ -2221,6 +2399,7 @@ async function dispatchBatch(
         bucket,
         item.chosenRoute.route_id,
         item.reservationOwner,
+        budgetHandle,
       );
       if (!released) {
         console.error(
@@ -2265,7 +2444,7 @@ async function dispatchBatch(
     };
   } finally {
     if (acquiredLock) {
-      await releaseCronLease(bucket, leaseOwner);
+      await releaseCronLease(bucket, leaseOwner, leaseHandle);
     }
   }
 }
@@ -2467,16 +2646,24 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
   // ownership between batches; they never extend the invocation deadline.
   const deadlineMs = startMs + cfg.maxExecutionSeconds * 1000;
   const leaseOwner = crypto.randomUUID();
+  const leaseHandle = { etag: null, lease: null };
   const acquiredLock = await acquireCronLease(
     bucket,
     new Date(nowMs()),
     leaseOwner,
     cfg.leaseDurationSeconds,
+    leaseHandle,
   );
   if (!acquiredLock) {
     console.log(JSON.stringify({ event: "llm_dispatch", status: "lease_busy" }));
     return { status: "lease_busy", totalDispatched: 0 };
   }
+
+  // The lease cannot be taken over before it expires, so renewing is only meaningful once a run
+  // has consumed a real share of the lease.  Renewing on the first pass -- microseconds after
+  // acquiring an 840-second lease -- spent two R2 operations to re-prove ownership this
+  // invocation had just established.
+  let renewDueAtMs = nowMs() + (cfg.leaseDurationSeconds * 1000) / 2;
 
   let totalDispatched = 0;
   let status = "idle";
@@ -2489,16 +2676,20 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
         status = "deadline_guard";
         break;
       }
-      const renewed = await renewCronLease(
-        bucket,
-        new Date(nowMs()),
-        leaseOwner,
-        cfg.leaseDurationSeconds,
-      );
-      if (!renewed) {
-        status = "lease_lost";
-        console.error(JSON.stringify({ event: "llm_dispatch", status }));
-        break;
+      if (nowMs() >= renewDueAtMs) {
+        const renewed = await renewCronLease(
+          bucket,
+          new Date(nowMs()),
+          leaseOwner,
+          cfg.leaseDurationSeconds,
+          leaseHandle,
+        );
+        if (!renewed) {
+          status = "lease_lost";
+          console.error(JSON.stringify({ event: "llm_dispatch", status }));
+          break;
+        }
+        renewDueAtMs = nowMs() + (cfg.leaseDurationSeconds * 1000) / 2;
       }
       const now = new Date(nowMs());
       const batchResult = await dispatchBatch(
@@ -2549,7 +2740,7 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
     status = "error";
     console.error(JSON.stringify({ event: "llm_dispatch", status, error: error?.name || "Error" }));
   } finally {
-    await releaseCronLease(bucket, leaseOwner);
+    await releaseCronLease(bucket, leaseOwner, leaseHandle);
   }
   return { status, totalDispatched };
 }
@@ -2577,6 +2768,7 @@ export {
   normalizeChatRequest,
   rankRoutes,
   releaseCronLease,
+  releaseRouteReservation,
   readyKey,
   readyMarker,
   readyMarkerMetadata,
