@@ -213,7 +213,7 @@ plugs in the same way, gated identically.
 - **Resolved 2026-08-13 — date-ordered ready index replaces queue scans.** Pending records now have a
   compact `ready/<eligible-time>-<priority>-…` marker. The cron reads a fixed lookahead of compact
   markers and their routing metadata, independent of `requests/` depth; it never falls back to a
-  legacy scan. The Free-plan deployment dispatches up to four independently paced requests per tick
+  legacy scan. The Free-plan deployment dispatches one independently paced request per tick
   and skips a blocked provider/model when a later marker has capacity. `GET /v1/queue/estimate` is
   deliberately retired rather than retaining a second unbounded Worker scan, and the offline
   `scripts/reindex_llm_dispatch_queue.py` creates markers for pre-index pending records. The marker

@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Free-plan LLM dispatch now defaults to one request per scheduled run.** Production CPU
+  telemetry rose above the 10 ms Cron Trigger allowance after the bounded dispatcher was increased
+  to four concurrent requests; `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS` are back to `1` while
+  the queue-index and multi-route selection behavior remain unchanged. This changes dispatch
+  throughput only and does not alter stored requests, responses, or pipeline artifacts.
+
 - **Provider-align now permits a roughly 4 GiB CTC section envelope.** The safe section limit is
   increased from five to ten minutes using the observed WhisperX allocation slope, and oversized
   sections produce a visible GitHub Actions warning before they are routed to full ASR.

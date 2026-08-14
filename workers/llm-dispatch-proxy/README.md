@@ -111,11 +111,12 @@ Cloudflare deployment secrets as the existing media proxy.
 Every pending canonical record has a compact marker at `ready/<eligible-time>-<priority>-…`. R2
 lists keys lexicographically, so each cron invocation lists a fixed lookahead of 16 markers and
 uses their routing metadata to skip a temporarily blocked provider/model. It reads canonical
-requests only for viable candidates or records that must be requeued, then dispatches up to four
-independent requests concurrently. Queue selection therefore stays bounded in queue depth —
-including 10,000 historical or pending records — rather than parsing the first 1,000 prompts. The
-deployed Free-plan configuration is `BATCH_CONCURRENCY=4` and `MAX_TOTAL_REQUESTS=4`; the marker
-lookahead keeps the scheduled CPU path bounded while allowing independent routes to make progress.
+requests only for viable candidates or records that must be requeued, then dispatches one request
+per scheduled run by default. Queue selection therefore stays bounded in queue depth — including
+10,000 historical or pending records — rather than parsing the first 1,000 prompts. The deployed
+Free-plan configuration is `BATCH_CONCURRENCY=1` and `MAX_TOTAL_REQUESTS=1`; the marker lookahead
+keeps the scheduled CPU path bounded while allowing a later eligible route to make progress when
+the queue head is blocked.
 
 Priority is `submit_next`, then fast, then long for work with the same eligibility timestamp. A
 request blocked by a provider ledger is moved to that route's next eligible time, so it cannot repeatedly occupy the

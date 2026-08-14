@@ -28,8 +28,8 @@ const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
 // Cron triggers on the Workers Free plan have a 10ms CPU allowance.  Ready markers keep queue
 // inspection bounded; upstream wait time is not CPU time, so four independent provider calls can
 // make progress concurrently without returning to the old prompt-scanning design.
-const DEFAULT_BATCH_CONCURRENCY = 4;
-const DEFAULT_MAX_TOTAL_REQUESTS = 4;
+const DEFAULT_BATCH_CONCURRENCY = 1;
+const DEFAULT_MAX_TOTAL_REQUESTS = 1;
 const DEFAULT_READY_LOOKAHEAD = 16;
 
 const COPY_FIELDS = [

@@ -1146,10 +1146,10 @@ test("config() fails fast on a missing required var instead of defaulting to Mis
   assert.throws(() => config(withoutProvider), /PROVIDER_NAME is required/);
 });
 
-test("Free-plan dispatch defaults allow four requests per scheduled batch and run", () => {
+test("Free-plan dispatch defaults allow one request per scheduled batch and run", () => {
   const settings = config(isolatedEnv());
-  assert.equal(settings.batchConcurrency, 4);
-  assert.equal(settings.maxTotalRequests, 4);
+  assert.equal(settings.batchConcurrency, 1);
+  assert.equal(settings.maxTotalRequests, 1);
 });
 
 test("config() rejects an upstream timeout that is not comfortably under the lease duration", () => {
