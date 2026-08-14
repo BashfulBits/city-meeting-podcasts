@@ -664,6 +664,34 @@
       "free": false,
       "input_per_token": 1.4e-07,
       "output_per_token": 2.8e-07,
+      "pricing": {
+        "periods": [
+          {
+            "effective_at": "1970-01-01T00:00:00+00:00",
+            "input_per_token": 1.4e-07,
+            "output_per_token": 2.8e-07
+          },
+          {
+            "effective_at": "2026-08-16T16:00:00+00:00",
+            "input_per_token": 2.2e-07,
+            "output_per_token": 6.6e-07,
+            "windows": [
+              {
+                "tz": "UTC",
+                "start": "01:00",
+                "end": "04:00",
+                "multiplier": 2.0
+              },
+              {
+                "tz": "UTC",
+                "start": "06:00",
+                "end": "10:00",
+                "multiplier": 2.0
+              }
+            ]
+          }
+        ]
+      },
       "structured_output_response_format": "json_object",
       "structured_output_direct_handler": "native",
       "structured_output_include_schema_in_prompt": true,
@@ -691,6 +719,34 @@
       "free": false,
       "input_per_token": 4.35e-07,
       "output_per_token": 8.7e-07,
+      "pricing": {
+        "periods": [
+          {
+            "effective_at": "1970-01-01T00:00:00+00:00",
+            "input_per_token": 4.35e-07,
+            "output_per_token": 8.7e-07
+          },
+          {
+            "effective_at": "2026-08-16T16:00:00+00:00",
+            "input_per_token": 6.6e-07,
+            "output_per_token": 1.98e-06,
+            "windows": [
+              {
+                "tz": "UTC",
+                "start": "01:00",
+                "end": "04:00",
+                "multiplier": 2.0
+              },
+              {
+                "tz": "UTC",
+                "start": "06:00",
+                "end": "10:00",
+                "multiplier": 2.0
+              }
+            ]
+          }
+        ]
+      },
       "structured_output_response_format": "json_object",
       "structured_output_direct_handler": "native",
       "structured_output_include_schema_in_prompt": true,

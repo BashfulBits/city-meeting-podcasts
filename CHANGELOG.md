@@ -22,6 +22,15 @@ Phase R (Research-Tool Surface)._
   while scheduled logs expose only request/route/status identifiers and never prompts, API keys, or
   raw provider bodies. This makes future Google/Gemma failures diagnosable without changing the
   asynchronous response contract.
+  
+- **LLM pricing is now effective-dated and YAML-driven.** `config/provider_limits.yml` can define
+  input/output rates and UTC peak windows per physical route; the compiler carries those periods to
+  both the Python scheduler and the dispatch Worker. DeepSeek V4 Flash and Pro include the August 16,
+  2026 rate-card cutover. Cache-hit pricing is intentionally not modeled because its hit ratio is not
+  predictable or controllable. Flexible deferred work waits for the route's next cheapest pricing
+  window, while a deadline can authorize the currently active price. No batch protocol was added because
+  DeepSeek does not provide a batch API. No LLM artifacts are invalidated and no backfill is required;
+  this changes admission and cost accounting only.
 
 - **Ready-marker routing metadata now travels with the R2 list result.** The dispatcher requests
   compact marker metadata during its bounded `ready/` listing and falls back to the marker body for
@@ -72,7 +81,7 @@ Phase R (Research-Tool Surface)._
   index maintenance now uses the same bounded retry path as ordinary uploads, so a temporary R2
   `PutObject/InternalError` does not leave an index prune or update to a later sweep. No pipeline
   version, stored artifact, or backfill behavior changes.
-  
+
 - **LLM dispatch queue reindex now backs off on R2 throttling.** The one-time migration uses four
   concurrent object operations and retries transient R2 429/5xx responses with jittered exponential
   backoff, so a temporary bucket read-pressure response does not abort an otherwise healthy scan.

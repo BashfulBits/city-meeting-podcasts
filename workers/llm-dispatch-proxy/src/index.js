@@ -1119,13 +1119,149 @@ function nextRouteReset(entry, route, now, dispatchLimits = DISPATCH_LIMITS, bud
   return new Date(Math.max(...candidates.map((d) => d.getTime())));
 }
 
-function rankRoutes(routes) {
+function activePricing(route, now = new Date()) {
+  const base = {
+    input_per_token: Number(route.input_per_token || 0),
+    output_per_token: Number(route.output_per_token || 0),
+    windows: [],
+  };
+  const periods = Array.isArray(route.pricing?.periods) ? route.pricing.periods : [];
+  const active = periods
+    .filter((period) => Number.isFinite(Date.parse(period.effective_at || "")))
+    .filter((period) => Date.parse(period.effective_at) <= now.getTime())
+    .sort((left, right) => Date.parse(right.effective_at) - Date.parse(left.effective_at))[0];
+  if (active) {
+    if (active.input_per_token != null) base.input_per_token = Number(active.input_per_token);
+    if (active.output_per_token != null) base.output_per_token = Number(active.output_per_token);
+    base.windows = Array.isArray(active.windows) ? active.windows : [];
+  } else if (Array.isArray(route.pricing?.windows)) {
+    base.windows = route.pricing.windows;
+  }
+  return base;
+}
+
+function windowIsActive(window, now) {
+  const bounds = windowBounds(window, now);
+  return Boolean(bounds && bounds.start <= now && now < bounds.end);
+}
+
+function localTimeParts(now, timeZone) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(now);
+    const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return {
+      year: Number(value.year),
+      month: Number(value.month),
+      day: Number(value.day),
+      hour: Number(value.hour),
+      minute: Number(value.minute),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function shiftLocalDate(parts, days) {
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days));
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() };
+}
+
+function localDateTimeToUTC(date, hour, minute, timeZone) {
+  let candidate = Date.UTC(date.year, date.month - 1, date.day, hour, minute);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const actual = localTimeParts(new Date(candidate), timeZone);
+    if (!actual) return null;
+    const desiredAsUTC = Date.UTC(date.year, date.month - 1, date.day, hour, minute);
+    const actualAsUTC = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute);
+    candidate += desiredAsUTC - actualAsUTC;
+  }
+  const actual = localTimeParts(new Date(candidate), timeZone);
+  if (!actual || actual.year !== date.year || actual.month !== date.month || actual.day !== date.day ||
+      actual.hour !== hour || actual.minute !== minute) {
+    return null;
+  }
+  return new Date(candidate);
+}
+
+function windowBounds(window, now) {
+  const timeZone = String(window?.tz || "UTC");
+  const local = localTimeParts(now, timeZone);
+  const start = String(window?.start || "").split(":").map(Number);
+  const end = String(window?.end || "").split(":").map(Number);
+  if (!local || ![...start, ...end].every(Number.isFinite)) return null;
+  const currentMinutes = local.hour * 60 + local.minute;
+  const startMinutes = start[0] * 60 + start[1];
+  const endMinutes = end[0] * 60 + end[1];
+  let startDate = { year: local.year, month: local.month, day: local.day };
+  let endDate = startDate;
+  if (startMinutes < endMinutes) {
+    if (currentMinutes >= endMinutes) {
+      startDate = shiftLocalDate(startDate, 1);
+      endDate = startDate;
+    }
+  } else if (currentMinutes < endMinutes) {
+    startDate = shiftLocalDate(startDate, -1);
+  } else {
+    endDate = shiftLocalDate(endDate, 1);
+  }
+  return {
+    start: localDateTimeToUTC(startDate, start[0], start[1], timeZone),
+    end: localDateTimeToUTC(endDate, end[0], end[1], timeZone),
+  };
+}
+
+function nextCheapestPricingAt(route, now = new Date()) {
+  const pricing = activePricing(route, now);
+  const windows = pricing.windows.filter((window) => Number.isFinite(Number(window?.multiplier)));
+  if (windows.length === 0) return null;
+  const activeWindow = windows.find((window) => windowIsActive(window, now));
+  const activeMultiplier = Number(activeWindow?.multiplier ?? 1);
+  const cheapest = Math.min(1, ...windows.map((window) => Number(window.multiplier)));
+  if (activeMultiplier <= cheapest) return null;
+  const periods = Array.isArray(route.pricing?.periods) ? route.pricing.periods : [];
+  const nextPeriodAt = periods
+    .map((period) => Date.parse(period?.effective_at || ""))
+    .filter((effectiveAt) => Number.isFinite(effectiveAt) && effectiveAt > now.getTime())
+    .sort((left, right) => left - right)[0];
+  let cheapestAt = null;
+  if (cheapest === 1 && activeWindow) {
+    cheapestAt = windowBounds(activeWindow, now)?.end || null;
+  } else {
+    const starts = windows
+      .filter((window) => Number(window.multiplier) === cheapest)
+      .map((window) => windowBounds(window, now)?.start)
+      .filter((start) => start && start.getTime() > now.getTime());
+    starts.sort((left, right) => left.getTime() - right.getTime());
+    cheapestAt = starts[0] || null;
+  }
+  const candidates = [cheapestAt, Number.isFinite(nextPeriodAt) ? new Date(nextPeriodAt) : null]
+    .filter(Boolean);
+  candidates.sort((left, right) => left.getTime() - right.getTime());
+  return candidates[0] || null;
+}
+
+function routeCost(route, now = new Date()) {
+  const pricing = activePricing(route, now);
+  const window = pricing.windows.find((candidate) => windowIsActive(candidate, now));
+  const multiplier = Number(window?.multiplier ?? 1);
+  return (pricing.input_per_token + pricing.output_per_token) * multiplier;
+}
+
+function rankRoutes(routes, now = new Date()) {
   return [...routes].sort((a, b) => {
     if (Boolean(a.free) !== Boolean(b.free)) {
       return a.free ? -1 : 1;
     }
-    const costA = (a.input_per_token || 0) + (a.output_per_token || 0);
-    const costB = (b.input_per_token || 0) + (b.output_per_token || 0);
+    const costA = routeCost(a, now);
+    const costB = routeCost(b, now);
     if (costA !== costB) {
       return costA - costB;
     }
@@ -1170,7 +1306,7 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
   return { apiKey, url, upstreamModel: route.upstream_model };
 }
 
-function eligibleRoutesForModel(canonicalModel, policy, dispatchLimits = DISPATCH_LIMITS) {
+function eligibleRoutesForModel(canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
   const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
   const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
   const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
@@ -1184,8 +1320,8 @@ function eligibleRoutesForModel(canonicalModel, policy, dispatchLimits = DISPATC
   return {
     candidates,
     contextCompatible,
-    freeRanked: rankRoutes(contextCompatible.filter((route) => route.free)),
-    paidRanked: rankRoutes(contextCompatible.filter((route) => !route.free)),
+    freeRanked: rankRoutes(contextCompatible.filter((route) => route.free), now),
+    paidRanked: rankRoutes(contextCompatible.filter((route) => !route.free), now),
   };
 }
 
@@ -1193,6 +1329,7 @@ function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits
   const { candidates, contextCompatible, freeRanked, paidRanked } = eligibleRoutesForModel(
     canonicalModel,
     policy,
+    now,
     dispatchLimits,
   );
   const allowPaid = Boolean(policy?.allow_paid);
@@ -1202,6 +1339,10 @@ function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits
 
   const tryRoutes = (ranked) => {
     for (const route of ranked) {
+      const priceReadyAt = nextCheapestPricingAt(route, now);
+      if (priceReadyAt && (deadlineAt == null || priceReadyAt <= deadlineAt)) {
+        continue;
+      }
       const entry = ledgerEntry(budget, route.route_id);
       rollLedgerWindows(entry, route, now);
       if (providerAvailable(budget, route, now, dispatchLimits)) {
@@ -1275,17 +1416,29 @@ function nextCapacityRetryAt(budget, canonicalModels, policy, now, dispatchLimit
   const allowPaid = Boolean(policy?.allow_paid);
   const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
   const resets = [];
+  const nextEligibleAt = (route) => {
+    const capacityAt = nextRouteReset(
+      ledgerEntry(budget, route.route_id),
+      route,
+      now,
+      dispatchLimits,
+      budget,
+    ).getTime();
+    const priceReadyAt = nextCheapestPricingAt(route, now);
+    const priceAt =
+      priceReadyAt && (deadlineAt == null || priceReadyAt.getTime() <= deadlineAt)
+        ? priceReadyAt.getTime()
+        : now.getTime();
+    return Math.max(capacityAt, priceAt);
+  };
   for (const model of [...new Set(models)]) {
-    const { freeRanked, paidRanked } = eligibleRoutesForModel(model, policy, dispatchLimits);
-    const freeResets = freeRanked.map((route) =>
-      nextRouteReset(
-        ledgerEntry(budget, route.route_id),
-        route,
-        now,
-        dispatchLimits,
-        budget,
-      ).getTime(),
+    const { freeRanked, paidRanked } = eligibleRoutesForModel(
+      model,
+      policy,
+      now,
+      dispatchLimits,
     );
+    const freeResets = freeRanked.map(nextEligibleAt);
     resets.push(...freeResets);
 
     // This must mirror selectRouteForModel: paid routes become relevant only when no free route
@@ -1296,15 +1449,7 @@ function nextCapacityRetryAt(budget, canonicalModels, policy, now, dispatchLimit
         (deadlineAt != null && Math.min(...freeResets) >= deadlineAt));
     if (!canUsePaid) continue;
     for (const route of paidRanked) {
-      resets.push(
-        nextRouteReset(
-          ledgerEntry(budget, route.route_id),
-          route,
-          now,
-          dispatchLimits,
-          budget,
-        ).getTime(),
-      );
+      resets.push(nextEligibleAt(route));
     }
   }
   return new Date(resets.length > 0 ? Math.min(...resets) : now.getTime() + 60_000);
@@ -2147,6 +2292,7 @@ export {
   dispatchBatch,
   dispatchOne,
   handleRequest,
+  localDateTimeToUTC,
   nextCapacityRetryAt,
   nextLocalMidnightUTC,
   nextRouteReset,

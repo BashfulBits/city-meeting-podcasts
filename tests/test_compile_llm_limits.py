@@ -116,6 +116,30 @@ def test_deepseek_v4_flash_uses_current_direct_api_identifier():
     assert route["upstream_model"] == "deepseek-v4-flash"
 
 
+def test_deepseek_pricing_periods_compile_with_input_output_rates_and_peak_windows():
+    compiled = compile_llm_limits.compile_limits()
+    route = compiled["routes_by_id"]["deepseek_v4_flash_primary"]
+    periods = route["pricing"]["periods"]
+    assert periods[1]["effective_at"].isoformat() == "2026-08-16T16:00:00+00:00"
+    assert periods[1]["input_per_token"] == pytest.approx(0.22e-6)
+    assert [(window["start"], window["end"]) for window in periods[1]["windows"]] == [
+        ("01:00", "04:00"),
+        ("06:00", "10:00"),
+    ]
+
+
+def test_full_day_pricing_surcharge_is_rejected():
+    with pytest.raises(ValueError, match="full-day pricing surcharge"):
+        compile_llm_limits._validate_pricing_windows(
+            {
+                "route_id": "always-peak",
+                "pricing": {
+                    "windows": [{"tz": "UTC", "start": "00:00", "end": "00:00", "multiplier": 2}]
+                },
+            }
+        )
+
+
 def test_model_key_aliases_must_not_conflict_with_a_canonical_key():
     routes = [
         {
