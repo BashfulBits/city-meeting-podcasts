@@ -50,7 +50,7 @@ MIN_SAMPLE_SIZE = 200
 MAX_SAMPLE_SIZE = 300
 DEFAULT_TAGGER_MODELS = (
     "gemini/gemini-3.1-flash-lite",
-    "google/gemma-4-26b-it",
+    "google/gemma-4-26b-a4b-it",
     "zai/glm-4.7-flash",
 )
 OPTIONAL_TAGGER_MODEL = "mistral/mistral-small-2603"

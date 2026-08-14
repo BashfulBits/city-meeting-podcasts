@@ -61,3 +61,19 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
         canonical_model("opencode/nemotron-3-ultra-free")
         == "nvidia/nemotron-3-ultra-550b-a55b:free"
     )
+
+
+def test_deepseek_pricing_selects_the_effective_period_and_peak_windows():
+    route = next(
+        candidate
+        for candidate in ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
+        if candidate.provider == "deepseek"
+    )
+    before = route.pricing.rates_at(datetime(2026, 8, 16, 15, 59, tzinfo=UTC))
+    after = route.pricing.rates_at(datetime(2026, 8, 16, 16, 0, tzinfo=UTC))
+    assert before[:2] == (0.14e-6, 0.28e-6)
+    assert after[:2] == (0.22e-6, 0.66e-6)
+    assert [(window.start.isoformat(), window.end.isoformat()) for window in after[2]] == [
+        ("01:00:00", "04:00:00"),
+        ("06:00:00", "10:00:00"),
+    ]

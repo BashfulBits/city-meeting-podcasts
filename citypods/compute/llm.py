@@ -144,22 +144,22 @@ class LLMDispatchTerminalError(LLMBackendError):
 @dataclass(frozen=True)
 class _FailedAttempt:
     """One failed structured-output attempt, in Instructor's own ``failed_attempts`` shape --
-    used to describe a Gemini native-schema retry exhaustion (see
-    ``_GeminiStructuredRetryExhausted``) through the same diagnostic function Instructor's own
+    used to describe a native-schema retry exhaustion (see
+    ``_NativeStructuredRetryExhausted``) through the same diagnostic function Instructor's own
     ``InstructorRetryException`` already uses, without special-casing which path raised it."""
 
     exception: BaseException
 
 
-class _GeminiStructuredRetryExhausted(RuntimeError):
-    """Gemini's native-schema reply failed local Pydantic validation on both the original attempt
+class _NativeStructuredRetryExhausted(RuntimeError):
+    """A native-schema reply failed local Pydantic validation on both the original attempt
     and the one corrective retry -- the direct-call twin of Instructor's
-    ``InstructorRetryException`` (see ``_run_gemini_structured_direct``). Carries the same
+    ``InstructorRetryException`` (see ``_run_native_structured_direct``). Carries the same
     ``failed_attempts``/``n_attempts`` shape so ``_safe_structured_failure_diagnostic`` needs no
     branch for which path failed."""
 
     def __init__(self, failed_attempts: list[_FailedAttempt]):
-        super().__init__("Gemini structured response failed schema validation after 1 retry")
+        super().__init__("Native structured response failed schema validation after 1 retry")
         self.failed_attempts = tuple(failed_attempts)
         self.n_attempts = len(self.failed_attempts)
 
@@ -173,7 +173,7 @@ def _safe_structured_failure_diagnostic(
     any of those can contain meeting material. The schema summary is intentionally boolean/count
     only, enough to distinguish a provider-schema rejection from an ordinary malformed reply.
     Shared by both structured-output paths (Instructor's ``InstructorRetryException`` for non-
-    Gemini routes, ``_GeminiStructuredRetryExhausted`` for Gemini's direct native-schema path) --
+    native-profile routes, ``_NativeStructuredRetryExhausted`` for the direct native-schema path) --
     both expose the same ``failed_attempts``/``n_attempts`` shape.
     """
     schema = model.model_json_schema()
@@ -196,18 +196,6 @@ def _safe_structured_failure_diagnostic(
     }
 
 
-# Gemini's native schema-constrained structured output (responseJsonSchema) rejects these size/
-# range keywords -- confirmed against the live API by citypods/llm_compat_probe.py's subtractive
-# bisection: stripping exactly this key set was the only one (of defaults, additionalProperties,
-# these constraints, enum, and a fully inlined $ref/$defs chain) that turned the R5 tag
-# contract's real schema from a 400 into a 200. Every other construct Pydantic emits for a
-# nested-model contract -- $defs/$ref, anyOf-nullable typing, default values,
-# additionalProperties: false -- is fine.
-_GEMINI_UNSUPPORTED_SCHEMA_KEYS = frozenset(
-    {"minLength", "maxLength", "minimum", "maximum", "minItems", "maxItems"}
-)
-
-
 def _strip_schema_keys(node: Any, keys: frozenset[str]) -> Any:
     """Deep copy of a JSON Schema node with every occurrence of the given object keys removed."""
     if isinstance(node, dict):
@@ -219,24 +207,26 @@ def _strip_schema_keys(node: Any, keys: frozenset[str]) -> Any:
     return node
 
 
-def _gemini_schema_safe_model(model: ResponseModel) -> ResponseModel:
-    """A same-named subclass of `model` whose model_json_schema() drops the keywords Gemini's
-    native mode rejects -- Instructor derives the request schema by calling this classmethod,
-    with no supported hook to hand it an already-built schema instead, so this is the narrowest
-    way to relax only what Gemini's request needs while still routing through Instructor.
+def _schema_variant_model(model: ResponseModel, strip_keys: frozenset[str]) -> ResponseModel:
+    """Return a same-named request-schema variant without changing response validation.
+
+    Instructor/LiteLLM derive the request schema by calling the response model's
+    ``model_json_schema`` classmethod, with no supported hook to hand them an already-built schema.
+    A same-named subclass is therefore the narrowest way to apply a configured profile while
+    retaining the original model's Pydantic validation for the provider response.
 
     Response *validation* is unaffected: `model`'s fields and their min_length/max_length/ge/le
-    constraints are inherited unchanged, so a reply that violates them still fails Pydantic
-    validation locally (and still triggers Instructor's one corrective retry) exactly as before.
-    Only Gemini's copy of the *request* schema loses server-side enforcement of this one keyword
-    family. Built fresh per call rather than cached: it's one cheap class-creation call per
-    structured Gemini request, not a hot path where that matters.
+    constraints are inherited unchanged, so a reply that violates them still fails local Pydantic
+    validation and still triggers the configured corrective retry. Built fresh per call rather than
+    cached: this is one cheap class-creation call per structured request, not a hot path.
     """
+    if not strip_keys:
+        return model
     base_schema = model.model_json_schema.__func__
 
     def _relaxed_schema(cls: type, *args: Any, **kwargs: Any) -> dict[str, Any]:
         schema = base_schema(cls, *args, **kwargs)
-        return _strip_schema_keys(schema, _GEMINI_UNSUPPORTED_SCHEMA_KEYS)
+        return _strip_schema_keys(schema, strip_keys)
 
     return type(
         model.__name__,
@@ -321,7 +311,7 @@ def _sum_usage_fields(first: Any, second: Any) -> dict[str, Any] | None:
     """Sum two response ``usage`` mappings field-by-field (``total_tokens``/``prompt_tokens``/
     ``completion_tokens``) -- for combining a failed first structured-output attempt's real
     provider usage with a successful retry's, so settlement prices the true combined cost
-    instead of only the final attempt's (see ``_run_gemini_structured_direct``). Returns
+    instead of only the final attempt's (see ``_run_native_structured_direct``). Returns
     ``second`` unchanged if either side isn't a usable mapping, and bails out (returns ``second``
     unmerged) on the first field that doesn't parse as a number rather than guess -- an
     under-priced retry is a smaller, already-accepted imprecision (``_usage_tokens`` above treats
@@ -343,7 +333,10 @@ def _sum_usage_fields(first: Any, second: Any) -> dict[str, Any] | None:
 
 
 def _priced_actual(
-    output: Mapping[str, Any], *, input_per_token: float, output_per_token: float
+    output: Mapping[str, Any],
+    *,
+    input_per_token: float,
+    output_per_token: float,
 ) -> tuple[int | None, float | None]:
     """Actual ``(tokens, cost)`` for a completed response, pricing prompt and completion tokens
     at their own rates rather than charging the combined rate to every token (which over- or
@@ -514,36 +507,53 @@ class LiteLLMBackend(Backend):
         return (name, response_model(name)) if name else None
 
     def _instructor_mode(self, resolved_model: str):
-        """Choose Instructor's provider-neutral structured-output mode for this route.
+        """Choose Instructor's provider-neutral structured-output mode for standard profiles.
 
-        Only reached for non-Gemini routes: Gemini never goes through Instructor at all --
-        ``_run_gemini_structured_direct`` calls LiteLLM directly with native JSON-schema mode,
-        because Instructor's own (provider, mode) compatibility table (pinned instructor==1.15.4,
-        its latest release) has no ``(Provider.GEMINI, Mode.JSON_SCHEMA)`` entry -- only
-        MD_JSON/TOOLS -- regardless of which LiteLLM version resolves the provider correctly.
-        Confirmed against two live runs on two different LiteLLM versions: both failed identically
-        (`Mode Mode.JSON_SCHEMA is not registered for provider Provider.OPENAI`), so this isn't a
-        provider-auto-detection bug LiteLLM can fix -- it's Instructor's own gate.
+        Routes whose compiled profile requires native handling never reach this method. Keeping
+        the mode decision here profile-agnostic prevents provider/model naming conventions from
+        becoming a second source of structured-output behavior.
         """
         try:
             from instructor import Mode
         except ImportError as exc:
             raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
-        # DeepSeek public chat supports only valid-JSON mode.  Instructor includes the Pydantic
-        # schema in the prompt and supplies its field-specific validation feedback on a retry.
-        return Mode.JSON if resolved_model.startswith("deepseek/") else Mode.JSON_SCHEMA
+        # The route's structured-output profile selects native JSON-object handling before this
+        # method is reached. Remaining Instructor routes use its schema mode.
+        return Mode.JSON_SCHEMA
 
-    def _gemini_response_format(self, model: ResponseModel) -> dict[str, Any]:
-        """The OpenAI-shaped ``response_format`` LiteLLM translates into Gemini's native
-        ``responseJsonSchema``/``responseMimeType`` -- confirmed against the live API by
-        ``citypods/llm_compat_probe.py``'s ``_native()`` check, which hits Gemini's REST endpoint
-        directly with the same shape, bypassing LiteLLM/Instructor entirely. Used by both
-        ``_run_gemini_structured_direct`` (the direct transport) and ``_dispatch_response_format``
-        (the R10 dispatch Worker, in case a Gemini route is ever configured for dispatch mode)."""
-        safe_model = _gemini_schema_safe_model(model)
+    @staticmethod
+    def _route_for_resolved_model(resolved_model: str, route=None):
+        """Resolve route capabilities without interpreting provider/model naming conventions."""
+        if route is not None:
+            return route
+        logical_model = canonical_model(resolved_model)
+        candidates = ROUTE_CANDIDATES.get(logical_model)
+        if candidates:
+            return candidates[0]
+        return next(
+            (
+                candidate
+                for candidate in ROUTE_REGISTRY.values()
+                if candidate.direct_model == resolved_model
+            ),
+            None,
+        )
+
+    def _response_format_for_route(
+        self, model: ResponseModel, *, resolved_model: str, route=None
+    ) -> dict[str, Any]:
+        """Build the configured structured-output format for a physical route."""
+        route = self._route_for_resolved_model(resolved_model, route)
+        response_format = getattr(route, "structured_output_response_format", "json_schema")
+        if response_format == "json_object":
+            return {"type": "json_object"}
+        if response_format != "json_schema":
+            raise LLMBackendError(f"unsupported structured-output format: {response_format!r}")
+        strip_keys = frozenset(getattr(route, "structured_output_schema_strip_keys", ()) or ())
+        schema_model = _schema_variant_model(model, strip_keys)
         return {
             "type": "json_schema",
-            "json_schema": {"name": model.__name__, "schema": safe_model.model_json_schema()},
+            "json_schema": {"name": model.__name__, "schema": schema_model.model_json_schema()},
         }
 
     def _provider_options(
@@ -563,17 +573,10 @@ class LiteLLMBackend(Backend):
         return options
 
     def _dispatch_response_format(
-        self, model: ResponseModel, resolved_model: str
+        self, model: ResponseModel, resolved_model: str, *, route=None
     ) -> Mapping[str, Any]:
-        """Serialize the request-format contract used by the direct transports for the R10 queue."""
-        if resolved_model.startswith("deepseek/"):
-            return {"type": "json_object"}
-        if resolved_model.startswith("gemini/"):
-            return self._gemini_response_format(model)
-        return {
-            "type": "json_schema",
-            "json_schema": {"name": model.__name__, "schema": model.model_json_schema()},
-        }
+        """Serialize the configured structured-output profile for the R10 queue."""
+        return self._response_format_for_route(model, resolved_model=resolved_model, route=route)
 
     def _payload(
         self,
@@ -588,25 +591,21 @@ class LiteLLMBackend(Backend):
         route=None,
     ) -> dict[str, Any]:
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
-        include_deepseek_schema = model is not None and (
-            resolved_model.startswith("deepseek/")
-            or (
-                policy is not None
-                and any(
-                    canonical_model(candidate).startswith("deepseek/")
-                    for candidate in (policy.allowed_models or ())
-                )
-            )
+        selected_route = self._route_for_resolved_model(resolved_model, route)
+        include_profile_schema = model is not None and bool(
+            getattr(selected_route, "structured_output_include_schema_in_prompt", False)
         )
         payload: dict[str, Any] = {
             "model": resolved_model,
             "messages": _messages_with_schema(_messages(job), model)
-            if include_deepseek_schema
+            if include_profile_schema
             else _messages(job),
             "stream": False,
         }
         if model is not None:
-            payload["response_format"] = self._dispatch_response_format(model, resolved_model)
+            payload["response_format"] = self._dispatch_response_format(
+                model, resolved_model, route=route
+            )
         if policy is not None:
             payload["allow_paid"] = policy.allow_paid
             payload["allow_batch"] = policy.allow_batch
@@ -640,7 +639,10 @@ class LiteLLMBackend(Backend):
     ) -> list[dict[str, Any]]:
         """Return the conservative request form used before physical-route selection."""
         if structured and any(
-            canonical_model(candidate).startswith("deepseek/")
+            any(
+                getattr(candidate_route, "structured_output_include_schema_in_prompt", False)
+                for candidate_route in ROUTE_CANDIDATES.get(canonical_model(candidate), ())
+            )
             for candidate in (policy.allowed_models or ())
         ):
             return _messages_with_schema(messages, structured[1])
@@ -676,25 +678,15 @@ class LiteLLMBackend(Backend):
     ) -> JobResult:
         """Dispatch to whichever structured-output path this route actually works with.
 
-        Gemini uses its native-schema path. DeepSeek uses the same local parse/validate/retry
-        mechanism with JSON-object mode because Instructor's compatibility registry does not
-        recognize this custom route; Mistral retains Instructor's typed parsing.
+        Routes with a native structured-output profile use the local parse/validate/retry path;
+        standard profiles retain Instructor's typed parsing. The profile, not the provider/model
+        name, determines which branch runs.
         """
         completion_fn = completion if completion is not None else self._completion_fn()
-        if resolved_model.startswith("gemini/"):
+        route = self._route_for_resolved_model(resolved_model, route)
+        if getattr(route, "structured_output_direct_handler", "instructor") == "native":
             return self._run_native_structured_direct(
                 job, model, resolved_model=resolved_model, route=route, completion=completion_fn
-            )
-        if resolved_model.startswith("deepseek/") or (
-            route is not None and route.model.startswith("deepseek/")
-        ):
-            return self._run_native_structured_direct(
-                job,
-                model,
-                resolved_model=resolved_model,
-                route=route,
-                completion=completion_fn,
-                response_format={"type": "json_object"},
             )
         try:
             import instructor
@@ -759,10 +751,10 @@ class LiteLLMBackend(Backend):
         identical error. Rather than switch away from native schema mode (Gemini genuinely
         supports it) or add runtime fallback/re-probing logic, this calls LiteLLM directly with
         the same OpenAI-shaped ``response_format`` LiteLLM already translates into Gemini's native
-        mechanism (``_gemini_response_format``, also used by the R10 dispatch payload). DeepSeek
-        uses its documented JSON-object mode here because the installed Instructor registry treats
-        the custom DeepSeek route as OpenAI and rejects it before a request. Both routes parse and
-        validate against ``model``, then retry once with validation feedback.
+        mechanism selected by the compiled profile, also used by the R10 dispatch payload.
+        DeepSeek uses its documented JSON-object mode here because the installed Instructor registry
+        treats custom DeepSeek routes as OpenAI and rejects them before a request. Both paths parse
+        and validate against ``model``, then retry once with validation feedback.
         Both attempts' usage is billed: a first attempt that fails validation still reached
         Gemini and spent real tokens/quota, so on a retry-then-succeed outcome the returned
         ``output["usage"]`` is the *sum* of both responses' usage, not just the second's --
@@ -772,12 +764,12 @@ class LiteLLMBackend(Backend):
         from pydantic import ValidationError
 
         messages = list(_messages(job))
-        if resolved_model.startswith("deepseek/") or (
-            route is not None and route.model.startswith("deepseek/")
-        ):
+        if route is not None and route.structured_output_include_schema_in_prompt:
             messages = _messages_with_schema(messages, model)
         options = self._provider_options(job, resolved_model, route=route)
-        response_format = response_format or self._gemini_response_format(model)
+        response_format = response_format or self._response_format_for_route(
+            model, resolved_model=resolved_model, route=route
+        )
         failed_attempts: list[_FailedAttempt] = []
         first_attempt_usage: Any = None
         for attempt in range(2):  # original attempt + exactly one corrective retry
@@ -815,7 +807,7 @@ class LiteLLMBackend(Backend):
                         "llm-safe-diagnostic: "
                         + json.dumps(
                             _safe_structured_failure_diagnostic(
-                                _GeminiStructuredRetryExhausted(failed_attempts),
+                                _NativeStructuredRetryExhausted(failed_attempts),
                                 job,
                                 model,
                                 resolved_model,
@@ -1159,6 +1151,7 @@ class LiteLLMBackend(Backend):
                     job,
                     model,
                     resolved_model=resolved_model,
+                    route=route,
                     policy=policy,
                     estimated_tokens=per_attempt_tokens * max_provider_attempts,
                     input_tokens_estimate=input_tokens,
@@ -1196,6 +1189,7 @@ class LiteLLMBackend(Backend):
                     # actual usage (see `reconcile()`). A job whose handle is never reconciled
                     # leaves an inflight entry until the reservation expiry is reaped. The shared
                     # ledger's expiry is what keeps concurrency-only routes from being stuck.
+                    input_rate, output_rate, _ = route.pricing.rates_at(datetime.now(UTC))
                     return JobHandle(
                         task=job.task,
                         recipe_hash=job.recipe_hash,
@@ -1205,8 +1199,8 @@ class LiteLLMBackend(Backend):
                         model=resolved_model,
                         owner=owner,
                         route_id=route.route_id or None,
-                        input_per_token=route.pricing.input_per_token,
-                        output_per_token=route.pricing.output_per_token,
+                        input_per_token=input_rate,
+                        output_per_token=output_rate,
                         attempted_requests=attempted_requests,
                     )
                 elif response.status_code == 429:
@@ -1222,10 +1216,11 @@ class LiteLLMBackend(Backend):
             _cleanup()
             raise
 
+        input_rate, output_rate, _ = route.pricing.rates_at(datetime.now(UTC))
         actual_tokens, actual_cost = _priced_actual(
             result.output,
-            input_per_token=route.pricing.input_per_token,
-            output_per_token=route.pricing.output_per_token,
+            input_per_token=input_rate,
+            output_per_token=output_rate,
         )
         if result.model != resolved_model:
             result = JobResult(
@@ -1357,11 +1352,13 @@ class LiteLLMBackend(Backend):
         metadata (the returned ``model`` field is new, additive, and asserted by no pre-R13
         test)."""
         logical_model = canonical_model(self.config.model)
+        route = (ROUTE_CANDIDATES.get(logical_model) or (None,))[0]
         if self.config.mode == "direct":
-            route = (ROUTE_CANDIDATES.get(logical_model) or (None,))[0]
             direct_messages = (
                 _messages_with_schema(_messages(job), structured[1])
-                if structured and logical_model.startswith("deepseek/")
+                if structured
+                and route is not None
+                and route.structured_output_include_schema_in_prompt
                 else _messages(job)
             )
             self._assert_route_context(route, direct_messages, self._output_token_budget(job))
@@ -1387,7 +1384,7 @@ class LiteLLMBackend(Backend):
             )
 
         structured_name, model = structured if structured else (None, None)
-        payload = self._payload(job, model, resolved_model=logical_model)
+        payload = self._payload(job, model, resolved_model=logical_model, route=route)
         headers = {"content-type": "application/json"}
         if self.config.dispatch_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_auth_token}"

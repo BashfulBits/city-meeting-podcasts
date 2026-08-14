@@ -483,6 +483,28 @@ def test_put_file_retries_transient_multipart_upload_failure(tmp_path, monkeypat
     assert calls == 3
 
 
+def test_put_cas_retries_transient_internal_error(monkeypatch):
+    store = _s3_with_fake_client()
+
+    class _FlakyPutClient(_FakeS3Client):
+        def __init__(self):
+            super().__init__()
+            self.failures = [_client_error("InternalError", 500)]
+
+        def put_object(self, **kwargs):
+            if self.failures:
+                raise self.failures.pop(0)
+            return super().put_object(**kwargs)
+
+    store._client = _FlakyPutClient()
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    _, etag = store.put_cas("k.json", b"v", "application/json", if_none_match="*")
+
+    assert etag
+    assert store._client.store["k.json"] == (b"v", etag)
+
+
 def test_exists_true_for_present_key_false_for_absent():
     store = _s3_with_fake_client()
     store.put_cas("k.json", b"v", "application/json", if_none_match="*")
@@ -626,6 +648,27 @@ def test_get_file_retries_transfer_failures_then_succeeds(tmp_path, monkeypatch)
 
     store = _s3_with_fake_client()
     client = _FakeDownloadClient([ReadTimeoutError(endpoint_url="https://x", error="timeout")])
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    dest = tmp_path / "state.json"
+
+    assert store.get_file("state/k.json", dest) is True
+    assert dest.read_text() == "b:state/k.json"
+    assert client.calls == 2
+
+
+def test_get_file_retries_etag_race_then_succeeds(tmp_path, monkeypatch):
+    from s3transfer.exceptions import S3DownloadFailedError
+
+    store = _s3_with_fake_client()
+    client = _FakeDownloadClient(
+        [
+            S3DownloadFailedError(
+                'Contents of stored object "state/k.json" did not match expected ETag.'
+            )
+        ]
+    )
     store._client = client
     monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
 

@@ -11,10 +11,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from citypods.compute.budget import cycle_key
 from citypods.compute.llm_budget import (
     LLM_BUDGET_STATE_KEY,
     LLMBudget,
     RouteLedger,
+    daily_reset_key,
     load_llm_budget_cas,
     serialize_llm_budget,
 )
@@ -96,7 +98,8 @@ def _window_bounds(window, now: datetime) -> tuple[datetime, datetime] | None:
 
 
 def _active_multiplier(route: LLMRoute, now: datetime) -> float:
-    for window in route.pricing.windows:
+    _, _, windows = route.pricing.rates_at(now)
+    for window in windows:
         bounds = _window_bounds(window, now)
         if bounds is None:
             continue
@@ -106,19 +109,61 @@ def _active_multiplier(route: LLMRoute, now: datetime) -> float:
     return 1.0
 
 
-def _next_discount_window_end(route: LLMRoute, now: datetime) -> datetime | None:
-    candidates = []
-    for window in route.pricing.windows:
-        if window.multiplier >= 1:
-            continue
-        bounds = _window_bounds(window, now)
-        if bounds is not None:
-            start, end = bounds
-            if start > now.astimezone(UTC):
-                candidates.append((start, end))
-            elif end > now.astimezone(UTC):
-                return end
-    return min((end for _, end in candidates), default=None)
+def _next_cheapest_window(route: LLMRoute, now: datetime) -> datetime | None:
+    """Return when a currently more-expensive route reaches its cheapest recurring window.
+
+    A route remains selectable at its current price when a caller's deadline would be missed by
+    waiting; otherwise flexible/deferred work is held until the cheapest active-period multiplier
+    is available.  A route with no price premium (or already in its cheapest window) returns
+    ``None``.
+    """
+    _, _, windows = route.pricing.rates_at(now)
+    if not windows:
+        return None
+    now_utc = now.astimezone(UTC)
+    active = _active_multiplier(route, now)
+    cheapest = min(1.0, *(window.multiplier for window in windows))
+    if active <= cheapest:
+        return None
+
+    if cheapest == 1.0:
+        # The ordinary/off-peak period is the cheapest one. The active premium window's end is
+        # therefore the next point at which the route reaches it.
+        for window in windows:
+            bounds = _window_bounds(window, now)
+            if bounds is not None:
+                start, end = bounds
+                if start <= now_utc < end and window.multiplier == active:
+                    cheapest_at = end
+                    break
+        else:
+            cheapest_at = None
+    else:
+        # A sub-1x window is the cheapest period. Find its next recurring start;
+        # `_window_bounds` returns today's or tomorrow's occurrence depending on the current
+        # local time.
+        starts = []
+        for window in windows:
+            if window.multiplier != cheapest:
+                continue
+            bounds = _window_bounds(window, now)
+            if bounds is not None and bounds[0] > now_utc:
+                starts.append(bounds[0])
+        cheapest_at = min(starts, default=None)
+
+    # The current rate card can be replaced before its next cheap window begins (or ends). Wake
+    # at that transition too, and decide from the newly active card rather than retaining a stale
+    # premium-window assumption. This matters when a provider changes a rate card mid-window.
+    next_period = min(
+        (
+            period.effective_at.astimezone(UTC)
+            for period in route.pricing.periods
+            if period.effective_at.astimezone(UTC) > now_utc
+        ),
+        default=None,
+    )
+    candidates = (candidate for candidate in (cheapest_at, next_period) if candidate is not None)
+    return min(candidates, default=None)
 
 
 def _next_local_midnight(reset_timezone: str, now: datetime) -> datetime:
@@ -205,10 +250,31 @@ def _next_quota_reset(
 
 
 def _estimated_cost(route: LLMRoute, estimated_tokens: int, now: datetime) -> float:
-    return (
-        estimated_tokens
-        * (route.pricing.input_per_token + route.pricing.output_per_token)
-        * _active_multiplier(route, now)
+    input_per_token, output_per_token, _ = route.pricing.rates_at(now)
+    return estimated_tokens * (input_per_token + output_per_token) * _active_multiplier(route, now)
+
+
+def _cost_caps_allow_at(
+    ledger: LLMBudget,
+    route_key: str,
+    route: LLMRoute,
+    cost: float,
+    at: datetime,
+    now: datetime,
+) -> bool:
+    """Check cost caps at a future pricing retry without rolling the live ledger forward."""
+    entry = ledger._ledger(route_key, now, route=route, create=False)
+    if entry is None:
+        return True
+    pricing = route.pricing
+    future_cycle_used = entry.cost_used if entry.cost_cycle_key == cycle_key(at) else 0.0
+    future_day_used = (
+        entry.cost_day_used
+        if entry.cost_day_key == daily_reset_key(at, route.quota.reset_timezone)
+        else 0.0
+    )
+    return (pricing.cost_cap is None or future_cycle_used + cost <= pricing.cost_cap) and (
+        pricing.daily_cost_cap is None or future_day_used + cost <= pricing.daily_cost_cap
     )
 
 
@@ -310,11 +376,9 @@ def select_route(
         else None
     )
     # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
-    # only *temporarily* unavailable -- a rate schedule full, daily quota spent, or under a real
-    # 429 block -- is predicted to free up again. A pacing caller sleeps until this rather than
-    # deferring the whole request to a future run. Off-peak (discount-window) waits are excluded:
-    # a route gated only on a price window is available *now*, just not at its cheapest, so pacing
-    # against it would stall a free request for a discount it doesn't need.
+    # only *temporarily* unavailable -- a rate schedule full, daily quota spent, under a real 429
+    # block, or waiting for its cheapest price window -- is predicted to become eligible again. A
+    # pacing caller sleeps until this rather than deferring the whole request to a future run.
     retry_ats: list[datetime] = []
     input_tokens = estimated_tokens if input_tokens is None else input_tokens
     output_tokens = 0 if output_tokens is None else output_tokens
@@ -345,6 +409,26 @@ def select_route(
         route_requests, route_tokens = _reservation_size(
             route, requests=requests, tokens=estimated_tokens, transport=transport
         )
+        # Flexible work waits for the cheaper price before capacity admission. In particular,
+        # applying a peak-rate estimate to a daily cost cap must not reject work that can fit at
+        # the imminent off-peak rate; its next selection re-evaluates all quota and cost gates.
+        price_ready_at = _next_cheapest_window(route, now)
+        if (
+            price_ready_at is not None
+            and (policy.deadline_at is None or price_ready_at <= policy.deadline_at)
+            and _cost_caps_allow_at(
+                ledger,
+                route_key,
+                route,
+                _estimated_cost(route, route_tokens, price_ready_at),
+                price_ready_at,
+                now,
+            )
+        ):
+            retry_ats.append(price_ready_at)
+            rejected.append((model, f"price-window gate: waits until {price_ready_at.isoformat()}"))
+            continue
+
         cost = _estimated_cost(route, route_tokens, now)
         if not ledger.available(
             route_key,
@@ -378,13 +462,6 @@ def select_route(
         if policy.deadline_at is not None and predicted > policy.deadline_at:
             rejected.append((model, "deadline gate"))
             continue
-        if _active_multiplier(route, now) == 1:
-            window_end = _next_discount_window_end(route, now)
-            if window_end is not None and (
-                policy.deadline_at is None or window_end <= policy.deadline_at
-            ):
-                rejected.append((model, f"off-peak gate: waits until {window_end.isoformat()}"))
-                continue
         # Already fetched (and, if needed, window-rolled) by the `ledger.available(...)` check
         # above, which internally calls the same `_ledger()` -- this is that same entry, not a
         # second lookup.

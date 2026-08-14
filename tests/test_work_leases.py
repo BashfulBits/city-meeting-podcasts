@@ -101,10 +101,36 @@ def test_claim_returns_none_on_cas_conflict():
 
 def test_terminal_states_are_not_claimable():
     bucket = _MemCAS()
-    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, now=NOW)
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, pipeline_version="v1", now=NOW)
     assert wl.release(bucket, "s1", "u1", owner="w1", state="failed", now=NOW) is True
-    # failed is terminal → not auto-reclaimed.
-    assert wl.claim(bucket, "s1", "u1", owner="w2", ttl_seconds=600, now=NOW) is None
+    # A terminal lease remains closed for its same recipe version.
+    assert (
+        wl.claim(bucket, "s1", "u1", owner="w2", ttl_seconds=600, pipeline_version="v1", now=NOW)
+        is None
+    )
+
+
+@pytest.mark.parametrize("state", ["done", "failed"])
+def test_version_bump_reopens_terminal_lease(state):
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, pipeline_version="v1", now=NOW)
+    assert wl.release(bucket, "s1", "u1", owner="w1", state=state, now=NOW) is True
+
+    held = wl.claim(bucket, "s1", "u1", owner="w2", ttl_seconds=600, pipeline_version="v2", now=NOW)
+
+    assert held is not None
+    assert held.state == "leased" and held.owner == "w2"
+    assert held.pipeline_version == "v2" and held.attempts == 2
+
+
+def test_version_bump_does_not_steal_active_lease():
+    bucket = _MemCAS()
+    wl.claim(bucket, "s1", "u1", owner="w1", ttl_seconds=600, pipeline_version="v1", now=NOW)
+
+    assert (
+        wl.claim(bucket, "s1", "u1", owner="w2", ttl_seconds=600, pipeline_version="v2", now=NOW)
+        is None
+    )
 
 
 def test_requeue_failed_reopens_only_failed_leases():

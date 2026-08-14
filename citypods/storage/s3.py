@@ -66,13 +66,22 @@ def transient_download_errors(
             ReadTimeoutError,
             SSLError,
         )
-        from s3transfer.exceptions import RetriesExceededError as TransferRetriesExceededError
+        from s3transfer.exceptions import (
+            RetriesExceededError as TransferRetriesExceededError,
+        )
+        from s3transfer.exceptions import (
+            S3DownloadFailedError as TransferDownloadFailedError,
+        )
     except ImportError:
         return extra_errors
     return (
         *extra_errors,
         boto3.exceptions.RetriesExceededError,
         TransferRetriesExceededError,
+        # s3transfer raises this specifically when its protective If-Match check
+        # observes that an object changed between its HEAD and ranged GET. A fresh
+        # download attempt gets a new ETag and is safe for this idempotent read.
+        TransferDownloadFailedError,
         ConnectTimeoutError,
         EndpointConnectionError,
         ReadTimeoutError,
@@ -145,7 +154,7 @@ def _retry_storage_read(operation):
 
 
 def _retry_storage_write(operation):
-    """Run one idempotent object upload with bounded retries for transient failures.
+    """Run one idempotent object upload or conditional write with bounded retries.
 
     boto3's transfer manager retries individual multipart requests, but can still surface a
     transient ``ServiceUnavailable`` after its own retry budget is exhausted.  Retrying the
@@ -282,7 +291,7 @@ class S3CompatibleStorage:
         if if_match is not None:
             kwargs["IfMatch"] = if_match
         try:
-            resp = self._client.put_object(**kwargs)
+            resp = _retry_storage_write(lambda: self._client.put_object(**kwargs))
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code")
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")

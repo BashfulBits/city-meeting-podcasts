@@ -7,10 +7,15 @@ import {
   dispatchBatch,
   dispatchOne,
   handleRequest,
+  localDateTimeToUTC,
+  nextCapacityRetryAt,
   nextLocalMidnightUTC,
   nextRouteReset,
   rankRoutes,
   releaseCronLease,
+  readyKey,
+  readyMarker,
+  readyMarkerMetadata,
   renewCronLease,
   resolveProviderCredentials,
   routeAvailable,
@@ -175,6 +180,26 @@ test("queues an OpenAI-shaped request, reuses an idempotency key, and rejects a 
   assert.equal(conflict.status, 409);
 });
 
+test("enqueue writes its ready marker before the canonical pending record", async () => {
+  class MarkerFirstBucket extends FakeBucket {
+    async put(key, value, options = {}) {
+      if (key.startsWith("requests/")) {
+        assert.ok(
+          [...this.objects.keys()].some((candidate) => candidate.startsWith("ready/")),
+          "a request write must have a recoverable ready marker already",
+        );
+      }
+      return super.put(key, value, options);
+    }
+  }
+  const env = { ...ENV, LLM_QUEUE: new MarkerFirstBucket() };
+  const response = await handleRequest(chatRequest(undefined, "marker-first"), env);
+  assert.equal(response.status, 202);
+  const marker = [...env.LLM_QUEUE.objects.values()].find((object) => object.key.startsWith("ready/"));
+  assert.equal(marker.customMetadata.ready_version, "1");
+  assert.equal(marker.customMetadata.status, "pending");
+});
+
 test("schema retry clones only a completed request and appends one corrective instruction", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(
@@ -324,6 +349,57 @@ test("a non-Mistral route resolves its own provider's URL and API key, not Mistr
   assert.equal(calls[0].body.model, "gemini-3-flash-preview");
 });
 
+test("non-2xx upstream responses retain bounded structured diagnostics in the private record", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "provider-400", "gemini/gemini-3-flash-preview"),
+    env,
+  );
+  const { id } = await queued.json();
+  const result = await dispatchOne(
+    env,
+    async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 400,
+            status: "INVALID_ARGUMENT",
+            message: "response_schema contains an unsupported keyword",
+          },
+        }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      ),
+    new Date(),
+  );
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.upstreamStatus, 400);
+  assert.equal(result.providerCode, 400);
+  assert.equal(result.providerStatus, "INVALID_ARGUMENT");
+
+  const stored = await env.LLM_QUEUE.get(`requests/${id}.json`);
+  const record = await stored.json();
+  assert.equal(record.error.provider_error.format, "json");
+  assert.equal(record.error.provider_error.content_type, "application/json");
+  assert.equal(record.error.provider_error.json_type, "object");
+  assert.deepEqual(record.error.provider_error.top_level_keys, ["error"]);
+  assert.deepEqual(record.error.provider_error.error_keys, ["code", "status", "message"]);
+  assert.equal(record.error.provider_error.diagnostic_path, "root.error");
+  assert.equal(record.error.provider_error.code, 400);
+  assert.equal(record.error.provider_error.status, "INVALID_ARGUMENT");
+  assert.equal(record.error.provider_error.message, "response_schema contains an unsupported keyword");
+  assert.match(record.error.provider_error.body_preview, /response_schema contains/);
+
+  const poll = await handleRequest(
+    request(`https://dispatch.example/v1/requests/${id}`, { method: "GET" }),
+    env,
+  );
+  const pollBody = await poll.json();
+  assert.equal(poll.status, 502);
+  assert.equal(pollBody.error.message, "upstream LLM dispatch failed");
+  assert.equal(pollBody.error.provider_error, undefined);
+});
+
 test("RPM is a continuous per-route pace, not a burstable minute bucket", async (t) => {
   // Mistral Large's physical route is configured at 4 RPM, so its next request is eligible
   // 15 seconds after the previous reservation. Its provider has only one configured account, so
@@ -368,6 +444,11 @@ test("a route with no capacity anywhere is requeued (no_capacity), not permanent
     await handleRequest(chatRequest(undefined, `req-${i}`), env);
   }
   await handleRequest(chatRequest(undefined, "fifth"), env);
+  for (const object of (await env.LLM_QUEUE.list({ prefix: "requests/" })).objects) {
+    const record = await (await env.LLM_QUEUE.get(object.key)).json();
+    record.attempts = 3;
+    await env.LLM_QUEUE.put(object.key, JSON.stringify(record));
+  }
   const now = new Date("2026-08-06T12:00:00.000Z");
 
   for (let i = 0; i < 4; i += 1) {
@@ -379,7 +460,7 @@ test("a route with no capacity anywhere is requeued (no_capacity), not permanent
   const stored = await env.LLM_QUEUE.get(`requests/${exhausted.requestId}.json`);
   const record = await stored.json();
   assert.equal(record.status, "pending");
-  assert.equal(record.attempts, 0); // not counted as a real attempt
+  assert.equal(record.attempts, 3); // capacity deferral is not a real attempt
 
   // The next paced slot and minute boundary free Mistral's capacity back up.
   const nextMinute = new Date(now.getTime() + 60_000);
@@ -428,7 +509,7 @@ test("legacy DeepSeek aliases use the unified free candidate pool", async () => 
   assert.equal(result.status, "completed");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
-  assert.equal(calls[0].body.model, "deepseek-v4-flash-0731");
+  assert.equal(calls[0].body.model, "deepseek-v4-flash-free");
   const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
   const record = await stored.json();
   assert.equal(record.status, "completed");
@@ -451,55 +532,16 @@ test("a request for a canonical model with no configured route fails permanently
     attempts: 0,
     policy: { estimated_tokens: 100, allow_paid: true },
   };
-  await env.LLM_QUEUE.put("requests/unrouted.json", JSON.stringify(record));
+  await env.LLM_QUEUE.put(`requests/${record.id}.json`, JSON.stringify(record));
+  await env.LLM_QUEUE.put(readyKey(record), JSON.stringify(readyMarker(record)));
 
   const result = await dispatchOne(env, okUpstream(), now);
   assert.equal(result.status, "failed");
   assert.equal(result.reason, "no_configured_route");
 });
 
-test("queue scan limit counts every scanned object, including terminal records", async () => {
-  // CodeRabbit -- `scanned` was never incremented, so `maxQueueScan` didn't bound anything.
+test("ordered ready index drains work without reading terminal request history", async () => {
   const env = isolatedEnv();
-  env.MAX_QUEUE_SCAN = "1";
-  const now = new Date();
-  const timestamp = now.toISOString();
-  const terminal = {
-    schema: 1,
-    id: "chatcmpl-terminal",
-    status: "completed",
-    provider: "mistral",
-    model: "mistral/mistral-large-2512",
-    created_at: timestamp,
-    updated_at: timestamp,
-    available_at: timestamp,
-    attempts: 1,
-    response: { id: "already-complete", choices: [] },
-  };
-  const pending = {
-    schema: 1,
-    id: "chatcmpl-ready",
-    status: "pending",
-    provider: "mistral",
-    model: "mistral/mistral-large-2512",
-    request: { model: "mistral/mistral-large-2512", messages: [{ role: "user", content: "ready" }], stream: false },
-    created_at: timestamp,
-    updated_at: timestamp,
-    available_at: timestamp,
-    attempts: 0,
-    policy: { estimated_tokens: 100 },
-  };
-  await env.LLM_QUEUE.put("requests/000-terminal.json", JSON.stringify(terminal));
-  await env.LLM_QUEUE.put("requests/chatcmpl-ready.json", JSON.stringify(pending));
-
-  // Scanning is capped at 1 object, and the terminal record sorts first -- so the ready record is
-  // never even reached this tick.
-  const result = await dispatchOne(env, okUpstream(), now);
-  assert.equal(result.status, "idle");
-});
-
-test("pending-only index drains ready work even when terminal request history sorts first", async () => {
-  const env = { ...isolatedEnv(), MAX_QUEUE_SCAN: "1" };
   const now = new Date();
   const timestamp = now.toISOString();
   const terminal = {
@@ -513,29 +555,117 @@ test("pending-only index drains ready work even when terminal request history so
   };
   await env.LLM_QUEUE.put("requests/000-terminal.json", JSON.stringify(terminal));
   await env.LLM_QUEUE.put("requests/chatcmpl-ready.json", JSON.stringify(pending));
-  await env.LLM_QUEUE.put("pending/chatcmpl-ready.json", JSON.stringify({ id: pending.id }));
+  await env.LLM_QUEUE.put(readyKey(pending), JSON.stringify(readyMarker(pending)));
 
   const result = await dispatchOne(env, okUpstream(), now);
   assert.equal(result.status, "completed");
   assert.equal(result.requestId, pending.id);
-  assert.equal(await env.LLM_QUEUE.get("pending/chatcmpl-ready.json"), null);
+  assert.equal(await env.LLM_QUEUE.get(readyKey(pending)), null);
 });
 
-test("queue reindex is authenticated and indexes pending records only", async () => {
+test("malformed ready markers are removed instead of blocking the queue head", async () => {
   const env = isolatedEnv();
-  const now = new Date().toISOString();
-  const pending = {
-    id: "chatcmpl-reindex-pending",
-    status: "pending",
-    model: "mistral/mistral-large-2512",
-    created_at: now,
-    updated_at: now,
-    available_at: now,
-  };
-  const terminal = { ...pending, id: "chatcmpl-reindex-terminal", status: "completed" };
-  await env.LLM_QUEUE.put("requests/chatcmpl-reindex-pending.json", JSON.stringify(pending));
-  await env.LLM_QUEUE.put("requests/chatcmpl-reindex-terminal.json", JSON.stringify(terminal));
+  const key = "ready/000000000000000-1-fast-000000000000000-malformed.json";
+  await env.LLM_QUEUE.put(key, "not JSON");
 
+  const result = await dispatchOne(env, okUpstream(), new Date());
+  assert.equal(result.status, "index_repaired");
+  assert.equal(await env.LLM_QUEUE.get(key), null);
+});
+
+test("ready-marker lookahead skips a blocked provider and dispatches a later provider", async () => {
+  const env = isolatedEnv();
+  const first = await handleRequest(
+    chatRequest([{ role: "user", content: "blocked provider" }], "aaa-mistral-blocked"),
+    env,
+  );
+  const second = await handleRequest(
+    chatRequest(
+      [{ role: "user", content: "independent provider" }],
+      "bbb-gemini-ready",
+      "gemini/gemini-3-flash-preview",
+    ),
+    env,
+  );
+  const firstId = (await first.json()).id;
+  const secondId = (await second.json()).id;
+  const now = new Date();
+  await env.LLM_QUEUE.put(
+    "state/dispatch_budget.json",
+    JSON.stringify({
+      version: 1,
+      routes: {
+        mistral_large_2512_primary: {
+          requests_minute: 1,
+          requests_day: 1,
+          tokens_minute: 0,
+          requests_available_at: new Date(now.getTime() + 60_000).toISOString(),
+        },
+      },
+    }),
+  );
+
+  const calls = [];
+  const result = await dispatchBatch(
+    env,
+    async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ id: "gemini-result", choices: [] }), { status: 200 });
+    },
+    now,
+    4,
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.count, 1);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /generativelanguage\.googleapis\.com/);
+  assert.equal(calls[0].body.model, "gemini-3-flash-preview");
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${firstId}.json`)).json()).status, "pending");
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${secondId}.json`)).json()).status, "completed");
+});
+
+test("ready keys order eligibility before priority and priority within a tie", () => {
+  const at = "2026-08-13T19:20:00.000Z";
+  const records = [
+    { id: "long-early", created_at: at, available_at: "2026-08-13T19:19:00.000Z", policy: { timeout_class: "long" } },
+    { id: "long", created_at: at, available_at: at, policy: { timeout_class: "long" } },
+    { id: "fast", created_at: at, available_at: at, policy: {} },
+    { id: "urgent", created_at: at, available_at: at, policy: { submit_next: true } },
+  ];
+  const orderedIds = [...records]
+    .sort((left, right) => readyKey(left).localeCompare(readyKey(right)))
+    .map((record) => record.id);
+  assert.deepEqual(orderedIds, ["long-early", "urgent", "fast", "long"]);
+});
+
+test("an aliased ready marker dispatches without an index-repair delay", async () => {
+  const env = isolatedEnv();
+  const now = new Date("2026-08-13T19:20:00.000Z");
+  const record = {
+    id: "chatcmpl-aliased-ready",
+    status: "pending",
+    model: "opencode/deepseek-v4-flash-free",
+    request: {
+      model: "opencode/deepseek-v4-flash-free",
+      messages: [{ role: "user", content: "x" }],
+      stream: false,
+    },
+    created_at: now.toISOString(),
+    updated_at: now.toISOString(),
+    available_at: now.toISOString(),
+    attempts: 0,
+    policy: {},
+  };
+  await env.LLM_QUEUE.put(`requests/${record.id}.json`, JSON.stringify(record));
+  await env.LLM_QUEUE.put(readyKey(record), JSON.stringify(readyMarker(record)));
+
+  const result = await dispatchOne(env, okUpstream(), now);
+  assert.equal(result.status, "completed");
+});
+
+test("queue reindex endpoint is authenticated but intentionally delegated to the offline migrator", async () => {
+  const env = isolatedEnv();
   const missingAuth = await handleRequest(
     new Request("https://dispatch.example/v1/queue/reindex", { method: "POST" }),
     env,
@@ -554,10 +684,8 @@ test("queue reindex is authenticated and indexes pending records only", async ()
     request("https://dispatch.example/v1/queue/reindex", { method: "POST" }),
     env,
   );
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { scanned: 2, pending: 1 });
-  assert.ok(await env.LLM_QUEUE.get("pending/chatcmpl-reindex-pending.json"));
-  assert.equal(await env.LLM_QUEUE.get("pending/chatcmpl-reindex-terminal.json"), null);
+  assert.equal(response.status, 410);
+  assert.match(await response.text(), /reindex_llm_dispatch_queue/);
 });
 
 test("a lost terminal write preserves the pending marker for a later retry", async () => {
@@ -576,20 +704,16 @@ test("a lost terminal write preserves the pending marker for a later retry", asy
   const { id } = await queued.json();
   await dispatchOne(env, okUpstream(), new Date());
 
-  assert.ok(await env.LLM_QUEUE.get(`pending/${id}.json`));
+  const record = await (await env.LLM_QUEUE.get(`requests/${id}.json`)).json();
+  assert.ok(await env.LLM_QUEUE.get(readyKey(record)));
   assert.equal((await (await env.LLM_QUEUE.get(`requests/${id}.json`)).json()).status, "pending");
 });
 
-test("a terminal record's customMetadata lets the scan skip it without ever fetching its body", async () => {
-  // CodeRabbit's perf finding: both queue scans used to read every listed object's full body just
-  // to check `status`. `putJson` now mirrors status/model/available_at into R2 customMetadata
-  // (returned by `bucket.list()` already), so a completed/failed record must be skippable from the
-  // listing alone. Proven here by making `.get()` throw for the terminal key -- the scan must
-  // never call it.
+test("ready-index lookup ignores a large terminal request history", async () => {
   class NoBodyFetchForTerminalBucket extends FakeBucket {
     async get(key) {
-      if (key === "requests/000-terminal.json") {
-        throw new Error("must not fetch a terminal record's body from customMetadata alone");
+      if (key.startsWith("requests/terminal-")) {
+        throw new Error("the scheduler must not fetch terminal history");
       }
       return super.get(key);
     }
@@ -611,7 +735,7 @@ test("a terminal record's customMetadata lets the scan skip it without ever fetc
     attempts: 1,
     response: { id: "already-complete", choices: [] },
   };
-  await env.LLM_QUEUE.put("requests/000-terminal.json", JSON.stringify(terminal), {
+  await env.LLM_QUEUE.put("requests/terminal-000.json", JSON.stringify(terminal), {
     customMetadata: { status: "completed", model: terminal.model, available_at: timestamp },
   });
 
@@ -620,7 +744,7 @@ test("a terminal record's customMetadata lets the scan skip it without ever fetc
   assert.equal(result.requestId, queuedBody.id);
 });
 
-test("429 responses retry with bounded backoff and do not expose the provider body", async () => {
+test("429 responses retry with bounded diagnostics without storing a non-JSON provider body", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(chatRequest(undefined, "retry-me"), env);
   const queuedBody = await queued.json();
@@ -642,10 +766,81 @@ test("429 responses retry with bounded backoff and do not expose the provider bo
   const retryRecord = await stored.json();
   assert.equal(retryRecord.status, "pending");
   assert.equal(retryRecord.last_error.status, 429);
+  assert.deepEqual(retryRecord.last_error.provider_error, {
+    content_type: "text/plain",
+    bytes: 45,
+    format: "non_json",
+  });
+  assert.equal(retryRecord.last_error.provider_error.body_preview, undefined);
+  assert.doesNotMatch(JSON.stringify(retryRecord), /provider prompt and secret/);
   assert.equal(retryRecord.error, undefined);
   assert.equal((await dispatchOne(env, upstream, new Date(firstAt.getTime() + 61_000))).status, "idle");
   assert.equal((await dispatchOne(env, upstream, new Date(firstAt.getTime() + 121_000))).status, "completed");
   assert.equal(calls, 2);
+});
+
+test("atypical JSON errors retain safe shape metadata and nested details", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "nested-provider-400", "gemini/gemini-3-flash-preview"),
+    env,
+  );
+  const { id } = await queued.json();
+  const result = await dispatchOne(
+    env,
+    async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            details: [{ reason: "unsupported_schema", detail: "schema rejected" }],
+          },
+        }),
+        { status: 400, headers: { "content-type": "application/problem+json; charset=utf-8" } },
+      ),
+    new Date(),
+  );
+
+  assert.equal(result.status, "failed");
+  const stored = await env.LLM_QUEUE.get(`requests/${id}.json`);
+  const providerError = (await stored.json()).error.provider_error;
+  assert.equal(providerError.content_type, "application/problem+json");
+  assert.equal(providerError.json_type, "object");
+  assert.deepEqual(providerError.top_level_keys, ["error"]);
+  assert.deepEqual(providerError.error_keys, ["details"]);
+  assert.equal(providerError.diagnostic_path, "root.error.details[0]");
+  assert.equal(providerError.message, "schema rejected");
+  assert.equal(providerError.reason, undefined);
+  assert.equal(providerError.provider_reason, "unsupported_schema");
+  assert.match(providerError.body_preview, /unsupported_schema/);
+});
+
+test("oversized terminal upstream errors retain a bounded preview and truncation metadata", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "oversized-provider-400", "gemini/gemini-3-flash-preview"),
+    env,
+  );
+  const { id } = await queued.json();
+  const oversizedBody = `{"error":{"message":"${"x".repeat(9_000)}"}}`;
+  const result = await dispatchOne(
+    env,
+    async () =>
+      new Response(oversizedBody, {
+        status: 400,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      }),
+    new Date(),
+  );
+
+  assert.equal(result.status, "failed");
+  const stored = await env.LLM_QUEUE.get(`requests/${id}.json`);
+  const providerError = (await stored.json()).error.provider_error;
+  assert.equal(providerError.format, "too_large");
+  assert.equal(providerError.content_type, "application/json");
+  assert.equal(providerError.truncated, true);
+  assert.equal(providerError.bytes, new TextEncoder().encode(oversizedBody).byteLength);
+  assert.equal(providerError.body_preview.length, 8 * 1024);
+  assert.equal(providerError.body_preview, oversizedBody.slice(0, 8 * 1024));
 });
 
 test("streaming requests and oversized request bodies are rejected", async () => {
@@ -736,68 +931,53 @@ test("renewing the cron lease is owner-checked and CAS-safe", async () => {
   assert.equal(await renewCronLease(bucket, later, "invocation-a", 30), false);
 });
 
-test("GET /v1/queue/estimate reports backlog_count for pending records of the requested model only", async () => {
-  const env = isolatedEnv();
-  const now = new Date();
-  const timestamp = now.toISOString();
-  const record = (id, model, status) => ({
-    schema: 1,
-    id,
-    status,
-    provider: model.split("/")[0],
-    model,
-    request: { model, messages: [{ role: "user", content: "x" }], stream: false },
-    created_at: timestamp,
-    updated_at: timestamp,
-    available_at: timestamp,
-    attempts: status === "completed" ? 1 : 0,
-    ...(status === "completed" ? { response: { id: "done", choices: [] } } : {}),
-  });
-  // Two pending + one already-completed Mistral record, plus one pending Gemini record --
-  // backlog_count for Mistral must be 2 (pending only), not 3 (all records) or 1 (undercounting).
-  await env.LLM_QUEUE.put(
-    "requests/mistral-pending-1.json",
-    JSON.stringify(record("chatcmpl-m1", "mistral/mistral-large-2512", "pending")),
-  );
-  await env.LLM_QUEUE.put(
-    "requests/mistral-pending-2.json",
-    JSON.stringify(record("chatcmpl-m2", "mistral/mistral-large-2512", "pending")),
-  );
-  await env.LLM_QUEUE.put(
-    "requests/mistral-done.json",
-    JSON.stringify(record("chatcmpl-m3", "mistral/mistral-large-2512", "completed")),
-  );
-  await env.LLM_QUEUE.put(
-    "requests/gemini-pending.json",
-    JSON.stringify(record("chatcmpl-g1", "gemini/gemini-3-flash-preview", "pending")),
-  );
-  await env.LLM_QUEUE.put(
-    "requests/deepseek-alias-pending.json",
-    JSON.stringify(record("chatcmpl-d1", "opencode/deepseek-v4-flash-free", "pending")),
-  );
+test("ready lookup uses listed marker metadata with 10,000 queued requests", async () => {
+  class CountingBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.listCalls = 0;
+      this.getCalls = [];
+    }
+    async list(options) {
+      this.listCalls += 1;
+      return super.list(options);
+    }
+    async get(key) {
+      this.getCalls.push(key);
+      return super.get(key);
+    }
+  }
+  const bucket = new CountingBucket();
+  const env = { ...ENV, LLM_QUEUE: bucket };
+  const now = new Date("2026-08-13T19:20:00Z");
+  for (let index = 0; index < 10_000; index += 1) {
+    const record = {
+      id: `chatcmpl-${String(index).padStart(5, "0")}`,
+      status: "pending",
+      model: "mistral/mistral-large-2512",
+      request: { model: "mistral/mistral-large-2512", messages: [{ role: "user", content: "x" }], stream: false },
+      created_at: now.toISOString(), updated_at: now.toISOString(), available_at: now.toISOString(),
+      attempts: 0, policy: {},
+    };
+    await bucket.put(`requests/${record.id}.json`, JSON.stringify(record));
+    await bucket.put(readyKey(record), JSON.stringify(readyMarker(record)), {
+      customMetadata: readyMarkerMetadata(record),
+    });
+  }
+  const result = await dispatchOne(env, okUpstream(), now);
+  assert.equal(result.status, "completed");
+  assert.equal(bucket.listCalls, 1);
+  assert.equal(bucket.getCalls.filter((key) => key.startsWith("requests/")).length, 1);
+  assert.equal(bucket.getCalls.filter((key) => key.startsWith("ready/")).length, 0);
+});
 
+test("queue estimate endpoint is retired rather than scanning the whole R2 history", async () => {
   const response = await handleRequest(
-    request("https://dispatch.example/v1/queue/estimate?model=mistral%2Fmistral-large-2512", {
-      method: "GET",
-    }),
-    env,
+    request("https://dispatch.example/v1/queue/estimate", { method: "GET" }),
+    isolatedEnv(),
   );
-  assert.equal(response.status, 200);
-  const body = await response.json();
-  assert.equal(body.model, "mistral/mistral-large-2512");
-  assert.equal(body.backlog_count, 2);
-
-  const aliasResponse = await handleRequest(
-    request(
-      "https://dispatch.example/v1/queue/estimate?model=opencode%2Fdeepseek-v4-flash-free",
-      { method: "GET" },
-    ),
-    env,
-  );
-  assert.equal(aliasResponse.status, 200);
-  const aliasBody = await aliasResponse.json();
-  assert.equal(aliasBody.model, "deepseek/deepseek-v4-flash");
-  assert.equal(aliasBody.backlog_count, 1);
+  assert.equal(response.status, 410);
+  assert.match(await response.text(), /bounded/);
 });
 
 test("deadline-based paid elevation only fires when waiting for free capacity would miss the deadline", async () => {
@@ -866,6 +1046,33 @@ test("deadline-based paid elevation only fires when waiting for free capacity wo
   assert.equal(disallowedPaid.reason, "no_capacity");
 });
 
+test("capacity retry does not wake for a paid route before paid elevation is allowed", () => {
+  const dispatchLimits = {
+    providers: { free_co: { reset_timezone: "UTC" }, paid_co: {} },
+    model_routes_map: { "svc/model": ["free_route", "paid_route"] },
+    routes_by_id: {
+      free_route: { route_id: "free_route", provider: "free_co", free: true, rpd: 1 },
+      paid_route: { route_id: "paid_route", provider: "paid_co", free: false },
+    },
+  };
+  const now = new Date("2026-08-06T12:00:00Z");
+  const budget = {
+    routes: {
+      free_route: { requests_day: 1, requests_day_key: "2026-08-06" },
+      paid_route: { blocked_until: "2026-08-06T12:00:10Z" },
+    },
+  };
+  const policy = {
+    allow_paid: true,
+    deadline_at: "2026-08-07T01:00:00Z", // after the free route's midnight reset
+  };
+  assert.equal(selectRoute(budget, "svc/model", policy, now, dispatchLimits).reason, "no_capacity");
+  assert.equal(
+    nextCapacityRetryAt(budget, "svc/model", policy, now, dispatchLimits).toISOString(),
+    "2026-08-07T00:00:00.000Z",
+  );
+});
+
 test("selectRoute ranks free before paid and cheapest paid first, deterministically", () => {
   const dispatchLimits = {
     providers: { a: {}, b: {}, c: {} },
@@ -884,6 +1091,195 @@ test("selectRoute ranks free before paid and cheapest paid first, deterministica
   assert.deepEqual(
     ranked.map((route) => route.route_id),
     ["free_b", "cheap", "pricey"],
+  );
+});
+
+test("selectRoute ranks an effective peak price card instead of stale base rates", () => {
+  const dispatchLimits = {
+    providers: { scheduled: {}, steady: {} },
+    model_routes_map: { "svc/model": ["scheduled", "steady"] },
+    routes_by_id: {
+      scheduled: {
+        route_id: "scheduled",
+        provider: "scheduled",
+        free: false,
+        input_per_token: 0.1,
+        output_per_token: 0.1,
+        pricing: {
+          periods: [
+            {
+              effective_at: "2026-08-16T16:00:00Z",
+              input_per_token: 1,
+              output_per_token: 1,
+              windows: [{ tz: "UTC", start: "01:00", end: "04:00", multiplier: 2 }],
+            },
+          ],
+        },
+      },
+      steady: {
+        route_id: "steady",
+        provider: "steady",
+        free: false,
+        input_per_token: 0.3,
+        output_per_token: 0.3,
+      },
+    },
+  };
+  const before = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    new Date("2026-08-16T15:00:00Z"),
+    dispatchLimits,
+  );
+  const peak = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    new Date("2026-08-17T02:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(before.chosenRoute.route_id, "scheduled");
+  assert.equal(peak.chosenRoute.route_id, "steady");
+});
+
+test("selectRoute defers a flexible request until the route's cheapest pricing window", () => {
+  const dispatchLimits = {
+    providers: { scheduled: {} },
+    model_routes_map: { "svc/model": ["scheduled"] },
+    routes_by_id: {
+      scheduled: {
+        route_id: "scheduled",
+        provider: "scheduled",
+        free: false,
+        input_per_token: 0.1,
+        output_per_token: 0.1,
+        pricing: {
+          periods: [
+            {
+              effective_at: "2026-08-16T16:00:00Z",
+              input_per_token: 1,
+              output_per_token: 1,
+              windows: [{ tz: "UTC", start: "01:00", end: "04:00", multiplier: 2 }],
+            },
+          ],
+        },
+      },
+    },
+  };
+  const peak = new Date("2026-08-17T02:00:00Z");
+  const deferred = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    peak,
+    dispatchLimits,
+  );
+  assert.equal(deferred.chosenRoute, null);
+  assert.equal(deferred.reason, "no_capacity");
+  assert.equal(
+    nextCapacityRetryAt(
+      { routes: {} },
+      "svc/model",
+      { allow_paid: true },
+      peak,
+      dispatchLimits,
+    ).toISOString(),
+    "2026-08-17T04:00:00.000Z",
+  );
+
+  const urgent = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true, deadline_at: "2026-08-17T02:30:00Z" },
+    peak,
+    dispatchLimits,
+  );
+  assert.equal(urgent.chosenRoute.route_id, "scheduled");
+
+  const offPeak = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    new Date("2026-08-17T04:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(offPeak.chosenRoute.route_id, "scheduled");
+});
+
+test("price-window retry rechecks at an earlier effective rate-card transition", () => {
+  const dispatchLimits = {
+    providers: { scheduled: {} },
+    model_routes_map: { "svc/model": ["scheduled"] },
+    routes_by_id: {
+      scheduled: {
+        route_id: "scheduled",
+        provider: "scheduled",
+        free: false,
+        pricing: {
+          periods: [
+            {
+              effective_at: "1970-01-01T00:00:00Z",
+              input_per_token: 1,
+              windows: [{ tz: "UTC", start: "01:00", end: "04:00", multiplier: 2 }],
+            },
+            { effective_at: "2026-08-17T03:00:00Z", input_per_token: 0.5 },
+          ],
+        },
+      },
+    },
+  };
+  const now = new Date("2026-08-17T02:00:00Z");
+  assert.equal(
+    nextCapacityRetryAt({ routes: {} }, "svc/model", { allow_paid: true }, now, dispatchLimits).toISOString(),
+    "2026-08-17T03:00:00.000Z",
+  );
+});
+
+test("pricing windows preserve a zero multiplier and respect a non-UTC zone", () => {
+  const dispatchLimits = {
+    providers: { discounted: {}, steady: {} },
+    model_routes_map: { "svc/model": ["discounted", "steady"] },
+    routes_by_id: {
+      discounted: {
+        route_id: "discounted",
+        provider: "discounted",
+        free: false,
+        input_per_token: 1,
+        pricing: {
+          windows: [{ tz: "America/Los_Angeles", start: "18:00", end: "20:00", multiplier: 0 }],
+        },
+      },
+      steady: {
+        route_id: "steady",
+        provider: "steady",
+        free: false,
+        input_per_token: 0.5,
+        rpd: 0,
+      },
+    },
+  };
+  const peak = new Date("2026-08-17T02:00:00Z"); // 19:00 PDT
+  assert.equal(
+    selectRoute({ routes: {} }, "svc/model", { allow_paid: true }, peak, dispatchLimits).chosenRoute.route_id,
+    "discounted",
+  );
+  assert.equal(
+    nextCapacityRetryAt(
+      { routes: {} },
+      "svc/model",
+      { allow_paid: true },
+      new Date("2026-08-17T00:00:00Z"), // 17:00 PDT
+      dispatchLimits,
+    ).toISOString(),
+    "2026-08-17T01:00:00.000Z",
+  );
+});
+
+test("localDateTimeToUTC rejects a nonexistent DST wall-clock time", () => {
+  assert.equal(
+    localDateTimeToUTC({ year: 2026, month: 3, day: 8 }, 2, 30, "America/Los_Angeles"),
+    null,
   );
 });
 
@@ -1066,6 +1462,12 @@ test("resolveProviderCredentials rejects an http:// api_base and a route with no
 test("config() fails fast on a missing required var instead of defaulting to Mistral", () => {
   const { PROVIDER_NAME, ...withoutProvider } = isolatedEnv();
   assert.throws(() => config(withoutProvider), /PROVIDER_NAME is required/);
+});
+
+test("Free-plan dispatch defaults allow one request per scheduled batch and run", () => {
+  const settings = config(isolatedEnv());
+  assert.equal(settings.batchConcurrency, 1);
+  assert.equal(settings.maxTotalRequests, 1);
 });
 
 test("config() rejects an upstream timeout that is not comfortably under the lease duration", () => {
@@ -1256,7 +1658,46 @@ test("dispatchBatch admits only one same-route request until its RPM interval el
   assert.equal(completedObjects.length, 1);
 });
 
-test("a batch retains sibling success when one task rejects during finalization", async () => {
+test("dispatchBatch runs four independently paced routes concurrently", async () => {
+  const env = isolatedEnv();
+  const models = [
+    "mistral/mistral-large-2512",
+    "gemini/gemini-3-flash-preview",
+    "meta-llama/llama-3.3-70b-instruct",
+    "deepseek/deepseek-v4-flash",
+  ];
+  for (const [index, model] of models.entries()) {
+    await handleRequest(
+      chatRequest([{ role: "user", content: `independent route ${index}` }], `route-${index}`, model),
+      env,
+    );
+  }
+
+  const calls = [];
+  const result = await dispatchBatch(
+    env,
+    async (_url, init) => {
+      calls.push(JSON.parse(init.body).model);
+      return new Response(JSON.stringify({ id: `completion-${calls.length}`, choices: [] }), { status: 200 });
+    },
+    new Date(),
+    4,
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.count, 4);
+  assert.equal(result.completedCount, 4);
+  assert.equal(calls.length, 4);
+  assert.equal(new Set(calls).size, 4);
+  assert.equal(typeof result.profile.ready_heads_ms, "number");
+  assert.equal(typeof result.profile.candidate_prepare_ms, "number");
+  assert.equal(typeof result.profile.ledger_write_ms, "number");
+  assert.equal(typeof result.profile.reservation_release_ms, "number");
+  assert.equal(result.results.every((item) => typeof item.profile.total_ms === "number"), true);
+  assert.equal(result.results.every((item) => typeof item.profile.upstream_ms === "number"), true);
+});
+
+test("a finalization failure records a terminal failure and releases its reservation", async () => {
   class FinalizationFailureBucket extends FakeBucket {
     constructor() {
       super();
@@ -1298,10 +1739,7 @@ test("a batch retains sibling success when one task rejects during finalization"
     2,
   );
   assert.equal(result.status, "completed");
-  assert.deepEqual(
-    result.results.map((item) => item.status).sort(),
-    ["completed", "failed"],
-  );
+  assert.deepEqual(result.results.map((item) => item.status), ["failed", "completed"]);
   const failed = await bucket.get(bucket.failKey);
   assert.equal((await failed.json()).status, "failed");
   const ledger = await bucket.get("state/dispatch_budget.json");
@@ -1310,7 +1748,7 @@ test("a batch retains sibling success when one task rejects during finalization"
   }
 });
 
-test("a fresh invocation gives one long request a batch slot despite a fast backlog", async () => {
+test("the Free-plan scheduler prioritizes fast work before long work", async () => {
   const env = isolatedEnv();
   for (let index = 0; index < 4; index += 1) {
     await handleRequest(chatRequest(undefined, `fast-${index}`), env);
@@ -1338,11 +1776,8 @@ test("a fresh invocation gives one long request a batch slot despite a fast back
   const completed = await Promise.all(
     records.objects.map(async (object) => ({ key: object.key, record: await (await env.LLM_QUEUE.get(object.key)).json() })),
   );
-  assert.ok(
-    completed.some(
-      ({ record }) => record.policy?.timeout_class === "long" && record.status === "completed",
-    ),
-  );
+  assert.ok(completed.some(({ record }) => !record.policy?.timeout_class && record.status === "completed"));
+  assert.ok(completed.some(({ record }) => record.policy?.timeout_class === "long" && record.status === "pending"));
 });
 
 test("scheduled dispatch stops at MAX_TOTAL_REQUESTS after acquiring and renewing its lease", async () => {

@@ -365,6 +365,17 @@ class AlignmentQualityError(RuntimeError):
 # caller can mark the provider candidate ineligible for the current pass.
 _MIN_ALIGN_COVERAGE = 0.90
 
+# WhisperX's CTC model is not memory-bounded internally: the convolutional feature extractor
+# materializes tensors proportional to the audio window passed for each section. A full
+# 1.7-hour recording can therefore request ~40 GB on a hosted CPU runner even though the model
+# itself is small. The observed worst-case allocation was about 6.5 MiB per audio second, so a
+# 4 GiB envelope corresponds to roughly 10.5 minutes; round down to a ten-minute safety limit.
+_ALIGN_MEMORY_BYTES_PER_SECOND = 6.5 * 1024 * 1024
+_MAX_ALIGN_MEMORY_BYTES = 4 * 1024**3
+_MAX_ALIGN_SECTION_SECONDS = (
+    math.floor(_MAX_ALIGN_MEMORY_BYTES / _ALIGN_MEMORY_BYTES_PER_SECOND / 60) * 60.0
+)
+
 
 def _mapping_value(value, key: str, default=None):
     if isinstance(value, dict):
@@ -514,6 +525,12 @@ def _bounded_alignment_sections(sections: list[dict], audio) -> list[dict]:
         end = min(float(end), audio_duration)
         if end <= float(start):
             continue
+        window_seconds = end - float(start)
+        if window_seconds > _MAX_ALIGN_SECTION_SECONDS:
+            raise AlignmentQualityError(
+                "alignment section is too long for WhisperX's CPU memory envelope: "
+                f"{window_seconds:.1f}s > {_MAX_ALIGN_SECTION_SECONDS:.1f}s"
+            )
         bounded.append({**section, "start": float(start), "end": float(end)})
     if not bounded:
         raise ValueError("provider source text produced no bounded alignment sections")
@@ -647,7 +664,9 @@ def align(
             )
     from citypods.known_text import provider_sections
 
-    sections = provider_sections(text)
+    # The external worker already extracted/remapped coarse provider windows. Preserve them
+    # here; dropping them turns every long meeting into one full-duration WhisperX section.
+    sections = timed_segments if timed_segments else provider_sections(text)
     return align_known_text(
         audio_path,
         sections,
