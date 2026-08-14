@@ -69,6 +69,18 @@ class FakeBucket {
     };
   }
 
+  async head(key) {
+    const stored = this.objects.get(key);
+    if (!stored) return null;
+    return {
+      key: stored.key,
+      etag: stored.etag,
+      httpEtag: `"${stored.etag}"`,
+      customMetadata: stored.customMetadata,
+      uploaded: stored.uploaded,
+    };
+  }
+
   async list(options = {}) {
     const prefix = options.prefix || "";
     const all = [...this.objects.values()]
@@ -389,6 +401,11 @@ test("non-2xx upstream responses retain bounded structured diagnostics in the pr
   assert.equal(record.error.provider_error.status, "INVALID_ARGUMENT");
   assert.equal(record.error.provider_error.message, "response_schema contains an unsupported keyword");
   assert.match(record.error.provider_error.body_preview, /response_schema contains/);
+
+  const budget = await (await env.LLM_QUEUE.get("state/dispatch_budget.json")).json();
+  const entry = Object.values(budget.routes)[0];
+  assert.equal(entry.requests_minute, 1, "a provider attempt remains rate-accounted on failure");
+  assert.deepEqual(entry.inflight, {});
 
   const poll = await handleRequest(
     request(`https://dispatch.example/v1/requests/${id}`, { method: "GET" }),
@@ -1695,6 +1712,89 @@ test("dispatchBatch runs four independently paced routes concurrently", async ()
   assert.equal(typeof result.profile.reservation_release_ms, "number");
   assert.equal(result.results.every((item) => typeof item.profile.total_ms === "number"), true);
   assert.equal(result.results.every((item) => typeof item.profile.upstream_ms === "number"), true);
+});
+
+test("dispatchBatch releases all route reservations with one budget CAS", async () => {
+  class BudgetCountingBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.budgetGets = 0;
+      this.budgetPuts = 0;
+    }
+
+    async get(key) {
+      if (key === "state/dispatch_budget.json") this.budgetGets += 1;
+      return super.get(key);
+    }
+
+    async put(key, value, options = {}) {
+      if (key === "state/dispatch_budget.json") this.budgetPuts += 1;
+      return super.put(key, value, options);
+    }
+  }
+
+  const bucket = new BudgetCountingBucket();
+  const env = { ...ENV, LLM_QUEUE: bucket };
+  const models = ["mistral/mistral-large-2512", "gemini/gemini-3-flash-preview"];
+  for (const [index, model] of models.entries()) {
+    await handleRequest(
+      chatRequest([{ role: "user", content: `batched release ${index}` }], `batched-release-${index}`, model),
+      env,
+    );
+  }
+
+  const result = await dispatchBatch(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+    2,
+  );
+
+  assert.equal(result.completedCount, 2);
+  assert.equal(bucket.budgetGets, 2, "one initial budget read plus one batch-release read");
+  assert.equal(bucket.budgetPuts, 2, "one reservation CAS plus one batch-release CAS");
+  const budget = await (await bucket.get("state/dispatch_budget.json")).json();
+  for (const entry of Object.values(budget.routes || {})) {
+    assert.deepEqual(entry.inflight || {}, {});
+  }
+});
+
+test("serial dispatch commits durable usage without an inflight cleanup CAS", async () => {
+  class BudgetCountingBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.budgetGets = 0;
+      this.budgetPuts = 0;
+    }
+
+    async get(key) {
+      if (key === "state/dispatch_budget.json") this.budgetGets += 1;
+      return super.get(key);
+    }
+
+    async put(key, value, options = {}) {
+      if (key === "state/dispatch_budget.json") this.budgetPuts += 1;
+      return super.put(key, value, options);
+    }
+  }
+
+  const bucket = new BudgetCountingBucket();
+  const env = { ...ENV, LLM_QUEUE: bucket, BATCH_CONCURRENCY: "1", MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "serial-ledger"), env);
+
+  const result = await dispatchOne(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(bucket.budgetGets, 1);
+  assert.equal(bucket.budgetPuts, 1);
+  const budget = await (await bucket.get("state/dispatch_budget.json")).json();
+  const entry = Object.values(budget.routes)[0];
+  assert.equal(entry.requests_minute, 1);
+  assert.deepEqual(entry.inflight, {});
 });
 
 test("a finalization failure records a terminal failure and releases its reservation", async () => {

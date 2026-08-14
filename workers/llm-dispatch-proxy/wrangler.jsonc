@@ -3,6 +3,7 @@
   "name": "citypods-llm-dispatch-proxy",
   "main": "src/index.js",
   "compatibility_date": "2026-07-12",
+  "minify": true,
   "workers_dev": true,
   "triggers": {
     "crons": ["* * * * *"]
@@ -42,7 +43,10 @@
     // request per run; compact marker lookahead keeps queue inspection bounded and avoids parsing
     // prompts just to find a route with capacity.
     "BATCH_CONCURRENCY": "1",
-    "MAX_TOTAL_REQUESTS": "1"
+    "MAX_TOTAL_REQUESTS": "1",
+    // Keep all failure profiles but sample detailed successful dispatch profiles to reduce log
+    // serialization and object churn. Set to 1 temporarily for a full diagnostic tail.
+    "PROFILE_SAMPLE_RATE": "0.1"
   },
   "observability": {
     "enabled": true,

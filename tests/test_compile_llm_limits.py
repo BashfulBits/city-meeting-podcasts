@@ -18,6 +18,34 @@ def test_default_compile_never_touches_the_network(monkeypatch):
     assert "gemini/gemini-3-flash-preview" in compiled["model_routes_map"]
 
 
+def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)
+
+    assert set(worker) == {
+        "_metadata",
+        "providers",
+        "routes_by_id",
+        "model_routes_map",
+        "model_aliases",
+    }
+    assert len(worker["routes_by_id"]) == len(compiled["routes"])
+    assert "routes" not in worker
+    assert "structured_output_profiles" not in worker
+    assert worker["model_aliases"]["deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
+    assert worker["model_aliases"]["deepseek/deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
+    gemma_index = next(
+        index
+        for index, route in enumerate(compiled["routes"])
+        if route["route_id"] == "gemma_4_31b_primary"
+    )
+    assert isinstance(worker["routes_by_id"][gemma_index], list)
+    assert len(worker["routes_by_id"][gemma_index]) == len(
+        compile_llm_limits._WORKER_ROUTE_FIELDS
+    )
+    assert "discovery" not in worker["providers"]["openrouter"]
+
+
 def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     compiled = compile_llm_limits.compile_limits()
 

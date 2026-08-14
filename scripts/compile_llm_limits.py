@@ -155,6 +155,83 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_WORKER_ROUTE_FIELDS = (
+    "route_id",
+    "provider",
+    "upstream_model",
+    "input_context_limit",
+    "output_context_limit",
+    "account_id",
+    "rpm",
+    "rpd",
+    "tpm",
+    "concurrency",
+    "free",
+    "input_per_token",
+    "output_per_token",
+    "pricing",
+    "reset_timezone",
+)
+
+_WORKER_PROVIDER_FIELDS = ("api_base", "chat_path", "rpm", "reset_timezone", "accounts")
+
+
+def _worker_legacy_model_map(routes: list[dict[str, Any]]) -> dict[str, str]:
+    """Replace the Worker-only legacy route scan with an indexed lookup.
+
+    The old Worker scanned the duplicated ``routes`` array only when a request used a legacy
+    upstream model selector. Preserve that first-route-wins behavior while compiling the two
+    selectors it tested into a compact map.
+    """
+    result: dict[str, str] = {}
+    for route in routes:
+        canonical_model = route["model"]
+        upstream_model = route.get("upstream_model")
+        provider = route.get("provider")
+        for selector in (upstream_model, f"{provider}/{upstream_model}"):
+            if selector and selector not in result:
+                result[selector] = canonical_model
+    return result
+
+
+def _worker_catalog(compiled: dict[str, Any]) -> dict[str, Any]:
+    """Build the minimal route catalog imported by the Worker at startup.
+
+    Python receives the richer catalog from ``_python_routes``. The Worker only needs physical
+    route selection, provider endpoint/credential data, and materialized pricing/limits. In
+    particular, do not ship the duplicate route list or direct structured-output metadata: the
+    Worker does not use either, and parsing them increases startup CPU on the Free plan.
+    """
+    routes = compiled.get("routes", [])
+    # Store each route ID once in an indexed table, and let model indexes refer to integer
+    # positions. Repeating every property name and route ID in multiple maps only inflates the
+    # Worker bundle. The Worker materializes these fixed-position records on the dispatch path;
+    # the generated artifact is intentionally compact and is not a human-editable source of truth.
+    route_indexes = {route["route_id"]: index for index, route in enumerate(routes)}
+    worker_routes = [
+        [route.get(key) for key in _WORKER_ROUTE_FIELDS] for route in routes
+    ]
+    providers = {
+        provider: {
+            key: config[key] for key in _WORKER_PROVIDER_FIELDS if key in config
+        }
+        for provider, config in compiled.get("providers", {}).items()
+    }
+    worker_aliases = dict(compiled.get("model_aliases", {}))
+    for selector, canonical_model in _worker_legacy_model_map(routes).items():
+        worker_aliases.setdefault(selector, canonical_model)
+    return {
+        "_metadata": compiled["_metadata"],
+        "providers": providers,
+        "routes_by_id": worker_routes,
+        "model_routes_map": {
+            model: [route_indexes[route_id] for route_id in route_ids]
+            for model, route_ids in compiled.get("model_routes_map", {}).items()
+        },
+        "model_aliases": worker_aliases,
+    }
+
+
 def fetch_openrouter_models(provider_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     """Best-effort auto-discovery of OpenRouter models and pricing.
 
@@ -507,7 +584,7 @@ def main(argv: list[str] | None = None) -> None:
     compiled = compile_limits(discover=args.discover)
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT_JSON.open("w", encoding="utf-8") as f:
-        json.dump(compiled, f, indent=2, default=_json_default)
+        json.dump(_worker_catalog(compiled), f, indent=2, default=_json_default)
     with PYTHON_OUTPUT_JSON.open("w", encoding="utf-8") as f:
         json.dump(_python_routes(compiled), f, indent=2, default=_json_default)
     rel_out = OUTPUT_JSON.relative_to(REPO_ROOT)

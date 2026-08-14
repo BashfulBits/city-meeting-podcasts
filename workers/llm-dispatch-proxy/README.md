@@ -38,10 +38,21 @@ error code/status without the provider message.
 
 Scheduled `llm_dispatch_batch` logs also include bounded wall-clock profiling in milliseconds. The
 batch profile covers ready-marker listing, budget loading, candidate preparation, ledger reservation,
-and reservation release. Each result profile covers route selection, canonical request claim,
-credential resolution, upstream fetch, response parsing, R2 persistence, and total dispatch time.
-These timings are diagnostic wall-clock measurements—not Cloudflare CPU-time measurements—and are
-kept out of the provider-facing completion response.
+and reservation release. Reservation cleanup is one conditional budget update for the whole batch,
+and it runs concurrently with the independent canonical result writes. Each result profile covers
+route selection, canonical request claim, credential resolution, upstream fetch, response parsing, R2
+persistence, and total dispatch time. These timings are diagnostic wall-clock measurements—not
+Cloudflare CPU-time measurements—and are kept out of the provider-facing completion response. The
+upstream batch concurrency and total-request limits are unchanged; `BATCH_CONCURRENCY` and
+`MAX_TOTAL_REQUESTS` remain available for later tuning.
+
+The Worker imports a generated runtime-only catalog rather than the richer Python route catalog:
+duplicate route arrays, direct structured-output metadata, and provider discovery settings are
+omitted. Physical routes are stored as fixed-position records and model indexes refer to numeric
+route positions, avoiding repeated property names and route IDs in the startup bundle; the Worker
+materializes a route object only when dispatch evaluates it. Legacy upstream selectors are folded
+into the compiled model-alias map. The source YAML remains the single source of truth; the deploy
+workflow recompiles and checks the generated artifacts.
 
 ## Multi-provider routing (review/41)
 
@@ -105,7 +116,11 @@ credential-disclosure bug fixed in review/41 — see its §2 for the incident).
 `FAST_UPSTREAM_TIMEOUT_SECONDS` and `UPSTREAM_TIMEOUT_SECONDS` define the fast and long request lanes.
 `MAX_EXECUTION_SECONDS` is the invocation deadline, `FINALIZATION_RESERVE_SECONDS` is held back for
 terminal request/ledger writes, `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS` bound per-run parallelism
-and volume, and `LEASE_DURATION_SECONDS` is the renewable single-runner lock.
+and volume, `LEASE_DURATION_SECONDS` is the renewable single-runner lock, and
+`PROFILE_SAMPLE_RATE` controls detailed successful-dispatch profile logging (failures always retain
+their profile; the default is 0.1). With both concurrency limits set to 1, the cron lease provides
+single-writer coordination and the Worker commits route/provider usage without a temporary
+`inflight` reservation; configurations above 1 retain the reservation-and-release path.
 Before dispatching, the Worker checks the candidate's lane timeout against the effective deadline and
 requeues work that cannot fit; timeout telemetry reports `unknown duration` when the provider did not
 provide a trustworthy duration. A timeout is therefore a loud, retryable signal rather than a silent

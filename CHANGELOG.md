@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **The LLM dispatch Worker now ships a compact startup catalog.** The generated Worker JSON removes
+  the duplicate route list, unused direct structured-output metadata, and provider discovery data;
+  fixed-position route records and numeric model indexes avoid repeating route property names and
+  IDs in the bundle. Legacy selectors are folded into the model-alias map, while the richer route
+  catalog used by Python remains unchanged.
+
+- **LLM dispatch now batches R2 reservation cleanup.** A dispatch batch removes all of its route
+  reservations with one conditional budget read/write cycle and overlaps that cleanup with the
+  independent canonical result persistence. Existing `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS`
+  controls and defaults are unchanged.
+
 - **Topic-tag dispatch now versions its structured-output schema.** Bumping the dedicated tag LLM
   schema version invalidates old recipe/fingerprint identities, so reruns create fresh queue
   requests after a provider-compatibility schema change. Existing R2 request bodies are not

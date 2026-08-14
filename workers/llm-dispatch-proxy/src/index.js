@@ -35,6 +35,31 @@ const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
 const DEFAULT_BATCH_CONCURRENCY = 1;
 const DEFAULT_MAX_TOTAL_REQUESTS = 1;
 const DEFAULT_READY_LOOKAHEAD = 16;
+const DEFAULT_PROFILE_SAMPLE_RATE = 0.1;
+const DATE_FORMATTER_CACHE = new Map();
+const ACTIVE_PRICING_CACHE = new WeakMap();
+
+// The generated catalog stores these route fields as a fixed-position array to avoid repeating
+// property names for every physical route in the Worker bundle. Tests and older catalogs may still
+// provide route objects, which routeFromCatalog accepts for compatibility.
+const COMPACT_ROUTE_FIELDS = [
+  "provider",
+  "upstream_model",
+  "input_context_limit",
+  "output_context_limit",
+  "account_id",
+  "rpm",
+  "rpd",
+  "tpm",
+  "concurrency",
+  "free",
+  "input_per_token",
+  "output_per_token",
+  "pricing",
+  "reset_timezone",
+];
+
+const COMPACT_ROUTE_ID_INDEX = 0;
 
 const COPY_FIELDS = [
   "temperature",
@@ -98,6 +123,12 @@ function positiveNumber(value, fallback, { integer = false } = {}) {
   return integer ? Math.max(1, Math.floor(parsed)) : parsed;
 }
 
+function sampleRate(value, fallback = DEFAULT_PROFILE_SAMPLE_RATE) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : fallback;
+}
+
 function requiredString(value, name) {
   const result = String(value || "").trim();
   if (!result) {
@@ -115,6 +146,16 @@ function canonicalModelName(model, dispatchLimits = DISPATCH_LIMITS) {
     current = aliases[current];
   }
   return current;
+}
+
+function routeFromCatalog(routeRef, dispatchLimits = DISPATCH_LIMITS, model = undefined) {
+  const stored = dispatchLimits?.routes_by_id?.[routeRef];
+  if (!Array.isArray(stored)) return stored || null;
+  const route = { route_id: stored[COMPACT_ROUTE_ID_INDEX], model };
+  for (let index = 0; index < COMPACT_ROUTE_FIELDS.length; index += 1) {
+    route[COMPACT_ROUTE_FIELDS[index]] = stored[index + 1];
+  }
+  return route;
 }
 
 function modelName(model) {
@@ -157,6 +198,7 @@ function config(env) {
       DEFAULT_MAX_TOTAL_REQUESTS,
       { integer: true },
     ),
+    profileSampleRate: sampleRate(env.PROFILE_SAMPLE_RATE),
     ...leaseAndTimeoutConfig(env),
   };
   if (result.maxExecutionSeconds >= result.leaseDurationSeconds) {
@@ -662,12 +704,9 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
     typeof body.model === "string" && body.model.trim() ? body.model.trim() : cfg.model;
   let canonicalModel = canonicalModelName(requestedModel, dispatchLimits);
   if (!dispatchLimits.model_routes_map?.[canonicalModel]) {
-    const matchingRoute = (dispatchLimits.routes || []).find(
-      (r) =>
-        r.upstream_model === requestedModel || r.model === `${cfg.provider}/${requestedModel}`,
-    );
-    if (matchingRoute) {
-      canonicalModel = canonicalModelName(matchingRoute.model, dispatchLimits);
+    const legacyModel = dispatchLimits.legacy_model_map?.[requestedModel];
+    if (legacyModel) {
+      canonicalModel = canonicalModelName(legacyModel, dispatchLimits);
     } else if (requestedModel === cfg.upstreamModel) {
       canonicalModel = canonicalModelName(cfg.model, dispatchLimits);
     }
@@ -925,8 +964,42 @@ async function requeue(
 // Cron lease -- single-runner guarantee for dispatch.
 // ---------------------------------------------------------------------------------------------
 
+function cronLeaseMetadata(lease) {
+  return {
+    lease_version: "1",
+    owner: String(lease.owner || ""),
+    acquired_at: String(lease.acquired_at || ""),
+    renewed_at: String(lease.renewed_at || ""),
+    released_at: String(lease.released_at || ""),
+    expires_at: String(lease.expires_at || ""),
+  };
+}
+
+async function getCronLease(bucket) {
+  // The metadata path avoids parsing the small-but-frequently-read JSON lease body.  Fall back
+  // to the body for leases written by older Worker versions and for test/fallback bucket APIs.
+  if (typeof bucket.head === "function") {
+    const head = await bucket.head(CRON_LOCK_KEY);
+    const metadata = head?.customMetadata;
+    if (head && metadata?.lease_version === "1" && metadata.owner && metadata.expires_at) {
+      return {
+        object: head,
+        etag: head.etag,
+        value: {
+          owner: metadata.owner,
+          acquired_at: metadata.acquired_at || "",
+          renewed_at: metadata.renewed_at || "",
+          released_at: metadata.released_at || "",
+          expires_at: metadata.expires_at,
+        },
+      };
+    }
+  }
+  return getJson(bucket, CRON_LOCK_KEY);
+}
+
 async function acquireCronLease(bucket, now, owner, leaseDurationSeconds) {
-  const existing = await getJson(bucket, CRON_LOCK_KEY);
+  const existing = await getCronLease(bucket);
   if (existing && existing.value && existing.value.expires_at) {
     if (parseTime(existing.value.expires_at) > now.getTime()) {
       return false;
@@ -940,6 +1013,7 @@ async function acquireCronLease(bucket, now, owner, leaseDurationSeconds) {
   try {
     const putRes = await putJson(bucket, CRON_LOCK_KEY, lease, {
       onlyIf: existing ? { etagMatches: existing.etag } : { etagDoesNotMatch: "*" },
+      customMetadata: cronLeaseMetadata(lease),
     });
     return Boolean(putRes);
   } catch {
@@ -949,22 +1023,21 @@ async function acquireCronLease(bucket, now, owner, leaseDurationSeconds) {
 
 async function releaseCronLease(bucket, owner) {
   try {
-    const current = await getJson(bucket, CRON_LOCK_KEY);
+    const current = await getCronLease(bucket);
     if (current?.value?.owner === owner) {
       // R2's delete has no ETag precondition.  Deleting after a read would leave a TOCTOU window
       // in which an expired lease is acquired by another invocation and then removed by this
       // stale owner.  A CAS-written expired tombstone is immediately acquirable and cannot erase
       // a newer lease if the object changed after our read.
-      await putJson(
-        bucket,
-        CRON_LOCK_KEY,
-        {
-          ...current.value,
-          released_at: new Date().toISOString(),
-          expires_at: new Date(0).toISOString(),
-        },
-        { etagMatches: current.etag },
-      );
+      const released = {
+        ...current.value,
+        released_at: new Date().toISOString(),
+        expires_at: new Date(0).toISOString(),
+      };
+      await putJson(bucket, CRON_LOCK_KEY, released, {
+        etagMatches: current.etag,
+        customMetadata: cronLeaseMetadata(released),
+      });
     }
   } catch {
     // Best-effort release; the lease's own expiry is the real backstop.
@@ -972,7 +1045,7 @@ async function releaseCronLease(bucket, owner) {
 }
 
 async function renewCronLease(bucket, now, owner, leaseDurationSeconds) {
-  const current = await getJson(bucket, CRON_LOCK_KEY);
+  const current = await getCronLease(bucket);
   if (
     !current ||
     current.value?.owner !== owner ||
@@ -987,7 +1060,10 @@ async function renewCronLease(bucket, now, owner, leaseDurationSeconds) {
   };
   try {
     return Boolean(
-      await putJson(bucket, CRON_LOCK_KEY, renewed, { etagMatches: current.etag }),
+      await putJson(bucket, CRON_LOCK_KEY, renewed, {
+        etagMatches: current.etag,
+        customMetadata: cronLeaseMetadata(renewed),
+      }),
     );
   } catch {
     return false;
@@ -1002,14 +1078,29 @@ function minuteKey(date) {
   return date.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM", UTC
 }
 
-function zonedDateKey(date, timeZone = "UTC") {
+function dateFormatter(timeZone, withTime) {
+  const key = `${withTime ? "local" : "date"}:${timeZone}`;
+  const cached = DATE_FORMATTER_CACHE.get(key);
+  if (cached) return cached;
   try {
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
+      ...(withTime ? { hour: "2-digit", minute: "2-digit", hourCycle: "h23" } : {}),
     });
+    DATE_FORMATTER_CACHE.set(key, formatter);
+    return formatter;
+  } catch {
+    return null;
+  }
+}
+
+function zonedDateKey(date, timeZone = "UTC") {
+  try {
+    const formatter = dateFormatter(timeZone, false);
+    if (!formatter) return date.toISOString().slice(0, 10);
     const parts = formatter.formatToParts(date);
     const y = parts.find((p) => p.type === "year")?.value;
     const m = parts.find((p) => p.type === "month")?.value;
@@ -1240,15 +1331,24 @@ function reserveProviderCapacity(budget, route, requests, now, dispatchLimits = 
   ).toISOString();
 }
 
-async function releaseRouteReservation(bucket, routeId, owner) {
-  if (!owner) return true;
+async function releaseRouteReservations(bucket, reservations) {
+  const pending = (reservations || []).filter(
+    (reservation) => reservation?.routeId && reservation?.owner,
+  );
+  if (pending.length === 0) return true;
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const loaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
     if (!loaded?.value) return true;
     const budget = loaded.value;
-    const entry = ledgerEntry(budget, routeId);
-    if (!entry.inflight?.[owner]) return true;
-    delete entry.inflight[owner];
+    let changed = false;
+    for (const { routeId, owner } of pending) {
+      const entry = budget.routes?.[routeId];
+      if (entry?.inflight?.[owner]) {
+        delete entry.inflight[owner];
+        changed = true;
+      }
+    }
+    if (!changed) return true;
     try {
       if (
         await putJson(bucket, DISPATCH_BUDGET_KEY, budget, { etagMatches: loaded.etag })
@@ -1308,6 +1408,9 @@ function nextRouteReset(entry, route, now, dispatchLimits = DISPATCH_LIMITS, bud
 }
 
 function activePricing(route, now = new Date()) {
+  const cached = ACTIVE_PRICING_CACHE.get(route);
+  const nowMs = now.getTime();
+  if (cached?.nowMs === nowMs) return cached.value;
   const base = {
     input_per_token: Number(route.input_per_token || 0),
     output_per_token: Number(route.output_per_token || 0),
@@ -1325,6 +1428,7 @@ function activePricing(route, now = new Date()) {
   } else if (Array.isArray(route.pricing?.windows)) {
     base.windows = route.pricing.windows;
   }
+  ACTIVE_PRICING_CACHE.set(route, { nowMs, value: base });
   return base;
 }
 
@@ -1335,15 +1439,9 @@ function windowIsActive(window, now) {
 
 function localTimeParts(now, timeZone) {
   try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(now);
+    const formatter = dateFormatter(timeZone, true);
+    if (!formatter) return null;
+    const parts = formatter.formatToParts(now);
     const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
     return {
       year: Number(value.year),
@@ -1497,7 +1595,9 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
 function eligibleRoutesForModel(canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
   const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
   const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
-  const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
+  const candidates = routeIds
+    .map((routeRef) => routeFromCatalog(routeRef, dispatchLimits, logicalModel))
+    .filter(Boolean);
   const inputTokens = policy?.input_tokens_estimate ?? policy?.estimated_tokens ?? 1024;
   const outputTokens = policy?.output_token_budget ?? 0;
   const contextCompatible = candidates.filter(
@@ -1743,6 +1843,11 @@ async function dispatchBatch(
   }
 
   const cfg = config(env);
+  // The cron lease makes the 1/1 configuration single-writer.  Keep the reservation ledger for
+  // every concurrent configuration, but avoid creating and later deleting an inflight entry for
+  // this serial case; the durable request counters are still committed before the provider call.
+  const serialLedger =
+    maxBatch === 1 && cfg.batchConcurrency === 1 && cfg.maxTotalRequests === 1;
   let leaseOwner = externalLeaseOwner;
   let acquiredLock = false;
   if (!leaseOwner) {
@@ -1900,13 +2005,20 @@ async function dispatchBatch(
 
       const reservationOwner = claimed.record.id;
       reserveProviderCapacity(budget, chosenRoute, reservationSize.requests, now);
-      reserveRouteCapacity(entry, chosenRoute, reservationSize, {
-        owner: reservationOwner,
-        reservedAt: now.toISOString(),
-        expiresAt: new Date(
-          runDeadlineMs || now.getTime() + timeoutSeconds * 1000,
-        ).toISOString(),
-      });
+      reserveRouteCapacity(
+        entry,
+        chosenRoute,
+        reservationSize,
+        serialLedger
+          ? {}
+          : {
+              owner: reservationOwner,
+              reservedAt: now.toISOString(),
+              expiresAt: new Date(
+                runDeadlineMs || now.getTime() + timeoutSeconds * 1000,
+              ).toISOString(),
+            },
+      );
       claimed.record.attempts = (claimed.record.attempts || 0) + 1;
       claimed.record.processing_started_at = now.toISOString();
 
@@ -1981,13 +2093,20 @@ async function dispatchBatch(
             item.reservationSize.requests,
             now,
           );
-          reserveRouteCapacity(entry, item.chosenRoute, item.reservationSize, {
-            owner: item.reservationOwner,
-            reservedAt: now.toISOString(),
-            expiresAt: new Date(
-              runDeadlineMs || now.getTime() + item.timeoutSeconds * 1000,
-            ).toISOString(),
-          });
+          reserveRouteCapacity(
+            entry,
+            item.chosenRoute,
+            item.reservationSize,
+            serialLedger
+              ? {}
+              : {
+                  owner: item.reservationOwner,
+                  reservedAt: now.toISOString(),
+                  expiresAt: new Date(
+                    runDeadlineMs || now.getTime() + item.timeoutSeconds * 1000,
+                  ).toISOString(),
+                },
+          );
         }
         if (freshCapacityFailed) break;
         budget = freshBudget;
@@ -2020,9 +2139,8 @@ async function dispatchBatch(
 
     // Execute batch concurrently, retaining every sibling outcome.  One unexpected task/write
     // rejection must not discard successful results or leave its sibling reservations inflight.
-    const settled = await Promise.allSettled(
-      candidatesToDispatch.map(
-        async ({ claimed, chosenRoute, creds, timeoutSeconds, profile, dispatchStartedAt }) => {
+    const upstreamTasks = candidatesToDispatch.map(
+      async ({ claimed, chosenRoute, creds, timeoutSeconds, profile, dispatchStartedAt }) => {
         const upstreamPayload = {
           ...claimed.record.request,
           model: creds.upstreamModel,
@@ -2065,25 +2183,33 @@ async function dispatchBatch(
             dispatch_profile: finishDispatchProfile(profile, dispatchStartedAt),
           };
           if (claimed.record.attempts < cfg.maxAttempts) {
-            const persistStartedAt = profileNow();
-            await saveRetry(bucket, claimed, null, cfg, now, errorDetail);
-            profile.persist_ms = profileElapsed(persistStartedAt);
-            return profiledResult({
-              status: "retrying",
-              requestId: claimed.record.id,
-              routeId: chosenRoute.route_id,
-              error: code,
-            }, profile, dispatchStartedAt);
+            return {
+              finalize: async () => {
+                const persistStartedAt = profileNow();
+                await saveRetry(bucket, claimed, null, cfg, now, errorDetail);
+                profile.persist_ms = profileElapsed(persistStartedAt);
+                return profiledResult({
+                  status: "retrying",
+                  requestId: claimed.record.id,
+                  routeId: chosenRoute.route_id,
+                  error: code,
+                }, profile, dispatchStartedAt);
+              },
+            };
           }
-          const persistStartedAt = profileNow();
-          await saveFailure(bucket, claimed, null, now, code, errorDetail);
-          profile.persist_ms = profileElapsed(persistStartedAt);
-          return profiledResult({
-            status: "failed",
-            requestId: claimed.record.id,
-            routeId: chosenRoute.route_id,
-            reason: code,
-          }, profile, dispatchStartedAt);
+          return {
+            finalize: async () => {
+              const persistStartedAt = profileNow();
+              await saveFailure(bucket, claimed, null, now, code, errorDetail);
+              profile.persist_ms = profileElapsed(persistStartedAt);
+              return profiledResult({
+                status: "failed",
+                requestId: claimed.record.id,
+                routeId: chosenRoute.route_id,
+                reason: code,
+              }, profile, dispatchStartedAt);
+            },
+          };
         }
 
         if (!response.ok) {
@@ -2105,29 +2231,37 @@ async function dispatchBatch(
             dispatch_profile: finishDispatchProfile(profile, dispatchStartedAt),
           };
           if (retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts) {
-            const persistStartedAt = profileNow();
-            await saveRetry(bucket, claimed, response, cfg, now, errorDetail);
-            profile.persist_ms = profileElapsed(persistStartedAt);
-            return profiledResult({
-              status: "retrying",
-              requestId: claimed.record.id,
-              routeId: chosenRoute.route_id,
-              upstreamStatus: response.status,
-              providerCode: providerError?.code,
-              providerStatus: providerError?.status,
-            }, profile, dispatchStartedAt);
+            return {
+              finalize: async () => {
+                const persistStartedAt = profileNow();
+                await saveRetry(bucket, claimed, response, cfg, now, errorDetail);
+                profile.persist_ms = profileElapsed(persistStartedAt);
+                return profiledResult({
+                  status: "retrying",
+                  requestId: claimed.record.id,
+                  routeId: chosenRoute.route_id,
+                  upstreamStatus: response.status,
+                  providerCode: providerError?.code,
+                  providerStatus: providerError?.status,
+                }, profile, dispatchStartedAt);
+              },
+            };
           }
-          const persistStartedAt = profileNow();
-          await saveFailure(bucket, claimed, response.status, now, "upstream_error", errorDetail);
-          profile.persist_ms = profileElapsed(persistStartedAt);
-          return profiledResult({
-            status: "failed",
-            requestId: claimed.record.id,
-            routeId: chosenRoute.route_id,
-            upstreamStatus: response.status,
-            providerCode: providerError?.code,
-            providerStatus: providerError?.status,
-          }, profile, dispatchStartedAt);
+          return {
+            finalize: async () => {
+              const persistStartedAt = profileNow();
+              await saveFailure(bucket, claimed, response.status, now, "upstream_error", errorDetail);
+              profile.persist_ms = profileElapsed(persistStartedAt);
+              return profiledResult({
+                status: "failed",
+                requestId: claimed.record.id,
+                routeId: chosenRoute.route_id,
+                upstreamStatus: response.status,
+                providerCode: providerError?.code,
+                providerStatus: providerError?.status,
+              }, profile, dispatchStartedAt);
+            },
+          };
         }
 
         let responseJson;
@@ -2139,51 +2273,61 @@ async function dispatchBatch(
         } catch (error) {
           profile.response_read_ms = profileElapsed(responseReadStartedAt);
           const failureProfile = finishDispatchProfile(profile, dispatchStartedAt);
-          const persistStartedAt = profileNow();
-          await saveFailure(
-            bucket,
-            claimed,
-            response.status,
-            now,
-            error instanceof BodyTooLargeError
-              ? "upstream_response_too_large"
-              : "invalid_upstream_json",
-            {
-              code: error instanceof BodyTooLargeError ? "upstream_response_too_large" : "invalid_upstream_json",
-              status: response.status,
-              model: chosenRoute.model,
-              route_id: chosenRoute.route_id,
-              timestamp: new Date().toISOString(),
-              dispatch_profile: failureProfile,
+          return {
+            finalize: async () => {
+              const persistStartedAt = profileNow();
+              await saveFailure(
+                bucket,
+                claimed,
+                response.status,
+                now,
+                error instanceof BodyTooLargeError
+                  ? "upstream_response_too_large"
+                  : "invalid_upstream_json",
+                {
+                  code: error instanceof BodyTooLargeError
+                    ? "upstream_response_too_large"
+                    : "invalid_upstream_json",
+                  status: response.status,
+                  model: chosenRoute.model,
+                  route_id: chosenRoute.route_id,
+                  timestamp: new Date().toISOString(),
+                  dispatch_profile: failureProfile,
+                },
+              );
+              profile.persist_ms = profileElapsed(persistStartedAt);
+              return profiledResult({
+                status: "failed",
+                requestId: claimed.record.id,
+                routeId: chosenRoute.route_id,
+                upstreamStatus: response.status,
+              }, profile, dispatchStartedAt);
             },
-          );
-          profile.persist_ms = profileElapsed(persistStartedAt);
-          return profiledResult({
-            status: "failed",
-            requestId: claimed.record.id,
-            routeId: chosenRoute.route_id,
-            upstreamStatus: response.status,
-          }, profile, dispatchStartedAt);
+          };
         }
 
         if (!responseJson || typeof responseJson !== "object" || Array.isArray(responseJson)) {
           const failureProfile = finishDispatchProfile(profile, dispatchStartedAt);
-          const persistStartedAt = profileNow();
-          await saveFailure(bucket, claimed, response.status, now, "invalid_upstream_json", {
-            code: "invalid_upstream_json",
-            status: response.status,
-            model: chosenRoute.model,
-            route_id: chosenRoute.route_id,
-            timestamp: new Date().toISOString(),
-            dispatch_profile: failureProfile,
-          });
-          profile.persist_ms = profileElapsed(persistStartedAt);
-          return profiledResult({
-            status: "failed",
-            requestId: claimed.record.id,
-            routeId: chosenRoute.route_id,
-            upstreamStatus: response.status,
-          }, profile, dispatchStartedAt);
+          return {
+            finalize: async () => {
+              const persistStartedAt = profileNow();
+              await saveFailure(bucket, claimed, response.status, now, "invalid_upstream_json", {
+                code: "invalid_upstream_json",
+                status: response.status,
+                model: chosenRoute.model,
+                route_id: chosenRoute.route_id,
+                timestamp: new Date().toISOString(),
+                dispatch_profile: failureProfile,
+              });
+              profile.persist_ms = profileElapsed(persistStartedAt);
+              return profiledResult({
+                status: "failed",
+                requestId: claimed.record.id,
+                routeId: chosenRoute.route_id,
+                upstreamStatus: response.status,
+              }, profile, dispatchStartedAt);
+            },
+          };
         }
 
         profile.response_read_ms = profileElapsed(responseReadStartedAt);
@@ -2195,72 +2339,86 @@ async function dispatchBatch(
           dispatch_profile: finishDispatchProfile(profile, dispatchStartedAt),
           response: responseJson,
         };
-        const persistStartedAt = profileNow();
-        const saved = await putJson(bucket, claimed.key, completed, {
-          etagMatches: claimed.object.etag,
-          customMetadata: requestMetadata(completed),
-        });
-        if (saved) await unmarkReady(bucket, claimed.readyKey);
-        profile.persist_ms = profileElapsed(persistStartedAt);
-        return profiledResult({
-          status: "completed",
-          requestId: claimed.record.id,
-          routeId: chosenRoute.route_id,
-          upstreamStatus: response.status,
-        }, profile, dispatchStartedAt);
+        return {
+          finalize: async () => {
+            const persistStartedAt = profileNow();
+            const saved = await putJson(bucket, claimed.key, completed, {
+              etagMatches: claimed.object.etag,
+              customMetadata: requestMetadata(completed),
+            });
+            if (saved) await unmarkReady(bucket, claimed.readyKey);
+            profile.persist_ms = profileElapsed(persistStartedAt);
+            return profiledResult({
+              status: "completed",
+              requestId: claimed.record.id,
+              routeId: chosenRoute.route_id,
+              upstreamStatus: response.status,
+            }, profile, dispatchStartedAt);
+          },
+        };
         },
-      ),
     );
 
-    const results = [];
-    const reservationReleaseStartedAt = profileNow();
-    for (let index = 0; index < settled.length; index += 1) {
-      const outcome = settled[index];
-      const item = candidatesToDispatch[index];
-      const released = await releaseRouteReservation(
-        bucket,
-        item.chosenRoute.route_id,
-        item.reservationOwner,
-      );
-      if (!released) {
-        console.error(
-          JSON.stringify({
-            event: "llm_dispatch_reservation_release_failed",
-            request_id: item.claimed.record.id,
-            route_id: item.chosenRoute.route_id,
-          }),
-        );
-      }
-      if (outcome.status === "fulfilled") {
-        results.push(outcome.value);
-        continue;
-      }
+    // Release the combined reservation after every upstream attempt has stopped using it. Start
+    // this promise before awaiting finalizers so the batch CAS overlaps the independent canonical
+    // result writes, while the cron lease prevents another batch from dispatching in the gap.
+    const releasePromise = serialLedger
+      ? Promise.resolve({ released: true, elapsedMs: 0 })
+      : Promise.allSettled(upstreamTasks).then(async () => {
+          const startedAt = profileNow();
+          const released = await releaseRouteReservations(
+            bucket,
+            candidatesToDispatch.map((item) => ({
+              routeId: item.chosenRoute.route_id,
+              owner: item.reservationOwner,
+            })),
+          );
+          return { released, elapsedMs: profileElapsed(startedAt) };
+        });
+
+    const finalized = await Promise.all(
+      upstreamTasks.map(async (task, index) => {
+        const item = candidatesToDispatch[index];
+        try {
+          const outcome = await task;
+          return await outcome.finalize();
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              event: "llm_dispatch_task_error",
+              request_id: item.claimed.record.id,
+              error: error?.name || "Error",
+            }),
+          );
+          try {
+            await saveFailure(bucket, item.claimed, 500, now, "worker_task_failed");
+          } catch {
+            // The request remains recoverable by the processing-timeout reaper if this write races.
+          }
+          return {
+            status: "failed",
+            requestId: item.claimed.record.id,
+            reason: "worker_task_failed",
+          };
+        }
+      }),
+    );
+    const { released, elapsedMs: reservationReleaseMs } = await releasePromise;
+    batchProfile.reservation_release_ms = reservationReleaseMs;
+    if (!released) {
       console.error(
         JSON.stringify({
-          event: "llm_dispatch_task_error",
-          request_id: item.claimed.record.id,
-          error: outcome.reason?.name || "Error",
+          event: "llm_dispatch_reservation_release_failed",
+          batch_size: candidatesToDispatch.length,
         }),
       );
-      try {
-        await saveFailure(bucket, item.claimed, 500, now, "worker_task_failed");
-      } catch {
-        // The request remains recoverable by the processing-timeout reaper if this write races.
-      }
-      results.push({
-        status: "failed",
-        requestId: item.claimed.record.id,
-        reason: "worker_task_failed",
-      });
     }
-    batchProfile.reservation_release_ms = profileElapsed(reservationReleaseStartedAt);
-
-    const completedCount = results.filter((r) => r.status === "completed").length;
+    const completedCount = finalized.filter((r) => r.status === "completed").length;
     return {
       status: "completed",
       count: candidatesToDispatch.length,
       completedCount,
-      results,
+      results: finalized,
       profile: finishDispatchProfile(batchProfile, batchStartedAt),
     };
   } finally {
@@ -2284,7 +2442,7 @@ function pollBody(record) {
   };
 }
 
-function summarizeBatchResults(results = []) {
+function summarizeBatchResults(results = [], includeSuccessProfiles = false) {
   return results.map((result) => ({
     request_id: result.requestId,
     status: result.status,
@@ -2293,7 +2451,8 @@ function summarizeBatchResults(results = []) {
     provider_code: result.providerCode,
     provider_status: result.providerStatus,
     reason: result.reason || result.error,
-    profile: result.profile,
+    profile:
+      includeSuccessProfiles || result.status !== "completed" ? result.profile : undefined,
   }));
 }
 
@@ -2480,6 +2639,7 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
 
   let totalDispatched = 0;
   let status = "idle";
+  const includeSuccessProfiles = Math.random() < cfg.profileSampleRate;
   try {
     while (nowMs() < deadlineMs && totalDispatched < cfg.maxTotalRequests) {
       if (
@@ -2521,8 +2681,11 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
             event: "llm_dispatch_batch",
             status: batchResult.status,
             count: 0,
-            results: summarizeBatchResults(batchResult.results),
-            profile: batchResult.profile,
+            results: summarizeBatchResults(batchResult.results, includeSuccessProfiles),
+            profile:
+              includeSuccessProfiles || (batchResult.results || []).some((r) => r.status !== "completed")
+                ? batchResult.profile
+                : undefined,
           }),
         );
         break;
@@ -2540,8 +2703,11 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
             .length,
           retrying: (batchResult.results || []).filter((result) => result.status === "retrying")
             .length,
-          profile: batchResult.profile,
-          results: summarizeBatchResults(batchResult.results),
+          profile:
+            includeSuccessProfiles || (batchResult.results || []).some((r) => r.status !== "completed")
+              ? batchResult.profile
+              : undefined,
+          results: summarizeBatchResults(batchResult.results, includeSuccessProfiles),
         }),
       );
     }
