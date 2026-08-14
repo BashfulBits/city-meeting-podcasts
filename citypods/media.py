@@ -854,6 +854,7 @@ def _download_audio(
         str(dest),
     ]
     succeeded = False
+    direct_rate_limit_status: str | None = None
     try:
         _run_ffmpeg_guarded(
             cmd,
@@ -884,7 +885,10 @@ def _download_audio(
                     "strategy=cloudflare-worker-chunked",
                 )
                 succeeded = False
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
+    except subprocess.CalledProcessError as exc:
+        direct_rate_limit_status = _rate_limited_status(exc.stderr)
+        succeeded = False
+    except (subprocess.TimeoutExpired, OSError):
         succeeded = False
 
     try:
@@ -904,6 +908,10 @@ def _download_audio(
             )
             if worker_result is not None:
                 succeeded = worker_result
+            elif direct_rate_limit_status is not None:
+                raise RateLimitedMediaFetchError(
+                    f"ffmpeg source-cache hit provider throttle ({direct_rate_limit_status})"
+                )
         return succeeded
     finally:
         # A failed ffmpeg write leaves a partial destination behind. It is not added to
@@ -954,6 +962,7 @@ def _download_granicus_audio_fallback(
         "strategy=cloudflare-worker-chunked",
     )
     worker_ok = False
+    resolved = False
     raw_dest = dest.with_name(f"{dest.stem}.worker.mp4")
     try:
         # Re-acquire the same provider controls that guarded the failed direct attempt. The
@@ -963,12 +972,17 @@ def _download_granicus_audio_fallback(
             HOST_LIMITER.slots(rate_limit_urls, stop=stop),
             DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls, stop=stop),
         ):
-            download_verified(
+            raw_bytes = download_verified(
                 proxy_url,
                 fallback.token,
                 raw_dest,
                 max_bytes=max_media_bytes,
                 stop=stop,
+            )
+            _log_ffmpeg_event(
+                log,
+                "[enrich] granicus transport fallback downloaded "
+                f"phase=source-cache bytes={raw_bytes} strategy=cloudflare-worker-chunked",
             )
             local_cmd = [
                 ffmpeg_binary,
@@ -1009,20 +1023,25 @@ def _download_granicus_audio_fallback(
                     f"[enrich] granicus transport fallback incomplete actual_seconds="
                     f"{actual_duration} expected_seconds={expected_duration:.0f}",
                 )
+        resolved = True
         return worker_ok
+    except StopRequested:
+        raise
     except (
         ChunkedDownloadError,
         OSError,
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
     ):
+        resolved = True
         return False
     finally:
-        _record_worker_fallback_outcome(
-            transport_telemetry,
-            rate_limit_urls,
-            outcome="success" if worker_ok else "failure",
-        )
+        if resolved:
+            _record_worker_fallback_outcome(
+                transport_telemetry,
+                rate_limit_urls,
+                outcome="success" if worker_ok else "failure",
+            )
         try:
             raw_dest.unlink(missing_ok=True)
         except OSError:
@@ -3478,13 +3497,11 @@ def materialize_audio(
                 if source_cache is not None and ep.uid and not multi_source:
                     cache_started = time.perf_counter()
                     _phase_log("source-cache", "start", mode="single-source")
-                    expected_duration = episode_source_duration_seconds(ep)
-                    if expected_duration is None:
-                        local = source_cache.get_or_fetch(ep.uid, source_url)
-                    else:
-                        local = source_cache.get_or_fetch(
-                            ep.uid, source_url, expected_duration=expected_duration
-                        )
+                    local = source_cache.get_or_fetch(
+                        ep.uid,
+                        source_url,
+                        expected_duration=episode_source_duration_seconds(ep),
+                    )
                     _phase_log(
                         "source-cache",
                         "done",

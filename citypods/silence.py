@@ -550,13 +550,11 @@ class SilencePlanner:
             _defer_timeline_plan(ep, DEFER_CACHE_UNAVAILABLE, failure_code="timeline-cache")
             return None
         try:
-            expected_duration = episode_source_duration_seconds(ep)
-            if expected_duration is None:
-                local = ctx.source_cache.get_or_fetch(uid, source_url)
-            else:
-                local = ctx.source_cache.get_or_fetch(
-                    uid, source_url, expected_duration=expected_duration
-                )
+            local = ctx.source_cache.get_or_fetch(
+                uid,
+                source_url,
+                expected_duration=episode_source_duration_seconds(ep),
+            )
         except StopRequested:
             # The run's wall-clock budget expired while queued behind another thread's fetch of the
             # same source — defer without recording a source failure (#120); not a real error.

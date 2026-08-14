@@ -99,12 +99,14 @@ def main() -> int:
         result["direct_status"] = direct_status
         result["direct_bytes"] = direct_bytes
 
-        _download_full(
+        worker_full_status, worker_full_bytes = _download_full(
             proxy_url,
             {"Authorization": f"Bearer {fallback.token}", "User-Agent": USER_AGENT},
             worker_full,
             max_bytes,
         )
+        if worker_full_status != 200:
+            raise RuntimeError(f"Worker full download returned HTTP {worker_full_status}")
         chunked_bytes = download_verified(
             proxy_url,
             fallback.token,
@@ -112,14 +114,16 @@ def main() -> int:
             chunk_bytes=args.chunk_mib * 1024 * 1024,
             max_bytes=max_bytes,
         )
-        result["worker_full_bytes"] = worker_full.stat().st_size
+        result["worker_full_bytes"] = worker_full_bytes
         result["worker_chunked_bytes"] = chunked_bytes
         if direct_status == 200:
             expected_path = direct
             result["comparison"] = "direct-standard-vs-worker-chunked"
-        else:
+        elif direct_status == 403:
             expected_path = worker_full
             result["comparison"] = "worker-full-vs-worker-chunked-after-direct-denial"
+        else:
+            raise RuntimeError(f"direct standard download returned unexpected HTTP {direct_status}")
         expected_hash = _sha256(expected_path)
         chunked_hash = _sha256(worker_chunked)
         result["expected_sha256"] = expected_hash

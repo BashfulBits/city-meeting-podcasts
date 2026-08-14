@@ -8,15 +8,20 @@ short body instead of allowing a successful HTTP/ffmpeg prefix to become a cache
 from __future__ import annotations
 
 import re
+import shutil
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 import requests
 
-from citypods.http import HOST_LIMITER, USER_AGENT
+from citypods.http import HOST_LIMITER, USER_AGENT, StopRequested
 from citypods.security import SecurityError, validate_source_url
 
 DEFAULT_CHUNK_BYTES = 16 * 1024 * 1024
+_RANGE_ATTEMPTS = 2
+_RANGE_SPOOL_MEMORY_BYTES = 8 * 1024 * 1024
+_TRANSIENT_RANGE_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
 _CONTENT_RANGE_RE = re.compile(r"^bytes\s+(\d+)-(\d+)/(\d+|\*)$", re.IGNORECASE)
 
 
@@ -59,7 +64,7 @@ def _stream_response(
     written = 0
     for chunk in response.iter_content(chunk_size=1024 * 1024):
         if stop is not None and stop():
-            raise ChunkedDownloadError("chunked download stopped")
+            raise StopRequested("chunked download stopped")
         if not chunk:
             continue
         written += len(chunk)
@@ -123,50 +128,77 @@ def _download_ranges(
     with dest.open("wb") as output:
         while total is None or start < total:
             end = start + chunk_bytes - 1
-            with session.get(
-                proxy_url,
-                headers=_response_headers(token, start=start, end=end),
-                timeout=(30, 120),
-                allow_redirects=False,
-                stream=True,
-            ) as response:
-                if response.status_code == 200:
-                    raise _RangeUnsupported("Worker/upstream ignored the requested Range")
-                if response.status_code != 206:
-                    raise ChunkedDownloadError(
-                        f"Worker range download returned HTTP {response.status_code}"
-                    )
-                content_range = response.headers.get("Content-Range", "").strip()
-                match = _CONTENT_RANGE_RE.fullmatch(content_range)
-                if match is None:
-                    raise ChunkedDownloadError("Worker 206 response omitted a valid Content-Range")
-                response_start, response_end, raw_total = match.groups()
-                response_start_i = int(response_start)
-                response_end_i = int(response_end)
-                if raw_total == "*":
-                    raise ChunkedDownloadError("Worker 206 response omitted the total object size")
-                response_total = int(raw_total)
-                if response_start_i != start or response_end_i < response_start_i:
-                    raise ChunkedDownloadError("Worker returned the wrong byte range")
-                if total is None:
-                    total = response_total
-                    if max_bytes is not None and total > max_bytes:
-                        raise ChunkedDownloadError("Worker object exceeds the configured media cap")
-                elif total != response_total:
-                    raise ChunkedDownloadError("Worker object size changed during range download")
-                requested_end = min(end, total - 1)
-                if response_end_i != requested_end:
-                    raise ChunkedDownloadError("Worker returned an incomplete Content-Range")
-                received = _stream_response(
-                    response,
-                    output,
-                    expected_bytes=response_end_i - response_start_i + 1,
-                    max_bytes=max_bytes,
-                    stop=stop,
-                )
-                start += received
-                if received == 0:
-                    raise ChunkedDownloadError("Worker returned an empty byte range")
+            for attempt in range(_RANGE_ATTEMPTS):
+                try:
+                    with session.get(
+                        proxy_url,
+                        headers=_response_headers(token, start=start, end=end),
+                        timeout=(30, 120),
+                        allow_redirects=False,
+                        stream=True,
+                    ) as response:
+                        if response.status_code == 200:
+                            raise _RangeUnsupported("Worker/upstream ignored the requested Range")
+                        if response.status_code in _TRANSIENT_RANGE_STATUSES:
+                            if attempt + 1 < _RANGE_ATTEMPTS:
+                                continue
+                            raise ChunkedDownloadError(
+                                f"Worker range download returned HTTP {response.status_code}"
+                            )
+                        if response.status_code != 206:
+                            raise ChunkedDownloadError(
+                                f"Worker range download returned HTTP {response.status_code}"
+                            )
+                        content_range = response.headers.get("Content-Range", "").strip()
+                        match = _CONTENT_RANGE_RE.fullmatch(content_range)
+                        if match is None:
+                            raise ChunkedDownloadError(
+                                "Worker 206 response omitted a valid Content-Range"
+                            )
+                        response_start, response_end, raw_total = match.groups()
+                        response_start_i = int(response_start)
+                        response_end_i = int(response_end)
+                        if raw_total == "*":
+                            raise ChunkedDownloadError(
+                                "Worker 206 response omitted the total object size"
+                            )
+                        response_total = int(raw_total)
+                        if response_start_i != start or response_end_i < response_start_i:
+                            raise ChunkedDownloadError("Worker returned the wrong byte range")
+                        if total is None:
+                            total = response_total
+                            if max_bytes is not None and total > max_bytes:
+                                raise ChunkedDownloadError(
+                                    "Worker object exceeds the configured media cap"
+                                )
+                        elif total != response_total:
+                            raise ChunkedDownloadError(
+                                "Worker object size changed during range download"
+                            )
+                        requested_end = min(end, total - 1)
+                        if response_end_i != requested_end:
+                            raise ChunkedDownloadError(
+                                "Worker returned an incomplete Content-Range"
+                            )
+                        # Stage every range before appending it. A transient stream failure may
+                        # have already yielded a prefix; retrying that range must not duplicate it.
+                        with tempfile.SpooledTemporaryFile(
+                            max_size=min(chunk_bytes, _RANGE_SPOOL_MEMORY_BYTES), mode="w+b"
+                        ) as staged_range:
+                            received = _stream_response(
+                                response,
+                                staged_range,
+                                expected_bytes=response_end_i - response_start_i + 1,
+                                max_bytes=max_bytes,
+                                stop=stop,
+                            )
+                            staged_range.seek(0)
+                            shutil.copyfileobj(staged_range, output)
+                        start += received
+                        break
+                except requests.RequestException:
+                    if attempt + 1 == _RANGE_ATTEMPTS:
+                        raise
     if total is None or start != total or dest.stat().st_size != total:
         raise ChunkedDownloadError("assembled Worker ranges did not match the object size")
     return total

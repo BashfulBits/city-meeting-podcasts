@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import requests
 
 from citypods.granicus_chunked import ChunkedDownloadError, download_verified
 
@@ -107,3 +108,86 @@ def test_download_verified_rejects_truncated_full_response(monkeypatch, fake_url
 
     with pytest.raises(ChunkedDownloadError, match="truncated"):
         download_verified(fake_url, "secret", tmp_path / "media.mp4", chunk_bytes=4)
+
+
+def test_download_verified_retries_a_transient_partial_range(monkeypatch, fake_url, tmp_path: Path):
+    payload = b"complete-object"
+    session = _Session(payload)
+    original_get = session.get
+    calls = 0
+
+    class _InterruptedResponse(_Response):
+        def iter_content(self, chunk_size):
+            del chunk_size
+            yield self.body[:2]
+            raise requests.ConnectionError("connection reset")
+
+    def _get(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return _InterruptedResponse(
+                payload[:4],
+                206,
+                {"Content-Length": "4", "Content-Range": f"bytes 0-3/{len(payload)}"},
+            )
+        return original_get(*args, **kwargs)
+
+    monkeypatch.setattr(session, "get", _get)
+    monkeypatch.setattr("citypods.granicus_chunked.requests.Session", lambda: session)
+
+    dest = tmp_path / "media.mp4"
+    assert download_verified(fake_url, "secret", dest, chunk_bytes=4) == len(payload)
+    assert dest.read_bytes() == payload
+    assert calls == 5  # First range retries once, then the remaining three ranges succeed.
+
+
+@pytest.mark.parametrize(
+    ("content_range", "match"),
+    [
+        ("bytes 0-3/*", "total object size"),
+        ("bytes 1-4/8", "wrong byte range"),
+    ],
+)
+def test_download_verified_rejects_invalid_content_range(
+    monkeypatch, fake_url, tmp_path: Path, content_range, match
+):
+    session = _Session(b"abcdefgh")
+    monkeypatch.setattr(
+        session,
+        "get",
+        lambda *_args, **_kwargs: _Response(
+            b"abcd", 206, {"Content-Length": "4", "Content-Range": content_range}
+        ),
+    )
+    monkeypatch.setattr("citypods.granicus_chunked.requests.Session", lambda: session)
+
+    with pytest.raises(ChunkedDownloadError, match=match):
+        download_verified(fake_url, "secret", tmp_path / "media.mp4", chunk_bytes=4)
+
+
+def test_download_verified_rejects_changed_total_between_ranges(
+    monkeypatch, fake_url, tmp_path: Path
+):
+    session = _Session(b"abcdefgh")
+    responses = iter(
+        [
+            _Response(b"abcd", 206, {"Content-Length": "4", "Content-Range": "bytes 0-3/8"}),
+            _Response(b"efgh", 206, {"Content-Length": "4", "Content-Range": "bytes 4-7/9"}),
+        ]
+    )
+    monkeypatch.setattr(session, "get", lambda *_args, **_kwargs: next(responses))
+    monkeypatch.setattr("citypods.granicus_chunked.requests.Session", lambda: session)
+
+    with pytest.raises(ChunkedDownloadError, match="size changed"):
+        download_verified(fake_url, "secret", tmp_path / "media.mp4", chunk_bytes=4)
+
+
+def test_download_verified_rejects_range_object_over_media_cap(
+    monkeypatch, fake_url, tmp_path: Path
+):
+    session = _Session(b"abcdefgh")
+    monkeypatch.setattr("citypods.granicus_chunked.requests.Session", lambda: session)
+
+    with pytest.raises(ChunkedDownloadError, match="media cap"):
+        download_verified(fake_url, "secret", tmp_path / "media.mp4", chunk_bytes=4, max_bytes=7)

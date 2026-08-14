@@ -143,7 +143,8 @@ Worker bytes with a non-ranged Worker full download instead, still proving the a
 preserve the object exactly.
 
 The workflow shares Audio's concurrency group and verifies no Audio run is active or queued. Download
-the `granicus-probe-results` artifact and inspect `granicus-worker-results.json`.
+the `granicus-probe-results` artifact and inspect `granicus-worker-results.json` for the general
+Worker probe or `granicus-chunked-results.json` for the byte-accuracy canary.
 
 The result is sufficient to **retain** an already-active production fallback only when:
 
