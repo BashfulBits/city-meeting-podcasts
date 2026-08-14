@@ -814,6 +814,35 @@ test("atypical JSON errors retain safe shape metadata and nested details", async
   assert.match(providerError.body_preview, /unsupported_schema/);
 });
 
+test("oversized terminal upstream errors retain a bounded preview and truncation metadata", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "oversized-provider-400", "gemini/gemini-3-flash-preview"),
+    env,
+  );
+  const { id } = await queued.json();
+  const oversizedBody = `{"error":{"message":"${"x".repeat(9_000)}"}}`;
+  const result = await dispatchOne(
+    env,
+    async () =>
+      new Response(oversizedBody, {
+        status: 400,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      }),
+    new Date(),
+  );
+
+  assert.equal(result.status, "failed");
+  const stored = await env.LLM_QUEUE.get(`requests/${id}.json`);
+  const providerError = (await stored.json()).error.provider_error;
+  assert.equal(providerError.format, "too_large");
+  assert.equal(providerError.content_type, "application/json");
+  assert.equal(providerError.truncated, true);
+  assert.equal(providerError.bytes, new TextEncoder().encode(oversizedBody).byteLength);
+  assert.equal(providerError.body_preview.length, 8 * 1024);
+  assert.equal(providerError.body_preview, oversizedBody.slice(0, 8 * 1024));
+});
+
 test("streaming requests and oversized request bodies are rejected", async () => {
   const env = isolatedEnv();
   assert.equal(config(env).maxRequestBytes, 8 * 1024 * 1024);

@@ -28,9 +28,10 @@ offline migration below when upgrading old records.
 or other upstream payloads in logs. For a non-2xx provider response, it stores a bounded diagnostic
 inside the private canonical R2 request record: structured error fields, response content type and byte
 length, bounded JSON field names, the nested path used to find common error fields, and an 8 KiB
-`body_preview` for terminal failures. Retryable responses retain the metadata and parsed fields but do
-not retain the body preview unless the retry budget is exhausted, keeping repeated 429 responses from
-creating noisy records. Queue records contain the request, response, and bounded failure diagnostic,
+`body_preview` for terminal failures. Oversized terminal bodies retain only that prefix with
+`truncated: true` and the observed byte count. Retryable responses retain the metadata and parsed
+fields but do not retain the body preview unless the retry budget is exhausted, keeping repeated 429
+responses from creating noisy records. Queue records contain the request, response, and bounded failure diagnostic,
 so the R2 bucket must remain private and should have a lifecycle rule appropriate for the catalog's
 retry window. Scheduled logs include request ID, route ID, upstream status, and structured provider
 error code/status without the provider message.

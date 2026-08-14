@@ -17,6 +17,10 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Oversized terminal LLM error bodies now retain bounded diagnostics.** The private R2 record keeps
+  the first 8 KiB, observed byte count, and `truncated` marker instead of discarding the diagnostic
+  entirely; retryable responses continue to avoid repeated body previews.
+
 - **CodeRabbit automatic and incremental reviews are disabled by default.** Maintainers can request
   a review explicitly with `@coderabbitai review`, avoiding unsolicited free-tier review runs while
   preserving the repository's review configuration and guidance.

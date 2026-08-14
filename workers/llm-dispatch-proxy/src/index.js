@@ -299,6 +299,47 @@ async function readTextLimitedWithMetadata(stream, limit) {
   return { text: new TextDecoder().decode(result), bytes };
 }
 
+async function readDiagnosticTextLimited(stream, limit) {
+  if (!stream) {
+    return { text: "", bytes: 0, truncated: false };
+  }
+  const reader = stream.getReader();
+  const chunks = [];
+  let bytes = 0;
+  let truncated = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      const previousBytes = bytes;
+      bytes += chunk.byteLength;
+      if (bytes > limit) {
+        const allowed = Math.max(0, limit - previousBytes);
+        if (allowed > 0) chunks.push(chunk.slice(0, allowed));
+        truncated = true;
+        try {
+          await reader.cancel();
+        } catch {
+          // The prefix is still useful if cancellation races stream closure.
+        }
+        break;
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const result = new Uint8Array(Math.min(bytes, limit));
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { text: new TextDecoder().decode(result), bytes, truncated };
+}
+
 function boundedDiagnosticMessage(value) {
   return String(value)
     .replace(/[\u0000-\u001f\u007f]/g, " ")
@@ -449,10 +490,19 @@ async function readUpstreamError(response, options = {}) {
   const contentType = boundedDiagnosticContentType(response.headers.get("content-type"));
   const metadata = contentType ? { content_type: contentType } : {};
   try {
-    const { text, bytes } = await readTextLimitedWithMetadata(
+    const { text, bytes, truncated } = await readDiagnosticTextLimited(
       response.body,
       DEFAULT_MAX_UPSTREAM_ERROR_BYTES,
     );
+    if (truncated) {
+      return {
+        ...metadata,
+        bytes,
+        format: "too_large",
+        truncated: true,
+        ...(options.persistBodyPreview ? { body_preview: boundedDiagnosticBody(text) } : {}),
+      };
+    }
     return parseUpstreamError(text, { ...metadata, bytes }, options);
   } catch (error) {
     return {
