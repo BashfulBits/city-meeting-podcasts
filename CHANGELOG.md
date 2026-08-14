@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Provider-align now permits a roughly 4 GiB CTC section envelope.** The safe section limit is
+  increased from five to ten minutes using the observed WhisperX allocation slope, and oversized
+  sections produce a visible GitHub Actions warning before they are routed to full ASR.
+  Provider-align version 7 reopens prior version-6 ineligible items for gradual recomputation;
+  full-ASR artifacts are not invalidated.
+  
 - **Groq’s Llama 3.3 route now uses JSON-object structured output.** The live endpoint accepts
   `response_format: {"type":"json_object"}` but rejects JSON Schema; the compiled route profile
   now reflects that capability.

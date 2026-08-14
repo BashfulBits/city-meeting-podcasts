@@ -196,10 +196,11 @@ def test_align_preserves_provider_timed_sections_for_whisperx(tmp_path: Path, mo
 
 
 def test_oversized_alignment_window_fails_before_whisperx_call():
+    seconds = int(asr._MAX_ALIGN_SECTION_SECONDS) + 1
     with pytest.raises(asr.AlignmentQualityError, match="too long"):
         asr._bounded_alignment_sections(
-            [{"start": 0.0, "end": 301.0, "text": "long section"}],
-            [0.0] * (301 * 16_000),
+            [{"start": 0.0, "end": float(seconds), "text": "long section"}],
+            [0.0] * (seconds * 16_000),
         )
 
 

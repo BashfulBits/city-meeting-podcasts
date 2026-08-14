@@ -1057,9 +1057,20 @@ def test_provider_align_ineligible_routes_future_manifest_to_asr():
     ew._mark_provider_align_ineligible(ep, "recipe", "alignment-window-or-coverage")
 
     candidate = ep.provider_transcript["candidate"]
-    assert candidate["align_ineligible_pipeline_version"] == "provider-align:6"
+    assert candidate["align_ineligible_pipeline_version"] == "provider-align:7"
     assert candidate["align_ineligible_reason"] == "alignment-window-or-coverage"
     assert candidate["align_spec_hash"] == "recipe"
+
+
+def test_oversized_provider_align_emits_actions_warning(capsys):
+    exc = ew.AlignmentQualityError("alignment section is too long: 601.0s > 600.0s")
+
+    ew._warn_oversized_alignment_section("github-actions", exc)
+
+    assert (
+        "::warning title=Provider-align section too long::"
+        "alignment section is too long: 601.0s > 600.0s"
+    ) in capsys.readouterr().out
 
 
 def test_external_worker_align_uses_alignment_model(monkeypatch, tmp_path):
