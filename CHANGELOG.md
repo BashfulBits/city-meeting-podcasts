@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch now preserves bounded provider diagnostics for non-2xx responses.** Private R2
+  request records retain structured provider error code/status and a truncated JSON error message,
+  while scheduled logs expose only request/route/status identifiers and never prompts, API keys, or
+  raw provider bodies. This makes future Google/Gemma failures diagnosable without changing the
+  asynchronous response contract.
+  
 - **LLM pricing is now effective-dated and YAML-driven.** `config/provider_limits.yml` can define
   input/output rates and UTC peak windows per physical route; the compiler carries those periods to
   both the Python scheduler and the dispatch Worker. DeepSeek V4 Flash and Pro include the August 16,

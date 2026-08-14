@@ -349,6 +349,53 @@ test("a non-Mistral route resolves its own provider's URL and API key, not Mistr
   assert.equal(calls[0].body.model, "gemini-3-flash-preview");
 });
 
+test("non-2xx upstream responses retain bounded structured diagnostics in the private record", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "provider-400", "gemini/gemini-3-flash-preview"),
+    env,
+  );
+  const { id } = await queued.json();
+  const result = await dispatchOne(
+    env,
+    async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 400,
+            status: "INVALID_ARGUMENT",
+            message: "response_schema contains an unsupported keyword",
+          },
+        }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      ),
+    new Date(),
+  );
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.upstreamStatus, 400);
+  assert.equal(result.providerCode, 400);
+  assert.equal(result.providerStatus, "INVALID_ARGUMENT");
+
+  const stored = await env.LLM_QUEUE.get(`requests/${id}.json`);
+  const record = await stored.json();
+  assert.deepEqual(record.error.provider_error, {
+    format: "json",
+    code: 400,
+    status: "INVALID_ARGUMENT",
+    message: "response_schema contains an unsupported keyword",
+  });
+
+  const poll = await handleRequest(
+    request(`https://dispatch.example/v1/requests/${id}`, { method: "GET" }),
+    env,
+  );
+  const pollBody = await poll.json();
+  assert.equal(poll.status, 502);
+  assert.equal(pollBody.error.message, "upstream LLM dispatch failed");
+  assert.equal(pollBody.error.provider_error, undefined);
+});
+
 test("RPM is a continuous per-route pace, not a burstable minute bucket", async (t) => {
   // Mistral Large's physical route is configured at 4 RPM, so its next request is eligible
   // 15 seconds after the previous reservation. Its provider has only one configured account, so
@@ -693,7 +740,7 @@ test("ready-index lookup ignores a large terminal request history", async () => 
   assert.equal(result.requestId, queuedBody.id);
 });
 
-test("429 responses retry with bounded backoff and do not expose the provider body", async () => {
+test("429 responses retry with bounded diagnostics without storing a non-JSON provider body", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(chatRequest(undefined, "retry-me"), env);
   const queuedBody = await queued.json();
@@ -715,6 +762,8 @@ test("429 responses retry with bounded backoff and do not expose the provider bo
   const retryRecord = await stored.json();
   assert.equal(retryRecord.status, "pending");
   assert.equal(retryRecord.last_error.status, 429);
+  assert.deepEqual(retryRecord.last_error.provider_error, { format: "non_json" });
+  assert.doesNotMatch(JSON.stringify(retryRecord), /provider prompt and secret/);
   assert.equal(retryRecord.error, undefined);
   assert.equal((await dispatchOne(env, upstream, new Date(firstAt.getTime() + 61_000))).status, "idle");
   assert.equal((await dispatchOne(env, upstream, new Date(firstAt.getTime() + 121_000))).status, "completed");
