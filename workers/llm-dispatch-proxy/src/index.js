@@ -26,8 +26,8 @@ const DEFAULT_FAST_UPSTREAM_TIMEOUT_SECONDS = 90;
 const DEFAULT_FINALIZATION_RESERVE_SECONDS = 20;
 const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
 // Cron triggers on the Workers Free plan have a 10ms CPU allowance.  Ready markers keep queue
-// inspection bounded; upstream wait time is not CPU time, so four independent provider calls can
-// make progress concurrently without returning to the old prompt-scanning design.
+// inspection bounded; upstream wait time is not CPU time, so one provider call can make progress
+// without returning to the old prompt-scanning design.
 const DEFAULT_BATCH_CONCURRENCY = 1;
 const DEFAULT_MAX_TOTAL_REQUESTS = 1;
 const DEFAULT_READY_LOOKAHEAD = 16;
@@ -321,10 +321,52 @@ function readyMarker(record) {
   };
 }
 
+function readyMarkerMetadata(record) {
+  const marker = readyMarker(record);
+  return {
+    id: String(marker.id),
+    status: "pending",
+    ready_version: String(marker.version),
+    model: String(marker.model || ""),
+    created_at: String(marker.created_at || ""),
+    available_at: String(marker.available_at || ""),
+    policy: JSON.stringify(marker.policy),
+  };
+}
+
+function readyMarkerFromMetadata(metadata) {
+  if (
+    !metadata ||
+    metadata.ready_version !== "1" ||
+    typeof metadata.id !== "string" ||
+    typeof metadata.model !== "string" ||
+    typeof metadata.available_at !== "string"
+  ) {
+    return null;
+  }
+  let policy = {};
+  try {
+    policy = metadata.policy ? JSON.parse(metadata.policy) : {};
+  } catch {
+    return null;
+  }
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
+    return null;
+  }
+  return {
+    version: 1,
+    id: metadata.id,
+    model: metadata.model,
+    created_at: metadata.created_at || "",
+    available_at: metadata.available_at,
+    policy,
+  };
+}
+
 async function markReady(bucket, record) {
   const key = readyKey(record);
   await putJson(bucket, key, readyMarker(record), {
-    customMetadata: { id: String(record.id), status: "pending" },
+    customMetadata: readyMarkerMetadata(record),
   });
   return key;
 }
@@ -1218,29 +1260,37 @@ function nextCapacityRetryAt(budget, canonicalModels, policy, now, dispatchLimit
 }
 
 async function loadReadyHeads(bucket, now, limit = DEFAULT_READY_LOOKAHEAD) {
-  const listed = await bucket.list({ prefix: READY_PREFIX, limit });
+  const listed = await bucket.list({
+    prefix: READY_PREFIX,
+    limit,
+    include: ["customMetadata"],
+  });
   const heads = [];
   let invalidCount = 0;
   let future = false;
   for (const object of listed?.objects || []) {
-    let marker;
-    try {
-      marker = await getJson(bucket, object.key);
-    } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
-      await unmarkReady(bucket, object.key);
-      invalidCount += 1;
-      continue;
+    let record = readyMarkerFromMetadata(object.customMetadata);
+    if (!record) {
+      let marker;
+      try {
+        marker = await getJson(bucket, object.key);
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+        await unmarkReady(bucket, object.key);
+        invalidCount += 1;
+        continue;
+      }
+      record = marker?.value;
     }
-    const record = marker?.value;
     if (!record || record.version !== 1 || typeof record.id !== "string") {
       await unmarkReady(bucket, object.key);
       invalidCount += 1;
       continue;
     }
     // readyKey() orders by available_at, so a future marker means every later marker is future
-    // too.  Stop before reading more marker bodies, while still allowing malformed/stale markers
-    // before it to be repaired in this pass.
+    // too. Stop before inspecting more markers, while still allowing malformed/stale markers
+    // before it to be repaired in this pass. New markers carry this routing data in list metadata;
+    // legacy markers fall back to reading their JSON body above.
     if (parseTime(record.available_at) > now.getTime()) {
       future = true;
       break;
@@ -2016,6 +2066,7 @@ export {
   releaseCronLease,
   readyKey,
   readyMarker,
+  readyMarkerMetadata,
   renewCronLease,
   runScheduled,
   requestKey,

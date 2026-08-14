@@ -99,6 +99,19 @@ def ready_marker(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def ready_marker_metadata(record: dict[str, Any]) -> dict[str, str]:
+    marker = ready_marker(record)
+    return {
+        "id": str(marker["id"]),
+        "status": "pending",
+        "ready_version": str(marker["version"]),
+        "model": str(marker.get("model") or ""),
+        "created_at": str(marker.get("created_at") or ""),
+        "available_at": str(marker.get("available_at") or ""),
+        "policy": json.dumps(marker["policy"], separators=(",", ":")),
+    }
+
+
 def _transient_r2_error(exc: BaseException) -> bool:
     from botocore.exceptions import ClientError
 
@@ -161,7 +174,7 @@ def _inspect_object(
                 Key=marker_key,
                 Body=json.dumps(ready_marker(record), separators=(",", ":")).encode(),
                 ContentType="application/json",
-                Metadata={"id": record["id"], "status": "pending"},
+                Metadata=ready_marker_metadata(record),
             ),
             key=marker_key,
             retries=r2_retries,

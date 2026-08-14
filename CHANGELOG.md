@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Ready-marker routing metadata now travels with the R2 list result.** The dispatcher requests
+  compact marker metadata during its bounded `ready/` listing and falls back to the marker body for
+  legacy objects, eliminating up to 16 marker reads and JSON decodes per scheduled invocation.
+  Reindex and failed-request recovery writes now populate the metadata; existing queue records and
+  request payloads are unchanged.
+
 - **Free-plan LLM dispatch now defaults to one request per scheduled run.** Production CPU
   telemetry rose above the 10 ms Cron Trigger allowance after the bounded dispatcher was increased
   to four concurrent requests; `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS` are back to `1` while
