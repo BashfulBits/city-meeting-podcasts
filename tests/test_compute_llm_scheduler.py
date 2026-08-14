@@ -182,7 +182,7 @@ def test_deepseek_off_peak_preference_and_deadline_override():
         now=NOW,
     )
     assert outside.model is None
-    assert "off-peak" in outside.rejected[0][1]
+    assert "price-window" in outside.rejected[0][1]
 
     inside = select_route(
         LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
@@ -203,6 +203,36 @@ def test_deepseek_off_peak_preference_and_deadline_override():
         available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
+    )
+    assert urgent.model == model
+
+
+def test_deepseek_peak_waits_for_the_next_cheapest_window():
+    model = "deepseek/deepseek-v4-flash"
+    route = _deepseek_direct_route(model)
+    routes = {route.route_id or route.model: route}
+    peak = datetime(2026, 8, 17, 2, tzinfo=UTC)
+
+    deferred = select_route(
+        LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
+        routes=routes,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=peak,
+    )
+    assert deferred.model is None
+    assert deferred.retry_at == datetime(2026, 8, 17, 4, tzinfo=UTC)
+
+    urgent = select_route(
+        LLMRequestPolicy(
+            allowed_models=(model,), allow_paid=True, deadline_at=peak + timedelta(minutes=30)
+        ),
+        routes=routes,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1024,
+        now=peak,
     )
     assert urgent.model == model
 

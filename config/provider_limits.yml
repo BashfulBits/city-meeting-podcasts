@@ -388,8 +388,27 @@ routes:
     account_id: primary
     concurrency: 5
     free: false
-    input_per_token: 0.00000014 # Direct base ($0.0028 on cache hit & $0.07 off-peak)
+    input_per_token: 0.00000014 # Direct pre-cutover input rate
     output_per_token: 0.00000028
+    # Rates are USD per token. The first period preserves the pre-cutover card; the second is
+    # effective at the timestamp announced by DeepSeek.
+    pricing:
+      periods:
+        - effective_at: 1970-01-01T00:00:00Z
+          input_per_token: 0.00000014
+          output_per_token: 0.00000028
+        - effective_at: 2026-08-16T16:00:00Z
+          input_per_token: 0.00000022
+          output_per_token: 0.00000066
+          windows:
+            - tz: UTC
+              start: "01:00"
+              end: "04:00"
+              multiplier: 2.0
+            - tz: UTC
+              start: "06:00"
+              end: "10:00"
+              multiplier: 2.0
 
   - route_id: deepseek_v4_flash_0731_primary
     model: deepseek/deepseek-v4-flash-0731
@@ -401,6 +420,23 @@ routes:
     free: false
     input_per_token: 0.00000014
     output_per_token: 0.00000028
+    pricing:
+      periods:
+        - effective_at: 1970-01-01T00:00:00Z
+          input_per_token: 0.00000014
+          output_per_token: 0.00000028
+        - effective_at: 2026-08-16T16:00:00Z
+          input_per_token: 0.00000022
+          output_per_token: 0.00000066
+          windows:
+            - tz: UTC
+              start: "01:00"
+              end: "04:00"
+              multiplier: 2.0
+            - tz: UTC
+              start: "06:00"
+              end: "10:00"
+              multiplier: 2.0
 
   - route_id: deepseek_v4_pro_primary
     model: deepseek/deepseek-v4-pro
@@ -411,6 +447,23 @@ routes:
     free: false
     input_per_token: 0.000000435
     output_per_token: 0.00000087
+    pricing:
+      periods:
+        - effective_at: 1970-01-01T00:00:00Z
+          input_per_token: 0.000000435
+          output_per_token: 0.00000087
+        - effective_at: 2026-08-16T16:00:00Z
+          input_per_token: 0.00000066
+          output_per_token: 0.00000198
+          windows:
+            - tz: UTC
+              start: "01:00"
+              end: "04:00"
+              multiplier: 2.0
+            - tz: UTC
+              start: "06:00"
+              end: "10:00"
+              multiplier: 2.0
 
   # ==========================================
   # MISTRAL ROUTES (Audited Exact Quotas)

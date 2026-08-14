@@ -19,6 +19,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
@@ -29,6 +30,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 INPUT_YAML = REPO_ROOT / "config" / "provider_limits.yml"
 OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-proxy" / "src" / "dispatch_limits.json"
 PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
+
+
+def _json_default(value: object) -> str:
+    """Serialize YAML's native date/time scalars without losing their UTC offset."""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
 
 
 def _direct_model(provider: str, upstream_model: str) -> str:
@@ -281,7 +289,6 @@ def _validated_routes(
         normalized = dict(route)
         normalized["model"] = c_model
         normalized.pop("model_key", None)
-
         # A provider/account/upstream tuple is one physical quota bucket. A second YAML entry
         # that differs only by its selector is an alias, not another capacity pool; compiling it
         # as a route would let the Worker reserve the same credential twice. Require complete
@@ -396,9 +403,9 @@ def main(argv: list[str] | None = None) -> None:
     compiled = compile_limits(discover=args.discover)
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT_JSON.open("w", encoding="utf-8") as f:
-        json.dump(compiled, f, indent=2)
+        json.dump(compiled, f, indent=2, default=_json_default)
     with PYTHON_OUTPUT_JSON.open("w", encoding="utf-8") as f:
-        json.dump(_python_routes(compiled), f, indent=2)
+        json.dump(_python_routes(compiled), f, indent=2, default=_json_default)
     rel_out = OUTPUT_JSON.relative_to(REPO_ROOT)
     print(
         f"Successfully compiled {compiled['_metadata']['routes_count']} routes "

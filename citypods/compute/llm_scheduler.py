@@ -96,7 +96,8 @@ def _window_bounds(window, now: datetime) -> tuple[datetime, datetime] | None:
 
 
 def _active_multiplier(route: LLMRoute, now: datetime) -> float:
-    for window in route.pricing.windows:
+    _, _, windows = route.pricing.rates_at(now)
+    for window in windows:
         bounds = _window_bounds(window, now)
         if bounds is None:
             continue
@@ -106,19 +107,44 @@ def _active_multiplier(route: LLMRoute, now: datetime) -> float:
     return 1.0
 
 
-def _next_discount_window_end(route: LLMRoute, now: datetime) -> datetime | None:
-    candidates = []
-    for window in route.pricing.windows:
-        if window.multiplier >= 1:
+def _next_cheapest_window(route: LLMRoute, now: datetime) -> datetime | None:
+    """Return when a currently more-expensive route reaches its cheapest recurring window.
+
+    A route remains selectable at its current price when a caller's deadline would be missed by
+    waiting; otherwise flexible/deferred work is held until the cheapest active-period multiplier
+    is available.  A route with no price premium (or already in its cheapest window) returns
+    ``None``.
+    """
+    _, _, windows = route.pricing.rates_at(now)
+    if not windows:
+        return None
+    now_utc = now.astimezone(UTC)
+    active = _active_multiplier(route, now)
+    cheapest = min(1.0, *(window.multiplier for window in windows))
+    if active <= cheapest:
+        return None
+
+    if cheapest == 1.0:
+        # The ordinary/off-peak period is the cheapest one. The active premium window's end is
+        # therefore the next point at which the route reaches it.
+        for window in windows:
+            bounds = _window_bounds(window, now)
+            if bounds is not None:
+                start, end = bounds
+                if start <= now_utc < end and window.multiplier == active:
+                    return end
+        return None
+
+    # A sub-1x window is the cheapest period. Find its next recurring start; `_window_bounds`
+    # returns today's or tomorrow's occurrence depending on the current local time.
+    starts = []
+    for window in windows:
+        if window.multiplier != cheapest:
             continue
         bounds = _window_bounds(window, now)
-        if bounds is not None:
-            start, end = bounds
-            if start > now.astimezone(UTC):
-                candidates.append((start, end))
-            elif end > now.astimezone(UTC):
-                return end
-    return min((end for _, end in candidates), default=None)
+        if bounds is not None and bounds[0] > now_utc:
+            starts.append(bounds[0])
+    return min(starts, default=None)
 
 
 def _next_local_midnight(reset_timezone: str, now: datetime) -> datetime:
@@ -205,11 +231,8 @@ def _next_quota_reset(
 
 
 def _estimated_cost(route: LLMRoute, estimated_tokens: int, now: datetime) -> float:
-    return (
-        estimated_tokens
-        * (route.pricing.input_per_token + route.pricing.output_per_token)
-        * _active_multiplier(route, now)
-    )
+    input_per_token, output_per_token, _ = route.pricing.rates_at(now)
+    return estimated_tokens * (input_per_token + output_per_token) * _active_multiplier(route, now)
 
 
 def _utilization(route: LLMRoute, ledger_entry) -> float:
@@ -310,11 +333,9 @@ def select_route(
         else None
     )
     # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
-    # only *temporarily* unavailable -- a rate schedule full, daily quota spent, or under a real
-    # 429 block -- is predicted to free up again. A pacing caller sleeps until this rather than
-    # deferring the whole request to a future run. Off-peak (discount-window) waits are excluded:
-    # a route gated only on a price window is available *now*, just not at its cheapest, so pacing
-    # against it would stall a free request for a discount it doesn't need.
+    # only *temporarily* unavailable -- a rate schedule full, daily quota spent, under a real 429
+    # block, or waiting for its cheapest price window -- is predicted to become eligible again. A
+    # pacing caller sleeps until this rather than deferring the whole request to a future run.
     retry_ats: list[datetime] = []
     input_tokens = estimated_tokens if input_tokens is None else input_tokens
     output_tokens = 0 if output_tokens is None else output_tokens
@@ -378,13 +399,13 @@ def select_route(
         if policy.deadline_at is not None and predicted > policy.deadline_at:
             rejected.append((model, "deadline gate"))
             continue
-        if _active_multiplier(route, now) == 1:
-            window_end = _next_discount_window_end(route, now)
-            if window_end is not None and (
-                policy.deadline_at is None or window_end <= policy.deadline_at
-            ):
-                rejected.append((model, f"off-peak gate: waits until {window_end.isoformat()}"))
-                continue
+        price_ready_at = _next_cheapest_window(route, now)
+        if price_ready_at is not None and (
+            policy.deadline_at is None or price_ready_at <= policy.deadline_at
+        ):
+            retry_ats.append(price_ready_at)
+            rejected.append((model, f"price-window gate: waits until {price_ready_at.isoformat()}"))
+            continue
         # Already fetched (and, if needed, window-rolled) by the `ledger.available(...)` check
         # above, which internally calls the same `_ledger()` -- this is that same entry, not a
         # second lookup.

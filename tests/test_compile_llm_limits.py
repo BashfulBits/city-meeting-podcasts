@@ -55,6 +55,18 @@ def test_compiled_routes_materialize_provider_specific_input_and_output_limits()
     assert siliconflow["output_context_limit"] == deepseek["output_context_limit"] == 16384
 
 
+def test_deepseek_pricing_periods_compile_with_input_output_rates_and_peak_windows():
+    compiled = compile_llm_limits.compile_limits()
+    route = compiled["routes_by_id"]["deepseek_v4_flash_primary"]
+    periods = route["pricing"]["periods"]
+    assert periods[1]["effective_at"].isoformat() == "2026-08-16T16:00:00+00:00"
+    assert periods[1]["input_per_token"] == pytest.approx(0.22e-6)
+    assert [(window["start"], window["end"]) for window in periods[1]["windows"]] == [
+        ("01:00", "04:00"),
+        ("06:00", "10:00"),
+    ]
+
+
 def test_model_key_aliases_must_not_conflict_with_a_canonical_key():
     routes = [
         {

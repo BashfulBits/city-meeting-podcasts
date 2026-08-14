@@ -6,7 +6,7 @@ import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import UTC, datetime, time
 from pathlib import Path
 from typing import Any, Literal
 
@@ -77,14 +77,56 @@ class PeakWindow:
 
 
 @dataclass(frozen=True)
+class PricingPeriod:
+    """One effective-dated rate card for a physical LLM route.
+
+    ``input_per_token`` is the input rate for compatibility with the original route table.
+    Windows multiply the period's rates; a period can therefore
+    describe both ordinary/off-peak pricing and peak surcharges without provider-specific code.
+    """
+
+    effective_at: datetime
+    input_per_token: float | None = None
+    output_per_token: float | None = None
+    windows: tuple[PeakWindow, ...] = ()
+
+
+@dataclass(frozen=True)
 class PricingPolicy:
     input_per_token: float = 0.0
     output_per_token: float = 0.0
     windows: tuple[PeakWindow, ...] = ()
+    periods: tuple[PricingPeriod, ...] = ()
     cost_cap: float | None = None
     # A hard calendar-day spending ceiling. Unlike ``cost_cap`` (the existing billing-cycle
     # guard), this is for cautiously enabling a paid route in a recurring experiment.
     daily_cost_cap: float | None = None
+
+    def rates_at(self, now: datetime | None = None) -> tuple[float, float, tuple[PeakWindow, ...]]:
+        """Return ``(input, output, windows)`` at ``now``.
+
+        A missing or invalid historical rate card falls back to the route's legacy fields.  This
+        keeps pricing advisory: a bad pricing update cannot make a route unusable.
+        """
+        instant = now or datetime.now(UTC)
+        if instant.tzinfo is None:
+            instant = instant.replace(tzinfo=UTC)
+        instant = instant.astimezone(UTC)
+        active = [
+            period for period in self.periods if period.effective_at.astimezone(UTC) <= instant
+        ]
+        period = max(active, key=lambda candidate: candidate.effective_at) if active else None
+        if period is None:
+            return (
+                self.input_per_token,
+                self.output_per_token,
+                self.windows,
+            )
+        return (
+            self.input_per_token if period.input_per_token is None else period.input_per_token,
+            self.output_per_token if period.output_per_token is None else period.output_per_token,
+            period.windows or self.windows,
+        )
 
 
 @dataclass(frozen=True)
@@ -147,9 +189,57 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
         raise RuntimeError(
             f"Invalid generated LLM route catalog at {path}; rerun scripts/compile_llm_limits.py"
         ) from exc
+
+    def parse_time(value: Any) -> time:
+        if isinstance(value, time):
+            return value
+        return time.fromisoformat(str(value))
+
+    def parse_datetime(value: Any) -> datetime:
+        parsed = (
+            value
+            if isinstance(value, datetime)
+            else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        )
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+
+    def parse_windows(raw_windows: Any) -> tuple[PeakWindow, ...]:
+        windows = []
+        for raw_window in raw_windows or ():
+            windows.append(
+                PeakWindow(
+                    tz=str(raw_window.get("tz", "UTC")),
+                    start=parse_time(raw_window["start"]),
+                    end=parse_time(raw_window["end"]),
+                    multiplier=float(raw_window.get("multiplier", 1.0)),
+                )
+            )
+        return tuple(windows)
+
     result = []
     for item in raw.get("routes", []):
         provider = str(item.get("provider", ""))
+        raw_pricing = item.get("pricing") or {}
+        periods = []
+        for raw_period in raw_pricing.get("periods", ()):
+            periods.append(
+                PricingPeriod(
+                    effective_at=parse_datetime(raw_period["effective_at"]),
+                    input_per_token=(
+                        float(raw_period["input_per_token"])
+                        if raw_period.get("input_per_token") is not None
+                        else None
+                    ),
+                    output_per_token=(
+                        float(raw_period["output_per_token"])
+                        if raw_period.get("output_per_token") is not None
+                        else None
+                    ),
+                    windows=parse_windows(raw_period.get("windows")),
+                )
+            )
         result.append(
             LLMRoute(
                 model=str(item["model"]),
@@ -167,6 +257,7 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
                     input_per_token=float(item.get("input_per_token", 0) or 0),
                     output_per_token=float(item.get("output_per_token", 0) or 0),
                     windows=(_DEEPSEEK_WINDOW,) if provider == "deepseek" else (),
+                    periods=tuple(periods),
                 ),
                 max_provider_attempts=None,
                 route_id=str(item.get("route_id", item["model"])),
@@ -390,6 +481,7 @@ __all__ = [
     "LLMRoute",
     "MODEL_ALIASES",
     "PeakWindow",
+    "PricingPeriod",
     "PricingPolicy",
     "QuotaPolicy",
     "ROUTES",

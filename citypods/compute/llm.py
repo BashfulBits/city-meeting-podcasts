@@ -343,7 +343,10 @@ def _sum_usage_fields(first: Any, second: Any) -> dict[str, Any] | None:
 
 
 def _priced_actual(
-    output: Mapping[str, Any], *, input_per_token: float, output_per_token: float
+    output: Mapping[str, Any],
+    *,
+    input_per_token: float,
+    output_per_token: float,
 ) -> tuple[int | None, float | None]:
     """Actual ``(tokens, cost)`` for a completed response, pricing prompt and completion tokens
     at their own rates rather than charging the combined rate to every token (which over- or
@@ -1196,6 +1199,7 @@ class LiteLLMBackend(Backend):
                     # actual usage (see `reconcile()`). A job whose handle is never reconciled
                     # leaves an inflight entry until the reservation expiry is reaped. The shared
                     # ledger's expiry is what keeps concurrency-only routes from being stuck.
+                    input_rate, output_rate, _ = route.pricing.rates_at(datetime.now(UTC))
                     return JobHandle(
                         task=job.task,
                         recipe_hash=job.recipe_hash,
@@ -1205,8 +1209,8 @@ class LiteLLMBackend(Backend):
                         model=resolved_model,
                         owner=owner,
                         route_id=route.route_id or None,
-                        input_per_token=route.pricing.input_per_token,
-                        output_per_token=route.pricing.output_per_token,
+                        input_per_token=input_rate,
+                        output_per_token=output_rate,
                         attempted_requests=attempted_requests,
                     )
                 elif response.status_code == 429:
@@ -1222,10 +1226,11 @@ class LiteLLMBackend(Backend):
             _cleanup()
             raise
 
+        input_rate, output_rate, _ = route.pricing.rates_at(datetime.now(UTC))
         actual_tokens, actual_cost = _priced_actual(
             result.output,
-            input_per_token=route.pricing.input_per_token,
-            output_per_token=route.pricing.output_per_token,
+            input_per_token=input_rate,
+            output_per_token=output_rate,
         )
         if result.model != resolved_model:
             result = JobResult(

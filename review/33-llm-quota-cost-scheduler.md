@@ -27,8 +27,8 @@ R13 must let a caller:
 1. consume provider quotas in the correct order, especially Gemini's requests-per-day (RPD),
    requests-per-minute (RPM), and tokens-per-minute (TPM) limits;
 2. account for quota reset times, including Gemini's midnight-Pacific daily reset;
-3. prefer DeepSeek's off-peak discount window rather than dispatching at full price when the work
-   isn't time-sensitive;
+3. wait for DeepSeek's cheapest recurring pricing window rather than dispatching at a higher price
+   when the work isn't time-sensitive;
 4. honor a caller's allowed-model constraint, including a scorer that must run the same job against
    several specifically selected models;
 5. never choose a paid model when the caller permits a free model and that free model can complete
@@ -178,6 +178,7 @@ class PricingPolicy:
     input_per_token: float = 0.0
     output_per_token: float = 0.0
     windows: tuple[PeakWindow, ...] = ()
+    periods: tuple[PricingPeriod, ...] = ()
     cost_cap: float | None = None   # soft $ cap per cycle (review/27 §8.1); None = untracked/uncapped
 
 @dataclass(frozen=True)
@@ -198,9 +199,10 @@ class LLMRoute:
     pricing: PricingPolicy
 ```
 
-There is no separate `TimingPolicy` or `BatchCapability` type in v1 — the only timing concept that
-exists today is price-window preference, which is pricing data (`PricingPolicy.windows`), and batch
-capability is deferred (§9).
+There is no separate `TimingPolicy` or `BatchCapability` type in v1 — timing remains pricing data.
+As implemented, `PricingPolicy.periods` is an effective-dated route-local rate card; each period
+can carry input/output rates and peak windows. Batch capability remains deferred (§9) until a
+provider's submit/poll wire contract is confirmed.
 
 ### §4.1 The concrete route table
 
@@ -211,16 +213,15 @@ equality so the two tables cannot drift apart:
 | `model` | `transport` | `free` | quota | pricing |
 |---|---|---|---|---|
 | `gemini/gemini-3-flash-preview` | `direct` | `True` | `rpm=10, rpd=1500, tpm=250_000, reset_timezone="America/Los_Angeles"` (review/27 §2) | `0.0 / 0.0`, no windows, no cap (free) |
-| `deepseek/deepseek-v4-flash` | `direct` | `False` | `concurrency=None` (§14 — no measured ceiling yet) | `input=0.14e-6, output=0.28e-6` (review/27 §2), `windows=(PeakWindow("UTC", time(16,30), time(0,30), 0.5),)` (review/27 §5.3, **V3/R1-confirmed, V4 provisional** — see §8) |
-| `deepseek/deepseek-v4-pro` | `direct` | `False` | `concurrency=None` | `input=0.435e-6, output=0.87e-6` (review/27 §2.1), same off-peak window as flash |
+| `deepseek/deepseek-v4-flash` | `direct` | `False` | `concurrency=5` (compiled safety ceiling) | Effective-dated YAML pricing: pre-cutover `0.14e-6 / 0.28e-6`; from `2026-08-16T16:00Z`, off-peak `0.22e-6 / 0.66e-6` and peak windows `01:00–04:00` + `06:00–10:00 UTC` at `2x` |
+| `deepseek/deepseek-v4-pro` | `direct` | `False` | `concurrency=5` (compiled safety ceiling) | Effective-dated YAML pricing: pre-cutover `0.435e-6 / 0.87e-6`; from `2026-08-16T16:00Z`, off-peak `0.66e-6 / 1.98e-6` and the same peak windows at `2x` |
 | `mistral/mistral-large-latest` | `mistral-dispatch` | `True` | `rpm=2` (review/27 §2, "~2 RPM (plan for 1/min)") | `0.0 / 0.0`, no windows — only a candidate for a backend with `dispatch_url` configured (§2) |
 | `mistral/mistral-large-3` | `mistral-dispatch` | `True` | `rpm=2` | same as above |
 
-DeepSeek's `concurrency=None` is an honest gap, not a placeholder: review/27 §2 records DeepSeek as
-"concurrency-based, not RPM/RPD" but never measured the actual ceiling. Ship Phase A with no
-concurrency cap for DeepSeek (the pricing/off-peak dimensions still apply); add a real number once
-production 429s establish one (§14). This does not weaken the free-tier guarantee anywhere — DeepSeek
-is never free, so it never bypasses `allow_paid`.
+The compiled `concurrency=5` is an internal safety ceiling, not a claim about DeepSeek's provider
+maximum. DeepSeek is concurrency-based rather than RPM/RPD; replace this conservative ceiling only
+after production telemetry establishes a safe value. DeepSeek is never free, so it never bypasses
+`allow_paid`.
 
 ## §5. Selection policy
 
@@ -274,7 +275,7 @@ LLMRequestPolicy(allow_paid=False, purpose="city-onboarding")
 No `allowed_models` (today that resolves to whichever free+direct route is configured — just
 Gemini, but a second free+direct route added later needs no change here) and no `deadline_at` (moot:
 gate 3 already rejects a route outright when it's not available *this call*, regardless of what a
-deadline says — deadline only ever governs whether gate 5's off-peak *preference* fires, and a free
+deadline says — deadline only ever governs whether gate 5's cheapest-window wait fires, and a free
 route has no off-peak windows in the first place). A caller that instead wants R13 to hold onto a
 request and complete it later — "cheapest response from model Y within X days, deferral is fine" —
 sets `allow_paid`/`allowed_models` as needed and a real `deadline_at`; §10.7 covers how that
@@ -407,24 +408,24 @@ either way.
 
 ## §8. DeepSeek off-peak pricing
 
-**In scope for v1** — DeepSeek V4 pricing is expected to leave preview and confirm its off-peak window
-within the next 1–2 weeks, and the mechanism should already be operating (on the best currently-known
-figures) when that happens, not built reactively afterward.
+**In scope for v1** — DeepSeek V4's announced effective-dated rate card is compiled from
+`config/provider_limits.yml`, rather than requiring a code edit for each price change. The periods
+carry only input and output rates; cache-hit pricing is intentionally not modeled because the
+pipeline cannot predict or control the hit ratio.
 
-**Correction from the initial draft:** the initial draft described DeepSeek "peak surcharge windows" of
-09:00–12:00 and 14:00–18:00 `Asia/Shanghai`. That figure doesn't match review/27 §5.3, which is the
-more carefully sourced fact already in this doc set: DeepSeek has historically discounted 50–75% during
-**16:30–00:30 UTC** (V3/R1 figures, confirmed as of 2026-07-14; **V4's off-peak window was not yet
-officially confirmed** at that time). §4.1's route table adopts review/27's figure — a single
-`PeakWindow(tz="UTC", start=time(16,30), end=time(0,30), multiplier=0.5)` per DeepSeek model — as the
-working default, discarding the initial draft's unsourced one. Re-verify against DeepSeek's live
-pricing docs once V4 exits preview and update `ROUTES` — this is versioned configuration, not code, so
-the update is a data change in `llm_policy.py`, not new logic.
+**Current card:** the pre-cutover period preserves the prior prices and historical off-peak behavior.
+The period effective `2026-08-16T16:00:00Z` sets Flash off-peak to `$0.007/$0.22/$0.66` and Pro
+off-peak to `$0.022/$0.66/$1.98` per million input/output tokens. Its
+two UTC peak windows (`01:00–04:00` and `06:00–10:00`) use a `2.0` multiplier. Actual settlement
+uses the configured input/output rates; the scheduler uses the same rates for conservative
+admission estimates.
 
-Mechanism: entirely §5 gate 5. There's no separate `eligible_at` field or persisted defer record: the
-next scheduled run of the calling workflow re-evaluates fresh, and because DeepSeek overflow/tournament
-dispatch already tolerates "picked up next run" (review/27 §5.3), this needs no new infrastructure — R13's
-selection function is simply the shared place that logic now lives, matching the conclusion review/27's
+Mechanism: entirely §5 gate 5. Flexible work is held when a route is currently in a more expensive
+window, with `retry_at` pointing to the next cheapest window for paced callers; a deferred record still
+re-evaluates fresh rather than persisting a price assumption. A deadline overrides the wait when the
+cheaper window would be too late. Because DeepSeek overflow/tournament dispatch already tolerates "picked
+up next run" (review/27 §5.3), this needs no new infrastructure — R13's selection function is simply the
+shared place that logic now lives, matching the conclusion review/27's
 own dispatch-coordinator design already reached for the same problem.
 
 A job near its deadline overrides the preference and dispatches at full price; that override is
@@ -436,17 +437,15 @@ logged. A missing or wrong price fact must never cause a missed deadline or a st
 
 ## §9. Batch capability — deferred
 
-No route in `SUPPORTED_MODELS` has a confirmed server-side batch API today. Two candidates exist in the
-surrounding docs, at different maturity: DeepSeek's batch + off-peak stacking (review/27 §5.3, "up to
-~75% combined," but the exact endpoint shape — a real batch-submit/poll API vs. "async already gets the
-off-peak rate" — was not conclusively researched) and Anthropic (not currently a configured provider at
-all). Building a generic `BatchTransport` protocol for a capability nothing uses yet, for providers
-whose actual API shape isn't confirmed, is the same premature-abstraction risk review/27 §8.2 already
-argues against for cost estimation — let the real shape resolve first.
+No route in `SUPPORTED_MODELS` has a confirmed server-side batch API today. DeepSeek has no batch API;
+its ordinary chat-completion transport is the only supported path. Anthropic is not currently a
+configured provider either. Building a generic `BatchTransport` protocol for a capability nothing
+uses yet is the same premature-abstraction risk review/27 §8.2 already argues against for cost
+estimation — add provider-specific support only when a real submit/poll contract exists.
 
-When DeepSeek's batch endpoint shape is confirmed (review/27 §5.3's own open item), add batch
-capability sized to that specific API rather than a speculative generic one — a natural extension of
-the same route/ledger model in §4/§10, but a follow-up review, not part of R13 v1.
+No generic batch abstraction was added. If a future configured provider offers a confirmed
+submit/poll contract, add that provider-specific transport and its request/result lifecycle in a
+follow-up review rather than treating a different URL as sufficient.
 
 ## §10. Shared ledger and durable state
 
@@ -797,8 +796,9 @@ regardless of which one originally claimed a given pending record), calls `list_
 `reconcile()`s each, and finally `prune_expired_deferred`. Reconciling one bad record must not abort
 the sweep for the rest — each `reconcile()` call is wrapped and its failure logged, not raised.
 
-**Cadence: once daily, timed to the known off-peak window, not a tight cron.** Scheduled for 17:30
-UTC — one hour after DeepSeek's 16:30 UTC off-peak window opens (§8) — rather than every few hours.
+**Cadence: once daily, timed outside the known peak windows, not a tight cron.** Scheduled for 17:30
+UTC — outside DeepSeek's current `01:00–04:00` and `06:00–10:00 UTC` peak windows (§8) — rather than
+every few hours.
 GitHub Actions cron minutes are worth conserving, and nothing configured today needs a finer wake-up:
 an ~8-hour-wide window is comfortably caught by one daily check even accounting for GitHub's own
 cron jitter. **This is a per-window decision, not a fixed cadence** — if a future route's discount
@@ -917,11 +917,11 @@ with `deadline_at` far enough out that the free route survives — assert the pa
 even though it's eligible (gate 6 ranking prefers free); (c) an evaluation caller with `allowed_models=
 ("deepseek/deepseek-v4-pro",)`, `allow_paid=True` while a free Gemini route is also configured and
 eligible — assert DeepSeek is still selected, proving the allowlist is exact, not a preference; (d) a
-DeepSeek off-peak deferral case against a synthetic `now` outside the discount window with a distant
-deadline — assert `SelectionResult.model is None` and the rejection reason names the off-peak gate;
-(e) the same case with `now` inside the discount window — assert it's selected; (f) the same off-peak
-case with `deadline_at` inside the current (full-price) window — assert the deadline override fires and
-DeepSeek is selected anyway, at full price.
+DeepSeek price-window deferral case against a synthetic `now` inside a peak window with a distant
+deadline — assert `SelectionResult.model is None`, `retry_at` is the peak-window end, and the rejection
+reason names the price-window gate; (e) the same case with `now` inside the cheapest window — assert
+it's selected; (f) the same peak case with `deadline_at` inside the current window — assert the deadline
+override fires and DeepSeek is selected anyway, at the higher active price.
 
 **LLM-SCHED-4 — CAS selection+reservation wrapper, and wiring into `LiteLLMBackend`.** Extends
 `citypods/compute/llm_scheduler.py` with `select_and_reserve` (§10.3). Edits `citypods/compute/llm.py`:
@@ -1027,8 +1027,8 @@ deadline for it. **Test**: updates the existing prompt-construction assertion in
   across concurrent shards — proven by the CAS ledger's conflict-retry test, not by luck.
 - A reservation that is settled is never also released, and vice versa (§10.2) — proven by a test that
   simulates a post-dispatch failure and asserts the reservation stays counted.
-- Flexible DeepSeek work prefers the configured off-peak window without ever missing a caller's
-  deadline.
+- Flexible DeepSeek work waits for the configured cheapest window without ever missing a caller's
+  deadline; urgent work may use the currently active price.
 - A stale or missing price/quota policy disables deliberate delay and still lets the job dispatch — it
   never deadlocks work.
 - A job with no `llm_policy` behaves identically to `LiteLLMBackend` before this item existed — proven

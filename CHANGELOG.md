@@ -17,6 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM pricing is now effective-dated and YAML-driven.** `config/provider_limits.yml` can define
+  input/output rates and UTC peak windows per physical route; the compiler carries
+  those periods to both the Python scheduler and the dispatch Worker. DeepSeek V4 Flash and Pro
+  include the August 16, 2026 rate-card cutover. Cache-hit pricing is intentionally not modeled
+  because its hit ratio is not predictable or controllable. Flexible deferred work waits for the
+  route's next cheapest pricing window, while a deadline can authorize the currently active price.
+  No batch protocol was added because
+  DeepSeek does not provide a batch API. No LLM artifacts are invalidated and no backfill is
+  required; this changes admission and cost accounting only.
+
 - **Known-text provider alignment now uses WhisperX with a separate artifact lane.** Untimed Swagit
   and similar provider documents are cleaned of bracketed source-time markers, remapped to served
   time, and aligned with the configurable `WAV2VEC2_ASR_BASE_960H` model. The 90% gate is measured

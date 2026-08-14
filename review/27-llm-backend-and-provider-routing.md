@@ -63,8 +63,8 @@ summarization) — those are R5/R6's own designs, consumers of this interface, n
 | **Mistral** | **Ongoing** "Experiment" tier, ~1B tokens/month | Mistral Large 3 | ~2 RPM (plan for 1/min) | 256K tokens | **Tournament judge + occasional per-verb champion, not a default full-catalog channel** |
 
 **Corrections from the initial framing:** DeepSeek's "free allotment" is a one-time 30-day trial, not an
-ongoing allowance — its actual advantage is being extremely cheap once paid (deepseek-v4-flash:
-$0.14/M input cache-miss, $0.28/M output), not free. Gemini's free tier is the one that's genuinely
+ongoing allowance — its actual advantage was being extremely cheap once paid (pre-cutover
+deepseek-v4-flash: $0.14/M input, $0.28/M output), not free. Gemini's free tier is the one that's genuinely
 ongoing, which is why it's the primary channel below, not DeepSeek. `deepseek-chat`/`deepseek-reasoner`
 are deprecated 2026-07-24 in favor of `deepseek-v4-flash`/`deepseek-v4-pro` — use the new names.
 
@@ -273,7 +273,8 @@ comparator/workqueue decides *which episode's tag/summarize/etc. job a Stage att
 by R13, still each feature Stage's own backlog policy, per `review/33` §11.4 ("R13 only ever answers 'is
 a route eligible right now,' not 'whose turn is it'"). R13's `select_route`/`select_and_reserve`
 (`citypods/compute/llm_scheduler.py`) decides, for *that already-chosen* job, which route serves it —
-Gemini-primary/DeepSeek-secondary falls out of its ranking (free before paid, cheapest active price,
+Gemini-primary/DeepSeek-secondary falls out of its ranking (free before paid, cheapest currently
+eligible price after any price-window gate,
 `§5` of `review/33`), not from separate ordering code here.
 
 - **Gemini (primary):** process LLM tasks newest-meeting-first within the current recency window; when
@@ -323,35 +324,25 @@ episode+verb at once, or which one is currently canonical/served vs. shadow-only
 `source_provider`-tagged shadow block described below in §10 — is still the tournament module's own
 responsibility to build, not something R13's ledger or registry happens to already cover.
 
-### §5.3 DeepSeek off-peak + batch dispatch — a real, missed-in-first-draft cost lever
+### §5.3 DeepSeek pricing and batch boundary
 
-**Gap in the first draft of this doc, caught on review: DeepSeek's off-peak and batch discounts were
-researched but never actually designed in.** This pipeline is already schedule-driven, not real-time —
-exactly the shape these discounts are built for — so this is close to free savings, not a tradeoff.
+**The effective-dated rate card is compiled from YAML.** This pipeline is already schedule-driven, not
+real-time, so the scheduler can apply the current UTC window and hold flexible work for the route's
+cheapest recurring window without adding a provider-specific branch. Cache-hit pricing is intentionally
+omitted: the pipeline cannot predict or control the hit ratio, so only configured input/output rates
+participate in admission and accounting.
 
-- **Off-peak window:** DeepSeek has historically discounted 50–75% (V3/R1: 50% off standard models, 75%
-  off R1-class reasoning models) during **16:30–00:30 UTC**. Confirmed 2026-07-14: **V4's off-peak
-  pricing was not yet officially confirmed** at research time — treat the window as *likely* to still
-  apply, verify against DeepSeek's live pricing docs before relying on it, and design the scheduling hook
-  so it degrades gracefully (dispatch still works correctly outside the window, just without the
-  discount) rather than assuming the discount is guaranteed.
-- **Batch dispatch:** DeepSeek supports asynchronous batch submission for non-realtime work, and the
-  batch + off-peak discounts **stack** (up to ~75% combined per the research). **Distinguish this from
-  LiteLLM's own `batch_completion`**, which is client-side parallel dispatch of synchronous calls, not
-  the same thing as a provider's server-side batch-submission-then-poll API with its own discount.
-  Confirm at implementation time whether DeepSeek exposes a distinct batch endpoint (OpenAI-Batch-API
-  style: submit a JSONL of requests, poll, collect results within a completion window) or whether
-  "batching" in DeepSeek's own materials just means "async access already gets you the off-peak rate" —
-  the research wasn't fully conclusive on which, and the two have different implementation shapes.
-- **Design hook, not a hard requirement:** DeepSeek-bound dispatch — both tournament/benchmark calls
-  (review/34) and any overflow production work (§5) — should **prefer** scheduling into the 16:30–00:30 UTC
-  window when the work isn't time-sensitive (which almost all of it isn't — tournament runs are weekly,
-  overflow dispatch already tolerates "picked up next run"). This is a scheduling *preference* in the
-  dispatch coordinator, not a blocking constraint — DeepSeek dispatch outside the window should still
-  work, just at standard (still cheap) pricing. Given GitHub Actions cron schedules are already flexible
-  (`audio.yml`/`asr.yml` already run multiple times/day on independent schedules), aligning a
-  DeepSeek-dispatch-preferring run with the discount window is a scheduling decision, not new
-  infrastructure.
+- **Effective 2026-08-16 16:00 UTC:** Flash is `$0.007/$0.22/$0.66` and Pro is
+  `$0.022/$0.66/$1.98` per million input/output tokens during off-peak. Peak windows are
+  `01:00–04:00` and `06:00–10:00 UTC`, with a `2.0` multiplier. These values live in the two
+  DeepSeek route pricing periods in `config/provider_limits.yml`.
+- **Batch dispatch:** DeepSeek does not provide a batch API. No batch transport is implemented; a
+  different URL alone would not make the existing chat-completion transport batch-capable.
+- **Flexible-work gate:** DeepSeek-bound dispatch — both tournament/benchmark calls (review/34) and
+  any overflow production work (§5) — waits for the next cheapest recurring window when the work is
+  not time-sensitive. A caller deadline overrides the wait when the cheaper window would be too late.
+  This is implemented in both the Python scheduler and dispatch Worker; no separate queue or
+  route-specific transport metadata is required.
 
 ---
 

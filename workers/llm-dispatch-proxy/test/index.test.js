@@ -887,6 +887,109 @@ test("selectRoute ranks free before paid and cheapest paid first, deterministica
   );
 });
 
+test("selectRoute ranks an effective peak price card instead of stale base rates", () => {
+  const dispatchLimits = {
+    providers: { scheduled: {}, steady: {} },
+    model_routes_map: { "svc/model": ["scheduled", "steady"] },
+    routes_by_id: {
+      scheduled: {
+        route_id: "scheduled",
+        provider: "scheduled",
+        free: false,
+        input_per_token: 0.1,
+        output_per_token: 0.1,
+        pricing: {
+          periods: [
+            {
+              effective_at: "2026-08-16T16:00:00Z",
+              input_per_token: 1,
+              output_per_token: 1,
+              windows: [{ tz: "UTC", start: "01:00", end: "04:00", multiplier: 2 }],
+            },
+          ],
+        },
+      },
+      steady: {
+        route_id: "steady",
+        provider: "steady",
+        free: false,
+        input_per_token: 0.3,
+        output_per_token: 0.3,
+      },
+    },
+  };
+  const before = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    new Date("2026-08-16T15:00:00Z"),
+    dispatchLimits,
+  );
+  const peak = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    new Date("2026-08-17T02:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(before.chosenRoute.route_id, "scheduled");
+  assert.equal(peak.chosenRoute.route_id, "steady");
+});
+
+test("selectRoute defers a flexible request until the route's cheapest pricing window", () => {
+  const dispatchLimits = {
+    providers: { scheduled: {} },
+    model_routes_map: { "svc/model": ["scheduled"] },
+    routes_by_id: {
+      scheduled: {
+        route_id: "scheduled",
+        provider: "scheduled",
+        free: false,
+        input_per_token: 0.1,
+        output_per_token: 0.1,
+        pricing: {
+          periods: [
+            {
+              effective_at: "2026-08-16T16:00:00Z",
+              input_per_token: 1,
+              output_per_token: 1,
+              windows: [{ tz: "UTC", start: "01:00", end: "04:00", multiplier: 2 }],
+            },
+          ],
+        },
+      },
+    },
+  };
+  const peak = new Date("2026-08-17T02:00:00Z");
+  const deferred = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    peak,
+    dispatchLimits,
+  );
+  assert.equal(deferred.chosenRoute, null);
+  assert.equal(deferred.reason, "no_capacity");
+
+  const urgent = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true, deadline_at: "2026-08-17T02:30:00Z" },
+    peak,
+    dispatchLimits,
+  );
+  assert.equal(urgent.chosenRoute.route_id, "scheduled");
+
+  const offPeak = selectRoute(
+    { routes: {} },
+    "svc/model",
+    { allow_paid: true },
+    new Date("2026-08-17T04:00:00Z"),
+    dispatchLimits,
+  );
+  assert.equal(offPeak.chosenRoute.route_id, "scheduled");
+});
+
 test("selectRoute spills a durable request to its next allowed model when the primary is full", () => {
   const dispatchLimits = {
     providers: { primary: {}, backup: {} },
