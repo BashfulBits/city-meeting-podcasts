@@ -15,12 +15,12 @@ from citypods.compute.llm import (
     LLMBackendConfig,
     LLMBackendError,
     LLMStructuredOutputError,
-    _gemini_schema_safe_model,
     _messages,
     _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
     _safe_structured_failure_diagnostic,
+    _schema_variant_model,
     _strip_schema_keys,
     _usage_tokens,
 )
@@ -695,6 +695,44 @@ def test_structured_job_uses_native_json_schema_mode_for_gemini():
     assert sent["json_schema"]["schema"] == ExampleOutput.model_json_schema()
 
 
+def test_gemma_route_uses_its_compiled_relaxed_schema_profile():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response('{"value":"ok","count":1,"tags":[]}')
+
+    backend = LiteLLMBackend(LLMBackendConfig(model="google/gemma-4-31b-it"), completion=completion)
+    result = backend.run_inference(
+        job(content="meeting text", structured_output="constrained-output")
+    )
+
+    assert result.output["choices"][0]["message"]["content"]
+    schema = calls[0]["response_format"]["json_schema"]["schema"]
+    rendered = json.dumps(schema)
+    assert "minLength" not in rendered
+    assert "maxLength" not in rendered
+    assert "minimum" not in rendered
+    assert "maximum" not in rendered
+    assert "minItems" not in rendered
+    assert "maxItems" not in rendered
+
+
+def test_gemma_dispatch_payload_uses_the_same_compiled_schema_profile():
+    backend = LiteLLMBackend(LLMBackendConfig(model="google/gemma-4-31b-it"))
+    payload = backend._payload(
+        job(content="meeting text", structured_output="constrained-output"),
+        ConstrainedOutput,
+        resolved_model="google/gemma-4-31b-it",
+    )
+
+    schema = payload["response_format"]["json_schema"]["schema"]
+    rendered = json.dumps(schema)
+    assert payload["response_format"]["type"] == "json_schema"
+    assert "minLength" not in rendered
+    assert "maximum" not in rendered
+
+
 def test_deepseek_structured_request_includes_schema_in_initial_prompt():
     calls = []
 
@@ -918,8 +956,11 @@ def test_strip_schema_keys_removes_matching_keys_at_every_depth():
     assert schema["properties"]["a"]["minLength"] == 1, "must not mutate the caller's schema"
 
 
-def test_gemini_schema_safe_model_preserves_name_and_leaves_original_untouched():
-    Relaxed = _gemini_schema_safe_model(ConstrainedOutput)
+def test_schema_variant_model_preserves_name_and_leaves_original_untouched():
+    Relaxed = _schema_variant_model(
+        ConstrainedOutput,
+        frozenset({"minLength", "maxLength", "minimum", "maximum", "maxItems"}),
+    )
 
     assert Relaxed.__name__ == "ConstrainedOutput"
     assert issubclass(Relaxed, ConstrainedOutput)

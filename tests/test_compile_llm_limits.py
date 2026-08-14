@@ -46,13 +46,74 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert compiled["model_aliases"]["opencode/nemotron-3-ultra-free"] == nemotron_key
 
 
-def test_compiled_routes_materialize_provider_specific_input_and_output_limits():
+def test_compiled_routes_materialize_route_specific_input_and_output_limits():
     compiled = compile_llm_limits.compile_limits()
-    siliconflow = compiled["routes_by_id"]["siliconflow_deepseek_v4_flash_primary"]
+    gemini = compiled["routes_by_id"]["gemini_3_1_flash_lite_primary"]
+    gemma = compiled["routes_by_id"]["gemma_4_31b_primary"]
+    openrouter_gemma = compiled["routes_by_id"]["openrouter_google_gemma_4_26b_a4b_it_free"]
+    assert (gemini["input_context_limit"], gemini["output_context_limit"]) == (1048576, 65536)
+    assert (gemma["input_context_limit"], gemma["output_context_limit"]) == (262144, 32768)
+    assert (openrouter_gemma["input_context_limit"], openrouter_gemma["output_context_limit"]) == (
+        131072,
+        32768,
+    )
+    assert all(
+        isinstance(route["input_context_limit"], int)
+        and isinstance(route["output_context_limit"], int)
+        and route["input_context_limit"] > 0
+        and route["output_context_limit"] > 0
+        for route in compiled["routes"]
+    )
+
+
+def test_route_limits_cannot_fall_back_to_provider_defaults():
+    raw = {
+        "structured_output_profiles": {"standard": {}},
+        "providers": {"example": {"input_context_limit": 999999}},
+        "routes": [{"route_id": "example", "model": "example/model", "provider": "example"}],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(compile_llm_limits, "INPUT_YAML", compile_llm_limits.INPUT_YAML)
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        with pytest.raises(ValueError, match="provider defaults are not supported"):
+            compile_llm_limits.compile_limits()
+
+
+def test_compiled_routes_materialize_structured_output_profiles():
+    compiled = compile_llm_limits.compile_limits()
+    gemma = compiled["routes_by_id"]["gemma_4_31b_primary"]
     deepseek = compiled["routes_by_id"]["deepseek_v4_flash_primary"]
-    assert siliconflow["input_context_limit"] == 32768
-    assert deepseek["input_context_limit"] == 131072
-    assert siliconflow["output_context_limit"] == deepseek["output_context_limit"] == 16384
+    groq = compiled["routes_by_id"]["groq_llama_3_3_70b_versatile_primary"]
+
+    assert gemma["structured_output_profile"] == "relaxed_json_schema"
+    assert gemma["structured_output_response_format"] == "json_schema"
+    assert gemma["structured_output_direct_handler"] == "native"
+    assert "minLength" in gemma["structured_output_schema_strip_keys"]
+    assert deepseek["structured_output_profile"] == "json_object"
+    assert deepseek["structured_output_response_format"] == "json_object"
+    assert deepseek["structured_output_include_schema_in_prompt"] is True
+    assert groq["structured_output_profile"] == "json_object"
+    assert groq["structured_output_response_format"] == "json_object"
+
+
+def test_google_routes_use_live_model_identifiers():
+    compiled = compile_llm_limits.compile_limits()
+    google_models = {
+        route["upstream_model"] for route in compiled["routes"] if route["provider"] == "gemini"
+    }
+
+    assert "gemma-4-26b-a4b-it" in google_models
+    assert "gemma-4-26b-it" not in google_models
+    assert "gemini-2.5-flash" not in google_models
+    assert "gemini-2.5-flash-lite" not in google_models
+
+
+def test_deepseek_v4_flash_uses_current_direct_api_identifier():
+    compiled = compile_llm_limits.compile_limits()
+    route = compiled["routes_by_id"]["deepseek_v4_flash_primary"]
+    assert route["upstream_model"] == "deepseek-v4-flash"
 
 
 def test_model_key_aliases_must_not_conflict_with_a_canonical_key():
