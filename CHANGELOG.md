@@ -15,7 +15,30 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Changed
+
+- **The LLM dispatch Worker performs fewer R2 round trips per scheduled invocation.** Free-plan cron
+  CPU is charged for moving bytes across the R2 binding rather than for waiting on it, so the
+  operation shape of an invocation is the thing to reduce. The cron lease now carries the ETag its
+  acquiring write returned, so renew and release CAS onto it instead of re-reading the lock, and a
+  lease taken microseconds earlier is no longer renewed before the first batch (renewal still
+  happens once a run passes half the lease). Route reservations are released against the ETag the
+  reservation write returned. `Intl.DateTimeFormat` instances are cached per timezone, a ready
+  marker's `policy` is parsed on first access rather than for every listed marker, and one
+  `TextDecoder` is shared. Measured per dispatch: 14 → 10 R2 operations, 181 → 165 KB moved, and
+  22 → 4 `JSON.parse` calls; an idle tick drops 7 → 4 operations. Rate-ledger semantics, the cron
+  lease's single-runner guarantee, and the private-R2 record layout are unchanged. The operation
+  counts are pinned by tests and documented in
+  [the Worker README](workers/llm-dispatch-proxy/README.md).
+
 ### Fixed
+
+- **A no-candidate dispatch batch never persisted its ledger changes.** The guard compared
+  `JSON.stringify(budget)` against a second stringify of the same object, so the strings always
+  matched and the write could not fire — while still paying for two whole-ledger serializations on
+  every no-capacity invocation. The write now fires when an abandoned reservation was reaped;
+  minute/day window rollover is recomputed from the current time on every load and never needed
+  persisting.
 
 - **Granicus source-cache downloads now reject truncated zero-exit responses.** The standard direct
   audio path still runs first; only a failed or locally short canonical archive fetch uses the
