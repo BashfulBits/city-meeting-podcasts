@@ -1132,6 +1132,11 @@ function localDateTimeToUTC(date, hour, minute, timeZone) {
     const actualAsUTC = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute);
     candidate += desiredAsUTC - actualAsUTC;
   }
+  const actual = localTimeParts(new Date(candidate), timeZone);
+  if (!actual || actual.year !== date.year || actual.month !== date.month || actual.day !== date.day ||
+      actual.hour !== hour || actual.minute !== minute) {
+    return null;
+  }
   return new Date(candidate);
 }
 
@@ -1170,21 +1175,32 @@ function nextCheapestPricingAt(route, now = new Date()) {
   const activeMultiplier = Number(activeWindow?.multiplier ?? 1);
   const cheapest = Math.min(1, ...windows.map((window) => Number(window.multiplier)));
   if (activeMultiplier <= cheapest) return null;
+  const periods = Array.isArray(route.pricing?.periods) ? route.pricing.periods : [];
+  const nextPeriodAt = periods
+    .map((period) => Date.parse(period?.effective_at || ""))
+    .filter((effectiveAt) => Number.isFinite(effectiveAt) && effectiveAt > now.getTime())
+    .sort((left, right) => left - right)[0];
+  let cheapestAt = null;
   if (cheapest === 1 && activeWindow) {
-    return windowBounds(activeWindow, now)?.end || null;
+    cheapestAt = windowBounds(activeWindow, now)?.end || null;
+  } else {
+    const starts = windows
+      .filter((window) => Number(window.multiplier) === cheapest)
+      .map((window) => windowBounds(window, now)?.start)
+      .filter((start) => start && start.getTime() > now.getTime());
+    starts.sort((left, right) => left.getTime() - right.getTime());
+    cheapestAt = starts[0] || null;
   }
-  const starts = windows
-    .filter((window) => Number(window.multiplier) === cheapest)
-    .map((window) => windowBounds(window, now)?.start)
-    .filter((start) => start && start.getTime() > now.getTime());
-  starts.sort((left, right) => left.getTime() - right.getTime());
-  return starts[0] || null;
+  const candidates = [cheapestAt, Number.isFinite(nextPeriodAt) ? new Date(nextPeriodAt) : null]
+    .filter(Boolean);
+  candidates.sort((left, right) => left.getTime() - right.getTime());
+  return candidates[0] || null;
 }
 
 function routeCost(route, now = new Date()) {
   const pricing = activePricing(route, now);
   const window = pricing.windows.find((candidate) => windowIsActive(candidate, now));
-  const multiplier = Number(window?.multiplier || 1);
+  const multiplier = Number(window?.multiplier ?? 1);
   return (pricing.input_per_token + pricing.output_per_token) * multiplier;
 }
 
@@ -2187,6 +2203,7 @@ export {
   dispatchBatch,
   dispatchOne,
   handleRequest,
+  localDateTimeToUTC,
   nextCapacityRetryAt,
   nextLocalMidnightUTC,
   nextRouteReset,

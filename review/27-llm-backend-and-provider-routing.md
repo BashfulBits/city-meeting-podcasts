@@ -332,8 +332,8 @@ cheapest recurring window without adding a provider-specific branch. Cache-hit p
 omitted: the pipeline cannot predict or control the hit ratio, so only configured input/output rates
 participate in admission and accounting.
 
-- **Effective 2026-08-16 16:00 UTC:** Flash is `$0.007/$0.22/$0.66` and Pro is
-  `$0.022/$0.66/$1.98` per million input/output tokens during off-peak. Peak windows are
+- **Effective 2026-08-16 16:00 UTC:** Flash is `$0.22` input / `$0.66` output and Pro is
+  `$0.66` input / `$1.98` output per million tokens during off-peak. Peak windows are
   `01:00–04:00` and `06:00–10:00 UTC`, with a `2.0` multiplier. These values live in the two
   DeepSeek route pricing periods in `config/provider_limits.yml`.
 - **Batch dispatch:** DeepSeek does not provide a batch API. No batch transport is implemented; a

@@ -128,6 +128,18 @@ def test_deepseek_pricing_periods_compile_with_input_output_rates_and_peak_windo
     ]
 
 
+def test_full_day_pricing_surcharge_is_rejected():
+    with pytest.raises(ValueError, match="full-day pricing surcharge"):
+        compile_llm_limits._validate_pricing_windows(
+            {
+                "route_id": "always-peak",
+                "pricing": {
+                    "windows": [{"tz": "UTC", "start": "00:00", "end": "00:00", "multiplier": 2}]
+                },
+            }
+        )
+
+
 def test_model_key_aliases_must_not_conflict_with_a_canonical_key():
     routes = [
         {

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from collections.abc import Callable
 from datetime import date, datetime
@@ -382,6 +383,38 @@ def _validated_routes(
     return normalized_routes, routes_by_id, model_routes_map, model_aliases
 
 
+def _validate_pricing_windows(route: dict[str, Any]) -> None:
+    """Reject a rate window that can never reach a lower price.
+
+    Equal start and end times denote a full local day. A surcharge over that whole day makes
+    flexible jobs defer forever, because there is no cheaper recurring instant to wake for.
+    """
+    pricing = route.get("pricing") or {}
+    periods = pricing.get("periods", ())
+    root_windows = pricing.get("windows", ())
+    for windows in [root_windows, *(period.get("windows", ()) for period in periods)]:
+        for window in windows:
+            try:
+                start = str(window["start"])
+                end = str(window["end"])
+                multiplier = float(window["multiplier"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} "
+                    "has invalid pricing window"
+                ) from exc
+            if not math.isfinite(multiplier):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} "
+                    "has non-finite pricing multiplier"
+                )
+            if start == end and multiplier > 1:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} "
+                    "has a full-day pricing surcharge"
+                )
+
+
 def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
     if not INPUT_YAML.exists():
         raise FileNotFoundError(f"Input configuration missing: {INPUT_YAML}")
@@ -405,6 +438,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
     )
     normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
     for route in normalized_routes:
+        _validate_pricing_windows(route)
         provider_cfg = providers.get(route.get("provider"), {})
         for limit_name in ("input_context_limit", "output_context_limit"):
             value = route.get(limit_name)

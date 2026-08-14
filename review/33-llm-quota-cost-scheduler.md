@@ -414,8 +414,8 @@ carry only input and output rates; cache-hit pricing is intentionally not modele
 pipeline cannot predict or control the hit ratio.
 
 **Current card:** the pre-cutover period preserves the prior prices and historical off-peak behavior.
-The period effective `2026-08-16T16:00:00Z` sets Flash off-peak to `$0.007/$0.22/$0.66` and Pro
-off-peak to `$0.022/$0.66/$1.98` per million input/output tokens. Its
+The period effective `2026-08-16T16:00:00Z` sets Flash off-peak to `$0.22` input / `$0.66` output
+and Pro to `$0.66` input / `$1.98` output per million tokens. Its
 two UTC peak windows (`01:00–04:00` and `06:00–10:00`) use a `2.0` multiplier. Actual settlement
 uses the configured input/output rates; the scheduler uses the same rates for conservative
 admission estimates.
