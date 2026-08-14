@@ -688,7 +688,9 @@ class TestProbeStreamSampleDuration:
         ):
             mock_detect.return_value = ([], 3600.0, 3600.0)
             planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
-        ctx.source_cache.get_or_fetch.assert_called_once_with("uid-1", "http://x.com/video.mp4")
+        ctx.source_cache.get_or_fetch.assert_called_once_with(
+            "uid-1", "http://x.com/video.mp4", expected_duration=1.0
+        )
         assert mock_detect.call_args.args[0] == "/tmp/citypods-test-source.mka"
 
     def test_defers_when_source_cache_unavailable(self):

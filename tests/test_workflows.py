@@ -722,7 +722,12 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     assert set(_on(wf)) == {"workflow_dispatch"}
     inputs = _on(wf)["workflow_dispatch"]["inputs"]
     assert inputs["probe_kind"]["default"] == "transport"
-    assert inputs["probe_kind"]["options"] == ["transport", "worker", "sustained"]
+    assert inputs["probe_kind"]["options"] == [
+        "transport",
+        "worker",
+        "chunked-canary",
+        "sustained",
+    ]
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
     assert wf["concurrency"]["group"] == "audio"
     assert wf["concurrency"]["cancel-in-progress"] is False

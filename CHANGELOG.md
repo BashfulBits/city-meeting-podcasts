@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Granicus source-cache downloads now reject truncated zero-exit responses.** The standard direct
+  audio path still runs first; only a failed or locally short canonical archive fetch uses the
+  authenticated Worker, where the runner assembles and byte-validates sequential ranges (with a
+  verified full-GET fallback for origins that ignore `Range`). Pages, metadata, documents, and
+  non-audio media retain the existing general Worker proxy behavior. This is transport validation
+  only: no audio/spec pipeline version changed, no stored artifacts are invalidated, and no catalog
+  backfill is required. The new `chunked-canary` Granicus probe compares the chunked bytes with a
+  standard direct download when the runner permits it, otherwise with a non-ranged Worker download.
+
 - **Known-text provider alignment now uses WhisperX with a separate artifact lane.** Untimed Swagit
   and similar provider documents are cleaned of bracketed source-time markers, remapped to served
   time, and aligned with the configurable `WAV2VEC2_ASR_BASE_960H` model. The 90% gate is measured

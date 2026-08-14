@@ -2907,6 +2907,69 @@ def test_download_audio_removes_partial_destination_on_failure(monkeypatch, tmp_
     assert not dest.exists()
 
 
+def test_granicus_403_uses_chunked_worker_audio_fallback(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "https://worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda *_a, **_k: None)
+    calls: list[list[str]] = []
+
+    def _run(cmd, **_kwargs):
+        calls.append(cmd)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(
+                1, cmd, stderr=b"https protocol error: 403 Forbidden"
+            )
+        Path(cmd[-1]).write_bytes(b"complete-audio")
+
+    downloaded: list[str] = []
+
+    def _download(proxy_url, token, raw_dest, **_kwargs):
+        downloaded.append(f"{proxy_url}|{token}")
+        raw_dest.write_bytes(b"complete-video")
+        return len(b"complete-video")
+
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", _run)
+    monkeypatch.setattr(media, "download_verified", _download)
+    dest = tmp_path / "source.mka"
+    source = "https://archive-video.granicus.com/fortworthgov/fortworthgov_test.mp4"
+
+    assert media._download_audio(source, dest) is True
+    assert downloaded == [
+        "https://worker.example/v1/archive/fortworthgov/fortworthgov_test.mp4|secret"
+    ]
+    assert len(calls) == 2
+
+
+def test_granicus_short_zero_exit_is_retried_through_chunked_worker(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "https://worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda *_a, **_k: None)
+    calls: list[list[str]] = []
+
+    def _run(cmd, **_kwargs):
+        calls.append(cmd)
+        Path(cmd[-1]).write_bytes(b"short" if len(calls) == 1 else b"complete")
+
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", _run)
+    durations = iter((10.0, 60.0))
+    monkeypatch.setattr(media, "_probe_duration_secs", lambda *_args: next(durations))
+    monkeypatch.setattr(
+        media,
+        "download_verified",
+        lambda _url, _token, raw_dest, **_kwargs: raw_dest.write_bytes(b"video") or 5,
+    )
+    source = "https://archive-video.granicus.com/fortworthgov/fortworthgov_test.mp4"
+    dest = tmp_path / "source.mka"
+
+    assert media._download_audio(source, dest, expected_duration=100.0) is True
+    assert len(calls) == 2
+    assert dest.read_bytes() == b"complete"
+
+
 def test_concat_local_sources_removes_partial_destination_on_failure(monkeypatch, tmp_path):
     import citypods.media as media
 

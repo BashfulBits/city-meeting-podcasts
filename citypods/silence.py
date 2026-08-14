@@ -27,6 +27,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from citypods.availability import is_effectively_silent
+from citypods.durations import episode_source_duration_seconds
 from citypods.http import USER_AGENT, StopRequested
 from citypods.integrity import REPAIR_TIMELINE_REPLAN, needs_timeline_audio_repair
 from citypods.timeline import Segment, SourceMedia, Timeline, identity_timeline
@@ -549,7 +550,13 @@ class SilencePlanner:
             _defer_timeline_plan(ep, DEFER_CACHE_UNAVAILABLE, failure_code="timeline-cache")
             return None
         try:
-            local = ctx.source_cache.get_or_fetch(uid, source_url)
+            expected_duration = episode_source_duration_seconds(ep)
+            if expected_duration is None:
+                local = ctx.source_cache.get_or_fetch(uid, source_url)
+            else:
+                local = ctx.source_cache.get_or_fetch(
+                    uid, source_url, expected_duration=expected_duration
+                )
         except StopRequested:
             # The run's wall-clock budget expired while queued behind another thread's fetch of the
             # same source — defer without recording a source failure (#120); not a real error.
