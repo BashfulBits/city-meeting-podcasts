@@ -350,7 +350,7 @@ total on `/admin/status`.
   design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests
   plus a compact date-ordered `ready/` marker; a per-minute Free-plan Cron Trigger lists a bounded
   lookahead of compact markers and reads canonical requests only for viable candidates (constant in
-  queue depth) before claiming up to four independent requests,
+  queue depth) before claiming one request per scheduled run,
   ranks each request's
   canonical model's candidate routes (free before paid, then cheapest) against a **per-route/per-account
   ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s versioned minute/day
