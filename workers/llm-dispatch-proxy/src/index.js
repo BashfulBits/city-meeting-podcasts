@@ -11,6 +11,8 @@ const DISPATCH_BUDGET_KEY = "state/dispatch_budget.json";
 // an explicit cap (the Worker parses JSON in memory) but avoid rejecting ordinary long meetings.
 const DEFAULT_MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const DEFAULT_MAX_UPSTREAM_ERROR_BYTES = 8 * 1024;
+const MAX_UPSTREAM_ERROR_MESSAGE_CHARS = 2048;
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_PROCESSING_TIMEOUT_SECONDS = 20 * 60;
 const DEFAULT_RETRY_BASE_SECONDS = 60;
@@ -271,6 +273,55 @@ async function readTextLimited(stream, limit) {
     offset += chunk.byteLength;
   }
   return new TextDecoder().decode(result);
+}
+
+function boundedDiagnosticMessage(value) {
+  return String(value)
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_UPSTREAM_ERROR_MESSAGE_CHARS);
+}
+
+function parseUpstreamError(text) {
+  if (!text) return null;
+
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // Do not persist arbitrary provider text: a non-JSON error could echo request content.
+    return { format: "non_json" };
+  }
+
+  const error = body && typeof body === "object" && !Array.isArray(body) ? body.error : null;
+  const source = error && typeof error === "object" && !Array.isArray(error) ? error : body;
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return { format: "json" };
+  }
+
+  const result = { format: "json" };
+  if (typeof source.code === "string" || Number.isFinite(source.code)) {
+    result.code = source.code;
+  }
+  if (typeof source.status === "string") {
+    result.status = boundedDiagnosticMessage(source.status);
+  }
+  if (typeof source.message === "string") {
+    result.message = boundedDiagnosticMessage(source.message);
+  }
+  return result;
+}
+
+async function readUpstreamError(response) {
+  try {
+    const text = await readTextLimited(response.body, DEFAULT_MAX_UPSTREAM_ERROR_BYTES);
+    return parseUpstreamError(text);
+  } catch (error) {
+    return {
+      format: error instanceof BodyTooLargeError ? "too_large" : "unreadable",
+    };
+  }
 }
 
 async function readJsonBody(request, limit) {
@@ -1641,14 +1692,25 @@ async function dispatchBatch(
           };
           if (claimed.record.attempts < cfg.maxAttempts) {
             await saveRetry(bucket, claimed, null, cfg, now, errorDetail);
-            return { status: "retrying", requestId: claimed.record.id, error: code };
+            return {
+              status: "retrying",
+              requestId: claimed.record.id,
+              routeId: chosenRoute.route_id,
+              error: code,
+            };
           }
           await saveFailure(bucket, claimed, null, now, code, errorDetail);
-          return { status: "failed", requestId: claimed.record.id, reason: code };
+          return {
+            status: "failed",
+            requestId: claimed.record.id,
+            routeId: chosenRoute.route_id,
+            reason: code,
+          };
         }
 
         if (!response.ok) {
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
+          const providerError = await readUpstreamError(response);
           const errorDetail = {
             code: "upstream_error",
             status: response.status,
@@ -1656,22 +1718,27 @@ async function dispatchBatch(
             route_id: chosenRoute.route_id,
             duration_seconds: elapsedSec,
             timestamp: new Date().toISOString(),
+            provider_error: providerError,
           };
           if (retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts) {
-            await response.body?.cancel();
             await saveRetry(bucket, claimed, response, cfg, now, errorDetail);
             return {
               status: "retrying",
               requestId: claimed.record.id,
+              routeId: chosenRoute.route_id,
               upstreamStatus: response.status,
+              providerCode: providerError?.code,
+              providerStatus: providerError?.status,
             };
           }
-          await response.body?.cancel();
           await saveFailure(bucket, claimed, response.status, now, "upstream_error", errorDetail);
           return {
             status: "failed",
             requestId: claimed.record.id,
+            routeId: chosenRoute.route_id,
             upstreamStatus: response.status,
+            providerCode: providerError?.code,
+            providerStatus: providerError?.status,
           };
         }
 
@@ -1692,6 +1759,7 @@ async function dispatchBatch(
           return {
             status: "failed",
             requestId: claimed.record.id,
+            routeId: chosenRoute.route_id,
             upstreamStatus: response.status,
           };
         }
@@ -1701,6 +1769,7 @@ async function dispatchBatch(
           return {
             status: "failed",
             requestId: claimed.record.id,
+            routeId: chosenRoute.route_id,
             upstreamStatus: response.status,
           };
         }
@@ -1720,6 +1789,7 @@ async function dispatchBatch(
         return {
           status: "completed",
           requestId: claimed.record.id,
+          routeId: chosenRoute.route_id,
           upstreamStatus: response.status,
         };
       }),
@@ -1792,6 +1862,18 @@ function pollBody(record) {
     available_at: record.available_at,
     last_error: record.last_error || null,
   };
+}
+
+function summarizeBatchResults(results = []) {
+  return results.map((result) => ({
+    request_id: result.requestId,
+    status: result.status,
+    route_id: result.routeId,
+    upstream_status: result.upstreamStatus,
+    provider_code: result.providerCode,
+    provider_status: result.providerStatus,
+    reason: result.reason || result.error,
+  }));
 }
 
 function requestLocation(request, id) {
@@ -2018,6 +2100,7 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
             event: "llm_dispatch_batch",
             status: batchResult.status,
             count: 0,
+            results: summarizeBatchResults(batchResult.results),
           }),
         );
         break;
@@ -2030,6 +2113,12 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
           status,
           count: batchResult.count,
           totalDispatched,
+          completed: batchResult.completedCount || 0,
+          failed: (batchResult.results || []).filter((result) => result.status === "failed")
+            .length,
+          retrying: (batchResult.results || []).filter((result) => result.status === "retrying")
+            .length,
+          results: summarizeBatchResults(batchResult.results),
         }),
       );
     }

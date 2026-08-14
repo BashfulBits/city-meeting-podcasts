@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch now preserves bounded provider diagnostics for non-2xx responses.** Private R2
+  request records retain structured provider error code/status and a truncated JSON error message,
+  while scheduled logs expose only request/route/status identifiers and never prompts, API keys, or
+  raw provider bodies. This makes future Google/Gemma failures diagnosable without changing the
+  asynchronous response contract.
+
 - **Ready-marker routing metadata now travels with the R2 list result.** The dispatcher requests
   compact marker metadata during its bounded `ready/` listing and falls back to the marker body for
   legacy objects, eliminating up to 16 marker reads and JSON decodes per scheduled invocation.

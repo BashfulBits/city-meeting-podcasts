@@ -25,9 +25,13 @@ full R2 request history from a Worker. Use metrics/logs for operational queue de
 offline migration below when upgrading old records.
 
 `stream: true` is rejected. The Worker never returns provider error bodies, request prompts, API keys,
-or other upstream payloads in logs. Queue records contain the request and generated response, so the
-R2 bucket must remain private and should have a lifecycle rule appropriate for the catalog's retry
-window.
+or other upstream payloads in logs. For a non-2xx provider response, it stores a bounded, structured
+diagnostic (`code`, `status`, and a truncated `message` when the provider returns JSON) inside the
+private canonical R2 request record. Non-JSON provider bodies are classified but not persisted, since
+they may echo request content. Queue records contain the request, response, and bounded failure
+diagnostic, so the R2 bucket must remain private and should have a lifecycle rule appropriate for the
+catalog's retry window. Scheduled logs include request ID, route ID, upstream status, and structured
+provider error code/status without the provider message.
 
 ## Multi-provider routing (review/41)
 
