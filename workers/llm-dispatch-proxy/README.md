@@ -25,13 +25,23 @@ full R2 request history from a Worker. Use metrics/logs for operational queue de
 offline migration below when upgrading old records.
 
 `stream: true` is rejected. The Worker never returns provider error bodies, request prompts, API keys,
-or other upstream payloads in logs. For a non-2xx provider response, it stores a bounded, structured
-diagnostic (`code`, `status`, and a truncated `message` when the provider returns JSON) inside the
-private canonical R2 request record. Non-JSON provider bodies are classified but not persisted, since
-they may echo request content. Queue records contain the request, response, and bounded failure
-diagnostic, so the R2 bucket must remain private and should have a lifecycle rule appropriate for the
-catalog's retry window. Scheduled logs include request ID, route ID, upstream status, and structured
-provider error code/status without the provider message.
+or other upstream payloads in logs. For a non-2xx provider response, it stores a bounded diagnostic
+inside the private canonical R2 request record: structured error fields, response content type and byte
+length, bounded JSON field names, the nested path used to find common error fields, and an 8 KiB
+`body_preview` for terminal failures. Oversized terminal bodies retain only that prefix with
+`truncated: true` and the observed byte count. Retryable responses retain the metadata and parsed
+fields but do not retain the body preview unless the retry budget is exhausted, keeping repeated 429
+responses from creating noisy records. Queue records contain the request, response, and bounded failure diagnostic,
+so the R2 bucket must remain private and should have a lifecycle rule appropriate for the catalog's
+retry window. Scheduled logs include request ID, route ID, upstream status, and structured provider
+error code/status without the provider message.
+
+Scheduled `llm_dispatch_batch` logs also include bounded wall-clock profiling in milliseconds. The
+batch profile covers ready-marker listing, budget loading, candidate preparation, ledger reservation,
+and reservation release. Each result profile covers route selection, canonical request claim,
+credential resolution, upstream fetch, response parsing, R2 persistence, and total dispatch time.
+These timings are diagnostic wall-clock measurements—not Cloudflare CPU-time measurements—and are
+kept out of the provider-facing completion response.
 
 ## Multi-provider routing (review/41)
 

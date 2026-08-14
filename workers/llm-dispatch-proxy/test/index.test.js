@@ -379,12 +379,16 @@ test("non-2xx upstream responses retain bounded structured diagnostics in the pr
 
   const stored = await env.LLM_QUEUE.get(`requests/${id}.json`);
   const record = await stored.json();
-  assert.deepEqual(record.error.provider_error, {
-    format: "json",
-    code: 400,
-    status: "INVALID_ARGUMENT",
-    message: "response_schema contains an unsupported keyword",
-  });
+  assert.equal(record.error.provider_error.format, "json");
+  assert.equal(record.error.provider_error.content_type, "application/json");
+  assert.equal(record.error.provider_error.json_type, "object");
+  assert.deepEqual(record.error.provider_error.top_level_keys, ["error"]);
+  assert.deepEqual(record.error.provider_error.error_keys, ["code", "status", "message"]);
+  assert.equal(record.error.provider_error.diagnostic_path, "root.error");
+  assert.equal(record.error.provider_error.code, 400);
+  assert.equal(record.error.provider_error.status, "INVALID_ARGUMENT");
+  assert.equal(record.error.provider_error.message, "response_schema contains an unsupported keyword");
+  assert.match(record.error.provider_error.body_preview, /response_schema contains/);
 
   const poll = await handleRequest(
     request(`https://dispatch.example/v1/requests/${id}`, { method: "GET" }),
@@ -762,12 +766,81 @@ test("429 responses retry with bounded diagnostics without storing a non-JSON pr
   const retryRecord = await stored.json();
   assert.equal(retryRecord.status, "pending");
   assert.equal(retryRecord.last_error.status, 429);
-  assert.deepEqual(retryRecord.last_error.provider_error, { format: "non_json" });
+  assert.deepEqual(retryRecord.last_error.provider_error, {
+    content_type: "text/plain",
+    bytes: 45,
+    format: "non_json",
+  });
+  assert.equal(retryRecord.last_error.provider_error.body_preview, undefined);
   assert.doesNotMatch(JSON.stringify(retryRecord), /provider prompt and secret/);
   assert.equal(retryRecord.error, undefined);
   assert.equal((await dispatchOne(env, upstream, new Date(firstAt.getTime() + 61_000))).status, "idle");
   assert.equal((await dispatchOne(env, upstream, new Date(firstAt.getTime() + 121_000))).status, "completed");
   assert.equal(calls, 2);
+});
+
+test("atypical JSON errors retain safe shape metadata and nested details", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "nested-provider-400", "gemini/gemini-3-flash-preview"),
+    env,
+  );
+  const { id } = await queued.json();
+  const result = await dispatchOne(
+    env,
+    async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            details: [{ reason: "unsupported_schema", detail: "schema rejected" }],
+          },
+        }),
+        { status: 400, headers: { "content-type": "application/problem+json; charset=utf-8" } },
+      ),
+    new Date(),
+  );
+
+  assert.equal(result.status, "failed");
+  const stored = await env.LLM_QUEUE.get(`requests/${id}.json`);
+  const providerError = (await stored.json()).error.provider_error;
+  assert.equal(providerError.content_type, "application/problem+json");
+  assert.equal(providerError.json_type, "object");
+  assert.deepEqual(providerError.top_level_keys, ["error"]);
+  assert.deepEqual(providerError.error_keys, ["details"]);
+  assert.equal(providerError.diagnostic_path, "root.error.details[0]");
+  assert.equal(providerError.message, "schema rejected");
+  assert.equal(providerError.reason, undefined);
+  assert.equal(providerError.provider_reason, "unsupported_schema");
+  assert.match(providerError.body_preview, /unsupported_schema/);
+});
+
+test("oversized terminal upstream errors retain a bounded preview and truncation metadata", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "oversized-provider-400", "gemini/gemini-3-flash-preview"),
+    env,
+  );
+  const { id } = await queued.json();
+  const oversizedBody = `{"error":{"message":"${"x".repeat(9_000)}"}}`;
+  const result = await dispatchOne(
+    env,
+    async () =>
+      new Response(oversizedBody, {
+        status: 400,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      }),
+    new Date(),
+  );
+
+  assert.equal(result.status, "failed");
+  const stored = await env.LLM_QUEUE.get(`requests/${id}.json`);
+  const providerError = (await stored.json()).error.provider_error;
+  assert.equal(providerError.format, "too_large");
+  assert.equal(providerError.content_type, "application/json");
+  assert.equal(providerError.truncated, true);
+  assert.equal(providerError.bytes, new TextEncoder().encode(oversizedBody).byteLength);
+  assert.equal(providerError.body_preview.length, 8 * 1024);
+  assert.equal(providerError.body_preview, oversizedBody.slice(0, 8 * 1024));
 });
 
 test("streaming requests and oversized request bodies are rejected", async () => {
@@ -1616,6 +1689,12 @@ test("dispatchBatch runs four independently paced routes concurrently", async ()
   assert.equal(result.completedCount, 4);
   assert.equal(calls.length, 4);
   assert.equal(new Set(calls).size, 4);
+  assert.equal(typeof result.profile.ready_heads_ms, "number");
+  assert.equal(typeof result.profile.candidate_prepare_ms, "number");
+  assert.equal(typeof result.profile.ledger_write_ms, "number");
+  assert.equal(typeof result.profile.reservation_release_ms, "number");
+  assert.equal(result.results.every((item) => typeof item.profile.total_ms === "number"), true);
+  assert.equal(result.results.every((item) => typeof item.profile.upstream_ms === "number"), true);
 });
 
 test("a finalization failure records a terminal failure and releases its reservation", async () => {
