@@ -43,11 +43,9 @@ reviews:
 
   # Exclude only genuinely non-reviewable paths: machine-generated output and pure data. Note we do
   # NOT exclude **/*.md -- this repo's docs (ARCHITECTURE, review/NN, AGENTS, CHANGELOG) are
-  # load-bearing and worth a single sanity pass. Docs don't cause *repeated* review cost because of
-  # the draft-PR workflow (see auto_review below): a doc-only PR gets one review when flipped to
-  # "ready", and agents are told not to re-push/re-request on doc-only changes since the author
-  # knows the docs better than CodeRabbit. (CodeRabbit has no per-path "review once" knob -- the
-  # incremental toggle is repo-wide -- so this behavior is workflow-enforced, not config-enforced.)
+  # load-bearing and worth a sanity pass when a maintainer explicitly requests one. Automatic and
+  # incremental reviews are currently disabled below while the repository manages the free-tier
+  # allowance.
   path_filters:
     - "!config/**" # per-city/per-feed data (config/cities/*.yml, config/feeds/*.yml) -- no logic
     - "!constraints/*.txt" # pip-compile output; drift is enforced by CI, not worth an LLM pass
@@ -117,14 +115,16 @@ reviews:
           doc update, and point the author to CONTRIBUTING.md's doc-update contract.
 
   auto_review:
-    enabled: true
+    # Automatic reviews are intentionally disabled while we work through the free-tier rate limit.
+    # Request a review explicitly with `@coderabbitai review` on the PR.
+    enabled: false
     # drafts:false is CodeRabbit's default, kept explicit. Draft PRs are a CONDITIONAL tool, not a
     # blanket workflow: measurement showed drafting saves ~1-2% of review-runs here because nearly
     # all re-review volume is fix-responses (which happen post-"ready" regardless), not in-PR churn.
     # So AGENTS.md recommends draft only for genuinely iterative/long-churn PRs. (Chosen over
     # auto_pause_after_reviewed_commits, which would have left the last/riskiest commit un-re-reviewed.)
     drafts: false
-    auto_incremental_review: true
+    auto_incremental_review: false
     ignore_title_keywords:
       - "WIP"
       - "DO NOT MERGE"

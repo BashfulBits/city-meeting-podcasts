@@ -13,6 +13,8 @@ const DEFAULT_MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_UPSTREAM_ERROR_BYTES = 8 * 1024;
 const MAX_UPSTREAM_ERROR_MESSAGE_CHARS = 2048;
+const MAX_UPSTREAM_ERROR_KEYS = 32;
+const MAX_UPSTREAM_ERROR_KEY_CHARS = 64;
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_PROCESSING_TIMEOUT_SECONDS = 20 * 60;
 const DEFAULT_RETRY_BASE_SECONDS = 60;
@@ -241,9 +243,31 @@ async function sha256Hex(value) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function profileNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+function profileElapsed(startedAt) {
+  return Math.max(0, Math.round((profileNow() - startedAt) * 100) / 100);
+}
+
+function finishDispatchProfile(profile, startedAt) {
+  return { ...profile, total_ms: profileElapsed(startedAt) };
+}
+
+function profiledResult(result, profile, startedAt) {
+  return { ...result, profile: finishDispatchProfile(profile, startedAt) };
+}
+
 async function readTextLimited(stream, limit) {
+  return (await readTextLimitedWithMetadata(stream, limit)).text;
+}
+
+async function readTextLimitedWithMetadata(stream, limit) {
   if (!stream) {
-    return "";
+    return { text: "", bytes: 0 };
   }
   const reader = stream.getReader();
   const chunks = [];
@@ -272,7 +296,7 @@ async function readTextLimited(stream, limit) {
     result.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder().decode(result);
+  return { text: new TextDecoder().decode(result), bytes };
 }
 
 function boundedDiagnosticMessage(value) {
@@ -283,42 +307,156 @@ function boundedDiagnosticMessage(value) {
     .slice(0, MAX_UPSTREAM_ERROR_MESSAGE_CHARS);
 }
 
-function parseUpstreamError(text) {
-  if (!text) return null;
+function boundedDiagnosticContentType(value) {
+  if (typeof value !== "string") return undefined;
+  const contentType = value.split(";", 1)[0].trim().toLowerCase();
+  return contentType ? contentType.slice(0, 128) : undefined;
+}
+
+function diagnosticKeys(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return Object.keys(value)
+    .slice(0, MAX_UPSTREAM_ERROR_KEYS)
+    .map((key) =>
+      /^[A-Za-z0-9_.:-]{1,64}$/.test(key)
+        ? key.slice(0, MAX_UPSTREAM_ERROR_KEY_CHARS)
+        : "<redacted>",
+    );
+}
+
+function addDiagnosticShape(result, prefix, value) {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    result[`${prefix}_type`] = "array";
+    return;
+  }
+  result[`${prefix}_keys`] = diagnosticKeys(value);
+  if (Object.keys(value).length > MAX_UPSTREAM_ERROR_KEYS) {
+    result[`${prefix}_keys_truncated`] = true;
+  }
+}
+
+const DIAGNOSTIC_FIELD_NAMES = [
+  "code",
+  "status",
+  "message",
+  "detail",
+  "error_message",
+  "errorMessage",
+  "type",
+  "reason",
+];
+
+function hasDiagnosticField(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    DIAGNOSTIC_FIELD_NAMES.some((field) => field in value)
+  );
+}
+
+function findDiagnosticSource(value, path = "root", depth = 0) {
+  if (typeof value === "string" && path !== "root") {
+    return { source: { message: value }, path };
+  }
+  if (!value || typeof value !== "object") return null;
+  if (hasDiagnosticField(value)) return { source: value, path };
+  if (depth >= 3) return null;
+
+  for (const key of ["error", "details", "cause", "response"]) {
+    const child = value[key];
+    const childPath = `${path}.${key}`;
+    if (Array.isArray(child)) {
+      for (const [index, item] of child.slice(0, 4).entries()) {
+        const found = findDiagnosticSource(item, `${childPath}[${index}]`, depth + 1);
+        if (found) return found;
+      }
+    } else {
+      const found = findDiagnosticSource(child, childPath, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function boundedDiagnosticBody(value) {
+  return String(value)
+    .replace(/[\u0000\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
+    .slice(0, DEFAULT_MAX_UPSTREAM_ERROR_BYTES);
+}
+
+function parseUpstreamError(text, metadata = {}, { persistBodyPreview = true } = {}) {
+  const result = {
+    ...metadata,
+    format: text ? "json" : "empty",
+  };
+  if (persistBodyPreview && text) {
+    result.body_preview = boundedDiagnosticBody(text);
+  }
+  if (!text) return result;
 
   let body;
   try {
     body = JSON.parse(text);
   } catch {
-    // Do not persist arbitrary provider text: a non-JSON error could echo request content.
-    return { format: "non_json" };
+    return {
+      ...metadata,
+      format: "non_json",
+      ...(persistBodyPreview ? { body_preview: boundedDiagnosticBody(text) } : {}),
+    };
   }
 
-  const error = body && typeof body === "object" && !Array.isArray(body) ? body.error : null;
-  const source = error && typeof error === "object" && !Array.isArray(error) ? error : body;
-  if (!source || typeof source !== "object" || Array.isArray(source)) {
-    return { format: "json" };
+  result.json_type = Array.isArray(body) ? "array" : body === null ? "null" : typeof body;
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    addDiagnosticShape(result, "top_level", body);
+    if (body.error && typeof body.error === "object") {
+      addDiagnosticShape(result, "error", body.error);
+    }
   }
 
-  const result = { format: "json" };
-  if (typeof source.code === "string" || Number.isFinite(source.code)) {
+  const found = findDiagnosticSource(body);
+  if (!found) return result;
+  if (found.path !== "root") result.diagnostic_path = found.path;
+
+  const source = found.source;
+  if (!source || typeof source !== "object" || Array.isArray(source)) return result;
+
+  if (typeof source.code === "string") {
+    result.code = boundedDiagnosticMessage(source.code);
+  } else if (Number.isFinite(source.code)) {
     result.code = source.code;
   }
   if (typeof source.status === "string") {
     result.status = boundedDiagnosticMessage(source.status);
   }
-  if (typeof source.message === "string") {
-    result.message = boundedDiagnosticMessage(source.message);
+  for (const key of ["message", "detail", "error_message", "errorMessage"]) {
+    if (typeof source[key] === "string") {
+      result.message = boundedDiagnosticMessage(source[key]);
+      break;
+    }
+  }
+  if (typeof source.type === "string") {
+    result.provider_type = boundedDiagnosticMessage(source.type);
+  }
+  if (typeof source.reason === "string") {
+    result.provider_reason = boundedDiagnosticMessage(source.reason);
   }
   return result;
 }
 
-async function readUpstreamError(response) {
+async function readUpstreamError(response, options = {}) {
+  const contentType = boundedDiagnosticContentType(response.headers.get("content-type"));
+  const metadata = contentType ? { content_type: contentType } : {};
   try {
-    const text = await readTextLimited(response.body, DEFAULT_MAX_UPSTREAM_ERROR_BYTES);
-    return parseUpstreamError(text);
+    const { text, bytes } = await readTextLimitedWithMetadata(
+      response.body,
+      DEFAULT_MAX_UPSTREAM_ERROR_BYTES,
+    );
+    return parseUpstreamError(text, { ...metadata, bytes }, options);
   } catch (error) {
     return {
+      ...metadata,
       format: error instanceof BodyTooLargeError ? "too_large" : "unreadable",
     };
   }
@@ -1543,9 +1681,15 @@ async function dispatchBatch(
   externalLeaseOwner = null,
   runDeadlineMs = null,
 ) {
+  const batchStartedAt = profileNow();
+  const batchProfile = {};
   const bucket = env.LLM_QUEUE;
   if (!bucket) {
-    return { status: "no_storage", count: 0 };
+    return {
+      status: "no_storage",
+      count: 0,
+      profile: finishDispatchProfile(batchProfile, batchStartedAt),
+    };
   }
 
   const cfg = config(env);
@@ -1553,9 +1697,15 @@ async function dispatchBatch(
   let acquiredLock = false;
   if (!leaseOwner) {
     leaseOwner = crypto.randomUUID();
+    const leaseStartedAt = profileNow();
     acquiredLock = await acquireCronLease(bucket, now, leaseOwner, cfg.leaseDurationSeconds);
+    batchProfile.lease_acquire_ms = profileElapsed(leaseStartedAt);
     if (!acquiredLock) {
-      return { status: "lease_busy", count: 0 };
+      return {
+        status: "lease_busy",
+        count: 0,
+        profile: finishDispatchProfile(batchProfile, batchStartedAt),
+      };
     }
   }
 
@@ -1564,15 +1714,20 @@ async function dispatchBatch(
     // metadata first, so a provider/model at capacity does not force a full prompt read or stop
     // the batch at the queue head.  Canonical requests are read only for candidates that can be
     // dispatched or must be requeued.
+    const readyStartedAt = profileNow();
     const ready = await loadReadyHeads(bucket, now);
+    batchProfile.ready_heads_ms = profileElapsed(readyStartedAt);
     if (ready.heads.length === 0) {
       return {
         status: ready.invalidCount > 0 ? "index_repaired" : "idle",
         count: 0,
+        profile: finishDispatchProfile(batchProfile, batchStartedAt),
       };
     }
 
+    const budgetLoadStartedAt = profileNow();
     let budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
+    batchProfile.budget_load_ms = profileElapsed(budgetLoadStartedAt);
     let budget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
 
     // Select candidates up to maxBatch with stacked in-memory ledger reservations
@@ -1581,18 +1736,25 @@ async function dispatchBatch(
     let lastRequeuedId = null;
     let deadlineGuarded = false;
 
+    const candidatePrepareStartedAt = profileNow();
     for (const head of ready.heads) {
       if (candidatesToDispatch.length >= maxBatch) break;
 
+      const candidateProfile = {};
+      const candidateStartedAt = profileNow();
+      const routeSelectStartedAt = profileNow();
       const selection = selectRoute(
         budget,
         head.record.policy?.allowed_models || head.record.model,
         head.record.policy,
         now,
       );
+      candidateProfile.route_select_ms = profileElapsed(routeSelectStartedAt);
       let claimed;
       if (!selection.chosenRoute) {
+        const claimStartedAt = profileNow();
         claimed = await loadReadyClaim(bucket, head, now);
+        candidateProfile.claim_ms = profileElapsed(claimStartedAt);
         if (!claimed) continue;
         if (selection.reason === "no_capacity") {
           await requeue(
@@ -1618,7 +1780,9 @@ async function dispatchBatch(
         continue;
       }
 
+      const claimStartedAt = profileNow();
       claimed = await loadReadyClaim(bucket, head, now);
+      candidateProfile.claim_ms = profileElapsed(claimStartedAt);
       if (!claimed) continue;
 
       const { chosenRoute } = selection;
@@ -1634,7 +1798,9 @@ async function dispatchBatch(
       }
       let creds;
       try {
+        const credentialsStartedAt = profileNow();
         creds = resolveProviderCredentials(env, chosenRoute);
+        candidateProfile.credentials_ms = profileElapsed(credentialsStartedAt);
       } catch (error) {
         await saveFailure(bucket, claimed, 500, now, "credential_resolution_failed");
         console.error(
@@ -1701,8 +1867,11 @@ async function dispatchBatch(
         reservationSize,
         reservationOwner,
         timeoutSeconds,
+        profile: candidateProfile,
+        dispatchStartedAt: candidateStartedAt,
       });
     }
+    batchProfile.candidate_prepare_ms = profileElapsed(candidatePrepareStartedAt);
 
     if (candidatesToDispatch.length === 0) {
       // Route selection rolls minute/day/token windows in memory even when every request is
@@ -1726,18 +1895,21 @@ async function dispatchBatch(
           requestId: batchFailures[0].requestId,
           reason: batchFailures[0].reason,
           results: batchFailures,
+          profile: finishDispatchProfile(batchProfile, batchStartedAt),
         };
       }
       return {
         status: deadlineGuarded ? "deadline_guard" : "no_capacity",
         count: 0,
         requestId: lastRequeuedId,
+        profile: finishDispatchProfile(batchProfile, batchStartedAt),
       };
     }
 
     // Atomic CAS write of the combined budget reservations
     let ledgerSaved = false;
     let freshCapacityFailed = false;
+    const ledgerWriteStartedAt = profileNow();
     for (let attempt = 0; attempt < 3 && !ledgerSaved; attempt += 1) {
       if (attempt > 0) {
         budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
@@ -1776,6 +1948,7 @@ async function dispatchBatch(
         }),
       );
     }
+    batchProfile.ledger_write_ms = profileElapsed(ledgerWriteStartedAt);
 
     if (!ledgerSaved) {
       console.error(
@@ -1791,13 +1964,15 @@ async function dispatchBatch(
         status: "no_capacity",
         count: 0,
         requestId: candidatesToDispatch[0].claimed.record.id,
+        profile: finishDispatchProfile(batchProfile, batchStartedAt),
       };
     }
 
     // Execute batch concurrently, retaining every sibling outcome.  One unexpected task/write
     // rejection must not discard successful results or leave its sibling reservations inflight.
     const settled = await Promise.allSettled(
-      candidatesToDispatch.map(async ({ claimed, chosenRoute, creds, timeoutSeconds }) => {
+      candidatesToDispatch.map(
+        async ({ claimed, chosenRoute, creds, timeoutSeconds, profile, dispatchStartedAt }) => {
         const upstreamPayload = {
           ...claimed.record.request,
           model: creds.upstreamModel,
@@ -1806,6 +1981,7 @@ async function dispatchBatch(
 
         let response;
         const requestStartMs = Date.now();
+        const upstreamStartedAt = profileNow();
         try {
           const headers = { accept: "application/json", "content-type": "application/json" };
           if (creds.apiKey) {
@@ -1818,7 +1994,9 @@ async function dispatchBatch(
             redirect: "manual",
             signal: AbortSignal.timeout(timeoutSeconds * 1000),
           });
+          profile.upstream_ms = profileElapsed(upstreamStartedAt);
         } catch (err) {
+          profile.upstream_ms = profileElapsed(upstreamStartedAt);
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
           const isTimeout =
             err?.name === "TimeoutError" ||
@@ -1834,28 +2012,38 @@ async function dispatchBatch(
             route_id: chosenRoute.route_id,
             duration_seconds: elapsedSec,
             timestamp: new Date().toISOString(),
+            dispatch_profile: finishDispatchProfile(profile, dispatchStartedAt),
           };
           if (claimed.record.attempts < cfg.maxAttempts) {
+            const persistStartedAt = profileNow();
             await saveRetry(bucket, claimed, null, cfg, now, errorDetail);
-            return {
+            profile.persist_ms = profileElapsed(persistStartedAt);
+            return profiledResult({
               status: "retrying",
               requestId: claimed.record.id,
               routeId: chosenRoute.route_id,
               error: code,
-            };
+            }, profile, dispatchStartedAt);
           }
+          const persistStartedAt = profileNow();
           await saveFailure(bucket, claimed, null, now, code, errorDetail);
-          return {
+          profile.persist_ms = profileElapsed(persistStartedAt);
+          return profiledResult({
             status: "failed",
             requestId: claimed.record.id,
             routeId: chosenRoute.route_id,
             reason: code,
-          };
+          }, profile, dispatchStartedAt);
         }
 
         if (!response.ok) {
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
-          const providerError = await readUpstreamError(response);
+          const willRetry = retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts;
+          const errorReadStartedAt = profileNow();
+          const providerError = await readUpstreamError(response, {
+            persistBodyPreview: !willRetry,
+          });
+          profile.error_read_ms = profileElapsed(errorReadStartedAt);
           const errorDetail = {
             code: "upstream_error",
             status: response.status,
@@ -1864,34 +2052,44 @@ async function dispatchBatch(
             duration_seconds: elapsedSec,
             timestamp: new Date().toISOString(),
             provider_error: providerError,
+            dispatch_profile: finishDispatchProfile(profile, dispatchStartedAt),
           };
           if (retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts) {
+            const persistStartedAt = profileNow();
             await saveRetry(bucket, claimed, response, cfg, now, errorDetail);
-            return {
+            profile.persist_ms = profileElapsed(persistStartedAt);
+            return profiledResult({
               status: "retrying",
               requestId: claimed.record.id,
               routeId: chosenRoute.route_id,
               upstreamStatus: response.status,
               providerCode: providerError?.code,
               providerStatus: providerError?.status,
-            };
+            }, profile, dispatchStartedAt);
           }
+          const persistStartedAt = profileNow();
           await saveFailure(bucket, claimed, response.status, now, "upstream_error", errorDetail);
-          return {
+          profile.persist_ms = profileElapsed(persistStartedAt);
+          return profiledResult({
             status: "failed",
             requestId: claimed.record.id,
             routeId: chosenRoute.route_id,
             upstreamStatus: response.status,
             providerCode: providerError?.code,
             providerStatus: providerError?.status,
-          };
+          }, profile, dispatchStartedAt);
         }
 
         let responseJson;
+        const responseReadStartedAt = profileNow();
         try {
           const responseText = await readTextLimited(response.body, cfg.maxResponseBytes);
           responseJson = JSON.parse(responseText);
+          profile.response_read_ms = profileElapsed(responseReadStartedAt);
         } catch (error) {
+          profile.response_read_ms = profileElapsed(responseReadStartedAt);
+          const failureProfile = finishDispatchProfile(profile, dispatchStartedAt);
+          const persistStartedAt = profileNow();
           await saveFailure(
             bucket,
             claimed,
@@ -1900,47 +2098,72 @@ async function dispatchBatch(
             error instanceof BodyTooLargeError
               ? "upstream_response_too_large"
               : "invalid_upstream_json",
+            {
+              code: error instanceof BodyTooLargeError ? "upstream_response_too_large" : "invalid_upstream_json",
+              status: response.status,
+              model: chosenRoute.model,
+              route_id: chosenRoute.route_id,
+              timestamp: new Date().toISOString(),
+              dispatch_profile: failureProfile,
+            },
           );
-          return {
+          profile.persist_ms = profileElapsed(persistStartedAt);
+          return profiledResult({
             status: "failed",
             requestId: claimed.record.id,
             routeId: chosenRoute.route_id,
             upstreamStatus: response.status,
-          };
+          }, profile, dispatchStartedAt);
         }
 
         if (!responseJson || typeof responseJson !== "object" || Array.isArray(responseJson)) {
-          await saveFailure(bucket, claimed, response.status, now, "invalid_upstream_json");
-          return {
+          const failureProfile = finishDispatchProfile(profile, dispatchStartedAt);
+          const persistStartedAt = profileNow();
+          await saveFailure(bucket, claimed, response.status, now, "invalid_upstream_json", {
+            code: "invalid_upstream_json",
+            status: response.status,
+            model: chosenRoute.model,
+            route_id: chosenRoute.route_id,
+            timestamp: new Date().toISOString(),
+            dispatch_profile: failureProfile,
+          });
+          profile.persist_ms = profileElapsed(persistStartedAt);
+          return profiledResult({
             status: "failed",
             requestId: claimed.record.id,
             routeId: chosenRoute.route_id,
             upstreamStatus: response.status,
-          };
+          }, profile, dispatchStartedAt);
         }
 
+        profile.response_read_ms = profileElapsed(responseReadStartedAt);
         const completed = {
           ...claimed.record,
           status: "completed",
           updated_at: new Date().toISOString(),
           completed_at: new Date().toISOString(),
+          dispatch_profile: finishDispatchProfile(profile, dispatchStartedAt),
           response: responseJson,
         };
+        const persistStartedAt = profileNow();
         const saved = await putJson(bucket, claimed.key, completed, {
           etagMatches: claimed.object.etag,
           customMetadata: requestMetadata(completed),
         });
         if (saved) await unmarkReady(bucket, claimed.readyKey);
-        return {
+        profile.persist_ms = profileElapsed(persistStartedAt);
+        return profiledResult({
           status: "completed",
           requestId: claimed.record.id,
           routeId: chosenRoute.route_id,
           upstreamStatus: response.status,
-        };
-      }),
+        }, profile, dispatchStartedAt);
+        },
+      ),
     );
 
     const results = [];
+    const reservationReleaseStartedAt = profileNow();
     for (let index = 0; index < settled.length; index += 1) {
       const outcome = settled[index];
       const item = candidatesToDispatch[index];
@@ -1980,6 +2203,7 @@ async function dispatchBatch(
         reason: "worker_task_failed",
       });
     }
+    batchProfile.reservation_release_ms = profileElapsed(reservationReleaseStartedAt);
 
     const completedCount = results.filter((r) => r.status === "completed").length;
     return {
@@ -1987,6 +2211,7 @@ async function dispatchBatch(
       count: candidatesToDispatch.length,
       completedCount,
       results,
+      profile: finishDispatchProfile(batchProfile, batchStartedAt),
     };
   } finally {
     if (acquiredLock) {
@@ -2018,6 +2243,7 @@ function summarizeBatchResults(results = []) {
     provider_code: result.providerCode,
     provider_status: result.providerStatus,
     reason: result.reason || result.error,
+    profile: result.profile,
   }));
 }
 
@@ -2246,6 +2472,7 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
             status: batchResult.status,
             count: 0,
             results: summarizeBatchResults(batchResult.results),
+            profile: batchResult.profile,
           }),
         );
         break;
@@ -2263,6 +2490,7 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
             .length,
           retrying: (batchResult.results || []).filter((result) => result.status === "retrying")
             .length,
+          profile: batchResult.profile,
           results: summarizeBatchResults(batchResult.results),
         }),
       );

@@ -17,6 +17,21 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **CodeRabbit automatic and incremental reviews are disabled by default.** Maintainers can request
+  a review explicitly with `@coderabbitai review`, avoiding unsolicited free-tier review runs while
+  preserving the repository's review configuration and guidance.
+
+- **LLM dispatch logs now include bounded stage profiling.** Normal scheduled batch records expose
+  wall-clock milliseconds for queue preparation, budget/ledger work, upstream fetch and response
+  parsing, R2 persistence, reservation release, and total dispatch time. The profile stays out of
+  provider-facing completion responses and contains no request or response content.
+
+- **LLM provider diagnostics now retain bounded response shape and body previews.** Terminal private
+  R2 failure records include the upstream content type, response byte length, bounded JSON field
+  names, nested error path, and an 8 KiB body preview. Retryable responses retain the structural
+  metadata without repeated body previews unless their retry budget is exhausted; Worker logs and
+  client responses remain redacted.
+
 - **LLM dispatch now preserves bounded provider diagnostics for non-2xx responses.** Private R2
   request records retain structured provider error code/status and a truncated JSON error message,
   while scheduled logs expose only request/route/status identifiers and never prompts, API keys, or
