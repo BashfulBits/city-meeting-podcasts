@@ -26,6 +26,10 @@ CHAPTER_PIPELINE_VERSION = "1"
 LLM_CONTRACT = "topic-tags"
 PRELABELER_CONTRACT = "topic-tags-prelabeler"
 TAG_PROMPT_VERSION = "3"
+# Bump when the serialized structured-output request schema changes in a way that must create
+# fresh durable dispatch requests. This is intentionally separate from the prompt version: the
+# current migration changes provider-compatible schema keywords, not task instructions.
+TAG_LLM_SCHEMA_VERSION = "2"
 PRELABELER_PROMPT_VERSION = "1"
 TAG_FEATURE = "topic-tags"
 PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrect")
@@ -278,6 +282,7 @@ def tag_recipe_hash(
     chapter_inputs: list[dict[str, Any]] | None = None,
     llm_route: str = "",
     prompt_version: str = TAG_PROMPT_VERSION,
+    llm_schema_version: str = TAG_LLM_SCHEMA_VERSION,
     admission_policy: str = "",
     chapter_pipeline_version: str = CHAPTER_PIPELINE_VERSION,
 ) -> str:
@@ -288,6 +293,7 @@ def tag_recipe_hash(
         "llm": llm_enabled,
         "llm_route": llm_route if llm_enabled else "",
         "prompt_version": prompt_version if llm_enabled else "",
+        "llm_schema_version": llm_schema_version if llm_enabled else "",
         "admission_policy": admission_policy if llm_enabled else "",
         "agenda_item_titles": agenda_item_titles,
         "agenda_text": agenda_text,
@@ -306,6 +312,7 @@ def tag_input_fingerprint(
     llm_enabled: bool,
     llm_route: str = "",
     prompt_version: str = TAG_PROMPT_VERSION,
+    llm_schema_version: str = TAG_LLM_SCHEMA_VERSION,
     admission_policy: str = "",
     chapter_pipeline_version: str = CHAPTER_PIPELINE_VERSION,
 ) -> str:
@@ -346,6 +353,7 @@ def tag_input_fingerprint(
         "llm": llm_enabled,
         "llm_route": llm_route if llm_enabled else "",
         "prompt_version": prompt_version if llm_enabled else "",
+        "llm_schema_version": llm_schema_version if llm_enabled else "",
         "admission_policy": admission_policy if llm_enabled else "",
         "agenda_text_artifact_key": links.get("agenda_text_artifact_key"),
         "agenda_backup_artifact_key": links.get("agenda_backup_artifact_key"),
@@ -1738,6 +1746,7 @@ def rollup_tags(
 
 __all__ = [
     "LLM_CONTRACT",
+    "TAG_LLM_SCHEMA_VERSION",
     "PRELABELER_CONTRACT",
     "PRELABELER_PROMPT_VERSION",
     "TAG_FEATURE",

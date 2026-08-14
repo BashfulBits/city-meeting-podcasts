@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from citypods.models import Episode
 from citypods.tags import (
+    TAG_LLM_SCHEMA_VERSION,
     TAG_PROMPT_VERSION,
     chapter_id,
     chapter_tag_inputs,
@@ -579,6 +580,7 @@ def test_llm_evidence_is_a_quoted_region_with_transcript_timing_and_document_lin
         },
     ]
     assert TAG_PROMPT_VERSION == "3"
+    assert TAG_LLM_SCHEMA_VERSION == "2"
 
 
 def test_transcript_region_does_not_span_the_whole_episode_on_a_common_word():
@@ -695,6 +697,48 @@ def test_tag_input_fingerprint_changes_with_llm_config():
         admission_policy="policy-2",
     )
     assert len({disabled, enabled, other_route, other_admission}) == 4
+
+
+def test_tag_recipe_and_input_fingerprint_change_with_llm_schema_version():
+    from citypods.tags import tag_recipe_hash
+
+    ep = _fp_episode()
+    taxonomy = _fp_taxonomy()
+    current = tag_input_fingerprint(
+        ep,
+        taxonomy,
+        llm_enabled=True,
+        llm_route="litellm:gemini/gemini-3-flash-preview",
+        llm_schema_version=TAG_LLM_SCHEMA_VERSION,
+    )
+    previous = tag_input_fingerprint(
+        ep,
+        taxonomy,
+        llm_enabled=True,
+        llm_route="litellm:gemini/gemini-3-flash-preview",
+        llm_schema_version="1",
+    )
+    assert current != previous
+
+    recipe_current = tag_recipe_hash(
+        taxonomy,
+        agenda_item_titles="",
+        agenda_text="",
+        transcript_text="",
+        llm_enabled=True,
+        llm_route="litellm:gemini/gemini-3-flash-preview",
+        llm_schema_version=TAG_LLM_SCHEMA_VERSION,
+    )
+    recipe_previous = tag_recipe_hash(
+        taxonomy,
+        agenda_item_titles="",
+        agenda_text="",
+        transcript_text="",
+        llm_enabled=True,
+        llm_route="litellm:gemini/gemini-3-flash-preview",
+        llm_schema_version="1",
+    )
+    assert recipe_current != recipe_previous
 
 
 def test_episode_tag_inputs_strips_preamble_and_includes_backup_text():
