@@ -22,6 +22,18 @@ Phase R (Research-Tool Surface)._
   sections produce a visible GitHub Actions warning before they are routed to full ASR.
   Provider-align version 7 reopens prior version-6 ineligible items for gradual recomputation;
   full-ASR artifacts are not invalidated.
+  
+- **Groq’s Llama 3.3 route now uses JSON-object structured output.** The live endpoint accepts
+  `response_format: {"type":"json_object"}` but rejects JSON Schema; the compiled route profile
+  now reflects that capability.
+
+- **LLM structured-output behavior now follows compiled capability profiles.** Provider and route
+  YAML profiles select JSON Schema versus JSON-object mode, native versus Instructor handling,
+  prompt-schema embedding, and provider-specific schema relaxation; direct and queued requests use
+  the same materialized route capability instead of inferring behavior from model names. Google
+  routes now strip the size/range keywords rejected by the live API, Gemma 4 26B uses the available
+  `gemma-4-26b-a4b-it` identifier, and retired Gemini 2.5 routes are removed. No stored artifacts
+  or pipeline versions change.
 
 - **Provider-align workers now preserve bounded timing windows through the local backend.** The
   internal process previously dropped the provider's coarse served-time segments, causing
@@ -3583,3 +3595,16 @@ Phase R (Research-Tool Surface)._
   feed pages with inline player + subscribe links, generated cover art, custom domain.
 - Offline pytest suite with byte-for-byte feed snapshots; CI (`ci.yml`), per-PR preview (`preview.yml`),
   scheduled deploy (`deploy.yml`, 4h cron); incremental builds + content-hash change detection.
+- **LLM context ceilings are now explicit per physical route.** The provider registry no longer
+  falls back to provider-wide input/output limits; every route carries the verified model ceiling,
+  including gateway-specific caps such as OpenRouter's free Gemma route. The compiler rejects a
+  route missing either limit, and the generated Python/Worker catalogs are regenerated from those
+  values.
+
+- **DeepSeek V4 Flash now uses the current direct API model identifier.** The physical route sends
+  `deepseek-v4-flash` while retaining the `-0731` logical alias for compatibility; the retired
+  direct API identifier is no longer emitted in the compiled route catalog.
+
+- **OpenCode model routing is corrected.** OpenCode's free DeepSeek aliases now send
+  `deepseek-v4-flash-free`. The proposed LongCat route was removed because the official API
+  requires authentication/billing and OpenCode Zen does not advertise a free LongCat model.

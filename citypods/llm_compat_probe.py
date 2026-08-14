@@ -8,9 +8,9 @@ construct: refs, array-of-refs, anyOf-nullable typing, default values, additiona
 false), then subtractively (the real contract's schema with one construct category stripped
 at a time: defaults, additionalProperties, size/range constraints, enums, or $ref/$defs). The
 bisection identified size/range constraints (minLength/maxLength/minimum/maximum/minItems/
-maxItems) as the actual cause; the final check exercises the production fix for that finding
-(citypods.compute.llm._gemini_schema_safe_model, via LiteLLMBackend._run_structured_direct)
-against the live API directly, rather than only against the unit tests' fake completion.
+maxItems) as the actual cause; the final check exercises the production structured-output profile
+via LiteLLMBackend._run_structured_direct against the live API directly, rather than only against
+the unit tests' fake completion.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import requests
 
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+from citypods.compute.llm_policy import ROUTE_CANDIDATES
 from citypods.tags import ensure_llm_contract
 
 PROMPT = "Return exactly one factual topic tag for a meeting about a housing zoning amendment."
@@ -174,17 +175,27 @@ def _native(model: str, schema: dict[str, Any], api_key: str) -> dict[str, Any]:
     return {"ok": True, "status": response.status_code}
 
 
+def _route_for_upstream(model: str):
+    """Find the generated logical/direct selectors for a provider upstream model."""
+    for candidates in ROUTE_CANDIDATES.values():
+        for route in candidates:
+            if route.upstream_model == model:
+                return route
+    raise ValueError(f"no generated route uses upstream model {model!r}")
+
+
 def _litellm(model: str, mode: str) -> dict[str, Any]:
     """Exercise Instructor's own ``from_litellm()`` + ``Mode.JSON_SCHEMA`` path directly, without
     printing its request/response objects. Kept as a standing regression probe: this is the path
     the production code stopped using (Instructor's pinned-release compatibility table has no
     ``(Provider.GEMINI, Mode.JSON_SCHEMA)`` entry, confirmed failing against two live runs on two
     different LiteLLM versions) -- a green result here would mean Instructor added support and the
-    bypass in ``_run_gemini_structured_direct`` could be reconsidered."""
+    bypass in ``_run_native_structured_direct`` could be reconsidered."""
     from instructor import Mode
 
     contract = ensure_llm_contract()
-    backend = LiteLLMBackend(LLMBackendConfig(model=f"gemini/{model}"))
+    route = _route_for_upstream(model)
+    backend = LiteLLMBackend(LLMBackendConfig(model=route.model))
     try:
         typed, _raw = (
             __import__("instructor")
@@ -194,7 +205,7 @@ def _litellm(model: str, mode: str) -> dict[str, Any]:
             .create_with_completion(
                 response_model=contract,
                 messages=[{"role": "user", "content": PROMPT}],
-                model=f"gemini/{model}",
+                model=route.direct_model,
                 max_retries=0,
                 max_tokens=128,
             )
@@ -207,16 +218,20 @@ def _litellm(model: str, mode: str) -> dict[str, Any]:
 
 def _litellm_backend_fix(model: str) -> dict[str, Any]:
     """Exercise the actual production path -- LiteLLMBackend._run_structured_direct(), which for
-    a ``gemini/*`` route now dispatches straight to ``_run_gemini_structured_direct`` (LiteLLM
-    called directly with native json_schema mode, Instructor bypassed entirely -- see that
+    a route with a native structured-output profile now dispatches straight to
+    ``_run_native_structured_direct`` (LiteLLM called directly with native schema mode, Instructor
+    bypassed entirely -- see that
     method's docstring for why). This is the exact method llm_tag_suggestions() calls in
     production; a green result here is evidence the real path works against the live API, not
     just evidence the unit tests' fake completion function accepts what we send it."""
     contract = ensure_llm_contract()
-    backend = LiteLLMBackend(LLMBackendConfig(model=f"gemini/{model}"))
+    route = _route_for_upstream(model)
+    backend = LiteLLMBackend(LLMBackendConfig(model=route.model))
     job = InferenceJob(task="tag", inputs={"content": PROMPT}, recipe_hash="probe")
     try:
-        backend._run_structured_direct(job, contract, resolved_model=f"gemini/{model}")
+        backend._run_structured_direct(
+            job, contract, resolved_model=route.direct_model, route=route
+        )
     except Exception as exc:  # one fixed-prompt probe must report, not abort the matrix
         return _safe_error(exc=exc)
     return {"ok": True}
