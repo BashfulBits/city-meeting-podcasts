@@ -110,7 +110,8 @@ Cloudflare deployment secrets as the existing media proxy.
 
 Every pending canonical record has a compact marker at `ready/<eligible-time>-<priority>-…`. R2
 lists keys lexicographically, so each cron invocation lists a fixed lookahead of 16 markers and
-uses their routing metadata to skip a temporarily blocked provider/model. It reads canonical
+uses their compact custom metadata to skip a temporarily blocked provider/model without reading
+each marker body. Legacy markers without metadata fall back to a body read. It reads canonical
 requests only for viable candidates or records that must be requeued, then dispatches one request
 per scheduled run by default. Queue selection therefore stays bounded in queue depth — including
 10,000 historical or pending records — rather than parsing the first 1,000 prompts. The deployed

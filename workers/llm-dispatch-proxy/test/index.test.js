@@ -14,6 +14,7 @@ import {
   releaseCronLease,
   readyKey,
   readyMarker,
+  readyMarkerMetadata,
   renewCronLease,
   resolveProviderCredentials,
   routeAvailable,
@@ -193,6 +194,9 @@ test("enqueue writes its ready marker before the canonical pending record", asyn
   const env = { ...ENV, LLM_QUEUE: new MarkerFirstBucket() };
   const response = await handleRequest(chatRequest(undefined, "marker-first"), env);
   assert.equal(response.status, 202);
+  const marker = [...env.LLM_QUEUE.objects.values()].find((object) => object.key.startsWith("ready/"));
+  assert.equal(marker.customMetadata.ready_version, "1");
+  assert.equal(marker.customMetadata.status, "pending");
 });
 
 test("schema retry clones only a completed request and appends one corrective instruction", async () => {
@@ -804,7 +808,7 @@ test("renewing the cron lease is owner-checked and CAS-safe", async () => {
   assert.equal(await renewCronLease(bucket, later, "invocation-a", 30), false);
 });
 
-test("ready lookup remains one list and bounded marker reads with 10,000 queued requests", async () => {
+test("ready lookup uses listed marker metadata with 10,000 queued requests", async () => {
   class CountingBucket extends FakeBucket {
     constructor() {
       super();
@@ -833,13 +837,15 @@ test("ready lookup remains one list and bounded marker reads with 10,000 queued 
       attempts: 0, policy: {},
     };
     await bucket.put(`requests/${record.id}.json`, JSON.stringify(record));
-    await bucket.put(readyKey(record), JSON.stringify(readyMarker(record)));
+    await bucket.put(readyKey(record), JSON.stringify(readyMarker(record)), {
+      customMetadata: readyMarkerMetadata(record),
+    });
   }
   const result = await dispatchOne(env, okUpstream(), now);
   assert.equal(result.status, "completed");
   assert.equal(bucket.listCalls, 1);
   assert.equal(bucket.getCalls.filter((key) => key.startsWith("requests/")).length, 1);
-  assert.equal(bucket.getCalls.filter((key) => key.startsWith("ready/")).length, 16);
+  assert.equal(bucket.getCalls.filter((key) => key.startsWith("ready/")).length, 0);
 });
 
 test("queue estimate endpoint is retired rather than scanning the whole R2 history", async () => {

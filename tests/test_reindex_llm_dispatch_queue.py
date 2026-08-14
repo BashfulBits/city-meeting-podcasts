@@ -90,6 +90,8 @@ def test_migrate_writes_ready_markers_in_apply_mode():
     assert len(client.puts) == 1
     assert client.puts[0]["Key"] == ready_key(record)
     assert json.loads(client.puts[0]["Body"])["id"] == "1"
+    assert client.puts[0]["Metadata"]["ready_version"] == "1"
+    assert client.puts[0]["Metadata"]["status"] == "pending"
 
 
 def test_transient_r2_errors_are_retried_with_backoff(monkeypatch, capsys):
