@@ -122,6 +122,9 @@ def test_apply_resets_failure_and_writes_ready_marker():
     assert "error" not in updated
     assert "completed_at" not in updated
     assert client.puts[0]["IfMatch"] == '"etag-1"'
+    marker_put = client.puts[1]
+    assert marker_put["Metadata"]["ready_version"] == "1"
+    assert marker_put["Metadata"]["status"] == "pending"
 
 
 def test_apply_reports_cas_conflict_without_writing_marker():
