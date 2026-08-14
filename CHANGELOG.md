@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **The transcript recovery action can now requeue failed LLM dispatch records.** The new
+  `requeue-failed-llm-dispatch` mode is dry-run by default, targets the Gemma 4 model prefix unless
+  overridden, resets terminal request state with an R2 ETag guard, and restores the Worker’s
+  compact ready marker. It uses the dedicated dispatch-bucket credentials and does not change
+  unrelated failed models.
+
 - **Groq’s Llama 3.3 route now uses JSON-object structured output.** The live endpoint accepts
   `response_format: {"type":"json_object"}` but rejects JSON Schema; the compiled route profile
   now reflects that capability.
