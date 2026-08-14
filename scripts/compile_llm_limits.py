@@ -31,6 +31,9 @@ INPUT_YAML = REPO_ROOT / "config" / "provider_limits.yml"
 OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-proxy" / "src" / "dispatch_limits.json"
 PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
 
+_STRUCTURED_OUTPUT_FORMATS = frozenset({"json_schema", "json_object"})
+_STRUCTURED_OUTPUT_HANDLERS = frozenset({"instructor", "native"})
+
 
 def _json_default(value: object) -> str:
     """Serialize YAML's native date/time scalars without losing their UTC offset."""
@@ -42,13 +45,56 @@ def _json_default(value: object) -> str:
 def _direct_model(provider: str, upstream_model: str) -> str:
     """Return the LiteLLM model selector for a compiled provider route.
 
-    Kilo, OpenCode, and SiliconFlow expose OpenAI-compatible gateways rather than stable LiteLLM
-    provider adapters. Selecting the OpenAI adapter and supplying the compiled ``api_base`` keeps
-    those routes usable directly without teaching the scheduler provider-specific URL logic.
+    Kilo, OpenCode, and SiliconFlow expose OpenAI-compatible gateways rather than stable
+    LiteLLM provider adapters. Selecting the OpenAI adapter and supplying the compiled ``api_base``
+    keeps those routes usable directly without teaching the scheduler provider-specific URL logic.
     """
     if provider in {"kilo", "opencode", "siliconflow"}:
         return f"openai/{upstream_model}"
     return f"{provider}/{upstream_model}"
+
+
+def _normalize_structured_output_profiles(raw_profiles: Any) -> dict[str, dict[str, Any]]:
+    """Validate and normalize the named structured-output capability profiles."""
+    if not isinstance(raw_profiles, dict) or not raw_profiles:
+        raise ValueError("structured_output_profiles must be a non-empty mapping")
+    profiles: dict[str, dict[str, Any]] = {}
+    for name, raw_profile in raw_profiles.items():
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"structured output profile has an invalid name: {name!r}")
+        if not isinstance(raw_profile, dict):
+            raise ValueError(f"structured output profile {name!r} must be a mapping")
+        response_format = raw_profile.get("response_format", "json_schema")
+        if response_format not in _STRUCTURED_OUTPUT_FORMATS:
+            raise ValueError(
+                f"structured output profile {name!r} has unsupported response_format "
+                f"{response_format!r}"
+            )
+        direct_handler = raw_profile.get("direct_handler", "instructor")
+        if direct_handler not in _STRUCTURED_OUTPUT_HANDLERS:
+            raise ValueError(
+                f"structured output profile {name!r} has unsupported direct_handler "
+                f"{direct_handler!r}"
+            )
+        strip_schema_keys = raw_profile.get("strip_schema_keys", [])
+        if not isinstance(strip_schema_keys, list) or any(
+            not isinstance(key, str) or not key for key in strip_schema_keys
+        ):
+            raise ValueError(
+                f"structured output profile {name!r} strip_schema_keys must be a list of strings"
+            )
+        include_schema_in_prompt = raw_profile.get("include_schema_in_prompt", False)
+        if not isinstance(include_schema_in_prompt, bool):
+            raise ValueError(
+                f"structured output profile {name!r} include_schema_in_prompt must be boolean"
+            )
+        profiles[name] = {
+            "response_format": response_format,
+            "direct_handler": direct_handler,
+            "include_schema_in_prompt": include_schema_in_prompt,
+            "strip_schema_keys": list(dict.fromkeys(strip_schema_keys)),
+        }
+    return profiles
 
 
 def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
@@ -91,19 +137,11 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
                 "reset_timezone": source.get(
                     "reset_timezone", provider_cfg.get("reset_timezone", "UTC")
                 ),
-                # Effective limits are materialized on every physical route.  A route may
-                # override its provider default, so routing never assumes two providers expose
-                # the same context window for the same logical model.
-                "input_context_limit": int(
-                    source.get(
-                        "input_context_limit", provider_cfg.get("input_context_limit", 32768)
-                    )
-                ),
-                "output_context_limit": int(
-                    source.get(
-                        "output_context_limit", provider_cfg.get("output_context_limit", 1024)
-                    )
-                ),
+                # Limits are required on the physical route.  Do not fall back to a provider
+                # default: the same provider can expose different model ceilings, and gateways
+                # can cap a model below its native card (for example OpenRouter Gemma free).
+                "input_context_limit": int(source["input_context_limit"]),
+                "output_context_limit": int(source["output_context_limit"]),
             }
         )
         if provider_cfg.get("rpm") is not None:
@@ -179,6 +217,16 @@ def _openrouter_routes(
                 "input_per_token": inp_price,
                 "output_per_token": out_price,
                 "auto_discovered": True,
+                # OpenRouter publishes both the model-family context and the effective top
+                # provider ceiling.  Discovery-created routes must be just as explicit as the
+                # curated routes; otherwise a future discovery run would reintroduce a provider
+                # default into the compiled catalog.
+                "input_context_limit": int(item.get("context_length") or 1),
+                "output_context_limit": int(
+                    (item.get("top_provider") or {}).get("max_completion_tokens")
+                    or item.get("context_length")
+                    or 1
+                ),
             }
         )
     return new_routes
@@ -352,19 +400,40 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
 
     providers = raw.get("providers", {})
     routes = raw.get("routes", [])
+    structured_output_profiles = _normalize_structured_output_profiles(
+        raw.get("structured_output_profiles")
+    )
     normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
     for route in normalized_routes:
         provider_cfg = providers.get(route.get("provider"), {})
-        # The Worker consumes this catalog directly, so inherit provider defaults here rather
-        # than only while building the Python-specific derivative below.
-        route["input_context_limit"] = max(
-            1,
-            int(route.get("input_context_limit", provider_cfg.get("input_context_limit", 32768))),
+        for limit_name in ("input_context_limit", "output_context_limit"):
+            value = route.get(limit_name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 1:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} must declare a positive "
+                    f"integer {limit_name}; provider defaults are not supported"
+                )
+        profile_name = route.get(
+            "structured_output_profile",
+            provider_cfg.get("structured_output_profile", "standard_json_schema"),
         )
-        route["output_context_limit"] = max(
-            1,
-            int(route.get("output_context_limit", provider_cfg.get("output_context_limit", 1024))),
+        profile = structured_output_profiles.get(profile_name)
+        if profile is None:
+            raise ValueError(
+                f"route {route.get('route_id', route.get('model'))!r} references unknown "
+                f"structured_output_profile {profile_name!r}"
+            )
+        route.update(
+            {
+                "structured_output_profile": profile_name,
+                "structured_output_response_format": profile["response_format"],
+                "structured_output_direct_handler": profile["direct_handler"],
+                "structured_output_include_schema_in_prompt": profile["include_schema_in_prompt"],
+                "structured_output_schema_strip_keys": profile["strip_schema_keys"],
+            }
         )
+        route["input_context_limit"] = int(route["input_context_limit"])
+        route["output_context_limit"] = int(route["output_context_limit"])
 
     compiled = {
         "_metadata": {
@@ -373,6 +442,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
             "providers_count": len(providers),
         },
         "providers": providers,
+        "structured_output_profiles": structured_output_profiles,
         "routes": normalized_routes,
         "routes_by_id": routes_by_id,
         "model_routes_map": model_routes_map,

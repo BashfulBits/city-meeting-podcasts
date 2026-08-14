@@ -163,6 +163,14 @@ class LLMRoute:
     chat_path: str = "/v1/chat/completions"
     api_key_env: str = ""
     account_id: str = ""
+    # Structured-output behavior is compiled from the provider/route capability profile rather
+    # than inferred from a model or route name.  The profile's resolved fields are carried here
+    # so direct and queued transports make the same request-format decision.
+    structured_output_profile: str = "standard_json_schema"
+    structured_output_response_format: Literal["json_schema", "json_object"] = "json_schema"
+    structured_output_direct_handler: Literal["instructor", "native"] = "instructor"
+    structured_output_include_schema_in_prompt: bool = False
+    structured_output_schema_strip_keys: tuple[str, ...] = ()
     # Conservative defaults for hand-authored/test routes. Generated route catalogs materialize
     # provider- or route-specific values for every physical route.
     input_context_limit: int = 32768
@@ -269,6 +277,21 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
                 chat_path=str(item.get("chat_path", "/v1/chat/completions")),
                 api_key_env=str(item.get("api_key_env", "")),
                 account_id=str(item.get("account_id", "")),
+                structured_output_profile=str(
+                    item.get("structured_output_profile", "standard_json_schema")
+                ),
+                structured_output_response_format=str(
+                    item.get("structured_output_response_format", "json_schema")
+                ),
+                structured_output_direct_handler=str(
+                    item.get("structured_output_direct_handler", "instructor")
+                ),
+                structured_output_include_schema_in_prompt=bool(
+                    item.get("structured_output_include_schema_in_prompt", False)
+                ),
+                structured_output_schema_strip_keys=tuple(
+                    str(key) for key in item.get("structured_output_schema_strip_keys", ())
+                ),
                 input_context_limit=max(1, int(item.get("input_context_limit", 32768) or 32768)),
                 output_context_limit=max(1, int(item.get("output_context_limit", 1024) or 1024)),
             )

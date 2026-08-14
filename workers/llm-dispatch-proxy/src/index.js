@@ -1,14 +1,16 @@
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 
 const REQUEST_PREFIX = "requests/";
-const PENDING_PREFIX = "pending/";
+// Ready markers are ordered by their eligibility timestamp. R2 lists keys lexicographically, so
+// finding a bounded set of candidate requests is one fixed-size list, irrespective of historical
+// request count. `pending/` is retained only for the external one-time migration.
+const READY_PREFIX = "ready/";
 const CRON_LOCK_KEY = "locks/cron.json";
 const DISPATCH_BUDGET_KEY = "state/dispatch_budget.json";
 // Chapter-tag batches can legitimately carry several large, source-backed chapter windows. Keep
 // an explicit cap (the Worker parses JSON in memory) but avoid rejecting ordinary long meetings.
 const DEFAULT_MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
-const DEFAULT_MAX_QUEUE_SCAN = 1000;
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_PROCESSING_TIMEOUT_SECONDS = 20 * 60;
 const DEFAULT_RETRY_BASE_SECONDS = 60;
@@ -23,8 +25,12 @@ const DEFAULT_FAST_UPSTREAM_TIMEOUT_SECONDS = 90;
 // allowing the 12-minute long lane inside the 13m40s invocation deadline.
 const DEFAULT_FINALIZATION_RESERVE_SECONDS = 20;
 const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
-const DEFAULT_BATCH_CONCURRENCY = 4;
-const DEFAULT_MAX_TOTAL_REQUESTS = 16;
+// Cron triggers on the Workers Free plan have a 10ms CPU allowance.  Ready markers keep queue
+// inspection bounded; upstream wait time is not CPU time, so one provider call can make progress
+// without returning to the old prompt-scanning design.
+const DEFAULT_BATCH_CONCURRENCY = 1;
+const DEFAULT_MAX_TOTAL_REQUESTS = 1;
+const DEFAULT_READY_LOOKAHEAD = 16;
 
 const COPY_FIELDS = [
   "temperature",
@@ -126,10 +132,6 @@ function config(env) {
     maxResponseBytes: positiveNumber(env.MAX_RESPONSE_BYTES, DEFAULT_MAX_RESPONSE_BYTES, {
       integer: true,
     }),
-    maxQueueScan: Math.min(
-      1000,
-      positiveNumber(env.MAX_QUEUE_SCAN, DEFAULT_MAX_QUEUE_SCAN, { integer: true }),
-    ),
     maxAttempts: positiveNumber(env.MAX_ATTEMPTS, DEFAULT_MAX_ATTEMPTS, { integer: true }),
     processingTimeoutSeconds: positiveNumber(
       env.PROCESSING_TIMEOUT_SECONDS,
@@ -288,18 +290,95 @@ function requestKey(id) {
   return `requests/${id}.json`;
 }
 
-function pendingKey(id) {
-  return `${PENDING_PREFIX}${id}.json`;
+function readyTimeKey(value, fallback = 0) {
+  const milliseconds = parseTime(value) || fallback;
+  return String(Math.max(0, milliseconds)).padStart(15, "0");
 }
 
-async function markPending(bucket, id) {
-  // A compact pending-only index keeps terminal request history from hiding live work behind
-  // MAX_QUEUE_SCAN's bounded legacy object scan. The request object remains canonical.
-  await putJson(bucket, pendingKey(id), { id }, { onlyIf: { etagDoesNotMatch: "*" } });
+function readyPriority(record) {
+  if (record.policy?.submit_next) return "0-urgent";
+  return record.policy?.timeout_class === "long" ? "2-long" : "1-fast";
 }
 
-async function unmarkPending(bucket, id) {
-  await bucket.delete(pendingKey(id));
+function readyKey(record) {
+  const createdAt = parseTime(record.created_at);
+  return (
+    `${READY_PREFIX}${readyTimeKey(record.available_at, createdAt)}-` +
+    `${readyPriority(record)}-${readyTimeKey(record.created_at)}-${record.id}.json`
+  );
+}
+
+function readyMarker(record) {
+  // Do not put the prompt in the index.  The marker contains just enough routing policy to select
+  // a route before the scheduler reads the potentially multi-megabyte canonical request object.
+  return {
+    version: 1,
+    id: record.id,
+    model: record.model,
+    created_at: record.created_at,
+    available_at: record.available_at,
+    policy: record.policy || {},
+  };
+}
+
+function readyMarkerMetadata(record) {
+  const marker = readyMarker(record);
+  return {
+    id: String(marker.id),
+    status: "pending",
+    ready_version: String(marker.version),
+    model: String(marker.model || ""),
+    created_at: String(marker.created_at || ""),
+    available_at: String(marker.available_at || ""),
+    policy: JSON.stringify(marker.policy),
+  };
+}
+
+function readyMarkerFromMetadata(metadata) {
+  if (
+    !metadata ||
+    metadata.ready_version !== "1" ||
+    typeof metadata.id !== "string" ||
+    typeof metadata.model !== "string" ||
+    typeof metadata.available_at !== "string"
+  ) {
+    return null;
+  }
+  let policy = {};
+  try {
+    policy = metadata.policy ? JSON.parse(metadata.policy) : {};
+  } catch {
+    return null;
+  }
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
+    return null;
+  }
+  return {
+    version: 1,
+    id: metadata.id,
+    model: metadata.model,
+    created_at: metadata.created_at || "",
+    available_at: metadata.available_at,
+    policy,
+  };
+}
+
+async function markReady(bucket, record) {
+  const key = readyKey(record);
+  await putJson(bucket, key, readyMarker(record), {
+    customMetadata: readyMarkerMetadata(record),
+  });
+  return key;
+}
+
+async function unmarkReady(bucket, key) {
+  if (key) await bucket.delete(key);
+}
+
+async function replaceReadyMarker(bucket, record, oldKey = null) {
+  const newKey = await markReady(bucket, record);
+  if (oldKey && oldKey !== newKey) await unmarkReady(bucket, oldKey);
+  return newKey;
 }
 
 async function getJson(bucket, key) {
@@ -465,7 +544,7 @@ async function enqueue(bucket, normalized, cfg, now = new Date(), idempotencyKey
     if (!sameModel || !sameRequest || !samePolicy) {
       throw new HttpError(409, "idempotency key collision with different payload or policy");
     }
-    if (stored.status === "pending") await markPending(bucket, stored.id);
+    if (stored.status === "pending") await markReady(bucket, stored);
     return stored;
   }
 
@@ -482,6 +561,9 @@ async function enqueue(bucket, normalized, cfg, now = new Date(), idempotencyKey
     policy: normalized.policy,
   };
 
+  // Write the index first. A crash before the canonical write leaves a harmless marker that the
+  // scheduler removes; the reverse order would strand an otherwise-valid pending request forever.
+  const markerKey = await markReady(bucket, record);
   const putResult = await putJson(bucket, key, record, {
     onlyIf: { etagDoesNotMatch: "*" },
     customMetadata: requestMetadata(record),
@@ -495,15 +577,26 @@ async function enqueue(bucket, normalized, cfg, now = new Date(), idempotencyKey
       const sameRequest = JSON.stringify(stored.request) === JSON.stringify(normalized.request);
       const samePolicy = JSON.stringify(stored.policy || {}) === JSON.stringify(normalized.policy || {});
       if (!sameModel || !sameRequest || !samePolicy) {
+        // A concurrent writer may have created the canonical record after this invocation wrote
+        // its marker. Restore that writer's marker before rejecting this idempotency collision.
+        if (stored.status === "pending") {
+          const storedMarkerKey = await markReady(bucket, stored);
+          if (storedMarkerKey !== markerKey) await unmarkReady(bucket, markerKey);
+        } else {
+          await unmarkReady(bucket, markerKey);
+        }
         throw new HttpError(409, "idempotency key collision with different payload or policy");
       }
-      if (stored.status === "pending") await markPending(bucket, stored.id);
+      if (stored.status === "pending") {
+        const storedMarkerKey = await markReady(bucket, stored);
+        if (storedMarkerKey !== markerKey) await unmarkReady(bucket, markerKey);
+      } else {
+        await unmarkReady(bucket, markerKey);
+      }
       return stored;
     }
     throw new HttpError(503, "could not persist queued request");
   }
-
-  await markPending(bucket, record.id);
 
   return record;
 }
@@ -536,11 +629,11 @@ async function saveRetry(bucket, claimed, response, cfg, now, errorDetail = null
     processing_started_at: undefined,
     last_error: lastError,
   };
-  await putJson(bucket, claimed.key, updated, {
+  const saved = await putJson(bucket, claimed.key, updated, {
     etagMatches: claimed.object.etag,
     customMetadata: requestMetadata(updated),
   });
-  await markPending(bucket, updated.id);
+  if (saved) await replaceReadyMarker(bucket, updated, claimed.readyKey);
 }
 
 async function saveFailure(bucket, claimed, status, now, code = "upstream_error", errorDetail = null) {
@@ -562,23 +655,31 @@ async function saveFailure(bucket, claimed, status, now, code = "upstream_error"
   });
   // A lost conditional write means another worker owns the newer canonical state.  Its pending
   // marker is still needed until that state is observed and finalized.
-  if (saved) await unmarkPending(bucket, updated.id);
+  if (saved) await unmarkReady(bucket, claimed.readyKey || readyKey(claimed.record));
 }
 
-async function requeue(bucket, claimed, now) {
+async function requeue(
+  bucket,
+  claimed,
+  now,
+  availableAt = now.toISOString(),
+  { releaseAttempt = false } = {},
+) {
   const released = {
     ...claimed.record,
     status: "pending",
-    attempts: Math.max(0, claimed.record.attempts - 1),
+    attempts: releaseAttempt
+      ? Math.max(0, (claimed.record.attempts || 0) - 1)
+      : claimed.record.attempts || 0,
     updated_at: now.toISOString(),
-    available_at: now.toISOString(),
+    available_at: availableAt,
     processing_started_at: undefined,
   };
-  await putJson(bucket, claimed.key, released, {
+  const saved = await putJson(bucket, claimed.key, released, {
     etagMatches: claimed.object.etag,
     customMetadata: requestMetadata(released),
   });
-  await markPending(bucket, released.id);
+  if (saved) await replaceReadyMarker(bucket, released, claimed.readyKey);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1138,7 +1239,7 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
   return { apiKey, url, upstreamModel: route.upstream_model };
 }
 
-function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+function eligibleRoutesForModel(canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
   const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
   const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
   const candidates = routeIds.map((id) => dispatchLimits.routes_by_id[id]).filter(Boolean);
@@ -1149,8 +1250,21 @@ function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits
       inputTokens <= (route.input_context_limit || 32768) &&
       outputTokens <= (route.output_context_limit || 1024),
   );
-  const freeRanked = rankRoutes(contextCompatible.filter((route) => route.free), now);
-  const paidRanked = rankRoutes(contextCompatible.filter((route) => !route.free), now);
+  return {
+    candidates,
+    contextCompatible,
+    freeRanked: rankRoutes(contextCompatible.filter((route) => route.free), now),
+    paidRanked: rankRoutes(contextCompatible.filter((route) => !route.free), now),
+  };
+}
+
+function selectRouteForModel(budget, canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+  const { candidates, contextCompatible, freeRanked, paidRanked } = eligibleRoutesForModel(
+    canonicalModel,
+    policy,
+    now,
+    dispatchLimits,
+  );
   const allowPaid = Boolean(policy?.allow_paid);
   const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
   const tokens = policy?.estimated_tokens || 1024;
@@ -1230,6 +1344,122 @@ function selectRoute(budget, canonicalModels, policy, now, dispatchLimits = DISP
   return retryableSelection || lastSelection;
 }
 
+function nextCapacityRetryAt(budget, canonicalModels, policy, now, dispatchLimits = DISPATCH_LIMITS) {
+  const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
+  const allowPaid = Boolean(policy?.allow_paid);
+  const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
+  const resets = [];
+  const nextEligibleAt = (route) => {
+    const capacityAt = nextRouteReset(
+      ledgerEntry(budget, route.route_id),
+      route,
+      now,
+      dispatchLimits,
+      budget,
+    ).getTime();
+    const priceReadyAt = nextCheapestPricingAt(route, now);
+    const priceAt =
+      priceReadyAt && (deadlineAt == null || priceReadyAt.getTime() <= deadlineAt)
+        ? priceReadyAt.getTime()
+        : now.getTime();
+    return Math.max(capacityAt, priceAt);
+  };
+  for (const model of [...new Set(models)]) {
+    const { freeRanked, paidRanked } = eligibleRoutesForModel(
+      model,
+      policy,
+      now,
+      dispatchLimits,
+    );
+    const freeResets = freeRanked.map(nextEligibleAt);
+    resets.push(...freeResets);
+
+    // This must mirror selectRouteForModel: paid routes become relevant only when no free route
+    // exists, or when waiting for every free route would miss the caller's deadline.
+    const canUsePaid =
+      allowPaid &&
+      (freeRanked.length === 0 ||
+        (deadlineAt != null && Math.min(...freeResets) >= deadlineAt));
+    if (!canUsePaid) continue;
+    for (const route of paidRanked) {
+      resets.push(nextEligibleAt(route));
+    }
+  }
+  return new Date(resets.length > 0 ? Math.min(...resets) : now.getTime() + 60_000);
+}
+
+async function loadReadyHeads(bucket, now, limit = DEFAULT_READY_LOOKAHEAD) {
+  const listed = await bucket.list({
+    prefix: READY_PREFIX,
+    limit,
+    include: ["customMetadata"],
+  });
+  const heads = [];
+  let invalidCount = 0;
+  let future = false;
+  for (const object of listed?.objects || []) {
+    let record = readyMarkerFromMetadata(object.customMetadata);
+    if (!record) {
+      let marker;
+      try {
+        marker = await getJson(bucket, object.key);
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+        await unmarkReady(bucket, object.key);
+        invalidCount += 1;
+        continue;
+      }
+      record = marker?.value;
+    }
+    if (!record || record.version !== 1 || typeof record.id !== "string") {
+      await unmarkReady(bucket, object.key);
+      invalidCount += 1;
+      continue;
+    }
+    // readyKey() orders by available_at, so a future marker means every later marker is future
+    // too. Stop before inspecting more markers, while still allowing malformed/stale markers
+    // before it to be repaired in this pass. New markers carry this routing data in list metadata;
+    // legacy markers fall back to reading their JSON body above.
+    if (parseTime(record.available_at) > now.getTime()) {
+      future = true;
+      break;
+    }
+    heads.push({ key: object.key, record });
+  }
+  return { heads, future, invalidCount };
+}
+
+async function loadReadyClaim(bucket, head, now) {
+  const loaded = await getJson(bucket, requestKey(head.record.id));
+  if (!loaded?.value || loaded.value.status !== "pending") {
+    await unmarkReady(bucket, head.key);
+    return null;
+  }
+  const canonical = loaded.value;
+  if (canonical.available_at && parseTime(canonical.available_at) > now.getTime()) {
+    await replaceReadyMarker(bucket, canonical, head.key);
+    return null;
+  }
+  const logicalModel = canonicalModelName(canonical.model, DISPATCH_LIMITS);
+  if (logicalModel !== canonical.model) {
+    canonical.model = logicalModel;
+    if (canonical.request && typeof canonical.request === "object") {
+      canonical.request.model = logicalModel;
+    }
+  }
+  // A moved marker can survive a crash between creating the replacement and deleting the old
+  // key.  Never dispatch based on stale routing policy or a stale eligibility timestamp.
+  if (
+    head.key !== readyKey(canonical) ||
+    canonicalModelName(head.record.model, DISPATCH_LIMITS) !== logicalModel ||
+    JSON.stringify(head.record.policy || {}) !== JSON.stringify(canonical.policy || {})
+  ) {
+    await replaceReadyMarker(bucket, canonical, head.key);
+    return null;
+  }
+  return { key: requestKey(canonical.id), object: loaded.object, record: canonical, readyKey: head.key };
+}
+
 async function dispatchOne(env, fetchImpl = fetch, now = new Date()) {
   const result = await dispatchBatch(env, fetchImpl, now, 1);
   if (result.results && result.results.length > 0) {
@@ -1263,96 +1493,16 @@ async function dispatchBatch(
   }
 
   try {
-    let cursor = undefined;
-    let claimable = [];
-    let scanned = 0;
-    let scanPrefix = PENDING_PREFIX;
-    let legacyScan = false;
-
-    while (scanned < cfg.maxQueueScan) {
-      const batchSize = Math.min(100, cfg.maxQueueScan - scanned);
-      let listResult = await bucket.list({ prefix: scanPrefix, cursor, limit: batchSize });
-      const objects = listResult ? listResult.objects || [] : [];
-      // Backward-compatible bridge for requests written before the pending-only index shipped.
-      // Operators reindex once after deploy; new queues never take this bounded legacy path.
-      if (objects.length === 0 && scanned === 0 && scanPrefix === PENDING_PREFIX) {
-        scanPrefix = REQUEST_PREFIX;
-        legacyScan = true;
-        cursor = undefined;
-        listResult = await bucket.list({ prefix: scanPrefix, cursor, limit: batchSize });
-        objects.push(...(listResult ? listResult.objects || [] : []));
-      }
-      if (objects.length === 0) {
-        break;
-      }
-
-      for (const obj of objects) {
-        if (claimable.length >= cfg.maxQueueScan) break;
-        scanned += 1;
-        const id = obj.key.slice(scanPrefix.length).replace(/\.json$/, "");
-        if (!id) continue;
-        const meta = obj.customMetadata || {};
-        if (legacyScan && meta.status && meta.status !== "pending") continue;
-        if (
-          legacyScan &&
-          meta.status === "pending" &&
-          meta.available_at &&
-          parseTime(meta.available_at) > now.getTime()
-        ) {
-          continue;
-        }
-        const loaded = await getJson(bucket, requestKey(id));
-        if (!loaded || !loaded.value) continue;
-        const rec = loaded.value;
-        if (rec.status !== "pending") {
-          if (!legacyScan) await unmarkPending(bucket, id);
-          continue;
-        }
-        if (rec.available_at && parseTime(rec.available_at) > now.getTime()) continue;
-        const logicalModel = canonicalModelName(rec.model, DISPATCH_LIMITS);
-        if (logicalModel !== rec.model) {
-          rec.model = logicalModel;
-          if (rec.request && typeof rec.request === "object") {
-            rec.request.model = logicalModel;
-          }
-        }
-        if (legacyScan) await markPending(bucket, id);
-        claimable.push({ key: requestKey(id), object: loaded.object, record: rec });
-      }
-
-      if (claimable.length >= cfg.maxQueueScan || !listResult.truncated || !listResult.cursor) {
-        break;
-      }
-      cursor = listResult.cursor;
-    }
-
-    if (claimable.length === 0) {
-      return { status: "idle", count: 0 };
-    }
-
-    claimable.sort((a, b) => {
-      const pA = a.record.policy?.submit_next ? 0 : 1;
-      const pB = b.record.policy?.submit_next ? 0 : 1;
-      if (pA !== pB) return pA - pB;
-      const tA = a.record.policy?.timeout_class === "long" ? 1 : 0;
-      const tB = b.record.policy?.timeout_class === "long" ? 1 : 0;
-      if (tA !== tB) return tA - tB;
-      return parseTime(a.record.created_at) - parseTime(b.record.created_at);
-    });
-
-    // Fast work normally drains first.  At the start of a fresh run, however, reserve one slot
-    // for a long request when it can still complete inside this invocation's deadline.  Without
-    // this escape hatch, a permanent fast backlog fills the only 10-second long-lane start
-    // window and leaves every long request pending forever.
-    if (
-      runDeadlineMs != null &&
-      Date.now() + (cfg.upstreamTimeoutSeconds + cfg.finalizationReserveSeconds) * 1000 <=
-        runDeadlineMs
-    ) {
-      const firstLong = claimable.find((item) => item.record.policy?.timeout_class === "long");
-      if (firstLong) {
-        claimable = [firstLong, ...claimable.filter((item) => item !== firstLong)];
-      }
+    // List a small, fixed number of compact markers.  Route selection happens from marker
+    // metadata first, so a provider/model at capacity does not force a full prompt read or stop
+    // the batch at the queue head.  Canonical requests are read only for candidates that can be
+    // dispatched or must be requeued.
+    const ready = await loadReadyHeads(bucket, now);
+    if (ready.heads.length === 0) {
+      return {
+        status: ready.invalidCount > 0 ? "index_repaired" : "idle",
+        count: 0,
+      };
     }
 
     let budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
@@ -1364,18 +1514,31 @@ async function dispatchBatch(
     let lastRequeuedId = null;
     let deadlineGuarded = false;
 
-    for (const claimed of claimable) {
+    for (const head of ready.heads) {
       if (candidatesToDispatch.length >= maxBatch) break;
 
       const selection = selectRoute(
         budget,
-        claimed.record.policy?.allowed_models || claimed.record.model,
-        claimed.record.policy,
+        head.record.policy?.allowed_models || head.record.model,
+        head.record.policy,
         now,
       );
+      let claimed;
       if (!selection.chosenRoute) {
+        claimed = await loadReadyClaim(bucket, head, now);
+        if (!claimed) continue;
         if (selection.reason === "no_capacity") {
-          await requeue(bucket, claimed, now);
+          await requeue(
+            bucket,
+            claimed,
+            now,
+            nextCapacityRetryAt(
+              budget,
+              claimed.record.policy?.allowed_models || claimed.record.model,
+              claimed.record.policy,
+              now,
+            ).toISOString(),
+          );
           lastRequeuedId = claimed.record.id;
         } else {
           await saveFailure(bucket, claimed, 400, now, selection.reason);
@@ -1388,13 +1551,16 @@ async function dispatchBatch(
         continue;
       }
 
+      claimed = await loadReadyClaim(bucket, head, now);
+      if (!claimed) continue;
+
       const { chosenRoute } = selection;
       const timeoutSeconds = timeoutSecondsForRecord(claimed.record, cfg);
       if (
         runDeadlineMs != null &&
         Date.now() + (timeoutSeconds + cfg.finalizationReserveSeconds) * 1000 > runDeadlineMs
       ) {
-        await requeue(bucket, claimed, now);
+        await requeue(bucket, claimed, now, new Date(now.getTime() + 60_000).toISOString());
         lastRequeuedId = claimed.record.id;
         deadlineGuarded = true;
         continue;
@@ -1423,12 +1589,28 @@ async function dispatchBatch(
       const entry = ledgerEntry(budget, chosenRoute.route_id);
       rollLedgerWindows(entry, chosenRoute, now);
       if (!providerAvailable(budget, chosenRoute, now)) {
-        await requeue(bucket, claimed, now);
+        await requeue(
+          bucket,
+          claimed,
+          now,
+          nextRouteReset(
+            ledgerEntry(budget, chosenRoute.route_id),
+            chosenRoute,
+            now,
+            DISPATCH_LIMITS,
+            budget,
+          ).toISOString(),
+        );
         lastRequeuedId = claimed.record.id;
         continue;
       }
       if (!routeAvailable(entry, chosenRoute, reservationSize, now)) {
-        await requeue(bucket, claimed, now);
+        await requeue(
+          bucket,
+          claimed,
+          now,
+          nextRouteReset(entry, chosenRoute, now, DISPATCH_LIMITS, budget).toISOString(),
+        );
         lastRequeuedId = claimed.record.id;
         continue;
       }
@@ -1536,7 +1718,7 @@ async function dispatchBatch(
         }),
       );
       for (const item of candidatesToDispatch) {
-        await requeue(bucket, item.claimed, now);
+        await requeue(bucket, item.claimed, now, now.toISOString(), { releaseAttempt: true });
       }
       return {
         status: "no_capacity",
@@ -1663,7 +1845,7 @@ async function dispatchBatch(
           etagMatches: claimed.object.etag,
           customMetadata: requestMetadata(completed),
         });
-        if (saved) await unmarkPending(bucket, completed.id);
+        if (saved) await unmarkReady(bucket, claimed.readyKey);
         return {
           status: "completed",
           requestId: claimed.record.id,
@@ -1846,28 +2028,6 @@ async function handleSchemaRetry(request, env, cfg, id) {
   return responseForRecord(request, replacement);
 }
 
-async function reindexPendingRequests(bucket) {
-  let cursor = undefined;
-  let scanned = 0;
-  let pending = 0;
-  do {
-    const listed = await bucket.list({ prefix: REQUEST_PREFIX, cursor, limit: 1000 });
-    for (const obj of listed?.objects || []) {
-      scanned += 1;
-      const id = obj.key.slice(REQUEST_PREFIX.length).replace(/\.json$/, "");
-      const meta = obj.customMetadata || {};
-      if (meta.status && meta.status !== "pending") continue;
-      const loaded = await getJson(bucket, obj.key);
-      if (loaded?.value?.status === "pending") {
-        await markPending(bucket, id);
-        pending += 1;
-      }
-    }
-    cursor = listed?.truncated ? listed.cursor : undefined;
-  } while (cursor);
-  return { scanned, pending };
-}
-
 async function handleRequest(request, env) {
   const url = new URL(request.url);
   if (url.pathname === "/healthz" && request.method === "GET") {
@@ -1887,57 +2047,12 @@ async function handleRequest(request, env) {
     });
   }
 
-  if (url.pathname === "/v1/queue/estimate" && request.method === "GET") {
-    const requestedModel = url.searchParams.get("model") || cfg.model;
-    const model = canonicalModelName(requestedModel, DISPATCH_LIMITS);
-    let count = 0;
-    let cursor = undefined;
-    do {
-      const listRes = await env.LLM_QUEUE.list({ prefix: REQUEST_PREFIX, cursor, limit: 1000 });
-      const objects = listRes ? listRes.objects || [] : [];
-      for (const obj of objects) {
-        const meta = obj.customMetadata || {};
-        if (meta.status) {
-          if (
-            meta.status === "pending" &&
-            (!model || canonicalModelName(meta.model, DISPATCH_LIMITS) === model)
-          ) {
-            count += 1;
-          }
-          continue;
-        }
-        const loaded = await getJson(env.LLM_QUEUE, obj.key);
-        if (loaded && loaded.value && loaded.value.status === "pending") {
-          if (!model || canonicalModelName(loaded.value.model, DISPATCH_LIMITS) === model) {
-            count += 1;
-          }
-        }
-      }
-      cursor = listRes && listRes.truncated ? listRes.cursor : undefined;
-    } while (cursor);
-    const routeIds = DISPATCH_LIMITS.model_routes_map?.[model] || [];
-    const fastestRpm = routeIds
-      .map((id) => {
-        const route = DISPATCH_LIMITS.routes_by_id[id];
-        const limits = [
-          route?.rpm,
-          DISPATCH_LIMITS.providers?.[route?.provider]?.rpm,
-        ].filter((rpm) => typeof rpm === "number" && rpm > 0);
-        return limits.length > 0 ? Math.min(...limits) : null;
-      })
-      .filter((rpm) => rpm != null);
-    const perRequestSeconds = fastestRpm.length > 0 ? 60 / Math.max(...fastestRpm) : 60;
-    const estSeconds = Math.ceil(count * perRequestSeconds);
-    return jsonResponse({
-      model,
-      backlog_count: count,
-      estimated_wait_seconds: estSeconds,
-    });
+  if (url.pathname === "/v1/queue/reindex" && request.method === "POST") {
+    return plain(410, "queue reindex moved to scripts/reindex_llm_dispatch_queue.py");
   }
 
-  if (url.pathname === "/v1/queue/reindex" && request.method === "POST") {
-    if (!env.LLM_QUEUE) return plain(503, "dispatch storage is not configured");
-    return jsonResponse(await reindexPendingRequests(env.LLM_QUEUE));
+  if (url.pathname === "/v1/queue/estimate" && request.method === "GET") {
+    return plain(410, "exact queue estimates were removed to keep Worker reads bounded");
   }
 
   if (url.pathname === "/v1/chat/completions" && request.method === "POST") {
@@ -2016,7 +2131,7 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
         env,
         fetchImpl,
         now,
-        cfg.batchConcurrency,
+        Math.min(cfg.batchConcurrency, cfg.maxTotalRequests - totalDispatched),
         leaseOwner,
         deadlineMs,
       );
@@ -2072,11 +2187,15 @@ export {
   dispatchBatch,
   dispatchOne,
   handleRequest,
+  nextCapacityRetryAt,
   nextLocalMidnightUTC,
   nextRouteReset,
   normalizeChatRequest,
   rankRoutes,
   releaseCronLease,
+  readyKey,
+  readyMarker,
+  readyMarkerMetadata,
   renewCronLease,
   runScheduled,
   requestKey,

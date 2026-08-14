@@ -196,6 +196,33 @@ class TestTranscribeByteIdentical:
 
 
 class TestAlignByteIdentical:
+    def test_timed_segments_use_whisperx_sections_in_process_backend(self):
+        fake = MagicMock()
+        direct = TranscriptArtifacts(vtt=b"WEBVTT\n", words=b"{}")
+        fake.align_known_text.return_value = direct
+        timed_segments = [{"start": 2.0, "end": 5.0, "text": "Hello world"}]
+
+        result = LocalBackend(asr=fake).run_inference(
+            InferenceJob(
+                task="align",
+                inputs={
+                    "audio_path": "a.m4a",
+                    "text": "Hello world",
+                    "timed_segments": timed_segments,
+                    "model": "WAV2VEC2_ASR_BASE_960H",
+                    "language": "en",
+                    "cpu_threads": 2,
+                },
+                recipe_hash="r",
+            )
+        )
+
+        assert result.output is direct
+        fake.align_known_text.assert_called_once_with(
+            "a.m4a", timed_segments, "WAV2VEC2_ASR_BASE_960H", "en", 2
+        )
+        fake.align.assert_not_called()
+
     def test_local_matches_direct_asr(self, tmp_path):
         audio = tmp_path / "a.m4a"
         audio.write_bytes(b"fake")

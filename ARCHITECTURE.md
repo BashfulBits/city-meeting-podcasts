@@ -205,7 +205,7 @@ Audio and every other workflow that fetches these providers without adding stora
 
 > **Transcript update:** Computed provider alignment now uses WhisperX rather than stable-ts. Provider
 > source wording is cleaned and source-time markers are remapped to served time, with a 90% raw
-> word-coverage gate before interpolation. `PROVIDER_ALIGN_PIPELINE_VERSION=4` reprocesses every
+> word-coverage gate before interpolation. `PROVIDER_ALIGN_PIPELINE_VERSION=5` reprocesses every
 > computed provider alignment gradually; full-ASR artifacts remain separate and unchanged.
 | **Feeds / site** | `feeds.py`, `render.py`, `site.py`, `templates/*.j2`, `artwork.py` (cover art). |
 | **Static search** | `search.py` builds deterministic per-source JSON shards from durable records and content-addressed transcript/agenda/backup/minutes sidecars; unchanged source hashes skip sidecar reads, retired shards are pruned, and every available transcript is indexed. Chapter entries carry stable IDs and topic tags; timed transcript segments carry their chapter ID, enabling future topic-scoped quote/highlight results while episode tags remain the fast facet. The manifest carries exact transcripted/retained-meeting counts per shard and body; `templates/search.html.j2` aggregates them only into user-facing whole-catalog/city/body coverage, supports city/body/topic/date/availability filters, deduplicates cross-source UIDs, and links playable results to stable meeting pages with transcript/chapter timestamps. |
@@ -347,8 +347,11 @@ total on `/admin/status`.
   (`_run_gemini_structured_direct`).
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
-  design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests; a
-  per-minute Cron Trigger claims a bounded batch of ready requests with an R2 conditional write, ranks each request's
+  design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests
+  plus a compact date-ordered `ready/` marker; a per-minute Free-plan Cron Trigger lists a bounded
+  lookahead of compact markers and reads canonical requests only for viable candidates (constant in
+  queue depth) before claiming one request per scheduled run,
+  ranks each request's
   canonical model's candidate routes (free before paid, then cheapest) against a **per-route/per-account
   ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s versioned minute/day
   window, cost, `blocked_until`, and `inflight` shape),
@@ -374,30 +377,32 @@ total on `/admin/status`.
 
 ### LLM Model Catalog & Decision Matrix
 
-The pipeline routes LLM jobs across 10 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python `citypods/compute/llm_routes.json`). The generated catalog contains 52 physical provider/account routes representing 38 deduplicated logical models; every route supports direct LiteLLM and asynchronous dispatch. Static catalog quotas are only candidate capacity: production routing records observed RPM, TPM, RPD/reset behavior, latency, failures, and structured-output validity before promoting a route.
+The pipeline routes LLM jobs across 10 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python `citypods/compute/llm_routes.json`). The generated catalog contains 47 physical provider/account routes representing 32 deduplicated logical models; every route supports direct LiteLLM and asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode, direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those materialized capabilities rather than inferring them from model or route names. Input/output context ceilings are mandatory on each physical route, because model families and gateways can differ (for example, OpenRouter's free Gemma route has a lower effective input ceiling than the native model). Static catalog quotas are only candidate capacity: production routing records observed RPM, TPM, RPD/reset behavior, latency, failures, and structured-output validity before promoting a route.
 
-| Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Context Window | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
+| Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Representative Context Window* | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
 |---|---|---|---|---|---|---|
-| **`mistral/mistral-large-2512`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B Dense | Mistral AI | 128k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Direct or dispatch | Complex meeting synthesis, policy dispute resolution, high-stakes soundbite selection |
-| **`mistral/mistral-large-3`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B+ Frontier | Mistral AI | 128k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Available in pool | Frontier civic reasoning, ordinance comparison, multi-speaker attribution |
+| **`mistral/mistral-large-2512`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B Dense | Mistral AI | 256k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Direct or dispatch | Complex meeting synthesis, policy dispute resolution, high-stakes soundbite selection |
+| **`mistral/mistral-large-3`** | 🏆 **Tier 1 (Frontier Flagship)**<br>123B+ Frontier | Mistral AI | 256k tokens | 4 RPM<br>Shared 1B Tok/Mo pool | Available in pool | Frontier civic reasoning, ordinance comparison, multi-speaker attribution |
 | **`mistral/mistral-small-2603`** | ⭐ **Tier 2 (Advanced MoE)**<br>119B MoE (128 experts) | Mistral AI | 256k tokens | 49 RPM<br>50k TPM (1B Mo pool) | Available in pool | Full 3-hour meeting ingestion, narrative chapter summaries, legislative amendments |
 | **`mistral/codestral-2508`** | ⭐ **Tier 2 (Structured Specialist)**<br>22B–32B Dense | Mistral AI | 256k tokens | 124 RPM<br>625k TPM (1B Mo pool) | Available in pool | Strict JSON schema extraction, table/ordinance parsing, agenda crosswalk recovery |
-| **`mistral/devstral-2512`** | ⭐ **Tier 2 (Agentic Reasoner)**<br>Agentic Fine-tuned | Mistral AI | 128k tokens | 49 RPM<br>1M TPM (1B Mo pool) | Available in pool | Multi-pass transcript cleanup, meeting action item tracking, tool calling |
+| **`mistral/devstral-2512`** | ⭐ **Tier 2 (Agentic Reasoner)**<br>Agentic Fine-tuned | Mistral AI | 256k tokens | 49 RPM<br>1M TPM (1B Mo pool) | Available in pool | Multi-pass transcript cleanup, meeting action item tracking, tool calling |
 | **`mistral/mistral-medium-2508`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 22 RPM<br>356.25k TPM | Agenda chapter extraction (`chapter_titles.py`) | Production agenda extraction, civic topic indexing, structured meeting summaries |
 | **`mistral/mistral-medium-2505`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 25 RPM<br>375k TPM | Available in pool | Fast enterprise chaptering, zoning case digest, secondary agenda verification |
 | **`meta-llama/llama-3.3-70b-instruct`** | ⭐ **Tier 2 (Open Frontier 70B)**<br>70B Dense | Groq + SambaNova + OpenRouter | 128k tokens | 50 RPM<br>2,000 Free RPD | Available in pool | Low-latency meeting digests, civic discourse classification, speaker stance analysis |
-| **`qwen/qwen-2.5-72b-instruct`** | ⭐ **Tier 2 (Open Frontier 72B)**<br>72B Dense | SambaNova + SiliconFlow | 128k tokens | 20 RPM<br>1,000 Free RPD (+ Paid) | Available in pool | Detailed municipal ordinance analysis, multi-lingual transcripts, budgeting review |
-| **`google/gemma-4-31b-it`** | ⚡ **Tier 3 (High-Capacity Core)**<br>31B Dense | Google AI Studio (2x) + OpenRouter | 128k tokens | Catalog quota; verify at runtime | R5 independent pre-labeler | High-capacity evaluator overlay and batch categorization |
-| **`google/gemma-4-26b-it`** | ⚡ **Tier 3 (High-Capacity Core)**<br>26B Mixture-of-Agents | Google AI Studio (2x) | 128k tokens | Catalog quota; verify at runtime | R5 benchmark challenger | High-throughput tagging if bounded benchmark quality clears the gate |
-| **`google/gemma-4-26b-a4b-it`** | ⚡ **Tier 3 (Sparse Variant)**<br>26B A4B sparse variant | OpenRouter | 128k tokens | 10 RPM<br>200 Free RPD | Available in pool | Independent free fallback where sparse-variant behavior is acceptable |
+| **`qwen/qwen-2.5-72b-instruct`** | ⭐ **Tier 2 (Open Frontier 72B)**<br>72B Dense | SambaNova + SiliconFlow | 128k SambaNova / 33k SiliconFlow | 20 RPM<br>1,000 Free RPD (+ Paid) | Available in pool | Detailed municipal ordinance analysis, multi-lingual transcripts, budgeting review |
+| **`google/gemma-4-31b-it`** | ⚡ **Tier 3 (High-Capacity Core)**<br>31B Dense | Google AI Studio (2x) + OpenRouter | 256k native; gateway-specific | Catalog quota; verify at runtime | R5 independent pre-labeler | High-capacity evaluator overlay and batch categorization |
+| **`google/gemma-4-26b-a4b-it`** | ⚡ **Tier 3 (Sparse Variant)**<br>26B A4B sparse variant | Google AI Studio (2x) + OpenRouter | 256k native; 128k OpenRouter free | Catalog quota; verify at runtime | R5 benchmark challenger | High-throughput tagging and independent free fallback where sparse-variant behavior is acceptable |
 | **`gemini/gemini-3.5-flash-lite`** | ⚡ **Tier 3 (High-Throughput)**<br>High-Speed Flash | Google AI Studio (2x) | 1,000k tokens | 30 RPM<br>1,000 Free RPD | Available in pool | Ultra-long context full-day hearings (1M tokens), fast transcript chunking & indexing |
 | **`gemini/gemini-3.1-flash-lite`** | ⚡ **Tier 3 (High-Throughput)**<br>High-Speed Flash | Google AI Studio (2x) | 1,000k tokens | 30 RPM<br>1,000 Free RPD | Available in pool | High-volume batch transcription refinement, metadata generation |
-| **`zai/glm-4.7-flash`** | ⚡ **Tier 3 (Permanent Free MoE)**<br>Flash MoE | Z.AI (Zhipu AI) | 128k tokens | 15 RPM<br>500 Free RPD | Available in pool | Independent geo-redundant fallback for tagging, chaptering, and summarization |
+| **`zai/glm-4.7-flash`** | ⚡ **Tier 3 (Permanent Free MoE)**<br>Flash MoE | Z.AI (Zhipu AI) | 200k tokens | 15 RPM<br>500 Free RPD | Available in pool | Independent geo-redundant fallback for tagging, chaptering, and summarization |
 | **`gemini/gemini-3-flash-preview`** | 🚀 **Tier 4 (Flash Burst Pool)**<br>Flagship Flash | Google AI Studio (2x) | 1,000k tokens | Account-dependent | Excluded from high-volume R5 | Low-volume research only while account limits remain unsuitable |
 | **`gemini/gemini-3.6-flash` / `3.5-flash`** | 🚀 **Tier 4 (Flash Burst Pool)**<br>Flash Workhorses | Google AI Studio (2x) | 1,000k tokens | 10 RPM<br>40 Free RPD each | Direct fallback pool | Synchronous burst overflow for direct pipeline runs |
 | **`deepseek/deepseek-v4-flash`** / **`-0731`** | 💰 **Tier 5 (Ultra Low-Cost Paid & Free)**<br>284B MoE (13B active), 0731 revision | SiliconFlow ($0.049/M) + DeepSeek Direct ($0.14/M, $0.0028 Cache) + OpenCode (Free) | 1,000k tokens | 10 Concurrency<br>(Pay-per-token + 500 Free RPD) | Direct paid / free fallback (off-peak routed) | Full-length meeting transcript summaries, agenda action item extraction, cost-capped overflow |
-| **`deepseek/deepseek-v4-pro`** | 💰 **Tier 5 (Frontier Paid)**<br>Pro MoE Flagship | DeepSeek Direct ($0.435/M) | 128k tokens | 5 Concurrency | Direct paid fallback | Deep reasoning evaluation benchmark runs |
-| **`openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`** | 🏆 **Tier 1 (Frontier Open Free)**<br>550B MoE (55B active) | OpenRouter | 128k tokens | Catalog quota; verify at runtime | Reserved for R6/future public-facing verbs | Elite reasoning verification and complex cross-examination validation |
+| **`deepseek/deepseek-v4-pro`** | 💰 **Tier 5 (Frontier Paid)**<br>Pro MoE Flagship | DeepSeek Direct ($0.435/M) | 1,000k tokens | 5 Concurrency | Direct paid fallback | Deep reasoning evaluation benchmark runs |
+| **`openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`** | 🏆 **Tier 1 (Frontier Open Free)**<br>550B MoE (55B active) | OpenRouter | 1,000k tokens | Catalog quota; verify at runtime | Reserved for R6/future public-facing verbs | Elite reasoning verification and complex cross-examination validation |
+
+\* The route-level values in `config/provider_limits.yml` are authoritative; this column summarizes
+the main native/gateway ceilings and intentionally does not replace the per-route catalog.
 
 Gemini Live is not part of the R5 batch route: it is a persistent real-time multimodal/WebSocket model and
 does not match the current structured JSON batch contract. Gemini 3 Flash Preview is also excluded from the
@@ -411,7 +416,7 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
 1. **Full-Meeting Summarization (`summarize`):** Requires massive context ($\ge 128\text{k}$) and high narrative coherence.
    - *Primary Candidates:* `mistral/mistral-small-2603` (256k context, 119B MoE), `gemini/gemini-3.5-flash-lite` (1M context), `meta-llama/llama-3.3-70b-instruct`.
 2. **Civic & Topic Classification (`tag`):** High-volume, short prompt with rigid ontology outputs.
-   - *Primary Candidates:* `google/gemma-4-31b-it` (29k RPD free capacity), `google/gemma-4-26b-it`, `gemini/gemini-3.1-flash-lite`.
+   - *Primary Candidates:* `google/gemma-4-31b-it` (29k RPD free capacity), `google/gemma-4-26b-a4b-it`, `gemini/gemini-3.1-flash-lite`.
 3. **Structured Agenda Extraction & Crosswalk (`chapter_titles` / `agenda_crosswalk`):** Requires 100% strict JSON schema compliance and zero table-structure hallucination.
    - *Primary Candidates:* `mistral/codestral-2508` (124 RPM, 256k context), `mistral/devstral-2512`, `mistral/mistral-medium-2508`.
 4. **Key Soundbite & Quote Selection (`soundbite-select`):** Requires speaker intent nuance, context bounding, and editorial judgment.

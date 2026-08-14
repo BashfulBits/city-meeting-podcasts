@@ -711,6 +711,12 @@ def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
     assert "prepare_whisper.py" in runs
     assert "docker run" not in runs
     assert "faster-whisper-large-v3-turbo" in str(job["steps"])
+    cache = next(
+        s for s in job["steps"] if s.get("name") == "Cache large-v3-turbo transcription model"
+    )
+    prepare = next(s for s in job["steps"] if s.get("name") == "Prepare Whisper model")
+    assert cache["if"] == "matrix.lane == 'transcribe'"
+    assert prepare["if"] == "matrix.lane == 'transcribe'"
     install = next(s for s in job["steps"] if s.get("name") == "Install")
     assert 'pip install -e ".[asr-transcribe,storage]"' in install["run"]
     assert 'pip install -e ".[asr-align,storage]"' in install["run"]
@@ -1132,10 +1138,15 @@ def test_reclaim_transcript_workflow_guards_write_to_main():
     inputs = _on(wf)["workflow_dispatch"]["inputs"]
     assert inputs["operation"]["type"] == "choice"
     assert inputs["operation"]["default"] == "reclaim-transcript"
+    assert "requeue-failed-llm-dispatch" in inputs["operation"]["options"]
+    assert inputs["llm_model_prefix"]["default"] == "google/gemma-4-"
     assert inputs["source_key"]["required"] is False
     assert inputs["episode_uid"]["required"] is False
     assert inputs["work_class"]["default"] == "provider-transcript-align"
     assert 'python -m citypods.cli compute requeue-failed-work-leases "${args[@]}"' in run
+    assert "R2_RECLAIM_ACCESS_KEY" in step["env"]
+    assert "R2_RECLAIM_SECRET_ACCESS_KEY" in step["env"]
+    assert "scripts/requeue_failed_llm_dispatch.py" in run
     assert '"$GIT_REF" != "refs/heads/main"' in run
     assert "source_key and episode_uid are required" in run
     assert job["env"]["AUDIO_STORAGE_BACKEND"] == "routing"

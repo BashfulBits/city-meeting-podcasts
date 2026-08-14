@@ -18,9 +18,11 @@ The HTTP API is intentionally asynchronous:
 2. `GET /v1/requests/{id}` returns `202` while pending and returns the upstream OpenAI-shaped JSON
    with `200` after completion.
 3. `GET /v1/models` advertises the Worker's configured default route (`MODEL_ID`).
-4. `GET /v1/queue/estimate?model=<canonical model or configured alias>` reports the current pending
-   backlog for that logical model and returns its canonical key.
-5. `GET /healthz` is an unauthenticated liveness check and does not inspect R2.
+4. `GET /healthz` is an unauthenticated liveness check and does not inspect R2.
+
+`GET /v1/queue/estimate` and `POST /v1/queue/reindex` return `410`: neither endpoint may walk the
+full R2 request history from a Worker. Use metrics/logs for operational queue depth, and use the
+offline migration below when upgrading old records.
 
 `stream: true` is rejected. The Worker never returns provider error bodies, request prompts, API keys,
 or other upstream payloads in logs. Queue records contain the request and generated response, so the
@@ -38,8 +40,8 @@ its own `api_base`/`chat_path` and one or more `accounts` (each with an `api_key
 secret); each route in `routes:` maps a canonical `model` (the same string the Python `ROUTES` table
 uses) to one `provider`/`account_id`/`upstream_model` plus its own `rpm`/`rpd`/`tpm`/pricing. A route
 may declare `model_key` when its provider-qualified selector is an alias for a shared logical model;
-the compiler emits `model_aliases` and the Worker canonicalizes both chat requests and queue
-estimates before route lookup. Two
+the compiler emits `model_aliases` and the Worker canonicalizes chat requests and ready records
+before route lookup. Two
 accounts of the same provider (e.g. `project_primary`/`project_secondary` for Gemini) compile to two
 separate `route_id`s with **independent ledger entries** — this is what makes account rotation real:
 exhausting one account's window rolls dispatch onto the other rather than blocking the model.
@@ -104,14 +106,37 @@ cannot permanently block work.
 Deployment is path-scoped by `.github/workflows/llm-dispatch-worker-deploy.yml` and uses the same
 Cloudflare deployment secrets as the existing media proxy.
 
-## Scheduling lanes
+## Scheduling and migration
 
-Each scheduled invocation claims up to `MAX_TOTAL_REQUESTS` records in batches of
-`BATCH_CONCURRENCY`, subject to the route/provider pacing ledgers and the effective deadline. Fast-lane requests are
-ordered before long-lane requests so a backlog of quick calls drains first, except that a fresh run
-reserves one first-batch slot for a long request that can fit. With the deployed values, the long-lane
-start window is `820 - 720 - 20 = 80` seconds: starting it in that first batch lets the remaining
-batch slots drain fast work concurrently, while a later start is requeued with the loud
-`deadline_guard` scheduler status for the next invocation. This keeps the Worker from starting work
-it cannot finish before the 15-minute Cron Trigger ceiling without allowing fast backlog to starve
-long-context work indefinitely.
+Every pending canonical record has a compact marker at `ready/<eligible-time>-<priority>-…`. R2
+lists keys lexicographically, so each cron invocation lists a fixed lookahead of 16 markers and
+uses their compact custom metadata to skip a temporarily blocked provider/model without reading
+each marker body. Legacy markers without metadata fall back to a body read. It reads canonical
+requests only for viable candidates or records that must be requeued, then dispatches one request
+per scheduled run by default. Queue selection therefore stays bounded in queue depth — including
+10,000 historical or pending records — rather than parsing the first 1,000 prompts. The deployed
+Free-plan configuration is `BATCH_CONCURRENCY=1` and `MAX_TOTAL_REQUESTS=1`; the marker lookahead
+keeps the scheduled CPU path bounded while allowing a later eligible route to make progress when
+the queue head is blocked.
+
+Priority is `submit_next`, then fast, then long for work with the same eligibility timestamp. A
+request blocked by a provider ledger is moved to that route's next eligible time, so it cannot repeatedly occupy the
+head marker. The canonical request remains authoritative: a stale marker left by a crash is repaired
+on observation and cannot cause early dispatch.
+
+This index is not inferred by cron. After deploying this version, run the following once for records
+already in the bucket; it reads `requests/` outside Workers and writes a marker for every canonical
+`pending` record. It is safe to run again.
+
+The preferred production path is **Actions → Reindex LLM dispatch queue**: leave **Write ready
+markers** unchecked for its dry-run first, then run it from `main` with that checkbox enabled. The
+workflow uses the existing R2 secrets and serializes reindex runs. The local equivalent is:
+
+```bash
+python scripts/reindex_llm_dispatch_queue.py --bucket citypods-llm-dispatch --dry-run
+python scripts/reindex_llm_dispatch_queue.py --bucket citypods-llm-dispatch
+```
+
+The command needs `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` (and
+optionally `R2_ENDPOINT`). Leave old `pending/` markers alone; the new Worker ignores them and they
+can be removed later by an explicit lifecycle/cleanup operation after the migration is verified.

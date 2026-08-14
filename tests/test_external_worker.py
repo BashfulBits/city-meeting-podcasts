@@ -46,21 +46,25 @@ class _HangingAsr:
         raise NotImplementedError
 
 
-def _queued(uid: str) -> WorkItem:
+def _queued(uid: str, *, work_class: str = "transcript-asr") -> WorkItem:
     return WorkItem(
         source_key="src",
         episode_uid=uid,
-        work_class="transcript-asr",
+        work_class=work_class,
         state="queued",
         priority_bucket=BUCKET_FEED_VISIBLE,
     )
 
 
-def _loop_worker(tmp_path, uids, *, max_claims=1, max_scan=None):
-    save_manifest(tmp_path, [_queued(u) for u in uids])
+def _loop_worker(tmp_path, uids, *, max_claims=1, max_scan=None, work_class="transcript-asr"):
+    save_manifest(tmp_path, [_queued(u, work_class=work_class) for u in uids])
     return ExternalTranscribeWorker(
         config=ExternalWorkerConfig(
-            backend="modal", owner="modal:test", max_claims=max_claims, max_scan=max_scan
+            backend="modal",
+            owner="modal:test",
+            max_claims=max_claims,
+            max_scan=max_scan,
+            work_class=work_class,
         ),
         site_config={
             "defaults": {
@@ -143,6 +147,26 @@ def test_max_scan_bounds_stale_manifest_scan(tmp_path, monkeypatch):
     assert summary.claimed == 3
     assert summary.adopted == 3
     assert summary.completed == 3
+
+
+def test_provider_align_claim_uses_provider_pipeline_version(tmp_path, monkeypatch):
+    worker = _loop_worker(
+        tmp_path,
+        ["a"],
+        work_class="provider-transcript-align",
+    )
+    _patch_loop(monkeypatch, worker, adopted_uids=set())
+    versions = []
+
+    def claim(*args, **kwargs):
+        versions.append(kwargs["pipeline_version"])
+        return object()
+
+    monkeypatch.setattr(ew.work_leases, "claim", claim)
+
+    worker.run()
+
+    assert versions == [f"provider-align:{ew.PROVIDER_ALIGN_PIPELINE_VERSION}"]
 
 
 def test_config_from_env_reads_max_scan(monkeypatch):
@@ -983,6 +1007,7 @@ def test_internal_worker_align_passes_timed_segments_to_local_inference(tmp_path
     monkeypatch.setattr(worker, "_run_local_inference_with_timeout", _capture)
     city = SimpleNamespace(
         asr_model="large-v3-turbo",
+        asr_alignment_model="WAV2VEC2_ASR_BASE_960H",
         asr_language="en",
         asr_compute_type="int8",
     )
@@ -1002,6 +1027,91 @@ def test_internal_worker_align_passes_timed_segments_to_local_inference(tmp_path
 
     assert actual is result
     assert captured["job"].inputs["timed_segments"] == timed_segments
+    assert captured["job"].inputs["model"] == "WAV2VEC2_ASR_BASE_960H"
+
+
+def test_provider_align_logs_per_file_realtime_speed(tmp_path, capsys):
+    worker = _loop_worker(tmp_path, ["a"])
+    item = _queued("a", work_class="provider-transcript-align")
+    ep = SimpleNamespace(
+        duration=3600.0,
+        source_duration_seconds=None,
+        served_duration_seconds=None,
+        audio_duration_served=None,
+    )
+
+    worker._log_alignment_speed(item, ep, time.monotonic() - 2.0)
+
+    output = capsys.readouterr().out
+    assert "provider-align done src/a" in output
+    assert "audio_s=3600.0" in output
+    assert "elapsed_s=" in output
+    assert "realtime_x=" in output
+
+
+def test_provider_align_ineligible_routes_future_manifest_to_asr():
+    ep = SimpleNamespace(
+        provider_transcript={"candidate": {"key": "provider.txt", "status": "candidate"}}
+    )
+
+    ew._mark_provider_align_ineligible(ep, "recipe", "alignment-window-or-coverage")
+
+    candidate = ep.provider_transcript["candidate"]
+    assert candidate["align_ineligible_pipeline_version"] == "provider-align:7"
+    assert candidate["align_ineligible_reason"] == "alignment-window-or-coverage"
+    assert candidate["align_spec_hash"] == "recipe"
+
+
+def test_oversized_provider_align_emits_actions_warning(capsys):
+    exc = ew.AlignmentQualityError("alignment section is too long: 601.0s > 600.0s")
+
+    ew._warn_oversized_alignment_section("github-actions", exc)
+
+    assert (
+        "::warning title=Provider-align section too long::"
+        "alignment section is too long: 601.0s > 600.0s"
+    ) in capsys.readouterr().out
+
+
+def test_external_worker_align_uses_alignment_model(monkeypatch, tmp_path):
+    worker = _loop_worker(tmp_path, ["a"])
+    captured = {}
+    result = object()
+
+    def _align(audio_path, text, model, language, cpu_threads, compute_type, **kwargs):
+        captured.update(
+            audio_path=audio_path,
+            text=text,
+            model=model,
+            language=language,
+            cpu_threads=cpu_threads,
+            compute_type=compute_type,
+            kwargs=kwargs,
+        )
+        return result
+
+    import citypods.asr as asr_mod
+
+    monkeypatch.setattr(asr_mod, "align", _align)
+    city = SimpleNamespace(
+        asr_model="large-v3-turbo",
+        asr_alignment_model="WAV2VEC2_ASR_BASE_960H",
+        asr_language="en",
+        asr_compute_type="int8",
+    )
+
+    actual = worker._align_provider_text(
+        _queued("a"),
+        city,
+        SimpleNamespace(uid="a", guid="a", duration=60.0),
+        tmp_path / "audio.m4a",
+        "Hello world",
+        "recipe",
+        ew.ResourceTracker(),
+    )
+
+    assert actual is result
+    assert captured["model"] == "WAV2VEC2_ASR_BASE_960H"
 
 
 def test_internal_worker_timeout_records_backoff_and_defers(tmp_path, monkeypatch):

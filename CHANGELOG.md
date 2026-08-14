@@ -18,14 +18,91 @@ Phase R (Research-Tool Surface)._
 ### Fixed
 
 - **LLM pricing is now effective-dated and YAML-driven.** `config/provider_limits.yml` can define
-  input/output rates and UTC peak windows per physical route; the compiler carries
-  those periods to both the Python scheduler and the dispatch Worker. DeepSeek V4 Flash and Pro
-  include the August 16, 2026 rate-card cutover. Cache-hit pricing is intentionally not modeled
-  because its hit ratio is not predictable or controllable. Flexible deferred work waits for the
-  route's next cheapest pricing window, while a deadline can authorize the currently active price.
-  No batch protocol was added because
-  DeepSeek does not provide a batch API. No LLM artifacts are invalidated and no backfill is
-  required; this changes admission and cost accounting only.
+  input/output rates and UTC peak windows per physical route; the compiler carries those periods to
+  both the Python scheduler and the dispatch Worker. DeepSeek V4 Flash and Pro include the August 16,
+  2026 rate-card cutover. Cache-hit pricing is intentionally not modeled because its hit ratio is not
+  predictable or controllable. Flexible deferred work waits for the route's next cheapest pricing
+  window, while a deadline can authorize the currently active price. No batch protocol was added because
+  DeepSeek does not provide a batch API. No LLM artifacts are invalidated and no backfill is required;
+  this changes admission and cost accounting only.
+
+- **Ready-marker routing metadata now travels with the R2 list result.** The dispatcher requests
+  compact marker metadata during its bounded `ready/` listing and falls back to the marker body for
+  legacy objects, eliminating up to 16 marker reads and JSON decodes per scheduled invocation.
+  Reindex and failed-request recovery writes now populate the metadata; existing queue records and
+  request payloads are unchanged.
+
+- **Free-plan LLM dispatch now defaults to one request per scheduled run.** Production CPU
+  telemetry rose above the 10 ms Cron Trigger allowance after the bounded dispatcher was increased
+  to four concurrent requests; `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS` are back to `1` while
+  the queue-index and multi-route selection behavior remain unchanged. This changes dispatch
+  throughput only and does not alter stored requests, responses, or pipeline artifacts.
+
+- **Provider-align now permits a roughly 4 GiB CTC section envelope.** The safe section limit is
+  increased from five to ten minutes using the observed WhisperX allocation slope, and oversized
+  sections produce a visible GitHub Actions warning before they are routed to full ASR.
+  Provider-align version 7 reopens prior version-6 ineligible items for gradual recomputation;
+  full-ASR artifacts are not invalidated.
+
+- **The transcript recovery action can now requeue failed LLM dispatch records.** The new
+  `requeue-failed-llm-dispatch` mode is dry-run by default, targets the Gemma 4 model prefix unless
+  overridden, resets terminal request state with an R2 ETag guard, and restores the Worker’s
+  compact ready marker. It uses the dedicated dispatch-bucket credentials and does not change
+  unrelated failed models.
+
+- **Groq’s Llama 3.3 route now uses JSON-object structured output.** The live endpoint accepts
+  `response_format: {"type":"json_object"}` but rejects JSON Schema; the compiled route profile
+  now reflects that capability.
+
+- **LLM structured-output behavior now follows compiled capability profiles.** Provider and route
+  YAML profiles select JSON Schema versus JSON-object mode, native versus Instructor handling,
+  prompt-schema embedding, and provider-specific schema relaxation; direct and queued requests use
+  the same materialized route capability instead of inferring behavior from model names. Google
+  routes now strip the size/range keywords rejected by the live API, Gemma 4 26B uses the available
+  `gemma-4-26b-a4b-it` identifier, and retired Gemini 2.5 routes are removed. No stored artifacts
+  or pipeline versions change.
+
+- **Provider-align workers now preserve bounded timing windows through the local backend.** The
+  internal process previously dropped the provider's coarse served-time segments, causing
+  WhisperX to feed an entire meeting into one CTC convolution and request roughly 40 GB for a
+  1.7-hour recording. Timed segments now reach WhisperX on both worker paths; any remaining
+  section over five minutes is rejected before inference so the item can follow the normal ASR
+  route instead of exhausting runner memory. Provider-align version 6 reopens prior provider
+  alignments for gradual recomputation; full-ASR artifacts are not invalidated. Per-file logs now
+  report audio seconds, elapsed alignment seconds, and realtime throughput.
+
+- **Conditional R2 coordination writes now retry transient backend errors.** CAS-backed active-lease
+  index maintenance now uses the same bounded retry path as ordinary uploads, so a temporary R2
+  `PutObject/InternalError` does not leave an index prune or update to a later sweep. No pipeline
+  version, stored artifact, or backfill behavior changes.
+
+- **LLM dispatch queue reindex now backs off on R2 throttling.** The one-time migration uses four
+  concurrent object operations and retries transient R2 429/5xx responses with jittered exponential
+  backoff, so a temporary bucket read-pressure response does not abort an otherwise healthy scan.
+
+- **Provider-align workers now load the configured WhisperX CTC model.** The internal worker no
+  longer passes the faster-whisper `large-v3-turbo` transcription model to WhisperX; alignment
+  recipes and both worker backends use `asr_alignment_model` (`WAV2VEC2_ASR_BASE_960H`). The ASR
+  workflow also skips faster-whisper cache/download steps for align runners. `provider-align`
+  version 5 reopens all prior provider-align work for gradual recomputation; full-ASR artifacts are
+  not invalidated.
+
+- **Free-plan LLM dispatch cron now has a queue-depth-independent ready index and bounded parallel
+  routing.** Pending R2 requests write date-ordered compact `ready/` markers, so a scheduled
+  invocation inspects a fixed lookahead of 16 marker bodies and reads canonical prompts only for
+  viable candidates instead of scanning and parsing up to 1,000 queue records. A provider/model at
+  capacity no longer blocks a later eligible route, and up to four independently paced requests are
+  dispatched concurrently (`BATCH_CONCURRENCY=4`, `MAX_TOTAL_REQUESTS=4`). Provider/account ledgers
+  remain authoritative. The historical Worker reindex and exact-estimate endpoints are retired to
+  prevent unbounded scans. Existing R2 pending requests require the one-time
+  `scripts/reindex_llm_dispatch_queue.py` marker migration, available as a dry-run-first manual
+  GitHub Action; canonical prompts/results are unchanged, and no Citypods pipeline version or
+  artifact backfill is involved.
+
+- **Durable state restores now retry B2 ETag races.** `s3transfer`'s protective `If-Match` check can
+  observe an object changing between its metadata request and ranged download; that specific
+  download failure is now treated as transient and retried with a fresh ETag. No pipeline version,
+  stored artifact, or backfill behavior changes.
 
 - **Known-text provider alignment now uses WhisperX with a separate artifact lane.** Untimed Swagit
   and similar provider documents are cleaned of bracketed source-time markers, remapped to served
@@ -35,6 +112,9 @@ Phase R (Research-Tool Surface)._
   keys, and the existing H15 provider-align/asr-challenger evaluation records now measure the new
   output with the independent CTC judge. `provider-align` version 4 causes existing provider
   alignments to be reprocessed gradually; full-ASR artifacts are not invalidated by this change.
+  Terminal work leases now carry the provider-align recipe version and reopen automatically on a
+  later provider-align version, so the promised gradual backfill is not blocked by an earlier
+  stable-ts success or failure; active unexpired claims remain protected.
 
 - **Topic tagging lane now optimizes candidate scheduling and removes dispatch deadlines.** In the
   dedicated `tag` lane (`enrich --lane tag`, `tag.yml`), `_run_enrich_global_queue` pre-filters candidate
@@ -3542,3 +3622,16 @@ Phase R (Research-Tool Surface)._
   feed pages with inline player + subscribe links, generated cover art, custom domain.
 - Offline pytest suite with byte-for-byte feed snapshots; CI (`ci.yml`), per-PR preview (`preview.yml`),
   scheduled deploy (`deploy.yml`, 4h cron); incremental builds + content-hash change detection.
+- **LLM context ceilings are now explicit per physical route.** The provider registry no longer
+  falls back to provider-wide input/output limits; every route carries the verified model ceiling,
+  including gateway-specific caps such as OpenRouter's free Gemma route. The compiler rejects a
+  route missing either limit, and the generated Python/Worker catalogs are regenerated from those
+  values.
+
+- **DeepSeek V4 Flash now uses the current direct API model identifier.** The physical route sends
+  `deepseek-v4-flash` while retaining the `-0731` logical alias for compatibility; the retired
+  direct API identifier is no longer emitted in the compiled route catalog.
+
+- **OpenCode model routing is corrected.** OpenCode's free DeepSeek aliases now send
+  `deepseek-v4-flash-free`. The proposed LongCat route was removed because the official API
+  requires authentication/billing and OpenCode Zen does not advertise a free LongCat model.
