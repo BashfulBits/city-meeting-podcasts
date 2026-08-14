@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Granicus source-cache downloads now reject truncated zero-exit responses.** The standard direct
+  audio path still runs first; only a failed or locally short canonical archive fetch uses the
+  authenticated Worker, where the runner assembles and byte-validates sequential ranges (with a
+  verified full-GET fallback for origins that ignore `Range`). Pages, metadata, documents, and
+  non-audio media retain the existing general Worker proxy behavior. This is transport validation
+  only: no audio/spec pipeline version changed, no stored artifacts are invalidated, and no catalog
+  backfill is required. The new `chunked-canary` Granicus probe compares the chunked bytes with a
+  standard direct download when the runner permits it, otherwise with a non-ranged Worker download.
+  
 - **Topic-tag dispatch now versions its structured-output schema.** Bumping the dedicated tag LLM
   schema version invalidates old recipe/fingerprint identities, so reruns create fresh queue
   requests after a provider-compatibility schema change. Existing R2 request bodies are not

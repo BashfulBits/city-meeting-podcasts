@@ -481,6 +481,7 @@ def _make_episode(media_kind="hls", duration=3600, sources=None, video_url="http
     ep = MagicMock()
     ep.media_kind = media_kind
     ep.duration = duration
+    ep.source_duration_seconds = None
     ep.sources = sources or []
     ep.video_url = video_url
     ep.uid = "uid-1"
@@ -688,7 +689,9 @@ class TestProbeStreamSampleDuration:
         ):
             mock_detect.return_value = ([], 3600.0, 3600.0)
             planner.plan(provider, _make_city(), _make_episode(duration=3600), ctx, None)
-        ctx.source_cache.get_or_fetch.assert_called_once_with("uid-1", "http://x.com/video.mp4")
+        ctx.source_cache.get_or_fetch.assert_called_once_with(
+            "uid-1", "http://x.com/video.mp4", expected_duration=3600.0
+        )
         assert mock_detect.call_args.args[0] == "/tmp/citypods-test-source.mka"
 
     def test_defers_when_source_cache_unavailable(self):
