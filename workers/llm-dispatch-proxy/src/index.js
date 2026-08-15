@@ -35,6 +35,11 @@ const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
 const DEFAULT_BATCH_CONCURRENCY = 1;
 const DEFAULT_MAX_TOTAL_REQUESTS = 1;
 const DEFAULT_READY_LOOKAHEAD = 16;
+// A head whose route is merely pacing will be eligible again shortly.  Rewriting its canonical
+// record and moving its marker costs four R2 operations -- more than dispatching a request -- so
+// short waits are skipped in memory and the marker is left where it is.  Only a wait longer than
+// this is worth relocating the marker out of the lookahead window.
+const DEFAULT_DEFER_IN_PLACE_SECONDS = 10 * 60;
 const DEFAULT_PROFILE_SAMPLE_RATE = 0.1;
 // Every timezone comes from the compiled route catalog, so the key space is bounded by
 // configuration; the cap is defence in depth only.
@@ -192,6 +197,10 @@ function config(env) {
     maxExecutionSeconds: positiveNumber(
       env.MAX_EXECUTION_SECONDS,
       DEFAULT_MAX_EXECUTION_SECONDS,
+    ),
+    deferInPlaceSeconds: positiveNumber(
+      env.DEFER_IN_PLACE_SECONDS,
+      DEFAULT_DEFER_IN_PLACE_SECONDS,
     ),
     batchConcurrency: positiveNumber(
       env.BATCH_CONCURRENCY,
@@ -2049,6 +2058,9 @@ async function dispatchBatch(
     let lastRequeuedId = null;
     let deadlineGuarded = false;
     let repairedCount = 0;
+    // Heads left in place because their route frees up soon; used only to guarantee forward
+    // progress if the whole lookahead window turns out to be blocked.
+    const deferredInPlace = [];
     // `reaped` records durable ledger side effects observed while deciding admission, used to
     // decide whether a batch that dispatched nothing still owes R2 a write.  `admitted` counts the
     // candidates this batch has taken per route, so a route's concurrency ceiling is enforced
@@ -2081,24 +2093,35 @@ async function dispatchBatch(
       candidateProfile.route_select_ms = profileElapsed(routeSelectStartedAt);
       let claimed;
       if (!selection.chosenRoute) {
+        if (selection.reason === "no_capacity") {
+          // The marker metadata carries the same model and policy the canonical record does, so
+          // the retry time is known without reading the record at all.
+          const retryAt = nextCapacityRetryAt(
+            budget,
+            head.record.policy?.allowed_models || head.record.model,
+            head.record.policy,
+            now,
+          );
+          if (retryAt.getTime() - now.getTime() <= cfg.deferInPlaceSeconds * 1000) {
+            // Leave it alone and look at the next head.  This marker was already returned by the
+            // one `list` above, so re-examining it next minute is free, whereas relocating it now
+            // would cost a canonical read, a canonical write, and two marker writes.
+            deferredInPlace.push(head);
+            continue;
+          }
+          const claimStartedAt = profileNow();
+          claimed = await loadReadyClaim(bucket, head, now);
+          candidateProfile.claim_ms = profileElapsed(claimStartedAt);
+          if (!claimed) continue;
+          await requeue(bucket, claimed, now, retryAt.toISOString());
+          lastRequeuedId = claimed.record.id;
+          continue;
+        }
         const claimStartedAt = profileNow();
         claimed = await loadReadyClaim(bucket, head, now);
         candidateProfile.claim_ms = profileElapsed(claimStartedAt);
         if (!claimed) continue;
-        if (selection.reason === "no_capacity") {
-          await requeue(
-            bucket,
-            claimed,
-            now,
-            nextCapacityRetryAt(
-              budget,
-              claimed.record.policy?.allowed_models || claimed.record.model,
-              claimed.record.policy,
-              now,
-            ).toISOString(),
-          );
-          lastRequeuedId = claimed.record.id;
-        } else {
+        {
           await saveFailure(bucket, claimed, 400, now, selection.reason);
           batchFailures.push({
             status: "failed",
@@ -2226,6 +2249,26 @@ async function dispatchBatch(
           results: batchFailures,
           profile: finishDispatchProfile(batchProfile, batchStartedAt),
         };
+      }
+      if (deferredInPlace.length > 0 && batchFailures.length === 0) {
+        // Every head was waiting on capacity.  Relocating exactly one keeps the window advancing
+        // without paying the four-operation requeue for the whole backlog.
+        const head = deferredInPlace[0];
+        const claimed = await loadReadyClaim(bucket, head, now);
+        if (claimed) {
+          await requeue(
+            bucket,
+            claimed,
+            now,
+            nextCapacityRetryAt(
+              budget,
+              claimed.record.policy?.allowed_models || claimed.record.model,
+              claimed.record.policy,
+              now,
+            ).toISOString(),
+          );
+          lastRequeuedId = claimed.record.id;
+        }
       }
       if (deadlineGuarded) {
         return {

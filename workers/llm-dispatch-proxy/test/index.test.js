@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import DISPATCH_LIMITS from "../src/dispatch_limits.json" with { type: "json" };
+
 import {
   acquireCronLease,
   config,
@@ -149,6 +151,17 @@ function chatRequest(body, idempotencyKey, model, policy = {}) {
       ...policy,
     }),
   });
+}
+
+function routeIdsForModel(model) {
+  const refs = DISPATCH_LIMITS.model_routes_map?.[model] || [];
+  const ids = {};
+  for (const ref of refs) {
+    const stored = DISPATCH_LIMITS.routes_by_id?.[ref];
+    const id = Array.isArray(stored) ? stored[0] : stored?.route_id ?? ref;
+    if (typeof id === "string") ids[id] = true;
+  }
+  return ids;
 }
 
 function isolatedEnv() {
@@ -2385,5 +2398,57 @@ test("a batch removes every finished marker in one R2 delete", async () => {
     [...bucket.objects.keys()].filter((k) => k.startsWith("ready/")).length,
     0,
     "no ready marker may survive a completed batch",
+  );
+});
+
+test("heads waiting on short route pacing are skipped without touching R2", async () => {
+  // The scenario that matters for throughput: a low-rate route is cooling down at the head of the
+  // queue while higher-rate work sits behind it. Rewriting each blocked head cost four R2
+  // operations -- more than dispatching a request -- so a short wait must cost nothing.
+  class CountingBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.ops = 0;
+      this.counting = false;
+    }
+    async put(k, v, o) { if (this.counting) this.ops += 1; return super.put(k, v, o); }
+    async get(k) { if (this.counting) this.ops += 1; return super.get(k); }
+    async head(k) { if (this.counting) this.ops += 1; return super.head(k); }
+    async list(o) { if (this.counting) this.ops += 1; return super.list(o); }
+    async delete(k) { if (this.counting) this.ops += 1; return super.delete(k); }
+  }
+
+  const run = async (blockedCount) => {
+    const bucket = new CountingBucket();
+    const env = { ...ENV, LLM_QUEUE: bucket, BATCH_CONCURRENCY: "2", MAX_TOTAL_REQUESTS: "2" };
+    for (let i = 0; i < blockedCount; i += 1) {
+      await handleRequest(chatRequest(undefined, `slow-${i}`, "gemini/gemini-3.5-flash-lite"), env);
+    }
+    await handleRequest(chatRequest(undefined, "fast-0", "mistral/mistral-large-2512"), env);
+
+    // Every route for the slow model is pacing, and becomes eligible again in three minutes.
+    const soon = new Date(Date.now() + 180_000).toISOString();
+    const routes = {};
+    for (const id of Object.keys(routeIdsForModel("gemini/gemini-3.5-flash-lite"))) {
+      routes[id] = { requests_minute: 0, inflight: {}, blocked_until: soon };
+    }
+    await bucket.put("state/dispatch_budget.json", JSON.stringify({ version: 1, routes }), {});
+
+    bucket.counting = true;
+    await dispatchBatch(
+      env,
+      async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+      new Date(),
+      2,
+    );
+    return bucket.ops;
+  };
+
+  const none = await run(0);
+  const many = await run(8);
+  assert.equal(
+    many,
+    none,
+    `eight heads waiting on short pacing cost ${many - none} extra R2 operations`,
   );
 });
