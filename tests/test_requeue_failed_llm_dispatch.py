@@ -3,12 +3,28 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 from botocore.exceptions import ClientError
 
 from scripts.requeue_failed_llm_dispatch import ready_key, requeue_failed
 from scripts.retire_legacy_prelabeler_dispatch import retire_legacy_prelabeler
+
+
+def test_retirement_script_runs_directly_from_the_repository_root():
+    result = subprocess.run(
+        [sys.executable, "scripts/retire_legacy_prelabeler_dispatch.py", "--help"],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Retire legacy pre-labeler dispatch records" in result.stdout
 
 
 class _Body:

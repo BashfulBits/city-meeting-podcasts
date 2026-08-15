@@ -22,18 +22,32 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from typing import Any
 
-from scripts.requeue_failed_llm_dispatch import (
-    DEFAULT_BUCKET,
-    DEFAULT_R2_RETRIES,
-    DEFAULT_WORKERS,
-    REQUEST_PREFIX,
-    _client,
-    _is_precondition_failure,
-    _parse_prefixes,
-    _r2_with_retry,
-    _transient_r2_error,
-    ready_key,
-)
+if __package__:
+    from scripts.requeue_failed_llm_dispatch import (
+        DEFAULT_BUCKET,
+        DEFAULT_R2_RETRIES,
+        DEFAULT_WORKERS,
+        REQUEST_PREFIX,
+        _client,
+        _is_precondition_failure,
+        _parse_prefixes,
+        _r2_with_retry,
+        _transient_r2_error,
+        ready_key,
+    )
+else:  # `python scripts/retire_legacy_prelabeler_dispatch.py` from Actions.
+    from requeue_failed_llm_dispatch import (  # type: ignore[import-not-found]
+        DEFAULT_BUCKET,
+        DEFAULT_R2_RETRIES,
+        DEFAULT_WORKERS,
+        REQUEST_PREFIX,
+        _client,
+        _is_precondition_failure,
+        _parse_prefixes,
+        _r2_with_retry,
+        _transient_r2_error,
+        ready_key,
+    )
 
 RETIRED_REASON = "superseded by prelabeler llm_schema_version 2"
 
