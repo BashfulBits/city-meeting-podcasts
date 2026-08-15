@@ -40,9 +40,7 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
         if route["route_id"] == "gemma_4_31b_primary"
     )
     assert isinstance(worker["routes_by_id"][gemma_index], list)
-    assert len(worker["routes_by_id"][gemma_index]) == len(
-        compile_llm_limits._WORKER_ROUTE_FIELDS
-    )
+    assert len(worker["routes_by_id"][gemma_index]) == len(compile_llm_limits._WORKER_ROUTE_FIELDS)
     assert "discovery" not in worker["providers"]["openrouter"]
 
 

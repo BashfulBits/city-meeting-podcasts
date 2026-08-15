@@ -208,13 +208,9 @@ def _worker_catalog(compiled: dict[str, Any]) -> dict[str, Any]:
     # Worker bundle. The Worker materializes these fixed-position records on the dispatch path;
     # the generated artifact is intentionally compact and is not a human-editable source of truth.
     route_indexes = {route["route_id"]: index for index, route in enumerate(routes)}
-    worker_routes = [
-        [route.get(key) for key in _WORKER_ROUTE_FIELDS] for route in routes
-    ]
+    worker_routes = [[route.get(key) for key in _WORKER_ROUTE_FIELDS] for route in routes]
     providers = {
-        provider: {
-            key: config[key] for key in _WORKER_PROVIDER_FIELDS if key in config
-        }
+        provider: {key: config[key] for key in _WORKER_PROVIDER_FIELDS if key in config}
         for provider, config in compiled.get("providers", {}).items()
     }
     worker_aliases = dict(compiled.get("model_aliases", {}))
