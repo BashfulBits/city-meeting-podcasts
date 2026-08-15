@@ -91,7 +91,7 @@ class BenchmarkBucket {
   }
 
   async delete(key) {
-    this.objects.delete(key);
+    for (const one of Array.isArray(key) ? key : [key]) this.objects.delete(one);
   }
 }
 

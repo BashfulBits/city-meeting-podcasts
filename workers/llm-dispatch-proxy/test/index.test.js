@@ -104,7 +104,7 @@ class FakeBucket {
   }
 
   async delete(key) {
-    this.objects.delete(key);
+    for (const one of Array.isArray(key) ? key : [key]) this.objects.delete(one);
   }
 }
 
@@ -1710,12 +1710,12 @@ test("dispatchBatch runs four independently paced routes concurrently", async ()
   assert.equal(typeof result.profile.ready_heads_ms, "number");
   assert.equal(typeof result.profile.candidate_prepare_ms, "number");
   assert.equal(typeof result.profile.ledger_write_ms, "number");
-  assert.equal(typeof result.profile.reservation_release_ms, "number");
+  assert.equal(typeof result.profile.marker_delete_ms, "number");
   assert.equal(result.results.every((item) => typeof item.profile.total_ms === "number"), true);
   assert.equal(result.results.every((item) => typeof item.profile.upstream_ms === "number"), true);
 });
 
-test("dispatchBatch releases all route reservations with one budget CAS", async () => {
+test("a concurrent batch commits usage up front and needs no release CAS", async () => {
   class BudgetCountingBucket extends FakeBucket {
     constructor() {
       super();
@@ -1752,16 +1752,19 @@ test("dispatchBatch releases all route reservations with one budget CAS", async 
   );
 
   assert.equal(result.completedCount, 2);
+  assert.equal(bucket.budgetGets, 1, "one ledger read for the whole batch");
   assert.equal(
-    bucket.budgetGets,
+    bucket.budgetPuts,
     1,
-    "only the initial budget read: the batch release CASes onto the ETag the reservation returned",
+    "usage is committed once before the upstream calls; there is no reservation to clean up",
   );
-  assert.equal(bucket.budgetPuts, 2, "one reservation CAS plus one batch-release CAS");
   const budget = await (await bucket.get("state/dispatch_budget.json")).json();
   for (const entry of Object.values(budget.routes || {})) {
-    assert.deepEqual(entry.inflight || {}, {});
+    assert.deepEqual(entry.inflight || {}, {}, "no durable reservation should ever be written");
   }
+  // Durable pacing must still be committed for every dispatched request.
+  const used = Object.values(budget.routes).filter((e) => (e.requests_minute || 0) > 0);
+  assert.equal(used.length, 2, "both routes must record their durable request usage");
 });
 
 test("serial dispatch commits durable usage without an inflight cleanup CAS", async () => {
@@ -2295,4 +2298,92 @@ test("a reservation release falls back to a re-read when the ledger moved undern
     "the fallback must preserve durable usage written by whoever moved the ledger",
   );
   assert.notEqual(current.etag, (await bucket.get("state/dispatch_budget.json")).etag);
+});
+
+test("a route's concurrency ceiling still holds without a durable reservation", async () => {
+  // openrouter_google_gemma_4_31b_it_free is concurrency 1: a batch must not admit two candidates
+  // for it even though nothing is written to `inflight` any more.
+  const env = { ...ENV, LLM_QUEUE: new FakeBucket() };
+  const model = "google/gemma-4-31b-it";
+  for (let index = 0; index < 3; index += 1) {
+    await handleRequest(chatRequest(undefined, `ceiling-${index}`, model), env);
+  }
+  const routeIds = ["openrouter_google_gemma_4_31b_it_free"];
+  const budget = { version: 1, routes: {}, providers: {} };
+  // Starve every alternative route for this model so the ceiling is the only thing under test.
+  const blocked = new Date(Date.now() + 3_600_000).toISOString();
+  for (const id of ["siliconflow_gemma_4_31b_it_primary", "groq_gemma_4_31b_it_primary"]) {
+    budget.routes[id] = { requests_minute: 0, inflight: {}, blocked_until: blocked };
+  }
+  await env.LLM_QUEUE.put("state/dispatch_budget.json", JSON.stringify(budget), {});
+
+  const result = await dispatchBatch(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+    3,
+  );
+
+  const onCeilingRoute = (result.results || []).filter((r) => routeIds.includes(r.routeId));
+  assert.ok(
+    onCeilingRoute.length <= 1,
+    `concurrency-1 route admitted ${onCeilingRoute.length} candidates in one batch`,
+  );
+});
+
+test("a concurrency ceiling still counts reservations left by a crashed predecessor", async () => {
+  const route = "openrouter_google_gemma_4_31b_it_free";
+  const entry = {
+    requests_minute: 0,
+    inflight: {
+      // Not yet expired: an older Worker version, or a crashed invocation, still holds this slot.
+      "chatcmpl-crashed": {
+        requests: 1,
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
+      },
+    },
+  };
+  assert.equal(
+    routeAvailable(entry, { route_id: route, concurrency: 1 }, { requests: 1, tokens: 0 }, new Date()),
+    false,
+    "a live inflight entry from a previous invocation must still block admission",
+  );
+});
+
+test("a batch removes every finished marker in one R2 delete", async () => {
+  class DeleteCountingBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.deleteCalls = 0;
+      this.deletedKeys = 0;
+    }
+    async delete(key) {
+      this.deleteCalls += 1;
+      this.deletedKeys += Array.isArray(key) ? key.length : 1;
+      return super.delete(key);
+    }
+  }
+  const bucket = new DeleteCountingBucket();
+  const env = { ...ENV, LLM_QUEUE: bucket };
+  const models = ["mistral/mistral-large-2512", "gemini/gemini-3-flash-preview"];
+  for (const [index, model] of models.entries()) {
+    await handleRequest(chatRequest(undefined, `marker-batch-${index}`, model), env);
+  }
+  bucket.deleteCalls = 0;
+  bucket.deletedKeys = 0;
+
+  const result = await dispatchBatch(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+    2,
+  );
+  assert.equal(result.completedCount, 2);
+  assert.equal(bucket.deletedKeys, 2, "both markers must be removed");
+  assert.equal(bucket.deleteCalls, 1, "in a single R2 delete call");
+  assert.equal(
+    [...bucket.objects.keys()].filter((k) => k.startsWith("ready/")).length,
+    0,
+    "no ready marker may survive a completed batch",
+  );
 });

@@ -679,6 +679,20 @@ async function unmarkReady(bucket, key) {
   if (key) await bucket.delete(key);
 }
 
+// R2's delete accepts a key list, so a batch removes every finished marker in one operation
+// instead of one per request.  A marker that outlives its terminal record is self-healing --
+// `loadReadyClaim` drops any marker whose canonical record is no longer pending -- so collecting
+// these until the batch ends is safe even if the invocation dies before the delete lands.
+async function unmarkReadyBatch(bucket, keys) {
+  const unique = [...new Set((keys || []).filter(Boolean))];
+  if (unique.length === 0) return;
+  if (unique.length === 1) {
+    await bucket.delete(unique[0]);
+    return;
+  }
+  await bucket.delete(unique);
+}
+
 async function replaceReadyMarker(bucket, record, oldKey = null) {
   const newKey = await markReady(bucket, record);
   if (oldKey && oldKey !== newKey) await unmarkReady(bucket, oldKey);
@@ -937,7 +951,15 @@ async function saveRetry(bucket, claimed, response, cfg, now, errorDetail = null
   if (saved) await replaceReadyMarker(bucket, updated, claimed.readyKey);
 }
 
-async function saveFailure(bucket, claimed, status, now, code = "upstream_error", errorDetail = null) {
+async function saveFailure(
+  bucket,
+  claimed,
+  status,
+  now,
+  code = "upstream_error",
+  errorDetail = null,
+  pendingMarkerDeletes = null,
+) {
   const errObj = errorDetail || {
     code,
     status: status || 502,
@@ -956,7 +978,13 @@ async function saveFailure(bucket, claimed, status, now, code = "upstream_error"
   });
   // A lost conditional write means another worker owns the newer canonical state.  Its pending
   // marker is still needed until that state is observed and finalized.
-  if (saved) await unmarkReady(bucket, claimed.readyKey || readyKey(claimed.record));
+  if (!saved) return;
+  const markerKey = claimed.readyKey || readyKey(claimed.record);
+  if (pendingMarkerDeletes) {
+    pendingMarkerDeletes.push(markerKey);
+    return;
+  }
+  await unmarkReady(bucket, markerKey);
 }
 
 async function requeue(
@@ -1288,9 +1316,9 @@ function reapExpiredInflight(entry, now) {
 // a minute/day window is derived from `now` and is recomputed on every load, so it never needs to
 // be written back; dropping an abandoned reservation is real state that other readers of the
 // ledger would otherwise keep seeing.
-function routeAvailable(entry, route, { requests, tokens }, now, changes = null) {
-  if (reapExpiredInflight(entry, now) && changes) {
-    changes.reaped = true;
+function routeAvailable(entry, route, { requests, tokens }, now, batch = null) {
+  if (reapExpiredInflight(entry, now) && batch) {
+    batch.reaped = true;
   }
   if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
     return false;
@@ -1318,11 +1346,15 @@ function routeAvailable(entry, route, { requests, tokens }, now, changes = null)
   ) {
     return false;
   }
-  if (
-    route.concurrency != null &&
-    Object.keys(entry.inflight || {}).length + requests > route.concurrency
-  ) {
-    return false;
+  if (route.concurrency != null) {
+    // The cron lease guarantees this is the only invocation dispatching, so a route's concurrency
+    // ceiling is the durable inflight entries left by a crashed predecessor plus the candidates
+    // this batch has already admitted.  The latter is tracked in memory: writing it to R2 and
+    // deleting it again costs a round trip that nothing outside this invocation can observe.
+    const admittedHere = batch?.admitted?.get(route.route_id) || 0;
+    if (Object.keys(entry.inflight || {}).length + admittedHere + requests > route.concurrency) {
+      return false;
+    }
   }
   return true;
 }
@@ -1718,7 +1750,7 @@ function selectRouteForModel(
   policy,
   now,
   dispatchLimits = DISPATCH_LIMITS,
-  changes = null,
+  batch = null,
 ) {
   const { candidates, contextCompatible, freeRanked, paidRanked } = eligibleRoutesForModel(
     canonicalModel,
@@ -1740,7 +1772,7 @@ function selectRouteForModel(
       const entry = ledgerEntry(budget, route.route_id);
       rollLedgerWindows(entry, route, now);
       if (providerAvailable(budget, route, now, dispatchLimits)) {
-        if (routeAvailable(entry, route, reservationSize, now, changes)) {
+        if (routeAvailable(entry, route, reservationSize, now, batch)) {
           return { chosenRoute: route, entry };
         }
       }
@@ -1793,13 +1825,13 @@ function selectRoute(
   policy,
   now,
   dispatchLimits = DISPATCH_LIMITS,
-  changes = null,
+  batch = null,
 ) {
   const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
   let lastSelection = { chosenRoute: null, reason: "no_configured_route" };
   let retryableSelection = null;
   for (const model of [...new Set(models)]) {
-    const selection = selectRouteForModel(budget, model, policy, now, dispatchLimits, changes);
+    const selection = selectRouteForModel(budget, model, policy, now, dispatchLimits, batch);
     if (selection.chosenRoute) return selection;
     // Preserve "no capacity" when an earlier, valid model is merely full rather than allowing
     // a later unknown model to misclassify the durable request as permanently invalid.
@@ -1962,11 +1994,11 @@ async function dispatchBatch(
   }
 
   const cfg = config(env);
-  // The cron lease makes the 1/1 configuration single-writer.  Keep the reservation ledger for
-  // every concurrent configuration, but avoid creating and later deleting an inflight entry for
-  // this serial case; the durable request counters are still committed before the provider call.
-  const serialLedger =
-    maxBatch === 1 && cfg.batchConcurrency === 1 && cfg.maxTotalRequests === 1;
+  // The cron lease makes every dispatching invocation single-writer, at any batch size.  Durable
+  // request/provider pacing is therefore committed once, before the upstream calls, and no
+  // `inflight` reservation is created or later deleted: within a batch the concurrency ceiling is
+  // tracked in memory, and across invocations the lease already excludes a second dispatcher.
+  // Reservations written by an older Worker version are still honoured and reaped on load.
   let leaseOwner = externalLeaseOwner;
   let acquiredLock = false;
   const leaseHandle = { etag: null, lease: null };
@@ -2017,9 +2049,11 @@ async function dispatchBatch(
     let lastRequeuedId = null;
     let deadlineGuarded = false;
     let repairedCount = 0;
-    // Durable ledger side effects observed while deciding admission, used to decide whether a
-    // batch that dispatched nothing still owes R2 a write.
-    const ledgerChanges = { reaped: false };
+    // `reaped` records durable ledger side effects observed while deciding admission, used to
+    // decide whether a batch that dispatched nothing still owes R2 a write.  `admitted` counts the
+    // candidates this batch has taken per route, so a route's concurrency ceiling is enforced
+    // without a durable reservation.
+    const batchState = { reaped: false, admitted: new Map() };
 
     const candidatePrepareStartedAt = profileNow();
     for (const head of ready.heads) {
@@ -2042,7 +2076,7 @@ async function dispatchBatch(
         head.record.policy,
         now,
         DISPATCH_LIMITS,
-        ledgerChanges,
+        batchState,
       );
       candidateProfile.route_select_ms = profileElapsed(routeSelectStartedAt);
       let claimed;
@@ -2132,7 +2166,7 @@ async function dispatchBatch(
         lastRequeuedId = claimed.record.id;
         continue;
       }
-      if (!routeAvailable(entry, chosenRoute, reservationSize, now, ledgerChanges)) {
+      if (!routeAvailable(entry, chosenRoute, reservationSize, now, batchState)) {
         await requeue(
           bucket,
           claimed,
@@ -2145,19 +2179,10 @@ async function dispatchBatch(
 
       const reservationOwner = claimed.record.id;
       reserveProviderCapacity(budget, chosenRoute, reservationSize.requests, now);
-      reserveRouteCapacity(
-        entry,
-        chosenRoute,
-        reservationSize,
-        serialLedger
-          ? {}
-          : {
-              owner: reservationOwner,
-              reservedAt: now.toISOString(),
-              expiresAt: new Date(
-                runDeadlineMs || now.getTime() + timeoutSeconds * 1000,
-              ).toISOString(),
-            },
+      reserveRouteCapacity(entry, chosenRoute, reservationSize, {});
+      batchState.admitted.set(
+        chosenRoute.route_id,
+        (batchState.admitted.get(chosenRoute.route_id) || 0) + reservationSize.requests,
       );
       claimed.record.attempts = (claimed.record.attempts || 0) + 1;
       claimed.record.processing_started_at = now.toISOString();
@@ -2183,7 +2208,7 @@ async function dispatchBatch(
       // write never happened, and two whole-ledger serializations were spent proving it on every
       // no-capacity invocation.  Window rollover is recomputed from `now` on every load and does
       // not need persisting; a reaped reservation does, because nothing else will remove it.
-      if (budgetLoaded && ledgerChanges.reaped) {
+      if (budgetLoaded && batchState.reaped) {
         try {
           await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
             onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
@@ -2223,11 +2248,16 @@ async function dispatchBatch(
     let ledgerSaved = false;
     let freshCapacityFailed = false;
     const budgetHandle = { etag: null, value: null };
+    // Terminal markers are removed together once every upstream attempt has finished.
+    const pendingMarkerDeletes = [];
     const ledgerWriteStartedAt = profileNow();
     for (let attempt = 0; attempt < 3 && !ledgerSaved; attempt += 1) {
       if (attempt > 0) {
         budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
         const freshBudget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
+        // Re-admit the same candidates against the fresher ledger, counting them as this batch
+        // goes so a route's concurrency ceiling still holds on the retry.
+        const retryState = { reaped: false, admitted: new Map() };
         for (const item of candidatesToDispatch) {
           if (!providerAvailable(freshBudget, item.chosenRoute, now)) {
             freshCapacityFailed = true;
@@ -2235,7 +2265,7 @@ async function dispatchBatch(
           }
           const entry = ledgerEntry(freshBudget, item.chosenRoute.route_id);
           rollLedgerWindows(entry, item.chosenRoute, now);
-          if (!routeAvailable(entry, item.chosenRoute, item.reservationSize, now)) {
+          if (!routeAvailable(entry, item.chosenRoute, item.reservationSize, now, retryState)) {
             freshCapacityFailed = true;
             break;
           }
@@ -2245,19 +2275,10 @@ async function dispatchBatch(
             item.reservationSize.requests,
             now,
           );
-          reserveRouteCapacity(
-            entry,
-            item.chosenRoute,
-            item.reservationSize,
-            serialLedger
-              ? {}
-              : {
-                  owner: item.reservationOwner,
-                  reservedAt: now.toISOString(),
-                  expiresAt: new Date(
-                    runDeadlineMs || now.getTime() + item.timeoutSeconds * 1000,
-                  ).toISOString(),
-                },
+          reserveRouteCapacity(entry, item.chosenRoute, item.reservationSize, {});
+          retryState.admitted.set(
+            item.chosenRoute.route_id,
+            (retryState.admitted.get(item.chosenRoute.route_id) || 0) + item.reservationSize.requests,
           );
         }
         if (freshCapacityFailed) break;
@@ -2357,7 +2378,7 @@ async function dispatchBatch(
           return {
             finalize: async () => {
               const persistStartedAt = profileNow();
-              await saveFailure(bucket, claimed, null, now, code, errorDetail);
+              await saveFailure(bucket, claimed, null, now, code, errorDetail, pendingMarkerDeletes);
               profile.persist_ms = profileElapsed(persistStartedAt);
               return profiledResult({
                 status: "failed",
@@ -2407,7 +2428,15 @@ async function dispatchBatch(
           return {
             finalize: async () => {
               const persistStartedAt = profileNow();
-              await saveFailure(bucket, claimed, response.status, now, "upstream_error", errorDetail);
+              await saveFailure(
+                bucket,
+                claimed,
+                response.status,
+                now,
+                "upstream_error",
+                errorDetail,
+                pendingMarkerDeletes,
+              );
               profile.persist_ms = profileElapsed(persistStartedAt);
               return profiledResult({
                 status: "failed",
@@ -2451,6 +2480,7 @@ async function dispatchBatch(
                   timestamp: new Date().toISOString(),
                   dispatch_profile: failureProfile,
                 },
+                pendingMarkerDeletes,
               );
               profile.persist_ms = profileElapsed(persistStartedAt);
               return profiledResult({
@@ -2468,14 +2498,22 @@ async function dispatchBatch(
           return {
             finalize: async () => {
               const persistStartedAt = profileNow();
-              await saveFailure(bucket, claimed, response.status, now, "invalid_upstream_json", {
-                code: "invalid_upstream_json",
-                status: response.status,
-                model: chosenRoute.model,
-                route_id: chosenRoute.route_id,
-                timestamp: new Date().toISOString(),
-                dispatch_profile: failureProfile,
-              });
+              await saveFailure(
+                bucket,
+                claimed,
+                response.status,
+                now,
+                "invalid_upstream_json",
+                {
+                  code: "invalid_upstream_json",
+                  status: response.status,
+                  model: chosenRoute.model,
+                  route_id: chosenRoute.route_id,
+                  timestamp: new Date().toISOString(),
+                  dispatch_profile: failureProfile,
+                },
+                pendingMarkerDeletes,
+              );
               profile.persist_ms = profileElapsed(persistStartedAt);
               return profiledResult({
                 status: "failed",
@@ -2503,7 +2541,7 @@ async function dispatchBatch(
               etagMatches: claimed.object.etag,
               customMetadata: requestMetadata(completed),
             });
-            if (saved) await unmarkReady(bucket, claimed.readyKey);
+            if (saved && claimed.readyKey) pendingMarkerDeletes.push(claimed.readyKey);
             profile.persist_ms = profileElapsed(persistStartedAt);
             return profiledResult({
               status: "completed",
@@ -2515,24 +2553,6 @@ async function dispatchBatch(
         };
         },
     );
-
-    // Release the combined reservation after every upstream attempt has stopped using it. Start
-    // this promise before awaiting finalizers so the batch CAS overlaps the independent canonical
-    // result writes, while the cron lease prevents another batch from dispatching in the gap.
-    const releasePromise = serialLedger
-      ? Promise.resolve({ released: true, elapsedMs: 0 })
-      : Promise.allSettled(upstreamTasks).then(async () => {
-          const startedAt = profileNow();
-          const released = await releaseRouteReservations(
-            bucket,
-            candidatesToDispatch.map((item) => ({
-              routeId: item.chosenRoute.route_id,
-              owner: item.reservationOwner,
-            })),
-            budgetHandle,
-          );
-          return { released, elapsedMs: profileElapsed(startedAt) };
-        });
 
     const finalized = await Promise.all(
       upstreamTasks.map(async (task, index) => {
@@ -2549,7 +2569,15 @@ async function dispatchBatch(
             }),
           );
           try {
-            await saveFailure(bucket, item.claimed, 500, now, "worker_task_failed");
+            await saveFailure(
+              bucket,
+              item.claimed,
+              500,
+              now,
+              "worker_task_failed",
+              null,
+              pendingMarkerDeletes,
+            );
           } catch {
             // The request remains recoverable by the processing-timeout reaper if this write races.
           }
@@ -2561,16 +2589,20 @@ async function dispatchBatch(
         }
       }),
     );
-    const { released, elapsedMs: reservationReleaseMs } = await releasePromise;
-    batchProfile.reservation_release_ms = reservationReleaseMs;
-    if (!released) {
+    const markerDeleteStartedAt = profileNow();
+    try {
+      await unmarkReadyBatch(bucket, pendingMarkerDeletes);
+    } catch {
+      // A stale marker is repaired by the next invocation's claim check; never fail a batch whose
+      // canonical records are already terminal just because the index cleanup raced.
       console.error(
         JSON.stringify({
-          event: "llm_dispatch_reservation_release_failed",
+          event: "llm_dispatch_marker_cleanup_failed",
           batch_size: candidatesToDispatch.length,
         }),
       );
     }
+    batchProfile.marker_delete_ms = profileElapsed(markerDeleteStartedAt);
     const completedCount = finalized.filter((r) => r.status === "completed").length;
     return {
       status: "completed",
