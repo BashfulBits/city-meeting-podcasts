@@ -76,7 +76,10 @@ class BenchmarkBucket {
   }
 
   async delete(key) {
-    this.objects.delete(key);
+    // Must match cpu-profile.js: the Worker removes a batch's finished markers in one keyed
+    // delete, so a stub that only accepts a scalar would silently leave markers behind here and
+    // make the two harnesses' results incomparable.
+    for (const one of Array.isArray(key) ? key : [key]) this.objects.delete(one);
   }
 }
 

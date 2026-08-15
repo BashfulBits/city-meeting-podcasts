@@ -1,8 +1,16 @@
 # LLM dispatch Worker CPU-reduction plan
 
-Status: **planned; Steps 1–3 complete; Step 4 measurement gate**  
-Owner: dispatch Worker maintainers  
-Scope: `workers/llm-dispatch-proxy`
+Status: **Steps 1–3 shipped; Step 4 closed (rejected on measurement); Step 5 superseded by the
+phasing below.** Deployed configuration is `1/1`; this branch proposes `2/2`.
+
+Owner: dispatch Worker maintainers. Scope: `workers/llm-dispatch-proxy`.
+
+> **Reading order.** Sections below are in the order they were written, so earlier ones record the
+> *original* plan and later ones supersede it. Where they conflict, the later section wins. The
+> three reversals worth knowing before reading: Step 4's control/payload split was rejected on CPU
+> grounds and then re-justified on R2 *quota* grounds; the batch size moved from `1/1` to a proposed
+> `2/2`; and the compact route catalog was reverted to named lookups. The final state is
+> "Phasing: R2 quota relief" and everything after it.
 
 ## Objective
 
@@ -12,7 +20,8 @@ below the 10 ms cron limit, while preserving:
 - cross-provider/model candidate bypass when one route is throttled;
 - durable rate accounting and crash recovery;
 - the ability to experiment with batch concurrency later; and
-- the existing private-R2 request and result lifecycle.
+- the existing private-R2 request and result lifecycle (**superseded**: the phasing section now
+  recommends moving prompts, results and markers to B2 for R2 Class A quota relief).
 
 The Worker’s detailed timing fields are wall-clock measurements. They are useful for finding
 I/O overlap and slow phases, but they are not CPU attribution. Production invocation `cpuTime`
@@ -499,8 +508,11 @@ changing a platform constraint, not the Worker:
 
 1. **Workers Paid (`$5`/month).** Raises the cron CPU limit from `10` ms to `30` seconds -- roughly
    3,000x -- which retires this entire workstream, and raises Queues to 1M operations/month
-   (~33,000/day). Throughput would then be bounded by provider limits at ~46/minute rather than by
-   CPU at 2/minute: a ~23x increase for `$5`. **This is by far the best return available.**
+   (~33,000/day). It also removes the Free plan's 100,000 requests/**day** cap: the paid plan
+   includes 10M requests/month with overage at `$0.30`/million, so `~333,000/day` is a 30-day
+   planning average rather than a ceiling. Throughput would then be bounded by provider limits at
+   ~46/minute rather than by CPU at 2/minute: a ~23x increase for `$5` plus R2/B2 usage.
+   **This is by far the best return available.**
 2. **An external invocation driver on the Free plan.** Invocations, not CPU, are scarce: the Free
    plan allows 100,000 requests/day against the cron's 1,440. A scheduled GitHub Actions job (this
    repository already runs many) polling an authenticated dispatch endpoint every ~10 seconds would
@@ -710,8 +722,27 @@ precisely why only the non-CAS objects move.
 | **3** | Batch enqueue + batch poll endpoints | throughput above ~15,000 jobs/day | addresses the *Workers request* cap (100k/day), a different quota |
 | **4** | Workers Paid (`$5`) **or** Durable Object coordination | when Phase 3 is no longer enough | see the backend evaluation above |
 
-After Phases 1 and 2, dispatch uses ~0.04M Class A/month at today's throughput and **0.75M at
-50,000 jobs/day** — inside the free tier, with room left for the coordination plane.
+**Corrected 2026-08-15.** An earlier revision of this section claimed ~`0.04M`/month after Phases 1
+and 2 and `0.75M` at 50,000 jobs/day. That was wrong: it assumed *no* per-job R2 write, contradicting
+Step 2's own requirement that the control record stay on R2 for the enqueue idempotency CAS. The
+control record costs at least one Class A write per job at enqueue, plus one more if the terminal
+status update is kept.
+
+Recomputed, at `N=2` (so half an invocation per job), against the 1M/month = ~33,333/day tier:
+
+| Configuration | Class A per job | Jobs/day inside the tier | At 2,880/day | At 50,000/day |
+| --- | --- | --- | --- | --- |
+| Today (everything on R2) | 5.0 | ~6,700 | 43% | 750% |
+| Phases 1+2 (payloads and markers to B2) | 3.0 | ~11,100 | **26%** | **450%** |
+| + elide the terminal control update | 2.0 | ~16,700 | 17% | 300% |
+| Phase 4 (a DO owns lease, ledger and index) | 1.0 | ~33,300 | 9% | 150% |
+
+**This changes the phasing conclusion.** Phases 1 and 2 roughly *double* the R2-bounded ceiling
+(~6,700 → ~11,100 jobs/day) and buy real headroom at today's volume, but they do **not** put 50,000
+jobs/day inside the R2 free tier — nothing short of moving the control record off R2 does, and that
+is Phase 4's Durable Object, not Phase 2. Treat Phases 1+2 as quota relief for the current order of
+magnitude, and 50,000 jobs/day as requiring Phase 4 or accepting an R2 bill (~$4.50 per additional
+million Class A).
 
 ### On Phase 3, since its purpose is easy to mistake
 
@@ -772,7 +803,7 @@ which currently assume the lease is already held when a batch begins.
 New key, **not** a reuse of either existing key (rationale for a new key, not a rename, is the
 deploy-transition hazard below):
 
-```
+```text
 state/dispatch_coordinator.json
 ```
 
@@ -814,12 +845,15 @@ without touching `routes`/`providers`.
   4. Build the merged object: `{ version: 1, lease: { owner, acquired_at: now, expires_at: now +
      leaseDurationSeconds }, routes: <unchanged from the get>, providers: <unchanged from the
      get> }`.
-  5. Single `put()` with `onlyIf: { etagMatches: <etag from the get>, ... }` (or
-     `etagDoesNotMatch: "*"` if the object didn't exist), `customMetadata` = the lease fields.
-  6. On success, populate `handle` with `{ etag, lease, ledger: routes+providers }` and return
-     `{ acquired: true, ledger }` — the ledger is now in hand for the caller to reserve against and
-     write in the *same* `put()` that follows (see below), collapsing acquire+reserve into one
-     write when the caller has candidates ready.
+  5. **Return the ledger without writing anything yet.** `acquireCoordinator` must *not* issue its
+     own CAS: the 4-operation dispatching budget above depends on lease acquisition and reservation
+     commitment being **one** write, and an acquire-then-reserve sequence is two.
+  6. Hand the caller `{ acquired: true, ledger, etag }` so it can select candidates from that read.
+     The caller then performs the single CAS: `put()` with `onlyIf: { etagMatches: <etag> }` (or
+     `etagDoesNotMatch: "*"` if the object did not exist), writing the lease fields *and* the
+     candidates' reservations together, `customMetadata` = the lease fields. A batch selecting no
+     candidates writes the lease alone. Losing this CAS means another invocation won the lease:
+     abort without dispatching.
 - **`releaseCronLease` -> `releaseCoordinator`.** Unchanged in structure from today's handle-based
   release; the tombstone (`released_at`, `expires_at: epoch`) now sits inside `lease`, ledger
   fields carried through unchanged from the handle's cached `ledger`.
@@ -884,6 +918,17 @@ against its own rate ledger without seeing the other's. Evaluated and accepted, 
 No dual-check, no compat window, no removal step. `state/dispatch_budget.json` and
 `locks/cron.json` become dead keys the moment the new code deploys; leave them in place rather than
 deleting them (costs nothing at rest).
+
+**Approval recorded (maintainer, 2026-08-15).** This is a rate-ledger semantics change, and the
+Decision gates below require explicit sign-off, so state precisely what was approved: moving to a
+new coordination key **resets `requests_minute`/`requests_day` to zero**, and for up to one lease
+duration (840 s) old and new code may dispatch against independent ledgers. Both are accepted as
+best-effort continuity loss rather than mitigated. Reasoning: per-request claims are CAS-guarded on
+the record's own ETag independently of the lease, so no request can be duplicated or lost; no hard
+cost cap exists to overrun; and the failure mode is over-admission surfaced as provider 429s, which
+`retryableStatus`/`saveRetry` already absorb. Carrying counters through a dual-read migration was
+considered and rejected: they are minute- and day-scoped and self-heal within a day.
+**Do not widen this approval** to Step 2's record-layout change, which needs its own.
 
 #### Test requirements
 
@@ -1000,17 +1045,26 @@ inert and GC's naturally).
 
 #### B2 access from the Worker
 
-B2 is not R2 — no binding; every call is a signed HTTPS request. Reuse the project's existing B2
-env var names (`citypods/storage/s3.py`: `B2_ENDPOINT`, `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`) as
-new Worker secrets (`wrangler secret put`), naming them identically so the credential is one value
-shared across the Python and Worker sides, not a second credential to rotate.
+B2 is not R2 — no binding; every call is a signed HTTPS request.
+
+**Use a separate, least-privilege B2 application key for the Worker** — do not reuse Python's
+`B2_APP_KEY`. One shared credential couples rotation across two very different blast radii: the
+Python key holds broad bucket access for the audio/records pipeline, so a Worker compromise would
+inherit all of it. Create a B2 key restricted to this Worker's prefixes (`payloads/`, `ready/`) and
+to the operations it performs, expose it under distinct Worker secret names (for example
+`DISPATCH_B2_KEY_ID`/`DISPATCH_B2_APP_KEY`), and rotate it independently. Reuse the *endpoint* and
+*bucket* names from `citypods/storage/s3.py`, not the credential.
 
 Requests need AWS SigV4 (B2's S3-compatible API). Measured cost: **0.033 ms per request with a
 cached signing key** (the derived key depends only on date/region/service, not on the request —
-cache it for the isolate's lifetime and re-derive once a day). Immaterial against the 10ms budget.
-No existing JS SigV4 implementation in this repo; write a minimal one (`crypto.subtle` HMAC-SHA256,
-four-step key derivation, canonical request construction) — do not pull in an SDK; Workers bundle
-size is a real cost. B2 requests need their own timeout (separate from `UPSTREAM_TIMEOUT_SECONDS`,
+cache it for the isolate's lifetime and re-derive once a day). Immaterial against the 10 ms budget.
+
+**Use a reviewed signer rather than hand-rolling one.** `aws4fetch` is Workers-targeted and ~2 KB,
+nothing against the 3 MB compressed script limit and far cheaper than the failure modes of bespoke
+canonicalization — URI/query encoding, date rollover, unsigned-payload handling and header
+ordering are exactly where hand-written SigV4 breaks, and it breaks as an auth error under load
+rather than at review time. If a bespoke signer is genuinely required, isolate it behind one module
+with offline conformance tests against AWS/B2 reference vectors covering those four cases. B2 requests need their own timeout (separate from `UPSTREAM_TIMEOUT_SECONDS`,
 which is provider-facing) and their own retry policy (B2 write failures should retry within the
 same invocation a small bounded number of times before falling through to `saveFailure`, rather
 than being requeued for the next cron tick the way a rate-limited route is).

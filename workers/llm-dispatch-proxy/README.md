@@ -37,9 +37,10 @@ retry window. Scheduled logs include request ID, route ID, upstream status, and 
 error code/status without the provider message.
 
 Scheduled `llm_dispatch_batch` logs also include bounded wall-clock profiling in milliseconds. The
-batch profile covers ready-marker listing, budget loading, candidate preparation, ledger reservation,
-and reservation release. Reservation cleanup is one conditional budget update for the whole batch,
-and it runs concurrently with the independent canonical result writes. Each result profile covers
+batch profile covers ready-marker listing, budget loading, candidate preparation, the ledger write,
+and batched ready-marker cleanup (`marker_delete_ms`). Durable rate usage is committed once, before
+the upstream calls, so there is no reservation to release afterwards and no `reservation_release_ms`
+phase; a route's concurrency ceiling is enforced in memory for the batch. Each result profile covers
 route selection, canonical request claim, credential resolution, upstream fetch, response parsing, R2
 persistence, and total dispatch time. These timings are diagnostic wall-clock measurements—not
 Cloudflare CPU-time measurements—and are kept out of the provider-facing completion response. The
@@ -48,11 +49,13 @@ upstream batch concurrency and total-request limits are unchanged; `BATCH_CONCUR
 
 The Worker imports a generated runtime-only catalog rather than the richer Python route catalog:
 duplicate route arrays, direct structured-output metadata, and provider discovery settings are
-omitted. Physical routes are stored as fixed-position records and model indexes refer to numeric
-route positions, avoiding repeated property names and route IDs in the startup bundle; the Worker
-materializes a route object only when dispatch evaluates it. Legacy upstream selectors are folded
-into the compiled model-alias map. The source YAML remains the single source of truth; the deploy
-workflow recompiles and checks the generated artifacts.
+omitted. `routes_by_id` is keyed by route ID and `model_routes_map` holds route-ID strings, so a
+lookup that goes stale fails visibly rather than resolving to a different route. (An earlier
+revision stored routes as fixed-position arrays referenced by numeric index; that saved ~0.02 ms of
+once-per-isolate parse time and cost a silently-dropped route field, so it was reverted — see
+[`review/43`](../../review/43-llm-dispatch-cpu-reduction-plan.md).) Legacy upstream selectors are
+folded into the compiled model-alias map. The source YAML remains the single source of truth; the
+deploy workflow recompiles and checks the generated artifacts.
 
 ## Staying inside the Free-plan cron CPU budget
 
@@ -69,13 +72,13 @@ The current shape, measured with `bench/cpu-profile.js` against a 60 KB canonica
 | Invocation | R2 operations | Bytes moved |
 | --- | --- | --- |
 | Idle tick (no ready work) | 4 | 0.3 KB |
-| Dispatching one request | 10 | 165 KB |
+| Dispatching one request | 10 | 147 KB |
 
 Rules that keep it there:
 
-- **Never re-read what this invocation just wrote.** The cron lease and the rate ledger both hand
-  back an ETag on write; renew, release, and reservation-release CAS onto that ETag and fall back to
-  a re-read only when the CAS fails. The lease is a single-writer guard, so the fallback is rare.
+- **Never re-read what this invocation just wrote.** The cron lease hands back an ETag on write;
+  renew and release CAS onto that ETag and fall back to a re-read only when the CAS fails. The lease
+  is a single-writer guard, so the fallback is rare.
 - **Do not re-prove ownership that cannot have changed.** The lease is taken for 840 s against an
   820 s run deadline, so it is renewed only once a run has consumed half of it.
 - **Cache anything ICU touches.** Constructing an `Intl.DateTimeFormat` measures ~43 µs against ~2 µs
@@ -83,7 +86,8 @@ Rules that keep it there:
   considers. `zonedDateKey` was once the single largest self-time function in the scheduled path.
 - **Only write durable state that nothing else can reconstruct.** Minute/day rate windows are derived
   from the current time and re-rolled on every load, so they are never worth an R2 write on their
-  own; an abandoned reservation is, because nothing else clears it.
+  own; clearing an `inflight` entry left behind by an older Worker version is, because nothing else
+  removes it.
 - **Parse marker metadata lazily.** The lookahead lists 16 markers so a throttled route does not stall
   the queue head, but a run that dispatches the first one should not parse the other fifteen.
 
@@ -154,20 +158,28 @@ credential-disclosure bug fixed in review/41 — see its §2 for the incident).
 `MAX_EXECUTION_SECONDS` is the invocation deadline, `FINALIZATION_RESERVE_SECONDS` is held back for
 terminal request/ledger writes, `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS` bound per-run parallelism
 and volume, `LEASE_DURATION_SECONDS` is the renewable single-runner lock, and
+`DEFER_IN_PLACE_SECONDS` (default 600) is how long a route may be pacing before the scheduler
+relocates its queue head rather than skipping it in memory. A head whose route frees up sooner than
+this is left where it is and re-examined next minute, which costs nothing; rewriting it costs four
+R2 operations, more than dispatching a request. Raise it to tolerate longer route cooldowns without
+index churn; lower it to move blocked work out of the lookahead window sooner.
+
 `PROFILE_SAMPLE_RATE` controls detailed successful-dispatch profile logging (failures always retain
-their profile; the default is 0.1). With both concurrency limits set to 1, the cron lease provides
-single-writer coordination and the Worker commits route/provider usage without a temporary
-`inflight` reservation; configurations above 1 retain the reservation-and-release path.
+their profile; the default is 0.1). The cron lease provides single-writer coordination at every
+batch size, so the Worker commits route/provider usage up front and never writes a temporary
+`inflight` reservation; a route's concurrency ceiling is counted in memory for the batch instead.
 Before dispatching, the Worker checks the candidate's lane timeout against the effective deadline and
 requeues work that cannot fit; timeout telemetry reports `unknown duration` when the provider did not
 provide a trustworthy duration. A timeout is therefore a loud, retryable signal rather than a silent
 loss of a long-context result. The cron lease (`locks/cron.json`) carries a per-invocation owner token,
 and every batch renews it with CAS, so a slow invocation's eventual release can never delete a later
 invocation's lease.
-The Worker marks a record pending before its upstream call and retains a matching `inflight`
-reservation in `state/dispatch_budget.json`. If an invocation crashes, the request stays pending for
-the next tick and the reservation reaper removes its expiring concurrency claim, so either artifact
-cannot permanently block work.
+The Worker marks a record pending and commits its durable rate usage to
+`state/dispatch_budget.json` before the upstream call. If an invocation crashes, the request stays
+pending for the next tick and is retried; usage already committed is never rolled back, so a crash
+over-counts rather than under-counts against a provider's limits. Any `inflight` entry left by an
+older Worker version is reaped on load — including one written without an expiry, which would
+otherwise occupy a concurrency slot that nothing clears.
 
 Deployment is path-scoped by `.github/workflows/llm-dispatch-worker-deploy.yml` and uses the same
 Cloudflare deployment secrets as the existing media proxy.

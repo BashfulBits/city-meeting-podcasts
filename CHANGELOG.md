@@ -34,10 +34,12 @@ Phase R (Research-Tool Surface)._
   budget) and Worker bundle size is nowhere near its 3 MB compressed Free-plan limit at this
   catalog's size (16–29 KB), so the array encoding was carrying real risk for no measured benefit.
   It had already cost one real bug (`structured_output_schema_strip_keys` silently missing because
-  the JS and Python field lists drifted out of sync — see Fixed, below) and carried a worse latent
-  one: `model_routes_map`'s integer indices would silently resolve to the *wrong* route, not merely
-  a missing field, if compile-time route order ever shifted. A named lookup can go missing; it
-  cannot misresolve. `routeFromCatalog` is now a plain object lookup. See
+  the JS and Python field lists drifted out of sync — see Fixed, below; that omission existed only
+  in the intermediate compact catalog, and the final named-lookup catalog no longer depends on those
+  positional field lists at all) and carried a worse latent one: `model_routes_map`'s integer indices
+  would silently resolve to the *wrong* route, not merely a missing field, if compile-time route
+  order ever shifted. A named lookup can go missing; it cannot misresolve. `routeFromCatalog` is now
+  a plain object lookup. See
   [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md).
 
 - **LLM dispatch now runs two requests per scheduled invocation.** Durable rate usage is committed
@@ -47,7 +49,9 @@ Phase R (Research-Tool Surface)._
   markers are removed in one keyed R2 delete per batch instead of one per request. Together these
   cut marginal cost from 3.1 to 2.0 R2 operations per request. Measured production `cpuTime` per
   invocation is 8.2 ms at N=1, 9.9 ms at N=2 and 15.5 ms at N=3 — and per *request* 8.2, 4.95 and
-  5.2 ms — so `BATCH_CONCURRENCY` is now 2, the optimum on both axes. Cost is superlinear above
+  5.2 ms — so `BATCH_CONCURRENCY` becomes 2, the optimum on both axes. **This rolls out on merge:**
+  the deployed configuration is `1/1` until then, and the `2/2` production run was a time-boxed
+  canary that a later CI deploy superseded. Cost is superlinear above
   N=2 because three canonical records are resident at once. One trade-off: a crashed invocation no
   longer holds a durable concurrency slot, so a concurrency-limited route can be briefly
   over-dispatched after a crash; durable rpm/rpd accounting is unaffected and the provider rejects

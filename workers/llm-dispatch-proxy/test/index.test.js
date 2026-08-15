@@ -15,7 +15,6 @@ import {
   nextRouteReset,
   rankRoutes,
   releaseCronLease,
-  releaseRouteReservations,
   readyKey,
   readyMarker,
   readyMarkerMetadata,
@@ -1665,8 +1664,15 @@ test("routeAvailable supports concurrency-only routes and enforces the slot", ()
   const paidConcurrencyOnly = { free: false, concurrency: 5 };
   const entry = { requests_minute: 0, requests_day: 0, tokens_minute: 0, blocked_until: "" };
   assert.equal(routeAvailable(entry, paidConcurrencyOnly, { requests: 1, tokens: 10 }, now), true);
+  // A real occupied slot always carries an expiry -- reserveRouteCapacity set one on every
+  // reservation it ever wrote. An entry without one is treated as malformed and reaped, so the
+  // fixture must be well-formed for this to test the ceiling rather than the reaper.
+  const stillHeld = new Date(now.getTime() + 600_000).toISOString();
   entry.inflight = Object.fromEntries(
-    Array.from({ length: 5 }, (_, index) => [`existing-${index}`, { requests: 1, tokens: 10 }]),
+    Array.from({ length: 5 }, (_, index) => [
+      `existing-${index}`,
+      { requests: 1, tokens: 10, expires_at: stillHeld },
+    ]),
   );
   assert.equal(
     routeAvailable(entry, paidConcurrencyOnly, { requests: 1, tokens: 10 }, now),
@@ -2301,12 +2307,21 @@ test("repeated zoned-date work reuses one Intl formatter per timezone", async ()
       constructions += 1;
     }
   }
+  // nextRouteReset only reaches the zoned-midnight path (and therefore a formatter) when the
+  // route's daily quota is actually exhausted. An earlier version of this test used
+  // requests_day: 0 against rpd: 500, so it never constructed a formatter whether the cache
+  // worked or not -- it asserted 0 against a path it never took.
+  const route = { rpd: 500, provider: "gemini", reset_timezone: "America/Los_Angeles" };
+  const exhausted = () => ({ requests_day: 500, requests_day_key: "", inflight: {} });
+
+  // Warm the module-level cache first so this proves reuse rather than depending on whichever
+  // earlier test happened to populate it.
+  nextRouteReset(exhausted(), route, new Date());
+
   Intl.DateTimeFormat = CountingDateTimeFormat;
   try {
-    const route = { rpd: 500, provider: "gemini", reset_timezone: "America/Los_Angeles" };
-    const entry = { requests_day: 0, requests_day_key: "", inflight: {} };
     for (let index = 0; index < 200; index += 1) {
-      nextRouteReset(entry, route, new Date(Date.now() + index * 1000));
+      nextRouteReset(exhausted(), route, new Date(Date.now() + index * 1000));
     }
   } finally {
     Intl.DateTimeFormat = RealDateTimeFormat;
@@ -2349,50 +2364,43 @@ test("a released reservation is really gone from the persisted ledger", async ()
   assert.equal((await (await env.LLM_QUEUE.get(`requests/${id}.json`)).json()).status, "completed");
 });
 
-test("a reservation release falls back to a re-read when the ledger moved underneath it", async () => {
-  const bucket = new FakeBucket();
-  const owner = "chatcmpl-conflict";
-  const routeId = "mistral_large_2512_primary";
-  await bucket.put(
-    "state/dispatch_budget.json",
-    JSON.stringify({
-      version: 1,
-      routes: { [routeId]: { requests_minute: 3, inflight: { [owner]: { requests: 1 } } } },
-    }),
-    {},
-  );
-  const current = await bucket.get("state/dispatch_budget.json");
-
-  // A handle whose ETag is stale must not silently drop the release.
-  const released = await releaseRouteReservations(bucket, [{ routeId, owner }], {
-    etag: "etag-from-a-previous-life",
-    value: { version: 1, routes: { [routeId]: { inflight: { [owner]: { requests: 1 } } } } },
-  });
-  assert.equal(released, true);
-
-  const stored = await (await bucket.get("state/dispatch_budget.json")).json();
-  assert.deepEqual(stored.routes[routeId].inflight, {});
-  assert.equal(
-    stored.routes[routeId].requests_minute,
-    3,
-    "the fallback must preserve durable usage written by whoever moved the ledger",
-  );
-  assert.notEqual(current.etag, (await bucket.get("state/dispatch_budget.json")).etag);
-});
-
 test("a route's concurrency ceiling still holds without a durable reservation", async () => {
-  // openrouter_google_gemma_4_31b_it_free is concurrency 1: a batch must not admit two candidates
-  // for it even though nothing is written to `inflight` any more.
+  // The in-memory `batchState.admitted` counter replaced the durable `inflight` reservation, so
+  // this is the only thing standing between a batch and over-dispatching a concurrency-capped
+  // route. Testing it requires a route where the ceiling is actually the binding limit:
+  //
+  //   * an earlier revision named two route IDs that do not exist, so it starved nothing; and
+  //   * its replacement used a route with `rpm: 10`, where RPM pacing already caps the route at
+  //     one request per batch (reserveRouteCapacity pushes requests_available_at a full interval
+  //     ahead on the first reservation), so the assertion held whether or not the ceiling worked.
+  //
+  // deepseek_v4_flash_primary has `rpm: null` and `concurrency: 5`, so the ceiling is the only
+  // limit in play and a broken counter is observable.
+  const ceilingRoute = "deepseek_v4_flash_primary";
+  const model = "deepseek/deepseek-v4-flash";
+  const catalogRoutes = Object.keys(routeIdsForModel(model));
+  assert.ok(catalogRoutes.includes(ceilingRoute), "the route under test must exist in the catalog");
+
   const env = { ...ENV, LLM_QUEUE: new FakeBucket() };
-  const model = "google/gemma-4-31b-it";
-  for (let index = 0; index < 3; index += 1) {
-    await handleRequest(chatRequest(undefined, `ceiling-${index}`, model), env);
+  // deepseek_v4_flash_primary is a paid route, and selectRouteForModel only elevates past free
+  // routes when waiting for every free route would miss the caller's deadline. The free
+  // alternative is starved for an hour below, so a near-term deadline is what makes the paid
+  // route reachable at all.
+  const policy = {
+    allow_paid: true,
+    deadline_at: new Date(Date.now() + 60_000).toISOString(),
+  };
+  for (let index = 0; index < 8; index += 1) {
+    await handleRequest(chatRequest(undefined, `ceiling-${index}`, model, policy), env);
   }
-  const routeIds = ["openrouter_google_gemma_4_31b_it_free"];
-  const budget = { version: 1, routes: {}, providers: {} };
-  // Starve every alternative route for this model so the ceiling is the only thing under test.
+
+  // Starve every real alternative for this model, resolved from the compiled catalog rather than
+  // hard-coded, so the ceiling route is the only one selection can pick.
   const blocked = new Date(Date.now() + 3_600_000).toISOString();
-  for (const id of ["siliconflow_gemma_4_31b_it_primary", "groq_gemma_4_31b_it_primary"]) {
+  const alternatives = catalogRoutes.filter((id) => id !== ceilingRoute);
+  assert.ok(alternatives.length > 0, "the fixture must starve real catalog routes");
+  const budget = { version: 1, routes: {}, providers: {} };
+  for (const id of alternatives) {
     budget.routes[id] = { requests_minute: 0, inflight: {}, blocked_until: blocked };
   }
   await env.LLM_QUEUE.put("state/dispatch_budget.json", JSON.stringify(budget), {});
@@ -2401,13 +2409,17 @@ test("a route's concurrency ceiling still holds without a durable reservation", 
     env,
     async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
     new Date(),
-    3,
+    8,
   );
 
-  const onCeilingRoute = (result.results || []).filter((r) => routeIds.includes(r.routeId));
-  assert.ok(
-    onCeilingRoute.length <= 1,
-    `concurrency-1 route admitted ${onCeilingRoute.length} candidates in one batch`,
+  // Exactly the ceiling: eight requests were queued against a concurrency-5 route with no other
+  // limit, so a working counter admits precisely five. Asserting `<= 5` would also pass if the
+  // route were never selected, which is how the earlier revisions hid their bugs.
+  const onCeilingRoute = (result.results || []).filter((r) => r.routeId === ceilingRoute);
+  assert.equal(
+    onCeilingRoute.length,
+    5,
+    `concurrency-5 route admitted ${onCeilingRoute.length} candidates in one batch`,
   );
 });
 

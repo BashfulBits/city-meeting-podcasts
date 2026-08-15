@@ -757,10 +757,11 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
     typeof body.model === "string" && body.model.trim() ? body.model.trim() : cfg.model;
   let canonicalModel = canonicalModelName(requestedModel, dispatchLimits);
   if (!dispatchLimits.model_routes_map?.[canonicalModel]) {
-    const legacyModel = dispatchLimits.legacy_model_map?.[requestedModel];
-    if (legacyModel) {
-      canonicalModel = canonicalModelName(legacyModel, dispatchLimits);
-    } else if (requestedModel === cfg.upstreamModel) {
+    // Legacy upstream-model and provider-qualified selectors are folded into `model_aliases` by
+    // the compiler's `_worker_legacy_model_map`, so `canonicalModelName` above has already
+    // resolved them. (A `legacy_model_map` lookup used to sit here; the compiler emits no such
+    // key, so it was unreachable.) Only the Worker's own configured default is left to map.
+    if (requestedModel === cfg.upstreamModel) {
       canonicalModel = canonicalModelName(cfg.model, dispatchLimits);
     }
   }
@@ -1320,7 +1321,13 @@ function rollLedgerWindows(entry, route, now) {
 function reapExpiredInflight(entry, now) {
   let reaped = false;
   for (const [owner, reservation] of Object.entries(entry.inflight || {})) {
-    if (reservation?.expires_at && parseTime(reservation.expires_at) <= now.getTime()) {
+    // No current writer creates an `inflight` entry at all -- durable usage is committed up front
+    // and the ceiling is tracked in memory -- so anything here was left by an older Worker
+    // version or a crashed predecessor. An entry with no `expires_at` must still be reaped:
+    // `routeAvailable` counts every entry toward `route.concurrency`, so skipping it would let a
+    // malformed record consume a slot permanently with nothing able to clear it.
+    const expiresAt = reservation?.expires_at;
+    if (!expiresAt || parseTime(expiresAt) <= now.getTime()) {
       delete entry.inflight[owner];
       reaped = true;
     }
@@ -1463,50 +1470,6 @@ function reserveProviderCapacity(budget, route, requests, now, dispatchLimits = 
   entry.requests_available_at = new Date(
     Math.max(nowMs, readyMs) + intervalMs * requests,
   ).toISOString();
-}
-
-// `handle` carries the ledger this invocation last wrote plus the ETag that write returned.  The
-// cron lease makes this invocation the only writer, so the batch release is usually a single
-// conditional write rather than a read-modify-write of the whole ledger.  The CAS is unchanged, so
-// a ledger that did move under us simply falls back to the re-read path.
-async function releaseRouteReservations(bucket, reservations, handle = null) {
-  const pending = (reservations || []).filter(
-    (reservation) => reservation?.routeId && reservation?.owner,
-  );
-  if (pending.length === 0) return true;
-  let loaded = handle?.etag && handle.value ? { etag: handle.etag, value: handle.value } : null;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    if (!loaded) loaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
-    if (!loaded?.value) return true;
-    const budget = loaded.value;
-    let changed = false;
-    for (const { routeId, owner } of pending) {
-      const entry = budget.routes?.[routeId];
-      if (entry?.inflight?.[owner]) {
-        delete entry.inflight[owner];
-        changed = true;
-      }
-    }
-    if (!changed) return true;
-    try {
-      const putRes = await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
-        etagMatches: loaded.etag,
-      });
-      if (putRes) {
-        if (handle) {
-          handle.etag = putRes.etag;
-          handle.value = budget;
-        }
-        return true;
-      }
-    } catch {
-      // Retry after a sibling's CAS update.
-    }
-    // The cached view lost its race; the next attempt must re-read the authoritative ledger.
-    loaded = null;
-    if (handle) handle.etag = null;
-  }
-  return false;
 }
 
 function timeoutSecondsForRecord(record, cfg) {
@@ -3002,7 +2965,6 @@ export {
   normalizeChatRequest,
   rankRoutes,
   releaseCronLease,
-  releaseRouteReservations,
   readyKey,
   readyMarker,
   readyMarkerMetadata,

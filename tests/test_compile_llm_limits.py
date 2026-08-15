@@ -41,10 +41,15 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
     # route if compile-time route order ever shifted.
-    a_model_key = next(iter(worker["model_routes_map"]))
-    for route_id in worker["model_routes_map"][a_model_key]:
-        assert isinstance(route_id, str)
-        assert route_id in worker["routes_by_id"]
+    for route_id, route in worker["routes_by_id"].items():
+        assert set(route) == set(compile_llm_limits._WORKER_ROUTE_FIELDS), route_id
+        assert route["route_id"] == route_id
+    assert worker["model_routes_map"]
+    for model, route_ids in worker["model_routes_map"].items():
+        assert route_ids, model
+        for route_id in route_ids:
+            assert isinstance(route_id, str)
+            assert route_id in worker["routes_by_id"], (model, route_id)
     assert "discovery" not in worker["providers"]["openrouter"]
 
 
