@@ -62,11 +62,15 @@ jobs:
           workingDirectory: workers/llm-dispatch-proxy
           wranglerVersion: "4"
           # `accountId` above only configures the deploy CLI -- it does not expose
-          # CLOUDFLARE_ACCOUNT_ID to the Worker at runtime. `secrets`/`env` here make wrangler-action
-          # run `wrangler secret put CLOUDFLARE_ACCOUNT_ID`, which is what resolveProviderCredentials()
-          # in src/index.js reads to build the AI Gateway URL (see wrangler.jsonc's AI_GATEWAY_ID).
-          # Without this, dispatch calls silently go direct-to-provider instead of through the gateway.
-          secrets: |
-            CLOUDFLARE_ACCOUNT_ID
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # CLOUDFLARE_ACCOUNT_ID to the Worker at runtime. That used to be solved here with a
+          # `secrets`/`env` block that made wrangler-action run `wrangler secret put
+          # CLOUDFLARE_ACCOUNT_ID` before every deploy, but Cloudflare's secret-modification API
+          # (which `secret bulk` calls) 400s with error 10215 ("the latest version of your Worker
+          # isn't currently deployed") whenever this Worker's latest uploaded version and its
+          # currently-deployed version have drifted -- and that check runs *before* this step's own
+          # deploy, so a transient drift permanently wedges every future deploy attempt right here.
+          # CLOUDFLARE_ACCOUNT_ID never actually changes, so it doesn't need re-uploading on every
+          # deploy: it's now a one-time manual secret like every other credential this Worker uses
+          # (DISPATCH_AUTH_TOKEN, the provider API keys, AI_GATEWAY_AUTH_TOKEN) -- see README.md's
+          # Configuration section. `wrangler deploy` below never touches secrets, so it can't hit
+          # this precondition.
