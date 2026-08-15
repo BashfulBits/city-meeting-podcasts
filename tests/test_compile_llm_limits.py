@@ -34,13 +34,17 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert "structured_output_profiles" not in worker
     assert worker["model_aliases"]["deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
     assert worker["model_aliases"]["deepseek/deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
-    gemma_index = next(
-        index
-        for index, route in enumerate(compiled["routes"])
-        if route["route_id"] == "gemma_4_31b_primary"
-    )
-    assert isinstance(worker["routes_by_id"][gemma_index], list)
-    assert len(worker["routes_by_id"][gemma_index]) == len(compile_llm_limits._WORKER_ROUTE_FIELDS)
+    gemma = worker["routes_by_id"]["gemma_4_31b_primary"]
+    assert isinstance(gemma, dict)
+    assert set(gemma) == set(compile_llm_limits._WORKER_ROUTE_FIELDS)
+    assert gemma["route_id"] == "gemma_4_31b_primary"
+    # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
+    # integer positions an earlier revision used, which could silently misresolve to a different
+    # route if compile-time route order ever shifted.
+    a_model_key = next(iter(worker["model_routes_map"]))
+    for route_id in worker["model_routes_map"][a_model_key]:
+        assert isinstance(route_id, str)
+        assert route_id in worker["routes_by_id"]
     assert "discovery" not in worker["providers"]["openrouter"]
 
 

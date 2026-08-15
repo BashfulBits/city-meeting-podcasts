@@ -49,32 +49,6 @@ const DATE_FORMATTER_CACHE = new Map();
 const TEXT_DECODER = new TextDecoder();
 const ACTIVE_PRICING_CACHE = new WeakMap();
 
-// The generated catalog stores these route fields as a fixed-position array to avoid repeating
-// property names for every physical route in the Worker bundle. Tests and older catalogs may still
-// provide route objects, which routeFromCatalog accepts for compatibility. Positional, so this
-// must stay in the same order as _WORKER_ROUTE_FIELDS in scripts/compile_llm_limits.py.
-const COMPACT_ROUTE_FIELDS = [
-  "provider",
-  "upstream_model",
-  "input_context_limit",
-  "output_context_limit",
-  "account_id",
-  "rpm",
-  "rpd",
-  "tpm",
-  "concurrency",
-  "free",
-  "input_per_token",
-  "output_per_token",
-  "pricing",
-  "reset_timezone",
-  // Read by upstreamRequestForRoute to relax a route's outbound structured-output schema. Every
-  // other structured_output_* field is Python-direct-dispatch-only and stays out of this list.
-  "structured_output_schema_strip_keys",
-];
-
-const COMPACT_ROUTE_ID_INDEX = 0;
-
 const COPY_FIELDS = [
   "temperature",
   "top_p",
@@ -193,14 +167,12 @@ function canonicalModelName(model, dispatchLimits = DISPATCH_LIMITS) {
   return current;
 }
 
-function routeFromCatalog(routeRef, dispatchLimits = DISPATCH_LIMITS, model = undefined) {
-  const stored = dispatchLimits?.routes_by_id?.[routeRef];
-  if (!Array.isArray(stored)) return stored || null;
-  const route = { route_id: stored[COMPACT_ROUTE_ID_INDEX], model };
-  for (let index = 0; index < COMPACT_ROUTE_FIELDS.length; index += 1) {
-    route[COMPACT_ROUTE_FIELDS[index]] = stored[index + 1];
-  }
-  return route;
+// The catalog carries each route once, keyed by ID, with the canonical model string implied by
+// which model_routes_map entry pointed at it rather than repeated on the route itself -- attach it
+// here so the returned route matches what selection and dispatch expect to read.
+function routeFromCatalog(routeId, dispatchLimits = DISPATCH_LIMITS, model = undefined) {
+  const stored = dispatchLimits?.routes_by_id?.[routeId];
+  return stored ? { ...stored, model } : null;
 }
 
 function modelName(model) {
@@ -1771,7 +1743,7 @@ function eligibleRoutesForModel(canonicalModel, policy, now, dispatchLimits = DI
   const logicalModel = canonicalModelName(canonicalModel, dispatchLimits);
   const routeIds = dispatchLimits.model_routes_map?.[logicalModel] || [];
   const candidates = routeIds
-    .map((routeRef) => routeFromCatalog(routeRef, dispatchLimits, logicalModel))
+    .map((routeId) => routeFromCatalog(routeId, dispatchLimits, logicalModel))
     .filter(Boolean);
   const inputTokens = policy?.input_tokens_estimate ?? policy?.estimated_tokens ?? 1024;
   const outputTokens = policy?.output_token_budget ?? 0;

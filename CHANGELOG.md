@@ -25,6 +25,21 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The compiled dispatch Worker catalog is a named object again, not a positional array.**
+  `routes_by_id` is keyed by route ID and `model_routes_map` holds route-ID strings, matching the
+  shape the Python-side compiler already used internally — reverting an earlier compaction that
+  stored each route as a fixed-position array and referenced routes by integer index. That
+  compaction was built to reduce Worker startup parse time; measurement later showed startup parse
+  was never a scheduled-dispatch hotspot (`~0.13` ms either way, against a `~9` ms invocation
+  budget) and Worker bundle size is nowhere near its 3 MB compressed Free-plan limit at this
+  catalog's size (16–29 KB), so the array encoding was carrying real risk for no measured benefit.
+  It had already cost one real bug (`structured_output_schema_strip_keys` silently missing because
+  the JS and Python field lists drifted out of sync — see Fixed, below) and carried a worse latent
+  one: `model_routes_map`'s integer indices would silently resolve to the *wrong* route, not merely
+  a missing field, if compile-time route order ever shifted. A named lookup can go missing; it
+  cannot misresolve. `routeFromCatalog` is now a plain object lookup. See
+  [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md).
+
 - **LLM dispatch now runs two requests per scheduled invocation.** Durable rate usage is committed
   up front at every batch size rather than only at 1/1 — the cron lease already guarantees a single
   dispatching invocation, so a route's concurrency ceiling is enforced from an in-memory count of

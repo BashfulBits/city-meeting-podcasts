@@ -154,12 +154,9 @@ function chatRequest(body, idempotencyKey, model, policy = {}) {
 }
 
 function routeIdsForModel(model) {
-  const refs = DISPATCH_LIMITS.model_routes_map?.[model] || [];
   const ids = {};
-  for (const ref of refs) {
-    const stored = DISPATCH_LIMITS.routes_by_id?.[ref];
-    const id = Array.isArray(stored) ? stored[0] : stored?.route_id ?? ref;
-    if (typeof id === "string") ids[id] = true;
+  for (const routeId of DISPATCH_LIMITS.model_routes_map?.[model] || []) {
+    if (DISPATCH_LIMITS.routes_by_id?.[routeId]) ids[routeId] = true;
   }
   return ids;
 }
@@ -2524,13 +2521,14 @@ test("heads waiting on short route pacing are skipped without touching R2", asyn
 });
 
 test("structured-output schema stripping works against the real compiled catalog, not just a fixture route object", async () => {
-  // The compact array format (COMPACT_ROUTE_FIELDS/routeFromCatalog) silently drops any route
-  // field the field list doesn't name -- there is no error, the field just reads as undefined.
-  // structured_output_schema_strip_keys was read by upstreamRequestForRoute but absent from
-  // COMPACT_ROUTE_FIELDS, so every configured route dispatched an unstripped schema against the
-  // real compiled dispatch_limits.json while an equivalent test using a hand-built full route
-  // object (see the "relaxed structured-output profile" test above) still passed. This test uses
-  // the imported DISPATCH_LIMITS catalog -- the actual compact artifact -- rather than a fixture.
+  // Historical note: the catalog previously stored each route as a fixed-position array
+  // (COMPACT_ROUTE_FIELDS/routeFromCatalog), and structured_output_schema_strip_keys was read by
+  // upstreamRequestForRoute without ever being added to that field list -- silently undefined, no
+  // error, on every configured route -- while a hand-built full route object (see the "relaxed
+  // structured-output profile" test above) still passed. The catalog is a named object keyed by
+  // route ID now, which can't misplace a field this way, but this test still earns its keep: it
+  // exercises the real compiled dispatch_limits.json end to end rather than a hand-built fixture,
+  // so a future field-name mismatch between the compiler and the Worker still gets caught here.
   const env = isolatedEnv();
   const responseFormat = {
     type: "json_schema",

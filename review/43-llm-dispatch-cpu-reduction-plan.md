@@ -1046,6 +1046,44 @@ optional and is not detailed further here.
   time is not charged any more than R2 wait time is) so wall-clock/timeout budgets are re-validated
   under the new I/O shape.
 
+## Reverting the compact route catalog to a named object (2026-08-15)
+
+The compiled Worker catalog previously stored `routes_by_id` as a fixed-position array (one array
+per route, fields identified by index) and `model_routes_map` as arrays of integer indices into it,
+introduced before this session's measurement work to reduce Worker startup parse CPU. That
+justification does not survive this session's own findings:
+
+- **Startup parse was already ruled out as a hotspot.** The "Confirmed hotspots" section above
+  measured parsing the full compiled catalog at `0.127` ms, and explicitly warned against treating
+  `wrangler check startup` output as a scheduled-dispatch baseline. Measuring the two representations
+  directly, holding the field set constant, gives `0.038` ms (array) vs `0.060` ms (named object) per
+  parse -- a `0.021` ms difference, `0.2%` of the `~9` ms N=2 invocation budget, and this cost is paid
+  once per isolate at module-import time in any case, not once per dispatch.
+- **Bundle size is nowhere near its limit.** The Free-plan compressed script-size cap is `3` MB; the
+  catalog is `16`-`29` KB either way.
+- **The representation carried real, demonstrated risk.** `structured_output_schema_strip_keys` was
+  read by `upstreamRequestForRoute` but absent from the array's field list, so every configured route
+  dispatched an unstripped schema in production while a test using a hand-built full route object
+  still passed (Fixed, CHANGELOG 2026-08-15). `model_routes_map`'s integer indices carried a worse
+  latent risk that was never triggered: a route reordering at compile time would silently resolve
+  requests through the *wrong* route -- not a missing field, a misrouted request, with no error
+  signal. A named lookup can go missing; it cannot misresolve.
+
+Reverted: `routes_by_id` is a named object keyed by route ID, `model_routes_map` holds route-ID
+strings, and `routeFromCatalog` is a plain lookup plus the canonical-model-string injection it always
+needed to do (the catalog does not store a route's logical model on the route itself, since one route
+can serve more than one alias). This also fixed a real, previously-silent measurement bug of this
+project's own: `bench/cpu-profile.js`'s `seededBudget` iterated `Object.entries(DISPATCH_LIMITS
+.routes_by_id)`, which on the array-shaped catalog produced numeric-string keys ("0", "1", ...)
+instead of real route IDs, so the ledger entries it pre-seeded never matched what `ledgerEntry()`
+actually looked up during a benchmark run -- every dispatched route effectively benchmarked against
+a freshly-created ledger entry, not the populated one the benchmark's own header comment described.
+This did not affect any number that made it into this document: R2 operation counts are insensitive
+to whether a specific route's ledger sub-object pre-existed, and the JSON parse/stringify cost of the
+seeded blob (the dominant local self-time cost) is paid on the whole ~14-16 KB object regardless of
+whether individual entries are under the right keys. All production `cpuTime` measurements in this
+document come from `wrangler tail` against the real deployed Worker and are unaffected either way.
+
 ## Decision gates
 
 - Stop and ask for confirmation before changing rate-ledger semantics or record layout.
@@ -1176,3 +1214,13 @@ the existing retry path and is smaller than the ledger-counter reset any new-key
 regardless of this race. Dropped the mitigation; kept the new-key requirement, which is independently
 necessary on data-shape grounds (old ledger-only JSON has no `lease` field). Neither step is
 implemented in this PR.
+
+### Catalog-representation checkpoint
+
+Reverted the compact array-based route catalog to a named object, per review at the start of this
+session's investigation: the parse-time justification did not survive measurement (already ruled out
+as a hotspot earlier in this document), bundle size was never close to its limit, and the array
+encoding had already cost one real production bug plus a worse, untriggered latent one in
+`model_routes_map`'s integer route indices. Also fixed a previously-silent bug in this project's own
+`bench/cpu-profile.js` that the representation change incidentally surfaced. 84 JS tests, 3118 Python
+tests, `ruff check`/`ruff format --check` clean, compiled artifact regenerated and verified in sync.
