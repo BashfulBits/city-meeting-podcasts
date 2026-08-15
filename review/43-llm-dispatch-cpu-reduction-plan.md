@@ -846,42 +846,44 @@ without touching `routes`/`providers`.
   `acquireCoordinator`/`renewCoordinator`/`releaseCoordinator`; the single `leaseHandle` becomes
   the combined handle passed into every `dispatchBatch` call in the loop.
 
-#### The deploy-transition hazard (why this needs its own canary, and why a new key, not a rename)
+#### The deploy-transition window: a new key is required for shape reasons, not risk tolerance
 
 Cloudflare Workers deploys are not request-versioned: an in-flight invocation keeps running the
 code it started with, but the *next* cron trigger after a deploy always runs the new code. A
-long-context dispatch can hold the lease for up to `leaseDurationSeconds` (840s / 14 minutes). If a
-deploy happens while an old-code invocation is still mid-dispatch, holding `locks/cron.json`:
+long-context dispatch can hold the lease for up to `leaseDurationSeconds` (840s / 14 minutes), so
+old-code and new-code invocations can briefly overlap across a deploy.
 
-- **If the new code reuses one of the old keys** (e.g. writes the merged object at
-  `state/dispatch_budget.json`), the very next cron tick after deploy is running new code that
-  never learned the old code's in-progress state from `locks/cron.json`, and would try to interpret
-  the *old* ledger-only object as the new merged shape — misreading `version`/`lease` fields that
-  aren't there. This is worse than a race; it's a parse/shape error on every tick until the old
-  object is naturally overwritten.
-- **With a brand-new key** (`state/dispatch_coordinator.json`, empty until first written), the new
-  code never sees the old lease at all. The old invocation is still holding `locks/cron.json` and
-  believes it is the sole dispatcher; the new invocation acquires the *new* key's lease (which is
-  unheld, since nothing has ever written it) and also believes it is the sole dispatcher. **Two
-  invocations dispatch concurrently against two different rate ledgers that don't know about each
-  other** — durable rate limits are silently violated for the overlap window (up to 14 minutes,
-  bounded by the old lease's `leaseDurationSeconds`).
+**Reusing an existing key is ruled out on shape grounds alone, independent of any race.** If the
+new code wrote the merged object at `state/dispatch_budget.json`, the very first tick after deploy
+would read the *old* ledger-only JSON (no `lease`/`version` fields) as if it were the new merged
+shape — a parse/shape error, not a race. **The key must be new**
+(`state/dispatch_coordinator.json`) regardless of anything below.
 
-**Mitigation — bounded dual-check on acquire, dropped after one lease lifetime:** for a compat
-window, `acquireCoordinator`'s step 2 above also does a `head()` on the legacy `CRON_LOCK_KEY`
-(`locks/cron.json`); if that shows a live, unexpired lease, treat the tick as `lease_busy` even
-though the new coordinator object is free. This costs one extra `head()` per acquire attempt during
-the window (op counts above become +1 while the check is active), and is safe to remove once
-`leaseDurationSeconds + maxExecutionSeconds` (currently 840 + 820 = 1660s, round up to 30 minutes)
-has elapsed since deploy — after which no old-code invocation can possibly still be running. Remove
-the check in a small follow-up commit/config flag rather than leaving it permanently; it is pure
-overhead once the window has passed. This is the same "audit every writer, prove crash/timeout/
-retry behavior, keep the path feature-flagged for rollback" rigor Step 3 above was held to, applied
-to the new race this step introduces.
+**With a new key, old-code and new-code invocations run against two independent coordination
+objects for up to ~14 minutes** — each believing itself the sole dispatcher, each admitting requests
+against its own rate ledger without seeing the other's. Evaluated and accepted, not mitigated:
 
-`state/dispatch_budget.json` and `locks/cron.json` become dead keys after the transition window.
-Leave them in place (do not delete) — they cost nothing at rest and deleting the object a
-still-transitioning old invocation might reference is strictly worse than an unused key.
+- **No correctness or data-loss exposure.** The per-request claim and terminal write
+  (`loadReadyClaim`, the completion write) are CAS-protected on the request record's own ETag,
+  independent of the cron lease entirely. Two invocations racing on the *same* request still
+  resolve to exactly one winner. The lease's only job is rate-ledger admission accuracy, not
+  request-level correctness.
+- **No hard cost cap to violate.** `cost_used`/`cost_day_used` are ledger fields with no writer or
+  gate anywhere in the dispatch path today — a race cannot overspend a budget that isn't enforced.
+- **Self-heals through the existing retry path.** The worst case is admitting more requests than a
+  route's rpm/rpd should have allowed; the provider returns 429, and `retryableStatus`/`saveRetry`
+  already exist to absorb exactly that.
+- **Smaller than a risk this migration accepts unconditionally anyway.** Moving to a new
+  coordination key resets `requests_day`/`requests_minute` to zero regardless of any race — nothing
+  carries the old ledger's accumulated counts forward. That amnesia can persist up to a day, longer
+  and less bounded than the ~14-minute overlap window. If that reset is acceptable (it has to be;
+  no migration avoids it without copying ledger state across, which isn't worth doing for
+  short-lived counters), the narrower concurrent-dispatch case is a smaller version of the same
+  tolerance.
+
+No dual-check, no compat window, no removal step. `state/dispatch_budget.json` and
+`locks/cron.json` become dead keys the moment the new code deploys; leave them in place rather than
+deleting them (costs nothing at rest).
 
 #### Test requirements
 
@@ -894,10 +896,9 @@ still-transitioning old invocation might reference is strictly worse than an unu
 - Renewal mid-loop (multiple batches in one `runScheduled` call) preserves ledger state accumulated
   by the *first* batch's reservations when renewing before the *second* batch runs — this is the
   concrete case the handle-unification refactor above must get right.
-- The legacy-lease compat check: a live `locks/cron.json` blocks acquisition of the new coordinator
-  object even when the coordinator's own lease is free.
-- The compat check correctly does *not* block acquisition once the legacy lease's `expires_at` has
-  passed.
+- Two independent coordinator-object acquisitions (simulating the deploy-transition overlap) each
+  admit and dispatch without corrupting or duplicating either other's requests — assert exactly-once
+  completion per request ID, not lease exclusivity.
 - Existing 111-test suite continues to pass with the merged object substituted for both legacy keys
   in every fixture.
 
@@ -1161,12 +1162,17 @@ and the provider rejects the excess with a retryable 429.
 ### Step 1/2 implementation-detail checkpoint
 
 Added exact schemas, function-by-function changes, and required tests for both Step 1 (fold the
-lease into the ledger) and Step 2 (split the canonical record to B2). Found and specified a
-deploy-transition race a naive Step 1 implementation would introduce: a new key with no legacy-lease
-compat check lets an old-code invocation (still holding `locks/cron.json`, possible for up to 14
-minutes on a long-context dispatch) run concurrently with a new-code invocation that never learned
-about it, silently violating durable rate limits for the overlap window. Mitigation is a bounded
-dual-check on acquire, removed after one lease lifetime post-deploy. Also corrected the phasing
-table's "5 ops -> 3" figure: keeping the `head()`-based lease fast path (required to avoid a
-ledger-parse regression on idle ticks, which outnumber dispatching ticks) makes a dispatching tick 4
-ops, not 3; idle ticks improve from 4 to 2. Neither step is implemented in this PR.
+lease into the ledger) and Step 2 (split the canonical record to B2). Corrected the phasing table's
+"5 ops -> 3" figure: keeping the `head()`-based lease fast path (required to avoid a ledger-parse
+regression on idle ticks, which outnumber dispatching ticks) makes a dispatching tick 4 ops, not 3;
+idle ticks improve from 4 to 2.
+
+Initially specified a dual-check mitigation for the deploy-transition window (an old-code
+invocation, still holding `locks/cron.json` for up to 14 minutes on a long-context dispatch, running
+concurrently with a new-code invocation on the new key). Revisited on request: the per-request claim
+is CAS-protected on the record's own ETag independent of the lease, no hard cost cap exists to
+violate, and the worst case (over-admission against rpm/rpd, surfaced as 429s) self-heals through
+the existing retry path and is smaller than the ledger-counter reset any new-key migration accepts
+regardless of this race. Dropped the mitigation; kept the new-key requirement, which is independently
+necessary on data-shape grounds (old ledger-only JSON has no `lease` field). Neither step is
+implemented in this PR.
