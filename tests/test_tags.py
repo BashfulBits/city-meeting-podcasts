@@ -205,6 +205,7 @@ def test_prelabeler_excerpt_centers_tail_evidence():
     class Backend:
         def run_inference(self, job):
             captured["messages"] = job.inputs["messages"]
+            captured["recipe_hash"] = job.recipe_hash
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
@@ -246,9 +247,31 @@ def test_prelabeler_excerpt_centers_tail_evidence():
         ],
         recipe_hash="recipe",
         model="reviewer",
+        llm_schema_version="2",
     )
     assert not pending
     assert result["subject-1"]["prelabeler_decision"] == "likely_correct"
+    assert result["subject-1"]["prelabeler_llm_schema_version"] == "2"
+    current_recipe = captured["recipe_hash"]
+    assert current_recipe != "recipe"
+    llm_prelabel_candidates(
+        Backend(),
+        candidates=[candidate],
+        taxonomy=taxonomy,
+        chapters=[
+            {
+                "chapter_id": "ch-1",
+                "title": "Housing",
+                "agenda_text": "housing agenda",
+                "transcript_text": transcript,
+                "transcript_segments": [],
+            }
+        ],
+        recipe_hash="recipe",
+        model="reviewer",
+        llm_schema_version="1",
+    )
+    assert captured["recipe_hash"] != current_recipe
     payload = json.loads(captured["messages"][1]["content"])
     excerpt = payload["candidates"][0]["source_excerpt"]
     assert "target evidence" in excerpt
@@ -1177,6 +1200,7 @@ def test_episode_needs_tagging_evaluates_correctly():
             "candidate_state": "active",
             "prelabeler_model": "old-model",
             "prelabeler_prompt_version": "1",
+            "prelabeler_llm_schema_version": "1",
             "prelabeler_decision": "likely_correct",
         }
     ]
@@ -1189,6 +1213,26 @@ def test_episode_needs_tagging_evaluates_correctly():
             prelabeler_enabled=True,
             prelabeler_model="new-model",
             prelabeler_prompt_version="2",
+        )
+        is True
+    )
+    ep.llm_tag_candidates[0].update(
+        {
+            "prelabeler_model": "new-model",
+            "prelabeler_prompt_version": "2",
+            "prelabeler_llm_schema_version": "1",
+        }
+    )
+    assert (
+        episode_needs_tagging(
+            ep,
+            taxonomy,
+            llm_enabled=True,
+            llm_route="test:model",
+            prelabeler_enabled=True,
+            prelabeler_model="new-model",
+            prelabeler_prompt_version="2",
+            prelabeler_llm_schema_version="2",
         )
         is True
     )

@@ -919,6 +919,7 @@ class TagsStage:
             )
             prelabeler_model = str(prelabeler_config.get("model") or "")
             prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
+            prelabeler_llm_schema_version = str(prelabeler_config.get("llm_schema_version") or "1")
 
         for ep in _materialize_set(
             episodes,
@@ -956,6 +957,8 @@ class TagsStage:
                 and (
                     candidate.get("prelabeler_model") != prelabeler_model
                     or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
+                    or candidate.get("prelabeler_llm_schema_version")
+                    != prelabeler_llm_schema_version
                     or candidate.get("prelabeler_decision")
                     not in {
                         "likely_correct",
@@ -1225,6 +1228,7 @@ class TagsStage:
                     for field in (
                         "prelabeler_model",
                         "prelabeler_prompt_version",
+                        "prelabeler_llm_schema_version",
                         "prelabeler_decision",
                         "prelabeler_confidence",
                         "prelabeler_reason",
@@ -1448,6 +1452,8 @@ class TagsStage:
                     for candidate in projectable_candidates
                     if candidate.get("prelabeler_model") != prelabeler_model
                     or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
+                    or candidate.get("prelabeler_llm_schema_version")
+                    != prelabeler_llm_schema_version
                     or candidate.get("prelabeler_decision")
                     not in {
                         "likely_correct",
@@ -1465,6 +1471,7 @@ class TagsStage:
                                     "llm_recipe": llm_recipe,
                                     "model": prelabeler_model,
                                     "prompt_version": prelabeler_prompt_version,
+                                    "llm_schema_version": prelabeler_llm_schema_version,
                                     "candidates": sorted(
                                         str(item.get("candidate_id")) for item in pending_prelabels
                                     ),
@@ -1494,6 +1501,7 @@ class TagsStage:
                                     recipe_hash=prelabel_recipe,
                                     model=prelabeler_model,
                                     prompt_version=prelabeler_prompt_version,
+                                    llm_schema_version=prelabeler_llm_schema_version,
                                     call_metadata_out=prelabel_call_metadata,
                                 )
                             remember_call_attempt(

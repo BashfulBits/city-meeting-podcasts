@@ -1677,6 +1677,7 @@ def _run_enrich_global_queue(
             )
             prelabeler_model = str(prelabeler_config.get("model") or "")
             prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
+            prelabeler_llm_schema_version = str(prelabeler_config.get("llm_schema_version") or "1")
             for state in prepared.values():
                 state["candidate_episodes"] = [
                     ep
@@ -1691,6 +1692,7 @@ def _run_enrich_global_queue(
                         prelabeler_enabled=prelabeler_enabled and bool(prelabeler_model),
                         prelabeler_model=prelabeler_model,
                         prelabeler_prompt_version=prelabeler_prompt_version,
+                        prelabeler_llm_schema_version=prelabeler_llm_schema_version,
                     )
                 ]
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout

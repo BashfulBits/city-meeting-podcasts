@@ -384,6 +384,7 @@ def episode_needs_tagging(
     prelabeler_enabled: bool = False,
     prelabeler_model: str = "",
     prelabeler_prompt_version: str = "1",
+    prelabeler_llm_schema_version: str = "1",
 ) -> bool:
     """Return whether this episode requires rule-tag derivation, LLM suggestion dispatch,
     or chapter tagging.
@@ -415,6 +416,7 @@ def episode_needs_tagging(
         and (
             candidate.get("prelabeler_model") != prelabeler_model
             or candidate.get("prelabeler_prompt_version") != prelabeler_prompt_version
+            or candidate.get("prelabeler_llm_schema_version") != prelabeler_llm_schema_version
             or candidate.get("prelabeler_decision")
             not in {"likely_correct", "needs_human_review", "likely_incorrect"}
         )
@@ -1357,6 +1359,7 @@ def llm_prelabel_candidates(
     recipe_hash: str,
     model: str,
     prompt_version: str = PRELABELER_PROMPT_VERSION,
+    llm_schema_version: str = "1",
     allow_paid: bool = False,
     deadline_at: Any | None = None,
     call_metadata_out: dict[str, Any] | None = None,
@@ -1479,6 +1482,7 @@ def llm_prelabel_candidates(
         call_metadata = {
             "prelabeler_model": model,
             "prelabeler_prompt_version": prompt_version,
+            "prelabeler_llm_schema_version": llm_schema_version,
             "prelabeler_input_tokens_estimate": input_tokens_estimate,
             "prelabeler_output_token_budget": 1024,
             "prelabeler_route_input_context_limit": input_context_limit,
@@ -1512,6 +1516,7 @@ def llm_prelabel_candidates(
                 {
                     "recipe": recipe_hash,
                     "batch": batch_index,
+                    "llm_schema_version": llm_schema_version,
                     "ids": [c.get("candidate_id") for c, _ in batch],
                 },
                 sort_keys=True,
@@ -1553,6 +1558,7 @@ def llm_prelabel_candidates(
     metadata = {
         "prelabeler_model": model,
         "prelabeler_prompt_version": prompt_version,
+        "prelabeler_llm_schema_version": llm_schema_version,
         "prelabeler_input_tokens_estimate": total_estimate,
         "prelabeler_max_batch_input_tokens": max_estimate,
         "prelabeler_batches": batch_count,

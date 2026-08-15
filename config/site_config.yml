@@ -58,6 +58,9 @@ tagging:
     enabled: true
     model: "google/gemma-4-31b-it"
     prompt_version: "1"
+    # Version the serialized response contract independently of task instructions. Bumping this
+    # schedules fresh work for every active candidate whose stored assessment predates it.
+    llm_schema_version: "2"
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)

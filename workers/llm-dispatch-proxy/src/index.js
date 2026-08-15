@@ -106,6 +106,37 @@ function requiredString(value, name) {
   return result;
 }
 
+function stripSchemaKeys(value, keys) {
+  if (Array.isArray(value)) return value.map((item) => stripSchemaKeys(item, keys));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !keys.has(key))
+      .map(([key, item]) => [key, stripSchemaKeys(item, keys)]),
+  );
+}
+
+function upstreamRequestForRoute(record, route, upstreamModel) {
+  const payload = {
+    ...record.request,
+    model: upstreamModel,
+    stream: false,
+  };
+  const responseFormat = payload.response_format;
+  const stripKeys = new Set(route?.structured_output_schema_strip_keys || []);
+  const schema = responseFormat?.json_schema?.schema;
+  if (responseFormat?.type === "json_schema" && schema && stripKeys.size > 0) {
+    payload.response_format = {
+      ...responseFormat,
+      json_schema: {
+        ...responseFormat.json_schema,
+        schema: stripSchemaKeys(schema, stripKeys),
+      },
+    };
+  }
+  return payload;
+}
+
 function canonicalModelName(model, dispatchLimits = DISPATCH_LIMITS) {
   let current = model;
   const seen = new Set();
@@ -2023,11 +2054,11 @@ async function dispatchBatch(
     const settled = await Promise.allSettled(
       candidatesToDispatch.map(
         async ({ claimed, chosenRoute, creds, timeoutSeconds, profile, dispatchStartedAt }) => {
-        const upstreamPayload = {
-          ...claimed.record.request,
-          model: creds.upstreamModel,
-          stream: false,
-        };
+        const upstreamPayload = upstreamRequestForRoute(
+          claimed.record,
+          chosenRoute,
+          creds.upstreamModel,
+        );
 
         let response;
         const requestStartMs = Date.now();
@@ -2304,6 +2335,13 @@ function requestLocation(request, id) {
 function responseForRecord(request, record) {
   if (record.status === "completed") {
     return jsonResponse(record.response, 200, { "x-request-id": record.id });
+  }
+  if (record.status === "retired") {
+    return jsonResponse(
+      { error: { code: "retired", message: "request was retired by an operator" } },
+      410,
+      { "x-request-id": record.id },
+    );
   }
   if (record.status === "failed") {
     const errCode = record.error?.code || "dispatch_failed";
