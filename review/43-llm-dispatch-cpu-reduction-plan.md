@@ -614,6 +614,113 @@ the reason for the Durable Object in one step -- leaving B2 as the only item sti
 its own merits. If the throughput target is steady-state rather than a backlog burn-down, price that
 against the engineering before starting.
 
+## Phasing: R2 quota relief and the path to higher throughput (2026-08-14)
+
+### Remaining low-hanging fruit: fold the cron lease into the ledger
+
+One clear win is left in the current architecture. `locks/cron.json` and
+`state/dispatch_budget.json` are both small CAS objects written by the same single writer, in the
+same sequence, every invocation. Merging the lease *into* the ledger object collapses five
+operations into three:
+
+| | today | merged |
+| --- | --- | --- |
+| acquire | `head` lock + `put` lock | (part of the ledger read) |
+| read ledger | `get` budget | `get` budget+lease |
+| reserve | `put` budget | `put` budget + lease acquired |
+| release | `put` lock | `put` lease released |
+| **total** | **5** | **3** |
+
+A held lease is then detectable from the same read that loads the ledger, so a `lease_busy` tick
+costs **one** operation instead of three. The acquire CAS becomes a single conditional write that
+both takes the lease and commits reservations, which is *stronger* than today's acquire-then-work
+window.
+
+Effect: `N=2` drops 12 -> 10 R2 operations, roughly `9.9` -> `8.2` ms — real headroom at a
+configuration currently sitting on the limit — and R2 Class A per invocation falls from 3 to 1.
+
+It does **not** unlock `N=3`: that ceiling is the superlinear live-set cost of three resident
+canonical records, not operation count.
+
+**Not done in this PR deliberately.** It changes the lease/ledger coordination contract, which is
+the system's single-runner guarantee, and would invalidate the production `cpuTime` measurements
+recorded above. It wants its own change and its own canary.
+
+### R2 Class A pressure is the near-term driver, not CPU
+
+R2 Class A operations bill **per account**, not per bucket, so the dispatch Worker's
+`citypods-llm-dispatch` bucket competes with the H17 coordination plane (compute budget, work-lease
+ledger, provider slots, catalog manifest) for one 1M/month free tier.
+
+| Dispatch throughput | Class A/month | Share of the account free tier |
+| --- | --- | --- |
+| 2,880/day (today, `N=2`) | 0.43M | **43%** |
+| 17,280/day | 2.59M | 259% |
+| 50,000/day | 7.50M | 750% |
+
+**LLM dispatch alone consumes ~43% of the shared allowance at today's throughput.** That is the
+reason to act, and it is independent of any throughput increase.
+
+### The Worker is the one component not following the project's own storage policy
+
+`citypods/storage/routing.py` states the rule already: state that genuinely needs compare-and-swap
+routes to R2; everything else routes to B2. H17 PR6 applied it to the provider lease pool
+specifically because a per-poll `list` was a Class A operation. The dispatch Worker puts *all* of
+its state on R2, including multi-megabyte prompts that never need CAS.
+
+Auditing every conditional write in `workers/llm-dispatch-proxy/src/index.js`:
+
+| Object | Conditional write? | Purpose | Destination |
+| --- | --- | --- | --- |
+| `state/dispatch_budget.json` | yes (`etagMatches`) | multi-writer rate ledger | **stays on R2** |
+| `locks/cron.json` | yes (`etagMatches`, `etagDoesNotMatch`) | single-runner lease | **fold into the ledger** |
+| `requests/<id>.json` | **mixed** | see split below | **split** |
+| `ready/<key>.json` | **no** — plain put, list, delete | queue index | **B2** |
+
+The canonical record conflates two different kinds of state, which is why it must be *split* rather
+than simply moved:
+
+| Part | Conditional write? | Size | Destination |
+| --- | --- | --- | --- |
+| control (`id`, `status`, `model`, `attempts`, `available_at`, `policy`, `error`) | **yes** — `etagDoesNotMatch: "*"` on enqueue is the idempotency guard across concurrent Actions runners, which hold no lease | ~1 KB | **R2** |
+| `request.messages` (the prompt) | no — immutable after enqueue | 13-63 KB | **B2** |
+| `response` | no — written once | 5-20 KB | **B2** |
+
+The `etagMatches` on the *terminal* write is belt-and-braces: the cron lease already guarantees a
+single finalizer. The load-bearing conditional write is the enqueue create.
+
+Note this reverses the earlier recommendation to close Step 4. That recommendation was correct on
+its own terms — a control/payload split buys no CPU and unlocks no concurrency — but it was
+answering the wrong question. The justification here is **R2 Class A quota shared with the
+coordination plane**, not CPU.
+
+B2 charges nothing for Class A/B/C transactions, and requests need SigV4 rather than a binding
+(measured `0.033` ms with a cached signing key). B2 has no conditional-write support, which is
+precisely why only the non-CAS objects move.
+
+### Recommended phasing
+
+| Phase | Change | Trigger | Effect |
+| --- | --- | --- | --- |
+| **0** | Merge this branch (`N=2`, blocked-head fix) | done | P50 `11` -> `8` ms, 2x throughput |
+| **1** | Fold the cron lease into the ledger | next | `N=2` `9.9` -> `8.2` ms; R2 Class A 3 -> 1 per invocation |
+| **2** | Split the canonical record; prompts, results and markers to B2 | **R2 quota — act on this now** | dispatch falls from **43% -> ~4%** of the shared free tier |
+| **3** | Batch enqueue + batch poll endpoints | throughput above ~15,000 jobs/day | addresses the *Workers request* cap (100k/day), a different quota |
+| **4** | Workers Paid (`$5`) **or** Durable Object coordination | when Phase 3 is no longer enough | see the backend evaluation above |
+
+After Phases 1 and 2, dispatch uses ~0.04M Class A/month at today's throughput and **0.75M at
+50,000 jobs/day** — inside the free tier, with room left for the coordination plane.
+
+### On Phase 3, since its purpose is easy to mistake
+
+Batch enqueue and batch poll have nothing to do with R2 or storage. They address the **Workers
+request cap of 100,000/day**, which counts every HTTP call to the Worker: one enqueue, roughly half
+a dispatch invocation (at `N=2`), and — dominantly — every poll.
+
+At today's 2,880 jobs/day that is ~10,000 Worker requests/day, 10% of the cap: **not a concern, and
+not worth building yet.** It becomes binding around 20,000 jobs/day, at which point polling alone is
+~60% of the budget. Build it when throughput approaches that, not before.
+
 ## Decision gates
 
 - Stop and ask for confirmation before changing rate-ledger semantics or record layout.

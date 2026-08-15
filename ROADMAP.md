@@ -65,6 +65,19 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > scaling work: ship it now, then continue with Modal and Beam workers that explicitly support audio
 > longer than the local ceiling.
 >
+> **LLM dispatch Worker — R2 quota, not CPU, is the live constraint (2026-08-14).** PR #1219 measured
+> production `cpuTime` by deployed version and cut it from P50 `11` to `8` ms, raising
+> `BATCH_CONCURRENCY` to 2 for double throughput (N=3 measured worse *per request* than N=2, so 2 is
+> the optimum). The open item is quota, not speed: R2 Class A operations bill **per account**, so the
+> dispatch Worker competes with the H17 coordination plane for one 1M/month free tier and already
+> consumes **~43% of it** at current throughput. The Worker is the one component not following the
+> `COORDINATION_PREFIXES` rule (CAS state on R2, everything else on B2) — it keeps multi-megabyte
+> prompts on R2. **Next: fold `locks/cron.json` into the rate ledger, then split the canonical record
+> so prompts, results and ready markers move to B2** (control state stays on R2 for the enqueue
+> idempotency CAS), taking dispatch to ~4% of the tier. Batch enqueue/poll endpoints and the
+> Workers-Paid-versus-Durable-Object decision are both deferred until throughput actually demands them.
+> Phasing and measurements: [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md).
+>
 > **Granicus media reliability follow-up (2026-06-16).** Endpoint issue #300 still reproduces when
 > `contracts.yml` overlaps active `audio.yml`: Arlington's Granicus RSS/media/chapter checks pass, but
 > ffmpeg receives HTTP 403 from `archive-video.granicus.com` on the GitHub-hosted runner. A local serial
