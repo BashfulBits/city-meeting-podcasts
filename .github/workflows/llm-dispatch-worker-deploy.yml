@@ -61,7 +61,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/llm-dispatch-proxy
           wranglerVersion: "4"
-          vars: |
+          secrets: |
             CLOUDFLARE_ACCOUNT_ID
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
