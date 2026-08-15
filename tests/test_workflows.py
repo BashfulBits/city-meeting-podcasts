@@ -728,7 +728,12 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     assert set(_on(wf)) == {"workflow_dispatch"}
     inputs = _on(wf)["workflow_dispatch"]["inputs"]
     assert inputs["probe_kind"]["default"] == "transport"
-    assert inputs["probe_kind"]["options"] == ["transport", "worker", "sustained"]
+    assert inputs["probe_kind"]["options"] == [
+        "transport",
+        "worker",
+        "chunked-canary",
+        "sustained",
+    ]
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
     assert wf["concurrency"]["group"] == "audio"
     assert wf["concurrency"]["cancel-in-progress"] is False
@@ -737,6 +742,7 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     assert "probe_granicus_sustained.py" in runs
     assert "probe_granicus_transport.py" in runs
     assert "probe_granicus_worker.py" in runs
+    assert "probe_granicus_chunked.py" in runs
     assert "--range-mib" in runs
     assert "--full-download-max-mib" in runs
     assert "--full-download-count" in runs
@@ -754,6 +760,14 @@ def test_granicus_sustained_probe_is_manual_isolated_and_archived():
     )
     assert sustained_step["env"]["DURATIONS"] == "${{ inputs.durations }}"
     assert '--durations "$DURATIONS"' in sustained_step["run"]
+
+    chunked_step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Run chunked Worker byte-accuracy canary"
+    )
+    assert chunked_step["env"]["CANARY_URL"] == "${{ inputs.canary_url }}"
+    assert '--url "$CANARY_URL"' in chunked_step["run"]
 
     upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
     assert upload["if"] == "always()"

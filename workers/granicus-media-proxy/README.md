@@ -15,10 +15,14 @@ It is **not** a general URL proxy:
 - only selected range/cache validators are forwarded;
 - responses stream without buffering and use `Cache-Control: no-store`.
 
-Production Audio always tries the canonical Granicus archive object directly first. Only an
-immediate HTTP 403 can trigger one Worker attempt, under the same Granicus local limiter,
-distributed lease, and circuit admission. Before activating a changed fallback, run the isolated
-GitHub-hosted `worker` probe and its optional full production-recipe encode.
+Production Audio always tries the canonical Granicus archive object directly first. A failed or
+locally short source-cache audio fetch then uses the authenticated Worker as a client-side,
+sequential range download; each range and the assembled byte count are verified before local audio
+extraction. Origins that ignore `Range` use one verified full response. This chunked behavior is
+limited to failed audio source-cache downloads to control Worker request volume. Pages, metadata,
+documents, and other allow-listed media continue to use the Worker as the general streaming
+fallback. Before activating a changed fallback, run the isolated GitHub-hosted `worker` probe and
+the `chunked-canary` probe.
 
 ## 1. Prerequisites
 
@@ -123,8 +127,24 @@ gh workflow run granicus-probe.yml \
   -f full_download_count=1
 ```
 
+For the byte-accuracy canary, choose `chunked-canary` in the same workflow (the default clip is a
+Fort Worth archive object):
+
+```bash
+gh workflow run granicus-probe.yml \
+  -f probe_kind=chunked-canary \
+  -f range_mib=16 \
+  -f full_download_max_mib=512
+```
+
+The canary compares the range-assembled Worker bytes with a normal direct download when the
+runner receives HTTP 200. When GitHub receives the known direct HTTP 403, it compares the chunked
+Worker bytes with a non-ranged Worker full download instead, still proving the assembler and proxy
+preserve the object exactly.
+
 The workflow shares Audio's concurrency group and verifies no Audio run is active or queued. Download
-the `granicus-probe-results` artifact and inspect `granicus-worker-results.json`.
+the `granicus-probe-results` artifact and inspect `granicus-worker-results.json` for the general
+Worker probe or `granicus-chunked-results.json` for the byte-accuracy canary.
 
 The result is sufficient to **retain** an already-active production fallback only when:
 

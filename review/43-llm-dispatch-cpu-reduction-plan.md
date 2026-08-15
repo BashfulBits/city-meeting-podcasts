@@ -221,6 +221,94 @@ If higher throughput is still needed after CPU optimization, evaluate:
 Each option needs a throughput, cost, failure-recovery, and provider-rate-limit review. None
 increases the Free Worker invocation CPU limit by itself.
 
+## Operation-shape analysis (2026-08-14)
+
+This section revises the framing in **Current findings** above. That framing is half right: R2 *wait*
+is not charged as Worker CPU, but the per-call plumbing and the byte copying on each R2 operation
+are. The conclusion drawn from it -- that parallelizing R2 "should not be treated as the primary CPU
+optimization" -- pointed the work at JSON micro-optimization and a record-layout migration, and away
+from the cheapest available reduction: **the number of R2 operations an invocation performs**.
+
+### The measurement that reframes it
+
+`bench/cpu-profile.js` runs the real scheduled handler against a ledger seeded with every configured
+route and a 16-marker ready backlog, and reports V8 self-time per function alongside every R2
+operation and byte crossing the binding.
+
+The Worker's own JavaScript costs **~0.4 ms** per dispatch. Production reports **9-13 ms**. Roughly
+**95% of production CPU is therefore not the dispatch logic** -- it is work at the runtime boundary,
+which scales with operations and bytes rather than with algorithmic cost. This is the single most
+important number for prioritizing the remaining steps, and it argues against Step 4 being the next
+move.
+
+Baseline operation shape on `main`, per invocation:
+
+| Invocation | R2 operations | Bytes moved | `JSON.parse` |
+| --- | --- | --- | --- |
+| Idle tick (no ready work) | 7 | 0.8 KB | -- |
+| Dispatching one 59 KB request | 14 | 181 KB | 22 calls / 92 KB |
+
+Six of the fourteen were the cron lease alone, including a renewal issued microseconds after
+acquiring an 840-second lease and a release that re-read a lock this invocation had just written.
+
+### Confirmed hotspots
+
+1. **Operation count and byte volume (dominant).** As above.
+2. **`Intl.DateTimeFormat` construction (secondary, and the likely source of the CPU outliers).**
+   `zonedDateKey` was the largest self-time function in the scheduled path at ~25%. Construction
+   measures **43 us** against **2 us** to reuse a cached instance. It is called per rate-limited
+   route during selection, and `nextLocalMidnightUTC` runs a 17-iteration binary search that
+   constructs one per iteration -- a latent ~0.7 ms spike whenever a free route's RPD is exhausted.
+3. **Module startup: ruled out.** Parsing the 77 KB `dispatch_limits.json` measures 0.127 ms.
+
+### Changes made
+
+Applied on top of this branch's existing work, which they compose with rather than replace:
+
+- **ETag-carrying cron lease.** `acquireCronLease` hands back the ETag it wrote; renew and release
+  CAS onto it instead of re-reading the lock. The CAS is unchanged, so a lease taken over by another
+  invocation still fails the write rather than being overwritten.
+- **No first-pass renewal.** The lease is held for 840 s against an 820 s run deadline, so it cannot
+  be taken over before the run ends. Renewal now fires only once a run passes half the lease.
+- **ETag-carrying batch reservation release.** This branch's batched release keeps its single CAS
+  for the whole batch and now skips the read that preceded it.
+- **Cached `Intl.DateTimeFormat`,** including negative results, bounded by a cache cap.
+- **Lazy ready-marker `policy` parsing.** The lookahead still lists 16 markers so a throttled route
+  cannot stall the queue head, but a run that dispatches the first marker no longer parses the other
+  fifteen. Repair of an unreadable policy moves to the point of use.
+- **Shared `TextDecoder`** and no buffer copy for single-chunk bodies.
+
+### Defect found while measuring
+
+The no-candidate ledger write compared `JSON.stringify(budget)` against a second stringify of **the
+same object** -- `budget` *is* `budgetLoaded.value`, so the two strings always matched. The branch
+could never fire, while still paying for two whole-ledger serializations on every no-capacity
+invocation. It now writes when an abandoned reservation was actually reaped; minute/day window
+rollover is recomputed from `now` on every load and never needed persisting.
+
+### Result
+
+| Invocation | Before | After |
+| --- | --- | --- |
+| Idle tick | 7 ops / 0.8 KB | **4 ops / 0.3 KB** |
+| Dispatching one 59 KB request | 14 ops / 181 KB | **10 ops / 147 KB** (9 in steady state) |
+| `JSON.parse` per dispatch | 22 calls / 92 KB | **4 calls / 74 KB** |
+
+Local V8 CPU per dispatch: P50 `0.395` -> `0.229` ms, P90 `0.722` -> `0.435` ms. These are Node
+measurements and remain comparative only.
+
+`test/index.test.js` pins the operation counts, so a change that reintroduces a round trip fails
+there rather than in production.
+
+### Revised recommendation for Step 4
+
+Step 4 remains unapproved, and this analysis lowers rather than raises its priority. The completed
+canonical write is 60 KB of the remaining 147 KB, but the request must still be *read* in full to
+build the upstream payload, so a control/result split saves the write and not the read. Since the
+gap between measured JavaScript cost and reported production CPU points at operation count rather
+than payload size, exhaust operation reduction and gather a route-balanced production sample before
+committing to a record-layout migration.
+
 ## Decision gates
 
 - Stop and ask for confirmation before changing rate-ledger semantics or record layout.
@@ -303,3 +391,11 @@ the Gemma-only means are nearly identical and the route mix is small. The eviden
 support calling the candidate a CPU regression or declaring either version safe for restored
 concurrency. The next useful action is a larger route-balanced observation window, not a
 canonical record-layout migration based on these samples alone.
+
+### Operation-shape checkpoint
+
+Added `bench/cpu-profile.js` (V8 self-time per function against a seeded ledger and marker backlog)
+and R2 operation-count regression tests. Reduced the scheduled invocation from 14 to 10 R2
+operations when dispatching and from 7 to 4 when idle, cached ICU formatters, and fixed the
+no-candidate ledger write that could never fire. Deployed for production `cpuTime` measurement; see
+the section above for the reframing of **Current findings**.

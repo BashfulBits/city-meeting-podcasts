@@ -277,7 +277,8 @@ def test_source_cache_fetch_happens_before_native_cpu_admission(tmp_path):
     cached.write_bytes(b"source")
 
     class _Cache:
-        def get_or_fetch(self, uid, url):
+        def get_or_fetch(self, uid, url, *, expected_duration=None):
+            del expected_duration
             events.append("fetch")
             return cached
 
@@ -311,7 +312,8 @@ def test_audio_encode_defers_without_backoff_when_source_cache_raises_stop_reque
     failure: defer without recording it as an error/backoff (#120-style false penalty)."""
 
     class _StoppingCache:
-        def get_or_fetch(self, uid, url):
+        def get_or_fetch(self, uid, url, *, expected_duration=None):
+            del expected_duration
             raise StopRequested(f"source cache wait for uid={uid!r} stopped")
 
     ep = _ep("g1")
@@ -2907,6 +2909,129 @@ def test_download_audio_removes_partial_destination_on_failure(monkeypatch, tmp_
     assert not dest.exists()
 
 
+def test_granicus_403_uses_chunked_worker_audio_fallback(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "https://worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda *_a, **_k: None)
+    calls: list[list[str]] = []
+
+    def _run(cmd, **_kwargs):
+        calls.append(cmd)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(
+                1, cmd, stderr=b"https protocol error: 403 Forbidden"
+            )
+        Path(cmd[-1]).write_bytes(b"complete-audio")
+
+    downloaded: list[str] = []
+
+    def _download(proxy_url, token, raw_dest, **_kwargs):
+        downloaded.append(f"{proxy_url}|{token}")
+        raw_dest.write_bytes(b"complete-video")
+        return len(b"complete-video")
+
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", _run)
+    monkeypatch.setattr(media, "download_verified", _download)
+    dest = tmp_path / "source.mka"
+    source = "https://archive-video.granicus.com/fortworthgov/fortworthgov_test.mp4"
+
+    assert media._download_audio(source, dest) is True
+    assert downloaded == [
+        "https://worker.example/v1/archive/fortworthgov/fortworthgov_test.mp4|secret"
+    ]
+    assert len(calls) == 2
+
+
+def test_granicus_chunked_fallback_stop_does_not_record_worker_failure(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "https://worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        media,
+        "download_verified",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(StopRequested("budget exhausted")),
+    )
+    recorded: list[str] = []
+    monkeypatch.setattr(
+        media,
+        "_record_worker_fallback_outcome",
+        lambda *_args, outcome, **_kwargs: recorded.append(outcome),
+    )
+
+    with pytest.raises(StopRequested, match="budget exhausted"):
+        media._download_granicus_audio_fallback(
+            "https://archive-video.granicus.com/fortworthgov/fortworthgov_test.mp4",
+            tmp_path / "source.mka",
+            ffmpeg_binary="ffmpeg",
+            timeout=None,
+            memory_floor_bytes=None,
+            max_media_bytes=None,
+            expected_duration=None,
+            transport_telemetry=None,
+            rate_limit_urls=("https://archive-video.granicus.com/fortworthgov/test.mp4",),
+            stop=None,
+            log=None,
+        )
+    assert recorded == []
+
+
+def test_granicus_short_zero_exit_is_retried_through_chunked_worker(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "https://worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda *_a, **_k: None)
+    calls: list[list[str]] = []
+
+    def _run(cmd, **_kwargs):
+        calls.append(cmd)
+        Path(cmd[-1]).write_bytes(b"short" if len(calls) == 1 else b"complete")
+
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", _run)
+    expected = 100.0
+    durations = iter(
+        (
+            expected * media._TRUNCATION_MIN_RATIO - 1,
+            expected * media._TRUNCATION_MIN_RATIO + 1,
+        )
+    )
+    monkeypatch.setattr(media, "_probe_duration_secs", lambda *_args: next(durations))
+    monkeypatch.setattr(
+        media,
+        "download_verified",
+        lambda _url, _token, raw_dest, **_kwargs: raw_dest.write_bytes(b"video") or 5,
+    )
+    source = "https://archive-video.granicus.com/fortworthgov/fortworthgov_test.mp4"
+    dest = tmp_path / "source.mka"
+
+    assert media._download_audio(source, dest, expected_duration=expected) is True
+    assert len(calls) == 2
+    assert dest.read_bytes() == b"complete"
+
+
+def test_granicus_direct_rate_limit_is_preserved_without_worker_fallback(monkeypatch, tmp_path):
+    import citypods.media as media
+
+    monkeypatch.setattr(
+        media,
+        "_run_ffmpeg_guarded",
+        lambda cmd, **_kwargs: (_ for _ in ()).throw(
+            subprocess.CalledProcessError(1, cmd, stderr=b"https protocol error: 429 Too Many")
+        ),
+    )
+    monkeypatch.setattr(media, "_download_granicus_audio_fallback", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(media.RateLimitedMediaFetchError, match="HTTP 429"):
+        media._download_audio(
+            "https://archive-video.granicus.com/fortworthgov/fortworthgov_test.mp4",
+            tmp_path / "source.mka",
+        )
+
+
 def test_concat_local_sources_removes_partial_destination_on_failure(monkeypatch, tmp_path):
     import citypods.media as media
 
@@ -2987,7 +3112,8 @@ def test_source_cache_rate_limit_does_not_immediately_retry_direct_render(tmp_pa
     import citypods.media as media
 
     class _RateLimitedCache:
-        def get_or_fetch(self, uid, url):
+        def get_or_fetch(self, uid, url, *, expected_duration=None):
+            del expected_duration
             raise media.RateLimitedMediaFetchError("ffmpeg source-cache hit provider throttle")
 
     ep = _ep("g1", kind="direct", url="https://archive-video.granicus.com/x.mp4")
@@ -3078,7 +3204,8 @@ def test_source_cache_media_too_large_does_not_fall_back_to_direct_render(tmp_pa
     from citypods.security import MediaSourceTooLargeError
 
     class _TooLargeCache:
-        def get_or_fetch(self, uid, url):
+        def get_or_fetch(self, uid, url, *, expected_duration=None):
+            del expected_duration
             raise MediaSourceTooLargeError(f"source {url} advertises 999 bytes, exceeds cap 100")
 
     ep = _ep("g1", kind="direct", url="https://archive-video.granicus.com/x.mp4")

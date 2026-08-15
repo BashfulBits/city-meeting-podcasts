@@ -2067,6 +2067,19 @@ The production design is direct-first and single-attempt:
 This changes fetch transport only. It does not alter official metadata, the audio recipe, pipeline
 versions, content-addressed keys, or existing artifacts, and therefore triggers no catalog backfill.
 
+**Truncation follow-up (implemented 2026-08-14).** Audio source-cache fetches no longer use the
+ordinary one-shot Worker ffmpeg rewrite: direct ffmpeg remains first, but a non-empty/zero-exit
+result is checked against the source-declared duration. A failed or short canonical archive object
+is then downloaded through the same authenticated Worker as exact sequential ranges, assembled on
+the runner, and checked against `Content-Range`/body lengths before local audio extraction. Origins
+that ignore `Range` use one full Worker response with `Content-Length` validation, followed by the
+same local duration check. This fallback is intentionally limited to audio source-cache failures;
+the Worker remains general-purpose for allow-listed Granicus media, pages, metadata, and document
+downloads. It changes no audio/spec pipeline version, invalidates no stored artifacts, and requires
+no backfill. The isolated `granicus-probe.yml` `chunked-canary` compares the range-assembled bytes
+with a direct standard download when available, or with a non-ranged Worker download after the
+GitHub runner's expected 403.
+
 **Post-activation evaluation (H16 / GH#353 acceptance).** Once the secrets are set and the fallback is live,
 judge it over the next three scheduled `audio.yml` runs using the per-tenant Worker-fallback counters
 — visible in each run's build log (`provider granicus.com granicus worker fallback: N attempts, …`)

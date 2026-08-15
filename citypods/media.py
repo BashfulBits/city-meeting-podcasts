@@ -41,6 +41,7 @@ from typing import Protocol
 
 from citypods.chapters import episode_served_chapters
 from citypods.durations import episode_source_duration_seconds, set_served_duration_seconds
+from citypods.granicus_chunked import ChunkedDownloadError, download_verified
 from citypods.granicus_proxy import redact_worker_endpoint, worker_fallback_command
 from citypods.http import (
     HOST_LIMITER,
@@ -434,6 +435,8 @@ def _run_ffmpeg_guarded(
     log: Callable[[str], None] | None = print,
     popen: Callable[..., subprocess.Popen] = subprocess.Popen,
     child_rss: Callable[[int], int | None] = _process_rss_bytes,
+    allow_worker_fallback: bool = True,
+    raise_rate_limited: bool = True,
 ) -> tuple[bytes, bytes]:
     """Run ffmpeg with wall-clock and available-memory guardrails.
 
@@ -474,11 +477,15 @@ def _run_ffmpeg_guarded(
                     log,
                     f"[enrich] ffmpeg {phase} error returncode={exc.returncode}{detail}",
                 )
-                fallback_cmd = _worker_fallback_for_403(
-                    command=cmd,
-                    stderr=exc.stderr,
-                    rate_limit_urls=rate_limit_urls,
-                    log=log,
+                fallback_cmd = (
+                    _worker_fallback_for_403(
+                        command=cmd,
+                        stderr=exc.stderr,
+                        rate_limit_urls=rate_limit_urls,
+                        log=log,
+                    )
+                    if allow_worker_fallback
+                    else None
                 )
                 if fallback_cmd is not None:
                     _log_ffmpeg_event(
@@ -526,7 +533,8 @@ def _run_ffmpeg_guarded(
                         getattr(result, "stdout", b"") or b"",
                         getattr(result, "stderr", b"") or b"",
                     )
-                _raise_if_rate_limited(phase=phase, stderr=exc.stderr)
+                if raise_rate_limited:
+                    _raise_if_rate_limited(phase=phase, stderr=exc.stderr)
                 raise _redacted_process_error(exc, cmd) from exc
             except subprocess.TimeoutExpired as exc:
                 stderr = _stderr_tail(exc.stderr)
@@ -566,14 +574,19 @@ def _run_ffmpeg_guarded(
         except subprocess.CalledProcessError as exc:
             if _rate_limited_status(exc.stderr) == "HTTP 403":
                 _record_direct_fetch_outcome(transport_telemetry, rate_limit_urls, outcome="403")
-            fallback_cmd = _worker_fallback_for_403(
-                command=cmd,
-                stderr=exc.stderr,
-                rate_limit_urls=rate_limit_urls,
-                log=log,
+            fallback_cmd = (
+                _worker_fallback_for_403(
+                    command=cmd,
+                    stderr=exc.stderr,
+                    rate_limit_urls=rate_limit_urls,
+                    log=log,
+                )
+                if allow_worker_fallback
+                else None
             )
             if fallback_cmd is None:
-                _raise_if_rate_limited(phase=phase, stderr=exc.stderr)
+                if raise_rate_limited:
+                    _raise_if_rate_limited(phase=phase, stderr=exc.stderr)
                 raise _redacted_process_error(exc, cmd) from exc
             _log_ffmpeg_event(
                 log,
@@ -787,6 +800,7 @@ def _download_audio(
     transport_telemetry: ProviderTransportTelemetry | None = None,
     stop: Callable[[], bool] | None = None,
     max_media_bytes: int | None = None,
+    expected_duration: float | None = None,
 ) -> bool:
     """Copy the source audio stream from *url* to *dest* without re-encoding.
 
@@ -840,6 +854,7 @@ def _download_audio(
         str(dest),
     ]
     succeeded = False
+    direct_rate_limit_status: str | None = None
     try:
         _run_ffmpeg_guarded(
             cmd,
@@ -850,18 +865,188 @@ def _download_audio(
             transport_telemetry=transport_telemetry,
             stop=stop,
             log=log,
+            # Source-cache audio has its own verified Worker fallback below. Keeping the normal
+            # ffmpeg fallback disabled here avoids paying for a streamed Worker attempt before
+            # the range-verified path gets a chance to detect short-but-zero-exit responses.
+            allow_worker_fallback=False,
+            raise_rate_limited=False,
         )
         succeeded = dest.exists() and dest.stat().st_size > 0
+        if succeeded and expected_duration and not max_seconds:
+            actual_duration = _probe_duration_secs(dest, ffmpeg_binary)
+            if (
+                actual_duration is None
+                or actual_duration < _TRUNCATION_MIN_RATIO * expected_duration
+            ):
+                _log_ffmpeg_event(
+                    log,
+                    f"[enrich] source-cache direct audio incomplete actual_seconds="
+                    f"{actual_duration} expected_seconds={expected_duration:.0f} "
+                    "strategy=cloudflare-worker-chunked",
+                )
+                succeeded = False
+    except subprocess.CalledProcessError as exc:
+        direct_rate_limit_status = _rate_limited_status(exc.stderr)
+        succeeded = False
+    except (subprocess.TimeoutExpired, OSError):
+        succeeded = False
+
+    try:
+        if not succeeded and not max_seconds:
+            worker_result = _download_granicus_audio_fallback(
+                url,
+                dest,
+                ffmpeg_binary=ffmpeg_binary,
+                timeout=timeout,
+                memory_floor_bytes=memory_floor_bytes,
+                max_media_bytes=max_media_bytes,
+                expected_duration=expected_duration,
+                transport_telemetry=transport_telemetry,
+                rate_limit_urls=(url,),
+                stop=stop,
+                log=log,
+            )
+            if worker_result is not None:
+                succeeded = worker_result
+            elif direct_rate_limit_status is not None:
+                raise RateLimitedMediaFetchError(
+                    f"ffmpeg source-cache hit provider throttle ({direct_rate_limit_status})"
+                )
         return succeeded
-    except RateLimitedMediaFetchError:
-        raise
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
-        return False
     finally:
         # A failed ffmpeg write leaves a partial destination behind. It is not added to
         # SourceCache._paths, so the episode-level release cannot find it later. Remove it at
         # the failure boundary before the caller falls back to a remote render.
         if not succeeded:
+            try:
+                dest.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def _download_granicus_audio_fallback(
+    url: str,
+    dest: Path,
+    *,
+    ffmpeg_binary: str,
+    timeout: float | None,
+    memory_floor_bytes: int | None,
+    max_media_bytes: int | None,
+    expected_duration: float | None,
+    transport_telemetry: ProviderTransportTelemetry | None,
+    rate_limit_urls: Sequence[str],
+    stop: Callable[[], bool] | None,
+    log: Callable[[str], None] | None,
+) -> bool | None:
+    """Fetch only failed Granicus archive audio through the Worker, with exact byte checks.
+
+    ``None`` means this URL is not a canonical archive object or the Worker is not configured;
+    ``False`` means an eligible Worker attempt failed. Provider pages and document URLs never
+    enter this function, so their existing general-purpose Worker behavior remains unchanged.
+    """
+    try:
+        from citypods.granicus_proxy import GranicusWorkerFallback
+
+        fallback = GranicusWorkerFallback.from_env()
+    except ValueError:
+        return None
+    if fallback is None:
+        return None
+    proxy_url = fallback.proxy_url(url)
+    if proxy_url is None or not proxy_url.startswith(f"{fallback.base_url}/v1/archive/"):
+        return None
+
+    _log_ffmpeg_event(
+        log,
+        "[enrich] granicus transport fallback phase=source-cache direct=failed "
+        "strategy=cloudflare-worker-chunked",
+    )
+    worker_ok = False
+    resolved = False
+    raw_dest = dest.with_name(f"{dest.stem}.worker.mp4")
+    try:
+        # Re-acquire the same provider controls that guarded the failed direct attempt. The
+        # Worker host itself is not the provider's CDN, so only the original URL is used for the
+        # local/distributed lease; download_verified separately limits Worker-host concurrency.
+        with (
+            HOST_LIMITER.slots(rate_limit_urls, stop=stop),
+            DISTRIBUTED_PROVIDER_LEASES.slots(rate_limit_urls, stop=stop),
+        ):
+            raw_bytes = download_verified(
+                proxy_url,
+                fallback.token,
+                raw_dest,
+                max_bytes=max_media_bytes,
+                stop=stop,
+            )
+            _log_ffmpeg_event(
+                log,
+                "[enrich] granicus transport fallback downloaded "
+                f"phase=source-cache bytes={raw_bytes} strategy=cloudflare-worker-chunked",
+            )
+            local_cmd = [
+                ffmpeg_binary,
+                "-y",
+                "-loglevel",
+                "error",
+                "-protocol_whitelist",
+                "file,crypto,data,http,https,tcp,tls",
+                "-i",
+                str(raw_dest),
+                "-vn",
+                "-c:a",
+                "copy",
+                "-f",
+                "matroska",
+                str(dest),
+            ]
+            _run_ffmpeg_guarded(
+                local_cmd,
+                phase="source-cache-worker",
+                timeout=timeout,
+                memory_floor_bytes=memory_floor_bytes,
+                stop=stop,
+                log=log,
+                allow_worker_fallback=False,
+                raise_rate_limited=False,
+            )
+        worker_ok = dest.exists() and dest.stat().st_size > 0
+        if worker_ok and expected_duration:
+            actual_duration = _probe_duration_secs(dest, ffmpeg_binary)
+            worker_ok = (
+                actual_duration is not None
+                and actual_duration >= _TRUNCATION_MIN_RATIO * expected_duration
+            )
+            if not worker_ok:
+                _log_ffmpeg_event(
+                    log,
+                    f"[enrich] granicus transport fallback incomplete actual_seconds="
+                    f"{actual_duration} expected_seconds={expected_duration:.0f}",
+                )
+        resolved = True
+        return worker_ok
+    except StopRequested:
+        raise
+    except (
+        ChunkedDownloadError,
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
+        resolved = True
+        return False
+    finally:
+        if resolved:
+            _record_worker_fallback_outcome(
+                transport_telemetry,
+                rate_limit_urls,
+                outcome="success" if worker_ok else "failure",
+            )
+        try:
+            raw_dest.unlink(missing_ok=True)
+        except OSError:
+            pass
+        if not worker_ok:
             try:
                 dest.unlink(missing_ok=True)
             except OSError:
@@ -1113,13 +1298,15 @@ class SourceCache:
                 # must not turn an otherwise completed audio item into a failed item.
                 pass
 
-    def get_or_fetch(self, uid: str, url: str) -> Path | None:
+    def get_or_fetch(
+        self, uid: str, url: str, *, expected_duration: float | None = None
+    ) -> Path | None:
         """Return a local audio copy keyed by *uid*, downloading *url* on first call.
 
         Thread-safe: concurrent callers for the same *uid* block until the first
         download completes, then all receive the same path. Returns None on generic failure
-        (caller may fall back to streaming *url* directly); provider throttling propagates as
-        ``RateLimitedMediaFetchError`` so the caller does not immediately retry the same URL.
+        (caller may fall back to streaming *url* directly); eligible Granicus archive throttling
+        is handled by the verified Worker fallback before returning None.
         Raises :class:`~citypods.http.StopRequested` if the run's wall-clock budget expires while
         queued behind another thread's fetch of the same *uid*.
         """
@@ -1144,6 +1331,7 @@ class SourceCache:
                 transport_telemetry=self.transport_telemetry,
                 stop=self._stop,
                 max_media_bytes=self.max_media_bytes,
+                expected_duration=expected_duration,
             ):
                 with self._guard:
                     self._paths[uid] = dest
@@ -1187,7 +1375,9 @@ class SourceCache:
                 return None
             local_paths: list[Path] = []
             for src in sources:
-                local = self.get_or_fetch(f"{uid}:{src.id}", src.ref)
+                local = self.get_or_fetch(
+                    f"{uid}:{src.id}", src.ref, expected_duration=src.duration
+                )
                 if local is None:
                     return None
                 if not _validate_segment_decodes(
@@ -3307,7 +3497,11 @@ def materialize_audio(
                 if source_cache is not None and ep.uid and not multi_source:
                     cache_started = time.perf_counter()
                     _phase_log("source-cache", "start", mode="single-source")
-                    local = source_cache.get_or_fetch(ep.uid, source_url)
+                    local = source_cache.get_or_fetch(
+                        ep.uid,
+                        source_url,
+                        expected_duration=episode_source_duration_seconds(ep),
+                    )
                     _phase_log(
                         "source-cache",
                         "done",

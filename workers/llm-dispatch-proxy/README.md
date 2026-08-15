@@ -54,6 +54,43 @@ materializes a route object only when dispatch evaluates it. Legacy upstream sel
 into the compiled model-alias map. The source YAML remains the single source of truth; the deploy
 workflow recompiles and checks the generated artifacts.
 
+## Staying inside the Free-plan cron CPU budget
+
+Cron triggers on the Workers Free plan allow **10 ms of CPU** per invocation. Waiting on R2 or on a
+provider is not charged, but *moving bytes across the R2 binding is*, and every operation carries
+fixed per-call overhead. The useful unit of optimization is therefore **how many R2 operations an
+invocation performs and how many bytes they carry** — not its wall-clock profile, which is dominated
+by upstream generation time and routinely reads in seconds while CPU stays in single-digit
+milliseconds.
+
+The current shape, measured with `bench/cpu-profile.js` against a 60 KB canonical record and a
+16-marker backlog:
+
+| Invocation | R2 operations | Bytes moved |
+| --- | --- | --- |
+| Idle tick (no ready work) | 4 | 0.3 KB |
+| Dispatching one request | 10 | 165 KB |
+
+Rules that keep it there:
+
+- **Never re-read what this invocation just wrote.** The cron lease and the rate ledger both hand
+  back an ETag on write; renew, release, and reservation-release CAS onto that ETag and fall back to
+  a re-read only when the CAS fails. The lease is a single-writer guard, so the fallback is rare.
+- **Do not re-prove ownership that cannot have changed.** The lease is taken for 840 s against an
+  820 s run deadline, so it is renewed only once a run has consumed half of it.
+- **Cache anything ICU touches.** Constructing an `Intl.DateTimeFormat` measures ~43 µs against ~2 µs
+  to reuse one, and route selection computes a zoned day key for every rate-limited route it
+  considers. `zonedDateKey` was once the single largest self-time function in the scheduled path.
+- **Only write durable state that nothing else can reconstruct.** Minute/day rate windows are derived
+  from the current time and re-rolled on every load, so they are never worth an R2 write on their
+  own; an abandoned reservation is, because nothing else clears it.
+- **Parse marker metadata lazily.** The lookahead lists 16 markers so a throttled route does not stall
+  the queue head, but a run that dispatches the first one should not parse the other fifteen.
+
+`test/index.test.js` pins the operation counts above, so a change that reintroduces a round trip
+fails there rather than in production. Run `node bench/cpu-profile.js` for V8 self-time per function;
+it is a comparative signal only — deployed, version-tagged `cpuTime` remains the acceptance metric.
+
 ## Multi-provider routing (review/41)
 
 Provider/account/route data is **not** Wrangler config any more — it's compiled from

@@ -15,7 +15,31 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Changed
+
+- **The LLM dispatch Worker performs fewer R2 round trips per scheduled invocation.** Free-plan cron
+  CPU is charged for moving bytes across the R2 binding rather than for waiting on it, so the
+  operation shape of an invocation is the thing to reduce; the Worker's own JavaScript accounts for
+  only ~0.4 ms of the 9–13 ms production invocations. The cron lease now carries the ETag its
+  acquiring write returned, so renew and release CAS onto it instead of re-reading the lock, and a
+  lease taken microseconds earlier is no longer renewed before the first batch (renewal still fires
+  once a run passes half the lease). The batched reservation release CASes onto the ETag the
+  reservation write returned. `Intl.DateTimeFormat` instances are cached per timezone (construction
+  measures ~43 µs against ~2 µs to reuse one), a ready marker's `policy` is parsed on first access
+  rather than for every listed marker, and one `TextDecoder` is shared. Dispatching one 59 KB
+  request drops 14 → 10 R2 operations and 181 → 147 KB moved; an idle tick drops 7 → 4 operations.
+  Rate-ledger semantics, the cron lease's single-runner guarantee, and the private-R2 record layout
+  are unchanged, and the operation counts are pinned by tests. See
+  [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md).
+
 ### Fixed
+
+- **A no-candidate dispatch batch never persisted its ledger changes.** The guard compared
+  `JSON.stringify(budget)` against a second stringify of the same object, so the strings always
+  matched and the write could not fire — while still paying for two whole-ledger serializations on
+  every no-capacity invocation. The write now fires when an abandoned reservation was reaped;
+  minute/day window rollover is recomputed from the current time on every load and never needed
+  persisting.
 
 - **The LLM dispatch Worker now ships a compact startup catalog.** The generated Worker JSON removes
   the duplicate route list, unused direct structured-output metadata, and provider discovery data;
