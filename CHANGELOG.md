@@ -55,6 +55,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **The compact Worker route catalog was silently dropping `structured_output_schema_strip_keys`.**
+  The catalog's fixed-position array format (`COMPACT_ROUTE_FIELDS` in `index.js`,
+  `_WORKER_ROUTE_FIELDS` in `scripts/compile_llm_limits.py`) predates the Worker's structured-output
+  schema relaxation and never listed that field. `routeFromCatalog` has no way to signal a missing
+  field — it just reads as `undefined` — so every configured route (Gemini, Gemma, and any other
+  route declaring strip keys) dispatched an *unstripped* schema against the real compiled catalog,
+  while a hand-built test fixture using a full route object still passed. Both field lists now
+  include it, kept in sync by a comment in each pointing at the other. Caught by a new test that
+  exercises the actual compiled `dispatch_limits.json` rather than a fixture route object.
+
 - **A no-candidate dispatch batch never persisted its ledger changes.** The guard compared
   `JSON.stringify(budget)` against a second stringify of the same object, so the strings always
   matched and the write could not fire — while still paying for two whole-ledger serializations on
