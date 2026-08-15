@@ -191,6 +191,19 @@ The Worker supports optional proxying through **Cloudflare AI Gateway** to provi
 time-series charts, filtering by provider, model, and HTTP response code (200, 429, 400, 500), error inspection,
 and CSV exports in the Cloudflare dashboard.
 
+The Worker reaches the gateway over its **provider-native HTTP endpoint**
+(`gateway.ai.cloudflare.com/v1/{account}/{gateway}/{provider}/...`), fetched directly rather than through
+the `env.AI.run()` Workers AI binding, even though the binding needs no `cf-aig-authorization` at all
+("pre-authenticated" per Cloudflare's docs) and can itself proxy third-party models. Two things this
+Worker depends on rule the binding out: it is **BYOK-only** — every route uses an individually-owned
+provider API key (including two separate Gemini accounts specifically to rotate around one account's free-tier
+limits, review/41) rather than paying through Cloudflare's Unified Billing, and Cloudflare's own docs state
+BYOK is not supported for third-party models called through the AI binding; and five of this catalog's
+providers (`custom-siliconflow`, `custom-sambanova`, `custom-zai`, `custom-kilo`, `custom-opencode`) are
+outside Cloudflare's native model catalog and only reachable as gateway-configured Custom Providers on the
+HTTP endpoint, not through the binding. So the provider-native endpoint plus `AI_GATEWAY_AUTH_TOKEN` below
+is the correct shape for this Worker, not a stopgap.
+
 To enable:
 1. In Cloudflare Dashboard, go to **AI** → **AI Gateway** → **Create Gateway** with name `citypods-dispatch`.
 2. Native providers (`google-ai-studio`, `mistral`, `groq`, `deepseek`, `openrouter`) work automatically.
