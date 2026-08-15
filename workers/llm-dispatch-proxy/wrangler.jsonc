@@ -50,9 +50,12 @@
     // Keep all failure profiles but sample detailed successful dispatch profiles to reduce log
     // serialization and object churn. Set to 1 temporarily for a full diagnostic tail.
     "PROFILE_SAMPLE_RATE": "0.1",
-    // Cloudflare AI Gateway routing. When CLOUDFLARE_ACCOUNT_ID (injected from GitHub Actions secrets
-    // during deploy) and AI_GATEWAY_ID are present, outbound LLM calls are automatically proxied
-    // through Cloudflare AI Gateway. When unconfigured, calls go directly to provider endpoints.
+    // Cloudflare AI Gateway routing. When CLOUDFLARE_ACCOUNT_ID (a one-time manual Worker secret --
+    // `wrangler secret put CLOUDFLARE_ACCOUNT_ID`, see README.md's Configuration section; it is
+    // deliberately *not* injected by the deploy workflow, which would re-trigger Cloudflare's
+    // secret-modification/versions conflict, error 10215, on every deploy) and AI_GATEWAY_ID are
+    // present, outbound LLM calls are automatically proxied through Cloudflare AI Gateway. When
+    // unconfigured, calls go directly to provider endpoints.
     // If the gateway's "Authenticated Gateway" toggle is on, also set the AI_GATEWAY_AUTH_TOKEN
     // secret (`wrangler secret put AI_GATEWAY_AUTH_TOKEN`) or the edge 401s every proxied call
     // before it reaches the provider -- see README.md's Observability & Cloudflare AI Gateway section.

@@ -145,6 +145,7 @@ npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put GEMINI_API_KEY_SECONDARY   # second Gemini account/project, same free tier shape
 npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put OPENROUTER_API_KEY         # only if OpenRouter routes are in use
+npx wrangler secret put CLOUDFLARE_ACCOUNT_ID      # only if routing through Cloudflare AI Gateway
 npx wrangler secret put AI_GATEWAY_AUTH_TOKEN      # only if the gateway's Authenticated Gateway toggle is on
 ```
 
@@ -217,8 +218,15 @@ To enable:
    | `custom-kilo` | `https://api.kilo.ai/api/gateway` |
    | `custom-opencode` | `https://opencode.ai/zen/v1` |
 
-4. Automatic deployment: The deploy workflow (`.github/workflows/llm-dispatch-worker-deploy.yml`) automatically
-   injects `CLOUDFLARE_ACCOUNT_ID` from GitHub Secrets and pairs it with `AI_GATEWAY_ID: "citypods-dispatch"` from `wrangler.jsonc`.
+4. Set `CLOUDFLARE_ACCOUNT_ID` as a **one-time manual Worker secret** (see the `wrangler secret put` block
+   above), the same way as every other credential here. It is deliberately *not* injected by the deploy
+   workflow: `wrangler-action`'s `secrets`/`env` mechanism calls `wrangler secret bulk` before it deploys any
+   code, and Cloudflare's secret-modification API rejects that call with error 10215 ("the latest version of
+   your Worker isn't currently deployed") whenever this Worker's latest uploaded version and its
+   currently-deployed version have drifted — which then wedges *every* future deploy at that step, since a
+   plain `wrangler deploy` (with no secret changes) never hits that precondition but never gets the chance to
+   run. `CLOUDFLARE_ACCOUNT_ID` doesn't change, so it doesn't need re-uploading on every deploy anyway. Pair
+   it with `AI_GATEWAY_ID: "citypods-dispatch"` from `wrangler.jsonc`.
 5. If neither `AI_GATEWAY_BASE_URL` nor `CLOUDFLARE_ACCOUNT_ID` is set, requests default directly to each provider's standard endpoint.
 6. **If the gateway's Settings → "Authenticated Gateway" toggle is on**, every proxied call must carry a
    `cf-aig-authorization: Bearer <token>` header or Cloudflare's edge rejects it with a non-retryable `401`

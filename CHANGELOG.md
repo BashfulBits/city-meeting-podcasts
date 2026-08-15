@@ -22,13 +22,19 @@ Phase R (Research-Tool Surface)._
   charts, status code breakdown (200, 429, 400, 500), upstream error payload inspection, and CSV log
   export. Provider blocks in `config/provider_limits.yml` define `ai_gateway_slug` mappings (`google-ai-studio`,
   `mistral`, `groq`, `deepseek`, `openrouter`, and custom provider slugs). When `CLOUDFLARE_ACCOUNT_ID` is
-  injected via the deploy workflow or `AI_GATEWAY_BASE_URL` is set, outbound calls route through the gateway;
-  when unconfigured, calls default directly to provider endpoints with zero breaking changes.
+  set (a one-time manual Worker secret, `wrangler secret put CLOUDFLARE_ACCOUNT_ID` — see
+  `workers/llm-dispatch-proxy/README.md`) or `AI_GATEWAY_BASE_URL` is set, outbound calls route through the
+  gateway; when unconfigured, calls default directly to provider endpoints with zero breaking changes.
   `.github/workflows/llm-dispatch-worker-deploy.yml`'s `accountId` input to `wrangler-action` only
-  configures the deploy CLI — it does not expose `CLOUDFLARE_ACCOUNT_ID` to the deployed Worker. The
-  workflow now also passes it via `secrets`/`env` so `wrangler-action` runs `wrangler secret put
-  CLOUDFLARE_ACCOUNT_ID`, making it a real Worker runtime secret; without this the Worker silently fell
-  back to direct-to-provider calls and nothing appeared in the AI Gateway dashboard. Separately, a live
+  configures the deploy CLI — it does not expose `CLOUDFLARE_ACCOUNT_ID` to the deployed Worker, so an
+  earlier revision of this change had the deploy workflow inject it via `wrangler-action`'s `secrets`/`env`
+  inputs instead. That broke every subsequent deploy: `secrets`/`env` makes `wrangler-action` run `wrangler
+  secret bulk` *before* deploying any code, and Cloudflare's secret-modification API rejects that call with
+  error 10215 ("the latest version of your Worker isn't currently deployed") once this Worker's latest
+  uploaded version and its currently-deployed version drift even slightly — permanently wedging the deploy
+  at that step, since the plain `wrangler deploy` that would otherwise resolve the drift never gets to run.
+  `CLOUDFLARE_ACCOUNT_ID` doesn't change, so it doesn't need re-uploading on every deploy: it's a one-time
+  manual secret like every other credential this Worker uses. Separately, a live
   probe against the `citypods-dispatch` gateway found its "Authenticated Gateway" setting on, which
   rejects any proxied call lacking a `cf-aig-authorization` header with a non-retryable `401` — before
   this fix that would have turned "invisible in the dashboard" into "every dispatch fails outright" the
