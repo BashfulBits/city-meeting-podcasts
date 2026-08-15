@@ -4,6 +4,9 @@ provider: granicus
 source:
   feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
   body: "Equity Advisory Board"
+  body_any:
+    - "Equity Commission"
+    - "Equity"
 podcast_title: "Pflugerville: Equity Advisory Board"
 podcast_author: "City of Pflugerville, TX"
 podcast_email: ""

@@ -7,6 +7,9 @@ source:
   body_any:
     - "Work Session"
     - "Work Session and Regular Meeting"
+  body_includes:
+    - provider_guid: "394474"
+      body: "TIRZ #1 Board Meeting"
 podcast_title: "Addison: City Council"
 podcast_author: "City of Addison, TX"
 podcast_email: ""
