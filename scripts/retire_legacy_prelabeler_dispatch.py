@@ -18,7 +18,7 @@ import argparse
 import json
 import os
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from datetime import UTC, datetime
 from typing import Any
 
@@ -207,25 +207,9 @@ def retire_legacy_prelabeler(
         f"workers={workers}",
         flush=True,
     )
-    paginator = client.get_paginator("list_objects_v2")
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = []
-        for page in paginator.paginate(Bucket=bucket, Prefix=REQUEST_PREFIX):
-            for item in page.get("Contents", []):
-                futures.append(
-                    executor.submit(
-                        _retire_object,
-                        client,
-                        bucket,
-                        item,
-                        model_prefixes=prefixes,
-                        created_before=cutoff,
-                        dry_run=dry_run,
-                        r2_retries=r2_retries,
-                        now=current,
-                    )
-                )
-        for future in as_completed(futures):
+
+    def collect(futures) -> None:
+        for future in futures:
             result = future.result()
             summary["scanned"] += 1
             if result in {"would_retire", "retired"}:
@@ -242,6 +226,30 @@ def retire_legacy_prelabeler(
                 summary["invalid"] += 1
             else:
                 summary["skipped"] += 1
+
+    paginator = client.get_paginator("list_objects_v2")
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = set()
+        for page in paginator.paginate(Bucket=bucket, Prefix=REQUEST_PREFIX):
+            for item in page.get("Contents", []):
+                futures.add(
+                    executor.submit(
+                        _retire_object,
+                        client,
+                        bucket,
+                        item,
+                        model_prefixes=prefixes,
+                        created_before=cutoff,
+                        dry_run=dry_run,
+                        r2_retries=r2_retries,
+                        now=current,
+                    )
+                )
+                if len(futures) < workers:
+                    continue
+                done, futures = wait(futures, return_when=FIRST_COMPLETED)
+                collect(done)
+        collect(as_completed(futures))
     return summary
 
 
