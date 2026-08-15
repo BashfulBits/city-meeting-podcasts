@@ -25,6 +25,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Pre-labeler dispatch now keys off its YAML-owned LLM schema version.**
+  `tagging.prelabeler.llm_schema_version: "2"` is part of every pre-labeler recipe, batched
+  durable-handle identity, and persisted candidate assessment. Existing version-1 assessments are
+  therefore stale and the tag lane schedules fresh version-2 work gradually; it does not rewrite
+  episode artifacts in place. The manual recovery action can dry-run or retire only the bounded,
+  older Gemma `assessments` requests (retaining their R2 audit records), after which the deferred
+  sweep clears their handles as terminal and the normal tag workflow creates the replacement jobs.
+
+- **LLM dispatch Worker observability is now sampled at 100%.** All proxy invocations retain their
+  Workers logs while the existing payload-redaction boundaries remain unchanged.
+
 - **Granicus source-cache downloads now reject truncated zero-exit responses.** The standard direct
   audio path still runs first; only a failed or locally short canonical archive fetch uses the
   authenticated Worker, where the runner assembles and byte-validates sequential ranges (with a
@@ -108,6 +119,13 @@ Phase R (Research-Tool Surface)._
   routes now strip the size/range keywords rejected by the live API, Gemma 4 26B uses the available
   `gemma-4-26b-a4b-it` identifier, and retired Gemini 2.5 routes are removed. No stored artifacts
   or pipeline versions change.
+
+- **Queued Google structured-output dispatch now applies the compiled schema relaxation upstream.**
+  The Worker previously forwarded the caller's full Pydantic JSON Schema despite carrying the
+  route's `strip_schema_keys` profile, causing Gemma 4 requests to fail with Google's generic
+  `400 INVALID_ARGUMENT`. Only the provider-bound copy is relaxed; the canonical R2 request keeps
+  the original schema for local validation and schema-retry behavior. No pipeline version or
+  stored catalog artifact changes; existing terminal failures can be requeued after deployment.
 
 - **Provider-align workers now preserve bounded timing windows through the local backend.** The
   internal process previously dropped the provider's coarse served-time segments, causing

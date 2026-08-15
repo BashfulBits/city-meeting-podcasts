@@ -366,14 +366,22 @@ def _run_prelabeler(
     taxonomy: Any,
     storage: Any,
     model: str,
+    llm_schema_version: str,
     allow_paid: bool,
     deadline_at: datetime,
 ) -> None:
     prelabel = run.setdefault(
-        "prelabeler", {"model": model, "prompt_version": PRELABELER_PROMPT_VERSION, "examples": {}}
+        "prelabeler",
+        {
+            "model": model,
+            "prompt_version": PRELABELER_PROMPT_VERSION,
+            "llm_schema_version": llm_schema_version,
+            "examples": {},
+        },
     )
     prelabel["model"] = model
     prelabel["prompt_version"] = PRELABELER_PROMPT_VERSION
+    prelabel["llm_schema_version"] = llm_schema_version
     backend = _backend(model, storage)
     taggers = run.get("taggers") or {}
     for example in dataset["examples"]:
@@ -414,7 +422,7 @@ def _run_prelabeler(
                 "example_id": example_id,
                 "model": model,
                 "prompt_version": PRELABELER_PROMPT_VERSION,
-                "llm_schema_version": TAG_LLM_SCHEMA_VERSION,
+                "llm_schema_version": llm_schema_version,
                 "subjects": [item.get("candidate_id") for item in subjects],
             }
         )
@@ -428,6 +436,7 @@ def _run_prelabeler(
                 recipe_hash=recipe_hash,
                 model=model,
                 prompt_version=PRELABELER_PROMPT_VERSION,
+                llm_schema_version=llm_schema_version,
                 allow_paid=allow_paid,
                 deadline_at=deadline_at,
                 call_metadata_out=metadata,
@@ -584,6 +593,7 @@ def _run_compatible(
     sample_digest: str,
     models: tuple[str, ...],
     prelabeler_model: str,
+    prelabeler_llm_schema_version: str = TAG_LLM_SCHEMA_VERSION,
 ) -> bool:
     """Return whether a prior run is safe to resume under the current benchmark recipe."""
     return bool(
@@ -594,6 +604,7 @@ def _run_compatible(
         and run.get("tag_prompt_version") == TAG_PROMPT_VERSION
         and run.get("llm_schema_version") == TAG_LLM_SCHEMA_VERSION
         and run.get("prelabeler_prompt_version") == PRELABELER_PROMPT_VERSION
+        and run.get("prelabeler_llm_schema_version") == prelabeler_llm_schema_version
         and run.get("chapter_pipeline_version") == CHAPTER_PIPELINE_VERSION
     )
 
@@ -1057,6 +1068,9 @@ def run(
             "pairwise benchmark judging requires a judge_model outside the candidate models"
         )
     site = load_site_config(site_config_path)
+    prelabeler_llm_schema_version = str(
+        ((site.get("tagging") or {}).get("prelabeler") or {}).get("llm_schema_version") or "1"
+    )
     output_path = Path(output_dir)
     storage = make_storage(site, site.get("base_url", ""), output_path)
     if storage is None or not getattr(storage, "cas_capable", False):
@@ -1095,6 +1109,7 @@ def run(
         sample_digest=str(dataset.get("sample_digest")),
         models=models,
         prelabeler_model=prelabeler_model,
+        prelabeler_llm_schema_version=prelabeler_llm_schema_version,
     ):
         run_state = {
             "run_id": "r5b-"
@@ -1106,6 +1121,7 @@ def run(
             "tag_prompt_version": TAG_PROMPT_VERSION,
             "llm_schema_version": TAG_LLM_SCHEMA_VERSION,
             "prelabeler_prompt_version": PRELABELER_PROMPT_VERSION,
+            "prelabeler_llm_schema_version": prelabeler_llm_schema_version,
             "chapter_pipeline_version": CHAPTER_PIPELINE_VERSION,
             "taggers": {},
         }
@@ -1127,6 +1143,7 @@ def run(
         taxonomy=taxonomy,
         storage=storage,
         model=prelabeler_model,
+        llm_schema_version=prelabeler_llm_schema_version,
         allow_paid=allow_paid,
         deadline_at=deadline,
     )

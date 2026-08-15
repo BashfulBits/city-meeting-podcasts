@@ -14,6 +14,7 @@ from citypods.compute.llm import (
     LiteLLMBackend,
     LLMBackendConfig,
     LLMBackendError,
+    LLMDispatchTerminalError,
     LLMStructuredOutputError,
     _messages,
     _pacing_wait_seconds,
@@ -1712,7 +1713,31 @@ def test_reconcile_emits_error_on_terminal_upstream_timeout(capsys):
 
     with pytest.raises(LLMBackendError, match="timed out after 720s"):
         backend.reconcile(handle)
-
     captured = capsys.readouterr()
     assert "::error title=LLM Terminal Timeout Failure::" in captured.out
     assert "failed permanently after 5 attempts exceeding 720s timeout" in captured.out
+
+
+def test_reconcile_treats_an_operator_retired_dispatch_record_as_terminal():
+    class RetiredSession(requests.Session):
+        def get(self, *_args, **_kwargs):
+            res = requests.Response()
+            res.status_code = 410
+            res._content = b'{"error":{"code":"retired"}}'
+            return res
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="google/gemma-4-31b-it", mode="dispatch", dispatch_url="https://x"),
+        http_session=RetiredSession(),
+        storage=MemStorage(),
+    )
+    handle = JobHandle(
+        backend="litellm",
+        task="tag",
+        recipe_hash="legacy-prelabel",
+        ref="chatcmpl-retired",
+        model="google/gemma-4-31b-it",
+    )
+
+    with pytest.raises(LLMDispatchTerminalError, match="HTTP 410"):
+        backend.reconcile(handle)

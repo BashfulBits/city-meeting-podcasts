@@ -1520,7 +1520,7 @@ class LiteLLMBackend(Backend):
                     msg += f" ({err_code})"
                 if err_code == "upstream_timeout":
                     msg += f" timed out after {dur_label}"
-                if response.status_code in {404, 502}:
+                if response.status_code in {404, 410, 502}:
                     raise LLMDispatchTerminalError(msg)
                 raise LLMBackendError(msg)
             output = response.json()
