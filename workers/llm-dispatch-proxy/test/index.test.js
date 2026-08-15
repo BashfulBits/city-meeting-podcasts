@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import DISPATCH_LIMITS from "../src/dispatch_limits.json" with { type: "json" };
+
 import {
   acquireCronLease,
   config,
@@ -69,6 +71,18 @@ class FakeBucket {
     };
   }
 
+  async head(key) {
+    const stored = this.objects.get(key);
+    if (!stored) return null;
+    return {
+      key: stored.key,
+      etag: stored.etag,
+      httpEtag: `"${stored.etag}"`,
+      customMetadata: stored.customMetadata,
+      uploaded: stored.uploaded,
+    };
+  }
+
   async list(options = {}) {
     const prefix = options.prefix || "";
     const all = [...this.objects.values()]
@@ -91,7 +105,7 @@ class FakeBucket {
   }
 
   async delete(key) {
-    this.objects.delete(key);
+    for (const one of Array.isArray(key) ? key : [key]) this.objects.delete(one);
   }
 }
 
@@ -136,6 +150,14 @@ function chatRequest(body, idempotencyKey, model, policy = {}) {
       ...policy,
     }),
   });
+}
+
+function routeIdsForModel(model) {
+  const ids = {};
+  for (const routeId of DISPATCH_LIMITS.model_routes_map?.[model] || []) {
+    if (DISPATCH_LIMITS.routes_by_id?.[routeId]) ids[routeId] = true;
+  }
+  return ids;
 }
 
 function isolatedEnv() {
@@ -459,6 +481,11 @@ test("non-2xx upstream responses retain bounded structured diagnostics in the pr
   assert.equal(record.error.provider_error.status, "INVALID_ARGUMENT");
   assert.equal(record.error.provider_error.message, "response_schema contains an unsupported keyword");
   assert.match(record.error.provider_error.body_preview, /response_schema contains/);
+
+  const budget = await (await env.LLM_QUEUE.get("state/dispatch_budget.json")).json();
+  const entry = Object.values(budget.routes)[0];
+  assert.equal(entry.requests_minute, 1, "a provider attempt remains rate-accounted on failure");
+  assert.deepEqual(entry.inflight, {});
 
   const poll = await handleRequest(
     request(`https://dispatch.example/v1/requests/${id}`, { method: "GET" }),
@@ -1637,8 +1664,15 @@ test("routeAvailable supports concurrency-only routes and enforces the slot", ()
   const paidConcurrencyOnly = { free: false, concurrency: 5 };
   const entry = { requests_minute: 0, requests_day: 0, tokens_minute: 0, blocked_until: "" };
   assert.equal(routeAvailable(entry, paidConcurrencyOnly, { requests: 1, tokens: 10 }, now), true);
+  // A real occupied slot always carries an expiry -- reserveRouteCapacity set one on every
+  // reservation it ever wrote. An entry without one is treated as malformed and reaped, so the
+  // fixture must be well-formed for this to test the ceiling rather than the reaper.
+  const stillHeld = new Date(now.getTime() + 600_000).toISOString();
   entry.inflight = Object.fromEntries(
-    Array.from({ length: 5 }, (_, index) => [`existing-${index}`, { requests: 1, tokens: 10 }]),
+    Array.from({ length: 5 }, (_, index) => [
+      `existing-${index}`,
+      { requests: 1, tokens: 10, expires_at: stillHeld },
+    ]),
   );
   assert.equal(
     routeAvailable(entry, paidConcurrencyOnly, { requests: 1, tokens: 10 }, now),
@@ -1762,9 +1796,99 @@ test("dispatchBatch runs four independently paced routes concurrently", async ()
   assert.equal(typeof result.profile.ready_heads_ms, "number");
   assert.equal(typeof result.profile.candidate_prepare_ms, "number");
   assert.equal(typeof result.profile.ledger_write_ms, "number");
-  assert.equal(typeof result.profile.reservation_release_ms, "number");
+  assert.equal(typeof result.profile.marker_delete_ms, "number");
   assert.equal(result.results.every((item) => typeof item.profile.total_ms === "number"), true);
   assert.equal(result.results.every((item) => typeof item.profile.upstream_ms === "number"), true);
+});
+
+test("a concurrent batch commits usage up front and needs no release CAS", async () => {
+  class BudgetCountingBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.budgetGets = 0;
+      this.budgetPuts = 0;
+    }
+
+    async get(key) {
+      if (key === "state/dispatch_budget.json") this.budgetGets += 1;
+      return super.get(key);
+    }
+
+    async put(key, value, options = {}) {
+      if (key === "state/dispatch_budget.json") this.budgetPuts += 1;
+      return super.put(key, value, options);
+    }
+  }
+
+  const bucket = new BudgetCountingBucket();
+  const env = { ...ENV, LLM_QUEUE: bucket };
+  const models = ["mistral/mistral-large-2512", "gemini/gemini-3-flash-preview"];
+  for (const [index, model] of models.entries()) {
+    await handleRequest(
+      chatRequest([{ role: "user", content: `batched release ${index}` }], `batched-release-${index}`, model),
+      env,
+    );
+  }
+
+  const result = await dispatchBatch(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+    2,
+  );
+
+  assert.equal(result.completedCount, 2);
+  assert.equal(bucket.budgetGets, 1, "one ledger read for the whole batch");
+  assert.equal(
+    bucket.budgetPuts,
+    1,
+    "usage is committed once before the upstream calls; there is no reservation to clean up",
+  );
+  const budget = await (await bucket.get("state/dispatch_budget.json")).json();
+  for (const entry of Object.values(budget.routes || {})) {
+    assert.deepEqual(entry.inflight || {}, {}, "no durable reservation should ever be written");
+  }
+  // Durable pacing must still be committed for every dispatched request.
+  const used = Object.values(budget.routes).filter((e) => (e.requests_minute || 0) > 0);
+  assert.equal(used.length, 2, "both routes must record their durable request usage");
+});
+
+test("serial dispatch commits durable usage without an inflight cleanup CAS", async () => {
+  class BudgetCountingBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.budgetGets = 0;
+      this.budgetPuts = 0;
+    }
+
+    async get(key) {
+      if (key === "state/dispatch_budget.json") this.budgetGets += 1;
+      return super.get(key);
+    }
+
+    async put(key, value, options = {}) {
+      if (key === "state/dispatch_budget.json") this.budgetPuts += 1;
+      return super.put(key, value, options);
+    }
+  }
+
+  const bucket = new BudgetCountingBucket();
+  const env = { ...ENV, LLM_QUEUE: bucket, BATCH_CONCURRENCY: "1", MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "serial-ledger"), env);
+
+  const result = await dispatchOne(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(bucket.budgetGets, 1);
+  assert.equal(bucket.budgetPuts, 1);
+  const budget = await (await bucket.get("state/dispatch_budget.json")).json();
+  const entry = Object.values(budget.routes)[0];
+  assert.equal(entry.requests_minute, 1);
+  assert.deepEqual(entry.inflight, {});
 });
 
 test("a finalization failure records a terminal failure and releases its reservation", async () => {
@@ -1968,4 +2092,477 @@ test("exhausting retry attempts on timeout fails permanently with upstream_timeo
   assert.equal(record.error?.code, "upstream_timeout");
   assert.equal(record.error?.route_id, "mistral_large_2512_primary");
   assert.match(record.error?.message, /timed out/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// CPU-cost regressions.
+//
+// Worker CPU on the Free-plan cron is dominated by how many R2 operations a dispatch performs and
+// how many bytes cross that boundary, not by the time spent waiting on them.  These tests pin the
+// operation shape so a future change cannot quietly reintroduce a redundant round trip.
+// ---------------------------------------------------------------------------------------------
+
+class RecordingBucket extends FakeBucket {
+  constructor() {
+    super();
+    this.ops = [];
+    this.recording = false;
+  }
+  #note(op, key, bytes = 0) {
+    if (this.recording) this.ops.push({ op, key, bytes });
+  }
+  async put(key, value, options) {
+    const result = await super.put(key, value, options);
+    this.#note("put", key, typeof value === "string" ? value.length : 0);
+    return result;
+  }
+  async get(key) {
+    this.#note("get", key);
+    return super.get(key);
+  }
+  async list(options) {
+    this.#note("list", options?.prefix || "");
+    return super.list(options);
+  }
+  async delete(key) {
+    this.#note("delete", key);
+    return super.delete(key);
+  }
+  countFor(key) {
+    return this.ops.filter((op) => op.key === key).length;
+  }
+}
+
+test("a scheduled dispatch touches the cron lock three times, not six", async () => {
+  const env = { ...ENV, LLM_QUEUE: new RecordingBucket(), MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "lease-ops"), env);
+
+  env.LLM_QUEUE.recording = true;
+  const clock = Date.now();
+  const result = await runScheduled(env, { fetchImpl: okUpstream(), nowMs: () => clock });
+  assert.equal(result.status, "dispatched");
+
+  // acquire (get + put) and release (a single CAS put on the ETag acquire returned).  The lease
+  // was just taken for its full duration, so re-proving ownership before the first batch cannot
+  // discover anything and is skipped.
+  assert.deepEqual(
+    env.LLM_QUEUE.ops.filter((op) => op.key === "locks/cron.json").map((op) => op.op),
+    ["get", "put", "put"],
+  );
+});
+
+test("the lease is still renewed once a run has consumed half of it", async () => {
+  const env = {
+    ...ENV,
+    LLM_QUEUE: new RecordingBucket(),
+    MAX_TOTAL_REQUESTS: "2",
+    LEASE_DURATION_SECONDS: "840",
+  };
+  await handleRequest(chatRequest(undefined, "renew-a"), env);
+  await handleRequest(chatRequest(undefined, "renew-b"), env);
+
+  env.LLM_QUEUE.recording = true;
+  const start = Date.now();
+  // The run's clock jumps past half of the 840s lease, so ownership must be re-proved before the
+  // Worker keeps dispatching against a lease another invocation could by then have taken.
+  const ticks = [start, start, start, start];
+  let index = 0;
+  const result = await runScheduled(env, {
+    fetchImpl: okUpstream(),
+    nowMs: () => (index < ticks.length ? ticks[index++] : start + 500_000),
+  });
+  assert.equal(result.totalDispatched, 1);
+  const lock = await env.LLM_QUEUE.get("locks/cron.json");
+  assert.ok((await lock.json()).renewed_at, "a long-running pass must still renew the lease");
+});
+
+test("a stale owner's handle cannot release a lease another invocation now holds", async () => {
+  const bucket = new FakeBucket();
+  const now = new Date();
+  const handleA = { etag: null, lease: null };
+  assert.equal(await acquireCronLease(bucket, now, "invocation-a", 30, handleA), true);
+  assert.ok(handleA.etag, "acquire must hand back the ETag it wrote");
+
+  const later = new Date(now.getTime() + 31_000);
+  assert.equal(await acquireCronLease(bucket, later, "invocation-b", 90), true);
+
+  // A releases using its cached handle; the CAS must fail against B's newer lease.
+  await releaseCronLease(bucket, "invocation-a", handleA);
+  const stillThere = await bucket.get("locks/cron.json");
+  assert.equal((await stillThere.json()).owner, "invocation-b");
+  assert.equal(
+    Date.parse((await stillThere.json()).expires_at) > Date.now(),
+    true,
+    "B's lease must remain live",
+  );
+});
+
+test("renewing through a stale handle falls back to the authoritative read", async () => {
+  const bucket = new FakeBucket();
+  const now = new Date();
+  const handle = { etag: null, lease: null };
+  assert.equal(await acquireCronLease(bucket, now, "invocation-a", 600, handle), true);
+
+  // Another writer bumps the object, invalidating the cached ETag but not the ownership.
+  const current = await bucket.get("locks/cron.json");
+  await bucket.put(
+    "locks/cron.json",
+    JSON.stringify({ ...(await current.json()), note: "touched" }),
+    { onlyIf: { etagMatches: current.etag } },
+  );
+
+  const later = new Date(now.getTime() + 10_000);
+  assert.equal(await renewCronLease(bucket, later, "invocation-a", 600, handle), true);
+  assert.equal((await (await bucket.get("locks/cron.json")).json()).renewed_at, later.toISOString());
+
+  // A handle whose owner no longer holds the lease must not renew it.
+  const stolen = new Date(now.getTime() + 700_000);
+  assert.equal(await acquireCronLease(bucket, stolen, "invocation-b", 600), true);
+  assert.equal(await renewCronLease(bucket, stolen, "invocation-a", 600, handle), false);
+});
+
+test("a batch that dispatches nothing persists a reaped reservation but not a window roll", async () => {
+  // The guard on this write used to compare `JSON.stringify(budget)` with a second stringify of
+  // the same object, so it could never fire.  Making it fire correctly also means being precise
+  // about what is worth a write: window keys are recomputed from `now` on every load, while an
+  // abandoned reservation is durable state nothing else will clear.
+  const route = "mistral_large_2512_primary";
+  // Ahead of the enqueues below, so their markers are already eligible when the batch runs.
+  const now = new Date(Date.now() + 1_000);
+
+  const ledger = (inflight) => ({
+    version: 1,
+    routes: {
+      [route]: {
+        requests_minute: 0,
+        tokens_minute: 0,
+        requests_available_at: "",
+        tokens_available_at: "",
+        requests_minute_key: "1999-01-01T00:00",
+        requests_day: 0,
+        requests_day_key: "1999-01-01",
+        blocked_until: new Date(now.getTime() + 3_600_000).toISOString(),
+        inflight,
+      },
+    },
+  });
+
+  // A stale window key alone is not worth an R2 write.
+  const rollOnly = { ...isolatedEnv(), MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "roll-only"), rollOnly);
+  await rollOnly.LLM_QUEUE.put("state/dispatch_budget.json", JSON.stringify(ledger({})), {});
+  const beforeEtag = (await rollOnly.LLM_QUEUE.get("state/dispatch_budget.json")).etag;
+  assert.equal((await dispatchOne(rollOnly, okUpstream(), now)).status, "no_capacity");
+  assert.equal(
+    (await rollOnly.LLM_QUEUE.get("state/dispatch_budget.json")).etag,
+    beforeEtag,
+    "recomputable window state must not cost an R2 write on every idle minute",
+  );
+
+  // An expired reservation is durable state, so it must be written back.
+  const reapEnv = { ...isolatedEnv(), MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "reap"), reapEnv);
+  await reapEnv.LLM_QUEUE.put(
+    "state/dispatch_budget.json",
+    JSON.stringify(
+      ledger({
+        "chatcmpl-abandoned": {
+          requests: 1,
+          tokens: 1024,
+          expires_at: new Date(now.getTime() - 60_000).toISOString(),
+        },
+      }),
+    ),
+    {},
+  );
+  assert.equal((await dispatchOne(reapEnv, okUpstream(), now)).status, "no_capacity");
+  const stored = await (await reapEnv.LLM_QUEUE.get("state/dispatch_budget.json")).json();
+  assert.deepEqual(
+    stored.routes[route].inflight,
+    {},
+    "an abandoned reservation must be cleared from durable storage",
+  );
+});
+
+test("a ready marker with an unreadable policy is repaired out of the index", async () => {
+  const env = isolatedEnv();
+  await handleRequest(chatRequest(undefined, "bad-policy"), env);
+  const [markerKey] = [...env.LLM_QUEUE.objects.keys()].filter((key) => key.startsWith("ready/"));
+  const marker = env.LLM_QUEUE.objects.get(markerKey);
+  marker.customMetadata = { ...marker.customMetadata, policy: "{not json" };
+
+  const result = await dispatchOne(env, okUpstream(), new Date());
+  assert.equal(result.status, "index_repaired");
+  assert.equal(env.LLM_QUEUE.objects.has(markerKey), false);
+});
+
+test("repeated zoned-date work reuses one Intl formatter per timezone", async () => {
+  // Constructing an Intl.DateTimeFormat costs ~20x what reusing one does, and route selection
+  // computes a zoned day key for every rate-limited route it considers.
+  const RealDateTimeFormat = Intl.DateTimeFormat;
+  let constructions = 0;
+  class CountingDateTimeFormat extends RealDateTimeFormat {
+    constructor(...args) {
+      super(...args);
+      constructions += 1;
+    }
+  }
+  // nextRouteReset only reaches the zoned-midnight path (and therefore a formatter) when the
+  // route's daily quota is actually exhausted. An earlier version of this test used
+  // requests_day: 0 against rpd: 500, so it never constructed a formatter whether the cache
+  // worked or not -- it asserted 0 against a path it never took.
+  const route = { rpd: 500, provider: "gemini", reset_timezone: "America/Los_Angeles" };
+  const exhausted = () => ({ requests_day: 500, requests_day_key: "", inflight: {} });
+
+  // Warm the module-level cache first so this proves reuse rather than depending on whichever
+  // earlier test happened to populate it.
+  nextRouteReset(exhausted(), route, new Date());
+
+  Intl.DateTimeFormat = CountingDateTimeFormat;
+  try {
+    for (let index = 0; index < 200; index += 1) {
+      nextRouteReset(exhausted(), route, new Date(Date.now() + index * 1000));
+    }
+  } finally {
+    Intl.DateTimeFormat = RealDateTimeFormat;
+  }
+  assert.equal(constructions, 0, "the timezone formatter must already be cached module-wide");
+});
+
+test("a serial dispatch reads the rate ledger once and writes it once", async () => {
+  const env = { ...ENV, LLM_QUEUE: new RecordingBucket(), MAX_TOTAL_REQUESTS: "1" };
+  await handleRequest(chatRequest(undefined, "ledger-ops"), env);
+
+  env.LLM_QUEUE.recording = true;
+  const clock = Date.now();
+  const result = await runScheduled(env, { fetchImpl: okUpstream(), nowMs: () => clock });
+  assert.equal(result.status, "dispatched");
+
+  // At the 1/1 configuration the cron lease is the serialization guarantee, so durable usage is
+  // committed before the upstream call and no reservation is created to release afterwards.
+  assert.deepEqual(
+    env.LLM_QUEUE.ops
+      .filter((op) => op.key === "state/dispatch_budget.json")
+      .map((op) => op.op),
+    ["get", "put"],
+  );
+});
+
+test("a released reservation is really gone from the persisted ledger", async () => {
+  const env = { ...isolatedEnv(), MAX_TOTAL_REQUESTS: "1" };
+  const queued = await handleRequest(chatRequest(undefined, "release-durable"), env);
+  const { id } = await queued.json();
+
+  const result = await runScheduled(env, { fetchImpl: okUpstream(), nowMs: () => Date.now() });
+  assert.equal(result.status, "dispatched");
+
+  const budget = await (await env.LLM_QUEUE.get("state/dispatch_budget.json")).json();
+  const entry = budget.routes.mistral_large_2512_primary;
+  assert.deepEqual(entry.inflight, {}, "the reservation must not survive the run");
+  assert.equal(entry.requests_minute, 1, "durable rate usage must survive the release");
+  assert.ok(entry.requests_available_at, "request pacing must survive the release");
+  assert.equal((await (await env.LLM_QUEUE.get(`requests/${id}.json`)).json()).status, "completed");
+});
+
+test("a route's concurrency ceiling still holds without a durable reservation", async () => {
+  // The in-memory `batchState.admitted` counter replaced the durable `inflight` reservation, so
+  // this is the only thing standing between a batch and over-dispatching a concurrency-capped
+  // route. Testing it requires a route where the ceiling is actually the binding limit:
+  //
+  //   * an earlier revision named two route IDs that do not exist, so it starved nothing; and
+  //   * its replacement used a route with `rpm: 10`, where RPM pacing already caps the route at
+  //     one request per batch (reserveRouteCapacity pushes requests_available_at a full interval
+  //     ahead on the first reservation), so the assertion held whether or not the ceiling worked.
+  //
+  // deepseek_v4_flash_primary has `rpm: null` and `concurrency: 5`, so the ceiling is the only
+  // limit in play and a broken counter is observable.
+  const ceilingRoute = "deepseek_v4_flash_primary";
+  const model = "deepseek/deepseek-v4-flash";
+  const catalogRoutes = Object.keys(routeIdsForModel(model));
+  assert.ok(catalogRoutes.includes(ceilingRoute), "the route under test must exist in the catalog");
+
+  const env = { ...ENV, LLM_QUEUE: new FakeBucket() };
+  // deepseek_v4_flash_primary is a paid route, and selectRouteForModel only elevates past free
+  // routes when waiting for every free route would miss the caller's deadline. The free
+  // alternative is starved for an hour below, so a near-term deadline is what makes the paid
+  // route reachable at all.
+  const policy = {
+    allow_paid: true,
+    deadline_at: new Date(Date.now() + 60_000).toISOString(),
+  };
+  for (let index = 0; index < 8; index += 1) {
+    await handleRequest(chatRequest(undefined, `ceiling-${index}`, model, policy), env);
+  }
+
+  // Starve every real alternative for this model, resolved from the compiled catalog rather than
+  // hard-coded, so the ceiling route is the only one selection can pick.
+  const blocked = new Date(Date.now() + 3_600_000).toISOString();
+  const alternatives = catalogRoutes.filter((id) => id !== ceilingRoute);
+  assert.ok(alternatives.length > 0, "the fixture must starve real catalog routes");
+  const budget = { version: 1, routes: {}, providers: {} };
+  for (const id of alternatives) {
+    budget.routes[id] = { requests_minute: 0, inflight: {}, blocked_until: blocked };
+  }
+  await env.LLM_QUEUE.put("state/dispatch_budget.json", JSON.stringify(budget), {});
+
+  const result = await dispatchBatch(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+    8,
+  );
+
+  // Exactly the ceiling: eight requests were queued against a concurrency-5 route with no other
+  // limit, so a working counter admits precisely five. Asserting `<= 5` would also pass if the
+  // route were never selected, which is how the earlier revisions hid their bugs.
+  const onCeilingRoute = (result.results || []).filter((r) => r.routeId === ceilingRoute);
+  assert.equal(
+    onCeilingRoute.length,
+    5,
+    `concurrency-5 route admitted ${onCeilingRoute.length} candidates in one batch`,
+  );
+});
+
+test("a concurrency ceiling still counts reservations left by a crashed predecessor", async () => {
+  const route = "openrouter_google_gemma_4_31b_it_free";
+  const entry = {
+    requests_minute: 0,
+    inflight: {
+      // Not yet expired: an older Worker version, or a crashed invocation, still holds this slot.
+      "chatcmpl-crashed": {
+        requests: 1,
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
+      },
+    },
+  };
+  assert.equal(
+    routeAvailable(entry, { route_id: route, concurrency: 1 }, { requests: 1, tokens: 0 }, new Date()),
+    false,
+    "a live inflight entry from a previous invocation must still block admission",
+  );
+});
+
+test("a batch removes every finished marker in one R2 delete", async () => {
+  class DeleteCountingBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.deleteCalls = 0;
+      this.deletedKeys = 0;
+    }
+    async delete(key) {
+      this.deleteCalls += 1;
+      this.deletedKeys += Array.isArray(key) ? key.length : 1;
+      return super.delete(key);
+    }
+  }
+  const bucket = new DeleteCountingBucket();
+  const env = { ...ENV, LLM_QUEUE: bucket };
+  const models = ["mistral/mistral-large-2512", "gemini/gemini-3-flash-preview"];
+  for (const [index, model] of models.entries()) {
+    await handleRequest(chatRequest(undefined, `marker-batch-${index}`, model), env);
+  }
+  bucket.deleteCalls = 0;
+  bucket.deletedKeys = 0;
+
+  const result = await dispatchBatch(
+    env,
+    async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+    new Date(),
+    2,
+  );
+  assert.equal(result.completedCount, 2);
+  assert.equal(bucket.deletedKeys, 2, "both markers must be removed");
+  assert.equal(bucket.deleteCalls, 1, "in a single R2 delete call");
+  assert.equal(
+    [...bucket.objects.keys()].filter((k) => k.startsWith("ready/")).length,
+    0,
+    "no ready marker may survive a completed batch",
+  );
+});
+
+test("heads waiting on short route pacing are skipped without touching R2", async () => {
+  // The scenario that matters for throughput: a low-rate route is cooling down at the head of the
+  // queue while higher-rate work sits behind it. Rewriting each blocked head cost four R2
+  // operations -- more than dispatching a request -- so a short wait must cost nothing.
+  class CountingBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.ops = 0;
+      this.counting = false;
+    }
+    async put(k, v, o) { if (this.counting) this.ops += 1; return super.put(k, v, o); }
+    async get(k) { if (this.counting) this.ops += 1; return super.get(k); }
+    async head(k) { if (this.counting) this.ops += 1; return super.head(k); }
+    async list(o) { if (this.counting) this.ops += 1; return super.list(o); }
+    async delete(k) { if (this.counting) this.ops += 1; return super.delete(k); }
+  }
+
+  const run = async (blockedCount) => {
+    const bucket = new CountingBucket();
+    const env = { ...ENV, LLM_QUEUE: bucket, BATCH_CONCURRENCY: "2", MAX_TOTAL_REQUESTS: "2" };
+    for (let i = 0; i < blockedCount; i += 1) {
+      await handleRequest(chatRequest(undefined, `slow-${i}`, "gemini/gemini-3.5-flash-lite"), env);
+    }
+    await handleRequest(chatRequest(undefined, "fast-0", "mistral/mistral-large-2512"), env);
+
+    // Every route for the slow model is pacing, and becomes eligible again in three minutes.
+    const soon = new Date(Date.now() + 180_000).toISOString();
+    const routes = {};
+    for (const id of Object.keys(routeIdsForModel("gemini/gemini-3.5-flash-lite"))) {
+      routes[id] = { requests_minute: 0, inflight: {}, blocked_until: soon };
+    }
+    await bucket.put("state/dispatch_budget.json", JSON.stringify({ version: 1, routes }), {});
+
+    bucket.counting = true;
+    await dispatchBatch(
+      env,
+      async () => new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 }),
+      new Date(),
+      2,
+    );
+    return bucket.ops;
+  };
+
+  const none = await run(0);
+  const many = await run(8);
+  assert.equal(
+    many,
+    none,
+    `eight heads waiting on short pacing cost ${many - none} extra R2 operations`,
+  );
+});
+
+test("structured-output schema stripping works against the real compiled catalog, not just a fixture route object", async () => {
+  // Historical note: the catalog previously stored each route as a fixed-position array
+  // (COMPACT_ROUTE_FIELDS/routeFromCatalog), and structured_output_schema_strip_keys was read by
+  // upstreamRequestForRoute without ever being added to that field list -- silently undefined, no
+  // error, on every configured route -- while a hand-built full route object (see the "relaxed
+  // structured-output profile" test above) still passed. The catalog is a named object keyed by
+  // route ID now, which can't misplace a field this way, but this test still earns its keep: it
+  // exercises the real compiled dispatch_limits.json end to end rather than a hand-built fixture,
+  // so a future field-name mismatch between the compiler and the Worker still gets caught here.
+  const env = isolatedEnv();
+  const responseFormat = {
+    type: "json_schema",
+    json_schema: { name: "Response", schema: { type: "object", properties: {
+      answer: { type: "string", minLength: 1, maxLength: 100 },
+    } } },
+  };
+  await handleRequest(
+    chatRequest(
+      [{ role: "user", content: "structured output" }],
+      "catalog-strip-keys",
+      "gemini/gemini-3.5-flash-lite",
+      { response_format: responseFormat },
+    ),
+    env,
+  );
+  const calls = [];
+  const result = await dispatchOne(env, async (_url, init) => {
+    calls.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 });
+  }, new Date());
+  assert.equal(result.status, "completed");
+  const sentSchemaText = JSON.stringify(calls[0].response_format.json_schema.schema);
+  assert.equal(sentSchemaText.includes("minLength"), false);
 });

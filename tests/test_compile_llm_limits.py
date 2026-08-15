@@ -18,6 +18,41 @@ def test_default_compile_never_touches_the_network(monkeypatch):
     assert "gemini/gemini-3-flash-preview" in compiled["model_routes_map"]
 
 
+def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)
+
+    assert set(worker) == {
+        "_metadata",
+        "providers",
+        "routes_by_id",
+        "model_routes_map",
+        "model_aliases",
+    }
+    assert len(worker["routes_by_id"]) == len(compiled["routes"])
+    assert "routes" not in worker
+    assert "structured_output_profiles" not in worker
+    assert worker["model_aliases"]["deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
+    assert worker["model_aliases"]["deepseek/deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
+    gemma = worker["routes_by_id"]["gemma_4_31b_primary"]
+    assert isinstance(gemma, dict)
+    assert set(gemma) == set(compile_llm_limits._WORKER_ROUTE_FIELDS)
+    assert gemma["route_id"] == "gemma_4_31b_primary"
+    # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
+    # integer positions an earlier revision used, which could silently misresolve to a different
+    # route if compile-time route order ever shifted.
+    for route_id, route in worker["routes_by_id"].items():
+        assert set(route) == set(compile_llm_limits._WORKER_ROUTE_FIELDS), route_id
+        assert route["route_id"] == route_id
+    assert worker["model_routes_map"]
+    for model, route_ids in worker["model_routes_map"].items():
+        assert route_ids, model
+        for route_id in route_ids:
+            assert isinstance(route_id, str)
+            assert route_id in worker["routes_by_id"], (model, route_id)
+    assert "discovery" not in worker["providers"]["openrouter"]
+
+
 def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     compiled = compile_llm_limits.compile_limits()
 

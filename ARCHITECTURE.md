@@ -355,7 +355,7 @@ total on `/admin/status`.
   canonical model's candidate routes (free before paid, then cheapest) against a **per-route/per-account
   ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s versioned minute/day
   window, cost, `blocked_until`, and `inflight` shape),
-  reserves capacity on the first route with room, resolves that route's own provider config
+  **commits** capacity on the first route with room, resolves that route's own provider config
   (`config/provider_limits.yml` → compiled `dispatch_limits.json`: `api_base`/`chat_path`/account
   `api_key_env`) for the upstream call, and persists either the response or a bounded retry/failure
   state. Multiple accounts of one provider (e.g. `GEMINI_API_KEY`/`GEMINI_API_KEY_SECONDARY`) compile to
@@ -369,7 +369,22 @@ total on `/admin/status`.
   `dispatch_url` configured previously broke city discovery's same-run-completion requirement (review/41
   §incident). The implemented Python LLM backend uses this as its `JobHandle` path; direct provider
   translation remains LiteLLM's responsibility, either in Python or in an explicitly configured LiteLLM
-  Proxy upstream. `scripts/compile_llm_limits.py`'s default invocation (used by the deploy workflow) is a
+  Proxy upstream. **Free-plan CPU contract (review/43, 2026-08-14).** The cron's 10 ms CPU limit is spent on **R2
+  operation count**, not payload bytes — the Worker's own JavaScript is ~`0.4` ms of an ~`8` ms
+  invocation, and a 4.8x range in canonical record size produced no measurable CPU difference. The
+  scheduled path is therefore budgeted in operations: a dispatching invocation performs 10 and an
+  idle tick 4. Durable rate usage is committed **before** the upstream call at every batch size —
+  the cron lease already guarantees a single dispatching invocation, so a route's concurrency
+  ceiling is counted in memory for the batch and no `inflight` reservation is written or released.
+  A crash therefore over-counts against a provider rather than under-counting, and any `inflight`
+  entry left by an older Worker version is reaped on load. Finished `ready/` markers are removed in
+  one keyed delete per batch, and a queue head whose route is merely pacing is skipped in memory
+  rather than rewritten (rewriting one cost four operations — more than dispatching a request).
+  R2 Class A operations bill **per account**, so this Worker's bucket shares the 1M/month free tier
+  with the H17 coordination plane; the phased relief in
+  [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md) moves prompts, results and markers to
+  B2 and keeps only compare-and-swap state on R2, per `citypods/storage/routing.py`'s rule.
+  `scripts/compile_llm_limits.py`'s default invocation (used by the deploy workflow) is a
   pure, network-free YAML→JSON compile; a provider's live model/pricing discovery endpoint (OpenRouter
   today) is fetched only via an explicit, maintainer-run `--discover` flag, never in CI. The queue and
   ledger are ephemeral/derivable and are not part of the B2-backed catalog records or the Python

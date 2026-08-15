@@ -23,7 +23,84 @@ Phase R (Research-Tool Surface)._
   non-autofixable `E501` (line-too-long) violations so agents manually wrap long docstrings,
   comments, and literals prior to opening pull requests.
 
+### Changed
+
+- **The compiled dispatch Worker catalog is a named object again, not a positional array.**
+  `routes_by_id` is keyed by route ID and `model_routes_map` holds route-ID strings, matching the
+  shape the Python-side compiler already used internally — reverting an earlier compaction that
+  stored each route as a fixed-position array and referenced routes by integer index. That
+  compaction was built to reduce Worker startup parse time; measurement later showed startup parse
+  was never a scheduled-dispatch hotspot (`~0.13` ms either way, against a `~9` ms invocation
+  budget) and Worker bundle size is nowhere near its 3 MB compressed Free-plan limit at this
+  catalog's size (16–29 KB), so the array encoding was carrying real risk for no measured benefit.
+  It had already cost one real bug (`structured_output_schema_strip_keys` silently missing because
+  the JS and Python field lists drifted out of sync — see Fixed, below; that omission existed only
+  in the intermediate compact catalog, and the final named-lookup catalog no longer depends on those
+  positional field lists at all) and carried a worse latent one: `model_routes_map`'s integer indices
+  would silently resolve to the *wrong* route, not merely a missing field, if compile-time route
+  order ever shifted. A named lookup can go missing; it cannot misresolve. `routeFromCatalog` is now
+  a plain object lookup. See
+  [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md).
+
+- **LLM dispatch now runs two requests per scheduled invocation.** Durable rate usage is committed
+  up front at every batch size rather than only at 1/1 — the cron lease already guarantees a single
+  dispatching invocation, so a route's concurrency ceiling is enforced from an in-memory count of
+  the candidates a batch has admitted, and the reservation release CAS is gone. Finished ready
+  markers are removed in one keyed R2 delete per batch instead of one per request. Together these
+  cut marginal cost from 3.1 to 2.0 R2 operations per request. Measured production `cpuTime` per
+  invocation is 8.2 ms at N=1, 9.9 ms at N=2 and 15.5 ms at N=3 — and per *request* 8.2, 4.95 and
+  5.2 ms — so `BATCH_CONCURRENCY` becomes 2, the optimum on both axes. **This rolls out on merge:**
+  the deployed configuration is `1/1` until then, and the `2/2` production run was a time-boxed
+  canary that a later CI deploy superseded. Cost is superlinear above
+  N=2 because three canonical records are resident at once. One trade-off: a crashed invocation no
+  longer holds a durable concurrency slot, so a concurrency-limited route can be briefly
+  over-dispatched after a crash; durable rpm/rpd accounting is unaffected and the provider rejects
+  the excess with a retryable 429. See [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md).
+
+- **The LLM dispatch Worker performs fewer R2 round trips per scheduled invocation.** Free-plan cron
+  CPU is charged for moving bytes across the R2 binding rather than for waiting on it, so the
+  operation shape of an invocation is the thing to reduce; the Worker's own JavaScript accounts for
+  only ~0.4 ms of the 9–13 ms production invocations. The cron lease now carries the ETag its
+  acquiring write returned, so renew and release CAS onto it instead of re-reading the lock, and a
+  lease taken microseconds earlier is no longer renewed before the first batch (renewal still fires
+  once a run passes half the lease). The batched reservation release CASes onto the ETag the
+  reservation write returned. `Intl.DateTimeFormat` instances are cached per timezone (construction
+  measures ~43 µs against ~2 µs to reuse one), a ready marker's `policy` is parsed on first access
+  rather than for every listed marker, and one `TextDecoder` is shared. Dispatching one 59 KB
+  request drops 14 → 10 R2 operations and 181 → 147 KB moved; an idle tick drops 7 → 4 operations.
+  Rate-ledger semantics, the cron lease's single-runner guarantee, and the private-R2 record layout
+  are unchanged, and the operation counts are pinned by tests. See
+  [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md).
+
 ### Fixed
+
+- **The compact Worker route catalog was silently dropping `structured_output_schema_strip_keys`.**
+  The catalog's fixed-position array format (`COMPACT_ROUTE_FIELDS` in `index.js`,
+  `_WORKER_ROUTE_FIELDS` in `scripts/compile_llm_limits.py`) predates the Worker's structured-output
+  schema relaxation and never listed that field. `routeFromCatalog` has no way to signal a missing
+  field — it just reads as `undefined` — so every configured route (Gemini, Gemma, and any other
+  route declaring strip keys) dispatched an *unstripped* schema against the real compiled catalog,
+  while a hand-built test fixture using a full route object still passed. Both field lists now
+  include it, kept in sync by a comment in each pointing at the other. Caught by a new test that
+  exercises the actual compiled `dispatch_limits.json` rather than a fixture route object.
+
+- **A no-candidate dispatch batch never persisted its ledger changes.** The guard compared
+  `JSON.stringify(budget)` against a second stringify of the same object, so the strings always
+  matched and the write could not fire — while still paying for two whole-ledger serializations on
+  every no-capacity invocation. The write now fires when an abandoned reservation was reaped;
+  minute/day window rollover is recomputed from the current time on every load and never needed
+  persisting.
+
+- **The LLM dispatch Worker now ships a compact startup catalog.** The generated Worker JSON removes
+  the duplicate route list, unused direct structured-output metadata, and provider discovery data;
+  fixed-position route records and numeric model indexes avoid repeating route property names and
+  IDs in the bundle. Legacy selectors are folded into the model-alias map, while the richer route
+  catalog used by Python remains unchanged.
+
+- **LLM dispatch now batches R2 reservation cleanup.** A dispatch batch removes all of its route
+  reservations with one conditional budget read/write cycle and overlaps that cleanup with the
+  independent canonical result persistence. Existing `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS`
+  controls and defaults are unchanged.
 
 - **Pre-labeler dispatch now keys off its YAML-owned LLM schema version.**
   `tagging.prelabeler.llm_schema_version: "2"` is part of every pre-labeler recipe, batched
@@ -44,7 +121,7 @@ Phase R (Research-Tool Surface)._
   only: no audio/spec pipeline version changed, no stored artifacts are invalidated, and no catalog
   backfill is required. The new `chunked-canary` Granicus probe compares the chunked bytes with a
   standard direct download when the runner permits it, otherwise with a non-ranged Worker download.
-  
+
 - **Topic-tag dispatch now versions its structured-output schema.** Bumping the dedicated tag LLM
   schema version invalidates old recipe/fingerprint identities, so reruns create fresh queue
   requests after a provider-compatibility schema change. Existing R2 request bodies are not
