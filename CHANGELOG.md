@@ -24,6 +24,11 @@ Phase R (Research-Tool Surface)._
   `mistral`, `groq`, `deepseek`, `openrouter`, and custom provider slugs). When `CLOUDFLARE_ACCOUNT_ID` is
   injected via the deploy workflow or `AI_GATEWAY_BASE_URL` is set, outbound calls route through the gateway;
   when unconfigured, calls default directly to provider endpoints with zero breaking changes.
+  `.github/workflows/llm-dispatch-worker-deploy.yml`'s `accountId` input to `wrangler-action` only
+  configures the deploy CLI — it does not expose `CLOUDFLARE_ACCOUNT_ID` to the deployed Worker. The
+  workflow now also passes it via `secrets`/`env` so `wrangler-action` runs `wrangler secret put
+  CLOUDFLARE_ACCOUNT_ID`, making it a real Worker runtime secret; without this the Worker silently fell
+  back to direct-to-provider calls and nothing appeared in the AI Gateway dashboard.
 
 - **Pre-push lint verification script and explicit line-length guidance.** Added `.githooks/pre-push`
   and `scripts/pre-push.sh` to run `ruff check .`, `ruff format --check .`, and `pytest -q` before
