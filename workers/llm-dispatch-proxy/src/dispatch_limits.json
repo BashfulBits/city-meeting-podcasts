@@ -8,6 +8,7 @@
     "mistral": {
       "api_base": "https://api.mistral.ai",
       "ai_gateway_slug": "mistral",
+      "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/v1/chat/completions",
       "rpm": 60,
       "accounts": [
@@ -20,6 +21,7 @@
     "gemini": {
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
       "ai_gateway_slug": "google-ai-studio",
+      "ai_gateway_chat_path": "/v1beta/openai/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "America/Los_Angeles",
       "accounts": [
@@ -36,6 +38,7 @@
     "deepseek": {
       "api_base": "https://api.deepseek.com/v1",
       "ai_gateway_slug": "deepseek",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -48,6 +51,7 @@
     "siliconflow": {
       "api_base": "https://api.siliconflow.com/v1",
       "ai_gateway_slug": "custom-siliconflow",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -60,6 +64,7 @@
     "groq": {
       "api_base": "https://api.groq.com/openai/v1",
       "ai_gateway_slug": "groq",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -72,6 +77,7 @@
     "sambanova": {
       "api_base": "https://api.sambanova.ai/v1",
       "ai_gateway_slug": "custom-sambanova",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -84,6 +90,7 @@
     "zai": {
       "api_base": "https://api.z.ai/api/paas/v4",
       "ai_gateway_slug": "custom-zai",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -96,6 +103,7 @@
     "openrouter": {
       "api_base": "https://openrouter.ai/api/v1",
       "ai_gateway_slug": "openrouter",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -108,6 +116,7 @@
     "kilo": {
       "api_base": "https://api.kilo.ai/api/gateway",
       "ai_gateway_slug": "custom-kilo",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -120,6 +129,7 @@
     "opencode": {
       "api_base": "https://opencode.ai/zen/v1",
       "ai_gateway_slug": "custom-opencode",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [

@@ -182,6 +182,7 @@ _WORKER_ROUTE_FIELDS = (
 _WORKER_PROVIDER_FIELDS = (
     "api_base",
     "ai_gateway_slug",
+    "ai_gateway_chat_path",
     "chat_path",
     "rpm",
     "reset_timezone",

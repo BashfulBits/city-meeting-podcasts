@@ -41,6 +41,7 @@ providers:
   mistral:
     api_base: https://api.mistral.ai
     ai_gateway_slug: mistral
+    ai_gateway_chat_path: /v1/chat/completions
     chat_path: /v1/chat/completions
     # Mistral's account-wide limit is 60 RPM (one submission per second), shared by every model.
     rpm: 60
@@ -52,6 +53,7 @@ providers:
   gemini:
     api_base: https://generativelanguage.googleapis.com/v1beta/openai
     ai_gateway_slug: google-ai-studio
+    ai_gateway_chat_path: /v1beta/openai/chat/completions
     chat_path: /chat/completions
     reset_timezone: America/Los_Angeles
     structured_output_profile: relaxed_json_schema
@@ -65,6 +67,7 @@ providers:
     # chat_path itself, so its path is intentionally relative to the same base.
     api_base: https://api.deepseek.com/v1
     ai_gateway_slug: deepseek
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     structured_output_profile: json_object
@@ -74,6 +77,7 @@ providers:
   siliconflow:
     api_base: https://api.siliconflow.com/v1
     ai_gateway_slug: custom-siliconflow
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -82,6 +86,7 @@ providers:
   groq:
     api_base: https://api.groq.com/openai/v1
     ai_gateway_slug: groq
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     structured_output_profile: json_object
@@ -91,6 +96,7 @@ providers:
   sambanova:
     api_base: https://api.sambanova.ai/v1
     ai_gateway_slug: custom-sambanova
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -99,6 +105,7 @@ providers:
   zai:
     api_base: https://api.z.ai/api/paas/v4
     ai_gateway_slug: custom-zai
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -107,6 +114,7 @@ providers:
   openrouter:
     api_base: https://openrouter.ai/api/v1
     ai_gateway_slug: openrouter
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     discovery:
@@ -117,6 +125,7 @@ providers:
   kilo:
     api_base: https://api.kilo.ai/api/gateway
     ai_gateway_slug: custom-kilo
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -125,6 +134,7 @@ providers:
   opencode:
     api_base: https://opencode.ai/zen/v1
     ai_gateway_slug: custom-opencode
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:

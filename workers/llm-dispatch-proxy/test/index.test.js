@@ -1635,7 +1635,7 @@ test("resolveProviderCredentials routes via AI_GATEWAY_BASE_URL when set across 
   });
   assert.equal(
     groq.url,
-    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/groq/openai/v1/chat/completions",
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/groq/chat/completions",
   );
 
   const deepseek = resolveProviderCredentials(env, {
@@ -1645,7 +1645,7 @@ test("resolveProviderCredentials routes via AI_GATEWAY_BASE_URL when set across 
   });
   assert.equal(
     deepseek.url,
-    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/deepseek/v1/chat/completions",
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/deepseek/chat/completions",
   );
 
   const openrouter = resolveProviderCredentials(env, {
@@ -1655,7 +1655,7 @@ test("resolveProviderCredentials routes via AI_GATEWAY_BASE_URL when set across 
   });
   assert.equal(
     openrouter.url,
-    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/openrouter/api/v1/chat/completions",
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/openrouter/chat/completions",
   );
 
   const custom = resolveProviderCredentials(env, {
@@ -1665,7 +1665,7 @@ test("resolveProviderCredentials routes via AI_GATEWAY_BASE_URL when set across 
   });
   assert.equal(
     custom.url,
-    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/v1/chat/completions",
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/chat/completions",
   );
 });
 

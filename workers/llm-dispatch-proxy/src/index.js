@@ -1720,7 +1720,10 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
       throw new Error("AI_GATEWAY_BASE_URL must use HTTPS");
     }
     const gatewaySlug = providerCfg.ai_gateway_slug || route.provider;
-    url = `${aiGatewayBase}/${gatewaySlug}${parsedDirectUrl.pathname}${parsedDirectUrl.search}`;
+    const gatewayPath = providerCfg.ai_gateway_chat_path
+      ? `${providerCfg.ai_gateway_chat_path}${parsedDirectUrl.search}`
+      : `${parsedDirectUrl.pathname}${parsedDirectUrl.search}`;
+    url = `${aiGatewayBase}/${gatewaySlug}${gatewayPath}`;
   }
 
   return { apiKey, url, upstreamModel: route.upstream_model };
