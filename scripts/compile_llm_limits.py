@@ -171,6 +171,11 @@ _WORKER_ROUTE_FIELDS = (
     "output_per_token",
     "pricing",
     "reset_timezone",
+    # Read by the Worker's upstreamRequestForRoute to relax a route's outbound structured-output
+    # schema. Every other structured_output_* field is Python-direct-dispatch-only and stays out
+    # of this list; keep this in sync with COMPACT_ROUTE_FIELDS in workers/llm-dispatch-proxy/src/
+    # index.js -- both are positional and must agree in field order.
+    "structured_output_schema_strip_keys",
 )
 
 _WORKER_PROVIDER_FIELDS = ("api_base", "chat_path", "rpm", "reset_timezone", "accounts")

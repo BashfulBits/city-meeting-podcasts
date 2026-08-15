@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Pre-push lint verification script and explicit line-length guidance.** Added `.githooks/pre-push`
+  and `scripts/pre-push.sh` to run `ruff check .`, `ruff format --check .`, and `pytest -q` before
+  pushing. Updated `AGENTS.md` and `CONTRIBUTING.md` with explicit instructions on handling
+  non-autofixable `E501` (line-too-long) violations so agents manually wrap long docstrings,
+  comments, and literals prior to opening pull requests.
+
 ### Changed
 
 - **LLM dispatch now runs two requests per scheduled invocation.** Durable rate usage is committed
@@ -64,6 +72,26 @@ Phase R (Research-Tool Surface)._
   reservations with one conditional budget read/write cycle and overlaps that cleanup with the
   independent canonical result persistence. Existing `BATCH_CONCURRENCY` and `MAX_TOTAL_REQUESTS`
   controls and defaults are unchanged.
+
+- **Pre-labeler dispatch now keys off its YAML-owned LLM schema version.**
+  `tagging.prelabeler.llm_schema_version: "2"` is part of every pre-labeler recipe, batched
+  durable-handle identity, and persisted candidate assessment. Existing version-1 assessments are
+  therefore stale and the tag lane schedules fresh version-2 work gradually; it does not rewrite
+  episode artifacts in place. The manual recovery action can dry-run or retire only the bounded,
+  older Gemma `assessments` requests (retaining their R2 audit records), after which the deferred
+  sweep clears their handles as terminal and the normal tag workflow creates the replacement jobs.
+
+- **LLM dispatch Worker observability is now sampled at 100%.** All proxy invocations retain their
+  Workers logs while the existing payload-redaction boundaries remain unchanged.
+
+- **Granicus source-cache downloads now reject truncated zero-exit responses.** The standard direct
+  audio path still runs first; only a failed or locally short canonical archive fetch uses the
+  authenticated Worker, where the runner assembles and byte-validates sequential ranges (with a
+  verified full-GET fallback for origins that ignore `Range`). Pages, metadata, documents, and
+  non-audio media retain the existing general Worker proxy behavior. This is transport validation
+  only: no audio/spec pipeline version changed, no stored artifacts are invalidated, and no catalog
+  backfill is required. The new `chunked-canary` Granicus probe compares the chunked bytes with a
+  standard direct download when the runner permits it, otherwise with a non-ranged Worker download.
 
 - **Topic-tag dispatch now versions its structured-output schema.** Bumping the dedicated tag LLM
   schema version invalidates old recipe/fingerprint identities, so reruns create fresh queue
@@ -139,6 +167,13 @@ Phase R (Research-Tool Surface)._
   routes now strip the size/range keywords rejected by the live API, Gemma 4 26B uses the available
   `gemma-4-26b-a4b-it` identifier, and retired Gemini 2.5 routes are removed. No stored artifacts
   or pipeline versions change.
+
+- **Queued Google structured-output dispatch now applies the compiled schema relaxation upstream.**
+  The Worker previously forwarded the caller's full Pydantic JSON Schema despite carrying the
+  route's `strip_schema_keys` profile, causing Gemma 4 requests to fail with Google's generic
+  `400 INVALID_ARGUMENT`. Only the provider-bound copy is relaxed; the canonical R2 request keeps
+  the original schema for local validation and schema-retry behavior. No pipeline version or
+  stored catalog artifact changes; existing terminal failures can be requeued after deployment.
 
 - **Provider-align workers now preserve bounded timing windows through the local backend.** The
   internal process previously dropped the provider's coarse served-time segments, causing

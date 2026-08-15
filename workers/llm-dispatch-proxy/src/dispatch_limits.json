@@ -136,7 +136,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemini_3_5_flash_lite_secondary",
@@ -153,7 +161,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemini_3_1_flash_lite_primary",
@@ -170,7 +186,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemini_3_1_flash_lite_secondary",
@@ -187,7 +211,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemma_4_26b_primary",
@@ -204,7 +236,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemma_4_26b_secondary",
@@ -221,7 +261,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemma_4_31b_primary",
@@ -238,7 +286,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemma_4_31b_secondary",
@@ -255,7 +311,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemini_3_flash_preview_primary",
@@ -272,7 +336,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemini_3_flash_preview_secondary",
@@ -289,7 +361,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemini_3_6_flash_primary",
@@ -306,7 +386,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemini_3_6_flash_secondary",
@@ -323,7 +411,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemini_3_5_flash_primary",
@@ -340,7 +436,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "gemini_3_5_flash_secondary",
@@ -357,7 +461,15 @@
       null,
       null,
       null,
-      null
+      null,
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
     ],
     [
       "groq_llama_3_3_70b_versatile_primary",
@@ -374,7 +486,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "sambanova_llama_3_3_70b_instruct_primary",
@@ -391,7 +504,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "openrouter_meta_llama_llama_3_3_70b_instruct",
@@ -408,7 +522,8 @@
       1e-07,
       4e-07,
       null,
-      null
+      null,
+      []
     ],
     [
       "sambanova_qwen_2_5_72b_instruct_primary",
@@ -425,7 +540,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "siliconflow_qwen_2_5_72b_primary",
@@ -442,7 +558,8 @@
       7e-08,
       2.8e-07,
       null,
-      null
+      null,
+      []
     ],
     [
       "siliconflow_deepseek_v4_flash_primary",
@@ -459,7 +576,8 @@
       4.9e-08,
       1.96e-07,
       null,
-      null
+      null,
+      []
     ],
     [
       "deepseek_v4_flash_primary",
@@ -503,7 +621,8 @@
           }
         ]
       },
-      null
+      null,
+      []
     ],
     [
       "deepseek_v4_pro_primary",
@@ -547,7 +666,8 @@
           }
         ]
       },
-      null
+      null,
+      []
     ],
     [
       "mistral_codestral_2508_primary",
@@ -564,7 +684,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "mistral_devstral_2512_primary",
@@ -581,7 +702,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "mistral_small_2603_primary",
@@ -598,7 +720,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "mistral_medium_2508_primary",
@@ -615,7 +738,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "mistral_medium_2505_primary",
@@ -632,7 +756,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "mistral_large_2512_primary",
@@ -649,7 +774,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "mistral_large_3_primary",
@@ -666,7 +792,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "mistral_labs_leanstral_1_5_1_primary",
@@ -683,7 +810,8 @@
       null,
       null,
       null,
-      null
+      null,
+      []
     ],
     [
       "zai_glm_4_7_flash_primary",
@@ -700,7 +828,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "zai_glm_4_5_flash_primary",
@@ -717,7 +846,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "zai_glm_4_7_flashx_primary",
@@ -734,7 +864,8 @@
       7e-08,
       4e-07,
       null,
-      null
+      null,
+      []
     ],
     [
       "zai_glm_4_7_primary",
@@ -751,7 +882,8 @@
       6e-07,
       2.2e-06,
       null,
-      null
+      null,
+      []
     ],
     [
       "zai_glm_5_primary",
@@ -768,7 +900,8 @@
       1e-06,
       3.2e-06,
       null,
-      null
+      null,
+      []
     ],
     [
       "openrouter_google_gemma_4_31b_it_free",
@@ -785,7 +918,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "openrouter_google_gemma_4_26b_a4b_it_free",
@@ -802,7 +936,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -819,7 +954,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
@@ -836,7 +972,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "openrouter_qwen_qwen3_235b_a22b_2507",
@@ -853,7 +990,8 @@
       9e-08,
       3.6e-07,
       null,
-      null
+      null,
+      []
     ],
     [
       "openrouter_mistralai_mistral_small_3_2_24b_instruct",
@@ -870,7 +1008,8 @@
       9e-08,
       2.7e-07,
       null,
-      null
+      null,
+      []
     ],
     [
       "openrouter_openai_gpt_4o_mini",
@@ -887,7 +1026,8 @@
       1.5e-07,
       6e-07,
       null,
-      null
+      null,
+      []
     ],
     [
       "kilo_stepfun_step_3_7_flash_free",
@@ -904,7 +1044,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -921,7 +1062,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "opencode_deepseek_v4_flash_free",
@@ -938,7 +1080,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "opencode_mimo_v2_5_free",
@@ -955,7 +1098,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ],
     [
       "opencode_nemotron_3_ultra_free",
@@ -972,7 +1116,8 @@
       0.0,
       0.0,
       null,
-      null
+      null,
+      []
     ]
   ],
   "model_routes_map": {

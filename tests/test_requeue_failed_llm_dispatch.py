@@ -3,10 +3,28 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
 
 from botocore.exceptions import ClientError
 
 from scripts.requeue_failed_llm_dispatch import ready_key, requeue_failed
+from scripts.retire_legacy_prelabeler_dispatch import retire_legacy_prelabeler
+
+
+def test_retirement_script_runs_directly_from_the_repository_root():
+    result = subprocess.run(
+        [sys.executable, "scripts/retire_legacy_prelabeler_dispatch.py", "--help"],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Retire legacy pre-labeler dispatch records" in result.stdout
 
 
 class _Body:
@@ -32,6 +50,7 @@ class _Client:
     def __init__(self, objects: dict[str, dict]):
         self.objects = objects
         self.puts: list[dict] = []
+        self.deletes: list[dict] = []
 
     def get_paginator(self, _name: str):
         return _Paginator([{"Contents": [{"Key": key} for key in self.objects]}])
@@ -47,6 +66,10 @@ class _Client:
             "body": kwargs["Body"],
             "etag": '"etag-new"',
         }
+
+    def delete_object(self, **kwargs):
+        self.deletes.append(kwargs)
+        self.objects.pop(kwargs["Key"], None)
 
 
 def _record(record_id: str, *, status: str = "failed", model: str = "google/gemma-4-31b-it"):
@@ -153,4 +176,71 @@ def test_apply_reports_cas_conflict_without_writing_marker():
     )
 
     assert summary["conflicts"] == 1
+    assert not client.puts
+
+
+def test_retire_legacy_prelabeler_keeps_auditable_record_and_removes_ready_marker():
+    record = _record("legacy", status="pending")
+    record["request"]["response_format"] = {
+        "type": "json_schema",
+        "json_schema": {"schema": {"properties": {"assessments": {"type": "array"}}}},
+    }
+    key = "requests/legacy.json"
+    client = _Client({key: {"body": json.dumps(record).encode()}})
+
+    summary = retire_legacy_prelabeler(
+        client,
+        "dispatch",
+        model_prefixes=("google/gemma-4-",),
+        created_before="2026-08-15T00:00:00Z",
+        dry_run=False,
+        workers=1,
+        now=datetime(2026, 8, 15, tzinfo=UTC),
+    )
+
+    assert summary == {
+        "scanned": 1,
+        "matched": 1,
+        "retired": 1,
+        "conflicts": 0,
+        "ready_marker_failures": 0,
+        "skipped": 0,
+        "invalid": 0,
+    }
+    updated = json.loads(client.puts[0]["Body"])
+    assert updated["status"] == "retired"
+    assert updated["replacement_llm_schema_version"] == "2"
+    assert updated["request"] == record["request"]
+    assert client.puts[0]["IfMatch"] == '"etag-1"'
+    assert client.deletes == [{"Bucket": "dispatch", "Key": ready_key(record)}]
+
+
+def test_retire_legacy_prelabeler_never_selects_newer_or_non_assessment_requests():
+    newer = _record("newer", status="pending")
+    newer["created_at"] = "2026-08-15T00:00:00Z"
+    newer["request"]["response_format"] = {
+        "json_schema": {"schema": {"properties": {"assessments": {"type": "array"}}}}
+    }
+    tags = _record("tags", status="pending")
+    tags["request"]["response_format"] = {
+        "json_schema": {"schema": {"properties": {"tags": {"type": "array"}}}}
+    }
+    client = _Client(
+        {
+            "requests/newer.json": {"body": json.dumps(newer).encode()},
+            "requests/tags.json": {"body": json.dumps(tags).encode()},
+        }
+    )
+
+    summary = retire_legacy_prelabeler(
+        client,
+        "dispatch",
+        model_prefixes=("google/gemma-4-",),
+        created_before="2026-08-15T00:00:00Z",
+        dry_run=True,
+        workers=1,
+    )
+
+    assert summary["matched"] == 0
+    assert summary["skipped"] == 2
     assert not client.puts

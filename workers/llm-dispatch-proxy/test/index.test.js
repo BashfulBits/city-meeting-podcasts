@@ -356,6 +356,31 @@ test("cron claims one request, resolves the route's own provider credentials, an
   assert.equal((await poll.json()).choices[0].message.content, "Done.");
 });
 
+test("a retired request is terminal to pollers and is never dispatched from a stale ready marker", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "retired-request"), env);
+  const { id } = await queued.json();
+  const key = `requests/${id}.json`;
+  const stored = await env.LLM_QUEUE.get(key);
+  const record = await stored.json();
+  record.status = "retired";
+  await env.LLM_QUEUE.put(key, JSON.stringify(record), { onlyIf: { etagMatches: stored.etag } });
+
+  const poll = await handleRequest(
+    request(`https://dispatch.example/v1/requests/${id}`, { method: "GET" }),
+    env,
+  );
+  assert.equal(poll.status, 410);
+  assert.equal((await poll.json()).error.code, "retired");
+
+  let dispatched = false;
+  await dispatchOne(env, async () => {
+    dispatched = true;
+    return new Response();
+  });
+  assert.equal(dispatched, false);
+});
+
 test("a non-Mistral route resolves its own provider's URL and API key, not Mistral's", async () => {
   // This is the credential-disclosure bug CodeRabbit flagged as Critical: before the fix, `cfg`
   // (always Mistral-shaped) won every fallback in `resolveProviderCredentials`, so a Gemini route's
@@ -373,6 +398,51 @@ test("a non-Mistral route resolves its own provider's URL and API key, not Mistr
   assert.equal(calls[0].url, "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
   assert.equal(calls[0].init.headers.authorization, "Bearer gemini-primary-secret");
   assert.equal(calls[0].body.model, "gemini-3-flash-preview");
+});
+
+test("dispatch applies a route's relaxed structured-output profile only to the upstream copy", async () => {
+  const env = isolatedEnv();
+  const responseFormat = {
+    type: "json_schema",
+    json_schema: {
+      name: "Response",
+      schema: {
+        type: "object",
+        properties: {
+          answer: { type: "string", minLength: 1, maxLength: 100 },
+          confidence: { type: "number", minimum: 0, maximum: 1 },
+          items: { type: "array", minItems: 1, maxItems: 10 },
+        },
+      },
+    },
+  };
+  const queued = await handleRequest(
+    chatRequest(
+      [{ role: "user", content: "structured output" }],
+      "gemma-relaxed-schema",
+      "google/gemma-4-31b-it",
+      { response_format: responseFormat },
+    ),
+    env,
+  );
+  const { id } = await queued.json();
+  const calls = [];
+  const result = await dispatchOne(env, async (_url, init) => {
+    calls.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ id: "gemma-result", choices: [] }), { status: 200 });
+  }, new Date());
+
+  assert.equal(result.status, "completed");
+  const sentSchema = calls[0].response_format.json_schema.schema;
+  const sentSchemaText = JSON.stringify(sentSchema);
+  for (const key of ["minLength", "maxLength", "minimum", "maximum", "minItems", "maxItems"]) {
+    assert.equal(sentSchemaText.includes(`\"${key}\"`), false, key);
+  }
+
+  const stored = await env.LLM_QUEUE.get(`requests/${id}.json`);
+  const storedRecord = await stored.json();
+  assert.equal(storedRecord.request.response_format.json_schema.schema.properties.answer.minLength, 1);
+  assert.equal(storedRecord.status, "completed");
 });
 
 test("non-2xx upstream responses retain bounded structured diagnostics in the private record", async () => {
@@ -2451,4 +2521,38 @@ test("heads waiting on short route pacing are skipped without touching R2", asyn
     none,
     `eight heads waiting on short pacing cost ${many - none} extra R2 operations`,
   );
+});
+
+test("structured-output schema stripping works against the real compiled catalog, not just a fixture route object", async () => {
+  // The compact array format (COMPACT_ROUTE_FIELDS/routeFromCatalog) silently drops any route
+  // field the field list doesn't name -- there is no error, the field just reads as undefined.
+  // structured_output_schema_strip_keys was read by upstreamRequestForRoute but absent from
+  // COMPACT_ROUTE_FIELDS, so every configured route dispatched an unstripped schema against the
+  // real compiled dispatch_limits.json while an equivalent test using a hand-built full route
+  // object (see the "relaxed structured-output profile" test above) still passed. This test uses
+  // the imported DISPATCH_LIMITS catalog -- the actual compact artifact -- rather than a fixture.
+  const env = isolatedEnv();
+  const responseFormat = {
+    type: "json_schema",
+    json_schema: { name: "Response", schema: { type: "object", properties: {
+      answer: { type: "string", minLength: 1, maxLength: 100 },
+    } } },
+  };
+  await handleRequest(
+    chatRequest(
+      [{ role: "user", content: "structured output" }],
+      "catalog-strip-keys",
+      "gemini/gemini-3.5-flash-lite",
+      { response_format: responseFormat },
+    ),
+    env,
+  );
+  const calls = [];
+  const result = await dispatchOne(env, async (_url, init) => {
+    calls.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ id: "ok", choices: [] }), { status: 200 });
+  }, new Date());
+  assert.equal(result.status, "completed");
+  const sentSchemaText = JSON.stringify(calls[0].response_format.json_schema.schema);
+  assert.equal(sentSchemaText.includes("minLength"), false);
 });

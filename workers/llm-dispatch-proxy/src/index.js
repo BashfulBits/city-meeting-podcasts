@@ -51,7 +51,8 @@ const ACTIVE_PRICING_CACHE = new WeakMap();
 
 // The generated catalog stores these route fields as a fixed-position array to avoid repeating
 // property names for every physical route in the Worker bundle. Tests and older catalogs may still
-// provide route objects, which routeFromCatalog accepts for compatibility.
+// provide route objects, which routeFromCatalog accepts for compatibility. Positional, so this
+// must stay in the same order as _WORKER_ROUTE_FIELDS in scripts/compile_llm_limits.py.
 const COMPACT_ROUTE_FIELDS = [
   "provider",
   "upstream_model",
@@ -67,6 +68,9 @@ const COMPACT_ROUTE_FIELDS = [
   "output_per_token",
   "pricing",
   "reset_timezone",
+  // Read by upstreamRequestForRoute to relax a route's outbound structured-output schema. Every
+  // other structured_output_* field is Python-direct-dispatch-only and stays out of this list.
+  "structured_output_schema_strip_keys",
 ];
 
 const COMPACT_ROUTE_ID_INDEX = 0;
@@ -145,6 +149,37 @@ function requiredString(value, name) {
     throw new Error(`${name} is required`);
   }
   return result;
+}
+
+function stripSchemaKeys(value, keys) {
+  if (Array.isArray(value)) return value.map((item) => stripSchemaKeys(item, keys));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !keys.has(key))
+      .map(([key, item]) => [key, stripSchemaKeys(item, keys)]),
+  );
+}
+
+function upstreamRequestForRoute(record, route, upstreamModel) {
+  const payload = {
+    ...record.request,
+    model: upstreamModel,
+    stream: false,
+  };
+  const responseFormat = payload.response_format;
+  const stripKeys = new Set(route?.structured_output_schema_strip_keys || []);
+  const schema = responseFormat?.json_schema?.schema;
+  if (responseFormat?.type === "json_schema" && schema && stripKeys.size > 0) {
+    payload.response_format = {
+      ...responseFormat,
+      json_schema: {
+        ...responseFormat.json_schema,
+        schema: stripSchemaKeys(schema, stripKeys),
+      },
+    };
+  }
+  return payload;
 }
 
 function canonicalModelName(model, dispatchLimits = DISPATCH_LIMITS) {
@@ -2362,11 +2397,11 @@ async function dispatchBatch(
     // rejection must not discard successful results or leave its sibling reservations inflight.
     const upstreamTasks = candidatesToDispatch.map(
       async ({ claimed, chosenRoute, creds, timeoutSeconds, profile, dispatchStartedAt }) => {
-        const upstreamPayload = {
-          ...claimed.record.request,
-          model: creds.upstreamModel,
-          stream: false,
-        };
+        const upstreamPayload = upstreamRequestForRoute(
+          claimed.record,
+          chosenRoute,
+          creds.upstreamModel,
+        );
 
         let response;
         const requestStartMs = Date.now();
@@ -2696,6 +2731,13 @@ function requestLocation(request, id) {
 function responseForRecord(request, record) {
   if (record.status === "completed") {
     return jsonResponse(record.response, 200, { "x-request-id": record.id });
+  }
+  if (record.status === "retired") {
+    return jsonResponse(
+      { error: { code: "retired", message: "request was retired by an operator" } },
+      410,
+      { "x-request-id": record.id },
+    );
   }
   if (record.status === "failed") {
     const errCode = record.error?.code || "dispatch_failed";

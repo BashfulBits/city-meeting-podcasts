@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Git pre-push hook: ensures ruff check, format check, and pytest pass before push.
+# Enable in your clone: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+"$(dirname "$0")/../scripts/pre-push.sh"
