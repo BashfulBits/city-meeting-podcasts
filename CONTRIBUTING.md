@@ -25,8 +25,10 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,llm]"    # citypods + test tools + LLM structured-output tests
 # ffmpeg is required for audio materialization (apt-get install ffmpeg / brew install ffmpeg)
 
-ruff check . && ruff format --check .
-pytest -q                      # offline suite; live endpoint tests are opt-in: pytest -m live
+ruff check . && ruff format --check .  # repo-wide lint & format (100-char limit)
+pytest -q                              # offline suite; live endpoint tests are opt-in: pytest -m live
+./scripts/pre-push.sh                  # pre-push verification script
+# To automatically run checks on git push: git config core.hooksPath .githooks
 ```
 
 Regenerate golden snapshots after an intentional output change with `SNAPSHOT_UPDATE=1 pytest`.
@@ -91,7 +93,8 @@ nothing — no docs, no storage uploads, no state files saved.
   per-episode features are enrichment **stages** (see `citypods/stages.py`). Most features need no
   core changes — see `review/02-architecture.md`.
 - **Tests:** parsers are pure and tested from offline fixtures; feeds have byte-for-byte snapshot
-  tests; lint + format are enforced repo-wide.
+  tests; lint + format are enforced repo-wide (100-character line length limit via `E501`; note that
+  long comments and docstrings require manual wrapping).
 
 ## Roadmap & priorities
 

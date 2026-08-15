@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Pre-push lint verification script and explicit line-length guidance.** Added `.githooks/pre-push`
+  and `scripts/pre-push.sh` to run `ruff check .`, `ruff format --check .`, and `pytest -q` before
+  pushing. Updated `AGENTS.md` and `CONTRIBUTING.md` with explicit instructions on handling
+  non-autofixable `E501` (line-too-long) violations so agents manually wrap long docstrings,
+  comments, and literals prior to opening pull requests.
+
 ### Fixed
 
 - **Granicus source-cache downloads now reject truncated zero-exit responses.** The standard direct
