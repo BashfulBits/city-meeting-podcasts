@@ -145,6 +145,7 @@ npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put GEMINI_API_KEY_SECONDARY   # second Gemini account/project, same free tier shape
 npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put OPENROUTER_API_KEY         # only if OpenRouter routes are in use
+npx wrangler secret put AI_GATEWAY_AUTH_TOKEN      # only if the gateway's Authenticated Gateway toggle is on
 ```
 
 `PROVIDER_NAME`/`UPSTREAM_MODEL`/`MODEL_ID` are Wrangler variables describing only the Worker's
@@ -206,6 +207,20 @@ To enable:
 4. Automatic deployment: The deploy workflow (`.github/workflows/llm-dispatch-worker-deploy.yml`) automatically
    injects `CLOUDFLARE_ACCOUNT_ID` from GitHub Secrets and pairs it with `AI_GATEWAY_ID: "citypods-dispatch"` from `wrangler.jsonc`.
 5. If neither `AI_GATEWAY_BASE_URL` nor `CLOUDFLARE_ACCOUNT_ID` is set, requests default directly to each provider's standard endpoint.
+6. **If the gateway's Settings → "Authenticated Gateway" toggle is on**, every proxied call must carry a
+   `cf-aig-authorization: Bearer <token>` header or Cloudflare's edge rejects it with a non-retryable `401`
+   before the request ever reaches the provider — this looks identical for any account/gateway ID, valid or
+   not, which makes it easy to mistake for a routing problem. Create a Cloudflare API token scoped to
+   **AI Gateway → Run** (dashboard → gateway → Settings → Authenticated Gateway → "Create Token"), then set
+   it once:
+
+   ```bash
+   npx wrangler secret put AI_GATEWAY_AUTH_TOKEN
+   ```
+
+   The Worker attaches this token only on requests it is actually routing through the gateway; a
+   direct-to-provider dispatch (gateway unconfigured) never sends it. Leave "Authenticated Gateway" off, or
+   leave `AI_GATEWAY_AUTH_TOKEN` unset, and the header is simply omitted — the Worker works either way.
 
 ## Scheduling and migration
 

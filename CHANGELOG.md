@@ -28,7 +28,13 @@ Phase R (Research-Tool Surface)._
   configures the deploy CLI — it does not expose `CLOUDFLARE_ACCOUNT_ID` to the deployed Worker. The
   workflow now also passes it via `secrets`/`env` so `wrangler-action` runs `wrangler secret put
   CLOUDFLARE_ACCOUNT_ID`, making it a real Worker runtime secret; without this the Worker silently fell
-  back to direct-to-provider calls and nothing appeared in the AI Gateway dashboard.
+  back to direct-to-provider calls and nothing appeared in the AI Gateway dashboard. Separately, a live
+  probe against the `citypods-dispatch` gateway found its "Authenticated Gateway" setting on, which
+  rejects any proxied call lacking a `cf-aig-authorization` header with a non-retryable `401` — before
+  this fix that would have turned "invisible in the dashboard" into "every dispatch fails outright" the
+  moment `CLOUDFLARE_ACCOUNT_ID` started working. The Worker now attaches `cf-aig-authorization` from a
+  new optional `AI_GATEWAY_AUTH_TOKEN` secret whenever a route is actually going through the gateway (see
+  `workers/llm-dispatch-proxy/README.md`).
 
 - **Pre-push lint verification script and explicit line-length guidance.** Added `.githooks/pre-push`
   and `scripts/pre-push.sh` to run `ruff check .`, `ruff format --check .`, and `pytest -q` before
