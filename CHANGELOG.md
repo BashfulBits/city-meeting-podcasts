@@ -72,6 +72,12 @@ Phase R (Research-Tool Surface)._
 - **LLM dispatch Worker observability is now sampled at 100%.** All proxy invocations retain their
   Workers logs while the existing payload-redaction boundaries remain unchanged.
 
+- **Resolved untracked meeting bodies and expanded feed coverage across Texas cities (#1165).**
+  Addressed `unexpected-body` findings across 7 cities:
+  - Added new feeds for `arlington-tx-economic-development-committee` (historical series), `waco-tx-plan-commission` (active bi-weekly meetings), and `waco-tx-boards-and-commissions-committee`.
+  - Unified board aliases in `pflugerville-tx-equity-advisory-board` (`Equity Commission`, `Equity`).
+  - Added one-off provider UID inclusions for date-embedded clerk typos and council special sessions in `dallas-tx-bid-purchasing` (`Purchasing Bids 7-30-2015`), `denton-tx-city-council` (`2nd Tuesday Session`), `addison-tx-city-council` (`TIRZ #1 Board Meeting`), `fort-worth-tx-city-council-worksession` & `fort-worth-tx-city-council` (`Budget Work Session Budget Work Session`), and `waco-tx-city-council` (`Budget & Audit Committee Meeting`, `Special City Council`).
+
 - **Granicus source-cache downloads now reject truncated zero-exit responses.** The standard direct
   audio path still runs first; only a failed or locally short canonical archive fetch uses the
   authenticated Worker, where the runner assembles and byte-validates sequential ranges (with a

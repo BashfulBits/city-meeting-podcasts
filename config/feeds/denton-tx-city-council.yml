@@ -7,6 +7,8 @@ source:
   body_includes:
     - provider_guid: "112591"
       body: "Denton State of the City"
+    - provider_guid: "13109"
+      body: "2nd Tuesday Session"
 podcast_title: "Denton: City Council"
 podcast_author: "City of Denton, TX"
 podcast_email: ""

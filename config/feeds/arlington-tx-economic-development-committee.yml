@@ -1,0 +1,13 @@
+slug: arlington-tx-economic-development-committee
+city: arlington-tx
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body: "Economic Development Committee"
+lifecycle:
+  status: dormant
+  reason: "historical committee series"
+podcast_title: "Arlington: Economic Development Committee"
+podcast_author: "City of Arlington, TX"
+podcast_email: ""
+podcast_description: "Economic Development Committee meetings for Arlington, Texas."

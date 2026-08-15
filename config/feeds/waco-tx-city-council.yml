@@ -3,7 +3,12 @@ city: waco-tx
 provider: swagit
 source:
   list_url: https://wacotx.new.swagit.com/views/851
-  body: City Council
+  body: "City Council"
+  body_any:
+    - "Special City Council"
+  body_includes:
+    - provider_guid: "396135"
+      body: "Budget & Audit Committee Meeting"
 podcast_title: "Waco: City Council"
 podcast_author: "City of Waco, TX"
 podcast_email: ""
