@@ -309,6 +309,118 @@ gap between measured JavaScript cost and reported production CPU points at opera
 than payload size, exhaust operation reduction and gather a route-balanced production sample before
 committing to a record-layout migration.
 
+## Production measurement and concurrency headroom — 2026-08-14
+
+Deployed the merged branch and measured `cpuTime` by version with
+`wrangler tail --format=json --sampling-rate=0.999`. Cold starts (the first one to two invocations
+after a deploy) are excluded from the warm figures; they land at `17`–`20` ms and are not
+representative.
+
+| Version | Config | Warm samples | P50 | Mean | Max | CPU per request |
+| --- | --- | --- | --- | --- | --- | --- |
+| `c9e76f6a` (prior rollback) | 1/1 | 5 | 11 | 11.0 | 13 | 11.0 |
+| `5acd24e2` (prior candidate) | 1/1 | 5 | 10 | 10.2 | 12 | 10.2 |
+| `c58e8472` (merged branch) | 1/1 | 11 | **8** | **8.2** | 12 | 8.2 |
+| `23164f2f` (merged branch) | 2/2 | 9 | 11 | 12.0 | 16 | **6.0** |
+
+Every invocation reported outcome `ok`; no `exceededCpu` occurred at either configuration. Batch
+counts were verified from the logs (`count: 1` at 1/1, `count: 2` at 2/2), so the comparison is
+between genuinely different batch sizes rather than a configuration that failed to take effect.
+
+### The cost model is operation-linear
+
+Pairing measured CPU against the R2 operation counts the benchmark reports for the same
+configurations (`N=1` -> 10 operations, `N=2` -> 14) gives a consistent per-operation cost:
+
+- `8.2 ms / 10 ops` = `0.82` ms/op;
+- `12.0 ms / 14 ops` = `0.86` ms/op; and
+- marginal `3.8 ms / 4 ops` = `0.95` ms/op.
+
+Fitting the two operating points gives `cpu_ms ~= 0.95 * operations - 1.3` over the 10-20 operation
+range. The negative intercept means this is an interpolation, not a physical decomposition, and it
+should not be extrapolated far below 10 operations.
+
+This corroborates the operation-driven model over a byte-driven one, which matters because the two
+models recommend opposite work. Supporting evidence: the Worker's own JavaScript costs ~0.4 ms of
+the 8.2 ms, and the earlier checkpoint above recorded `13.1 KB`, `15.4 KB`, and `62.7 KB` canonical
+records all landing in the same `7`-`8` ms band -- a 4.8x size range with no CPU signal.
+
+### Concurrency amortizes fixed cost
+
+The benchmark's fixed/marginal split is **7.5 operations and 34 KB per invocation** plus **3.1
+operations and 121 KB per request**. Because more than half the cost of a 1/1 invocation is fixed,
+raising concurrency improves CPU *per request* even as it raises CPU *per invocation*: `8.2` ms/req
+at `N=1` against `6.0` ms/req at `N=2`, a 27% efficiency gain for double the throughput.
+
+Projected against the fit, with the current data model:
+
+| N | R2 operations | Projected CPU | CPU per request |
+| --- | --- | --- | --- |
+| 1 | 10 | 8.2 ms | 8.2 |
+| 2 | 14 | 12.0 ms | 6.0 |
+| 3 | 17 | 14.8 ms | 5.0 |
+| 4 | 20 | 17.7 ms | 4.4 |
+
+**With the current data model, `N=1` is the only configuration under 10 ms.** `N=2` is measured at
+`12.0` ms mean / `11` P50 -- roughly 20% over a soft average limit, with no `exceededCpu` observed
+in ten invocations. Nothing beyond `N=2` is defensible without storage changes.
+
+### What each storage change would buy
+
+Removable operations, in increasing order of migration cost:
+
+- **A -- generalize the up-front budget commit to `N>1`.** The cron lease already guarantees no
+  other invocation is dispatching, so an `inflight` reservation only protects across invocations,
+  never within one. Committing usage up front for all `N` candidates is exactly what the serial
+  path already does for `N=1`. Removes the batch release CAS: **-1 fixed operation**, no migration,
+  no record-layout change.
+- **B -- remove the per-request ready-marker delete.** Requires replacing the R2 `ready/` marker
+  index: **-1 operation per request**.
+- **C -- remove the `ready/` list.** Falls out of the same index replacement: **-1 fixed operation**.
+- **D -- remove the cron lease.** Only possible if delivery and rate serialization move off the
+  global lease (Queues for delivery plus CAS retries or a Durable Object for the ledger):
+  **-3 fixed operations**.
+
+Projected CPU (`*` marks above 10 ms):
+
+| N | +A | +A+B | +A+B+C | +A+B+C+D |
+| --- | --- | --- | --- | --- |
+| 1 | 8.2 | 7.2 | 6.3 | 3.4 |
+| 2 | 11.0* | **9.2** | 8.2 | 5.3 |
+| 3 | 13.9* | 11.0* | 10.1* | 7.2 |
+| 4 | 16.8* | 13.0* | 12.0* | **9.2** |
+| 6 | 22.5* | 16.8* | 15.8* | 13.0* |
+
+Read off the table:
+
+- **A alone does not unlock `N=2`** (11.0 ms). It is still worth doing: it is nearly free, removes a
+  write, and is a prerequisite for the rest.
+- **A+B unlocks `N=2` at 9.2 ms.** This is the cheapest route to double throughput.
+- **A+B+C+D (the Queues-based Step 5) unlocks `N=4` at 9.2 ms** and is the only option that reaches
+  meaningful concurrency.
+
+### Step 4 is now recommended against
+
+A control/result split reduces **bytes**, and bytes are not the constraint. It also *adds* an
+operation per request unless the control update is folded into the result object's custom metadata,
+in which case it is operation-neutral at best. On an operation-linear cost model it therefore
+unlocks no concurrency and does not reduce single-request CPU materially, while carrying a dual-read
+migration, recovery tooling, and a privacy review.
+
+**Recommendation: close Step 4 as not-worth-doing on current evidence, and reprioritize Step 5
+(queue-delivery replacement of the `ready/` index) as the change that actually buys throughput.**
+Do change A first as a standalone, low-risk improvement.
+
+### Caveats
+
+- The per-operation constant is fitted from two operating points that differ in both operation count
+  and code path (serial ledger at 1/1 against the reservation path at 2/2). It is consistent across
+  both, but linearity is not yet proven; an `N=3` canary would discriminate.
+- Warm samples are 11 and 9 invocations. That is enough to separate `8` from `11`-`12`, and not
+  enough for a reliable P99.
+- Cold starts remain `17`-`20` ms. They are infrequent, but a deploy during a backlog will produce
+  a burst of them.
+
 ## Decision gates
 
 - Stop and ask for confirmation before changing rate-ledger semantics or record layout.
@@ -399,3 +511,10 @@ and R2 operation-count regression tests. Reduced the scheduled invocation from 1
 operations when dispatching and from 7 to 4 when idle, cached ICU formatters, and fixed the
 no-candidate ledger write that could never fire. Deployed for production `cpuTime` measurement; see
 the section above for the reframing of **Current findings**.
+
+### Production concurrency checkpoint
+
+Measured the merged branch in production at 1/1 (P50 `8` ms, mean `8.2`) and, as an authorized
+time-boxed canary, at 2/2 (P50 `11` ms, mean `12.0`, no `exceededCpu`). Reverted to 1/1 afterwards.
+The measurements establish an operation-linear cost model (~`0.95` ms per R2 operation), show that
+concurrency improves CPU per request by 27%, and reverse the priority of Steps 4 and 5.
