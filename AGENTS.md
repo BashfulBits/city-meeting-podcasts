@@ -89,6 +89,13 @@ When you move a feature along the pipeline, update the listed docs in the **same
 - **Branch names:** `<type>/<slug>` — `feat/`, `fix/`, `docs/`, `refactor/`, `chore/` (issue number
   in the slug when one is tracked, e.g. `feat/110-asr-transcripts`). Full convention + examples in
   [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Strict 100-character line length & Ruff checks:** The repository enforces a 100-character line
+  limit (`line-length = 100`) via Ruff linter rule `E501`. Note that `ruff format` and
+  `ruff check --fix` do **not** auto-wrap or split long comments, docstrings, string literals,
+  regexes, or URLs. Agents **must** run `ruff check .` across the whole repository, verify exit
+  code 0, and manually wrap any lines exceeding 100 characters (or add `# noqa: E501` where
+  line breaks are impossible or harmful, such as unbreakable URLs). Never rely on `ruff format`
+  alone to resolve line-length violations.
 
 ## When a change deviates from the plan
 
@@ -111,8 +118,14 @@ with a pipeline-version bump.)
 
 ```bash
 pip install -e ".[dev,llm]"             # full suite; needs ffmpeg for audio
-ruff check . && ruff format --check .    # lint the WHOLE repo, not just citypods/
+ruff check . && ruff format --check .    # lint the WHOLE repo (fails on E501 line length >100)
 pytest -q                                # offline; live endpoint tests are opt-in: pytest -m live
+./scripts/pre-push.sh                    # runs ruff check, ruff format --check, and pytest -q
+```
+
+To automatically run pre-push checks on `git push`, configure git to use the repository hooks:
+```bash
+git config core.hooksPath .githooks
 ```
 
 After an intentional change to feed output, regenerate golden snapshots: `SNAPSHOT_UPDATE=1 pytest`.
