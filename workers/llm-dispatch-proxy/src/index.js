@@ -1687,16 +1687,40 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
     throw new Error(`no api_base configured for provider ${route.provider}`);
   }
   const chatPath = providerCfg.chat_path || "/v1/chat/completions";
-  const url = `${apiBase}${chatPath}`;
+  const directUrlString = `${apiBase}${chatPath}`;
 
-  let parsed;
+  let parsedDirectUrl;
   try {
-    parsed = new URL(url);
+    parsedDirectUrl = new URL(directUrlString);
   } catch {
     throw new Error(`provider ${route.provider} api_base/chat_path is not a valid URL`);
   }
-  if (parsed.protocol !== "https:") {
+  if (parsedDirectUrl.protocol !== "https:") {
     throw new Error(`provider ${route.provider} api_base must use HTTPS`);
+  }
+
+  let url = directUrlString;
+  let aiGatewayBase = String(env?.AI_GATEWAY_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (!aiGatewayBase && env?.CLOUDFLARE_ACCOUNT_ID && env?.AI_GATEWAY_ID) {
+    const accountId = String(env.CLOUDFLARE_ACCOUNT_ID).trim();
+    const gatewayId = String(env.AI_GATEWAY_ID).trim();
+    if (accountId && gatewayId) {
+      aiGatewayBase = `https://gateway.ai.cloudflare.com/v1/${encodeURIComponent(accountId)}/${encodeURIComponent(gatewayId)}`;
+    }
+  }
+
+  if (aiGatewayBase) {
+    let parsedGateway;
+    try {
+      parsedGateway = new URL(aiGatewayBase);
+    } catch {
+      throw new Error("AI_GATEWAY_BASE_URL is not a valid URL");
+    }
+    if (parsedGateway.protocol !== "https:") {
+      throw new Error("AI_GATEWAY_BASE_URL must use HTTPS");
+    }
+    const gatewaySlug = providerCfg.ai_gateway_slug || route.provider;
+    url = `${aiGatewayBase}/${gatewaySlug}${parsedDirectUrl.pathname}${parsedDirectUrl.search}`;
   }
 
   return { apiKey, url, upstreamModel: route.upstream_model };

@@ -179,7 +179,14 @@ _WORKER_ROUTE_FIELDS = (
     "structured_output_schema_strip_keys",
 )
 
-_WORKER_PROVIDER_FIELDS = ("api_base", "chat_path", "rpm", "reset_timezone", "accounts")
+_WORKER_PROVIDER_FIELDS = (
+    "api_base",
+    "ai_gateway_slug",
+    "chat_path",
+    "rpm",
+    "reset_timezone",
+    "accounts",
+)
 
 
 def _worker_legacy_model_map(routes: list[dict[str, Any]]) -> dict[str, str]:

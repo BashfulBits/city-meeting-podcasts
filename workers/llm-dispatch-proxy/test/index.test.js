@@ -1601,6 +1601,135 @@ test("resolveProviderCredentials fails closed on a route naming an unknown accou
   );
 });
 
+test("resolveProviderCredentials routes via AI_GATEWAY_BASE_URL when set across providers", () => {
+  const env = {
+    ...isolatedEnv(),
+    AI_GATEWAY_BASE_URL: "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw",
+  };
+
+  const gemini = resolveProviderCredentials(env, {
+    provider: "gemini",
+    account_id: "project_primary",
+    upstream_model: "gemini-3.5-flash-lite",
+  });
+  assert.equal(
+    gemini.url,
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/google-ai-studio/v1beta/openai/chat/completions",
+  );
+  assert.equal(gemini.apiKey, "gemini-primary-secret");
+
+  const mistral = resolveProviderCredentials(env, {
+    provider: "mistral",
+    account_id: "primary",
+    upstream_model: "mistral-large-2512",
+  });
+  assert.equal(
+    mistral.url,
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/mistral/v1/chat/completions",
+  );
+
+  const groq = resolveProviderCredentials(env, {
+    provider: "groq",
+    account_id: "primary",
+    upstream_model: "llama-3.3-70b-versatile",
+  });
+  assert.equal(
+    groq.url,
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/groq/openai/v1/chat/completions",
+  );
+
+  const deepseek = resolveProviderCredentials(env, {
+    provider: "deepseek",
+    account_id: "primary",
+    upstream_model: "deepseek-chat",
+  });
+  assert.equal(
+    deepseek.url,
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/deepseek/v1/chat/completions",
+  );
+
+  const openrouter = resolveProviderCredentials(env, {
+    provider: "openrouter",
+    account_id: "primary",
+    upstream_model: "meta-llama/llama-3.3-70b-instruct",
+  });
+  assert.equal(
+    openrouter.url,
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/openrouter/api/v1/chat/completions",
+  );
+
+  const custom = resolveProviderCredentials(env, {
+    provider: "siliconflow",
+    account_id: "primary",
+    upstream_model: "Qwen/Qwen2.5-72B-Instruct",
+  });
+  assert.equal(
+    custom.url,
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/v1/chat/completions",
+  );
+});
+
+test("resolveProviderCredentials routes via CLOUDFLARE_ACCOUNT_ID and AI_GATEWAY_ID", () => {
+  const env = {
+    ...isolatedEnv(),
+    CLOUDFLARE_ACCOUNT_ID: "my-cf-account-12345",
+    AI_GATEWAY_ID: "citypods-dispatch",
+    AI_GATEWAY_BASE_URL: "",
+  };
+
+  const gemini = resolveProviderCredentials(env, {
+    provider: "gemini",
+    account_id: "project_primary",
+    upstream_model: "gemini-3.5-flash-lite",
+  });
+  assert.equal(
+    gemini.url,
+    "https://gateway.ai.cloudflare.com/v1/my-cf-account-12345/citypods-dispatch/google-ai-studio/v1beta/openai/chat/completions",
+  );
+});
+
+test("resolveProviderCredentials validates AI_GATEWAY_BASE_URL format and protocol", () => {
+  const baseEnv = isolatedEnv();
+  assert.throws(
+    () =>
+      resolveProviderCredentials(
+        { ...baseEnv, AI_GATEWAY_BASE_URL: "http://insecure-gateway.example" },
+        { provider: "mistral", account_id: "primary" },
+      ),
+    /AI_GATEWAY_BASE_URL must use HTTPS/,
+  );
+  assert.throws(
+    () =>
+      resolveProviderCredentials(
+        { ...baseEnv, AI_GATEWAY_BASE_URL: "not-a-url" },
+        { provider: "mistral", account_id: "primary" },
+      ),
+    /AI_GATEWAY_BASE_URL is not a valid URL/,
+  );
+});
+
+test("dispatchOne routes through AI Gateway when AI_GATEWAY_BASE_URL is configured", async () => {
+  const env = {
+    ...isolatedEnv(),
+    AI_GATEWAY_BASE_URL: "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw",
+  };
+  await handleRequest(chatRequest(undefined, "gw-req", "gemini/gemini-3-flash-preview"), env);
+  const calls = [];
+  const upstream = async (url, init) => {
+    calls.push({ url, init, body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ id: "gemini-completion", choices: [] }), { status: 200 });
+  };
+
+  const result = await dispatchOne(env, upstream, new Date());
+  assert.equal(result.status, "completed");
+  assert.equal(
+    calls[0].url,
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/google-ai-studio/v1beta/openai/chat/completions",
+  );
+  assert.equal(calls[0].init.headers.authorization, "Bearer gemini-primary-secret");
+  assert.equal(calls[0].body.model, "gemini-3-flash-preview");
+});
+
 test("a bare UPSTREAM_MODEL request is canonicalized before it can ever reach dispatch", async () => {
   // CodeRabbit, review/41: the bare upstream string (e.g. "mistral-large-2512") was accepted at
   // enqueue time but has no entry in model_routes_map, so a record stored under it would always

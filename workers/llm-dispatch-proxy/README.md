@@ -184,6 +184,20 @@ otherwise occupy a concurrency slot that nothing clears.
 Deployment is path-scoped by `.github/workflows/llm-dispatch-worker-deploy.yml` and uses the same
 Cloudflare deployment secrets as the existing media proxy.
 
+## Observability & Cloudflare AI Gateway
+
+The Worker supports optional proxying through **Cloudflare AI Gateway** to provide real-time
+time-series charts, filtering by provider, model, and HTTP response code (200, 429, 400, 500), error inspection,
+and CSV exports in the Cloudflare dashboard.
+
+To enable:
+1. In Cloudflare Dashboard, go to **AI** → **AI Gateway** → **Create Gateway** with name `citypods-dispatch`.
+2. Automatic deployment: The deploy workflow (`.github/workflows/llm-dispatch-worker-deploy.yml`) automatically
+   injects `CLOUDFLARE_ACCOUNT_ID` from GitHub Secrets and pairs it with `AI_GATEWAY_ID: "citypods-dispatch"` from `wrangler.jsonc`.
+3. Outbound provider requests automatically resolve through the gateway using each provider's `ai_gateway_slug`
+   (e.g. `google-ai-studio` for Gemini, `mistral`, `groq`, `deepseek`, `openrouter`, or `custom-{slug}`).
+4. If neither `AI_GATEWAY_BASE_URL` nor `CLOUDFLARE_ACCOUNT_ID` is set, requests default directly to each provider's standard endpoint.
+
 ## Scheduling and migration
 
 Every pending canonical record has a compact marker at `ready/<eligible-time>-<priority>-…`. R2
