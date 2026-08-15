@@ -1726,7 +1726,7 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
     url = `${aiGatewayBase}/${gatewaySlug}${gatewayPath}`;
   }
 
-  return { apiKey, url, upstreamModel: route.upstream_model };
+  return { apiKey, url, upstreamModel: route.upstream_model, usesGateway: Boolean(aiGatewayBase) };
 }
 
 function eligibleRoutesForModel(canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
@@ -2372,6 +2372,14 @@ async function dispatchBatch(
           const headers = { accept: "application/json", "content-type": "application/json" };
           if (creds.apiKey) {
             headers.authorization = `Bearer ${creds.apiKey}`;
+          }
+          // Cloudflare AI Gateway's own "Authenticated Gateway" setting (independent of the
+          // upstream provider's API key above) requires this header on every proxied request, or
+          // the edge rejects with a non-retryable 401 before the request ever reaches the
+          // provider. Only attach it when this route is actually going through the gateway and a
+          // token is configured -- a direct-to-provider call has no gateway edge to authenticate.
+          if (creds.usesGateway && env.AI_GATEWAY_AUTH_TOKEN) {
+            headers["cf-aig-authorization"] = `Bearer ${env.AI_GATEWAY_AUTH_TOKEN}`;
           }
           response = await fetchImpl(creds.url, {
             method: "POST",

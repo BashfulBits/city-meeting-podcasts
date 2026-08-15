@@ -61,3 +61,12 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/llm-dispatch-proxy
           wranglerVersion: "4"
+          # `accountId` above only configures the deploy CLI -- it does not expose
+          # CLOUDFLARE_ACCOUNT_ID to the Worker at runtime. `secrets`/`env` here make wrangler-action
+          # run `wrangler secret put CLOUDFLARE_ACCOUNT_ID`, which is what resolveProviderCredentials()
+          # in src/index.js reads to build the AI Gateway URL (see wrangler.jsonc's AI_GATEWAY_ID).
+          # Without this, dispatch calls silently go direct-to-provider instead of through the gateway.
+          secrets: |
+            CLOUDFLARE_ACCOUNT_ID
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

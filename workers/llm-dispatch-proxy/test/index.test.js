@@ -1730,6 +1730,64 @@ test("dispatchOne routes through AI Gateway when AI_GATEWAY_BASE_URL is configur
   assert.equal(calls[0].body.model, "gemini-3-flash-preview");
 });
 
+test("dispatchOne adds cf-aig-authorization only when routed through the gateway with a token configured", async () => {
+  // Cloudflare AI Gateway's own "Authenticated Gateway" setting is independent of the upstream
+  // provider's API key: without this header the edge returns a non-retryable 401 before the
+  // request ever reaches the provider (confirmed live against citypods-dispatch).
+  const gatewayEnv = {
+    ...isolatedEnv(),
+    AI_GATEWAY_BASE_URL: "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw",
+    AI_GATEWAY_AUTH_TOKEN: "cf-aig-token-secret",
+  };
+  await handleRequest(chatRequest(undefined, "gw-aig-req", "gemini/gemini-3-flash-preview"), gatewayEnv);
+  const calls = [];
+  const upstream = async (url, init) => {
+    calls.push({ url, init });
+    return new Response(JSON.stringify({ id: "gemini-completion", choices: [] }), { status: 200 });
+  };
+  const result = await dispatchOne(gatewayEnv, upstream, new Date());
+  assert.equal(result.status, "completed");
+  assert.equal(calls[0].init.headers["cf-aig-authorization"], "Bearer cf-aig-token-secret");
+
+  // Same gateway routing, but no AI_GATEWAY_AUTH_TOKEN configured: header must be omitted rather
+  // than sent as "Bearer undefined".
+  const gatewayEnvNoToken = {
+    ...isolatedEnv(),
+    AI_GATEWAY_BASE_URL: "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw",
+  };
+  await handleRequest(
+    chatRequest(undefined, "gw-no-aig-req", "gemini/gemini-3-flash-preview"),
+    gatewayEnvNoToken,
+  );
+  const callsNoToken = [];
+  const upstreamNoToken = async (url, init) => {
+    callsNoToken.push({ url, init });
+    return new Response(JSON.stringify({ id: "gemini-completion", choices: [] }), { status: 200 });
+  };
+  const resultNoToken = await dispatchOne(gatewayEnvNoToken, upstreamNoToken, new Date());
+  assert.equal(resultNoToken.status, "completed");
+  assert.equal(callsNoToken[0].init.headers["cf-aig-authorization"], undefined);
+
+  // A token configured but no gateway routing (direct-to-provider): header must not leak onto a
+  // request the provider itself never expects.
+  const directEnvWithToken = {
+    ...isolatedEnv(),
+    AI_GATEWAY_AUTH_TOKEN: "cf-aig-token-secret",
+  };
+  await handleRequest(
+    chatRequest(undefined, "direct-with-aig-token-req", "gemini/gemini-3-flash-preview"),
+    directEnvWithToken,
+  );
+  const callsDirect = [];
+  const upstreamDirect = async (url, init) => {
+    callsDirect.push({ url, init });
+    return new Response(JSON.stringify({ id: "gemini-completion", choices: [] }), { status: 200 });
+  };
+  const resultDirect = await dispatchOne(directEnvWithToken, upstreamDirect, new Date());
+  assert.equal(resultDirect.status, "completed");
+  assert.equal(callsDirect[0].init.headers["cf-aig-authorization"], undefined);
+});
+
 test("a bare UPSTREAM_MODEL request is canonicalized before it can ever reach dispatch", async () => {
   // CodeRabbit, review/41: the bare upstream string (e.g. "mistral-large-2512") was accepted at
   // enqueue time but has no entry in model_routes_map, so a record stored under it would always
