@@ -49,7 +49,14 @@
     "MAX_TOTAL_REQUESTS": "2",
     // Keep all failure profiles but sample detailed successful dispatch profiles to reduce log
     // serialization and object churn. Set to 1 temporarily for a full diagnostic tail.
-    "PROFILE_SAMPLE_RATE": "0.1"
+    "PROFILE_SAMPLE_RATE": "0.1",
+    // Cloudflare AI Gateway routing. When CLOUDFLARE_ACCOUNT_ID (injected from GitHub Actions secrets
+    // during deploy or set in environment) and AI_GATEWAY_ID are present, or when AI_GATEWAY_BASE_URL
+    // is set explicitly, outbound LLM calls are automatically proxied through Cloudflare AI Gateway.
+    // When unset or empty, calls go directly to provider endpoints.
+    "CLOUDFLARE_ACCOUNT_ID": "",
+    "AI_GATEWAY_ID": "citypods-dispatch",
+    "AI_GATEWAY_BASE_URL": ""
   },
   "observability": {
     "enabled": true,
