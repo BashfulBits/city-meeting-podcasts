@@ -507,6 +507,113 @@ changing a platform constraint, not the Worker:
    raise invocation count without changing the Worker's data model. This trades Actions minutes and
    an external dependency for throughput and has not been prototyped or costed.
 
+## Scaling beyond the cron ceiling — backend evaluation (2026-08-14)
+
+Step 5 above listed Queues, D1 and a Durable Object as candidates without costing them. This
+section settles that, and finds that the binding constraint is neither CPU nor storage.
+
+### Every Free-plan ceiling, in the order they bind
+
+| Ceiling | Limit | Binds at |
+| --- | --- | --- |
+| Cron invocation rate | 1/minute | **2,880 jobs/day** at `N=2` |
+| **Worker requests** | **100,000/day** | **~20,000 jobs/day** at today's request shape |
+| Worker CPU | 10 ms/invocation | `N=2` per invocation |
+| Durable Object requests | 100,000/day | ~50,000 jobs/day at a 3.5s alarm |
+| Durable Object row writes | 100,000/day | reached before the request cap; persist on a timer |
+| R2 Class A operations | 1M/month free | ~6,600 jobs/day before it costs money |
+
+The cron rate is what binds today. **The next one is the Worker request cap, not CPU or storage** --
+and polling, not dispatch, is what consumes it:
+
+| Scenario | enqueue | dispatch | poll | total |
+| --- | --- | --- | --- | --- |
+| Today's request shape, 50k jobs/day | 50,000 | 25,000 | 125,000 | 200,000 (over) |
+| Today's request shape, 25k jobs/day | 25,000 | 12,500 | 62,500 | 100,000 (at cap) |
+| + batch poll (10 ids per call) | 50,000 | 25,000 | 12,500 | 87,500 |
+| + batch enqueue and batch poll | 5,000 | 25,000 | 12,500 | **42,500** |
+
+At roughly 2.5 polls per job, polling is ~60% of the request budget. A batch-poll endpoint is
+therefore a prerequisite for any target above ~20,000 jobs/day, independent of storage or
+coordination choices.
+
+### Coordination backend
+
+R2 is a poor fit for small, hot coordination state: every write is a Class A operation. Three of
+the four R2 consumers exist only to emulate a single writer.
+
+| R2 consumer today | Purpose | Under a Durable Object |
+| --- | --- | --- |
+| `locks/cron.json` | make one invocation the sole dispatcher | removed -- the DO *is* the serialization point |
+| `state/dispatch_budget.json` | share rate state across invocations | removed -- in DO memory, reads free |
+| `ready/` list and markers | find eligible work without scanning | removed -- DO SQLite index |
+| `requests/*.json` | the prompts and responses themselves | **stays in object storage** |
+
+That takes Class A operations from ~5 to ~2 per job. Durable Objects are available on the Free plan
+(SQLite backend only): 100,000 requests/day, 13,000 GB-s/day, 5M row reads and 100,000 row writes
+per day, 5 GB.
+
+DO **alarms** are millisecond-resolution and self-scheduling, so they also replace the external
+sub-minute trigger: a 10s alarm is 8,640 DO requests/day (8.6% of cap).
+
+**Design constraint:** the DO must coordinate, never dispatch. DO duration is billed on wall-clock
+while the object is active, so a DO that awaits an LLM call inherits the problem that rules out
+Cloud Run below -- a 20s wait at 128 MiB is ~2.6 GB-s, and 17,000 jobs/day would be ~44,000 GB-s
+against 13,000 free. The DO decides admission in ~5 ms; a plain Worker performs the R2/B2 reads and
+the provider call, where I/O wait is not billed.
+
+**Do not put payloads in the DO.** The 5 GB looks sufficient, but row writes are the real limit
+(50,000 jobs x 2 = exactly the 100,000/day cap, before any size multiplier), a single-threaded DO
+becomes the throughput bottleneck, and payload transfer inflates the duration bill.
+
+D1 is also Free-plan available (5M row reads, 100,000 row writes/day) and is an adequate home for
+the ledger alone, but it provides no serialization -- concurrent Workers would race -- and does not
+solve the trigger problem. Workers KV is disqualified: 1,000 writes/day and eventual consistency.
+
+Cloudflare Queues on the Free plan is 10,000 operations/day, ~3,333 jobs/day at three operations per
+message: 16% above the cron ceiling, for a full delivery rewrite. Rejected.
+
+### Object storage: B2 rather than R2
+
+Backblaze B2 charges **nothing** for Class A (writes), Class B (reads) or Class C (listing)
+transactions on pay-as-you-go. Class D covers service operations such as Event Notifications
+outbound calls, which this workload does not use. Egress to Cloudflare is free under the Bandwidth
+Alliance, and this project already stores audio in B2.
+
+| Jobs/day | R2 Class A cost | B2 |
+| --- | --- | --- |
+| 12,000 | $7.16/mo | $0 transactions |
+| 28,800 | $14.94/mo | $0 transactions |
+| 66,240 | $40.21/mo | $0 transactions |
+
+B2 leaves storage as the only charge: ~3.5 GB/day of records is **$0.17-$0.73/month** depending on
+retention. Requests must be signed (SigV4) rather than using a binding; measured at **0.033 ms** per
+request with a cached signing key -- 0.3% of the CPU budget, immaterial.
+
+### Google Cloud Run is the wrong platform for dispatch
+
+Workers do not bill I/O wait; Cloud Run's request-based billing does, and this workload is ~95%
+waiting on provider generation. The free tier sustains only 0.154 vCPU and 79 MiB continuously,
+below Cloud Run's own minimums, so an always-on dispatcher does not fit. Cloud Run is viable purely
+as a sub-minute *ticker* (a 10s tick is 6% of the free vCPU-second allowance), but a Durable Object
+alarm does the same job without the external dependency.
+
+### Recommended order
+
+1. **Batch poll and batch enqueue endpoints.** Small, no new infrastructure, and a prerequisite for
+   anything above ~20,000 jobs/day.
+2. **B2 for canonical records.** Transactions free, credentials already exist.
+3. **Durable Object for coordination plus its alarm.** Removes the lease, the ledger and the ready
+   index; replaces any external ticker.
+
+Together these reach ~50,000 jobs/day for roughly **$0.50/month**.
+
+**The alternative to weigh first:** Workers Paid at `$5`/month raises the request cap to ~333,000/day
+and cron CPU from 10 ms to 30 seconds, which retires the request cap, the CPU ceiling and most of
+the reason for the Durable Object in one step -- leaving B2 as the only item still worth doing on
+its own merits. If the throughput target is steady-state rather than a backlog burn-down, price that
+against the engineering before starting.
+
 ## Decision gates
 
 - Stop and ask for confirmation before changing rate-ledger semantics or record layout.
