@@ -646,6 +646,8 @@ canonical records, not operation count.
 the system's single-runner guarantee, and would invalidate the production `cpuTime` measurements
 recorded above. It wants its own change and its own canary.
 
+Fully detailed below (schema, function-by-function changes, the deploy-transition race and its mitigation, and required tests): [Step 1 and Step 2, fully detailed](#step-1-and-step-2-fully-detailed-for-implementation-2026-08-15).
+
 ### R2 Class A pressure is the near-term driver, not CPU
 
 R2 Class A operations bill **per account**, not per bucket, so the dispatch Worker's
@@ -720,6 +722,328 @@ a dispatch invocation (at `N=2`), and — dominantly — every poll.
 At today's 2,880 jobs/day that is ~10,000 Worker requests/day, 10% of the cap: **not a concern, and
 not worth building yet.** It becomes binding around 20,000 jobs/day, at which point polling alone is
 ~60% of the budget. Build it when throughput approaches that, not before.
+
+## Step 1 and Step 2, fully detailed for implementation (2026-08-15)
+
+The phasing table above states *what* and *why*. This section adds the *how*: exact schemas,
+function-by-function changes, the crash-safety argument each earlier step was held to, and the one
+deploy-transition hazard that a naive implementation of Step 1 gets wrong. Written so a different
+agent can implement either step from this document alone, without the rest of this file's history.
+
+### Step 1 — fold the cron lease into the ledger
+
+#### The idle-tick problem the phasing table doesn't account for
+
+The table's "5 ops -> 3 ops" count is for a *dispatching* invocation. It implicitly assumes the
+merged object is read in full (`get()`, parsing the whole ledger body) every time the lease is
+checked. That is fine when there is work to dispatch, but today's `dispatchBatch` checks the lease
+**before** listing `ready/`, specifically so an idle tick or a lease-busy tick never touches the
+ledger at all (`getCronLease` uses `head()`, reading only `customMetadata`, not the JSON body). A
+naive merge that always does a full `get()` to check the lease would make every idle tick pay a
+full ledger parse it does not do today — a regression on the common case (idle/lease-busy ticks
+outnumber dispatching ticks whenever the queue is not saturated).
+
+**Design: keep the `head()`-based fast path, on the merged object.** The merged object's
+`customMetadata` carries the lease fields only (same shape as today's `cronLeaseMetadata`); the
+object *body* carries the ledger. A `head()` call returns metadata without the body, so:
+
+- **Lease-busy tick:** `head()` on the merged object, see an unexpired lease -> `lease_busy`. **1
+  op**, ledger body never read. Same as today.
+- **Idle tick** (lease free, but `ready/` list is empty): `head()` (1) to confirm the lease is
+  free, `list()` (1) finds nothing -> `idle`. The ledger body is still never read. **2 ops**, an
+  *improvement* on today's 4 (today unconditionally acquires the lease before listing).
+- **Dispatching tick:** `head()` (1, confirms free) is followed by a single `get()` of the full
+  merged object (1) — needed regardless, to read the ledger for route selection — whose result also
+  supplies the lease's current ETag/value, so no second lease read is needed. One `put()` commits
+  the lease acquisition and the ledger reservations together (1). Release is one more `put()` off
+  the handle (1). **Total: 4**, not 3 as the summary table implies, because the `head()` pre-check
+  is kept. Dropping the `head()` pre-check would reach the table's 3, at the cost of the idle-tick
+  regression above — **keep the `head()` pre-check; the idle-tick saving is worth more than the one
+  extra op on a dispatching tick**, since idle ticks are the common case.
+
+This changes the current acquire-before-list ordering in `dispatchBatch`/`runScheduled`: **defer
+the CAS acquire until after `ready/` is listed and found non-empty.** Listing does not require the
+lease (it is read-only), so two invocations may both list concurrently; only one wins the later CAS.
+Verify this reordering does not break the `deadline_guard` and `lease_lost` paths in `runScheduled`,
+which currently assume the lease is already held when a batch begins.
+
+#### Merged object schema
+
+New key, **not** a reuse of either existing key (rationale for a new key, not a rename, is the
+deploy-transition hazard below):
+
+```
+state/dispatch_coordinator.json
+```
+
+```jsonc
+{
+  "version": 1,
+  "lease": {
+    "owner": "<uuid>",
+    "acquired_at": "<iso8601>",
+    "renewed_at": "<iso8601>",
+    "released_at": "<iso8601>",
+    "expires_at": "<iso8601>"
+  },
+  "routes": { /* unchanged shape from state/dispatch_budget.json */ },
+  "providers": { /* unchanged shape from state/dispatch_budget.json */ }
+}
+```
+
+`customMetadata` on every write mirrors `lease` only (`lease_version`, `owner`, `acquired_at`,
+`renewed_at`, `released_at`, `expires_at` — identical field names to today's `cronLeaseMetadata`,
+so `getCronLease`'s `head()`-parsing logic ports unchanged), enabling the `head()` fast path above
+without touching `routes`/`providers`.
+
+#### Function-by-function changes
+
+- **`getCronLease(bucket)` -> `getCoordinatorLease(bucket)`.** Same `head()`-then-fallback-to-`get()`
+  shape, targeting `state/dispatch_coordinator.json`. The fallback `get()` path (used by
+  bucket/test doubles without `head()`, and by legacy metadata-less objects) now also yields the
+  ledger body — thread it through so the caller doesn't discard it.
+- **`acquireCronLease` -> merge into a new `acquireCoordinator(bucket, now, owner,
+  leaseDurationSeconds, handle)`** that:
+  1. Calls `getCoordinatorLease` (the `head()` fast path).
+  2. If a live lease exists and its owner isn't `owner`, return `{ acquired: false }` — **do not**
+     fall through to a full `get()`; this preserves the current `lease_busy` short-circuit cost.
+  3. Otherwise, do the full `get()` (needed for the ledger body regardless — this is the call the
+     dispatching-tick path pays for above). Re-check the lease from the full object (a full read is
+     authoritative and may be fresher than the `head()`); if still live and not owned, return
+     `{ acquired: false }`.
+  4. Build the merged object: `{ version: 1, lease: { owner, acquired_at: now, expires_at: now +
+     leaseDurationSeconds }, routes: <unchanged from the get>, providers: <unchanged from the
+     get> }`.
+  5. Single `put()` with `onlyIf: { etagMatches: <etag from the get>, ... }` (or
+     `etagDoesNotMatch: "*"` if the object didn't exist), `customMetadata` = the lease fields.
+  6. On success, populate `handle` with `{ etag, lease, ledger: routes+providers }` and return
+     `{ acquired: true, ledger }` — the ledger is now in hand for the caller to reserve against and
+     write in the *same* `put()` that follows (see below), collapsing acquire+reserve into one
+     write when the caller has candidates ready.
+- **`releaseCronLease` -> `releaseCoordinator`.** Unchanged in structure from today's handle-based
+  release; the tombstone (`released_at`, `expires_at: epoch`) now sits inside `lease`, ledger
+  fields carried through unchanged from the handle's cached `ledger`.
+- **`renewCronLease` -> `renewCoordinator`.** This is the real coupling point: renewal must
+  preserve whatever ledger state is currently in the handle (which `dispatchBatch`'s reservation
+  logic may have updated since acquire), not the ledger state from acquire time. Thread the *same*
+  handle object through both `dispatchBatch`'s ledger writes and `runScheduled`'s renewal calls
+  (today these are two separate handles — `leaseHandle` in `runScheduled`, `budgetHandle` inside
+  `dispatchBatch` — that must become one). This is the main refactor: `dispatchBatch` currently
+  creates its own `budgetHandle` per invocation; it must instead accept and mutate the caller's
+  handle when running under `runScheduled`'s external-lease-owner path, and only create a local
+  one for the standalone (`dispatchOne`/tests) path.
+- **`ledgerEntry`, `rollLedgerWindows`, `routeAvailable`, `reserveRouteCapacity`, `providerAvailable`,
+  `reserveProviderCapacity`** — unchanged. They operate on `budget.routes`/`budget.providers`
+  today; point them at `coordinator.routes`/`coordinator.providers` instead. No algorithm changes.
+- **`releaseRouteReservations`** — unchanged algorithm; targets the merged key and preserves
+  `lease` verbatim in its read-modify-write (it must never accidentally clobber the lease fields
+  when only updating `inflight`).
+- **`dispatchBatch`**: replace the separate `acquireCronLease` + `getJson(DISPATCH_BUDGET_KEY)`
+  sequence with one call to `acquireCoordinator`, which returns the ledger inline. The subsequent
+  reservation CAS (`ledgerPut`) writes the merged object (lease unchanged, `routes`/`providers`
+  updated) instead of writing `state/dispatch_budget.json` alone.
+- **`runScheduled`**: `acquireCronLease`/`renewCronLease`/`releaseCronLease` calls become
+  `acquireCoordinator`/`renewCoordinator`/`releaseCoordinator`; the single `leaseHandle` becomes
+  the combined handle passed into every `dispatchBatch` call in the loop.
+
+#### The deploy-transition hazard (why this needs its own canary, and why a new key, not a rename)
+
+Cloudflare Workers deploys are not request-versioned: an in-flight invocation keeps running the
+code it started with, but the *next* cron trigger after a deploy always runs the new code. A
+long-context dispatch can hold the lease for up to `leaseDurationSeconds` (840s / 14 minutes). If a
+deploy happens while an old-code invocation is still mid-dispatch, holding `locks/cron.json`:
+
+- **If the new code reuses one of the old keys** (e.g. writes the merged object at
+  `state/dispatch_budget.json`), the very next cron tick after deploy is running new code that
+  never learned the old code's in-progress state from `locks/cron.json`, and would try to interpret
+  the *old* ledger-only object as the new merged shape — misreading `version`/`lease` fields that
+  aren't there. This is worse than a race; it's a parse/shape error on every tick until the old
+  object is naturally overwritten.
+- **With a brand-new key** (`state/dispatch_coordinator.json`, empty until first written), the new
+  code never sees the old lease at all. The old invocation is still holding `locks/cron.json` and
+  believes it is the sole dispatcher; the new invocation acquires the *new* key's lease (which is
+  unheld, since nothing has ever written it) and also believes it is the sole dispatcher. **Two
+  invocations dispatch concurrently against two different rate ledgers that don't know about each
+  other** — durable rate limits are silently violated for the overlap window (up to 14 minutes,
+  bounded by the old lease's `leaseDurationSeconds`).
+
+**Mitigation — bounded dual-check on acquire, dropped after one lease lifetime:** for a compat
+window, `acquireCoordinator`'s step 2 above also does a `head()` on the legacy `CRON_LOCK_KEY`
+(`locks/cron.json`); if that shows a live, unexpired lease, treat the tick as `lease_busy` even
+though the new coordinator object is free. This costs one extra `head()` per acquire attempt during
+the window (op counts above become +1 while the check is active), and is safe to remove once
+`leaseDurationSeconds + maxExecutionSeconds` (currently 840 + 820 = 1660s, round up to 30 minutes)
+has elapsed since deploy — after which no old-code invocation can possibly still be running. Remove
+the check in a small follow-up commit/config flag rather than leaving it permanently; it is pure
+overhead once the window has passed. This is the same "audit every writer, prove crash/timeout/
+retry behavior, keep the path feature-flagged for rollback" rigor Step 3 above was held to, applied
+to the new race this step introduces.
+
+`state/dispatch_budget.json` and `locks/cron.json` become dead keys after the transition window.
+Leave them in place (do not delete) — they cost nothing at rest and deleting the object a
+still-transitioning old invocation might reference is strictly worse than an unused key.
+
+#### Test requirements
+
+- Idle tick costs exactly `head + list` (2 ops), no `get`/`put` of the coordinator object — a
+  regression test mirroring the existing "heads waiting on short route pacing" op-count test.
+- Lease-busy tick costs exactly `head` (1 op) — ledger body never read.
+- A dispatching tick's coordinator object write preserves `lease` fields exactly while updating
+  `routes`/`providers` — and vice versa (a release preserves `routes`/`providers` while updating
+  only `lease`).
+- Renewal mid-loop (multiple batches in one `runScheduled` call) preserves ledger state accumulated
+  by the *first* batch's reservations when renewing before the *second* batch runs — this is the
+  concrete case the handle-unification refactor above must get right.
+- The legacy-lease compat check: a live `locks/cron.json` blocks acquisition of the new coordinator
+  object even when the coordinator's own lease is free.
+- The compat check correctly does *not* block acquisition once the legacy lease's `expires_at` has
+  passed.
+- Existing 111-test suite continues to pass with the merged object substituted for both legacy keys
+  in every fixture.
+
+### Step 2 — split the canonical record; payloads and markers move to B2
+
+#### Object split, concretely
+
+| Object | Key | Backend | Conditional write |
+| --- | --- | --- | --- |
+| Control record | `requests/<id>.json` (unchanged key, R2) | **R2** | yes — enqueue uses `etagDoesNotMatch: "*"`; terminal writes use `etagMatches` |
+| Prompt payload | `payloads/<id>/request.json` | **B2** | no — written once at enqueue, immutable after |
+| Result payload | `payloads/<id>/response.json` | **B2** | no — written once at terminal completion |
+| Ready marker | `ready/<key>.json` | **B2** | no — plain put/list/delete today already |
+
+Control record shape after the split (drops `request.messages`/other request body fields and
+`response`, keeps everything the scheduler and poll API need without reading a payload):
+
+```jsonc
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion.queued",
+  "status": "pending",              // pending | completed | failed
+  "model": "gemini/gemini-3.5-flash-lite",
+  "created_at": "...", "updated_at": "...", "available_at": "...",
+  "attempts": 0,
+  "policy": { /* unchanged -- stays inline, it's small and read on every selection pass */ },
+  "request_meta": {
+    "model": "gemini/gemini-3.5-flash-lite",   // duplicated from top-level `model` deliberately:
+                                                 // upstreamPayload construction needs it without a
+                                                 // B2 read when only the control record changed
+                                                 // (e.g. a route reassignment)
+    "payload_key": "payloads/chatcmpl-.../request.json"
+  },
+  "response_meta": { "payload_key": "payloads/chatcmpl-.../response.json" },  // present once completed
+  "error": null,                     // unchanged -- stays inline, small and read by poll/schema-retry
+  "last_error": null                 // unchanged
+}
+```
+
+`request`/`response` are never inlined in the control record after this change — every consumer
+that touched `record.request`/`record.response` must instead read the B2 payload. Enumerate them:
+
+- **`dispatchBatch`'s upstream call** (`upstreamPayload = { ...claimed.record.request, model:
+  creds.upstreamModel, stream: false }`): must fetch `payloads/<id>/request.json` from B2 after
+  claiming, before building the upstream call. This is a **new B2 read on the hot path**, replacing
+  what was previously part of the R2 canonical read. Net R2/B2 op count: unchanged read count, but
+  the read moves off the R2 Class A/B budget entirely.
+- **Terminal write** (`completed = { ...claimed.record, response: responseJson }`): split into a B2
+  write of `responseJson` to `payloads/<id>/response.json`, then an R2 write of the (small) control
+  record with `response_meta.payload_key` set. **Ordering matters for crash safety** — see below.
+- **`responseForRecord`** (poll endpoint, `GET /v1/requests/{id}`): on `status === "completed"`,
+  currently returns `record.response` directly. Must instead read `payloads/<id>/response.json`
+  from B2 and return that. This makes every poll of a completed request cost one B2 read it didn't
+  before (free on B2, but adds request latency — profile this).
+- **`handleSchemaRetry`** (reads `record.request?.messages`): must read
+  `payloads/<id>/request.json` from B2 to reconstruct `messages` before appending the correction.
+- **`enqueue`'s idempotency comparison** (`JSON.stringify(stored.request) ===
+  JSON.stringify(normalized.request)`): the *new* request is always in hand locally (it's the
+  incoming HTTP body, not yet written anywhere); the *stored* request needs a B2 read to compare
+  against on a collision. This turns every idempotency-key collision check into a B2 read — accept
+  it; collisions are rare (retried enqueues with the same key), not the hot path.
+
+#### Write ordering and crash safety
+
+**Enqueue** (today: marker write, then R2 record write with `etagDoesNotMatch: "*"`):
+
+1. Write payload to B2 (`payloads/<id>/request.json`). B2 has no conditional write, so this is a
+   plain put; if this step succeeds but a later step fails, the payload is orphaned (harmless — see
+   GC below) rather than lost.
+2. Write the ready marker (B2, per the existing `markReady` logic, now targeting B2 instead of R2).
+3. Write the control record to R2 with `etagDoesNotMatch: "*"` (the actual idempotency guard,
+   unchanged from today).
+
+If the control-record write (step 3) fails or loses its CAS race, the payload written in step 1 is
+now an orphan with no control record ever pointing at it — this is the *new* failure mode this
+split introduces (today, a failed canonical write after the marker write leaves a harmless
+marker-only orphan the scheduler already knows how to repair; there was no separate payload to
+orphan). The GC section below must cover this case specifically, not just carry over today's
+marker-orphan handling.
+
+**Terminal completion** (today: one R2 write of the full completed record, guarded by
+`etagMatches`):
+
+1. Write `responseJson` to B2 (`payloads/<id>/response.json`). Plain put.
+2. Write the control record to R2 with `etagMatches: claimed.object.etag`, setting `status:
+   "completed"` and `response_meta.payload_key`.
+
+If step 1 succeeds but step 2 fails (lost CAS race — another writer already finalized this
+request), the B2 response object is orphaned. If step 1 fails, step 2 must not run (the control
+record must never claim a `response_meta.payload_key` that doesn't exist on B2) — treat a B2 write
+failure the same as today's upstream-response-read failure, going through `saveFailure` instead.
+
+This is the same "index first, canonical second" ordering principle the existing code already
+documents for enqueue ("Write the index first. A crash before the canonical write leaves a harmless
+marker... the reverse order would strand an otherwise-valid pending request forever") — applied one
+layer deeper: **payload before control, always**, so a crash never leaves a control record that
+claims a payload that isn't there, only the reverse (an orphaned payload with no pointer, which is
+inert and GC's naturally).
+
+#### B2 access from the Worker
+
+B2 is not R2 — no binding; every call is a signed HTTPS request. Reuse the project's existing B2
+env var names (`citypods/storage/s3.py`: `B2_ENDPOINT`, `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`) as
+new Worker secrets (`wrangler secret put`), naming them identically so the credential is one value
+shared across the Python and Worker sides, not a second credential to rotate.
+
+Requests need AWS SigV4 (B2's S3-compatible API). Measured cost: **0.033 ms per request with a
+cached signing key** (the derived key depends only on date/region/service, not on the request —
+cache it for the isolate's lifetime and re-derive once a day). Immaterial against the 10ms budget.
+No existing JS SigV4 implementation in this repo; write a minimal one (`crypto.subtle` HMAC-SHA256,
+four-step key derivation, canonical request construction) — do not pull in an SDK; Workers bundle
+size is a real cost. B2 requests need their own timeout (separate from `UPSTREAM_TIMEOUT_SECONDS`,
+which is provider-facing) and their own retry policy (B2 write failures should retry within the
+same invocation a small bounded number of times before falling through to `saveFailure`, rather
+than being requeued for the next cron tick the way a rate-limited route is).
+
+#### Garbage collection
+
+Object lifecycle currently assumes one delete (or one lifecycle rule) removes a completed/failed
+request's storage footprint. After the split, a request's storage spans up to four objects across
+two backends (R2 control record + up to two B2 payloads + the B2 marker, though the marker is
+already deleted at completion time by the existing batch-delete logic). Any existing or planned
+lifecycle/retention rule (quarantine window, retention window — see
+[`review/39`](39-body-aware-tiered-retention.md) and the storage-reclaim work in
+[`review/11`](11-technical-design-roadmap.md)) that expires `requests/*.json` on R2 must be paired
+with an equivalent B2 rule for `payloads/*/request.json` and `payloads/*/response.json`, or those
+become permanent orphans once their control record is gone and nothing can reconstruct the B2 key
+from a deleted R2 object. **This needs its own retention audit before Step 2 ships** — is not
+optional and is not detailed further here.
+
+#### Test requirements
+
+- Enqueue writes payload before marker before control record; a simulated failure after payload
+  write but before control write leaves an orphaned B2 payload and no control record (assert no
+  crash, no stuck pending state).
+- A completed request's poll response is byte-identical to today's inlined-response behavior, now
+  assembled from an R2 control record plus a B2 read.
+- `handleSchemaRetry` reconstructs the same `messages` array from B2 that it previously read
+  inline.
+- Idempotency-key collision detection still rejects a mismatched payload/policy, now comparing
+  against a B2-read prior payload.
+- A B2 write failure during terminal completion routes through `saveFailure` rather than leaving a
+  control record pointing at a payload that was never written.
+- Benchmark (`bench/cpu-profile.js`) updated to model a B2 round-trip's latency (not CPU — B2 wait
+  time is not charged any more than R2 wait time is) so wall-clock/timeout budgets are re-validated
+  under the new I/O shape.
 
 ## Decision gates
 
@@ -833,3 +1157,16 @@ Trade-off accepted in A: a crashed invocation no longer holds a durable concurre
 in-flight request, so a `concurrency`-limited route can be briefly over-dispatched after a crash.
 Durable rpm/rpd accounting is unaffected -- committed before the provider call, never rolled back --
 and the provider rejects the excess with a retryable 429.
+
+### Step 1/2 implementation-detail checkpoint
+
+Added exact schemas, function-by-function changes, and required tests for both Step 1 (fold the
+lease into the ledger) and Step 2 (split the canonical record to B2). Found and specified a
+deploy-transition race a naive Step 1 implementation would introduce: a new key with no legacy-lease
+compat check lets an old-code invocation (still holding `locks/cron.json`, possible for up to 14
+minutes on a long-context dispatch) run concurrently with a new-code invocation that never learned
+about it, silently violating durable rate limits for the overlap window. Mitigation is a bounded
+dual-check on acquire, removed after one lease lifetime post-deploy. Also corrected the phasing
+table's "5 ops -> 3" figure: keeping the `head()`-based lease fast path (required to avoid a
+ledger-parse regression on idle ticks, which outnumber dispatching ticks) makes a dispatching tick 4
+ops, not 3; idle ticks improve from 4 to 2. Neither step is implemented in this PR.
