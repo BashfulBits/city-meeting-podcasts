@@ -39,11 +39,14 @@
     "FAST_UPSTREAM_TIMEOUT_SECONDS": "90",
     "UPSTREAM_TIMEOUT_SECONDS": "720",
     "FINALIZATION_RESERVE_SECONDS": "20",
-    // The free plan permits only 10ms of CPU for this per-minute cron.  Dispatch one provider
-    // request per run; compact marker lookahead keeps queue inspection bounded and avoids parsing
-    // prompts just to find a route with capacity.
-    "BATCH_CONCURRENCY": "1",
-    "MAX_TOTAL_REQUESTS": "1",
+    // The free plan permits only 10ms of CPU for this per-minute cron, so batch size is set from
+    // measured production `cpuTime` rather than from provider capacity (review/43).  Measured per
+    // invocation: N=1 8.2ms, N=2 9.9ms, N=3 15.5ms -- and per *request* 8.2ms, 4.95ms, 5.2ms.
+    // N=2 is both the throughput and the efficiency optimum; N=3 is superlinear (three canonical
+    // records live at once) and is worse per request than N=2.  Raising this further needs a
+    // delivery change, not a bigger batch.
+    "BATCH_CONCURRENCY": "2",
+    "MAX_TOTAL_REQUESTS": "2",
     // Keep all failure profiles but sample detailed successful dispatch profiles to reduce log
     // serialization and object churn. Set to 1 temporarily for a full diagnostic tail.
     "PROFILE_SAMPLE_RATE": "0.1"

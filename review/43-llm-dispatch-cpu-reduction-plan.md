@@ -422,6 +422,91 @@ Do change A first as a standalone, low-risk improvement.
 - Cold starts remain `17`-`20` ms. They are infrequent, but a deploy during a backlog will produce
   a burst of them.
 
+## Batch-size measurement and the throughput ceiling — 2026-08-14
+
+Five production configurations were measured by deployed version. Cold starts are excluded; note
+that warm-up after a deploy is gradual over roughly seven invocations (progressive JIT tiering),
+not a single cold invocation.
+
+| Config | R2 ops | P50 | Mean | Max | **CPU per request** |
+| --- | --- | --- | --- | --- | --- |
+| `N=1` | 10 | 8 | 8.2 | 12 | **8.2** |
+| `N=2`, before A+B | 14 | 11 | 11.8 | 16 | 5.9 |
+| `N=2`, with A+B | 12 | 10 | **9.9** | 11 | **4.95** |
+| `N=3`, before A+B | 17 | 16 | 17.0 | 20 | 5.7 |
+| `N=3`, with A+B | 14 | 15 | 15.5 | 22 | 5.2 |
+
+### Cost is superlinear in batch size
+
+The earlier two-point fit (~`0.90` ms per R2 operation) holds from `N=1` to `N=2` -- A+B removed two
+operations and bought `1.9` ms, almost exactly as predicted -- but **fails above that**. Going
+`N=2` -> `N=3` with A+B adds two operations and costs `5.6` ms, roughly `2.8` ms/op. `N=3` is also
+markedly noisier (`13`-`22` ms).
+
+The likely mechanism is live-set pressure rather than operation count: at `N=3` three canonical
+records, three upstream payloads, and three responses are resident simultaneously, and garbage
+collection was already the secondary cost in local profiling. `candidate_prepare_ms` also rises from
+`680` to `1,062` ms.
+
+**Consequence: `N=2` is the optimum on both axes.** It is the cheapest per request (`4.95` ms against
+`8.2` at `N=1`, a 40% efficiency gain) and `N=3` is *worse per request* than `N=2` while running 55%
+over the limit. Batch size is now set from this measurement in `wrangler.jsonc`.
+
+### The limit is per-invocation, with tolerance for occasional overage
+
+Cloudflare documents the Free-plan cron CPU limit as `10` ms enforced **per invocation**, not as an
+average: isolates carry "built-in flexibility to accommodate occasional overages", but a Worker that
+hits the limit *consistently* is terminated. Observed tolerance is well above the nominal limit --
+`N=3` ran at a `15.5` ms mean and a `26` ms maximum across 14 invocations with every outcome `ok`
+and no `exceededCpu` -- but that is tolerance, not headroom, and should not be designed against.
+`N=2` at a `9.9` ms mean sits inside the limit rather than relying on that tolerance.
+
+### The binding constraint is invocations, not provider capacity
+
+Aggregate free-tier LLM capacity across the configured free routes is **66,120 requests/day**
+(~46/minute), against which:
+
+| Delivery | Ceiling | Share of LLM capacity |
+| --- | --- | --- |
+| cron `N=1` | 1,440/day | 2.2% |
+| cron `N=2` | 2,880/day | 4.4% |
+| Queues on the Free plan | ~3,333/day | 5.0% |
+
+Provider rate limits are roughly **23x** from binding. The constraint is the number of Worker
+invocations: a Cron Trigger is minute-resolution, so throughput is `BATCH_CONCURRENCY` per minute
+and nothing else.
+
+Longer invocations do not help. The CPU allowance is granted *per invocation*, so an invocation that
+runs for 13 minutes forfeits the allowance of every cron tick it blocks into a cheap `lease_busy`
+return. Dispatching 28 requests across one 14-minute invocation averages ~`12` ms per invocation
+against `9.9` ms for the same throughput at `N=2` once per minute.
+
+### Steps C and D are recommended against on the Free plan
+
+Cloudflare Queues **is** available on the Workers Free plan, at **10,000 operations/day** with 24-hour
+retention. At three operations per message (write, read, delete) that is ~**3,333 requests/day** --
+only **16% above** what cron at `N=2` already delivers, in exchange for replacing the ready-marker
+index, the cron lease, and the delivery path.
+
+**Recommendation: do not implement C or D on the Free plan.** They were justified by a
+linear-in-operations cost model that the `N=3` measurements falsify, and their own delivery quota
+caps them barely above the current ceiling.
+
+### What would actually raise throughput
+
+The Free-plan architecture is within ~2x of its ceiling. Materially more throughput requires
+changing a platform constraint, not the Worker:
+
+1. **Workers Paid (`$5`/month).** Raises the cron CPU limit from `10` ms to `30` seconds -- roughly
+   3,000x -- which retires this entire workstream, and raises Queues to 1M operations/month
+   (~33,000/day). Throughput would then be bounded by provider limits at ~46/minute rather than by
+   CPU at 2/minute: a ~23x increase for `$5`. **This is by far the best return available.**
+2. **An external invocation driver on the Free plan.** Invocations, not CPU, are scarce: the Free
+   plan allows 100,000 requests/day against the cron's 1,440. A scheduled GitHub Actions job (this
+   repository already runs many) polling an authenticated dispatch endpoint every ~10 seconds would
+   raise invocation count without changing the Worker's data model. This trades Actions minutes and
+   an external dependency for throughput and has not been prototyped or costed.
+
 ## Decision gates
 
 - Stop and ask for confirmation before changing rate-ledger semantics or record layout.
@@ -519,3 +604,18 @@ Measured the merged branch in production at 1/1 (P50 `8` ms, mean `8.2`) and, as
 time-boxed canary, at 2/2 (P50 `11` ms, mean `11.8`, no `exceededCpu`). Reverted to 1/1 afterwards.
 The measurements establish an operation-linear cost model (~`0.90` ms per R2 operation), show that
 concurrency improves CPU per request by 28%, and reverse the priority of Steps 4 and 5.
+
+### Batch-size and delivery checkpoint
+
+Implemented A (commit durable usage up front at every batch size; enforce a route's concurrency
+ceiling in memory) and B (remove finished markers in one keyed R2 delete). Marginal cost fell from
+`3.1` to `2.0` operations per request. Measured `N=1`/`N=2`/`N=3` before and after, found cost
+superlinear above `N=2`, and set `BATCH_CONCURRENCY=2` from that measurement. Established that
+provider capacity is ~23x from binding and that Queues on the Free plan caps only 16% above the
+current ceiling, so Steps C/D are recommended against; Workers Paid is the change that would
+actually matter.
+
+Trade-off accepted in A: a crashed invocation no longer holds a durable concurrency slot for its
+in-flight request, so a `concurrency`-limited route can be briefly over-dispatched after a crash.
+Durable rpm/rpd accounting is unaffected -- committed before the provider call, never rolled back --
+and the provider rejects the excess with a retryable 429.

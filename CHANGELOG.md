@@ -17,6 +17,19 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM dispatch now runs two requests per scheduled invocation.** Durable rate usage is committed
+  up front at every batch size rather than only at 1/1 — the cron lease already guarantees a single
+  dispatching invocation, so a route's concurrency ceiling is enforced from an in-memory count of
+  the candidates a batch has admitted, and the reservation release CAS is gone. Finished ready
+  markers are removed in one keyed R2 delete per batch instead of one per request. Together these
+  cut marginal cost from 3.1 to 2.0 R2 operations per request. Measured production `cpuTime` per
+  invocation is 8.2 ms at N=1, 9.9 ms at N=2 and 15.5 ms at N=3 — and per *request* 8.2, 4.95 and
+  5.2 ms — so `BATCH_CONCURRENCY` is now 2, the optimum on both axes. Cost is superlinear above
+  N=2 because three canonical records are resident at once. One trade-off: a crashed invocation no
+  longer holds a durable concurrency slot, so a concurrency-limited route can be briefly
+  over-dispatched after a crash; durable rpm/rpd accounting is unaffected and the provider rejects
+  the excess with a retryable 429. See [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md).
+
 - **The LLM dispatch Worker performs fewer R2 round trips per scheduled invocation.** Free-plan cron
   CPU is charged for moving bytes across the R2 binding rather than for waiting on it, so the
   operation shape of an invocation is the thing to reduce; the Worker's own JavaScript accounts for
