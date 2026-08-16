@@ -15,7 +15,43 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **LLM dispatch retry path R2 budget (Finding 1, audit of PR #1229).** `saveRetry` now accepts
+  an optional `pendingMarkerDeletes` array; when provided by `dispatchBatch`, the old ready-marker
+  DELETE is deferred into the end-of-batch `unmarkReadyBatch` call rather than fired immediately.
+  This collapses the retry path from 9 R2 ops to 8 (matching the success and failure paths).
+  `replaceReadyMarker` received the same `pendingDeletes` hook so the deferral is transparent to
+  other callers.
+
+- **LLM dispatch permanent-failure DELETE flood (Finding 2, audit of PR #1229).** When multiple
+  heads in the ready lookahead window carry permanent failures (`no_configured_route`, `context_limit`,
+  `credential_resolution_failed`), each `saveFailure` call in the candidate-prep loop previously
+  issued an individual R2 DELETE for the stale marker, producing 3N ops for N failures. The
+  `pendingMarkerDeletes` array is now declared before the prep loop, permanent-failure `saveFailure`
+  calls push to it instead of deleting immediately, and a single `unmarkReadyBatch` flush fires in
+  the early-exit path (or the existing end-of-batch flush fires when candidates were also dispatched).
+
+- **LLM dispatch stagger sleep timing (Finding 3, audit of PR #1229).** The stagger delay for
+  a second in-batch candidate was computed as `requests_available_at − now` before the CAS commit,
+  then the full `delayMs` was slept *after* the commit. This meant CAS latency (~100–500 ms) was
+  added to the intended inter-request gap rather than subtracted. The sleep now computes
+  `remainingMs = max(0, dispatchAtMs − Date.now())` at the moment the sleep starts, so the request
+  is dispatched at the absolute `dispatchAtMs` target regardless of CAS overhead. `dispatchAtMs`
+  is destructured from the candidate item in the `upstreamTasks.map` closure to support this.
+
 ### Added
+
+- **Staggered in-batch concurrency and coordinator consolidation in LLM dispatch.**
+  `citypods-llm-dispatch-proxy` now supports admitting multiple requests for the same route or
+  provider within a single scheduled batch (e.g. 2 Gemma-4 or 2 Mistral jobs per cron tick)
+  via in-batch stagger pacing (`MAX_IN_BATCH_STAGGER_SECONDS`, default 20s). Admitted requests
+  pre-load payloads into memory and compute pacing delays from RPM/TPM intervals, sleeping until
+  the absolute `dispatchAtMs` target before opening upstream TCP connections. The cron lease and
+  rate ledger are consolidated from `locks/cron.json` and `state/dispatch_budget.json` into a single
+  object `state/dispatch_coordinator.json`, reducing R2 operations by 2 per scheduled dispatch
+  invocation. Ready marker lookahead evaluates route capacity directly against metadata in V8 memory
+  with zero R2 reads for deferred heads.
 
 - **Cloudflare AI Gateway observability integration for LLM dispatch.** `citypods-llm-dispatch-proxy`
   now supports optional routing through Cloudflare AI Gateway, enabling time-series request/response

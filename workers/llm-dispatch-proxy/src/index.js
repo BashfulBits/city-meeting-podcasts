@@ -5,6 +5,9 @@ const REQUEST_PREFIX = "requests/";
 // finding a bounded set of candidate requests is one fixed-size list, irrespective of historical
 // request count. `pending/` is retained only for the external one-time migration.
 const READY_PREFIX = "ready/";
+// Unified coordination object combining the single-runner cron lease and rate ledger.
+const DISPATCH_COORDINATOR_KEY = "state/dispatch_coordinator.json";
+// Legacy key aliases retained for fixture and migration compatibility.
 const CRON_LOCK_KEY = "locks/cron.json";
 const DISPATCH_BUDGET_KEY = "state/dispatch_budget.json";
 // Chapter-tag batches can legitimately carry several large, source-backed chapter windows. Keep
@@ -35,6 +38,11 @@ const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
 const DEFAULT_BATCH_CONCURRENCY = 1;
 const DEFAULT_MAX_TOTAL_REQUESTS = 1;
 const DEFAULT_READY_LOOKAHEAD = 16;
+// Maximum delay an admitted candidate is allowed to wait in memory before initiating its
+// upstream HTTP/TCP connection. Kept small (20s) so the connection is established well within
+// Cloudflare's 30-second idle/execution limit while enabling high-RPM models (e.g. Gemma 4 at 30 RPM = 2s)
+// to run concurrently in a single batch.
+const DEFAULT_MAX_IN_BATCH_STAGGER_SECONDS = 20;
 // A head whose route is merely pacing will be eligible again shortly.  Rewriting its canonical
 // record and moving its marker costs four R2 operations -- more than dispatching a request -- so
 // short waits are skipped in memory and the marker is left where it is.  Only a wait longer than
@@ -71,6 +79,11 @@ class HttpError extends Error {
 
 class BodyTooLargeError extends Error {}
 
+function sleep(ms) {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function jsonResponse(value, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(value), {
     status,
@@ -98,6 +111,17 @@ function plain(status, message, extraHeaders = {}) {
 function parseTime(value) {
   const parsed = Date.parse(value || "");
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nonNegativeNumber(value, fallback, { integer = false } = {}) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return integer ? Math.max(0, Math.floor(parsed)) : parsed;
 }
 
 function positiveNumber(value, fallback, { integer = false } = {}) {
@@ -209,6 +233,10 @@ function config(env) {
       env.DEFER_IN_PLACE_SECONDS,
       DEFAULT_DEFER_IN_PLACE_SECONDS,
     ),
+    maxInBatchStaggerSeconds: nonNegativeNumber(
+      env.MAX_IN_BATCH_STAGGER_SECONDS,
+      DEFAULT_MAX_IN_BATCH_STAGGER_SECONDS,
+    ),
     batchConcurrency: positiveNumber(
       env.BATCH_CONCURRENCY,
       DEFAULT_BATCH_CONCURRENCY,
@@ -226,6 +254,12 @@ function config(env) {
     throw new Error(
       `MAX_EXECUTION_SECONDS (${result.maxExecutionSeconds}) must be less than ` +
         `LEASE_DURATION_SECONDS (${result.leaseDurationSeconds})`,
+    );
+  }
+  if (result.maxInBatchStaggerSeconds >= result.maxExecutionSeconds) {
+    throw new Error(
+      `MAX_IN_BATCH_STAGGER_SECONDS (${result.maxInBatchStaggerSeconds}) must be less than ` +
+        `MAX_EXECUTION_SECONDS (${result.maxExecutionSeconds})`,
     );
   }
   for (const [name, timeoutSeconds] of [
@@ -709,9 +743,15 @@ async function unmarkReadyBatch(bucket, keys) {
   await bucket.delete(unique);
 }
 
-async function replaceReadyMarker(bucket, record, oldKey = null) {
+async function replaceReadyMarker(bucket, record, oldKey = null, pendingDeletes = null) {
   const newKey = await markReady(bucket, record);
-  if (oldKey && oldKey !== newKey) await unmarkReady(bucket, oldKey);
+  if (oldKey && oldKey !== newKey) {
+    if (pendingDeletes) {
+      pendingDeletes.push(oldKey);
+    } else {
+      await unmarkReady(bucket, oldKey);
+    }
+  }
   return newKey;
 }
 
@@ -946,7 +986,9 @@ function retryDelaySeconds(response, attempts, cfg) {
   return Math.min(exponential, cfg.retryMaxSeconds);
 }
 
-async function saveRetry(bucket, claimed, response, cfg, now, errorDetail = null) {
+async function saveRetry(
+  bucket, claimed, response, cfg, now, errorDetail = null, pendingMarkerDeletes = null,
+) {
   const delay = retryDelaySeconds(response, claimed.record.attempts, cfg);
   const availableAt = new Date(now.getTime() + delay * 1000).toISOString();
   const lastError = errorDetail || {
@@ -965,7 +1007,7 @@ async function saveRetry(bucket, claimed, response, cfg, now, errorDetail = null
     etagMatches: claimed.object.etag,
     customMetadata: requestMetadata(updated),
   });
-  if (saved) await replaceReadyMarker(bucket, updated, claimed.readyKey);
+  if (saved) await replaceReadyMarker(bucket, updated, claimed.readyKey, pendingMarkerDeletes);
 }
 
 async function saveFailure(
@@ -1032,22 +1074,28 @@ async function requeue(
 // Cron lease -- single-runner guarantee for dispatch.
 // ---------------------------------------------------------------------------------------------
 
-function cronLeaseMetadata(lease) {
+// ---------------------------------------------------------------------------------------------
+// Dispatch coordinator & lease (`state/dispatch_coordinator.json`)
+// ---------------------------------------------------------------------------------------------
+
+function coordinatorLeaseMetadata(lease) {
   return {
     lease_version: "1",
-    owner: String(lease.owner || ""),
-    acquired_at: String(lease.acquired_at || ""),
-    renewed_at: String(lease.renewed_at || ""),
-    released_at: String(lease.released_at || ""),
-    expires_at: String(lease.expires_at || ""),
+    owner: String(lease?.owner || ""),
+    acquired_at: String(lease?.acquired_at || ""),
+    renewed_at: String(lease?.renewed_at || ""),
+    released_at: String(lease?.released_at || ""),
+    expires_at: String(lease?.expires_at || ""),
   };
 }
 
-async function getCronLease(bucket) {
-  // The metadata path avoids parsing the small-but-frequently-read JSON lease body.  Fall back
-  // to the body for leases written by older Worker versions and for test/fallback bucket APIs.
+function cronLeaseMetadata(lease) {
+  return coordinatorLeaseMetadata(lease);
+}
+
+async function getCoordinatorLease(bucket) {
   if (typeof bucket.head === "function") {
-    const head = await bucket.head(CRON_LOCK_KEY);
+    const head = await bucket.head(DISPATCH_COORDINATOR_KEY);
     const metadata = head?.customMetadata;
     if (head && metadata?.lease_version === "1" && metadata.owner && metadata.expires_at) {
       return {
@@ -1063,126 +1111,176 @@ async function getCronLease(bucket) {
       };
     }
   }
-  return getJson(bucket, CRON_LOCK_KEY);
+  const loaded = await getJson(bucket, DISPATCH_COORDINATOR_KEY);
+  if (!loaded?.value) return null;
+  return {
+    object: loaded.object,
+    etag: loaded.etag,
+    value: loaded.value.lease || null,
+    coordinator: loaded.value,
+  };
 }
 
-// An invocation that acquires the lease already knows the object it just wrote.  Passing that
-// state back in as `handle` lets renew and release skip their re-read and issue a single
-// conditional write.  The CAS is unchanged -- it is still gated on the exact ETag this owner last
-// observed -- so a lease taken over by another invocation still fails the write rather than being
-// overwritten.  Callers that hold no handle keep the original read-then-write behaviour.
-async function acquireCronLease(bucket, now, owner, leaseDurationSeconds, handle = null) {
-  const existing = await getCronLease(bucket);
-  if (existing && existing.value && existing.value.expires_at) {
-    if (parseTime(existing.value.expires_at) > now.getTime()) {
-      return false;
+async function getCronLease(bucket) {
+  return getCoordinatorLease(bucket);
+}
+
+async function acquireCoordinator(bucket, now, owner, leaseDurationSeconds, handle = null) {
+  const loaded = await getJson(bucket, DISPATCH_COORDINATOR_KEY);
+  const coordinator = (loaded && loaded.value) || {
+    version: 1,
+    lease: null,
+    routes: {},
+    providers: {},
+  };
+  if (!coordinator.routes) coordinator.routes = {};
+  if (!coordinator.providers) coordinator.providers = {};
+
+  if (coordinator.lease?.expires_at) {
+    if (
+      parseTime(coordinator.lease.expires_at) > now.getTime() &&
+      coordinator.lease.owner !== owner
+    ) {
+      return { acquired: false, status: "lease_busy" };
     }
   }
+
   const lease = {
     owner,
     acquired_at: now.toISOString(),
+    renewed_at: now.toISOString(),
+    released_at: "",
     expires_at: new Date(now.getTime() + leaseDurationSeconds * 1000).toISOString(),
   };
+  coordinator.lease = lease;
+
+  const putRes = await putJson(bucket, DISPATCH_COORDINATOR_KEY, coordinator, {
+    onlyIf: loaded ? { etagMatches: loaded.etag } : { etagDoesNotMatch: "*" },
+    customMetadata: coordinatorLeaseMetadata(lease),
+  });
+  if (!putRes) {
+    return { acquired: false, status: "lease_busy" };
+  }
+
+  if (handle) {
+    handle.etag = putRes.etag;
+    handle.coordinator = coordinator;
+    handle.owner = owner;
+  }
+
+  return {
+    acquired: true,
+    coordinator,
+    etag: putRes.etag,
+  };
+}
+
+async function acquireCronLease(bucket, now, owner, leaseDurationSeconds, handle = null) {
+  const coordHandle = { etag: null, coordinator: null, owner };
+  const res = await acquireCoordinator(bucket, now, owner, leaseDurationSeconds, coordHandle);
+  if (!res.acquired) return false;
+  if (handle) {
+    handle.etag = coordHandle.etag;
+    handle.lease = coordHandle.coordinator.lease;
+    handle.coordinator = coordHandle.coordinator;
+    handle.owner = owner;
+  }
+  return true;
+}
+
+async function releaseCoordinator(bucket, owner, handle = null) {
   try {
-    const putRes = await putJson(bucket, CRON_LOCK_KEY, lease, {
-      onlyIf: existing ? { etagMatches: existing.etag } : { etagDoesNotMatch: "*" },
-      customMetadata: cronLeaseMetadata(lease),
+    const tombstoneLease = (lease) => ({
+      ...(lease || {}),
+      owner,
+      released_at: new Date().toISOString(),
+      expires_at: new Date(0).toISOString(),
     });
-    if (!putRes) return false;
-    if (handle) {
-      handle.etag = putRes.etag;
-      handle.lease = lease;
+
+    if (handle?.etag && handle.coordinator?.lease?.owner === owner) {
+      const releasedLease = tombstoneLease(handle.coordinator.lease);
+      handle.coordinator.lease = releasedLease;
+      await putJson(bucket, DISPATCH_COORDINATOR_KEY, handle.coordinator, {
+        etagMatches: handle.etag,
+        customMetadata: coordinatorLeaseMetadata(releasedLease),
+      });
+      return;
     }
-    return true;
+
+    const current = await getJson(bucket, DISPATCH_COORDINATOR_KEY);
+    if (current?.value?.lease?.owner === owner) {
+      const releasedLease = tombstoneLease(current.value.lease);
+      current.value.lease = releasedLease;
+      await putJson(bucket, DISPATCH_COORDINATOR_KEY, current.value, {
+        etagMatches: current.etag,
+        customMetadata: coordinatorLeaseMetadata(releasedLease),
+      });
+    }
   } catch {
-    return false;
+    // Best-effort release; expiry is the backstop.
   }
 }
 
 async function releaseCronLease(bucket, owner, handle = null) {
-  try {
-    // R2's delete has no ETag precondition.  Deleting after a read would leave a TOCTOU window
-    // in which an expired lease is acquired by another invocation and then removed by this
-    // stale owner.  A CAS-written expired tombstone is immediately acquirable and cannot erase
-    // a newer lease if the object changed after our read.
-    const tombstone = (lease) => ({
-      ...lease,
-      released_at: new Date().toISOString(),
-      expires_at: new Date(0).toISOString(),
-    });
-    if (handle?.etag && handle.lease?.owner === owner) {
-      // A failed CAS here means the lease is no longer the one this invocation wrote, which is
-      // exactly the case where it must not be released.
-      const released = tombstone(handle.lease);
-      await putJson(bucket, CRON_LOCK_KEY, released, {
-        etagMatches: handle.etag,
-        customMetadata: cronLeaseMetadata(released),
-      });
-      return;
-    }
-    const current = await getCronLease(bucket);
-    if (current?.value?.owner === owner) {
-      const released = tombstone(current.value);
-      await putJson(bucket, CRON_LOCK_KEY, released, {
-        etagMatches: current.etag,
-        customMetadata: cronLeaseMetadata(released),
-      });
-    }
-  } catch {
-    // Best-effort release; the lease's own expiry is the real backstop.
-  }
+  return releaseCoordinator(bucket, owner, handle);
 }
 
-async function renewCronLease(bucket, now, owner, leaseDurationSeconds, handle = null) {
+async function renewCoordinator(bucket, now, owner, leaseDurationSeconds, handle = null) {
   const renewalFrom = (lease) => ({
-    ...lease,
+    ...(lease || {}),
+    owner,
     renewed_at: now.toISOString(),
     expires_at: new Date(now.getTime() + leaseDurationSeconds * 1000).toISOString(),
   });
 
-  if (handle?.etag && handle.lease?.owner === owner) {
-    if (parseTime(handle.lease.expires_at) > now.getTime()) {
-      const renewed = renewalFrom(handle.lease);
+  if (handle?.etag && handle.coordinator?.lease?.owner === owner) {
+    if (parseTime(handle.coordinator.lease.expires_at) > now.getTime()) {
+      const renewedLease = renewalFrom(handle.coordinator.lease);
+      handle.coordinator.lease = renewedLease;
       try {
-        const putRes = await putJson(bucket, CRON_LOCK_KEY, renewed, {
+        const putRes = await putJson(bucket, DISPATCH_COORDINATOR_KEY, handle.coordinator, {
           etagMatches: handle.etag,
-          customMetadata: cronLeaseMetadata(renewed),
+          customMetadata: coordinatorLeaseMetadata(renewedLease),
         });
         if (putRes) {
           handle.etag = putRes.etag;
-          handle.lease = renewed;
           return true;
         }
       } catch {
-        // Fall through to the authoritative read below.
+        // Fall through to authoritative read below.
       }
     }
-    // The cached view is stale or expired: re-read before concluding anything about ownership.
     handle.etag = null;
   }
 
-  const current = await getCronLease(bucket);
+  const current = await getJson(bucket, DISPATCH_COORDINATOR_KEY);
   if (
     !current ||
-    current.value?.owner !== owner ||
-    parseTime(current.value?.expires_at) <= now.getTime()
+    current.value?.lease?.owner !== owner ||
+    parseTime(current.value?.lease?.expires_at) <= now.getTime()
   ) {
     return false;
   }
-  const renewed = renewalFrom(current.value);
+
+  const renewedLease = renewalFrom(current.value.lease);
+  current.value.lease = renewedLease;
   try {
-    const putRes = await putJson(bucket, CRON_LOCK_KEY, renewed, {
+    const putRes = await putJson(bucket, DISPATCH_COORDINATOR_KEY, current.value, {
       etagMatches: current.etag,
-      customMetadata: cronLeaseMetadata(renewed),
+      customMetadata: coordinatorLeaseMetadata(renewedLease),
     });
     if (putRes && handle) {
       handle.etag = putRes.etag;
-      handle.lease = renewed;
+      handle.coordinator = current.value;
     }
     return Boolean(putRes);
   } catch {
     return false;
   }
+}
+
+async function renewCronLease(bucket, now, owner, leaseDurationSeconds, handle = null) {
+  return renewCoordinator(bucket, now, owner, leaseDurationSeconds, handle);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1337,9 +1435,40 @@ function reapExpiredInflight(entry, now) {
 
 // `changes` collects the durable side effects of an otherwise read-only admission check.  Rolling
 // a minute/day window is derived from `now` and is recomputed on every load, so it never needs to
-// be written back; dropping an abandoned reservation is real state that other readers of the
-// ledger would otherwise keep seeing.
-function routeAvailable(entry, route, { requests, tokens }, now, batch = null) {
+function routePacingDelayMs(entry, route, nowMs) {
+  if (entry.blocked_until && parseTime(entry.blocked_until) > nowMs) {
+    return Infinity;
+  }
+  let delayMs = 0;
+  if (route.rpm != null && entry.requests_available_at) {
+    const readyMs = parseTime(entry.requests_available_at);
+    if (readyMs > nowMs) {
+      delayMs = Math.max(delayMs, readyMs - nowMs);
+    }
+  }
+  if (route.tpm != null && entry.tokens_available_at) {
+    const tokenReadyMs = parseTime(entry.tokens_available_at);
+    if (tokenReadyMs > nowMs) {
+      delayMs = Math.max(delayMs, tokenReadyMs - nowMs);
+    }
+  }
+  return delayMs;
+}
+
+function providerPacingDelayMs(budget, route, nowMs, dispatchLimits = DISPATCH_LIMITS) {
+  if (providerRpm(route, dispatchLimits) == null) return 0;
+  const entry = budget.providers?.[route.provider];
+  const nextRequestAt = entry?.requests_available_at
+    ? parseTime(entry.requests_available_at)
+    : null;
+  if (nextRequestAt != null && nextRequestAt > nowMs) {
+    return nextRequestAt - nowMs;
+  }
+  return 0;
+}
+
+// Check whether a route can take one more candidate immediately or within maxStaggerMs.
+function routeAvailable(entry, route, { requests, tokens }, now, batch = null, maxStaggerMs = 0) {
   if (reapExpiredInflight(entry, now) && batch) {
     batch.reaped = true;
   }
@@ -1350,10 +1479,10 @@ function routeAvailable(entry, route, { requests, tokens }, now, batch = null) {
     const nextRequestAt = entry.requests_available_at
       ? parseTime(entry.requests_available_at)
       : null;
-    // New reservations use a continuous pacing schedule. The minute counter remains as a
+    // Pacing allows delays within maxStaggerMs. The minute counter remains as a
     // compatibility fallback for ledgers written by older Worker versions.
     if (
-      (nextRequestAt != null && nextRequestAt > now.getTime()) ||
+      (nextRequestAt != null && nextRequestAt - now.getTime() > maxStaggerMs) ||
       (nextRequestAt == null && entry.requests_minute + requests > route.rpm)
     ) {
       return false;
@@ -1365,7 +1494,7 @@ function routeAvailable(entry, route, { requests, tokens }, now, batch = null) {
   if (
     route.tpm != null &&
     entry.tokens_available_at &&
-    parseTime(entry.tokens_available_at) > now.getTime()
+    parseTime(entry.tokens_available_at) - now.getTime() > maxStaggerMs
   ) {
     return false;
   }
@@ -1449,13 +1578,13 @@ function providerLedgerEntry(budget, provider) {
   return budget.providers[provider];
 }
 
-function providerAvailable(budget, route, now, dispatchLimits = DISPATCH_LIMITS) {
+function providerAvailable(budget, route, now, dispatchLimits = DISPATCH_LIMITS, maxStaggerMs = 0) {
   if (providerRpm(route, dispatchLimits) == null) return true;
   const entry = budget.providers?.[route.provider];
   const nextRequestAt = entry?.requests_available_at
     ? parseTime(entry.requests_available_at)
     : null;
-  return nextRequestAt == null || nextRequestAt <= now.getTime();
+  return nextRequestAt == null || nextRequestAt - now.getTime() <= maxStaggerMs;
 }
 
 function reserveProviderCapacity(budget, route, requests, now, dispatchLimits = DISPATCH_LIMITS) {
@@ -1757,6 +1886,7 @@ function selectRouteForModel(
   now,
   dispatchLimits = DISPATCH_LIMITS,
   batch = null,
+  maxStaggerMs = 0,
 ) {
   const { candidates, contextCompatible, freeRanked, paidRanked } = eligibleRoutesForModel(
     canonicalModel,
@@ -1768,6 +1898,13 @@ function selectRouteForModel(
   const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
   const tokens = policy?.estimated_tokens || 1024;
   const reservationSize = { requests: 1, tokens };
+  const nowMs = now.getTime();
+  // In-batch stagger is only permitted when candidates have already been admitted in this batch.
+  // The first candidate in a batch must be immediately ready (delayMs === 0) at the current time.
+  const hasAdmittedCandidates = Boolean(
+    batch?.admitted && [...batch.admitted.values()].some((c) => c > 0),
+  );
+  const effectiveMaxStaggerMs = hasAdmittedCandidates ? maxStaggerMs : 0;
 
   const tryRoutes = (ranked) => {
     for (const route of ranked) {
@@ -1777,9 +1914,13 @@ function selectRouteForModel(
       }
       const entry = ledgerEntry(budget, route.route_id);
       rollLedgerWindows(entry, route, now);
-      if (providerAvailable(budget, route, now, dispatchLimits)) {
-        if (routeAvailable(entry, route, reservationSize, now, batch)) {
-          return { chosenRoute: route, entry };
+      if (providerAvailable(budget, route, now, dispatchLimits, effectiveMaxStaggerMs)) {
+        if (routeAvailable(entry, route, reservationSize, now, batch, effectiveMaxStaggerMs)) {
+          const routeDelay = routePacingDelayMs(entry, route, nowMs);
+          const provDelay = providerPacingDelayMs(budget, route, nowMs, dispatchLimits);
+          const delayMs = Math.max(0, routeDelay, provDelay);
+          const dispatchAtMs = nowMs + delayMs;
+          return { chosenRoute: route, entry, dispatchAtMs, delayMs };
         }
       }
     }
@@ -1832,12 +1973,21 @@ function selectRoute(
   now,
   dispatchLimits = DISPATCH_LIMITS,
   batch = null,
+  maxStaggerMs = 0,
 ) {
   const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
   let lastSelection = { chosenRoute: null, reason: "no_configured_route" };
   let retryableSelection = null;
   for (const model of [...new Set(models)]) {
-    const selection = selectRouteForModel(budget, model, policy, now, dispatchLimits, batch);
+    const selection = selectRouteForModel(
+      budget,
+      model,
+      policy,
+      now,
+      dispatchLimits,
+      batch,
+      maxStaggerMs,
+    );
     if (selection.chosenRoute) return selection;
     // Preserve "no capacity" when an earlier, valid model is merely full rather than allowing
     // a later unknown model to misclassify the durable request as permanently invalid.
@@ -1987,6 +2137,9 @@ async function dispatchBatch(
   maxBatch = DEFAULT_BATCH_CONCURRENCY,
   externalLeaseOwner = null,
   runDeadlineMs = null,
+  externalCoordinatorHandle = null,
+  sleepImpl = sleep,
+  nowMs = Date.now,
 ) {
   const batchStartedAt = profileNow();
   const batchProfile = {};
@@ -2000,32 +2153,33 @@ async function dispatchBatch(
   }
 
   const cfg = config(env);
-  // The cron lease makes every dispatching invocation single-writer, at any batch size.  Durable
-  // request/provider pacing is therefore committed once, before the upstream calls, and no
-  // `inflight` reservation is created or later deleted: within a batch the concurrency ceiling is
-  // tracked in memory, and across invocations the lease already excludes a second dispatcher.
-  // Reservations written by an older Worker version are still honoured and reaped on load.
-  let leaseOwner = externalLeaseOwner;
+  let leaseOwner = externalLeaseOwner || externalCoordinatorHandle?.owner;
   let acquiredLock = false;
-  const leaseHandle = { etag: null, lease: null };
-  if (!leaseOwner) {
+  const coordinatorHandle = externalCoordinatorHandle || {
+    etag: null,
+    coordinator: null,
+    owner: null,
+  };
+  if (!leaseOwner || !coordinatorHandle.coordinator) {
     leaseOwner = crypto.randomUUID();
+    coordinatorHandle.owner = leaseOwner;
     const leaseStartedAt = profileNow();
-    acquiredLock = await acquireCronLease(
+    const acquireRes = await acquireCoordinator(
       bucket,
       now,
       leaseOwner,
       cfg.leaseDurationSeconds,
-      leaseHandle,
+      coordinatorHandle,
     );
     batchProfile.lease_acquire_ms = profileElapsed(leaseStartedAt);
-    if (!acquiredLock) {
+    if (!acquireRes.acquired) {
       return {
         status: "lease_busy",
         count: 0,
         profile: finishDispatchProfile(batchProfile, batchStartedAt),
       };
     }
+    acquiredLock = true;
   }
 
   try {
@@ -2044,12 +2198,11 @@ async function dispatchBatch(
       };
     }
 
-    const budgetLoadStartedAt = profileNow();
-    let budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
-    batchProfile.budget_load_ms = profileElapsed(budgetLoadStartedAt);
-    let budget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
+    let coordinator = coordinatorHandle.coordinator;
+    let coordinatorLoadedEtag = coordinatorHandle.etag;
+    batchProfile.budget_load_ms = 0;
 
-    // Select candidates up to maxBatch with stacked in-memory ledger reservations
+    // Select candidates up to maxBatch with stacked in-memory coordinator reservations
     const candidatesToDispatch = [];
     const batchFailures = [];
     let lastRequeuedId = null;
@@ -2063,6 +2216,11 @@ async function dispatchBatch(
     // candidates this batch has taken per route, so a route's concurrency ceiling is enforced
     // without a durable reservation.
     const batchState = { reaped: false, admitted: new Map() };
+    const maxStaggerMs = cfg.maxInBatchStaggerSeconds * 1000;
+    // Accumulated across the whole batch: marker deletes from the candidate-prep loop
+    // (permanent failures) and the finalize closures (completed/failed dispatches). A single
+    // unmarkReadyBatch call flushes them all in one R2 DELETE instead of N individual deletes.
+    const pendingMarkerDeletes = [];
 
     const candidatePrepareStartedAt = profileNow();
     for (const head of ready.heads) {
@@ -2080,12 +2238,13 @@ async function dispatchBatch(
       const candidateStartedAt = profileNow();
       const routeSelectStartedAt = profileNow();
       const selection = selectRoute(
-        budget,
+        coordinator,
         head.record.policy?.allowed_models || head.record.model,
         head.record.policy,
         now,
         DISPATCH_LIMITS,
         batchState,
+        maxStaggerMs,
       );
       candidateProfile.route_select_ms = profileElapsed(routeSelectStartedAt);
       let claimed;
@@ -2094,7 +2253,7 @@ async function dispatchBatch(
           // The marker metadata carries the same model and policy the canonical record does, so
           // the retry time is known without reading the record at all.
           const retryAt = nextCapacityRetryAt(
-            budget,
+            coordinator,
             head.record.policy?.allowed_models || head.record.model,
             head.record.policy,
             now,
@@ -2119,7 +2278,9 @@ async function dispatchBatch(
         candidateProfile.claim_ms = profileElapsed(claimStartedAt);
         if (!claimed) continue;
         {
-          await saveFailure(bucket, claimed, 400, now, selection.reason);
+          await saveFailure(
+            bucket, claimed, 400, now, selection.reason, null, pendingMarkerDeletes,
+          );
           batchFailures.push({
             status: "failed",
             requestId: claimed.record.id,
@@ -2134,11 +2295,11 @@ async function dispatchBatch(
       candidateProfile.claim_ms = profileElapsed(claimStartedAt);
       if (!claimed) continue;
 
-      const { chosenRoute } = selection;
+      const { chosenRoute, dispatchAtMs = now.getTime(), delayMs = 0 } = selection;
       const timeoutSeconds = timeoutSecondsForRecord(claimed.record, cfg);
       if (
         runDeadlineMs != null &&
-        Date.now() + (timeoutSeconds + cfg.finalizationReserveSeconds) * 1000 > runDeadlineMs
+        now.getTime() + delayMs + (timeoutSeconds + cfg.finalizationReserveSeconds) * 1000 > runDeadlineMs
       ) {
         await requeue(bucket, claimed, now, new Date(now.getTime() + 60_000).toISOString());
         lastRequeuedId = claimed.record.id;
@@ -2151,7 +2312,10 @@ async function dispatchBatch(
         creds = resolveProviderCredentials(env, chosenRoute);
         candidateProfile.credentials_ms = profileElapsed(credentialsStartedAt);
       } catch (error) {
-        await saveFailure(bucket, claimed, 500, now, "credential_resolution_failed");
+        await saveFailure(
+          bucket, claimed, 500, now, "credential_resolution_failed", null,
+          pendingMarkerDeletes,
+        );
         console.error(
           JSON.stringify({ event: "llm_dispatch_credentials_error", error: error?.message }),
         );
@@ -2168,38 +2332,45 @@ async function dispatchBatch(
         tokens: claimed.record.policy?.estimated_tokens || 1024,
       };
 
-      const entry = ledgerEntry(budget, chosenRoute.route_id);
+      const entry = ledgerEntry(coordinator, chosenRoute.route_id);
       rollLedgerWindows(entry, chosenRoute, now);
-      if (!providerAvailable(budget, chosenRoute, now)) {
+      if (!providerAvailable(coordinator, chosenRoute, now, DISPATCH_LIMITS, maxStaggerMs)) {
         await requeue(
           bucket,
           claimed,
           now,
           nextRouteReset(
-            ledgerEntry(budget, chosenRoute.route_id),
+            ledgerEntry(coordinator, chosenRoute.route_id),
             chosenRoute,
             now,
             DISPATCH_LIMITS,
-            budget,
+            coordinator,
           ).toISOString(),
         );
         lastRequeuedId = claimed.record.id;
         continue;
       }
-      if (!routeAvailable(entry, chosenRoute, reservationSize, now, batchState)) {
+      if (!routeAvailable(entry, chosenRoute, reservationSize, now, batchState, maxStaggerMs)) {
         await requeue(
           bucket,
           claimed,
           now,
-          nextRouteReset(entry, chosenRoute, now, DISPATCH_LIMITS, budget).toISOString(),
+          nextRouteReset(entry, chosenRoute, now, DISPATCH_LIMITS, coordinator).toISOString(),
         );
         lastRequeuedId = claimed.record.id;
         continue;
       }
 
       const reservationOwner = claimed.record.id;
-      reserveProviderCapacity(budget, chosenRoute, reservationSize.requests, now);
-      reserveRouteCapacity(entry, chosenRoute, reservationSize, {});
+      reserveProviderCapacity(
+        coordinator,
+        chosenRoute,
+        reservationSize.requests,
+        new Date(dispatchAtMs),
+      );
+      reserveRouteCapacity(entry, chosenRoute, reservationSize, {
+        reservedAt: new Date(dispatchAtMs).toISOString(),
+      });
       batchState.admitted.set(
         chosenRoute.route_id,
         (batchState.admitted.get(chosenRoute.route_id) || 0) + reservationSize.requests,
@@ -2207,6 +2378,7 @@ async function dispatchBatch(
       claimed.record.attempts = (claimed.record.attempts || 0) + 1;
       claimed.record.processing_started_at = now.toISOString();
 
+      candidateProfile.stagger_delay_ms = delayMs;
       candidatesToDispatch.push({
         claimed,
         chosenRoute,
@@ -2214,6 +2386,8 @@ async function dispatchBatch(
         reservationSize,
         reservationOwner,
         timeoutSeconds,
+        dispatchAtMs,
+        delayMs,
         profile: candidateProfile,
         dispatchStartedAt: candidateStartedAt,
       });
@@ -2221,20 +2395,27 @@ async function dispatchBatch(
     batchProfile.candidate_prepare_ms = profileElapsed(candidatePrepareStartedAt);
 
     if (candidatesToDispatch.length === 0) {
-      // A batch that dispatched nothing can still have changed the ledger.
-      //
-      // The previous guard compared `JSON.stringify(budget)` against a second stringify of the
-      // same object -- `budget` is `budgetLoaded.value` -- so the strings always matched, this
-      // write never happened, and two whole-ledger serializations were spent proving it on every
-      // no-capacity invocation.  Window rollover is recomputed from `now` on every load and does
-      // not need persisting; a reaped reservation does, because nothing else will remove it.
-      if (budgetLoaded && batchState.reaped) {
+      if (coordinatorLoadedEtag && batchState.reaped) {
         try {
-          await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
-            onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
+          const putRes = await putJson(bucket, DISPATCH_COORDINATOR_KEY, coordinator, {
+            onlyIf: { etagMatches: coordinatorLoadedEtag },
+            customMetadata: coordinatorLeaseMetadata(coordinator.lease),
           });
+          if (putRes) {
+            coordinatorHandle.etag = putRes.etag;
+            coordinatorHandle.coordinator = coordinator;
+          }
         } catch {
           // A sibling may have committed fresher rollover state; the request remains requeued.
+        }
+      }
+      // Flush any marker deletes collected during candidate preparation (permanent failures)
+      // before any early return so they are not silently dropped.
+      if (pendingMarkerDeletes.length > 0) {
+        try {
+          await unmarkReadyBatch(bucket, pendingMarkerDeletes);
+        } catch {
+          // Best-effort; self-healing will clean stale markers on the next cron tick.
         }
       }
       if (batchFailures.length > 0) {
@@ -2258,7 +2439,7 @@ async function dispatchBatch(
             claimed,
             now,
             nextCapacityRetryAt(
-              budget,
+              coordinator,
               claimed.record.policy?.allowed_models || claimed.record.model,
               claimed.record.policy,
               now,
@@ -2284,55 +2465,94 @@ async function dispatchBatch(
       };
     }
 
-    // Atomic CAS write of the combined budget reservations
+    // Atomic CAS write of the combined coordinator (lease + rate ledger)
     let ledgerSaved = false;
     let freshCapacityFailed = false;
-    const budgetHandle = { etag: null, value: null };
-    // Terminal markers are removed together once every upstream attempt has finished.
-    const pendingMarkerDeletes = [];
     const ledgerWriteStartedAt = profileNow();
     for (let attempt = 0; attempt < 3 && !ledgerSaved; attempt += 1) {
       if (attempt > 0) {
-        budgetLoaded = await getJson(bucket, DISPATCH_BUDGET_KEY);
-        const freshBudget = (budgetLoaded && budgetLoaded.value) || { version: 1, routes: {} };
+        const freshLoaded = await getJson(bucket, DISPATCH_COORDINATOR_KEY);
+        const freshCoordinator = (freshLoaded && freshLoaded.value) || {
+          version: 1,
+          lease: null,
+          routes: {},
+          providers: {},
+        };
+        coordinatorLoadedEtag = freshLoaded ? freshLoaded.etag : null;
+        if (!freshCoordinator.routes) freshCoordinator.routes = {};
+        if (!freshCoordinator.providers) freshCoordinator.providers = {};
+        freshCoordinator.lease = coordinator.lease;
+
         // Re-admit the same candidates against the fresher ledger, counting them as this batch
         // goes so a route's concurrency ceiling still holds on the retry.
         const retryState = { reaped: false, admitted: new Map() };
         for (const item of candidatesToDispatch) {
-          if (!providerAvailable(freshBudget, item.chosenRoute, now)) {
+          if (
+            !providerAvailable(
+              freshCoordinator,
+              item.chosenRoute,
+              now,
+              DISPATCH_LIMITS,
+              maxStaggerMs,
+            )
+          ) {
             freshCapacityFailed = true;
             break;
           }
-          const entry = ledgerEntry(freshBudget, item.chosenRoute.route_id);
+          const entry = ledgerEntry(freshCoordinator, item.chosenRoute.route_id);
           rollLedgerWindows(entry, item.chosenRoute, now);
-          if (!routeAvailable(entry, item.chosenRoute, item.reservationSize, now, retryState)) {
+          if (
+            !routeAvailable(
+              entry,
+              item.chosenRoute,
+              item.reservationSize,
+              now,
+              retryState,
+              maxStaggerMs,
+            )
+          ) {
             freshCapacityFailed = true;
             break;
           }
+          const routeDelay = routePacingDelayMs(entry, item.chosenRoute, now.getTime());
+          const provDelay = providerPacingDelayMs(
+            freshCoordinator,
+            item.chosenRoute,
+            now.getTime(),
+            DISPATCH_LIMITS,
+          );
+          item.delayMs = Math.max(0, routeDelay, provDelay);
+          item.dispatchAtMs = now.getTime() + item.delayMs;
           reserveProviderCapacity(
-            freshBudget,
+            freshCoordinator,
             item.chosenRoute,
             item.reservationSize.requests,
-            now,
+            new Date(item.dispatchAtMs),
           );
-          reserveRouteCapacity(entry, item.chosenRoute, item.reservationSize, {});
+          reserveRouteCapacity(entry, item.chosenRoute, item.reservationSize, {
+            reservedAt: new Date(item.dispatchAtMs).toISOString(),
+          });
           retryState.admitted.set(
             item.chosenRoute.route_id,
-            (retryState.admitted.get(item.chosenRoute.route_id) || 0) + item.reservationSize.requests,
+            (retryState.admitted.get(item.chosenRoute.route_id) || 0) +
+              item.reservationSize.requests,
           );
         }
         if (freshCapacityFailed) break;
-        budget = freshBudget;
+        coordinator = freshCoordinator;
       }
-      const ledgerPut = await putJson(bucket, DISPATCH_BUDGET_KEY, budget, {
-        onlyIf: budgetLoaded ? { etagMatches: budgetLoaded.etag } : { etagDoesNotMatch: "*" },
+      const ledgerPut = await putJson(bucket, DISPATCH_COORDINATOR_KEY, coordinator, {
+        onlyIf: coordinatorLoadedEtag
+          ? { etagMatches: coordinatorLoadedEtag }
+          : { etagDoesNotMatch: "*" },
+        customMetadata: coordinatorLeaseMetadata(coordinator.lease),
       });
       ledgerSaved = Boolean(ledgerPut);
       if (ledgerSaved) {
         // Reservations are released against this exact version, so the release path can CAS
         // straight onto it instead of re-reading the ledger it just wrote.
-        budgetHandle.etag = ledgerPut.etag;
-        budgetHandle.value = budget;
+        coordinatorHandle.etag = ledgerPut.etag;
+        coordinatorHandle.coordinator = coordinator;
       }
     }
     batchProfile.ledger_write_ms = profileElapsed(ledgerWriteStartedAt);
@@ -2347,6 +2567,13 @@ async function dispatchBatch(
       for (const item of candidatesToDispatch) {
         await requeue(bucket, item.claimed, now, now.toISOString(), { releaseAttempt: true });
       }
+      if (pendingMarkerDeletes.length > 0) {
+        try {
+          await unmarkReadyBatch(bucket, pendingMarkerDeletes);
+        } catch {
+          // Best-effort; self-healing will clean stale markers on the next cron tick.
+        }
+      }
       return {
         status: "no_capacity",
         count: 0,
@@ -2355,10 +2582,25 @@ async function dispatchBatch(
       };
     }
 
-    // Execute batch concurrently, retaining every sibling outcome.  One unexpected task/write
-    // rejection must not discard successful results or leave its sibling reservations inflight.
+    // Execute batch concurrently with in-batch stagger pacing, retaining every sibling outcome.
     const upstreamTasks = candidatesToDispatch.map(
-      async ({ claimed, chosenRoute, creds, timeoutSeconds, profile, dispatchStartedAt }) => {
+      async ({
+        claimed,
+        chosenRoute,
+        creds,
+        timeoutSeconds,
+        delayMs,
+        dispatchAtMs,
+        profile,
+        dispatchStartedAt,
+      }) => {
+        // Compute remaining stagger time relative to now; CAS-commit latency should reduce
+        // the wait, not add to it.  dispatchAtMs is the absolute target wall-clock instant.
+        if (delayMs > 0) {
+          const currentMs = typeof nowMs === "function" ? nowMs() : Date.now();
+          const remainingMs = Math.max(0, dispatchAtMs - currentMs);
+          if (remainingMs > 0) await sleepImpl(remainingMs);
+        }
         const upstreamPayload = upstreamRequestForRoute(
           claimed.record,
           chosenRoute,
@@ -2412,35 +2654,52 @@ async function dispatchBatch(
             return {
               finalize: async () => {
                 const persistStartedAt = profileNow();
-                await saveRetry(bucket, claimed, null, cfg, now, errorDetail);
+                await saveRetry(bucket, claimed, null, cfg, now, errorDetail, pendingMarkerDeletes);
                 profile.persist_ms = profileElapsed(persistStartedAt);
-                return profiledResult({
-                  status: "retrying",
-                  requestId: claimed.record.id,
-                  routeId: chosenRoute.route_id,
-                  error: code,
-                }, profile, dispatchStartedAt);
+                return profiledResult(
+                  {
+                    status: "retrying",
+                    requestId: claimed.record.id,
+                    routeId: chosenRoute.route_id,
+                    error: code,
+                  },
+                  profile,
+                  dispatchStartedAt,
+                );
               },
             };
           }
           return {
             finalize: async () => {
               const persistStartedAt = profileNow();
-              await saveFailure(bucket, claimed, null, now, code, errorDetail, pendingMarkerDeletes);
+              await saveFailure(
+                bucket,
+                claimed,
+                null,
+                now,
+                code,
+                errorDetail,
+                pendingMarkerDeletes,
+              );
               profile.persist_ms = profileElapsed(persistStartedAt);
-              return profiledResult({
-                status: "failed",
-                requestId: claimed.record.id,
-                routeId: chosenRoute.route_id,
-                reason: code,
-              }, profile, dispatchStartedAt);
+              return profiledResult(
+                {
+                  status: "failed",
+                  requestId: claimed.record.id,
+                  routeId: chosenRoute.route_id,
+                  reason: code,
+                },
+                profile,
+                dispatchStartedAt,
+              );
             },
           };
         }
 
         if (!response.ok) {
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
-          const willRetry = retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts;
+          const willRetry =
+            retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts;
           const errorReadStartedAt = profileNow();
           const providerError = await readUpstreamError(response, {
             persistBodyPreview: !willRetry,
@@ -2456,20 +2715,24 @@ async function dispatchBatch(
             provider_error: providerError,
             dispatch_profile: finishDispatchProfile(profile, dispatchStartedAt),
           };
-          if (retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts) {
+          if (willRetry) {
             return {
               finalize: async () => {
                 const persistStartedAt = profileNow();
-                await saveRetry(bucket, claimed, response, cfg, now, errorDetail);
+                await saveRetry(
+                  bucket, claimed, response, cfg, now, errorDetail, pendingMarkerDeletes,
+                );
                 profile.persist_ms = profileElapsed(persistStartedAt);
-                return profiledResult({
-                  status: "retrying",
-                  requestId: claimed.record.id,
-                  routeId: chosenRoute.route_id,
-                  upstreamStatus: response.status,
-                  providerCode: providerError?.code,
-                  providerStatus: providerError?.status,
-                }, profile, dispatchStartedAt);
+                return profiledResult(
+                  {
+                    status: "retrying",
+                    requestId: claimed.record.id,
+                    routeId: chosenRoute.route_id,
+                    upstreamStatus: response.status,
+                  },
+                  profile,
+                  dispatchStartedAt,
+                );
               },
             };
           }
@@ -2486,14 +2749,19 @@ async function dispatchBatch(
                 pendingMarkerDeletes,
               );
               profile.persist_ms = profileElapsed(persistStartedAt);
-              return profiledResult({
-                status: "failed",
-                requestId: claimed.record.id,
-                routeId: chosenRoute.route_id,
-                upstreamStatus: response.status,
-                providerCode: providerError?.code,
-                providerStatus: providerError?.status,
-              }, profile, dispatchStartedAt);
+              return profiledResult(
+                {
+                  status: "failed",
+                  requestId: claimed.record.id,
+                  routeId: chosenRoute.route_id,
+                  reason: "upstream_error",
+                  upstreamStatus: response.status,
+                  providerCode: providerError?.code,
+                  providerStatus: providerError?.status,
+                },
+                profile,
+                dispatchStartedAt,
+              );
             },
           };
         }
@@ -2519,9 +2787,10 @@ async function dispatchBatch(
                   ? "upstream_response_too_large"
                   : "invalid_upstream_json",
                 {
-                  code: error instanceof BodyTooLargeError
-                    ? "upstream_response_too_large"
-                    : "invalid_upstream_json",
+                  code:
+                    error instanceof BodyTooLargeError
+                      ? "upstream_response_too_large"
+                      : "invalid_upstream_json",
                   status: response.status,
                   model: chosenRoute.model,
                   route_id: chosenRoute.route_id,
@@ -2531,12 +2800,16 @@ async function dispatchBatch(
                 pendingMarkerDeletes,
               );
               profile.persist_ms = profileElapsed(persistStartedAt);
-              return profiledResult({
-                status: "failed",
-                requestId: claimed.record.id,
-                routeId: chosenRoute.route_id,
-                upstreamStatus: response.status,
-              }, profile, dispatchStartedAt);
+              return profiledResult(
+                {
+                  status: "failed",
+                  requestId: claimed.record.id,
+                  routeId: chosenRoute.route_id,
+                  upstreamStatus: response.status,
+                },
+                profile,
+                dispatchStartedAt,
+              );
             },
           };
         }
@@ -2563,17 +2836,22 @@ async function dispatchBatch(
                 pendingMarkerDeletes,
               );
               profile.persist_ms = profileElapsed(persistStartedAt);
-              return profiledResult({
-                status: "failed",
-                requestId: claimed.record.id,
-                routeId: chosenRoute.route_id,
-                upstreamStatus: response.status,
-              }, profile, dispatchStartedAt);
+              return profiledResult(
+                {
+                  status: "failed",
+                  requestId: claimed.record.id,
+                  routeId: chosenRoute.route_id,
+                  upstreamStatus: response.status,
+                },
+                profile,
+                dispatchStartedAt,
+              );
             },
           };
         }
 
         profile.response_read_ms = profileElapsed(responseReadStartedAt);
+
         const completed = {
           ...claimed.record,
           status: "completed",
@@ -2591,15 +2869,19 @@ async function dispatchBatch(
             });
             if (saved && claimed.readyKey) pendingMarkerDeletes.push(claimed.readyKey);
             profile.persist_ms = profileElapsed(persistStartedAt);
-            return profiledResult({
-              status: "completed",
-              requestId: claimed.record.id,
-              routeId: chosenRoute.route_id,
-              upstreamStatus: response.status,
-            }, profile, dispatchStartedAt);
+            return profiledResult(
+              {
+                status: "completed",
+                requestId: claimed.record.id,
+                routeId: chosenRoute.route_id,
+                upstreamStatus: response.status,
+              },
+              profile,
+              dispatchStartedAt,
+            );
           },
         };
-        },
+      },
     );
 
     const finalized = await Promise.all(
@@ -2627,7 +2909,7 @@ async function dispatchBatch(
               pendingMarkerDeletes,
             );
           } catch {
-            // The request remains recoverable by the processing-timeout reaper if this write races.
+            // Recoverable by processing-timeout reaper if write races.
           }
           return {
             status: "failed",
@@ -2641,8 +2923,6 @@ async function dispatchBatch(
     try {
       await unmarkReadyBatch(bucket, pendingMarkerDeletes);
     } catch {
-      // A stale marker is repaired by the next invocation's claim check; never fail a batch whose
-      // canonical records are already terminal just because the index cleanup raced.
       console.error(
         JSON.stringify({
           event: "llm_dispatch_marker_cleanup_failed",
@@ -2661,7 +2941,7 @@ async function dispatchBatch(
     };
   } finally {
     if (acquiredLock) {
-      await releaseCronLease(bucket, leaseOwner, leaseHandle);
+      await releaseCoordinator(bucket, leaseOwner, coordinatorHandle);
     }
   }
 }
@@ -2861,7 +3141,10 @@ async function handleRequest(request, env) {
   return plain(404, "not found");
 }
 
-async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
+async function runScheduled(
+  env,
+  { fetchImpl = fetch, nowMs = Date.now, sleepImpl = sleep } = {},
+) {
   const bucket = env.LLM_QUEUE;
   if (!bucket) return { status: "no_storage", totalDispatched: 0 };
   const cfg = config(env);
@@ -2871,15 +3154,15 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
   // ownership between batches; they never extend the invocation deadline.
   const deadlineMs = startMs + cfg.maxExecutionSeconds * 1000;
   const leaseOwner = crypto.randomUUID();
-  const leaseHandle = { etag: null, lease: null };
-  const acquiredLock = await acquireCronLease(
+  const coordinatorHandle = { etag: null, coordinator: null, owner: leaseOwner };
+  const acquireResult = await acquireCoordinator(
     bucket,
     new Date(nowMs()),
     leaseOwner,
     cfg.leaseDurationSeconds,
-    leaseHandle,
+    coordinatorHandle,
   );
-  if (!acquiredLock) {
+  if (!acquireResult.acquired) {
     console.log(JSON.stringify({ event: "llm_dispatch", status: "lease_busy" }));
     return { status: "lease_busy", totalDispatched: 0 };
   }
@@ -2903,12 +3186,12 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
         break;
       }
       if (nowMs() >= renewDueAtMs) {
-        const renewed = await renewCronLease(
+        const renewed = await renewCoordinator(
           bucket,
           new Date(nowMs()),
           leaseOwner,
           cfg.leaseDurationSeconds,
-          leaseHandle,
+          coordinatorHandle,
         );
         if (!renewed) {
           status = "lease_lost";
@@ -2925,6 +3208,9 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
         Math.min(cfg.batchConcurrency, cfg.maxTotalRequests - totalDispatched),
         leaseOwner,
         deadlineMs,
+        coordinatorHandle,
+        sleepImpl,
+        nowMs,
       );
       status = batchResult.status;
       if (
@@ -2940,7 +3226,8 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
             count: 0,
             results: summarizeBatchResults(batchResult.results, includeSuccessProfiles),
             profile:
-              includeSuccessProfiles || (batchResult.results || []).some((r) => r.status !== "completed")
+              includeSuccessProfiles ||
+              (batchResult.results || []).some((r) => r.status !== "completed")
                 ? batchResult.profile
                 : undefined,
           }),
@@ -2961,7 +3248,8 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
           retrying: (batchResult.results || []).filter((result) => result.status === "retrying")
             .length,
           profile:
-            includeSuccessProfiles || (batchResult.results || []).some((r) => r.status !== "completed")
+            includeSuccessProfiles ||
+            (batchResult.results || []).some((r) => r.status !== "completed")
               ? batchResult.profile
               : undefined,
           results: summarizeBatchResults(batchResult.results, includeSuccessProfiles),
@@ -2972,7 +3260,7 @@ async function runScheduled(env, { fetchImpl = fetch, nowMs = Date.now } = {}) {
     status = "error";
     console.error(JSON.stringify({ event: "llm_dispatch", status, error: error?.name || "Error" }));
   } finally {
-    await releaseCronLease(bucket, leaseOwner, leaseHandle);
+    await releaseCoordinator(bucket, leaseOwner, coordinatorHandle);
   }
   return { status, totalDispatched };
 }
@@ -2988,10 +3276,13 @@ export default {
 };
 
 export {
+  DISPATCH_COORDINATOR_KEY,
+  acquireCoordinator,
   acquireCronLease,
   config,
   dispatchBatch,
   dispatchOne,
+  getCoordinatorLease,
   handleRequest,
   localDateTimeToUTC,
   nextCapacityRetryAt,
@@ -2999,14 +3290,17 @@ export {
   nextRouteReset,
   normalizeChatRequest,
   rankRoutes,
+  releaseCoordinator,
   releaseCronLease,
   readyKey,
   readyMarker,
   readyMarkerMetadata,
+  renewCoordinator,
   renewCronLease,
   runScheduled,
   requestKey,
   resolveProviderCredentials,
   routeAvailable,
   selectRoute,
+  sleep,
 };

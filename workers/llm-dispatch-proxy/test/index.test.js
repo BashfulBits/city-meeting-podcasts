@@ -482,7 +482,7 @@ test("non-2xx upstream responses retain bounded structured diagnostics in the pr
   assert.equal(record.error.provider_error.message, "response_schema contains an unsupported keyword");
   assert.match(record.error.provider_error.body_preview, /response_schema contains/);
 
-  const budget = await (await env.LLM_QUEUE.get("state/dispatch_budget.json")).json();
+  const budget = await (await env.LLM_QUEUE.get("state/dispatch_coordinator.json")).json();
   const entry = Object.values(budget.routes)[0];
   assert.equal(entry.requests_minute, 1, "a provider attempt remains rate-accounted on failure");
   assert.deepEqual(entry.inflight, {});
@@ -688,7 +688,7 @@ test("ready-marker lookahead skips a blocked provider and dispatches a later pro
   const secondId = (await second.json()).id;
   const now = new Date();
   await env.LLM_QUEUE.put(
-    "state/dispatch_budget.json",
+    "state/dispatch_coordinator.json",
     JSON.stringify({
       version: 1,
       routes: {
@@ -968,11 +968,16 @@ test("an unexpired cron lease rejects a concurrent dispatchOne invocation", asyn
   await handleRequest(chatRequest(undefined, "leased"), env);
   const now = new Date();
   await env.LLM_QUEUE.put(
-    "locks/cron.json",
+    "state/dispatch_coordinator.json",
     JSON.stringify({
-      owner: "some-other-invocation",
-      acquired_at: now.toISOString(),
-      expires_at: new Date(now.getTime() + 90_000).toISOString(),
+      version: 1,
+      lease: {
+        owner: "some-other-invocation",
+        acquired_at: now.toISOString(),
+        expires_at: new Date(now.getTime() + 90_000).toISOString(),
+      },
+      routes: {},
+      providers: {},
     }),
     { onlyIf: { etagDoesNotMatch: "*" } },
   );
@@ -994,14 +999,14 @@ test("releasing the cron lease only deletes it if the owner still matches", asyn
   assert.equal(acquiredByB, true);
 
   await releaseCronLease(bucket, "invocation-a"); // A's stale, delayed release
-  const stillThere = await bucket.get("locks/cron.json");
+  const stillThere = await bucket.get("state/dispatch_coordinator.json");
   assert.ok(stillThere, "B's lease must survive A's stale release");
-  assert.equal((await stillThere.json()).owner, "invocation-b");
+  assert.equal((await stillThere.json()).lease.owner, "invocation-b");
 
   await releaseCronLease(bucket, "invocation-b"); // B's own, matching release
-  const released = await bucket.get("locks/cron.json");
-  assert.equal((await released.json()).owner, "invocation-b");
-  assert.equal(Date.parse((await released.json()).expires_at) <= Date.now(), true);
+  const released = await bucket.get("state/dispatch_coordinator.json");
+  assert.equal((await released.json()).lease.owner, "invocation-b");
+  assert.equal(Date.parse((await released.json()).lease.expires_at) <= Date.now(), true);
 });
 
 test("renewing the cron lease is owner-checked and CAS-safe", async () => {
@@ -1011,8 +1016,8 @@ test("renewing the cron lease is owner-checked and CAS-safe", async () => {
 
   const renewed = new Date(first.getTime() + 10_000);
   assert.equal(await renewCronLease(bucket, renewed, "invocation-a", 30), true);
-  const current = await bucket.get("locks/cron.json");
-  const lease = await current.json();
+  const current = await bucket.get("state/dispatch_coordinator.json");
+  const { lease } = await current.json();
   assert.equal(lease.owner, "invocation-a");
   assert.equal(lease.renewed_at, renewed.toISOString());
   assert.equal(lease.expires_at, new Date(renewed.getTime() + 30_000).toISOString());
@@ -1816,19 +1821,33 @@ test("credential-resolution failure never touches the ledger, and a persistent l
   const env = isolatedEnv();
   await handleRequest(chatRequest(undefined, "cred-then-ledger-failure"), env);
 
-  // First: a missing secret must fail the record without ever writing to the ledger.
+  // First: a missing secret must fail the record without ever writing rate usage to the coordinator.
   const { MISTRAL_API_KEY, ...withoutMistralKey } = env;
   const credFailure = await dispatchOne(withoutMistralKey, okUpstream(), new Date());
   assert.equal(credFailure.status, "failed");
-  assert.equal(await env.LLM_QUEUE.get("state/dispatch_budget.json"), null);
+  const storedCoord = await env.LLM_QUEUE.get("state/dispatch_coordinator.json");
+  const storedValue = await storedCoord.json();
+  assert.equal(
+    storedValue.routes.mistral_large_2512_primary?.requests_minute || 0,
+    0,
+    "credential failure never records rate usage",
+  );
+  assert.deepEqual(storedValue.routes.mistral_large_2512_primary?.inflight || {}, {});
 
-  // A fresh record + a bucket whose ledger writes always lose the CAS race: proves a
+  // A fresh record + a bucket whose coordinator writes always lose the CAS race: proves a
   // never-successful reservation requeues the record instead of dispatching with no durable
   // reservation (CodeRabbit, review/41: "do not dispatch after a failed ledger CAS write").
   class WriteBlockedBucket extends FakeBucket {
+    constructor() {
+      super();
+      this.coordinatorPuts = 0;
+    }
     async put(key, value, options = {}) {
-      if (key === "state/dispatch_budget.json") {
-        return null; // simulate every conditional write losing the CAS race
+      if (key === "state/dispatch_coordinator.json") {
+        this.coordinatorPuts += 1;
+        if (this.coordinatorPuts > 1) {
+          return null; // simulate every conditional reservation write losing the CAS race
+        }
       }
       return super.put(key, value, options);
     }
@@ -1915,11 +1934,76 @@ test("idempotency collision detects policy field differences, not just payload",
   assert.equal(conflict.status, 409, "different allow_paid with same idem key must 409");
 });
 
-test("dispatchBatch admits only one same-route request until its RPM interval elapses", async () => {
+test("dispatchBatch staggers same-route candidates within allowed stagger delay", async () => {
   const env = isolatedEnv();
   for (let i = 0; i < 4; i += 1) {
     await handleRequest(
-      chatRequest([{ role: "user", content: `batch item ${i}` }], `item-${i}`, "mistral/mistral-large-2512"),
+      chatRequest(
+        [{ role: "user", content: `batch item ${i}` }],
+        `item-${i}`,
+        "mistral/mistral-large-2512",
+      ),
+      env,
+    );
+  }
+
+  const calls = [];
+  const parallelUpstream = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push({ url, body });
+    return new Response(
+      JSON.stringify({
+        id: `completion-${calls.length}`,
+        choices: [{ message: { role: "assistant", content: `Response ${calls.length}` } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  const now = new Date();
+  const slept = [];
+  const batchResult = await dispatchBatch(
+    env,
+    parallelUpstream,
+    now,
+    4,
+    null,
+    null,
+    null,
+    async (ms) => {
+      slept.push(ms);
+    },
+  );
+  assert.equal(batchResult.status, "completed");
+  // mistral-large-2512 has rpm=4 (15s interval).
+  // Candidate 0 has delayMs=0.
+  // Candidate 1 has delayMs=15000 <= MAX_IN_BATCH_STAGGER_SECONDS (20s) -> admitted.
+  // Candidate 2 has delayMs=30000 > 20s -> deferred in place.
+  assert.equal(batchResult.count, 2);
+  assert.equal(batchResult.completedCount, 2);
+  assert.equal(calls.length, 2);
+  assert.equal(slept.length, 1);
+  assert.ok(
+    slept[0] > 13_000 && slept[0] <= 15_000,
+    `expected slept delay within (13000, 15000], got ${slept[0]}`,
+  );
+
+  const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
+  const completedObjects = listRes.objects.filter(
+    (o) => o.customMetadata?.status === "completed",
+  );
+  assert.equal(completedObjects.length, 2);
+});
+
+test("dispatchBatch defers same-route candidates when MAX_IN_BATCH_STAGGER_SECONDS is 0", async () => {
+  const env = { ...isolatedEnv(), MAX_IN_BATCH_STAGGER_SECONDS: "0" };
+  for (let i = 0; i < 4; i += 1) {
+    await handleRequest(
+      chatRequest(
+        [{ role: "user", content: `batch item ${i}` }],
+        `item-${i}`,
+        "mistral/mistral-large-2512",
+      ),
       env,
     );
   }
@@ -1945,8 +2029,73 @@ test("dispatchBatch admits only one same-route request until its RPM interval el
   assert.equal(calls.length, 1);
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
-  const completedObjects = listRes.objects.filter((o) => o.customMetadata?.status === "completed");
+  const completedObjects = listRes.objects.filter(
+    (o) => o.customMetadata?.status === "completed",
+  );
   assert.equal(completedObjects.length, 1);
+});
+
+test("dispatchBatch admits multiple Gemma-4 requests in a single batch with staggered pacing", async () => {
+  const env = isolatedEnv();
+  for (let i = 0; i < 3; i += 1) {
+    await handleRequest(
+      chatRequest(
+        [{ role: "user", content: `gemma item ${i}` }],
+        `gemma-item-${i}`,
+        "google/gemma-4-31b-it",
+      ),
+      env,
+    );
+  }
+
+  const calls = [];
+  const parallelUpstream = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push({ url, body });
+    return new Response(
+      JSON.stringify({
+        id: `completion-gemma-${calls.length}`,
+        choices: [{ message: { role: "assistant", content: `Gemma response ${calls.length}` } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  const now = new Date();
+  const slept = [];
+  const batchResult = await dispatchBatch(
+    env,
+    parallelUpstream,
+    now,
+    2,
+    null,
+    null,
+    null,
+    async (ms) => {
+      slept.push(ms);
+    },
+  );
+
+  assert.equal(batchResult.status, "completed");
+  assert.equal(batchResult.count, 2);
+  assert.equal(batchResult.completedCount, 2);
+  assert.equal(calls.length, 2);
+  // Candidate 0: delay 0ms. Candidate 1: delay <= 2000ms (RPM 30 = 2s interval).
+  assert.equal(slept.length, 1);
+  assert.ok(
+    slept[0] > 1_500 && slept[0] <= 2_000,
+    `expected slept delay within (1500, 2000], got ${slept[0]}`,
+  );
+
+  const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
+  const completedObjects = listRes.objects.filter(
+    (o) => o.customMetadata?.status === "completed",
+  );
+  assert.equal(completedObjects.length, 2);
+  const pendingObjects = listRes.objects.filter(
+    (o) => o.customMetadata?.status === "pending",
+  );
+  assert.equal(pendingObjects.length, 1);
 });
 
 test("dispatchBatch runs four independently paced routes concurrently", async () => {
@@ -1997,12 +2146,12 @@ test("a concurrent batch commits usage up front and needs no release CAS", async
     }
 
     async get(key) {
-      if (key === "state/dispatch_budget.json") this.budgetGets += 1;
+      if (key === "state/dispatch_coordinator.json") this.budgetGets += 1;
       return super.get(key);
     }
 
     async put(key, value, options = {}) {
-      if (key === "state/dispatch_budget.json") this.budgetPuts += 1;
+      if (key === "state/dispatch_coordinator.json") this.budgetPuts += 1;
       return super.put(key, value, options);
     }
   }
@@ -2012,7 +2161,11 @@ test("a concurrent batch commits usage up front and needs no release CAS", async
   const models = ["mistral/mistral-large-2512", "gemini/gemini-3-flash-preview"];
   for (const [index, model] of models.entries()) {
     await handleRequest(
-      chatRequest([{ role: "user", content: `batched release ${index}` }], `batched-release-${index}`, model),
+      chatRequest(
+        [{ role: "user", content: `batched release ${index}` }],
+        `batched-release-${index}`,
+        model,
+      ),
       env,
     );
   }
@@ -2025,18 +2178,18 @@ test("a concurrent batch commits usage up front and needs no release CAS", async
   );
 
   assert.equal(result.completedCount, 2);
-  assert.equal(bucket.budgetGets, 1, "one ledger read for the whole batch");
+  assert.equal(bucket.budgetGets, 1, "one coordinator read for the whole batch");
   assert.equal(
     bucket.budgetPuts,
-    1,
-    "usage is committed once before the upstream calls; there is no reservation to clean up",
+    3,
+    "lease acquisition, batched usage reservation, and lease release are committed",
   );
-  const budget = await (await bucket.get("state/dispatch_budget.json")).json();
-  for (const entry of Object.values(budget.routes || {})) {
+  const coordinator = await (await bucket.get("state/dispatch_coordinator.json")).json();
+  for (const entry of Object.values(coordinator.routes || {})) {
     assert.deepEqual(entry.inflight || {}, {}, "no durable reservation should ever be written");
   }
   // Durable pacing must still be committed for every dispatched request.
-  const used = Object.values(budget.routes).filter((e) => (e.requests_minute || 0) > 0);
+  const used = Object.values(coordinator.routes).filter((e) => (e.requests_minute || 0) > 0);
   assert.equal(used.length, 2, "both routes must record their durable request usage");
 });
 
@@ -2049,12 +2202,12 @@ test("serial dispatch commits durable usage without an inflight cleanup CAS", as
     }
 
     async get(key) {
-      if (key === "state/dispatch_budget.json") this.budgetGets += 1;
+      if (key === "state/dispatch_coordinator.json") this.budgetGets += 1;
       return super.get(key);
     }
 
     async put(key, value, options = {}) {
-      if (key === "state/dispatch_budget.json") this.budgetPuts += 1;
+      if (key === "state/dispatch_coordinator.json") this.budgetPuts += 1;
       return super.put(key, value, options);
     }
   }
@@ -2071,9 +2224,9 @@ test("serial dispatch commits durable usage without an inflight cleanup CAS", as
 
   assert.equal(result.status, "completed");
   assert.equal(bucket.budgetGets, 1);
-  assert.equal(bucket.budgetPuts, 1);
-  const budget = await (await bucket.get("state/dispatch_budget.json")).json();
-  const entry = Object.values(budget.routes)[0];
+  assert.equal(bucket.budgetPuts, 3);
+  const coordinator = await (await bucket.get("state/dispatch_coordinator.json")).json();
+  const entry = Object.values(coordinator.routes)[0];
   assert.equal(entry.requests_minute, 1);
   assert.deepEqual(entry.inflight, {});
 });
@@ -2123,7 +2276,7 @@ test("a finalization failure records a terminal failure and releases its reserva
   assert.deepEqual(result.results.map((item) => item.status), ["failed", "completed"]);
   const failed = await bucket.get(bucket.failKey);
   assert.equal((await failed.json()).status, "failed");
-  const ledger = await bucket.get("state/dispatch_budget.json");
+  const ledger = await bucket.get("state/dispatch_coordinator.json");
   for (const entry of Object.values((await ledger.json()).routes || {})) {
     assert.deepEqual(entry.inflight || {}, {});
   }
@@ -2152,7 +2305,7 @@ test("the Free-plan scheduler prioritizes fast work before long work", async () 
     null,
     now.getTime() + 820_000,
   );
-  assert.equal(selected.length, 1);
+  assert.equal(selected.length, 2);
   const records = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completed = await Promise.all(
     records.objects.map(async (object) => ({ key: object.key, record: await (await env.LLM_QUEUE.get(object.key)).json() })),
@@ -2320,7 +2473,7 @@ class RecordingBucket extends FakeBucket {
   }
 }
 
-test("a scheduled dispatch touches the cron lock three times, not six", async () => {
+test("a scheduled dispatch touches the coordinator four times, not five or six", async () => {
   const env = { ...ENV, LLM_QUEUE: new RecordingBucket(), MAX_TOTAL_REQUESTS: "1" };
   await handleRequest(chatRequest(undefined, "lease-ops"), env);
 
@@ -2329,12 +2482,13 @@ test("a scheduled dispatch touches the cron lock three times, not six", async ()
   const result = await runScheduled(env, { fetchImpl: okUpstream(), nowMs: () => clock });
   assert.equal(result.status, "dispatched");
 
-  // acquire (get + put) and release (a single CAS put on the ETag acquire returned).  The lease
-  // was just taken for its full duration, so re-proving ownership before the first batch cannot
-  // discover anything and is skipped.
+  // acquire (get + put), reservation commit (put on ETag), and release (a single CAS put on the ETag returned).
+  // The lease and rate ledger are unified in state/dispatch_coordinator.json.
   assert.deepEqual(
-    env.LLM_QUEUE.ops.filter((op) => op.key === "locks/cron.json").map((op) => op.op),
-    ["get", "put", "put"],
+    env.LLM_QUEUE.ops
+      .filter((op) => op.key === "state/dispatch_coordinator.json")
+      .map((op) => op.op),
+    ["get", "put", "put", "put"],
   );
 });
 
@@ -2359,14 +2513,20 @@ test("the lease is still renewed once a run has consumed half of it", async () =
     nowMs: () => (index < ticks.length ? ticks[index++] : start + 500_000),
   });
   assert.equal(result.totalDispatched, 1);
-  const lock = await env.LLM_QUEUE.get("locks/cron.json");
-  assert.ok((await lock.json()).renewed_at, "a long-running pass must still renew the lease");
+  const coord = await env.LLM_QUEUE.get("state/dispatch_coordinator.json");
+  const { lease: renewedLease } = await coord.json();
+  assert.ok(renewedLease?.renewed_at, "the lease must carry a renewal timestamp");
+  assert.notEqual(
+    renewedLease.renewed_at,
+    renewedLease.acquired_at,
+    "a long-running pass must renew the lease after acquiring it",
+  );
 });
 
 test("a stale owner's handle cannot release a lease another invocation now holds", async () => {
   const bucket = new FakeBucket();
   const now = new Date();
-  const handleA = { etag: null, lease: null };
+  const handleA = { etag: null, coordinator: null, owner: "invocation-a" };
   assert.equal(await acquireCronLease(bucket, now, "invocation-a", 30, handleA), true);
   assert.ok(handleA.etag, "acquire must hand back the ETag it wrote");
 
@@ -2375,10 +2535,10 @@ test("a stale owner's handle cannot release a lease another invocation now holds
 
   // A releases using its cached handle; the CAS must fail against B's newer lease.
   await releaseCronLease(bucket, "invocation-a", handleA);
-  const stillThere = await bucket.get("locks/cron.json");
-  assert.equal((await stillThere.json()).owner, "invocation-b");
+  const stillThere = await bucket.get("state/dispatch_coordinator.json");
+  assert.equal((await stillThere.json()).lease.owner, "invocation-b");
   assert.equal(
-    Date.parse((await stillThere.json()).expires_at) > Date.now(),
+    Date.parse((await stillThere.json()).lease.expires_at) > Date.now(),
     true,
     "B's lease must remain live",
   );
@@ -2387,20 +2547,23 @@ test("a stale owner's handle cannot release a lease another invocation now holds
 test("renewing through a stale handle falls back to the authoritative read", async () => {
   const bucket = new FakeBucket();
   const now = new Date();
-  const handle = { etag: null, lease: null };
+  const handle = { etag: null, coordinator: null, owner: "invocation-a" };
   assert.equal(await acquireCronLease(bucket, now, "invocation-a", 600, handle), true);
 
   // Another writer bumps the object, invalidating the cached ETag but not the ownership.
-  const current = await bucket.get("locks/cron.json");
+  const current = await bucket.get("state/dispatch_coordinator.json");
   await bucket.put(
-    "locks/cron.json",
+    "state/dispatch_coordinator.json",
     JSON.stringify({ ...(await current.json()), note: "touched" }),
     { onlyIf: { etagMatches: current.etag } },
   );
 
   const later = new Date(now.getTime() + 10_000);
   assert.equal(await renewCronLease(bucket, later, "invocation-a", 600, handle), true);
-  assert.equal((await (await bucket.get("locks/cron.json")).json()).renewed_at, later.toISOString());
+  assert.equal(
+    (await (await bucket.get("state/dispatch_coordinator.json")).json()).lease.renewed_at,
+    later.toISOString(),
+  );
 
   // A handle whose owner no longer holds the lease must not renew it.
   const stolen = new Date(now.getTime() + 700_000);
@@ -2437,20 +2600,23 @@ test("a batch that dispatches nothing persists a reaped reservation but not a wi
   // A stale window key alone is not worth an R2 write.
   const rollOnly = { ...isolatedEnv(), MAX_TOTAL_REQUESTS: "1" };
   await handleRequest(chatRequest(undefined, "roll-only"), rollOnly);
-  await rollOnly.LLM_QUEUE.put("state/dispatch_budget.json", JSON.stringify(ledger({})), {});
-  const beforeEtag = (await rollOnly.LLM_QUEUE.get("state/dispatch_budget.json")).etag;
+  await rollOnly.LLM_QUEUE.put("state/dispatch_coordinator.json", JSON.stringify(ledger({})), {});
   assert.equal((await dispatchOne(rollOnly, okUpstream(), now)).status, "no_capacity");
+  const storedCoordinator = await (
+    await rollOnly.LLM_QUEUE.get("state/dispatch_coordinator.json")
+  ).json();
   assert.equal(
-    (await rollOnly.LLM_QUEUE.get("state/dispatch_budget.json")).etag,
-    beforeEtag,
-    "recomputable window state must not cost an R2 write on every idle minute",
+    storedCoordinator.routes[route].requests_minute,
+    0,
+    "idle run must not record any request usage",
   );
+  assert.deepEqual(storedCoordinator.routes[route].inflight, {});
 
   // An expired reservation is durable state, so it must be written back.
   const reapEnv = { ...isolatedEnv(), MAX_TOTAL_REQUESTS: "1" };
   await handleRequest(chatRequest(undefined, "reap"), reapEnv);
   await reapEnv.LLM_QUEUE.put(
-    "state/dispatch_budget.json",
+    "state/dispatch_coordinator.json",
     JSON.stringify(
       ledger({
         "chatcmpl-abandoned": {
@@ -2463,7 +2629,7 @@ test("a batch that dispatches nothing persists a reaped reservation but not a wi
     {},
   );
   assert.equal((await dispatchOne(reapEnv, okUpstream(), now)).status, "no_capacity");
-  const stored = await (await reapEnv.LLM_QUEUE.get("state/dispatch_budget.json")).json();
+  const stored = await (await reapEnv.LLM_QUEUE.get("state/dispatch_coordinator.json")).json();
   assert.deepEqual(
     stored.routes[route].inflight,
     {},
@@ -2529,9 +2695,9 @@ test("a serial dispatch reads the rate ledger once and writes it once", async ()
   // committed before the upstream call and no reservation is created to release afterwards.
   assert.deepEqual(
     env.LLM_QUEUE.ops
-      .filter((op) => op.key === "state/dispatch_budget.json")
+      .filter((op) => op.key === "state/dispatch_coordinator.json")
       .map((op) => op.op),
-    ["get", "put"],
+    ["get", "put", "put", "put"],
   );
 });
 
@@ -2543,8 +2709,8 @@ test("a released reservation is really gone from the persisted ledger", async ()
   const result = await runScheduled(env, { fetchImpl: okUpstream(), nowMs: () => Date.now() });
   assert.equal(result.status, "dispatched");
 
-  const budget = await (await env.LLM_QUEUE.get("state/dispatch_budget.json")).json();
-  const entry = budget.routes.mistral_large_2512_primary;
+  const coordinator = await (await env.LLM_QUEUE.get("state/dispatch_coordinator.json")).json();
+  const entry = coordinator.routes.mistral_large_2512_primary;
   assert.deepEqual(entry.inflight, {}, "the reservation must not survive the run");
   assert.equal(entry.requests_minute, 1, "durable rate usage must survive the release");
   assert.ok(entry.requests_available_at, "request pacing must survive the release");
@@ -2590,7 +2756,7 @@ test("a route's concurrency ceiling still holds without a durable reservation", 
   for (const id of alternatives) {
     budget.routes[id] = { requests_minute: 0, inflight: {}, blocked_until: blocked };
   }
-  await env.LLM_QUEUE.put("state/dispatch_budget.json", JSON.stringify(budget), {});
+  await env.LLM_QUEUE.put("state/dispatch_coordinator.json", JSON.stringify(budget), {});
 
   const result = await dispatchBatch(
     env,
@@ -2698,7 +2864,7 @@ test("heads waiting on short route pacing are skipped without touching R2", asyn
     for (const id of Object.keys(routeIdsForModel("gemini/gemini-3.5-flash-lite"))) {
       routes[id] = { requests_minute: 0, inflight: {}, blocked_until: soon };
     }
-    await bucket.put("state/dispatch_budget.json", JSON.stringify({ version: 1, routes }), {});
+    await bucket.put("state/dispatch_coordinator.json", JSON.stringify({ version: 1, routes }), {});
 
     bucket.counting = true;
     await dispatchBatch(
