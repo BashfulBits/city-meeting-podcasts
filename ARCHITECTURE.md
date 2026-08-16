@@ -351,10 +351,10 @@ total on `/admin/status`.
   plus a compact date-ordered `ready/` marker; a per-minute Free-plan Cron Trigger lists a bounded
   lookahead of compact markers and reads canonical requests only for viable candidates (constant in
   queue depth) before claiming one request per scheduled run,
-  ranks each request's
-  canonical model's candidate routes (free before paid, then cheapest) against a **per-route/per-account
-  ledger** (`state/dispatch_budget.json`, R2, mirroring `llm_budget.py`'s versioned minute/day
-  window, cost, `blocked_until`, and `inflight` shape),
+  ranks each request's canonical model's candidate routes (free before paid, then cheapest) against
+  a **per-route/per-account ledger** (`state/dispatch_coordinator.json`, R2, mirroring
+  `llm_budget.py`'s versioned minute/day window, cost, `blocked_until`, and `inflight` shape
+  alongside the single-runner cron lease),
   **commits** capacity on the first route with room, resolves that route's own provider config
   (`config/provider_limits.yml` → compiled `dispatch_limits.json`: `api_base`/`chat_path`/account
   `api_key_env`) for the upstream call, and persists either the response or a bounded retry/failure

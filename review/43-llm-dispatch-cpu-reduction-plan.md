@@ -716,9 +716,9 @@ precisely why only the non-CAS objects move.
 
 | Phase | Change | Trigger | Effect |
 | --- | --- | --- | --- |
-| **0** | Merge this branch (`N=2`, blocked-head fix) | done | P50 `11` -> `8` ms, 2x throughput |
-| **1** | Fold the cron lease into the ledger | next | `N=2` `9.9` -> `8.2` ms; R2 Class A 3 -> 1 per invocation |
-| **2** | Split the canonical record; prompts, results and markers to B2 | **R2 quota — act on this now** | dispatch falls from **43% -> ~4%** of the shared free tier |
+| **0** | In-batch staggered concurrency (`N=2`, blocked-head fix) | **Shipped** (#1229) | P50 `11` -> `8` ms, 2x throughput |
+| **1** | Fold the cron lease into the ledger (`state/dispatch_coordinator.json`) | **Shipped** (#1229) | `N=2` `9.9` -> `8.2` ms; R2 Class A 3 -> 1 per invocation |
+| **2** | Split the canonical record; prompts, results and markers to B2 | **R2 quota — next to build** | dispatch falls from **43% -> ~26%** of the shared free tier |
 | **3** | Batch enqueue + batch poll endpoints | throughput above ~15,000 jobs/day | addresses the *Workers request* cap (100k/day), a different quota |
 | **4** | Workers Paid (`$5`) **or** Durable Object coordination | when Phase 3 is no longer enough | see the backend evaluation above |
 
@@ -1281,17 +1281,22 @@ tests, `ruff check`/`ruff format --check` clean, compiled artifact regenerated a
 
 ### In-batch Staggered Concurrency & Coordinator Consolidation checkpoint
 
-Implemented in-batch staggered concurrency and coordinator consolidation:
+Implemented in-batch staggered concurrency and coordinator consolidation (PR #1229):
 1. **In-batch stagger pacing:** Route selection computes pacing delay bounded by
    `MAX_IN_BATCH_STAGGER_SECONDS` (default 20s). Candidate 0 is immediately eligible at
    $T_{\text{now}}$, while candidates $1..N$ in the same batch compute
    $\Delta t_{\text{delay}} = \max(0, \Delta t_{\text{RPM}}, \Delta t_{\text{TPM}}, \Delta t_{\text{ProviderRPM}})$.
    Payloads are pre-loaded in memory and the coordinator ledger is committed atomically before
-   dispatch. Upstream tasks call `await sleep(delayMs)` before `fetchImpl` so upstream sockets open
-   with zero R2 read latency at wake-up.
+   dispatch. Upstream tasks sleep until the absolute target instant `dispatchAtMs` (using
+   $\Delta t = \max(0, \text{dispatchAtMs} - \text{nowMs}())$) before `fetchImpl` so upstream sockets open
+   with zero R2 read latency and CAS commit latency is subtracted from the inter-request gap.
 2. **Coordinator consolidation:** Unified `locks/cron.json` and `state/dispatch_budget.json` into
    `state/dispatch_coordinator.json`. Eliminates 2 R2 operations per scheduled dispatch run
    (1 GET + 3 PUTs total).
+   *Design deviation note:* To keep the active-dispatch R2 operation budget strictly at 8 ops
+   without an extra `head()` Class B operation on active ticks, `acquireCoordinator` reads the full
+   coordinator body via `getJson` and issues its own `putJson` CAS rather than relying on a
+   pre-flight `head()` lease probe.
 3. **On-demand claim loading:** Route selection is evaluated directly against listed ready marker
    metadata in V8 memory without reading canonical requests. Canonical requests are loaded
    on-demand only for admitted/requeued candidates.

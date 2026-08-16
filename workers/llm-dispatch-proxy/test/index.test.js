@@ -1924,7 +1924,11 @@ test("dispatchBatch staggers same-route candidates within allowed stagger delay"
   assert.equal(batchResult.count, 2);
   assert.equal(batchResult.completedCount, 2);
   assert.equal(calls.length, 2);
-  assert.deepEqual(slept, [15000]);
+  assert.equal(slept.length, 1);
+  assert.ok(
+    slept[0] > 13_000 && slept[0] <= 15_000,
+    `expected slept delay within (13000, 15000], got ${slept[0]}`,
+  );
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
@@ -2018,8 +2022,12 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
   assert.equal(batchResult.count, 2);
   assert.equal(batchResult.completedCount, 2);
   assert.equal(calls.length, 2);
-  // Candidate 0: delay 0ms. Candidate 1: delay 2000ms (RPM 30 = 2s interval).
-  assert.deepEqual(slept, [2000]);
+  // Candidate 0: delay 0ms. Candidate 1: delay <= 2000ms (RPM 30 = 2s interval).
+  assert.equal(slept.length, 1);
+  assert.ok(
+    slept[0] > 1_500 && slept[0] <= 2_000,
+    `expected slept delay within (1500, 2000], got ${slept[0]}`,
+  );
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
@@ -2448,9 +2456,12 @@ test("the lease is still renewed once a run has consumed half of it", async () =
   });
   assert.equal(result.totalDispatched, 1);
   const coord = await env.LLM_QUEUE.get("state/dispatch_coordinator.json");
-  assert.ok(
-    (await coord.json()).lease?.renewed_at,
-    "a long-running pass must still renew the lease",
+  const { lease: renewedLease } = await coord.json();
+  assert.ok(renewedLease?.renewed_at, "the lease must carry a renewal timestamp");
+  assert.notEqual(
+    renewedLease.renewed_at,
+    renewedLease.acquired_at,
+    "a long-running pass must renew the lease after acquiring it",
   );
 });
 

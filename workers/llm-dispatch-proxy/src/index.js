@@ -256,6 +256,12 @@ function config(env) {
         `LEASE_DURATION_SECONDS (${result.leaseDurationSeconds})`,
     );
   }
+  if (result.maxInBatchStaggerSeconds >= result.maxExecutionSeconds) {
+    throw new Error(
+      `MAX_IN_BATCH_STAGGER_SECONDS (${result.maxInBatchStaggerSeconds}) must be less than ` +
+        `MAX_EXECUTION_SECONDS (${result.maxExecutionSeconds})`,
+    );
+  }
   for (const [name, timeoutSeconds] of [
     ["UPSTREAM_TIMEOUT_SECONDS", result.upstreamTimeoutSeconds],
     ["FAST_UPSTREAM_TIMEOUT_SECONDS", result.fastUpstreamTimeoutSeconds],
@@ -2133,6 +2139,7 @@ async function dispatchBatch(
   runDeadlineMs = null,
   externalCoordinatorHandle = null,
   sleepImpl = sleep,
+  nowMs = Date.now,
 ) {
   const batchStartedAt = profileNow();
   const batchProfile = {};
@@ -2507,6 +2514,15 @@ async function dispatchBatch(
             freshCapacityFailed = true;
             break;
           }
+          const routeDelay = routePacingDelayMs(entry, item.chosenRoute, now.getTime());
+          const provDelay = providerPacingDelayMs(
+            freshCoordinator,
+            item.chosenRoute,
+            now.getTime(),
+            DISPATCH_LIMITS,
+          );
+          item.delayMs = Math.max(0, routeDelay, provDelay);
+          item.dispatchAtMs = now.getTime() + item.delayMs;
           reserveProviderCapacity(
             freshCoordinator,
             item.chosenRoute,
@@ -2551,6 +2567,13 @@ async function dispatchBatch(
       for (const item of candidatesToDispatch) {
         await requeue(bucket, item.claimed, now, now.toISOString(), { releaseAttempt: true });
       }
+      if (pendingMarkerDeletes.length > 0) {
+        try {
+          await unmarkReadyBatch(bucket, pendingMarkerDeletes);
+        } catch {
+          // Best-effort; self-healing will clean stale markers on the next cron tick.
+        }
+      }
       return {
         status: "no_capacity",
         count: 0,
@@ -2574,7 +2597,8 @@ async function dispatchBatch(
         // Compute remaining stagger time relative to now; CAS-commit latency should reduce
         // the wait, not add to it.  dispatchAtMs is the absolute target wall-clock instant.
         if (delayMs > 0) {
-          const remainingMs = Math.max(0, dispatchAtMs - Date.now());
+          const currentMs = typeof nowMs === "function" ? nowMs() : Date.now();
+          const remainingMs = Math.max(0, dispatchAtMs - currentMs);
           if (remainingMs > 0) await sleepImpl(remainingMs);
         }
         const upstreamPayload = upstreamRequestForRoute(
@@ -3178,6 +3202,7 @@ async function runScheduled(
         deadlineMs,
         coordinatorHandle,
         sleepImpl,
+        nowMs,
       );
       status = batchResult.status;
       if (

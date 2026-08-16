@@ -46,12 +46,12 @@ Phase R (Research-Tool Surface)._
   `citypods-llm-dispatch-proxy` now supports admitting multiple requests for the same route or
   provider within a single scheduled batch (e.g. 2 Gemma-4 or 2 Mistral jobs per cron tick)
   via in-batch stagger pacing (`MAX_IN_BATCH_STAGGER_SECONDS`, default 20s). Admitted requests
-  pre-load payloads into memory and compute pacing delays from RPM/TPM intervals, calling
-  `await sleep(delayMs)` before opening upstream TCP connections. The cron lease and rate ledger
-  are consolidated from `locks/cron.json` and `state/dispatch_budget.json` into a single object
-  `state/dispatch_coordinator.json`, reducing R2 operations by 2 per scheduled dispatch invocation.
-  Ready marker lookahead evaluates route capacity directly against metadata in V8 memory with zero
-  R2 reads for deferred heads.
+  pre-load payloads into memory and compute pacing delays from RPM/TPM intervals, sleeping until
+  the absolute `dispatchAtMs` target before opening upstream TCP connections. The cron lease and
+  rate ledger are consolidated from `locks/cron.json` and `state/dispatch_budget.json` into a single
+  object `state/dispatch_coordinator.json`, reducing R2 operations by 2 per scheduled dispatch
+  invocation. Ready marker lookahead evaluates route capacity directly against metadata in V8 memory
+  with zero R2 reads for deferred heads.
 
 - **Cloudflare AI Gateway observability integration for LLM dispatch.** `citypods-llm-dispatch-proxy`
   now supports optional routing through Cloudflare AI Gateway, enabling time-series request/response
