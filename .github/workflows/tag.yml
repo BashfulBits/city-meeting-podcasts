@@ -20,8 +20,11 @@ concurrency:
 jobs:
   tag:
     runs-on: ubuntu-latest
-    # Sized comfortably above tag_run_time_budget_minutes (20m) and source-prepare scraping.
-    timeout-minutes: 30
+    # Sized comfortably above tag_run_time_budget_minutes (160m) and source-prepare scraping.
+    # Was 30m/20m; the 30m job timeout was cancelling runs mid-batch (the internal tag window
+    # never got a chance to reach its own graceful stop), needlessly cutting off LLM dispatch
+    # submissions. Widened to mirror llm-deferred-sweep.yml's 240m job timeout pattern.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
