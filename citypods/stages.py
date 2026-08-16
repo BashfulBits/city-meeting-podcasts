@@ -2604,6 +2604,17 @@ class AgendaTextStage:
                 agenda_artifact_url = _store_document(
                     ctx, src_key, ep.uid or ep.guid, "agenda", text.encode()
                 )
+                # DIAGNOSTIC: see the matching `[agenda_storage] recall` line above for how this
+                # resolved. This is the exact branch chapter_agenda depends on -- when
+                # `agenda_artifact_url` is falsy here, the episode is marked `accepted` (above)
+                # but permanently lacks `links["agenda_text_artifact_key"]`, which is invisible
+                # to this stage's own reuse fast-path on every later run. Remove once root-caused.
+                print(
+                    f"[agenda_text] artifact store result uid={ep.uid or ep.guid} "
+                    f"source={src_key} content_bytes={len(text.encode())} "
+                    f"url={agenda_artifact_url!r} will_attach_link={bool(agenda_artifact_url)}",
+                    flush=True,
+                )
                 if agenda_artifact_url:
                     ep.links = dict(ep.links or {})
                     ep.links["agenda_text_artifact"] = agenda_artifact_url
@@ -2787,6 +2798,13 @@ class AgendaTextStage:
                     "backup",
                     backup_payload,
                     "application/json",
+                )
+                # DIAGNOSTIC: see the matching `[agenda_storage] recall` line above.
+                print(
+                    f"[agenda_text] backup store result uid={ep.uid or ep.guid} "
+                    f"source={src_key} payload_bytes={len(backup_payload)} "
+                    f"url={ep.agenda_backup_url!r} will_attach_link={bool(ep.agenda_backup_url)}",
+                    flush=True,
                 )
                 if ep.agenda_backup_url:
                     ep.links = dict(ep.links or {})
@@ -3001,18 +3019,49 @@ def _store_document(
     content: bytes,
     content_type: str = "text/plain",
 ) -> str | None:
+    # DIAGNOSTIC (agenda-extraction storage-recall investigation): every caller of this helper
+    # (agenda/backup/minutes-text/votes/roster) only reaches it on a freshly-processed ("ran")
+    # episode, so call volume is bounded by that stage's own `ran` count -- never the much larger
+    # `reused`/`queued` backlog -- and safe to log unconditionally. Remove once the mismatch
+    # between AgendaTextStage's "accepted" quality state and a missing
+    # ``links["agenda_text_artifact_key"]`` (chapter_agenda's "missing-agenda-artifact" defer,
+    # 100% of the pool as of this investigation) is root-caused.
     if ctx.storage is None:
+        print(
+            f"[agenda_storage] recall source={source} uid={uid} kind={kind} path=no-storage",
+            flush=True,
+        )
         return None
     import tempfile
     from pathlib import Path
 
     key = _document_key(source, uid, kind, content)
     if ctx.storage.exists(key):
-        return ctx.storage.public_url(key)
+        url = ctx.storage.public_url(key)
+        print(
+            f"[agenda_storage] recall source={source} uid={uid} kind={kind} key={key} "
+            f"path=exists bytes={len(content)} url={url!r}",
+            flush=True,
+        )
+        return url
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / kind
         path.write_bytes(content)
-        return ctx.storage.put_file(key, path, content_type)
+        try:
+            url = ctx.storage.put_file(key, path, content_type)
+        except Exception as exc:
+            print(
+                f"[agenda_storage] recall source={source} uid={uid} kind={kind} key={key} "
+                f"path=put_file-error bytes={len(content)} error={exc!r}",
+                flush=True,
+            )
+            raise
+        print(
+            f"[agenda_storage] recall source={source} uid={uid} kind={kind} key={key} "
+            f"path=put_file bytes={len(content)} url={url!r}",
+            flush=True,
+        )
+        return url
 
 
 def _document_key(source: str, uid: str, kind: str, content: bytes) -> str:
@@ -5923,11 +5972,24 @@ class AgendaChapterCandidatesStage:
             uid = ep.uid or ep.guid
             source_artifact = (ep.links or {}).get("agenda_text_artifact_key")
             if not uid or not source_artifact:
-                stats.defer("missing-agenda-artifact")
+                # DIAGNOSTIC: split out the case that shouldn't be possible on paper -- agenda_text
+                # already marked this episode `accepted` (so it presumably stored a document) but
+                # this stage's own dependency, `links["agenda_text_artifact_key"]`, was never set.
+                # A bounded sample of uids (`defer_samples`) lets a live run be cross-referenced
+                # against agenda_text's `[agenda_text] artifact store result` line for the same
+                # uid. Remove once root-caused; see the matching note in `_store_document`.
+                if uid and (ep.agenda_text_quality or {}).get("status") == "accepted":
+                    stats.defer("missing-agenda-artifact-despite-accepted-quality", sample=uid)
+                else:
+                    stats.defer("missing-agenda-artifact")
                 continue
             raw = _read_storage_bytes(ctx.storage, source_artifact)
             if raw is None:
-                stats.defer("missing-agenda-artifact")
+                # DIAGNOSTIC: a different failure mode than the one above -- the link exists but
+                # the object it points at could not be read back (deleted, wrong bucket/prefix,
+                # transient read error). Kept as its own reason so it doesn't get conflated with
+                # "never had a link" in the aggregate breakdown.
+                stats.defer("agenda-artifact-key-present-but-unreadable", sample=uid)
                 continue
             agenda_text = raw.decode("utf-8", errors="replace")
             source_hash = hashlib.sha256(raw).hexdigest()

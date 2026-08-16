@@ -21,6 +21,35 @@ Phase R (Research-Tool Surface)._
   dedicated feed for Pflugerville TIRZ Board, added `Special Meeting` union to Addison City Council,
   `Audit and Finance Committee` union to Fort Worth Audit Committee, and added one-off `body_includes`
   GUID additions for Arlington, Dallas, Denton, and Waco.
+  
+- **Cross-lane `links` clobber silently dropped `agenda_text_artifact_key` (and any other
+  `links` entry) on push.** `links` was the one derived field never added to `ARTIFACT_BLOCKS` —
+  every other artifact (`agenda_text`, `tags`, `generated_agenda_candidates`, …) is protected
+  during a scoped lane's push via `protected_blocks_for_lane`/`merge_preserving_foreign`, so a
+  sibling lane's stale local snapshot can never regress it; `links` had no equivalent, so
+  `chapter-agenda`/`chapter-locator`/`tag` (none of which write any `links` key, but which still
+  merge the whole record for every source they touch) could push their own necessarily-stale
+  `links` snapshot over a fresher key an interleaved `audio` run had just written moments earlier.
+  Confirmed live via temporary diagnostic instrumentation (still on the PR branch pending
+  production verification): an audio run's own post-push readback showed
+  `links["agenda_text_artifact_key"]` gone again within seconds, specifically for the one source
+  (Fort Worth, ~20 board feeds sharing one `source_key`) also touched by two other lanes' 15-minute
+  crons — this is why `chapter_agenda`'s `missing-agenda-artifact` defer reason covered 100% of its
+  pool despite `agenda_text` reporting the same episodes `accepted`.
+  `merge_preserving_foreign` now merges `links` per-key, mirroring the identical pattern already
+  used for `stage_completion`: start from remote, let a lane overwrite only the specific keys it
+  actually owns (`_owned_link_keys` — audio owns everything except `transcript`; `transcribe`/
+  `align` own only `transcript`; every other scoped lane owns nothing and may only add a key
+  remote doesn't have yet), and never let an unscoped run drop a remote-only key it didn't touch.
+
+- **`tag.yml` job timeout was cancelling `LLM topic tags` runs mid-batch.** The GH Actions job
+  timeout (30m) sat just above the lane's internal wall-clock budget (`tag_run_time_budget_minutes`,
+  20m), leaving almost no margin once source-prepare scraping and the graceful-stop tail were
+  accounted for; two scheduled runs during the Aug-16 LLM dispatch incident were hard-cancelled by
+  GitHub before the run's own budget ever got a chance to stop it cleanly, needlessly truncating a
+  run's LLM dispatch submissions. `timeout-minutes` widened 30 → 180 and
+  `tag_run_time_budget_minutes` 20 → 160 (site_config.yml), mirroring the margin pattern already
+  used by `llm-deferred-sweep.yml`'s 240m job timeout.
 
 - **LLM dispatch retry path R2 budget (Finding 1, audit of PR #1229).** `saveRetry` now accepts
   an optional `pendingMarkerDeletes` array; when provided by `dispatchBatch`, the old ready-marker

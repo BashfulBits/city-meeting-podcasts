@@ -1734,6 +1734,36 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
 }
 
+# ``links`` (unlike every artifact above) is not in ``ARTIFACT_BLOCKS``: it's a dict whose
+# individual keys are produced by different stages/lanes, the same shape of problem
+# ``stage_completion`` already solves per-stage-name below. Almost every key is written by the
+# audio lane's own ``links``/``agenda_text``/``agenda_backup``/``minutes_text`` stages; only
+# ``transcript`` is written by a different lane. Without this, a scoped lane that doesn't
+# produce any ``links`` key (chapter-agenda, chapter-locator, tag, diarize) still merges the
+# *whole record* for sources it also touches, and its own (necessarily stale, never actively
+# maintained) local ``links`` snapshot silently overwrote a fresher key — e.g.
+# ``agenda_text_artifact_key`` written moments earlier by a concurrent/interleaved audio run —
+# because nothing treated ``links`` as multi-owner the way ``stage_completion``'s per-stage-name
+# merge already does. Confirmed live: an audio run's own post-push readback showed the key
+# gone again within seconds, for the one source (Fort Worth, ~20 board feeds sharing one
+# source_key) also touched by chapter-agenda/chapter-locator's own 15-minute-cron pushes.
+_TRANSCRIPT_LINK_LANES: frozenset[str] = frozenset({"transcribe", "align"})
+
+
+def _owned_link_keys(lane: str | None, local_links: dict) -> frozenset[str]:
+    """Which of ``local_links``' keys a *scoped* lane run may freely overwrite when merging
+    against the freshest remote (mirrors ``_LANE_OWNED_STAGE_STATUS``'s per-lane granularity, but
+    for ``links``' individual keys). Everything the audio lane's own stages produce, minus
+    ``transcript`` (owned by ``transcribe``/``align``); every other scoped lane owns nothing here,
+    so its local ``links`` may only ever *add* a key remote doesn't have yet, never overwrite one
+    it does. Callers only use this when ``protected`` is non-empty; an unscoped/full run owns
+    every key already in its own ``local_links`` and never calls this."""
+    if lane == "audio":
+        return frozenset(local_links) - {"transcript"}
+    if lane in _TRANSCRIPT_LINK_LANES:
+        return frozenset({"transcript"})
+    return frozenset()
+
 
 def protected_blocks_for_lane(lane: str | None) -> frozenset[str]:
     """Artifact blocks a scoped ``lane`` run must PRESERVE from the freshest remote because it does
@@ -1885,6 +1915,19 @@ def merge_preserving_foreign(
                     if stage_name in owned_status or stage_name not in merged_status:
                         merged_status[stage_name] = status
                 rec["stage_completion"] = merged_status
+            local_links = local_rec.get("links")
+            remote_links = remote_rec.get("links")
+            if isinstance(local_links, dict) or isinstance(remote_links, dict):
+                merged_links = dict(remote_links) if isinstance(remote_links, dict) else {}
+                owned_links = (
+                    frozenset(local_links or {})
+                    if not protected
+                    else _owned_link_keys(lane, local_links or {})
+                )
+                for key, value in (local_links or {}).items():
+                    if key in owned_links or key not in merged_links:
+                        merged_links[key] = value
+                rec["links"] = merged_links
             for block in protected:
                 if block in remote_rec:
                     rec[block] = remote_rec[block]

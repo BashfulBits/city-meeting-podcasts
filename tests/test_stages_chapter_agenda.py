@@ -98,12 +98,16 @@ def test_stage_defers_on_missing_agenda_artifact(tmp_path: Path):
     storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
     ctx = _ctx(storage=storage, dry_run=False)
 
-    # Episodes with no key and with missing bytes
+    # Episodes with no key and with missing bytes -- two distinct failure modes, kept as separate
+    # defer reasons (diagnostic split, see AgendaChapterCandidatesStage.process) so a live run's
+    # aggregate breakdown doesn't conflate "never had a link" with "link present but unreadable".
     ep_no_key = _make_episode("ep-no-key")
     ep_no_key.links = {}
     ep_missing_bytes = _make_episode("ep-missing-bytes")
     stats = stage.process(None, city, [ep_no_key, ep_missing_bytes], ctx)
-    assert stats.defer_reasons.get("missing-agenda-artifact") == 2
+    assert stats.defer_reasons.get("missing-agenda-artifact") == 1
+    assert stats.defer_reasons.get("agenda-artifact-key-present-but-unreadable") == 1
+    assert stats.skipped == 2
 
 
 def test_stage_records_pending_on_job_handle(tmp_path: Path):
