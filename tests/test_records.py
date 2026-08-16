@@ -2087,6 +2087,76 @@ def test_merge_preserving_foreign_better_remote_plan_still_replaces_owned_from_t
     assert merged["u1"]["audio"] == remote["u1"]["audio"]  # owned audio yields to fresher remote
 
 
+def test_merge_preserving_foreign_scoped_lane_does_not_clobber_fresher_links_key():
+    # The reported regression (confirmed live via audio.yml diagnostics, Aug 16): chapter-agenda
+    # never writes any `links` key, but it still merges the whole record for sources it also
+    # touches. Its own local `links` snapshot, pulled before a concurrent/interleaved audio run
+    # wrote a fresh agenda_text_artifact_key, must not overwrite remote's fresher value with that
+    # stale copy on push.
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "links": {
+                "agenda": "https://x/agenda",
+                "agenda_text_artifact_key": "documents/x/u1/agenda-abc",
+            },
+        }
+    }
+    local = {"u1": {"uid": "u1", "links": {"agenda": "https://x/agenda"}}}  # predates the key
+
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("chapter-agenda"), lane="chapter-agenda"
+    )
+
+    assert merged["u1"]["links"]["agenda_text_artifact_key"] == "documents/x/u1/agenda-abc"
+
+
+def test_merge_preserving_foreign_audio_lane_writes_its_own_new_links_key():
+    remote = {"u1": {"uid": "u1", "links": {"agenda": "https://x/agenda"}}}
+    local = {
+        "u1": {
+            "uid": "u1",
+            "links": {
+                "agenda": "https://x/agenda",
+                "agenda_text_artifact_key": "documents/x/u1/agenda-fresh",
+            },
+        }
+    }
+
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("audio"), lane="audio"
+    )
+
+    assert merged["u1"]["links"]["agenda_text_artifact_key"] == "documents/x/u1/agenda-fresh"
+
+
+def test_merge_preserving_foreign_transcribe_lane_updates_transcript_link_but_not_others():
+    # transcribe/align own only the `transcript` link key -- a stale local snapshot of any other
+    # key (e.g. `agenda`, which transcribe never writes) must not regress remote's fresher value,
+    # exactly like every other scoped lane that doesn't own `links` at all.
+    remote = {"u1": {"uid": "u1", "links": {"agenda": "REMOTE-AGENDA", "transcript": "OLD-T"}}}
+    local = {"u1": {"uid": "u1", "links": {"agenda": "STALE-LOCAL-AGENDA", "transcript": "NEW-T"}}}
+
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("transcribe"), lane="transcribe"
+    )
+
+    assert merged["u1"]["links"]["transcript"] == "NEW-T"  # owned by transcribe: local wins
+    assert merged["u1"]["links"]["agenda"] == "REMOTE-AGENDA"  # not owned: remote preserved
+
+
+def test_merge_preserving_foreign_unscoped_run_still_unions_remote_only_links_keys():
+    # An unscoped/full run owns every key already in its own local `links`, but -- symmetric with
+    # stage_completion's identical merge shape just above -- must not destructively drop a
+    # remote-only key this run's `links` simply never touched.
+    remote = {"u1": {"uid": "u1", "links": {"agenda": "REMOTE", "transcript": "REMOTE-T"}}}
+    local = {"u1": {"uid": "u1", "links": {"agenda": "LOCAL"}}}
+
+    merged = merge_preserving_foreign(remote, local, frozenset())
+
+    assert merged["u1"]["links"] == {"agenda": "LOCAL", "transcript": "REMOTE-T"}
+
+
 def test_legacy_manifest_carryover(tmp_path):
     # Old per-slug manifest keyed by provider guid.
     slug_dir = tmp_path / "denton-tx"
