@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`tag.yml` job timeout was cancelling `LLM topic tags` runs mid-batch.** The GH Actions job
+  timeout (30m) sat just above the lane's internal wall-clock budget (`tag_run_time_budget_minutes`,
+  20m), leaving almost no margin once source-prepare scraping and the graceful-stop tail were
+  accounted for; two scheduled runs during the Aug-16 LLM dispatch incident were hard-cancelled by
+  GitHub before the run's own budget ever got a chance to stop it cleanly, needlessly truncating a
+  run's LLM dispatch submissions. `timeout-minutes` widened 30 → 180 and
+  `tag_run_time_budget_minutes` 20 → 160 (site_config.yml), mirroring the margin pattern already
+  used by `llm-deferred-sweep.yml`'s 240m job timeout.
+
 - **LLM dispatch retry path R2 budget (Finding 1, audit of PR #1229).** `saveRetry` now accepts
   an optional `pendingMarkerDeletes` array; when provided by `dispatchBatch`, the old ready-marker
   DELETE is deferred into the end-of-batch `unmarkReadyBatch` call rather than fired immediately.
