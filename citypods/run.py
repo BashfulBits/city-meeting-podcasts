@@ -640,6 +640,31 @@ class SourcePipeline:
         # left the provider window keeps its record + audio. Bounded by the (high) retention
         # caps so it never grows truly unbounded.
         fresh = {ep.uid: episode_to_record(ep) for ep in episodes if ep.uid}
+        # DIAGNOSTIC (agenda-extraction storage-recall investigation -- see the `_store_document`/
+        # AgendaTextStage notes in stages.py): a fresh links[*_artifact_key] mutation has been
+        # confirmed to happen in memory (logged there) but not to survive to the persisted B2
+        # record. This checkpoint (and the "combined" one below) bisects whether the value is
+        # already gone by the time it reaches this function's own merge machinery, or is still
+        # correct here and gets lost later (push_records_merged). Bounded to genuinely new
+        # artifact keys this run -- tracks each stage's own low `ran` count, never the full
+        # backlog, so it never fires for the steady-state "reused" majority. Remove once
+        # root-caused.
+        _diag_new_artifact_keys: dict[str, dict[str, str]] = {}
+        for uid, rec in fresh.items():
+            old_links = (persisted.get(uid) or {}).get("links") or {}
+            new_links = rec.get("links") or {}
+            added = {
+                k: v
+                for k, v in new_links.items()
+                if k.endswith("_artifact_key") and old_links.get(k) != v
+            }
+            if added:
+                _diag_new_artifact_keys[uid] = added
+                print(
+                    f"[persist_source] checkpoint=fresh source={key} uid={uid} "
+                    f"new_artifact_keys={added}",
+                    flush=True,
+                )
         combined = project_body_retained_archive(
             persisted,
             fresh,
@@ -648,6 +673,14 @@ class SourcePipeline:
             max_age_years=self.max_archive_age_years,
             now=self.retention_now,
         )
+        for uid, added in _diag_new_artifact_keys.items():
+            combined_links = (combined.get(uid) or {}).get("links") or {}
+            actual = {k: combined_links.get(k) for k in added}
+            print(
+                f"[persist_source] checkpoint=combined source={key} uid={uid} "
+                f"expected={added} actual={actual} match={actual == added}",
+                flush=True,
+            )
         archived = len(combined) - len(fresh)
         if archived > 0:
             notes.append(f"{archived} archived")
