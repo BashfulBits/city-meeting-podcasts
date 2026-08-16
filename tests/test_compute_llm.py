@@ -1741,3 +1741,54 @@ def test_reconcile_treats_an_operator_retired_dispatch_record_as_terminal():
 
     with pytest.raises(LLMDispatchTerminalError, match="HTTP 410"):
         backend.reconcile(handle)
+
+
+def test_direct_call_routes_through_ai_gateway_when_configured(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "cf-acc-123")
+    monkeypatch.setenv("AI_GATEWAY_ID", "citypods-dispatch")
+    monkeypatch.setenv("AI_GATEWAY_AUTH_TOKEN", "test-auth-token")
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response(json.dumps({"value": "ok"}))
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3.6-flash"),
+        completion=completion,
+        storage=MemStorage(),
+    )
+    result = backend.run_inference(job(content="test"))
+    assert isinstance(result, JobResult)
+    assert len(calls) == 1
+    call_kwargs = calls[0]
+    assert (
+        call_kwargs["api_base"]
+        == "https://gateway.ai.cloudflare.com/v1/cf-acc-123/citypods-dispatch/google-ai-studio"
+    )
+    assert call_kwargs["extra_headers"] == {"cf-aig-authorization": "Bearer test-auth-token"}
+
+
+def test_direct_call_uses_ai_gateway_base_url_override(monkeypatch):
+    monkeypatch.setenv("AI_GATEWAY_BASE_URL", "https://custom-gw.example.com/v1/custom-gw")
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("AI_GATEWAY_AUTH_TOKEN", raising=False)
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response(json.dumps({"value": "ok"}))
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="mistral/mistral-large-2512"),
+        completion=completion,
+        storage=MemStorage(),
+    )
+    result = backend.run_inference(job(content="test"))
+    assert isinstance(result, JobResult)
+    assert len(calls) == 1
+    call_kwargs = calls[0]
+    assert call_kwargs["api_base"] == "https://custom-gw.example.com/v1/custom-gw/mistral"
+    assert "extra_headers" not in call_kwargs or not call_kwargs["extra_headers"]

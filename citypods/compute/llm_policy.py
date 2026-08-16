@@ -160,6 +160,8 @@ class LLMRoute:
     upstream_model: str = ""
     direct_model: str = ""
     api_base: str = ""
+    ai_gateway_slug: str = ""
+    ai_gateway_chat_path: str = ""
     chat_path: str = "/v1/chat/completions"
     api_key_env: str = ""
     account_id: str = ""
@@ -274,6 +276,8 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
                 upstream_model=str(item.get("upstream_model", "")),
                 direct_model=str(item.get("direct_model", "")),
                 api_base=str(item.get("api_base", "")),
+                ai_gateway_slug=str(item.get("ai_gateway_slug", "")),
+                ai_gateway_chat_path=str(item.get("ai_gateway_chat_path", "")),
                 chat_path=str(item.get("chat_path", "/v1/chat/completions")),
                 api_key_env=str(item.get("api_key_env", "")),
                 account_id=str(item.get("account_id", "")),

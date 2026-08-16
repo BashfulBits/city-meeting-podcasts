@@ -556,13 +556,37 @@ class LiteLLMBackend(Backend):
             "json_schema": {"name": model.__name__, "schema": schema_model.model_json_schema()},
         }
 
+    def _resolve_api_base_and_headers(
+        self, route: LLMRoute | None
+    ) -> tuple[str | None, dict[str, str]]:
+        """Resolve the provider endpoint and auth headers, routing via Cloudflare AI Gateway."""
+        if route is None:
+            return None, {}
+        api_base = route.api_base or None
+        extra_headers: dict[str, str] = {}
+        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+        gateway_id = os.environ.get("AI_GATEWAY_ID", "citypods-dispatch").strip()
+        auth_token = os.environ.get("AI_GATEWAY_AUTH_TOKEN", "").strip()
+        gateway_base = os.environ.get("AI_GATEWAY_BASE_URL", "").strip().rstrip("/")
+        if not gateway_base and account_id and gateway_id:
+            gateway_base = f"https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}"
+        if gateway_base and route.provider:
+            gateway_slug = getattr(route, "ai_gateway_slug", "") or route.provider
+            api_base = f"{gateway_base}/{gateway_slug}"
+            if auth_token:
+                extra_headers["cf-aig-authorization"] = f"Bearer {auth_token}"
+        return api_base, extra_headers
+
     def _provider_options(
         self, job: InferenceJob, resolved_model: str, *, route=None
     ) -> dict[str, Any]:
         options: dict[str, Any] = {"model": resolved_model}
         if route is not None:
-            if route.api_base:
-                options["api_base"] = route.api_base
+            api_base, extra_headers = self._resolve_api_base_and_headers(route)
+            if api_base:
+                options["api_base"] = api_base
+            if extra_headers:
+                options["extra_headers"] = extra_headers
             if route.api_key_env:
                 api_key = os.environ.get(route.api_key_env)
                 if api_key:

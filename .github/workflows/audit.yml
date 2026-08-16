@@ -75,6 +75,17 @@ jobs:
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
           B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AI_GATEWAY_ID: ${{ secrets.AI_GATEWAY_ID || 'citypods-dispatch' }}
+          AI_GATEWAY_AUTH_TOKEN: ${{ secrets.AI_GATEWAY_AUTH_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
           EVENT_NAME: ${{ github.event_name }}
           GIT_REF: ${{ github.ref }}
           TIMELINE_DIAGNOSTICS_INPUT: ${{ inputs.timeline_diagnostics }}
