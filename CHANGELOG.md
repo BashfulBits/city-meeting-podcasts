@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Resolve unexpected meeting bodies and add Pflugerville TIRZ feed (#1231).** Added new
+  dedicated feed for Pflugerville TIRZ Board, added `Special Meeting` union to Addison City Council,
+  `Audit and Finance Committee` union to Fort Worth Audit Committee, and added one-off `body_includes`
+  GUID additions for Arlington, Dallas, Denton, and Waco.
+
 - **LLM dispatch retry path R2 budget (Finding 1, audit of PR #1229).** `saveRetry` now accepts
   an optional `pendingMarkerDeletes` array; when provided by `dispatchBatch`, the old ready-marker
   DELETE is deferred into the end-of-batch `unmarkReadyBatch` call rather than fired immediately.

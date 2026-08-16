@@ -1,0 +1,12 @@
+slug: pflugerville-tx-tirz-board
+city: pflugerville-tx
+provider: granicus
+source:
+  feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
+  body: "TIRZ"
+  body_any:
+    - "TIRZ Board"
+podcast_title: "Pflugerville: TIRZ Board"
+podcast_author: "City of Pflugerville, TX"
+podcast_email: ""
+podcast_description: "Tax Increment Reinvestment Zone (TIRZ) Board meetings for Pflugerville."

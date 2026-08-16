@@ -9,6 +9,8 @@ source:
   body_includes:
     - provider_guid: "396135"
       body: "Budget & Audit Committee Meeting"
+    - provider_guid: "392481"
+      body: "Texas Ranger Hall of Fame & Museum Advisory Board Meeting"
 podcast_title: "Waco: City Council"
 podcast_author: "City of Waco, TX"
 podcast_email: ""
