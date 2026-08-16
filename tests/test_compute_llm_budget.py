@@ -114,7 +114,7 @@ def test_release_restores_token_counter_after_rollover_before_small_reservation(
 
     budget.reserve("small", route.model, route=route, requests=1, tokens=10, cost=0, now=rollover)
     assert ledger.tokens_minute == 10
-    assert ledger.tokens_available_at == ""
+    assert ledger.tokens_available_at == (rollover + timedelta(seconds=6)).isoformat()
 
 
 def test_rpm_is_a_continuous_request_pace():

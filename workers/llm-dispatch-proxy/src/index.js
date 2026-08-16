@@ -1393,9 +1393,7 @@ function rollLedgerWindows(entry, route, now) {
   const mk = minuteKey(now);
   if (entry.requests_minute_key !== mk) {
     entry.requests_minute = 0;
-    // `tokens_minute` is retained as legacy telemetry; TPM admission uses the continuous
-    // `tokens_available_at` schedule below and must not reset at a wall-clock minute boundary.
-    if (!entry.tokens_available_at) entry.tokens_minute = 0;
+    entry.tokens_minute = 0;
     entry.requests_minute_key = mk;
   }
   if (route.rpd != null) {
@@ -1532,15 +1530,16 @@ function reserveRouteCapacity(
     entry.requests_available_at = requestScheduleAfter;
   }
   const tokenScheduleBefore = entry.tokens_available_at || "";
-  const totalTokens = tokensMinuteBefore + tokens;
-  const tokenScheduleAfter =
-    route.tpm != null && !tokenScheduleBefore && totalTokens > route.tpm
-      ? new Date(
-          Date.parse(reservedAt || new Date().toISOString()) +
-            (totalTokens * 60_000) / route.tpm,
-        ).toISOString()
-      : tokenScheduleBefore;
-  if (tokenScheduleAfter) entry.tokens_available_at = tokenScheduleAfter;
+  let tokenScheduleAfter = tokenScheduleBefore;
+  if (route.tpm != null) {
+    const tokenIntervalMs = (tokens * 60_000) / route.tpm;
+    const reservedMs = Date.parse(reservedAt || new Date().toISOString());
+    const tokenReadyMs = tokenScheduleBefore ? parseTime(tokenScheduleBefore) : reservedMs;
+    tokenScheduleAfter = new Date(
+      Math.max(reservedMs, tokenReadyMs) + tokenIntervalMs,
+    ).toISOString();
+    entry.tokens_available_at = tokenScheduleAfter;
+  }
   if (route.rpd != null) {
     entry.requests_day += requests;
   }
