@@ -737,9 +737,15 @@ async function unmarkReadyBatch(bucket, keys) {
   await bucket.delete(unique);
 }
 
-async function replaceReadyMarker(bucket, record, oldKey = null) {
+async function replaceReadyMarker(bucket, record, oldKey = null, pendingDeletes = null) {
   const newKey = await markReady(bucket, record);
-  if (oldKey && oldKey !== newKey) await unmarkReady(bucket, oldKey);
+  if (oldKey && oldKey !== newKey) {
+    if (pendingDeletes) {
+      pendingDeletes.push(oldKey);
+    } else {
+      await unmarkReady(bucket, oldKey);
+    }
+  }
   return newKey;
 }
 
@@ -974,7 +980,9 @@ function retryDelaySeconds(response, attempts, cfg) {
   return Math.min(exponential, cfg.retryMaxSeconds);
 }
 
-async function saveRetry(bucket, claimed, response, cfg, now, errorDetail = null) {
+async function saveRetry(
+  bucket, claimed, response, cfg, now, errorDetail = null, pendingMarkerDeletes = null,
+) {
   const delay = retryDelaySeconds(response, claimed.record.attempts, cfg);
   const availableAt = new Date(now.getTime() + delay * 1000).toISOString();
   const lastError = errorDetail || {
@@ -993,7 +1001,7 @@ async function saveRetry(bucket, claimed, response, cfg, now, errorDetail = null
     etagMatches: claimed.object.etag,
     customMetadata: requestMetadata(updated),
   });
-  if (saved) await replaceReadyMarker(bucket, updated, claimed.readyKey);
+  if (saved) await replaceReadyMarker(bucket, updated, claimed.readyKey, pendingMarkerDeletes);
 }
 
 async function saveFailure(
@@ -2202,6 +2210,10 @@ async function dispatchBatch(
     // without a durable reservation.
     const batchState = { reaped: false, admitted: new Map() };
     const maxStaggerMs = cfg.maxInBatchStaggerSeconds * 1000;
+    // Accumulated across the whole batch: marker deletes from the candidate-prep loop
+    // (permanent failures) and the finalize closures (completed/failed dispatches). A single
+    // unmarkReadyBatch call flushes them all in one R2 DELETE instead of N individual deletes.
+    const pendingMarkerDeletes = [];
 
     const candidatePrepareStartedAt = profileNow();
     for (const head of ready.heads) {
@@ -2259,7 +2271,9 @@ async function dispatchBatch(
         candidateProfile.claim_ms = profileElapsed(claimStartedAt);
         if (!claimed) continue;
         {
-          await saveFailure(bucket, claimed, 400, now, selection.reason);
+          await saveFailure(
+            bucket, claimed, 400, now, selection.reason, null, pendingMarkerDeletes,
+          );
           batchFailures.push({
             status: "failed",
             requestId: claimed.record.id,
@@ -2291,7 +2305,10 @@ async function dispatchBatch(
         creds = resolveProviderCredentials(env, chosenRoute);
         candidateProfile.credentials_ms = profileElapsed(credentialsStartedAt);
       } catch (error) {
-        await saveFailure(bucket, claimed, 500, now, "credential_resolution_failed");
+        await saveFailure(
+          bucket, claimed, 500, now, "credential_resolution_failed", null,
+          pendingMarkerDeletes,
+        );
         console.error(
           JSON.stringify({ event: "llm_dispatch_credentials_error", error: error?.message }),
         );
@@ -2385,6 +2402,15 @@ async function dispatchBatch(
           // A sibling may have committed fresher rollover state; the request remains requeued.
         }
       }
+      // Flush any marker deletes collected during candidate preparation (permanent failures)
+      // before any early return so they are not silently dropped.
+      if (pendingMarkerDeletes.length > 0) {
+        try {
+          await unmarkReadyBatch(bucket, pendingMarkerDeletes);
+        } catch {
+          // Best-effort; self-healing will clean stale markers on the next cron tick.
+        }
+      }
       if (batchFailures.length > 0) {
         return {
           status: "failed",
@@ -2435,7 +2461,6 @@ async function dispatchBatch(
     // Atomic CAS write of the combined coordinator (lease + rate ledger)
     let ledgerSaved = false;
     let freshCapacityFailed = false;
-    const pendingMarkerDeletes = [];
     const ledgerWriteStartedAt = profileNow();
     for (let attempt = 0; attempt < 3 && !ledgerSaved; attempt += 1) {
       if (attempt > 0) {
@@ -2542,11 +2567,15 @@ async function dispatchBatch(
         creds,
         timeoutSeconds,
         delayMs,
+        dispatchAtMs,
         profile,
         dispatchStartedAt,
       }) => {
+        // Compute remaining stagger time relative to now; CAS-commit latency should reduce
+        // the wait, not add to it.  dispatchAtMs is the absolute target wall-clock instant.
         if (delayMs > 0) {
-          await sleepImpl(delayMs);
+          const remainingMs = Math.max(0, dispatchAtMs - Date.now());
+          if (remainingMs > 0) await sleepImpl(remainingMs);
         }
         const upstreamPayload = upstreamRequestForRoute(
           claimed.record,
@@ -2593,7 +2622,7 @@ async function dispatchBatch(
             return {
               finalize: async () => {
                 const persistStartedAt = profileNow();
-                await saveRetry(bucket, claimed, null, cfg, now, errorDetail);
+                await saveRetry(bucket, claimed, null, cfg, now, errorDetail, pendingMarkerDeletes);
                 profile.persist_ms = profileElapsed(persistStartedAt);
                 return profiledResult(
                   {
@@ -2658,7 +2687,9 @@ async function dispatchBatch(
             return {
               finalize: async () => {
                 const persistStartedAt = profileNow();
-                await saveRetry(bucket, claimed, response, cfg, now, errorDetail);
+                await saveRetry(
+                  bucket, claimed, response, cfg, now, errorDetail, pendingMarkerDeletes,
+                );
                 profile.persist_ms = profileElapsed(persistStartedAt);
                 return profiledResult(
                   {
