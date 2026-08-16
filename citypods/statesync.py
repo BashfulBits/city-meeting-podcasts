@@ -698,6 +698,29 @@ def push_records_merged(
             emit(f"state: WARNING remote record for source {sk} unreadable; skipping push")
             continue
         local = load_records(state_dir, sk)
+        # DIAGNOSTIC (agenda-extraction storage-recall investigation -- see the matching
+        # checkpoints in run.py's persist_source and stages.py's _store_document/AgendaTextStage):
+        # a fresh links[*_artifact_key] mutation is confirmed present at persist_source's
+        # "combined" checkpoint (i.e. in the local on-disk episodes.json this reads via
+        # load_records above) but was not found in the remote B2 record afterward. This
+        # checkpoint confirms whether it's still here just before the remote-preserving merge, and
+        # whether merge_preserving_foreign is what drops it. Bounded to genuinely new artifact
+        # keys this run. Remove once root-caused.
+        _diag_new_artifact_keys: dict[str, dict[str, str]] = {}
+        for uid, local_rec in local.items():
+            local_links = local_rec.get("links") or {}
+            remote_links = (remote.get(uid) or {}).get("links") or {}
+            added = {
+                k: v
+                for k, v in local_links.items()
+                if k.endswith("_artifact_key") and remote_links.get(k) != v
+            }
+            if added:
+                _diag_new_artifact_keys[uid] = added
+                emit(
+                    f"[push_records_merged] checkpoint=local-pre-merge source={sk} uid={uid} "
+                    f"new_artifact_keys={added}"
+                )
         merged = merge_preserving_foreign(
             remote,
             local,
@@ -705,12 +728,37 @@ def push_records_merged(
             lane=lane,
             owned_uids=owned_uids.get(sk) if owned_uids is not None else None,
         )
+        for uid, added in _diag_new_artifact_keys.items():
+            merged_links = (merged.get(uid) or {}).get("links") or {}
+            actual = {k: merged_links.get(k) for k in added}
+            emit(
+                f"[push_records_merged] checkpoint=merged-pre-push source={sk} uid={uid} "
+                f"expected={added} actual={actual} match={actual == added}"
+            )
         save_records(state_dir, sk, merged)
         storage.put_file(
             f"{STATE_PREFIX}/sources/{sk}/episodes.json",
             records_path(state_dir, sk),
             "application/json",
         )
+        # DIAGNOSTIC (agenda-extraction storage-recall investigation): every prior checkpoint
+        # (persist_source's "fresh"/"combined", this function's "local-pre-merge"/
+        # "merged-pre-push") has matched, in two independent runs, yet the artifact key is still
+        # missing from the remote record afterward. The one thing none of them verify is whether
+        # the actual upload above landed with the content this run intended -- a stale read, a
+        # backend-side overwrite race with a sibling job, or a genuinely bad `put_file` are all
+        # still on the table. Re-fetch the object we just wrote, in-process, immediately after the
+        # upload, and compare. Remove once root-caused.
+        if _diag_new_artifact_keys:
+            readback = fetch_remote_records(storage, sk)
+            for uid, added in _diag_new_artifact_keys.items():
+                readback_links = (readback or {}).get(uid, {}).get("links") or {}
+                actual = {k: readback_links.get(k) for k in added}
+                emit(
+                    f"[push_records_merged] checkpoint=post-push-readback source={sk} uid={uid} "
+                    f"expected={added} actual={actual} match={actual == added} "
+                    f"readback_is_none={readback is None}"
+                )
         pushed += 1
     return pushed
 
