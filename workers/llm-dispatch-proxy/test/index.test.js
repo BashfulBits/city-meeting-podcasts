@@ -2080,11 +2080,11 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
   assert.equal(batchResult.count, 2);
   assert.equal(batchResult.completedCount, 2);
   assert.equal(calls.length, 2);
-  // Candidate 0: delay 0ms. Candidate 1: delay <= 2000ms (RPM 30 = 2s interval).
+  // Candidate 0: delay 0ms. Candidate 1: delay <= 3840ms (max of RPM 2000ms, TPM 3840ms for 1024 tokens).
   assert.equal(slept.length, 1);
   assert.ok(
-    slept[0] > 1_500 && slept[0] <= 2_000,
-    `expected slept delay within (1500, 2000], got ${slept[0]}`,
+    slept[0] > 3_000 && slept[0] <= 3_840,
+    `expected slept delay within (3000, 3840], got ${slept[0]}`,
   );
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
@@ -2092,6 +2092,70 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
     (o) => o.customMetadata?.status === "completed",
   );
   assert.equal(completedObjects.length, 2);
+  const pendingObjects = listRes.objects.filter(
+    (o) => o.customMetadata?.status === "pending",
+  );
+  assert.equal(pendingObjects.length, 1);
+});
+
+test("dispatchBatch defers same-route candidates when TPM delay exceeds max stagger", async () => {
+  const env = isolatedEnv();
+  // Request with 8000 tokens on 16000 TPM -> 30s token interval > 20s MAX_IN_BATCH_STAGGER_SECONDS.
+  // google/gemma-4-31b-it maps to 3 routes (primary, secondary, openrouter).
+  // With 4 requests, the first 3 take the 3 routes and the 4th is deferred because
+  // all matching routes are exhausted/paced beyond the 20s in-batch stagger ceiling.
+  for (let i = 0; i < 4; i += 1) {
+    await handleRequest(
+      chatRequest(
+        [{ role: "user", content: `gemma large ${i}` }],
+        `gemma-large-${i}`,
+        "google/gemma-4-31b-it",
+        { estimated_tokens: 8000 },
+      ),
+      env,
+    );
+  }
+
+  const calls = [];
+  const parallelUpstream = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push({ url, body });
+    return new Response(
+      JSON.stringify({
+        id: `completion-gemma-large-${calls.length}`,
+        choices: [{ message: { role: "assistant", content: "ok" } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  const now = new Date();
+  const slept = [];
+  const batchResult = await dispatchBatch(
+    env,
+    parallelUpstream,
+    now,
+    4,
+    null,
+    null,
+    null,
+    async (ms) => {
+      slept.push(ms);
+    },
+  );
+
+  assert.equal(batchResult.status, "completed");
+  // 3 candidates admitted across the 3 routes. Candidate 3 deferred in place (30s > 20s max stagger).
+  assert.equal(batchResult.count, 3);
+  assert.equal(batchResult.completedCount, 3);
+  assert.equal(calls.length, 3);
+  assert.equal(slept.length, 0);
+
+  const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
+  const completedObjects = listRes.objects.filter(
+    (o) => o.customMetadata?.status === "completed",
+  );
+  assert.equal(completedObjects.length, 3);
   const pendingObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "pending",
   );

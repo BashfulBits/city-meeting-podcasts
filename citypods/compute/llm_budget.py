@@ -134,8 +134,7 @@ class LLMBudget:
         mk = minute_key(now)
         if led.requests_minute_key != mk:
             led.requests_minute = 0
-            if not led.tokens_available_at:
-                led.tokens_minute = 0
+            led.tokens_minute = 0
             led.requests_minute_key = mk
         if route.quota.rpd is not None:
             dk = daily_reset_key(now, route.quota.reset_timezone)
@@ -310,14 +309,14 @@ class LLMBudget:
         reserved_at = now.astimezone(UTC)
         token_schedule_before = led.tokens_available_at
         if route.quota.tpm is not None:
-            total_tokens = tokens_minute_before + tokens
-            if not token_schedule_before and total_tokens > route.quota.tpm:
-                token_schedule_after = (
-                    reserved_at + timedelta(seconds=total_tokens * 60 / route.quota.tpm)
-                ).isoformat()
-                led.tokens_available_at = token_schedule_after
+            token_interval_seconds = (tokens * 60) / route.quota.tpm
+            if token_schedule_before:
+                ready_at = datetime.fromisoformat(token_schedule_before)
+                base = max(reserved_at, ready_at)
             else:
-                token_schedule_after = token_schedule_before
+                base = reserved_at
+            token_schedule_after = (base + timedelta(seconds=token_interval_seconds)).isoformat()
+            led.tokens_available_at = token_schedule_after
         else:
             token_schedule_after = token_schedule_before
         request_schedule_after = self._request_schedule_after(
@@ -348,7 +347,9 @@ class LLMBudget:
             provider_requests_available_at_before=provider_schedule_before,
             provider_requests_available_at_after=provider_schedule_after,
             reserved_at=reserved_at.isoformat(),
-            expires_at=(reserved_at + timedelta(seconds=LLM_RESERVATION_TTL_SECONDS)).isoformat(),
+            expires_at=(
+                (now + timedelta(seconds=LLM_RESERVATION_TTL_SECONDS)).astimezone(UTC).isoformat()
+            ),
         )
 
     def settle(
@@ -371,16 +372,17 @@ class LLMBudget:
             led.requests_minute = max(
                 0, led.requests_minute + actual_requests - reservation.requests
             )
+        if actual_tokens is not None and led.requests_minute_key == reservation.minute_key:
+            led.tokens_minute = max(0, led.tokens_minute + actual_tokens - reservation.tokens)
         if (
             actual_requests is not None
             and reservation.day_key
             and led.requests_day_key == reservation.day_key
         ):
             led.requests_day = max(0, led.requests_day + actual_requests - reservation.requests)
-        if actual_tokens is not None and led.requests_minute_key == reservation.minute_key:
-            led.tokens_minute = max(0, led.tokens_minute + actual_tokens - reservation.tokens)
         if (
             actual_requests is not None
+            and route.quota.rpm is not None
             and reservation.requests_available_at_after
             and led.requests_available_at == reservation.requests_available_at_after
         ):
@@ -392,6 +394,7 @@ class LLMBudget:
             )
         if (
             actual_requests is not None
+            and route.provider_rpm is not None
             and reservation.provider_key
             and reservation.provider_requests_available_at_after
         ):
@@ -414,13 +417,13 @@ class LLMBudget:
             and led.tokens_available_at == reservation.tokens_available_at_after
         ):
             token_start = datetime.fromisoformat(reservation.reserved_at).astimezone(UTC)
+            if reservation.tokens_available_at_before:
+                ready_at = datetime.fromisoformat(reservation.tokens_available_at_before)
+                base = max(token_start, ready_at)
+            else:
+                base = token_start
             led.tokens_available_at = (
-                token_start
-                + timedelta(
-                    seconds=(reservation.tokens_minute_before + actual_tokens)
-                    * 60
-                    / route.quota.tpm
-                )
+                base + timedelta(seconds=(actual_tokens * 60) / route.quota.tpm)
             ).isoformat()
         if actual_cost is not None and led.cost_cycle_key == reservation.cost_cycle_key:
             led.cost_used = max(0.0, led.cost_used + actual_cost - reservation.cost)
