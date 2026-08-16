@@ -741,6 +741,24 @@ def push_records_merged(
             records_path(state_dir, sk),
             "application/json",
         )
+        # DIAGNOSTIC (agenda-extraction storage-recall investigation): every prior checkpoint
+        # (persist_source's "fresh"/"combined", this function's "local-pre-merge"/
+        # "merged-pre-push") has matched, in two independent runs, yet the artifact key is still
+        # missing from the remote record afterward. The one thing none of them verify is whether
+        # the actual upload above landed with the content this run intended -- a stale read, a
+        # backend-side overwrite race with a sibling job, or a genuinely bad `put_file` are all
+        # still on the table. Re-fetch the object we just wrote, in-process, immediately after the
+        # upload, and compare. Remove once root-caused.
+        if _diag_new_artifact_keys:
+            readback = fetch_remote_records(storage, sk)
+            for uid, added in _diag_new_artifact_keys.items():
+                readback_links = (readback or {}).get(uid, {}).get("links") or {}
+                actual = {k: readback_links.get(k) for k in added}
+                emit(
+                    f"[push_records_merged] checkpoint=post-push-readback source={sk} uid={uid} "
+                    f"expected={added} actual={actual} match={actual == added} "
+                    f"readback_is_none={readback is None}"
+                )
         pushed += 1
     return pushed
 
