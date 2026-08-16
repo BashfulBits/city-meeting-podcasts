@@ -1278,3 +1278,21 @@ encoding had already cost one real production bug plus a worse, untriggered late
 `model_routes_map`'s integer route indices. Also fixed a previously-silent bug in this project's own
 `bench/cpu-profile.js` that the representation change incidentally surfaced. 84 JS tests, 3118 Python
 tests, `ruff check`/`ruff format --check` clean, compiled artifact regenerated and verified in sync.
+
+### In-batch Staggered Concurrency & Coordinator Consolidation checkpoint
+
+Implemented in-batch staggered concurrency and coordinator consolidation:
+1. **In-batch stagger pacing:** Route selection computes pacing delay bounded by
+   `MAX_IN_BATCH_STAGGER_SECONDS` (default 20s). Candidate 0 is immediately eligible at
+   $T_{\text{now}}$, while candidates $1..N$ in the same batch compute
+   $\Delta t_{\text{delay}} = \max(0, \Delta t_{\text{RPM}}, \Delta t_{\text{TPM}}, \Delta t_{\text{ProviderRPM}})$.
+   Payloads are pre-loaded in memory and the coordinator ledger is committed atomically before
+   dispatch. Upstream tasks call `await sleep(delayMs)` before `fetchImpl` so upstream sockets open
+   with zero R2 read latency at wake-up.
+2. **Coordinator consolidation:** Unified `locks/cron.json` and `state/dispatch_budget.json` into
+   `state/dispatch_coordinator.json`. Eliminates 2 R2 operations per scheduled dispatch run
+   (1 GET + 3 PUTs total).
+3. **On-demand claim loading:** Route selection is evaluated directly against listed ready marker
+   metadata in V8 memory without reading canonical requests. Canonical requests are loaded
+   on-demand only for admitted/requeued candidates.
+4. All 89 Node tests and 162 Python LLM tests pass cleanly.
