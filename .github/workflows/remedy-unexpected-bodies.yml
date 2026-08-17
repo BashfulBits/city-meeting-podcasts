@@ -1,13 +1,23 @@
 name: Remedy unexpected bodies
 
-# Manually-dispatched companion to the daily feed-health audit. Collects the rows behind the
-# `unexpected-body` findings (one provider fetch, reusing the audit's own detection), asks an LLM
-# to classify each label, re-validates every proposal against that evidence, and reports.
+# Dispatched automatically by audit.yml the moment it *creates* a new consolidated
+# `unexpected-body` issue (not on later updates to an already-open one -- see
+# `on_issue_created` in scripts/audit_feeds.py), and can also be run manually. Collects the rows
+# behind the finding (one provider fetch, reusing the audit's own detection), asks an LLM to
+# classify each label, re-validates every proposal against that evidence, applies what survives,
+# and reports back on the issue with a link to the opened PR.
 #
-# Deliberately *not* part of audit.yml: this job needs LLM provider credentials and, with
-# `apply`, write access, none of which the read-only daily audit should carry. Reporting is the
-# default; applying is a separate, explicit choice.
-
+# Deliberately *not* part of audit.yml: this job needs LLM provider credentials and write access,
+# neither of which the read-only daily audit should carry.
+#
+# SECURITY: this stays `workflow_dispatch`-only rather than also listening for `issues: opened`.
+# The latter fires for every issue opened by anyone with issue-create rights on this repo -- i.e.
+# any GitHub user, on a public repo -- with an entirely attacker-controlled body, which would need
+# the workflow itself to re-verify the triggering issue's author and content before trusting it.
+# `workflow_dispatch` has no such surface: it can only be invoked by something already holding
+# `actions: write` on this repo (a human maintainer, or audit.yml's own job using its own
+# `GH_TOKEN` -- see the `gh workflow run` call in `_dispatch_remedy_workflow()`), so there is
+# nothing here to spoof.
 on:
   workflow_dispatch:
     inputs:
@@ -32,6 +42,7 @@ jobs:
   remedy:
     runs-on: ubuntu-latest
     # `apply` pushes a branch and opens a PR, so it needs more than the read-only default.
+    # audit.yml's own dispatch always passes `apply: true` explicitly, same as a human would.
     permissions:
       contents: ${{ inputs.apply && 'write' || 'read' }}
       issues: write

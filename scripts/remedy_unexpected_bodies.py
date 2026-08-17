@@ -14,7 +14,10 @@ written:
 Reporting is the default. ``--apply`` edits feed YAML and runs the repository's own gate; it
 opens a pull request only when ``--issue`` is given and the gate passed. Nothing is ever pushed
 to an existing branch: the branch name carries the evidence digest, so re-running for the same
-findings is idempotent and a re-run after new findings gets its own branch.
+findings is idempotent and a re-run after new findings gets its own branch. When ``--issue`` and
+``--apply`` are both given, every terminal outcome (opened/reused PR, nothing to change, or
+verification failure) posts exactly one comment on that issue with the full classification --
+accepted proposals, rejected ones and why, and a link to the PR when one exists.
 """
 
 from __future__ import annotations
@@ -155,6 +158,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not modified:
         _log("No files needed modification.")
+        _post_final_comment(
+            args.issue,
+            report_md=report_md,
+            pr_url=None,
+            verification_failed=False,
+            accepted_total=accepted_total,
+            cwd=repo_root,
+        )
         return 0
 
     _log(f"Modified {len(modified)} file(s); verifying…")
@@ -165,30 +176,100 @@ def main(argv: list[str] | None = None) -> int:
         _log("Verification failed; reverting the working tree.")
         _run(["git", "checkout", "--", "config/feeds"], cwd=repo_root, check=False)
         _run(["git", "clean", "-fd", "config/feeds"], cwd=repo_root, check=False)
-        _comment_on_issue(
+        _post_final_comment(
             args.issue,
-            f"### Automated remedy proposal (verification failed)\n\n{report_md}\n\n"
-            "> Verification failed, so no changes were kept. Manual review required.",
+            report_md=report_md,
+            pr_url=None,
+            verification_failed=True,
+            accepted_total=accepted_total,
             cwd=repo_root,
         )
         return 1
 
+    pr_url = _open_pull_request(args.issue, evidence_path, repo_root) if args.issue else None
+    _post_final_comment(
+        args.issue,
+        report_md=report_md,
+        pr_url=pr_url,
+        verification_failed=False,
+        accepted_total=accepted_total,
+        cwd=repo_root,
+    )
     if not args.issue:
         _log("Changes applied and verified. Pass --issue N to open a pull request.")
-        return 0
-    return _open_pull_request(args.issue, report_md, evidence_path, repo_root)
+    return 0
 
 
-def _comment_on_issue(issue: str | None, body: str, *, cwd: Path) -> None:
+def _post_final_comment(
+    issue: str | None,
+    *,
+    report_md: str,
+    pr_url: str | None,
+    verification_failed: bool,
+    accepted_total: int,
+    cwd: Path,
+) -> None:
+    """Post exactly one comment summarizing this run's outcome -- the report, plus why."""
     if not issue or not os.environ.get("GH_TOKEN"):
         return
-    _run(["gh", "issue", "comment", str(issue), "--body", body], cwd=cwd, check=False)
+    if verification_failed:
+        header = (
+            "### Automated remedy proposal (verification failed)\n\n"
+            "Applying these changes failed Ruff lint/format or the test suite, so nothing was "
+            "kept. Manual review required."
+        )
+    elif pr_url:
+        header = (
+            "### Automated remedy proposal\n\n"
+            "Classified from this issue's own audit evidence and re-validated against it before "
+            f"being applied; anything unverifiable was rejected and is listed below.\n\n{pr_url}"
+        )
+    elif accepted_total:
+        header = (
+            "### Automated remedy proposal\n\n"
+            "Proposals were accepted (see below) but none produced a file change -- already "
+            "applied by an earlier run, or no configured sibling feed exists for that source --"
+            " so no pull request was opened."
+        )
+    else:
+        header = (
+            "### Automated remedy proposal\n\n"
+            "No proposal survived validation against this issue's evidence -- see the rejection "
+            "reasons below. Manual review required."
+        )
+    _run(
+        ["gh", "issue", "comment", str(issue), "--body", f"{header}\n\n{report_md}\n"],
+        cwd=cwd,
+        check=False,
+    )
 
 
-def _open_pull_request(issue: str, report_md: str, evidence_path: Path, repo_root: Path) -> int:
+def _existing_pr_url(branch: str, *, cwd: Path) -> str | None:
+    result = _run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--head",
+            branch,
+            "--state",
+            "open",
+            "--json",
+            "url",
+            "--jq",
+            ".[0].url",
+        ],
+        cwd=cwd,
+        check=False,
+    )
+    return result.stdout.strip() or None
+
+
+def _open_pull_request(issue: str, evidence_path: Path, repo_root: Path) -> str | None:
+    """Push the applied changes and open (or reuse) a PR. Returns its URL, or None."""
     if not os.environ.get("GH_TOKEN"):
         _log("GH_TOKEN not set; leaving changes in the working tree.")
-        return 0
+        return None
 
     # Digest-suffixed so a re-run over the same findings reuses one branch instead of colliding,
     # and a run over *new* findings never force-pushes over an open PR's history.
@@ -201,11 +282,20 @@ def _open_pull_request(issue: str, report_md: str, evidence_path: Path, repo_roo
     else:
         _run(["git", "checkout", "-b", branch], cwd=repo_root)
 
+    # Checkout runs with `persist-credentials: false` (repo-wide policy, so a compromised
+    # package script cannot read a token out of the git config during `pip install -e .`). Wire
+    # credentials in only now, and unconditionally: `gh pr list` below needs it too, even when
+    # nothing new is staged.
+    _run(["gh", "auth", "setup-git"], cwd=repo_root, check=False)
+
     _run(["git", "add", "config/feeds"], cwd=repo_root)
     staged = _run(["git", "diff", "--cached", "--quiet"], cwd=repo_root, check=False)
     if staged.returncode == 0:
-        _log("Nothing staged; skipping commit and PR.")
-        return 0
+        # Same content digest as a prior run: nothing new to commit. If that prior run already
+        # has an open PR, surface it rather than silently doing nothing -- a repeat trigger for
+        # the same issue (e.g. a manual re-run) should still get a comment pointing somewhere.
+        _log("Nothing staged for this content digest.")
+        return _existing_pr_url(branch, cwd=repo_root)
 
     _run(
         [
@@ -217,19 +307,22 @@ def _open_pull_request(issue: str, report_md: str, evidence_path: Path, repo_roo
         ],
         cwd=repo_root,
     )
-    # Checkout runs with `persist-credentials: false` (repo-wide policy, so a compromised
-    # package script cannot read a token out of the git config during `pip install -e .`). Wire
-    # credentials in only now, immediately before the push.
-    _run(["gh", "auth", "setup-git"], cwd=repo_root)
     _run(["git", "push", "-u", "origin", branch], cwd=repo_root)
+
+    # A branch can already have an open PR from an earlier run over this exact digest (e.g. the
+    # push above was a no-op fast-forward of an existing remote branch) -- `gh pr create` errors
+    # on a duplicate, so check first rather than treating that as a new PR to open.
+    reused = _existing_pr_url(branch, cwd=repo_root)
+    if reused:
+        _log(f"Reusing existing pull request {reused}.")
+        return reused
 
     body = (
         f"Resolves #{issue}\n\n"
         f"Proposals were generated from the audit's own `unexpected-body` rows and re-validated "
-        f"against that evidence before being applied; anything unverifiable was rejected and is "
-        f"listed below.\n\n{report_md}\n"
+        f"against that evidence before being applied; anything unverifiable was rejected."
     )
-    _run(
+    created = _run(
         [
             "gh",
             "pr",
@@ -241,8 +334,10 @@ def _open_pull_request(issue: str, report_md: str, evidence_path: Path, repo_roo
         ],
         cwd=repo_root,
     )
-    _log(f"Opened a pull request from {branch}.")
-    return 0
+    pr_url = created.stdout.strip() or None
+    if pr_url:
+        _log(f"Opened a pull request: {pr_url}")
+    return pr_url
 
 
 if __name__ == "__main__":

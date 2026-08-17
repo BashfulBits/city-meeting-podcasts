@@ -469,6 +469,27 @@ second provider fetch and no second definition of "unmatched". `verify_remedy_mu
 gates any applied change on config reload plus repo-wide Ruff lint, Ruff format, and `pytest -q`;
 a failure reverts the working tree instead of leaving it dirty.
 
+#### Trigger: dispatched by the audit run, not by watching for the issue
+
+`remedy-unexpected-bodies.yml` runs whenever `audit.yml`'s `reconcile()` *creates* a new
+consolidated `unexpected-body` issue — never on a later run that only adds rows to one still
+open, so remediation kicks off once per fresh finding rather than once per day it stays open.
+`_reconcile_grouped`'s `on_issue_created(check, issue_number)` hook fires only on that create
+branch; `scripts/audit_feeds.py`'s `main()` wires it to `_dispatch_remedy_workflow`, which runs
+`gh workflow run remedy-unexpected-bodies.yml -f issue=N -f apply=true` — the same
+`workflow_dispatch` entrypoint a human uses from the Actions tab, invoked with `audit.yml`'s own
+narrowly-scoped `actions: write` permission. A dispatch failure only warns; the issue itself is
+already correctly filed either way, and a maintainer can always run it manually.
+
+This is deliberately **not** an `issues: opened` listener on the remedy workflow. That trigger
+fires for every issue any GitHub user opens on this public repo, with a body that is entirely
+attacker-controlled — the workflow itself would then have to re-verify who filed the triggering
+issue and that its content actually matches before trusting it, and any lapse there is a
+free-standing LLM-quota/CI-minutes/spurious-PR abuse vector. Dispatching from `audit.yml`'s own
+job sidesteps that class of problem rather than defending against it: `workflow_dispatch` has no
+externally reachable surface at all — only something already holding `actions: write` on the
+repo can invoke it.
+
 #### Cloudflare AI Gateway (direct transport only)
 
 A direct provider call is proxied through a Cloudflare AI Gateway whenever the gateway is both
@@ -545,9 +566,11 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
   `llm-dispatch-worker-deploy.yml` (path-scoped test/deploy for the Cron-paced LLM Worker),
   `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
-  provider calls), `audit.yml` (daily feed-health → GitHub issues),
-  `remedy-unexpected-bodies.yml` (manual, main-only: classifies the audit's `unexpected-body`
-  findings and reports or applies feed-selector fixes), `contracts.yml` (weekly live endpoint
+  provider calls), `audit.yml` (daily feed-health → GitHub issues; on creating a new
+  consolidated `unexpected-body` issue, dispatches `remedy-unexpected-bodies.yml` for it),
+  `remedy-unexpected-bodies.yml` (classifies that issue's findings, applies what survives
+  validation, and opens a PR; workflow_dispatch-only — see the trust-boundary note below for
+  why it does not also listen for `issues: opened`), `contracts.yml` (weekly live endpoint
   contracts), `asr-bench.yml` (manual ASR benchmark), `audio-integrity.yml` (daily rotating,
   wall-clock-bounded audit of trusted content-addressed audio pointers — full catalog sweep
   monthly), `audio-gc.yml` (**"Storage reclaim"**, weekly —

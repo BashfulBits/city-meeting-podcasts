@@ -31,8 +31,21 @@ Phase R (Research-Tool Surface)._
   collected during the audit's existing fetch (`audit_feeds.py --unexpected-body-evidence`, reusing
   the new `collect_unexpected_bodies`), so there is no second provider fetch and no second
   definition of "unmatched". Applied changes are gated on config reload plus repo-wide Ruff lint,
-  Ruff format, and the full `pytest -q`, reverting the tree on failure. Runs from the manual,
-  main-only `remedy-unexpected-bodies.yml`; report-only by default.
+  Ruff format, and the full `pytest -q`, reverting the tree on failure.
+
+  Runs automatically: `audit.yml` dispatches `remedy-unexpected-bodies.yml` (its own
+  `workflow_dispatch`, invoked via `gh workflow run` with `audit.yml`'s narrowly-scoped
+  `actions: write`) the moment `reconcile()` *creates* a new consolidated `unexpected-body`
+  issue — never on a later run that only updates an already-open one, so this fires once per
+  fresh finding, not once per day it stays open. Deliberately not an `issues: opened` listener:
+  that fires for any issue any GitHub user opens on this public repo with an attacker-controlled
+  body, forcing the remedy workflow to re-verify the triggering issue's authorship and content
+  before trusting it. Dispatching from `audit.yml`'s own job needs none of that — only something
+  already holding `actions: write` on the repo can reach `workflow_dispatch` at all. Every
+  terminal outcome (opened or reused PR, nothing to change, or verification failure) posts one
+  comment back on the issue with the full classification and a link to the PR; re-runs over
+  unchanged findings reuse the same digest-named branch and PR instead of erroring on a
+  duplicate `gh pr create`. Still runnable manually from the Actions tab.
 
 - **Direct LLM calls now route through the Cloudflare AI Gateway, and do so with the right URL.**
   A direct provider call is proxied through the gateway whenever it's enabled and configured, so
