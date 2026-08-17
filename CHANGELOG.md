@@ -17,6 +17,19 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Resolve 7 unexpected meeting bodies from the feed-health audit (#1231).** The daily audit
+  flagged seven provider labels no feed selector covered. Recurring series were unioned onto the
+  owning feed's `body_any`: Addison's bare `Special Meeting` (35 rows) onto City Council, and Fort
+  Worth's provider-duplicated `Audit and Finance Committee Audit and Finance Committee` (14 rows)
+  onto the Audit Committee feed — the duplicated label matches by substring, so the single
+  un-duplicated selector covers it. Pflugerville's bare `TIRZ` label (5 rows) got a dedicated
+  `pflugerville-tx-tirz-board` feed. True one-offs were pinned by exact provider GUID under
+  `body_includes`: Arlington's `Virtual Town Hall on Future Active Adult Center`, Dallas's
+  `Purchasing Bids 7-23-2015` (alongside the existing `7-30-2015` row), Denton's `Joint Luncheon
+  with Library Board` (Council is the only configured body of the pair), and Waco's `Texas Ranger
+  Hall of Fame & Museum Advisory Board Meeting` — routed to the Boards and Commissions feed rather
+  than City Council, since an advisory board is not a Council session.
+
 - **Cross-lane `links` clobber silently dropped `agenda_text_artifact_key` (and any other
   `links` entry) on push.** `links` was the one derived field never added to `ARTIFACT_BLOCKS` —
   every other artifact (`agenda_text`, `tags`, `generated_agenda_candidates`, …) is protected

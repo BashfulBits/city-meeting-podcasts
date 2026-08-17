@@ -4,6 +4,12 @@ provider: swagit
 source:
   list_url: https://wacotx.new.swagit.com/views/851
   body: "Boards and Commissions Committee Meeting"
+  body_includes:
+    # One-off advisory-board recording on the same Swagit view (#1231). It belongs with the
+    # boards/commissions feed rather than City Council, which carries only Council sessions and
+    # its own standing committees.
+    - provider_guid: "392481"
+      body: "Texas Ranger Hall of Fame & Museum Advisory Board Meeting"
 podcast_title: "Waco: Boards and Commissions Committee"
 podcast_author: "City of Waco, TX"
 podcast_email: ""

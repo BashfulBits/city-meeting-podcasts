@@ -7,6 +7,7 @@ source:
   body_any:
     - "Work Session"
     - "Work Session and Regular Meeting"
+    - "Special Meeting"
   body_includes:
     - provider_guid: "394474"
       body: "TIRZ #1 Board Meeting"

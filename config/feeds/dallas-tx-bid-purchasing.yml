@@ -7,6 +7,8 @@ source:
   body_includes:
     - provider_guid: "205111"
       body: "Purchasing Bids 7-30-2015"
+    - provider_guid: "205110"
+      body: "Purchasing Bids 7-23-2015"
 podcast_title: "Dallas: Bid Purchasing"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""
