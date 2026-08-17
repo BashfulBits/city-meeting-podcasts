@@ -7,6 +7,8 @@ source:
   body_includes:
     - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890"
       body: "Special Joint Meeting"
+    - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622"
+      body: "Virtual Town Hall on Future Active Adult Center"
 podcast_title: "Arlington: Council"
 podcast_author: "City of Arlington, TX"
 podcast_email: ""
