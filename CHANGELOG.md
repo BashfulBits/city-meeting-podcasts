@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Legacy agenda records with partial state can now be reset and rebuilt safely.** Added the
+  dry-run-first `reset-agenda-chapter-state.yml` recovery workflow and
+  `scripts/reset_agenda_chapter_state.py`, which targets only records missing
+  `links["agenda_text_artifact_key"]`, preserves official provider links, clears stale derived
+  agenda/chapter state, and pushes audio/chapter-owned blocks through the race-safe merge path.
+  `AgendaTextStage` now requires the artifact key for its accepted-document reuse fast path, so a
+  missing pointer cannot permanently prevent chapter dispatch. This is a metadata repair only:
+  it does not bump the agenda pipeline version or invalidate completed agenda documents globally.
+
 - **Cross-lane `links` clobber silently dropped `agenda_text_artifact_key` (and any other
   `links` entry) on push.** `links` was the one derived field never added to `ARTIFACT_BLOCKS` —
   every other artifact (`agenda_text`, `tags`, `generated_agenda_candidates`, …) is protected

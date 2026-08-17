@@ -2477,9 +2477,11 @@ class AgendaTextStage:
                 stats.defer("agenda-text-backoff")
                 continue
             quality = ep.agenda_text_quality or {}
+            agenda_artifact_key = links_map.get("agenda_text_artifact_key")
             if (
                 ep.agenda_text_url == agenda_url
                 and ep.agenda_backup_url
+                and agenda_artifact_key
                 and ep.agenda_text_attempts == 0
                 and quality.get("status") == "accepted"
                 and quality.get("pipeline_version") == AGENDA_TEXT_QUALITY_VERSION
