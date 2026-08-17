@@ -17,6 +17,18 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`/remedy` command to re-run remediation on an issue that grew new rows.** `audit.yml`
+  dispatches `remedy-unexpected-bodies.yml` automatically, but only on the run that *creates* a
+  consolidated `unexpected-body` issue — not on a later run that adds or changes rows on one
+  still open, so nothing kicks off remediation for those newer findings by itself. Commenting
+  `/remedy` on that issue re-dispatches it. `remedy-commands.yml` follows `stale-commands.yml`'s
+  shape exactly: the same `citypods.github_permissions` write-or-higher check (not the possibly
+  stale `author_association` alone) via `scripts/remedy_commands.py`, which also confirms the
+  commented-on issue actually carries the audit's own `unexpected-body` marker before dispatching
+  — so `/remedy` on an unrelated issue, or from a non-collaborator, does nothing but post an
+  explanation. No `pip install` needed for the check itself: `citypods/github_permissions.py`
+  has zero third-party imports.
+
 - **Automated remediation for `unexpected-body` audit findings.** The daily audit reports provider
   labels no feed selector covers; classifying one is a taxonomy call, and this wires an LLM into
   that step under a strict trust boundary. The response schema carries no path and no YAML — the

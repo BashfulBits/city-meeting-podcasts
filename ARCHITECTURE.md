@@ -490,6 +490,18 @@ job sidesteps that class of problem rather than defending against it: `workflow_
 externally reachable surface at all — only something already holding `actions: write` on the
 repo can invoke it.
 
+**Catching up an issue that grew new rows.** The once-per-creation rule above means a later audit
+run that adds rows to an already-open `unexpected-body` issue does not re-trigger anything —
+those newer findings just sit there until someone acts. `remedy-commands.yml` covers that gap:
+commenting `/remedy` on the issue re-dispatches `remedy-unexpected-bodies.yml` the same way
+`audit.yml` does. It follows `stale-commands.yml`'s established slash-command shape exactly,
+including its permission gate — `scripts/remedy_commands.py` calls the shared
+`citypods.github_permissions.require_repository_write`, the same policy `stale-commands.yml` and
+the R12 issue-command flow use, rather than trusting the comment's `author_association` alone —
+and additionally confirms the commented-on issue actually carries the audit's own
+`<!-- citypods:feed-health:key=unexpected-body -->` marker before dispatching, so `/remedy` does
+nothing but explain itself when typed on an unrelated issue or by a non-collaborator.
+
 #### Cloudflare AI Gateway (direct transport only)
 
 A direct provider call is proxied through a Cloudflare AI Gateway whenever the gateway is both
@@ -570,8 +582,9 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
   consolidated `unexpected-body` issue, dispatches `remedy-unexpected-bodies.yml` for it),
   `remedy-unexpected-bodies.yml` (classifies that issue's findings, applies what survives
   validation, and opens a PR; workflow_dispatch-only — see the trust-boundary note below for
-  why it does not also listen for `issues: opened`), `contracts.yml` (weekly live endpoint
-  contracts), `asr-bench.yml` (manual ASR benchmark), `audio-integrity.yml` (daily rotating,
+  why it does not also listen for `issues: opened`), `remedy-commands.yml` (the `/remedy`
+  slash command that re-dispatches it for an issue that grew rows after its first pass),
+  `contracts.yml` (weekly live endpoint contracts), `asr-bench.yml` (manual ASR benchmark), `audio-integrity.yml` (daily rotating,
   wall-clock-bounded audit of trusted content-addressed audio pointers — full catalog sweep
   monthly), `audio-gc.yml` (**"Storage reclaim"**, weekly —
   the unified reclaim policy, GH#496): reconciles the R2/B2 lifecycle rules, runs the orphan GC

@@ -1,0 +1,80 @@
+name: Remedy-unexpected-bodies commands
+
+# `/remedy`, commented on the feed-health audit's own consolidated `unexpected-body` issue,
+# re-dispatches remedy-unexpected-bodies.yml for it. audit.yml already dispatches that workflow
+# automatically the moment it *creates* the issue -- see `on_issue_created` in
+# scripts/audit_feeds.py -- but deliberately not again while it stays open and later runs add or
+# change rows on it (ARCHITECTURE.md's "Trigger" note explains why: once per fresh finding, not
+# once per day it's open). This command covers exactly that gap: a maintainer who sees the issue
+# grew new rows types `/remedy` to run it again.
+#
+# Mirrors stale-commands.yml's shape and its permission gate (`citypods.github_permissions`,
+# not the possibly-stale `author_association` alone). No pip install needed here --
+# `citypods/github_permissions.py` has zero third-party imports.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: remedy-command-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  remedy:
+    if: >-
+      ${{ github.event.issue.pull_request == null &&
+        (github.event.comment.body == '/remedy' || startsWith(github.event.comment.body, '/remedy ')) &&
+        contains(github.event.issue.body, '<!-- citypods:feed-health:key=unexpected-body -->') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      issues: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
+
+      - name: Validate command
+        id: command
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_PATH: ${{ github.event_path }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if ! gh api "repos/$REPOSITORY/collaborators/$ACTOR/permission" > actor-permission.json; then
+            echo '{"permission":"none"}' > actor-permission.json
+          fi
+          set +e
+          PYTHONPATH=. python scripts/remedy_commands.py --event "$EVENT_PATH" \
+            --permission actor-permission.json --out remedy-command.json
+          code=$?
+          set -e
+          jq -r '.comment' remedy-command.json > remedy-command-comment.md
+          gh issue comment "$ISSUE_NUMBER" --body-file remedy-command-comment.md
+          if [ "$code" -ne 0 ]; then
+            echo "accepted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "accepted=true" >> "$GITHUB_OUTPUT"
+
+      # The command's own job only needs to re-trigger the real remedy run, not do its work --
+      # remedy-unexpected-bodies.yml posts its own full classification-and-PR-link comment on
+      # completion, same as the automatic dispatch from audit.yml does.
+      - name: Dispatch remedy-unexpected-bodies.yml
+        if: steps.command.outputs.accepted == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh workflow run remedy-unexpected-bodies.yml --repo "$GITHUB_REPOSITORY" \
+            -f issue="$ISSUE_NUMBER" -f apply=true
