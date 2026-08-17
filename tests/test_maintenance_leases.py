@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+import citypods.ops.maintenance_leases as maintenance_leases
 from citypods.ops.maintenance_leases import (
     MaintenanceLeaseBusy,
     acquire,
@@ -27,19 +28,21 @@ def test_acquire_blocks_a_second_owner_until_release():
     assert second.owner == "reset"
 
 
-def test_expired_lease_can_be_reclaimed():
+def test_expired_lease_can_be_reclaimed(monkeypatch):
     store = MemCAS()
     first = acquire(store, owner="stale", now=NOW, ttl_seconds=60)
+    replacement_now = NOW + timedelta(seconds=61)
 
     second = acquire(
         store,
         owner="reset",
-        now=NOW + timedelta(seconds=61),
+        now=replacement_now,
         ttl_seconds=60,
     )
 
     assert second.owner == "reset"
     first.release()  # Must not overwrite the replacement owner.
+    monkeypatch.setattr(maintenance_leases, "_now", lambda: replacement_now)
     second.assert_held()
 
 
