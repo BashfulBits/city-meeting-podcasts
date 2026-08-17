@@ -26,7 +26,13 @@ from citypods.compute.llm import (
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
-from citypods.compute.llm_policy import ROUTE_CANDIDATES, ROUTES, LLMRequestPolicy, estimate_tokens
+from citypods.compute.llm_policy import (
+    ROUTE_CANDIDATES,
+    ROUTE_REGISTRY,
+    ROUTES,
+    LLMRequestPolicy,
+    estimate_tokens,
+)
 from citypods.compute.structured import register_response_model
 from tests._cas_fake import MemStorage
 
@@ -1772,27 +1778,53 @@ def _recording_backend(model, **config_kwargs):
 _GW = "https://gateway.ai.cloudflare.com/v1/cf-acc-123/citypods-dispatch"
 
 
-# The URL LiteLLM must ultimately request is `api_base` + "/chat/completions". Asserting the full
-# request URL (rather than `api_base` alone) is what pins the provider path prefix: an `api_base`
-# of ".../google-ai-studio" looks plausible in isolation but resolves to a 404, because Gemini's
-# gateway endpoint lives under "/v1beta/openai".
+# The URL LiteLLM must ultimately request is `api_base` + "/chat/completions", so the assertions
+# below reconstruct that whole URL rather than checking `api_base` alone. An `api_base` of
+# ".../google-ai-studio" looks plausible in isolation and is exactly the bug: Gemini's gateway
+# endpoint lives under "/v1beta/openai", so the prefix has to survive into `api_base`.
+@pytest.mark.parametrize(
+    "route",
+    sorted(ROUTE_REGISTRY.values(), key=lambda r: r.route_id or r.model),
+    ids=lambda r: r.route_id or r.model,
+)
+def test_every_catalog_route_builds_its_configured_gateway_url(route, gateway_env):
+    """Covers all routes, including providers no single logical model would exercise."""
+    backend, _ = _recording_backend("gemini/gemini-3.6-flash")
+
+    api_base, headers = backend._resolve_api_base_and_headers(route, direct=True)
+
+    slug = route.ai_gateway_slug or route.provider
+    assert api_base + "/chat/completions" == f"{_GW}/{slug}{route.ai_gateway_chat_path}"
+    assert headers == {"cf-aig-authorization": "Bearer test-auth-token"}
+
+
+# Only single-provider models belong here. A logical model served by several providers (6 of 31 in
+# the catalog -- `deepseek/deepseek-v4-flash` spans deepseek, custom-siliconflow and
+# custom-opencode) has no fixed gateway slug: the scheduler picks whichever physical route has
+# capacity, so pinning one slug end-to-end would assert on scheduler choice rather than on URL
+# construction. The catalog test above covers those routes directly.
 @pytest.mark.parametrize(
     ("model", "expected_request_url"),
     [
         ("gemini/gemini-3.6-flash", f"{_GW}/google-ai-studio/v1beta/openai/chat/completions"),
         ("mistral/mistral-large-2512", f"{_GW}/mistral/v1/chat/completions"),
-        ("deepseek/deepseek-v4-flash", f"{_GW}/deepseek/chat/completions"),
-        ("openrouter/openai/gpt-4o-mini", f"{_GW}/openrouter/chat/completions"),
         ("zai/glm-4.7-flash", f"{_GW}/custom-zai/chat/completions"),
     ],
 )
-def test_direct_call_preserves_each_routes_gateway_path(model, expected_request_url, gateway_env):
+def test_direct_call_requests_the_gateway_url(model, expected_request_url, gateway_env):
     backend, calls = _recording_backend(model)
 
     assert isinstance(backend.run_inference(job(content="test")), JobResult)
     assert len(calls) == 1
     assert calls[0]["api_base"] + "/chat/completions" == expected_request_url
     assert calls[0]["extra_headers"] == {"cf-aig-authorization": "Bearer test-auth-token"}
+
+
+def test_single_provider_models_used_end_to_end_really_are_single_provider():
+    """Guards the parametrization above: a second provider would make those cases flaky."""
+    for model in ("gemini/gemini-3.6-flash", "mistral/mistral-large-2512", "zai/glm-4.7-flash"):
+        slugs = {route.ai_gateway_slug or route.provider for route in ROUTE_CANDIDATES[model]}
+        assert len(slugs) == 1, f"{model} now spans {slugs}; move it to the catalog-level test"
 
 
 def test_direct_call_uses_ai_gateway_base_url_override(monkeypatch):
@@ -1861,6 +1893,9 @@ def test_dispatch_payload_is_never_rewritten_for_the_gateway(gateway_env):
     backend.run_inference(job(content="test"))
 
     payload = posted["json"]
-    assert "api_base" not in payload
+    # The payload has always carried the route's own upstream, and still should -- what must not
+    # leak is the *gateway* rewrite and its credential.
+    assert payload["api_base"] == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert "gateway.ai.cloudflare.com" not in json.dumps(posted)
     assert "extra_headers" not in payload
     assert "cf-aig-authorization" not in json.dumps(posted).lower()
