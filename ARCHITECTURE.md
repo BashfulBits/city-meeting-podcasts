@@ -419,6 +419,56 @@ The pipeline routes LLM jobs across 10 independent providers via [`config/provid
 \* The route-level values in `config/provider_limits.yml` are authoritative; this column summarizes
 the main native/gateway ceilings and intentionally does not replace the per-route catalog.
 
+### Unexpected-Body Remediation
+
+The daily audit's `unexpected-body` check reports provider labels no feed selector covers.
+Resolving one is a taxonomy decision, and the repository applies a fixed three-way rule:
+
+| Action | When | Effect |
+|---|---|---|
+| `union` | An alternate label or series name for a body that already has a feed | Appends to that feed's `source.body_any` |
+| `single_uid_inclusion` | A genuine one-off: special event, typo, dated label | Appends `{provider_guid, body}` to `source.body_includes` |
+| `new_feed` | A recurring, distinct board or commission | Creates `config/feeds/<slug>.yml` |
+
+Two rules constrain the choice. A **joint meeting** whose two bodies both have feeds is listed on
+both, so neither podcast loses it; when only one is configured it attaches there. And a body that
+is *not* a session of the target feed's own body — an independent advisory board, say — belongs on
+its own feed or a boards/commissions feed, never on a City Council feed.
+
+Selectors match by **normalized substring**, which makes a broader selector strictly subsume a
+narrower one: `body: "TIRZ"` already matches `"TIRZ Board"`, so adding the latter to `body_any`
+is dead config. Conversely a bare label like `"Special Meeting"` is only safe when no sibling
+feed on the same source carries it as a substring — worth checking, because per-body feeds share
+one source.
+
+#### Trust boundary
+
+`citypods/audit_remedy.py` uses an LLM for the taxonomy judgement only. **The model proposes; the
+module decides.** The response schema (`BodyProposal`) has no path or YAML field at all — the
+model returns a feed *slug*, an action, and provider GUIDs — and `validate_proposals` re-derives
+every value from the evidence bundle before anything is written:
+
+- `unexpected_body` must be a label the audit actually observed for that source.
+- `target_feeds` must be existing slugs **on that same source**, so a proposal cannot move a
+  meeting onto an unrelated city's podcast.
+- `provider_guids` must belong to episodes carrying that label.
+- `new_feed_slug` must be well-formed and unused.
+
+Anything failing is dropped with a reason and surfaced in the report rather than applied. The
+applier resolves a slug to a path through a map built by scanning `config/feeds` itself, so no
+write path ever originates from model output.
+
+Edits go through `citypods/feed_yaml_edit.py`, which inserts lines rather than round-tripping
+through `safe_dump` — feed YAML carries hand-written comments explaining individual selectors, and
+a round-trip would erase them and reflow every quoted scalar. Each edit is re-parsed and diffed
+(`assert_only_addition`) before the file is written, so a malformed insertion fails loudly.
+
+Evidence comes from the audit's own run (`audit_feeds.py --unexpected-body-evidence`), reusing
+`collect_unexpected_bodies` so remediation classifies exactly the rows the audit reported, with no
+second provider fetch and no second definition of "unmatched". `verify_remedy_mutations` then
+gates any applied change on config reload plus repo-wide Ruff lint, Ruff format, and `pytest -q`;
+a failure reverts the working tree instead of leaving it dirty.
+
 #### Cloudflare AI Gateway (direct transport only)
 
 A direct provider call is proxied through a Cloudflare AI Gateway whenever the gateway is both
@@ -495,7 +545,9 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
   `llm-dispatch-worker-deploy.yml` (path-scoped test/deploy for the Cron-paced LLM Worker),
   `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
-  provider calls), `audit.yml` (daily feed-health → GitHub issues), `contracts.yml` (weekly live endpoint
+  provider calls), `audit.yml` (daily feed-health → GitHub issues),
+  `remedy-unexpected-bodies.yml` (manual, main-only: classifies the audit's `unexpected-body`
+  findings and reports or applies feed-selector fixes), `contracts.yml` (weekly live endpoint
   contracts), `asr-bench.yml` (manual ASR benchmark), `audio-integrity.yml` (daily rotating,
   wall-clock-bounded audit of trusted content-addressed audio pointers — full catalog sweep
   monthly), `audio-gc.yml` (**"Storage reclaim"**, weekly —

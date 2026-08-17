@@ -1772,6 +1772,13 @@ def main(argv: list[str] | None = None) -> int:
             "becomes a feed-health finding"
         ),
     )
+    ap.add_argument(
+        "--unexpected-body-evidence",
+        help=(
+            "write the rows behind each unexpected-body finding to this JSON path, for "
+            "scripts/remedy_unexpected_bodies.py (read-only; adds no provider fetches)"
+        ),
+    )
     ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--config-dir", default="config")
     args = ap.parse_args(argv)
@@ -1801,6 +1808,7 @@ def main(argv: list[str] | None = None) -> int:
     state_dir = pull_canonical_state(site_config, output_dir)
 
     timeline_diagnostics: list[dict] | None = [] if args.timeline_diagnostics else None
+    unexpected_evidence: list | None = [] if args.unexpected_body_evidence else None
     now = datetime.now(UTC)
     findings = audit_all(
         cities,
@@ -1809,6 +1817,7 @@ def main(argv: list[str] | None = None) -> int:
         check_enclosures_net=args.enclosures,
         check_meetings_urls_net=args.meetings_urls,
         timeline_diagnostics=timeline_diagnostics,
+        unexpected_evidence=unexpected_evidence,
         persist_timeline_integrity=args.persist_timeline_integrity and not args.dry_run,
         timeline_repair_min_delta=args.timeline_repair_min_delta,
         timeline_repair_cohort=args.timeline_repair_cohort,
@@ -1822,6 +1831,12 @@ def main(argv: list[str] | None = None) -> int:
             for row in timeline_diagnostics:
                 f.write(json.dumps(row, sort_keys=True) + "\n")
         print(f"timeline diagnostics: wrote {len(timeline_diagnostics)} row(s) to {path}")
+    if args.unexpected_body_evidence and unexpected_evidence is not None:
+        from citypods.audit_remedy import write_evidence_file
+
+        path = Path(args.unexpected_body_evidence)
+        count = write_evidence_file(unexpected_evidence, path, repo_root=".")
+        print(f"unexpected-body evidence: wrote {count} source bundle(s) to {path}")
     if args.persist_timeline_integrity and not args.dry_run:
         storage = make_storage(site_config, site_config.get("base_url", ""), output_dir)
         prefixes = sorted({f"sources/{source_key(city)}/" for city in cities})

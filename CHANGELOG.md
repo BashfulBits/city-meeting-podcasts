@@ -17,6 +17,23 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Automated remediation for `unexpected-body` audit findings.** The daily audit reports provider
+  labels no feed selector covers; classifying one is a taxonomy call, and this wires an LLM into
+  that step under a strict trust boundary. The response schema carries no path and no YAML — the
+  model returns a feed slug, an action, and provider GUIDs, and every value is re-derived from the
+  audit's own evidence before anything is written: the label must have been observed for that
+  source, target slugs must be feeds on that same source, GUIDs must belong to episodes carrying
+  the label, and a new slug must be well-formed and unused. Anything unverifiable is rejected with
+  a reason and reported rather than applied, and the applier resolves slugs to paths through a map
+  built by scanning `config/feeds`, so no write path originates from model output. Feed edits are
+  line-level insertions (`citypods/feed_yaml_edit.py`) that preserve the hand-written comments a
+  `safe_dump` round-trip would erase, each re-parsed and diffed before the write. Evidence is
+  collected during the audit's existing fetch (`audit_feeds.py --unexpected-body-evidence`, reusing
+  the new `collect_unexpected_bodies`), so there is no second provider fetch and no second
+  definition of "unmatched". Applied changes are gated on config reload plus repo-wide Ruff lint,
+  Ruff format, and the full `pytest -q`, reverting the tree on failure. Runs from the manual,
+  main-only `remedy-unexpected-bodies.yml`; report-only by default.
+
 - **Direct LLM calls now route through the Cloudflare AI Gateway, and do so with the right URL.**
   A direct provider call is proxied through the gateway whenever it's enabled and configured, so
   runner-side requests land in the same analytics surface as the Worker's. The gateway is a
