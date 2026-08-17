@@ -17,6 +17,48 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`/remedy` command to re-run remediation on an issue that grew new rows.** `audit.yml`
+  dispatches `remedy-unexpected-bodies.yml` automatically, but only on the run that *creates* a
+  consolidated `unexpected-body` issue — not on a later run that adds or changes rows on one
+  still open, so nothing kicks off remediation for those newer findings by itself. Commenting
+  `/remedy` on that issue re-dispatches it. `remedy-commands.yml` follows `stale-commands.yml`'s
+  shape exactly: the same `citypods.github_permissions` write-or-higher check (not the possibly
+  stale `author_association` alone) via `scripts/remedy_commands.py`, which also confirms the
+  commented-on issue actually carries the audit's own `unexpected-body` marker before dispatching
+  — so `/remedy` on an unrelated issue, or from a non-collaborator, does nothing but post an
+  explanation. No `pip install` needed for the check itself: `citypods/github_permissions.py`
+  has zero third-party imports.
+
+- **Automated remediation for `unexpected-body` audit findings.** The daily audit reports provider
+  labels no feed selector covers; classifying one is a taxonomy call, and this wires an LLM into
+  that step under a strict trust boundary. The response schema carries no path and no YAML — the
+  model returns a feed slug, an action, and provider GUIDs, and every value is re-derived from the
+  audit's own evidence before anything is written: the label must have been observed for that
+  source, target slugs must be feeds on that same source, GUIDs must belong to episodes carrying
+  the label, and a new slug must be well-formed and unused. Anything unverifiable is rejected with
+  a reason and reported rather than applied, and the applier resolves slugs to paths through a map
+  built by scanning `config/feeds`, so no write path originates from model output. Feed edits are
+  line-level insertions (`citypods/feed_yaml_edit.py`) that preserve the hand-written comments a
+  `safe_dump` round-trip would erase, each re-parsed and diffed before the write. Evidence is
+  collected during the audit's existing fetch (`audit_feeds.py --unexpected-body-evidence`, reusing
+  the new `collect_unexpected_bodies`), so there is no second provider fetch and no second
+  definition of "unmatched". Applied changes are gated on config reload plus repo-wide Ruff lint,
+  Ruff format, and the full `pytest -q`, reverting the tree on failure.
+
+  Runs automatically: `audit.yml` dispatches `remedy-unexpected-bodies.yml` (its own
+  `workflow_dispatch`, invoked via `gh workflow run` with `audit.yml`'s narrowly-scoped
+  `actions: write`) the moment `reconcile()` *creates* a new consolidated `unexpected-body`
+  issue — never on a later run that only updates an already-open one, so this fires once per
+  fresh finding, not once per day it stays open. Deliberately not an `issues: opened` listener:
+  that fires for any issue any GitHub user opens on this public repo with an attacker-controlled
+  body, forcing the remedy workflow to re-verify the triggering issue's authorship and content
+  before trusting it. Dispatching from `audit.yml`'s own job needs none of that — only something
+  already holding `actions: write` on the repo can reach `workflow_dispatch` at all. Every
+  terminal outcome (opened or reused PR, nothing to change, or verification failure) posts one
+  comment back on the issue with the full classification and a link to the PR; re-runs over
+  unchanged findings reuse the same digest-named branch and PR instead of erroring on a
+  duplicate `gh pr create`. Still runnable manually from the Actions tab.
+
 - **Direct LLM calls now route through the Cloudflare AI Gateway, and do so with the right URL.**
   A direct provider call is proxied through the gateway whenever it's enabled and configured, so
   runner-side requests land in the same analytics surface as the Worker's. The gateway is a

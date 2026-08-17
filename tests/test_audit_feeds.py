@@ -24,6 +24,9 @@ sys.modules[_spec.name] = _mod
 _spec.loader.exec_module(_mod)
 
 reconcile = _mod.reconcile
+_reconcile_grouped = _mod._reconcile_grouped
+_issue_number_from_url = _mod._issue_number_from_url
+_dispatch_remedy_workflow = _mod._dispatch_remedy_workflow
 _title = _mod._title
 _body = _mod._body
 _state_comment = _mod._state_comment
@@ -1365,3 +1368,132 @@ def test_pull_canonical_state_degrades_gracefully_when_bucket_unavailable(monkey
     result = state_mod.pull_canonical_state({}, "docs")
 
     assert result == tmp_path
+
+
+# ---------------------------------------------------------------------------
+# Automated remedy dispatch: on_issue_created hook + _dispatch_remedy_workflow
+# ---------------------------------------------------------------------------
+
+
+def test_reconcile_grouped_create_fires_on_issue_created_with_the_new_number():
+    fired: list[tuple[str, int]] = []
+    calls = _run_reconcile(
+        [_finding(slug="testcity", check="unexpected-body")],
+        {},
+        now=_NOW,
+        on_issue_created=lambda check, number: fired.append((check, number)),
+    )
+    assert ("issue", "create") in [c[:2] for c in calls]
+    assert len(fired) == 1
+    check, number = fired[0]
+    assert check == "unexpected-body"
+    assert isinstance(number, int)
+
+
+def test_reconcile_grouped_update_does_not_fire_on_issue_created():
+    """A later run that only adds/changes rows on an already-open issue must not re-fire --
+    the whole point is "kick off remediation once per fresh finding", not once per day it's
+    still open."""
+    existing = _grouped_issue(
+        "unexpected-body", number=1231, first_seen={"testcity": _NOW.isoformat()}
+    )
+    fired: list[tuple[str, int]] = []
+    calls = _run_reconcile(
+        [_finding(slug="testcity", check="unexpected-body", msg="a different message now")],
+        existing,
+        now=_NOW,
+        on_issue_created=lambda check, number: fired.append((check, number)),
+    )
+    assert ("issue", "edit") in [c[:2] for c in calls]
+    assert ("issue", "create") not in [c[:2] for c in calls]
+    assert fired == []
+
+
+def test_reconcile_grouped_only_fires_for_the_check_that_was_created():
+    """Two different consolidated checks create in the same run; only the matching one fires."""
+    fired: list[tuple[str, int]] = []
+    _run_reconcile(
+        [
+            _finding(slug="testcity", check="unexpected-body"),
+            _finding(slug="othercity", check="empty-feed"),
+        ],
+        {},
+        now=_NOW,
+        on_issue_created=lambda check, number: fired.append((check, number)),
+    )
+    assert {check for check, _ in fired} == {"unexpected-body", "empty-feed"}
+    assert len(fired) == 2  # each check's own creation fires independently
+
+
+def test_reconcile_grouped_dry_run_never_fires_on_issue_created_or_calls_gh():
+    """Dry-run must stay a pure preview: no gh call, and therefore nothing to report a number
+    for -- calling the real function directly since `_run_reconcile` hardcodes dry_run=False."""
+    fired: list[tuple[str, int]] = []
+    gh_calls: list[tuple] = []
+    with mock.patch.object(_mod, "_gh", side_effect=lambda *a, **k: gh_calls.append(a)):
+        _reconcile_grouped(
+            [_finding(slug="testcity", check="unexpected-body")],
+            dry_run=True,
+            audited_slugs=None,
+            city_of={},
+            feed_context=None,
+            existing={},
+            now=_NOW,
+            on_issue_created=lambda check, number: fired.append((check, number)),
+        )
+    assert gh_calls == []
+    assert fired == []
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://github.com/BashfulBits/city-meeting-podcasts/issues/1238\n", 1238),
+        ("https://github.com/BashfulBits/city-meeting-podcasts/issues/1", 1),
+        ("", None),
+        ("not a url", None),
+        ("https://github.com/x/y/issues/abc", None),
+    ],
+)
+def test_issue_number_from_url(url, expected):
+    assert _issue_number_from_url(url) == expected
+
+
+def test_dispatch_remedy_workflow_invokes_gh_workflow_run():
+    calls: list[tuple] = []
+    with mock.patch.object(_mod, "_gh", side_effect=lambda *a, **k: calls.append(a) or ""):
+        _dispatch_remedy_workflow(1238, github_repo="test/repo")
+    assert calls == [
+        (
+            "workflow",
+            "run",
+            "remedy-unexpected-bodies.yml",
+            "--repo",
+            "test/repo",
+            "-f",
+            "issue=1238",
+            "-f",
+            "apply=true",
+        )
+    ]
+
+
+def test_dispatch_remedy_workflow_is_best_effort_on_gh_failure(capsys):
+    """A dispatch failure must not propagate -- the issue is already correctly filed regardless
+    of whether the follow-up automation could be kicked off."""
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("gh workflow run failed: not found")
+
+    with mock.patch.object(_mod, "_gh", side_effect=_boom):
+        _dispatch_remedy_workflow(1238, github_repo="test/repo")  # must not raise
+    assert "failed to dispatch" in capsys.readouterr().err
+
+
+def test_dispatch_remedy_workflow_warns_without_github_repo(monkeypatch, capsys):
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    calls: list[tuple] = []
+    with mock.patch.object(_mod, "_gh", side_effect=lambda *a, **k: calls.append(a) or ""):
+        _dispatch_remedy_workflow(1238, github_repo=None)
+    assert calls == []
+    assert "GITHUB_REPOSITORY unset" in capsys.readouterr().err
