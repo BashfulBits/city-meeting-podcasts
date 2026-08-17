@@ -1,0 +1,455 @@
+# review/44 — Bounded bundled LLM dispatch with Durable Objects
+
+**Maturity: L2 design · authored 2026-08-17 · proposed parallel successor to the R10 Worker**
+
+Owner: dispatch Worker maintainers. Scope: a new `workers/llm-dispatch-v2/` deployment, the
+`citypods.compute` dispatch client, and GitHub workflow configuration. The existing
+`workers/llm-dispatch-proxy/` remains the production transport until this design meets its canary
+and parity gates.
+
+## Decision
+
+Build an opt-in, cron-pull Durable Object (DO) scheduler. Each existing one-minute Worker cron asks
+the DO for one paced dispatch window. The DO atomically leases up to four LLM jobs and returns a
+route-local plan with a safe relative `wait_ms` and auditable absolute `not_before_at` for each. The
+Worker waits without busy-polling, starts every request whose planned time falls in the next 25
+seconds, stores its results in B2, and reports every actual provider attempt in one completion call.
+It uses stable provider idempotency keys where available and makes an unsupported provider's
+post-start crash state explicit. R2 and Cloudflare Queues are not used by v2.
+
+The design has two goals, in order:
+
+1. Stay within every Workers Free daily ceiling with explicit configuration guards while getting
+   useful parallel LLM throughput from each executor invocation.
+2. Reduce race-prone coordination to one serialized scheduler and a small, fenced protocol.
+
+This is a maintainer-directed parallel design deviation from review/43's staged "B2, batch API,
+then choose Paid Workers or a DO" sequence. It does not accelerate or alter the legacy transport.
+It creates an independently deployable v2 path, allowing selected GitHub workflows to migrate and
+to roll back future submissions without losing accepted v2 jobs.
+
+## Why cron pull, not Queue or a queue object
+
+The initial v2 design used a Queue for a durable DO-to-Worker handoff. That is unnecessary when the
+existing Worker cron is retained: its next invocation is already the bounded, independent execution
+event. The DO neither starts a Worker nor waits for model latency.
+
+The Worker must not claim work by deleting or overwriting a B2 queue object. A DO update after a
+Worker reads a manifest but before it invalidates it could discard a newer ready set—the same
+lost-work shape as the earlier agenda race. The DO's SQLite transaction is the sole claim point.
+
+There is therefore no B2 queue-manifest read or write. A Worker performs one `claimDispatchWindow`
+RPC; B2 is only prompt/result storage. The DO selects across all ready routes rather than exposing
+the first objects in a storage prefix, eliminating route head-of-line blocking.
+
+```mermaid
+flowchart LR
+    GH["GitHub workers"] --> IN["v2 ingress Worker"]
+    IN --> B2["B2 immutable payloads and results"]
+    IN --> DO["one scheduler DO"]
+    CRON["one-minute v2 Worker cron"] --> DO
+    DO --> PLAN["leased paced dispatch plan"]
+    PLAN --> EX["v2 executor Worker"]
+    EX --> GW["Cloudflare AI Gateway"]
+    EX --> B2
+    EX --> DO
+    DO --> AL["lease/retry cleanup alarm"]
+```
+
+The scheduler is intentionally one deterministic DO instance, for example
+`LLM_SCHEDULER.getByName("global-v2")`. A global per-route/provider ledger needs one serialization
+point; sharding it would reintroduce the race this design removes. The DO stores only compact
+control data and never prompt or response bodies.
+
+### Components and responsibilities
+
+- **Ingress Worker:** authenticates and validates a batch, stages B2 request payloads, calls
+  `enqueueBatch`, and serves batched status reads. It never selects routes or reserves capacity.
+- **Scheduler DO:** owns job/route state, leases, the ledger, pacing plan, attempt-start records,
+  retry authorization, estimate calibration, and cleanup index. It never reads B2 payloads, starts a
+  Worker, or awaits model calls.
+- **Cron/executor Worker:** calls `claimDispatchWindow`, follows the returned route-local waits,
+  reads B2, calls AI Gateway, writes B2 results, and reports every actual attempt in one completion
+  batch. It never selects routes or mutates the ledger directly.
+- **B2:** holds immutable request/result payloads and recoverable deleted versions. It never
+  coordinates state or conditional admission.
+
+## Bounded initial configuration
+
+All values are Worker environment configuration with validation at startup. The initial values below
+are deliberately conservative and become a tested capacity model, not tuning by convention.
+
+| Setting | Initial value | Purpose |
+| --- | ---: | --- |
+| `MAX_BUNDLE_JOBS` | 4 | Maximum LLM calls claimed by one Worker cron |
+| `MAX_JOBS_PER_ROUTE_PER_BUNDLE` | 4 | Allows a paced same-route sequence when it fits |
+| `DISPATCH_WINDOW_SECONDS` | 25 | Latest planned provider-call start after a cron tick |
+| `CRON_TICK_SECONDS` | 60 | Existing Worker dispatch cadence; bounds new-work latency |
+| `MAX_ACTIVE_BUNDLES` | 2 | Bound for partially completed or abandoned dispatch plans |
+| `MAX_IN_FLIGHT_LLM_CALLS` | 8 | Separate global cap; avoids one slow bundle serializing all work |
+| `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
+| `MAX_RESPONSE_SECONDS` | 720 | Shared response deadline; leaves finalization margin below 15 min |
+| `FINALIZATION_RESERVE_SECONDS` | 90 | Time retained for B2 persistence and `completeBatch` |
+| `LEASE_DURATION_SECONDS` | 840 | Covers deadline; stays below cron duration |
+| `MAX_429_RETRIES` | 1 | Bounded same-route retry attempts inside one executor bundle |
+| `MAX_429_BACKOFF_SECONDS` | 60 | Upper bound for in-Worker `Retry-After` sleep |
+| `UNKNOWN_ATTEMPT_POLICY` | hold | Unsupported-provider crash after send; never silently reissue |
+| `MAX_QUEUE_WAIT_SECONDS` | 3,600 | Aging escape hatch before size-based ordering |
+| `ESTIMATE_MARGIN` | profiled gate | Conservative route/model/prompt-family reservation floor |
+| `MAX_BUNDLE_PAYLOAD_BYTES` | profiled gate | Required cap before v2 deployment |
+| `MAX_BUNDLE_RESULT_BYTES` | profiled gate | Required cap before v2 deployment |
+| `MAX_B2_SUBREQUESTS` | profiled gate | Bounds I/O below connection ceiling |
+| `COMPLETED_RETENTION_DAYS` | 38 | Bounded availability; matches deferred-handle horizon |
+
+The scheduler rejects a deployment configuration whose projected usage exceeds 75% of a relevant
+daily ceiling before retry and maintenance headroom. Scheduled invocations happen whether or not
+there is work, so their fixed daily cost is accounted for separately:
+
+| Free resource | Conservative daily use | Included daily limit |
+| --- | ---: | ---: |
+| Cron/executor Worker requests | 1,440 ticks | 100,000 |
+| Scheduler DO requests | 1,440 claim + <=4k start + 1k finish + <=4k retry | 100,000 |
+| DO SQLite row writes | under 45,000 plus bounded cleanup | 100,000 |
+| Queue operations | 0 | 10,000 |
+| R2 operations from v2 | 0 | shared R2 allowance |
+| LLM calls | up to 4,000 | provider- and Gateway-limited |
+
+Ingress and status requests share the Workers and DO limits, so the caps leave substantial request
+headroom. Cloudflare counts DO alarm invocations and RPC sessions as DO requests, and each
+`setAlarm()` as a SQLite row write. See
+[DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+
+The AI Gateway request is a separate product request. It is not a second Worker invocation, but its
+provider quotas and its own rate limits remain authoritative. In particular, Cloudflare-managed
+Unified Billing has a 200-request-per-60-second-per-gateway limit; BYOK does not use that specific
+limit. See [AI Gateway limits](https://developers.cloudflare.com/ai-gateway/reference/limits/).
+
+## Data model and protocol
+
+### SQLite tables
+
+The DO creates SQLite-backed tables in its constructor. Payload bytes are excluded by design.
+
+- **`jobs`:** `id`, unique `idempotency_key`, stable provider idempotency key, state, policy
+  metadata, prompt family, conservative input/max-output token estimates, `payload_key`, and
+  `result_key`; one compact control row per LLM job.
+- **`routes`:** `route_id`, paced availability, full token-bucket budget, provisional reservations,
+  settled usage, cost, and 429 state; the per-route/account ledger and adaptive buffer.
+- **`bundles`:** `bundle_id`, state, lease expiry, active-call count, and dispatch-window end; the
+  fenced Worker execution lease and its compact route-lane plan.
+- **`attempts`:** job/attempt id, planned time, actual start/end time, observed usage, start state,
+  and outcome; compact audit rows used to settle a provisional reservation from actual execution.
+- **`estimates`:** route/model/prompt-family conservative margin, sample count, and bounded recent
+  observed usage summary; it cannot lower a reservation below `ESTIMATE_MARGIN`.
+- **`scheduler`:** UTC bundle count, cleanup cursor, and next maintenance alarm; small singleton
+  state.
+
+Job states are `queued`, `leased`, `unknown_attempt`, `completed`, `retryable`, `failed`, and
+`purge_pending`. A job lease carries an opaque `lease_token`; an executor must present that exact
+token to settle it. A bundle has a separate execution token, preventing overlapping cron
+invocations from issuing duplicate provider calls.
+
+### Ingress and status APIs
+
+The public Worker, not the DO, exposes authenticated endpoints:
+
+- **`POST /v2/jobs:enqueue-batch`:** accepts up to `ENQUEUE_BATCH_MAX` jobs, stages B2 payloads,
+  and makes one `enqueueBatch` RPC.
+- **`POST /v2/jobs:poll-batch`:** returns up to `POLL_BATCH_MAX` statuses/results in one DO RPC
+  and bounded B2 reads.
+- **`POST /v2/jobs/{id}:schema-retry`:** preserves schema-correction semantics with a new payload
+  and idempotency namespace.
+- **`POST /v2/jobs:resolve-unknown-batch`:** an authenticated, bounded operator/GitHub-worker
+  action that acknowledges `unknown_attempt` records and creates explicit retry job identities.
+- **`GET /healthz`:** does no B2 or DO work; used only for routing health.
+
+The existing Python client batches all enqueue and poll operations available in a GitHub run. This
+removes the old one-request-per-`JobHandle` correlation. Each handle records whether it belongs to
+the legacy or v2 transport, so reconciliation never queries the wrong system.
+
+Ingress preassigns each job id, writes its B2 payload, then makes one `enqueueBatch` RPC. A failed
+or losing idempotency race can therefore leave an unreferenced payload object, which is safe and is
+deleted by the bounded cleanup path. The DO validates an immutable request digest with the
+idempotency key, so a reused key with different contents fails loudly rather than corrupting an
+earlier job.
+
+### Claim, ordering, pacing, and execution flow
+
+1. `enqueueBatch` inserts compact queued jobs in one SQLite transaction. It updates the next
+   maintenance alarm only for expired leases, retry eligibility, or cleanup; an alarm cannot wake a
+   Worker and is not a dispatch mechanism.
+2. At each one-minute cron tick, the executor calls `claimDispatchWindow(now, 25 seconds)`. The DO
+   limits the plan by remaining bundle and in-flight-call capacity; it may return a partial plan. If
+   a cap prevents admission, it returns an empty plan promptly.
+3. In one transaction, the DO considers each candidate route's RPM gap, rolling TPM reservation,
+   configured buffer, and repeated-429 `blocked_until`. It first fills slots from distinct eligible
+   routes. A job that has waited `MAX_QUEUE_WAIT_SECONDS` wins its eligible ordering bucket. For all
+   other jobs, when more routes are eligible than slots and when filling remaining slots, it prefers
+   larger conservative token estimates, then stable FIFO order. Only after that first pass may a
+   second job from a route fill a slot.
+4. For every chosen job, the DO tests both sides of the full dispatch window. Its conservative
+   request/token reservation must be valid at the planned start; if an earlier same-route job starts
+   late, the route lane must either remain valid at its shifted start or safely return the later job
+   as `deferred_late`. It returns no job whose normal safe start is after the window deadline.
+5. The DO may include several jobs from one route. It returns each route lane in strict sequence
+   with `wait_ms`, `not_before_at`, a minimum inter-request gap, and the bundle deadline.
+   `wait_ms`, measured from receipt of the RPC response, is the execution guard; the absolute time
+   is for audit and diagnostics. A one-way network delay therefore makes a call late, never early.
+6. The transaction creates job leases and a bundle execution token. It advances each selected
+   route's provisional reservation, increments the UTC bundle count, and returns
+   `{bundle_id, execution_token, jobs[]}`. Each job contains only its payload key, lease token,
+   route id, conservative token reservation, and route-lane timing.
+7. The Worker runs route lanes independently. Immediately before an outbound call, a route with
+   provider idempotency receives the job's stable idempotency key. A route without it first calls
+   `attemptStarted`; the DO fences and persists that attempt record before the Worker sends bytes to
+   the provider. Within a lane the Worker starts each request no earlier than
+   the returned `wait_ms`, its predecessor's actual start plus the minimum gap, and any retry
+   barrier. If that safe time is after the bundle deadline, it submits no provider call and reports
+   the job as `deferred_late`; routes not sharing that lane continue unaffected.
+8. The Worker waits for all started requests or the shared `MAX_RESPONSE_SECONDS` deadline. For
+   each response received, it writes a deterministic
+   `results/<job-id>/<lease-token>.json` B2 key before finalization.
+9. The Worker calls one `completeBatch` RPC with every job's lease token and every attempt's planned
+   time, actual start/end time, observed usage, status, response key, and bounded diagnostics. The
+   DO applies matching fenced completions in one transaction and settles provisional reservations
+   from actual execution. A stale completion is a no-op.
+
+The DO never pulls a future reservation forward merely because an earlier call used fewer tokens or
+started late. It records the difference, releases only safely unconsumed capacity, and advances the
+route's next-safe time after a late actual start. This protects already admitted plans from an
+optimistic ledger correction while allowing later windows to recover capacity.
+
+The estimated token reservation is the maximum of the client-provided conservative estimate, the
+configured floor, and the route/model/prompt-family calibrated margin from completed attempts. The
+calibrator is bounded and can only increase protection automatically; reducing a margin is a
+measured configuration change. This makes estimate error visible without allowing a brief run of
+small responses to over-admit future work.
+
+`MAX_ACTIVE_BUNDLES` protects incomplete plans while `MAX_IN_FLIGHT_LLM_CALLS` permits a second cron
+to make progress while an earlier bundle waits on a slow model response. Increasing either requires
+a measured capacity review; neither changes the one serialized admission transaction. Standard cron
+gives at-most-one-minute normal dispatch latency. See
+[Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/) and
+[DO alarms](https://developers.cloudflare.com/durable-objects/api/alarms/).
+
+The startup validator requires:
+
+```text
+DISPATCH_WINDOW_SECONDS + MAX_RESPONSE_SECONDS + FINALIZATION_RESERVE_SECONDS
+  <= LEASE_DURATION_SECONDS < CRON_EXECUTION_LIMIT_SECONDS
+```
+
+Thus a healthy Worker has time to persist results and settle its lease, while a stalled Worker is
+eventually reaped. The DO alarm is scheduled for that explicit lease expiry.
+
+### Timeout and 429 behavior
+
+The executor owns bounded request-level waiting only:
+
+- It creates one abort controller per provider request and a shared bundle deadline.
+- A first `429` asks the DO for `authorizeRetry` before sleeping or retrying. This rare RPC records
+  the actual first attempt and either returns a fenced retry time that fits the shared deadline or
+  declines the retry. It does not pre-reserve every successful job's second request.
+- An authorized retry becomes a route-lane barrier. It postpones only not-yet-started jobs on that
+  route; other route lanes continue. A job shifted past the bundle deadline is `deferred_late` and
+  returns to the DO instead of violating the route's rate limit.
+- Any final 429, timeout, transport failure, or malformed upstream response is sent in the one
+  `completeBatch` RPC as a retryable or terminal result. A normal upstream 429 never causes an
+  uncontrolled Worker retry or a second cron admission.
+- The DO treats a missing executor after its lease expires conservatively: it does not refund an
+  already-admitted provider request. It requeues with backoff and a new lease, preventing a crash
+  from causing rate-limit oversubscription.
+
+There is one additional failure state between `attemptStarted` and result persistence. For a route
+that supports provider idempotency, a re-admission reuses the job's stable idempotency key. For a
+route without that capability, an expired started attempt becomes `unknown_attempt`. The initial
+`hold` policy does not automatically reissue it: batched status exposes the attempt id and Gateway
+correlation id for reconciliation, after which an authenticated explicit retry creates a new job
+identity. A future route may opt into `retry_after_ttl`, accepting duplicate-call risk explicitly;
+the default never hides that choice.
+
+`routes` records a `throttle_streak`, last provider status, and `blocked_until` per route/account.
+Repeated 429s increase an additive route buffer, capped by configuration; successes decay that
+buffer. A throttled Mistral account therefore does not delay Gemini or a different Mistral account.
+
+A job whose conservative estimate is larger than the ordinary TPM rate is not automatically
+unserviceable. The route ledger models a refillable full token budget and may hold claims until that
+budget recovers. A job is terminally quota-unserviceable only when it exceeds the configured route
+burst/request capacity, not merely because it requires an otherwise quiet route to refill first.
+
+## B2-only payload storage and bounded cleanup
+
+v2 uses a separate B2 prefix, for example `llm-dispatch-v2/`, with a dedicated least-privilege
+application key. It uses the existing SigV4 approach; there is no R2 binding, R2 API call, B2 queue
+manifest, or B2 scheduler-control record in v2.
+
+- **`payloads/<job-id>/request.json`:** retained until terminal job cleanup.
+- **`results/<job-id>/<lease-token>.json`:** retained for `COMPLETED_RETENTION_DAYS`.
+
+The scheduler indexes terminal rows by `completed_at`. A daily bounded maintenance request asks the
+DO for at most `CLEANUP_BATCH_SIZE` `purge_pending` jobs, deletes their B2 payload/result keys, and
+calls `confirmPurge` to remove the corresponding SQLite rows. The operation is idempotent: a crash
+after B2 deletion merely repeats a delete. It never performs an unbounded B2 or DO list. B2's
+existing version-retention backstop keeps accidental deletions recoverable for its configured
+window.
+
+A separate cursor-based orphan sweep examines at most `ORPHAN_SWEEP_LIMIT` old B2 payload keys per
+run. It deletes a key only after the DO confirms its preassigned job id was never accepted. This
+recovers ingress-before-DO failures without a catalog-wide B2 list.
+
+## Implementation plan
+
+### 1. Establish v2 scaffolding and shared protocol
+
+Create `workers/llm-dispatch-v2/` as a separate Worker deployment with a SQLite DO class, a
+one-minute cron trigger, and a separate B2 prefix. Keep the existing v1 Worker unchanged.
+
+- Extract only pure route-catalog selection and response-normalization helpers from v1; do not fork
+  provider credential logic without tests.
+- Add `src/protocol.js` for validated ingress, route-lane claim-plan, provider idempotency,
+  `attemptStarted`, retry authorization, and completion message shapes.
+- Add `src/coordinator.js` for SQL schema, `enqueueBatch`, `claimDispatchWindow`,
+  `attemptStarted`, `authorizeRetry`, `completeBatch`, lease reaping, and cleanup operations.
+- Add `src/b2.js` for SigV4 request/result persistence with bounded body reads and timeouts.
+- Add migrations using `new_sqlite_classes`; use RPC methods rather than public DO fetch routes.
+
+### 2. Implement fenced admission and paced cron pull
+
+Implement one transactional claim plan before provider calls.
+
+- Enforce bundle, per-route, active-bundle, in-flight-call, and UTC daily caps.
+- Choose distinct eligible routes first, then larger conservative token estimates, with FIFO only as
+  the final tie-breaker; use aging once `MAX_QUEUE_WAIT_SECONDS` elapses.
+- Calculate route-lane waits from RPM, rolling TPM estimates, full-bucket recovery, route buffer,
+  and 429 state. Reserve the maximum of input/max-output, calibrated margin, and configured floor.
+  Test normal, late, and late-429 timing before returning a bundle.
+- Reserve only the initial call before returning a bundle. `authorizeRetry` makes a separate, fenced
+  reservation only after an actual 429. Retain admitted reservations after an ambiguous executor
+  loss.
+- Return an empty plan rather than a future plan when the first safe start is outside the dispatch
+  window. The next one-minute cron is the next dispatch opportunity.
+
+### 3. Implement the executor and 429 adaptation
+
+Implement the cron handler as one bounded paced `Promise.allSettled` operation.
+
+- Ask the DO for one plan and return immediately for no work.
+- Run route lanes independently; honor relative `wait_ms`, actual predecessor start, retry barriers,
+  and the dispatch deadline before each provider call.
+- Send the stable idempotency key only through provider adapters that explicitly support it. For all
+  others, obtain a fenced `attemptStarted` record before outbound submission and expose an expired
+  unknown attempt rather than silently repeating it.
+- Read payloads before starting Gateway calls, and enforce profiled aggregate byte and B2
+  subrequest caps so all simultaneous outbound B2 and Gateway requests remain below the Worker
+  connection limit.
+- Write results before `completeBatch`; detect an existing deterministic result after an executor
+  retry or restart.
+- Implement deadline aborts, bounded retry-after sleep, and structured failure records.
+- Report actual start/end times and every attempt to `completeBatch`; settle actual provider usage
+  where supplied, retaining conservative estimates otherwise.
+- Add per-route 429 buffers and success decay in the DO; expose their current values in health
+  metrics without exposing provider credentials or payloads.
+- Validate the lease-duration inequality at startup and schedule its exact expiry; no periodic
+  lease heartbeat is necessary inside the bounded Worker deadline.
+
+### 4. Add bulk client APIs and observability
+
+Update `citypods/compute/llm.py`, deferred reconciliation, and the GitHub workflows.
+
+- Add batched enqueue and poll methods while retaining the `JobHandle` public contract.
+- Make `backend="llm-dispatch-v2"` explicit in every v2 handle.
+- Emit one structured event per ingress batch, claim plan, paced provider start, actual attempt,
+  retry authorization, completion batch, lease reaping, and cleanup batch.
+- Track remaining Free-plan headroom: cron ticks, admitted bundles, DO requests/rows, Worker
+  requests, active bundle/call count, planned-versus-actual starts, token-estimate error, and route
+  gaps/buffer state. Emit unknown-attempt count/age, lease deadline, calibration margin, and aging
+  promotions without logging request payloads or provider credentials.
+
+### 5. Shadow admission, prove compatibility, then migrate deliberately
+
+Deploy the v2 Worker under a new name, endpoint, B2 prefix, and DO class. Start with synthetic jobs
+and one low-risk GitHub workflow lane.
+
+- First run `claimDispatchWindow` in shadow mode: persist no leases, send no provider request, and
+  compare its route choice, timing, token reservation, and cap decision against recorded v1 work.
+- Require a shadow report for normal, Worker-late, and 429-retry-late scenarios before active v2
+  submission. It must show that a late route lane cannot start a later same-route job too early,
+  age promotions remain bounded, and calibration never makes a reservation less conservative.
+- Keep legacy enqueue/poll as the default until v2 passes parity and load tests.
+- Migrate one workflow by configuration, then one task/route family at a time.
+- On a v2 enqueue timeout, retry v2 with the same idempotency key. Do **not** automatically submit
+  the same unknown request to legacy; that could purchase duplicate model calls.
+- Rollback means routing *future* submissions back to v1 while v2 continues to drain and serve the
+  v2 handles it already accepted.
+- Do not migrate legacy pending records. Let them drain in v1; only explicitly requeued records
+  enter v2 under a new idempotency namespace.
+
+## Test and acceptance plan
+
+Unit and Miniflare tests must cover:
+
+- one transaction admits no more than four jobs, respects the in-flight call cap, and never exceeds
+  the same-route bundle cap;
+- admission fills distinct eligible routes first, then prefers larger conservative estimates, with
+  stable FIFO ties; a smaller job wins after the configured aging deadline;
+- a plan includes a second same-route job only when its RPM and conservative TPM reservations fit
+  both normal and late execution inside the full dispatch window;
+- every returned `wait_ms` is a safe lower bound from Worker receipt. A late predecessor, a late
+  Worker, and a 429 retry cannot start a later same-route call early; unrelated route lanes proceed;
+- a job larger than ordinary TPM is held until full-token-budget recovery and is not marked
+  unserviceable unless it exceeds the route's explicit burst/request capacity;
+- calibrated estimates never drop below their configured floor or client estimate, automatically
+  increase after underestimation, and expose their error to admission tests;
+- concurrent/repeated `enqueueBatch` requests produce one job per idempotency key;
+- concurrent cron claims stay within active-bundle and in-flight-call caps, and stale execution
+  tokens cannot settle a later lease;
+- a result written before a Worker crash is recovered without a second provider call;
+- the lease-duration inequality rejects unsafe configuration; a healthy Worker completes before the
+  lease, while a stalled one is reaped only after it;
+- a crash after a provider-idempotent send reuses the same stable provider key on re-admission;
+  a crash after `attemptStarted` on an unsupported route becomes visible `unknown_attempt` work and
+  is not silently reissued under the initial policy; bounded explicit batch resolution is auditable;
+- a 429 receives no retry without a fenced `authorizeRetry`; its route-lane barrier cannot delay
+  another route, and it increases only its route's buffer;
+- `completeBatch` records every actual attempt. Late starts and actual usage adjust the ledger
+  without pulling previously admitted route reservations earlier;
+- profiled aggregate payload/result and B2-subrequest caps reject an unsafe bundle before any
+  provider request;
+- no-work cron ticks have no B2 access, alarms do not attempt dispatch, and lease expiry requeues
+  safely;
+- startup rejects unsafe capacity configurations; and
+- B2 orphan/result cleanup is bounded and idempotent; v1 and v2 `JobHandle` reconciliation can
+  coexist in the same GitHub run.
+
+Before active submission, record a shadow-admission canary with no divergent unsafe plan. Then
+record a seven-day active canary with no unbounded lists or R2 v2 access, and no duplicate job.
+It must not exceed Worker/DO limits, and all counters remain below the configured 75% threshold.
+The canary must establish payload/result/subrequest caps from CPU, memory, and connection profiling.
+Only then increase active-bundle or in-flight-call capacity, raise the same-route cap, lengthen the
+dispatch window, or raise the daily bundle cap through a new measured capacity review.
+
+## Consequences and rejected alternatives
+
+- **B2 queue-manifest claim:** rejected. Object invalidation is not the atomic scheduler claim and
+  can race a newer manifest update. A DO RPC is one low-cost, serialized claim instead.
+- **Cloudflare Queue handoff:** rejected for this v2 version. The already-scheduled one-minute
+  Worker invocation is sufficient; Queue would add a product, operations, and an outbox without
+  improving the chosen cadence.
+- **Pre-reserving every retry:** rejected. It wastes token and request headroom on successful jobs.
+  A rare fenced `authorizeRetry` RPC accounts for actual 429 retries without blocking other routes.
+- **Direct DO-to-AI Gateway calls:** technically possible, but rejected. The DO would await LLM
+  latency, accrue wall-clock duration, and entangle provider retries with coordination.
+- **Direct DO-to-Worker service binding:** rejected as the primary handoff. It is synchronous unless
+  retained with `waitUntil`, which recreates the DO-duration problem.
+- **R2 control or payload storage:** rejected for v2. DO SQLite supplies serialized control state
+  and B2 supplies payload storage without competing for the shared R2 Class-A allowance.
+
+## References
+
+- [`review/41`](41-multi-provider-llm-dispatch.md) — provider-route and ledger invariants to
+  preserve.
+- [`review/43`](43-llm-dispatch-cpu-reduction-plan.md) — production R2/CPU measurements and v1
+  transition context; this design supersedes its future DO/Queue evaluation only for v2.
+- [Durable Object pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/)
+- [Durable Object alarms](https://developers.cloudflare.com/durable-objects/api/alarms/)
+- [Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)

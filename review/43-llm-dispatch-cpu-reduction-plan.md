@@ -3,6 +3,11 @@
 Status: **Steps 1–3 shipped; Step 4 closed (rejected on measurement); Step 5 superseded by the
 phasing below.** Deployed configuration is `1/1`; this branch proposes `2/2`.
 
+> **2026-08-17 v2 design note.** [`review/44`](44-bounded-bundled-llm-dispatch.md) is a
+> maintainer-directed, opt-in parallel DO/B2 cron-pull successor. It supersedes this document's
+> future Queue and DO evaluation only for that new deployment; the measured R2-backed v1 phasing
+> below remains the production plan until v2 passes its own parity and canary gates.
+
 Owner: dispatch Worker maintainers. Scope: `workers/llm-dispatch-proxy`.
 
 > **Reading order.** Sections below are in the order they were written, so earlier ones record the

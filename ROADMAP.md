@@ -77,7 +77,14 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > so prompts, results and ready markers move to B2** (control state stays on R2 for the enqueue
 > idempotency CAS), which roughly doubles the R2-bounded ceiling from ~6,700 to ~11,100 jobs/day (26% of the tier at today's volume). 50,000 jobs/day needs the control record off R2 entirely — that is the Durable Object step, not this one. Batch enqueue/poll endpoints and the
 > Workers-Paid-versus-Durable-Object decision are both deferred until throughput actually demands them.
-> Phasing and measurements: [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md).
+> Phasing and measurements: [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md). A
+> maintainer-directed L2 parallel successor,
+> [`review/44`](review/44-bounded-bundled-llm-dispatch.md), now specifies a separately deployable
+> DO/B2 cron-pull path. Each existing one-minute Worker tick
+> claims up to four jobs from a SQLite coordinator; it prefers distinct routes, then larger
+> conservative jobs, and returns safe per-route waits across a 25-second dispatch window. It has
+> explicit Free-tier caps and does not alter the current
+> R2-backed production transport until its parity and canary gates pass.
 >
 > **Granicus media reliability follow-up (2026-06-16).** Endpoint issue #300 still reproduces when
 > `contracts.yml` overlaps active `audio.yml`: Arlington's Granicus RSS/media/chapter checks pass, but
