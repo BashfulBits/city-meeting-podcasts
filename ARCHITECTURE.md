@@ -419,6 +419,50 @@ The pipeline routes LLM jobs across 10 independent providers via [`config/provid
 \* The route-level values in `config/provider_limits.yml` are authoritative; this column summarizes
 the main native/gateway ceilings and intentionally does not replace the per-route catalog.
 
+#### Cloudflare AI Gateway (direct transport only)
+
+A direct provider call is proxied through a Cloudflare AI Gateway whenever the gateway is both
+enabled and configured, so it lands in one analytics/log surface alongside the Worker's. The
+gateway is a transparent proxy — same upstream, same response body — so enabling it must never
+change a model's reply. It is therefore **on by default**, with `LLM_AI_GATEWAY=0` as the kill
+switch for a gateway outage. A call falls back to the provider's own upstream — silently, not as
+an error — whenever `LLM_AI_GATEWAY=0` is set, `CLOUDFLARE_ACCOUNT_ID`/`AI_GATEWAY_BASE_URL` is
+unset, or a route has no `ai_gateway_slug`; the dispatch transport is always excluded (below).
+
+The rewrite is scoped to the **direct** transport. `llm-dispatch` requests are unaffected: the
+Worker already fronts its own provider calls with the gateway on its side, and the payload sent to
+it is a provider-neutral job description rather than a LiteLLM call, so injecting an `api_base`
+there would double-proxy the request. `_provider_options(..., direct=…)` in
+[`citypods/compute/llm.py`](citypods/compute/llm.py) is that seam; the dispatch payload builder
+leaves it at its `False` default.
+
+Each route contributes two generated fields (`ai_gateway_slug`, `ai_gateway_chat_path`, compiled
+from `config/provider_limits.yml`). The slug names the gateway's provider segment — Cloudflare
+requires a `custom-` prefix for custom providers, hence `custom-zai`, `custom-opencode`. The chat
+path matters because **LiteLLM appends `/chat/completions` itself**, so only the part *before*
+that suffix belongs in `api_base`:
+
+| Provider | Gateway `api_base` | Resulting request URL |
+|---|---|---|
+| `gemini` | `…/google-ai-studio/v1beta/openai` | `…/v1beta/openai/chat/completions` |
+| `mistral` | `…/mistral/v1` | `…/mistral/v1/chat/completions` |
+| `deepseek`, `zai`, … | `…/deepseek` | `…/deepseek/chat/completions` |
+
+Dropping that prefix is a silent 404 on Gemini and Mistral only — the providers whose OpenAI-compat
+endpoint is not at the root — which is why the routing tests assert the full request URL rather
+than `api_base` alone.
+
+Configuration: `CLOUDFLARE_ACCOUNT_ID` + optional `AI_GATEWAY_ID` (default `citypods-dispatch`)
+derive the standard URL, or `AI_GATEWAY_BASE_URL` overrides it outright.
+`AI_GATEWAY_AUTH_TOKEN` supplies the `cf-aig-authorization` header an authenticated gateway
+requires — but it is not itself a fallback condition. A configured gateway (base URL + slug both
+present) with no token still routes through the gateway, just without that header: correct for a
+gateway that doesn't require auth, and a genuine misconfiguration otherwise, surfacing as the
+gateway rejecting the call rather than the provider seeing it. Set both together, as the four
+direct-calling workflows below do. Provider credentials are unaffected either way — they're
+unchanged and still sent per-route, since the gateway does not hold them. `llm-compat-probe.yml`
+deliberately has no account id wired, so it keeps probing raw provider endpoints.
+
 Gemini Live is not part of the R5 batch route: it is a persistent real-time multimodal/WebSocket model and
 does not match the current structured JSON batch contract. Gemini 3 Flash Preview is also excluded from the
 first high-volume R5 route because its account limit is too small. Both may be revisited for their intended

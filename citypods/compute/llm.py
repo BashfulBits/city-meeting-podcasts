@@ -108,6 +108,56 @@ _PACING_POLL_CAP_SECONDS = 10.0
 # Tiny floor so an "eligible now, but the reserve just lost a race" retry can't hot-spin the CPU.
 _PACING_MIN_SLEEP_SECONDS = 0.2
 
+# --- Cloudflare AI Gateway (direct transport only) ---------------------------------------------
+# The gateway is an observability shim, not a routing decision: it proxies to the same upstream
+# and returns the same body, so enabling it must never change an LLM reply. It is therefore on by
+# default and disabled with `LLM_AI_GATEWAY=0` (kill switch for a gateway outage).
+#
+# It applies to the *direct* transport only. The `llm-dispatch` Worker already fronts its own
+# provider calls with the gateway on its side, and the payload we send it is a provider-neutral
+# job description rather than a LiteLLM call -- injecting an `api_base`/`cf-aig-authorization`
+# there would either double-proxy the request or hand the Worker an endpoint it does not own.
+_AI_GATEWAY_ENV = "LLM_AI_GATEWAY"
+_AI_GATEWAY_DISABLED_VALUES = frozenset({"0", "false", "off", "no"})
+_DEFAULT_AI_GATEWAY_ID = "citypods-dispatch"
+# LiteLLM appends this to `api_base` itself, so a route's gateway path contributes only the part
+# *before* it (Gemini's `/v1beta/openai`, Mistral's `/v1`, nothing for a plain OpenAI shape).
+_AI_GATEWAY_CHAT_SUFFIX = "/chat/completions"
+
+
+def _ai_gateway_enabled() -> bool:
+    return os.environ.get(_AI_GATEWAY_ENV, "").strip().lower() not in _AI_GATEWAY_DISABLED_VALUES
+
+
+def _ai_gateway_base() -> str:
+    """The gateway root, or ``""`` when this runner has no gateway configured.
+
+    ``AI_GATEWAY_BASE_URL`` overrides outright (a self-hosted proxy, or a test double); otherwise
+    the standard Cloudflare URL is derived from the account and gateway id.
+    """
+    explicit = os.environ.get("AI_GATEWAY_BASE_URL", "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+    if not account_id:
+        return ""
+    gateway_id = os.environ.get("AI_GATEWAY_ID", "").strip() or _DEFAULT_AI_GATEWAY_ID
+    return f"https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}"
+
+
+def _ai_gateway_path_prefix(route: LLMRoute) -> str:
+    """The provider path segment the gateway needs but LiteLLM will not supply.
+
+    A route's ``ai_gateway_chat_path`` is the whole path after the provider slug (Gemini's
+    ``/v1beta/openai/chat/completions``). LiteLLM appends ``/chat/completions`` on its own, so
+    only the prefix belongs in ``api_base``; dropping it is what would send Gemini and Mistral
+    gateway calls to a 404. A path that does not end in the usual suffix is used verbatim.
+    """
+    chat_path = (route.ai_gateway_chat_path or "").strip()
+    if chat_path.endswith(_AI_GATEWAY_CHAT_SUFFIX):
+        return chat_path[: -len(_AI_GATEWAY_CHAT_SUFFIX)]
+    return chat_path
+
 
 def _pacing_wait_seconds(
     retry_at: datetime | None, deadline_at: datetime | None, now: datetime
@@ -556,13 +606,47 @@ class LiteLLMBackend(Backend):
             "json_schema": {"name": model.__name__, "schema": schema_model.model_json_schema()},
         }
 
+    def _resolve_api_base_and_headers(
+        self, route: LLMRoute | None, *, direct: bool
+    ) -> tuple[str | None, dict[str, str]]:
+        """Resolve the provider endpoint and gateway headers for one call.
+
+        Returns the route's own upstream unchanged unless this is a direct call *and* the gateway
+        is both enabled and configured. Any missing piece (no account id, no slug) degrades to
+        calling the provider directly rather than to a broken URL: losing gateway analytics is a
+        strictly better failure than losing the request.
+        """
+        if route is None:
+            return None, {}
+        api_base = route.api_base or None
+        if not direct or not _ai_gateway_enabled():
+            return api_base, {}
+        gateway_base = _ai_gateway_base()
+        gateway_slug = route.ai_gateway_slug or route.provider
+        if not gateway_base or not gateway_slug:
+            return api_base, {}
+        extra_headers: dict[str, str] = {}
+        auth_token = os.environ.get("AI_GATEWAY_AUTH_TOKEN", "").strip()
+        if auth_token:
+            extra_headers["cf-aig-authorization"] = f"Bearer {auth_token}"
+        return f"{gateway_base}/{gateway_slug}{_ai_gateway_path_prefix(route)}", extra_headers
+
     def _provider_options(
-        self, job: InferenceJob, resolved_model: str, *, route=None
+        self, job: InferenceJob, resolved_model: str, *, route=None, direct: bool = False
     ) -> dict[str, Any]:
+        """Build the LiteLLM ``completion()`` kwargs for one route.
+
+        ``direct`` marks a call this process makes to the provider itself. It defaults to False so
+        the dispatch payload -- which shares this builder but is consumed by the Worker rather
+        than by LiteLLM -- never picks up gateway routing.
+        """
         options: dict[str, Any] = {"model": resolved_model}
         if route is not None:
-            if route.api_base:
-                options["api_base"] = route.api_base
+            api_base, extra_headers = self._resolve_api_base_and_headers(route, direct=direct)
+            if api_base:
+                options["api_base"] = api_base
+            if extra_headers:
+                options["extra_headers"] = extra_headers
             if route.api_key_env:
                 api_key = os.environ.get(route.api_key_env)
                 if api_key:
@@ -589,8 +673,13 @@ class LiteLLMBackend(Backend):
         input_tokens_estimate: int | None = None,
         output_token_budget: int | None = None,
         route=None,
+        direct: bool = False,
     ) -> dict[str, Any]:
-        """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport."""
+        """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport.
+
+        The unstructured direct path reuses this builder to shape its own LiteLLM call, and passes
+        ``direct=True`` so that call (and only that call) is routed via the AI Gateway.
+        """
         selected_route = self._route_for_resolved_model(resolved_model, route)
         include_profile_schema = model is not None and bool(
             getattr(selected_route, "structured_output_include_schema_in_prompt", False)
@@ -623,7 +712,7 @@ class LiteLLMBackend(Backend):
                 payload["deadline_at"] = policy.deadline_at.isoformat()
         if estimated_tokens is not None:
             payload["estimated_tokens"] = estimated_tokens
-        payload.update(self._provider_options(job, resolved_model, route=route))
+        payload.update(self._provider_options(job, resolved_model, route=route, direct=direct))
         return payload
 
     @staticmethod
@@ -701,7 +790,7 @@ class LiteLLMBackend(Backend):
                 response_model=model,
                 messages=_messages(job),
                 max_retries=1,
-                **self._provider_options(job, resolved_model, route=route),
+                **self._provider_options(job, resolved_model, route=route, direct=True),
             )
         except InstructorRetryException as exc:
             if os.environ.get(_SAFE_DIAGNOSTICS_ENV) == "1":
@@ -766,7 +855,7 @@ class LiteLLMBackend(Backend):
         messages = list(_messages(job))
         if route is not None and route.structured_output_include_schema_in_prompt:
             messages = _messages_with_schema(messages, model)
-        options = self._provider_options(job, resolved_model, route=route)
+        options = self._provider_options(job, resolved_model, route=route, direct=True)
         response_format = response_format or self._response_format_for_route(
             model, resolved_model=resolved_model, route=route
         )
@@ -1134,7 +1223,9 @@ class LiteLLMBackend(Backend):
                     # Passing `policy=policy` on this branch was a real bug (CodeRabbit,
                     # review/41): those keys reached `completion_fn(**payload)` on every direct
                     # policy-bearing call.
-                    payload = self._payload(job, resolved_model=direct_model, route=route)
+                    payload = self._payload(
+                        job, resolved_model=direct_model, route=route, direct=True
+                    )
                     completion_fn = self._completion_fn()
                     attempted = True
                     attempted_requests += 1
@@ -1374,7 +1465,7 @@ class LiteLLMBackend(Backend):
                     model=logical_model,
                 )
             response = self._completion_fn()(
-                **self._payload(job, resolved_model=direct_model, route=route)
+                **self._payload(job, resolved_model=direct_model, route=route, direct=True)
             )
             return JobResult(
                 task=job.task,

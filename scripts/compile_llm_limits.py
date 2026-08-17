@@ -133,6 +133,10 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
                     str(source.get("provider", "")), str(source.get("upstream_model", ""))
                 ),
                 "api_base": provider_cfg.get("api_base", ""),
+                "ai_gateway_slug": provider_cfg.get("ai_gateway_slug", source.get("provider", "")),
+                "ai_gateway_chat_path": provider_cfg.get(
+                    "ai_gateway_chat_path", "/chat/completions"
+                ),
                 "chat_path": provider_cfg.get("chat_path", "/v1/chat/completions"),
                 "api_key_env": (account or {}).get("api_key_env", ""),
                 "reset_timezone": source.get(
