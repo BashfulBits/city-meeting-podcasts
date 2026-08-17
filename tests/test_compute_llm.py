@@ -1741,3 +1741,126 @@ def test_reconcile_treats_an_operator_retired_dispatch_record_as_terminal():
 
     with pytest.raises(LLMDispatchTerminalError, match="HTTP 410"):
         backend.reconcile(handle)
+
+
+@pytest.fixture
+def gateway_env(monkeypatch):
+    """A configured gateway with no inherited overrides leaking in from the environment."""
+    monkeypatch.delenv("AI_GATEWAY_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_AI_GATEWAY", raising=False)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "cf-acc-123")
+    monkeypatch.setenv("AI_GATEWAY_ID", "citypods-dispatch")
+    monkeypatch.setenv("AI_GATEWAY_AUTH_TOKEN", "test-auth-token")
+    return monkeypatch
+
+
+def _recording_backend(model, **config_kwargs):
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response(json.dumps({"value": "ok"}))
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model=model, **config_kwargs),
+        completion=completion,
+        storage=MemStorage(),
+    )
+    return backend, calls
+
+
+_GW = "https://gateway.ai.cloudflare.com/v1/cf-acc-123/citypods-dispatch"
+
+
+# The URL LiteLLM must ultimately request is `api_base` + "/chat/completions". Asserting the full
+# request URL (rather than `api_base` alone) is what pins the provider path prefix: an `api_base`
+# of ".../google-ai-studio" looks plausible in isolation but resolves to a 404, because Gemini's
+# gateway endpoint lives under "/v1beta/openai".
+@pytest.mark.parametrize(
+    ("model", "expected_request_url"),
+    [
+        ("gemini/gemini-3.6-flash", f"{_GW}/google-ai-studio/v1beta/openai/chat/completions"),
+        ("mistral/mistral-large-2512", f"{_GW}/mistral/v1/chat/completions"),
+        ("deepseek/deepseek-v4-flash", f"{_GW}/deepseek/chat/completions"),
+        ("openrouter/openai/gpt-4o-mini", f"{_GW}/openrouter/chat/completions"),
+        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/chat/completions"),
+    ],
+)
+def test_direct_call_preserves_each_routes_gateway_path(model, expected_request_url, gateway_env):
+    backend, calls = _recording_backend(model)
+
+    assert isinstance(backend.run_inference(job(content="test")), JobResult)
+    assert len(calls) == 1
+    assert calls[0]["api_base"] + "/chat/completions" == expected_request_url
+    assert calls[0]["extra_headers"] == {"cf-aig-authorization": "Bearer test-auth-token"}
+
+
+def test_direct_call_uses_ai_gateway_base_url_override(monkeypatch):
+    monkeypatch.delenv("LLM_AI_GATEWAY", raising=False)
+    monkeypatch.setenv("AI_GATEWAY_BASE_URL", "https://custom-gw.example.com/v1/custom-gw")
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("AI_GATEWAY_AUTH_TOKEN", raising=False)
+    backend, calls = _recording_backend("mistral/mistral-large-2512")
+
+    assert isinstance(backend.run_inference(job(content="test")), JobResult)
+    assert calls[0]["api_base"] == "https://custom-gw.example.com/v1/custom-gw/mistral/v1"
+    assert not calls[0].get("extra_headers")
+
+
+@pytest.mark.parametrize("disabled", ["0", "false", "off", "no", "FALSE"])
+def test_llm_ai_gateway_kill_switch_restores_the_direct_upstream(disabled, gateway_env):
+    gateway_env.setenv("LLM_AI_GATEWAY", disabled)
+    backend, calls = _recording_backend("gemini/gemini-3.6-flash")
+
+    assert isinstance(backend.run_inference(job(content="test")), JobResult)
+    assert calls[0]["api_base"] == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert not calls[0].get("extra_headers")
+
+
+def test_direct_call_without_gateway_configured_keeps_the_provider_upstream(monkeypatch):
+    monkeypatch.delenv("AI_GATEWAY_BASE_URL", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+    monkeypatch.delenv("LLM_AI_GATEWAY", raising=False)
+    backend, calls = _recording_backend("gemini/gemini-3.6-flash")
+
+    assert isinstance(backend.run_inference(job(content="test")), JobResult)
+    assert calls[0]["api_base"] == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert not calls[0].get("extra_headers")
+
+
+def test_dispatch_payload_is_never_rewritten_for_the_gateway(gateway_env):
+    """The Worker fronts its own providers with the gateway; the payload must stay untouched.
+
+    Handing it a gateway `api_base` would double-proxy the call, and `cf-aig-authorization` is a
+    credential the Worker has no use for and should never receive.
+    """
+    posted = {}
+
+    class Response:
+        status_code = 200
+        headers: dict[str, str] = {}
+        text = ""
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({"value": "ok"})}}]}
+
+    class Session:
+        def post(self, url, **kwargs):
+            posted.update(kwargs)
+            return Response()
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.6-flash",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        http_session=Session(),
+        storage=MemStorage(),
+    )
+    backend.run_inference(job(content="test"))
+
+    payload = posted["json"]
+    assert "api_base" not in payload
+    assert "extra_headers" not in payload
+    assert "cf-aig-authorization" not in json.dumps(posted).lower()

@@ -1273,3 +1273,46 @@ def test_availability_digest_scopes_secrets_to_steps_that_need_them():
             k.startswith(("B2_", "R2_", "CLOUDFLARE_", "GRANICUS_"))
             for k in (step.get("env") or {})
         )
+
+
+# Provider API keys that mean a step calls a provider *directly* (rather than handing work to the
+# llm-dispatch Worker, which fronts its own calls with the gateway on its side).
+_DIRECT_PROVIDER_KEYS = (
+    "GEMINI_API_KEY",
+    "MISTRAL_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "OPENCODE_API_KEY",
+    "GROQ_API_KEY",
+    "ZAI_API_KEY",
+)
+
+
+def _direct_llm_steps() -> list[tuple[str, dict]]:
+    found = []
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        wf = yaml.safe_load(path.read_text())
+        for job in (wf.get("jobs") or {}).values():
+            for step in job.get("steps") or []:
+                env = step.get("env") or {}
+                if any(key in env for key in _DIRECT_PROVIDER_KEYS):
+                    found.append((path.name, step))
+    return found
+
+
+def test_direct_llm_steps_that_reach_the_gateway_can_authenticate_to_it():
+    """A step routed through the AI Gateway must carry the token the gateway may require.
+
+    `citypods.compute.llm` routes direct calls via the gateway whenever `CLOUDFLARE_ACCOUNT_ID`
+    is present (the `LLM_AI_GATEWAY=0` kill switch aside). That account id is set in nearly every
+    workflow for R2, so a step that gained provider keys without `AI_GATEWAY_AUTH_TOKEN` would
+    silently start failing against an authenticated gateway.
+    """
+    steps = _direct_llm_steps()
+    assert steps, "expected at least one direct-provider LLM step"
+    missing = [
+        f"{name}: {step.get('name', '<unnamed>')}"
+        for name, step in steps
+        if "CLOUDFLARE_ACCOUNT_ID" in (step.get("env") or {})
+        and "AI_GATEWAY_AUTH_TOKEN" not in (step.get("env") or {})
+    ]
+    assert missing == []

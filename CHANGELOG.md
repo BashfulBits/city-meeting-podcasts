@@ -17,6 +17,23 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Direct LLM calls now route through the Cloudflare AI Gateway, and do so with the right URL.**
+  Every direct provider call is proxied through the gateway so runner-side requests land in the
+  same analytics surface as the Worker's. The gateway is a transparent proxy, so this is an
+  observability change, not a routing one — it is on by default, with `LLM_AI_GATEWAY=0` as the
+  kill switch. Two things make it safe: the rewrite is scoped to the **direct** transport
+  (`_provider_options(..., direct=…)`), leaving the `llm-dispatch` payload untouched — the Worker
+  already applies its own gateway, and handing it an `api_base` would double-proxy the call; and
+  each route's generated `ai_gateway_chat_path` now actually contributes its prefix to `api_base`.
+  LiteLLM appends `/chat/completions` on its own, so a gateway `api_base` of
+  `…/google-ai-studio` resolves to a 404 — Gemini's OpenAI-compat endpoint lives under
+  `/v1beta/openai`, and Mistral's under `/v1`. The field was previously plumbed through
+  `LLMRoute` and the compiled catalog but never read. Routing tests now assert the full request
+  URL for every gateway provider rather than `api_base` alone, cover the kill switch and the
+  unconfigured-gateway fallback, and pin that the dispatch payload carries neither `api_base` nor
+  `cf-aig-authorization`. `AI_GATEWAY_AUTH_TOKEN` is wired into the four workflows that make
+  direct provider calls, with a workflow contract test so a new one cannot silently miss it.
+
 - **Resolve 7 unexpected meeting bodies from the feed-health audit (#1231).** The daily audit
   flagged seven provider labels no feed selector covered. Recurring series were unioned onto the
   owning feed's `body_any`: Addison's bare `Special Meeting` (35 rows) onto City Council, and Fort
