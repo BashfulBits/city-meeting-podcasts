@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Configurable global token estimate buffer (`token_estimate_buffer`).** Added a new top-level
+  setting `token_estimate_buffer` (e.g. `0.90`) in `config/provider_limits.yml` that applies a
+  scaling multiplier to all compiled token rate budgets (route `tpm`, provider `monthly_tpm`,
+  and provider `tpm`) across `llm_routes.json` and `dispatch_limits.json`. This provides a
+  zero-runtime-overhead calibration knob against token estimation drift and rate limit 429s.
+
 ### Fixed
 
 - **`/remedy` command to re-run remediation on an issue that grew new rows.** `audit.yml`

@@ -307,3 +307,132 @@ def test_run_discovery_bare_flag_covers_only_providers_with_a_discovery_block(mo
     changed = compile_llm_limits.run_discovery(raw, [])
     assert changed is False  # fake_fetch returns no models
     assert len(calls) == 1  # only the provider with a discovery block was touched
+
+
+def test_token_estimate_buffer_scales_route_and_provider_token_budgets():
+    compiled = compile_llm_limits.compile_limits()
+    assert compiled["_metadata"]["token_estimate_buffer"] == 0.9
+
+    # Route TPM scaling: 250,000 * 0.9 = 225,000; 16,000 * 0.9 = 14,400
+    gemini = compiled["routes_by_id"]["gemini_3_5_flash_lite_primary"]
+    gemma = compiled["routes_by_id"]["gemma_4_31b_primary"]
+    assert gemini["tpm"] == 225_000
+    assert gemma["tpm"] == 14_400
+
+    # Non-token fields are unscaled
+    assert gemini["rpm"] == 15
+    assert gemini["rpd"] == 500
+    assert gemini["input_context_limit"] == 1048576
+    assert gemini["output_context_limit"] == 65536
+
+    # Provider monthly_tpm scaling: 1,000,000,000 * 0.9 = 900,000,000
+    mistral = compiled["providers"]["mistral"]
+    assert mistral["monthly_tpm"] == 900_000_000
+
+
+def test_validate_token_buffer_accepts_valid_formats():
+    assert compile_llm_limits._validate_token_buffer(None) == 1.0
+    assert compile_llm_limits._validate_token_buffer(0.9) == 0.9
+    assert compile_llm_limits._validate_token_buffer(1.0) == 1.0
+    assert compile_llm_limits._validate_token_buffer("0.85") == 0.85
+    assert compile_llm_limits._validate_token_buffer("90%") == 0.9
+    assert compile_llm_limits._validate_token_buffer("100%") == 1.0
+
+
+def test_validate_token_buffer_rejects_invalid_values():
+    for invalid in (
+        True,
+        False,
+        0,
+        0.0,
+        -0.1,
+        "-10%",
+        1.5,
+        "150%",
+        "invalid",
+        "foo%",
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        [],
+        {},
+    ):
+        with pytest.raises(ValueError, match="token_estimate_buffer"):
+            compile_llm_limits._validate_token_buffer(invalid)
+
+
+def test_token_estimate_buffer_omitted_defaults_to_one():
+    raw = {
+        "structured_output_profiles": {
+            "standard_json_schema": {
+                "response_format": "json_schema",
+                "direct_handler": "instructor",
+                "include_schema_in_prompt": False,
+                "strip_schema_keys": [],
+            }
+        },
+        "providers": {
+            "example": {
+                "api_base": "https://example.com",
+                "monthly_tpm": 1000,
+            }
+        },
+        "routes": [
+            {
+                "route_id": "example_route",
+                "model": "example/model",
+                "provider": "example",
+                "upstream_model": "model",
+                "input_context_limit": 1000,
+                "output_context_limit": 500,
+                "tpm": 5000,
+            }
+        ],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        compiled = compile_llm_limits.compile_limits()
+        assert compiled["_metadata"]["token_estimate_buffer"] == 1.0
+        assert compiled["routes_by_id"]["example_route"]["tpm"] == 5000
+        assert compiled["providers"]["example"]["monthly_tpm"] == 1000
+
+
+def test_token_usage_buffer_fallback_key():
+    raw = {
+        "token_usage_buffer": 0.80,
+        "structured_output_profiles": {
+            "standard_json_schema": {
+                "response_format": "json_schema",
+                "direct_handler": "instructor",
+                "include_schema_in_prompt": False,
+                "strip_schema_keys": [],
+            }
+        },
+        "providers": {
+            "example": {
+                "api_base": "https://example.com",
+                "monthly_tpm": 1000,
+            }
+        },
+        "routes": [
+            {
+                "route_id": "example_route",
+                "model": "example/model",
+                "provider": "example",
+                "upstream_model": "model",
+                "input_context_limit": 1000,
+                "output_context_limit": 500,
+                "tpm": 5000,
+            }
+        ],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        compiled = compile_llm_limits.compile_limits()
+        assert compiled["_metadata"]["token_estimate_buffer"] == 0.8
+        assert compiled["routes_by_id"]["example_route"]["tpm"] == 4000
+        assert compiled["providers"]["example"]["monthly_tpm"] == 800
