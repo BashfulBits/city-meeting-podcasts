@@ -3,8 +3,9 @@ name: Chapter boundary locator
 on:
   schedule:
     # Agenda extraction and deferred finalization are independent; this lane picks up completed
-    # agenda artifacts on the next tick and never waits synchronously for Gemini.
-    - cron: "7-59/15 * * * *"
+    # agenda artifacts one hour after the agenda lane and never waits synchronously for Gemini.
+    # Run on odd UTC hours; chapter-agenda uses the alternating even-hour slots.
+    - cron: "0 1-23/2 * * *"
   workflow_dispatch: {}
 
 concurrency:

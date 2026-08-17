@@ -1133,6 +1133,14 @@ def test_chapter_workflows_use_shared_maintenance_lease(workflow):
         assert name in env
 
 
+def test_chapter_workflows_use_alternating_two_hour_schedules():
+    agenda, _agenda_job = _job("chapter-agenda.yml")
+    locator, _locator_job = _job("chapter-locator.yml")
+
+    assert _on(agenda)["schedule"] == [{"cron": "0 */2 * * *"}]
+    assert _on(locator)["schedule"] == [{"cron": "0 1-23/2 * * *"}]
+
+
 def test_duration_normalize_workflow_is_manual_bounded_and_archived():
     wf, job = _job("duration-normalize.yml")
     assert set(_on(wf)) == {"workflow_dispatch"}
