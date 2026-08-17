@@ -421,10 +421,13 @@ the main native/gateway ceilings and intentionally does not replace the per-rout
 
 #### Cloudflare AI Gateway (direct transport only)
 
-Direct provider calls are proxied through a Cloudflare AI Gateway so every LLM request the runner
-makes lands in one analytics/log surface alongside the Worker's. The gateway is a transparent
-proxy — same upstream, same response body — so enabling it must never change a model's reply. It
-is therefore **on by default**, with `LLM_AI_GATEWAY=0` as the kill switch for a gateway outage.
+A direct provider call is proxied through a Cloudflare AI Gateway whenever the gateway is both
+enabled and configured, so it lands in one analytics/log surface alongside the Worker's. The
+gateway is a transparent proxy — same upstream, same response body — so enabling it must never
+change a model's reply. It is therefore **on by default**, with `LLM_AI_GATEWAY=0` as the kill
+switch for a gateway outage. A call falls back to the provider's own upstream — silently, not as
+an error — whenever `LLM_AI_GATEWAY=0` is set, `CLOUDFLARE_ACCOUNT_ID`/`AI_GATEWAY_BASE_URL` is
+unset, or a route has no `ai_gateway_slug`; the dispatch transport is always excluded (below).
 
 The rewrite is scoped to the **direct** transport. `llm-dispatch` requests are unaffected: the
 Worker already fronts its own provider calls with the gateway on its side, and the payload sent to
@@ -452,10 +455,13 @@ than `api_base` alone.
 Configuration: `CLOUDFLARE_ACCOUNT_ID` + optional `AI_GATEWAY_ID` (default `citypods-dispatch`)
 derive the standard URL, or `AI_GATEWAY_BASE_URL` overrides it outright.
 `AI_GATEWAY_AUTH_TOKEN` supplies the `cf-aig-authorization` header an authenticated gateway
-requires. Provider credentials are unchanged and still sent per-route: the gateway does not hold
-them. Any missing piece degrades to calling the provider directly rather than to a broken URL —
-losing analytics beats losing the request. `llm-compat-probe.yml` deliberately has no account id
-wired, so it keeps probing raw provider endpoints.
+requires — but it is not itself a fallback condition. A configured gateway (base URL + slug both
+present) with no token still routes through the gateway, just without that header: correct for a
+gateway that doesn't require auth, and a genuine misconfiguration otherwise, surfacing as the
+gateway rejecting the call rather than the provider seeing it. Set both together, as the four
+direct-calling workflows below do. Provider credentials are unaffected either way — they're
+unchanged and still sent per-route, since the gateway does not hold them. `llm-compat-probe.yml`
+deliberately has no account id wired, so it keeps probing raw provider endpoints.
 
 Gemini Live is not part of the R5 batch route: it is a persistent real-time multimodal/WebSocket model and
 does not match the current structured JSON batch contract. Gemini 3 Flash Preview is also excluded from the

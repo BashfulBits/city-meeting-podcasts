@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from citypods.compute.llm_policy import ROUTE_REGISTRY
+
 _PINNED_SHA = re.compile(r"@[0-9a-f]{40}(?:\s|$)")
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
@@ -1275,15 +1277,12 @@ def test_availability_digest_scopes_secrets_to_steps_that_need_them():
         )
 
 
-# Provider API keys that mean a step calls a provider *directly* (rather than handing work to the
-# llm-dispatch Worker, which fronts its own calls with the gateway on its side).
-_DIRECT_PROVIDER_KEYS = (
-    "GEMINI_API_KEY",
-    "MISTRAL_API_KEY",
-    "DEEPSEEK_API_KEY",
-    "OPENCODE_API_KEY",
-    "GROQ_API_KEY",
-    "ZAI_API_KEY",
+# Every provider API key any route can be dispatched with. Derived from the compiled catalog
+# rather than hand-listed, so a provider added to config/provider_limits.yml (e.g. #1223/#1135's
+# SambaNova, SiliconFlow, Kilo, OpenRouter, and the Gemini secondary account) is covered
+# automatically instead of silently bypassing the gateway-auth assertion below.
+_DIRECT_PROVIDER_KEYS = frozenset(
+    route.api_key_env for route in ROUTE_REGISTRY.values() if route.api_key_env
 )
 
 

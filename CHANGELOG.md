@@ -18,9 +18,10 @@ Phase R (Research-Tool Surface)._
 ### Fixed
 
 - **Direct LLM calls now route through the Cloudflare AI Gateway, and do so with the right URL.**
-  Every direct provider call is proxied through the gateway so runner-side requests land in the
-  same analytics surface as the Worker's. The gateway is a transparent proxy, so this is an
-  observability change, not a routing one — it is on by default, with `LLM_AI_GATEWAY=0` as the
+  A direct provider call is proxied through the gateway whenever it's enabled and configured, so
+  runner-side requests land in the same analytics surface as the Worker's. The gateway is a
+  transparent proxy, so this is an observability change, not a routing one — it is on by default,
+  with `LLM_AI_GATEWAY=0` as the
   kill switch. Two things make it safe: the rewrite is scoped to the **direct** transport
   (`_provider_options(..., direct=…)`), leaving the `llm-dispatch` payload untouched — the Worker
   already applies its own gateway, and handing it an `api_base` would double-proxy the call; and
