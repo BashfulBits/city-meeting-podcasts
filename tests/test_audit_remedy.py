@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from citypods.audit import collect_unexpected_bodies
 from citypods.audit_remedy import (
     BodyProposal,
+    RejectedProposal,
     RemedyOutput,
     RemedyPlan,
     SourceContext,
@@ -241,6 +242,15 @@ def test_well_formed_proposals_are_accepted(evidence, repo):
     assert plan.rejected == []
 
 
+def test_proposals_for_removed_feed_files_are_rejected(evidence, repo):
+    """Evidence can outlive a feed rename or removal between audit and remediation."""
+    paths = feed_paths_by_slug(repo)
+    paths.pop("test-city-council")
+    plan = validate_proposals(RemedyOutput(proposals=[proposal()]), evidence, paths)
+    assert plan.accepted == []
+    assert "have no file under config/feeds" in plan.rejected[0].reason
+
+
 def test_model_cannot_supply_a_file_path():
     """The schema has no path field at all -- the strongest form of the guarantee."""
     assert "file_path" not in BodyProposal.model_fields
@@ -437,7 +447,7 @@ def test_report_lists_accepted_and_rejected(evidence, repo):
     remedy = RemedyOutput(proposals=[proposal(), proposal(unexpected_body="Not Observed")])
     plan = validate_proposals(remedy, evidence, feed_paths_by_slug(repo))
     table = format_remedy_markdown(plan, evidence)
-    assert "`Special Meeting`" in table
+    assert "Special Meeting" in table
     assert "**union**" in table
     assert "Rejected proposals" in table
     assert "was not observed" in table
@@ -450,6 +460,32 @@ def test_report_handles_a_fully_rejected_plan(evidence, repo):
         feed_paths_by_slug(repo),
     )
     assert "_(none accepted)_" in format_remedy_markdown(plan, evidence)
+
+
+def test_report_escapes_model_text_that_could_break_a_markdown_table(evidence):
+    plan = RemedyPlan(
+        accepted=[
+            proposal(
+                unexpected_body="Special | Meeting\n[misleading](https://example.invalid)",
+                target_feeds=["test-city-council|other"],
+                rationale="line one\r\nline two | `not code`",
+            )
+        ],
+        rejected=[
+            # This bypasses validation deliberately: it exercises the reporting boundary itself.
+            # A rejected model proposal may include any arbitrary string.
+            RejectedProposal(
+                proposal=proposal(unexpected_body="Rejected|\n[label](https://example.invalid)"),
+                reason="bad | reason\nwith another line",
+            )
+        ],
+    )
+    table = format_remedy_markdown(plan, evidence)
+    assert "Special \\| Meeting \\[misleading\\](https://example.invalid)" in table
+    assert "test-city-council\\|other" in table
+    assert "line one  line two \\| \\`not code\\`" in table
+    assert "Rejected\\| \\[label\\](https://example.invalid)" in table
+    assert "bad \\| reason with another line" in table
 
 
 def test_feed_paths_by_slug_skips_templates(repo):

@@ -355,6 +355,9 @@ def _rejection_reason(
     unknown = [slug for slug in proposal.target_feeds if slug not in feeds_on_source]
     if unknown:
         return f"target feed(s) {unknown} are not configured on this source"
+    missing = [slug for slug in proposal.target_feeds if slug not in feed_paths]
+    if missing:
+        return f"target feed(s) {missing} have no file under config/feeds"
 
     if proposal.action == "single_uid_inclusion":
         if not proposal.provider_guids:
@@ -519,6 +522,19 @@ def verify_remedy_mutations(repo_root: str | Path = ".") -> tuple[bool, str]:
     return True, "Config load, Ruff lint/format, and the full pytest suite all passed."
 
 
+def _markdown_table_cell(value: str) -> str:
+    """Render untrusted text as one inert Markdown-table cell."""
+    return (
+        value.replace("\\", "\\\\")
+        .replace("|", "\\|")
+        .replace("\r", " ")
+        .replace("\n", " ")
+        .replace("`", "\\`")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+    )
+
+
 def format_remedy_markdown(plan: RemedyPlan, evidence: dict[str, Any]) -> str:
     """Render one source's plan as the markdown posted to the issue or PR."""
     city = evidence.get("city", {})
@@ -530,16 +546,16 @@ def format_remedy_markdown(plan: RemedyPlan, evidence: dict[str, Any]) -> str:
     ]
     for proposal in plan.accepted:
         if proposal.action == "new_feed":
-            target = f"new feed `{proposal.new_feed_slug}`"
+            target = f"new feed {proposal.new_feed_slug}"
         elif proposal.action == "single_uid_inclusion":
             target = ", ".join(
-                f"`{slug}` ({', '.join(proposal.provider_guids)})" for slug in proposal.target_feeds
+                f"{slug} ({', '.join(proposal.provider_guids)})" for slug in proposal.target_feeds
             )
         else:
-            target = ", ".join(f"`{slug}`" for slug in proposal.target_feeds)
+            target = ", ".join(proposal.target_feeds)
         lines.append(
-            f"| `{proposal.unexpected_body}` | **{proposal.action}** | {target} "
-            f"| {proposal.rationale} |"
+            f"| {_markdown_table_cell(proposal.unexpected_body)} | **{proposal.action}** | "
+            f"{_markdown_table_cell(target)} | {_markdown_table_cell(proposal.rationale)} |"
         )
     if not plan.accepted:
         lines.append("| _(none accepted)_ | | | |")
@@ -554,8 +570,8 @@ def format_remedy_markdown(plan: RemedyPlan, evidence: dict[str, Any]) -> str:
         ]
         for rejected in plan.rejected:
             lines.append(
-                f"| `{rejected.proposal.unexpected_body}` | {rejected.proposal.action} "
-                f"| {rejected.reason} |"
+                f"| {_markdown_table_cell(rejected.proposal.unexpected_body)} | "
+                f"{rejected.proposal.action} | {_markdown_table_cell(rejected.reason)} |"
             )
         lines += ["", "</details>"]
     return "\n".join(lines)

@@ -114,6 +114,24 @@ def test_stale_commands_are_authorized_review_prs_from_fresh_main():
     assert "HEAD:main" not in run
 
 
+def test_remedy_workflows_request_static_minimum_permissions():
+    commands, command_job = _job("remedy-commands.yml", "remedy")
+    assert commands["permissions"] == {}
+    assert command_job["permissions"] == {
+        "actions": "write",
+        "contents": "read",
+        "issues": "write",
+    }
+
+    remedy, remedy_job = _job("remedy-unexpected-bodies.yml", "remedy")
+    assert remedy["permissions"] == {"contents": "read", "issues": "write"}
+    assert remedy_job["permissions"] == {
+        "contents": "write",
+        "issues": "write",
+        "pull-requests": "write",
+    }
+
+
 def test_issue_command_workflows_share_exact_repository_permission_gate():
     for workflow_file, job_name, script in (
         ("stale-commands.yml", "lifecycle-pr", "scripts/stale_commands.py"),

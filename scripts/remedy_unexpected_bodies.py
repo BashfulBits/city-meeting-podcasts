@@ -44,6 +44,13 @@ from citypods.state import pull_canonical_state
 from citypods.storage import make_storage
 
 
+def _issue_number(value: str) -> str:
+    """Accept a decimal GitHub issue number, never a flag or branch-path fragment."""
+    if not value.isascii() or not value.isdecimal():
+        raise argparse.ArgumentTypeError(f"--issue must be a number, got {value!r}")
+    return value
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -51,7 +58,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         required=True,
         help="Evidence JSON written by `audit_feeds.py --unexpected-body-evidence`",
     )
-    parser.add_argument("--issue", help="GitHub issue number to comment on / resolve")
+    parser.add_argument(
+        "--issue",
+        type=_issue_number,
+        help="GitHub issue number to comment on / resolve",
+    )
     parser.add_argument(
         "--apply",
         action="store_true",
@@ -265,6 +276,21 @@ def _existing_pr_url(branch: str, *, cwd: Path) -> str | None:
     return result.stdout.strip() or None
 
 
+def _checkout_remedy_branch(branch: str, repo_root: Path) -> None:
+    """Check out a prior digest branch when it exists remotely, otherwise create it."""
+    # Checkout runs with `persist-credentials: false` (repo-wide policy, so a compromised
+    # package script cannot read a token out of the git config during `pip install -e .`). Wire
+    # credentials in only now. A fresh runner does not have branches created by earlier runs, so
+    # fetch the digest-named branch before deciding whether to create it.
+    _run(["gh", "auth", "setup-git"], cwd=repo_root, check=False)
+    fetched = _run(["git", "fetch", "origin", f"{branch}:{branch}"], cwd=repo_root, check=False)
+    existing = _run(["git", "rev-parse", "--verify", branch], cwd=repo_root, check=False)
+    if fetched.returncode == 0 or existing.returncode == 0:
+        _run(["git", "checkout", branch], cwd=repo_root)
+    else:
+        _run(["git", "checkout", "-b", branch], cwd=repo_root)
+
+
 def _open_pull_request(issue: str, evidence_path: Path, repo_root: Path) -> str | None:
     """Push the applied changes and open (or reuse) a PR. Returns its URL, or None."""
     if not os.environ.get("GH_TOKEN"):
@@ -276,17 +302,7 @@ def _open_pull_request(issue: str, evidence_path: Path, repo_root: Path) -> str 
     digest = json.loads(evidence_path.read_text(encoding="utf-8")).get("digest", "manual")[:12]
     branch = f"fix/{issue}-unexpected-feed-bodies-{digest}"
 
-    existing = _run(["git", "rev-parse", "--verify", branch], cwd=repo_root, check=False)
-    if existing.returncode == 0:
-        _run(["git", "checkout", branch], cwd=repo_root)
-    else:
-        _run(["git", "checkout", "-b", branch], cwd=repo_root)
-
-    # Checkout runs with `persist-credentials: false` (repo-wide policy, so a compromised
-    # package script cannot read a token out of the git config during `pip install -e .`). Wire
-    # credentials in only now, and unconditionally: `gh pr list` below needs it too, even when
-    # nothing new is staged.
-    _run(["gh", "auth", "setup-git"], cwd=repo_root, check=False)
+    _checkout_remedy_branch(branch, repo_root)
 
     _run(["git", "add", "config/feeds"], cwd=repo_root)
     staged = _run(["git", "diff", "--cached", "--quiet"], cwd=repo_root, check=False)

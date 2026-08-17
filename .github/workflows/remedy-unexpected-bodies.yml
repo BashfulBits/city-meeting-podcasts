@@ -41,12 +41,13 @@ concurrency:
 jobs:
   remedy:
     runs-on: ubuntu-latest
-    # `apply` pushes a branch and opens a PR, so it needs more than the read-only default.
-    # audit.yml's own dispatch always passes `apply: true` explicitly, same as a human would.
+    # GitHub Actions requires literal permission values. This workflow accepts an apply request,
+    # which pushes a branch and opens a PR, so it keeps the required static write scopes. The
+    # script itself only mutates when `--apply` is passed, and dispatch is limited to writers.
     permissions:
-      contents: ${{ inputs.apply && 'write' || 'read' }}
+      contents: write
       issues: write
-      pull-requests: ${{ inputs.apply && 'write' || 'read' }}
+      pull-requests: write
     steps:
       # workflow_dispatch lets the caller pick any branch, tag, or commit, and this job runs the
       # checked-out code with provider, storage, and LLM credentials. Refuse anything but main

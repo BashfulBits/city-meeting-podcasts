@@ -54,6 +54,16 @@ def _block_bounds(lines: list[str], key: str) -> tuple[int, int, str]:
 
 def _subkey_items_end(lines: list[str], start: int, end: int, indent: str, key: str) -> int:
     """Index one past the last line belonging to ``indent + key:`` within a block, or -1."""
+    inline = next(
+        (
+            i
+            for i in range(start, end)
+            if lines[i].startswith(f"{indent}{key}:") and lines[i].rstrip() != f"{indent}{key}:"
+        ),
+        -1,
+    )
+    if inline != -1:
+        raise ValueError(f"{key!r} is written inline; line-level insertion is not supported")
     header = next(
         (i for i in range(start, end) if lines[i].rstrip() == f"{indent}{key}:"),
         -1,

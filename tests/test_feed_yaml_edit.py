@@ -80,6 +80,22 @@ def test_add_body_include_creates_the_key_when_absent():
     ]
 
 
+@pytest.mark.parametrize(
+    ("edit", "key", "replacement"),
+    [
+        (add_body_any, "body_any", 'body_any: ["Work Session"]'),
+        (add_body_include, "body_includes", "body_includes: []"),
+    ],
+)
+def test_inline_selector_keys_are_rejected(edit, key, replacement):
+    text = WITH_COMMENTS.replace(f"{key}:\n", f"{replacement}\n")
+    with pytest.raises(ValueError, match=rf"{key!r} is written inline"):
+        if edit is add_body_any:
+            edit(text, "Special Meeting")
+        else:
+            edit(text, "2", "Joint Luncheon")
+
+
 def test_edits_touch_only_the_intended_lines():
     out = add_body_any(WITH_COMMENTS, "Special Meeting")
     added = set(out.splitlines()) - set(WITH_COMMENTS.splitlines())
