@@ -38,7 +38,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -474,6 +474,53 @@ def _gh(*args: str, check: bool = True) -> str:
     if check and proc.returncode != 0:
         raise RuntimeError(f"gh {' '.join(args)} failed: {proc.stderr.strip()}")
     return proc.stdout
+
+
+def _issue_number_from_url(url: str) -> int | None:
+    """Parse the trailing issue number off ``gh issue create``'s stdout URL, or None."""
+    tail = url.strip().rsplit("/", 1)[-1]
+    return int(tail) if tail.isdigit() else None
+
+
+def _dispatch_remedy_workflow(issue_number: int, *, github_repo: str | None) -> None:
+    """Kick off ``remedy-unexpected-bodies.yml`` for a freshly-created unexpected-body issue.
+
+    Uses this job's own ``actions: write`` permission to trigger the remedy workflow's ordinary
+    ``workflow_dispatch`` entrypoint -- the same one a human uses from the Actions tab -- rather
+    than having that workflow also listen for ``issues: opened``. An issue-opened listener would
+    fire for any issue any GitHub user opens on this public repo, with an entirely
+    attacker-controlled body, forcing the remedy workflow itself to re-verify who filed the
+    triggering issue and what it said before trusting it. Dispatching from here needs none of
+    that: only something already holding write access to this repo's Actions can reach this call
+    at all, so there's no external trigger surface to spoof.
+
+    Best-effort: a failure here does not fail the audit run. The issue and its findings are
+    already correctly filed regardless of whether the remedy workflow could be kicked off; a
+    maintainer can always dispatch it manually.
+    """
+    repo = github_repo or os.environ.get("GITHUB_REPOSITORY", "")
+    if not repo:
+        print(
+            "::warning::GITHUB_REPOSITORY unset; cannot dispatch the remedy workflow",
+            file=sys.stderr,
+        )
+        return
+    try:
+        _gh(
+            "workflow",
+            "run",
+            "remedy-unexpected-bodies.yml",
+            "--repo",
+            repo,
+            "-f",
+            f"issue={issue_number}",
+            "-f",
+            "apply=true",
+        )
+    except RuntimeError as exc:
+        print(f"::warning::failed to dispatch the remedy workflow: {exc}", file=sys.stderr)
+        return
+    print(f"dispatched remedy-unexpected-bodies.yml for issue #{issue_number}")
 
 
 def _ensure_labels() -> None:
@@ -1065,8 +1112,14 @@ def _reconcile_grouped(
     feed_context: Mapping[str, _FeedContext] | None,
     existing: dict[str, dict],
     now: datetime,
+    on_issue_created: Callable[[str, int], None] | None = None,
 ) -> tuple[int, int, int]:
     """Reconcile the consolidated (one-issue-per-check) model.
+
+    ``on_issue_created(check, issue_number)`` fires only when this run *creates* a new issue for
+    ``check`` -- never on a later run that merely updates an already-open one with new/changed
+    rows. Automated remediation (``_dispatch_remedy_workflow``) hooks this to kick off exactly
+    once per fresh finding, not once per day it stays open.
 
     Returns ``(created, updated, closed)``."""
     wanted = {
@@ -1154,7 +1207,7 @@ def _reconcile_grouped(
                 human_note = " [needs:human-verification]" if human_label else ""
                 print(f"CREATE  {title}  [{sev_label}]{human_note}")
             else:
-                _gh(
+                created_url = _gh(
                     "issue",
                     "create",
                     "--title",
@@ -1169,6 +1222,10 @@ def _reconcile_grouped(
                     sev_label,
                     *human_label,
                 )
+                if on_issue_created is not None:
+                    number = _issue_number_from_url(created_url)
+                    if number is not None:
+                        on_issue_created(check, number)
             created += 1
             continue
 
@@ -1683,13 +1740,16 @@ def reconcile(
     feed_context: Mapping[str, _FeedContext] | None = None,
     github_repo: str | None = None,
     now: datetime | None = None,
+    on_issue_created: Callable[[str, int], None] | None = None,
 ) -> int:
     """Reconcile the current findings against open GitHub issues.
 
     ``city_of`` maps feed slug -> owning city/entity slug (for the consolidated model's
     per-city count and display column); feeds absent from the mapping display under their own
     slug. ``audited_slugs`` restricts which feeds this run may create/update/close rows or
-    issues for (``None`` = every feed was evaluated, e.g. an unscoped run)."""
+    issues for (``None`` = every feed was evaluated, e.g. an unscoped run). ``on_issue_created``
+    only fires for the consolidated (grouped) model; per-slug and stale-cohort checks have no
+    remediation hook (yet)."""
     now = now or datetime.now(UTC)
     city_of = city_of or {}
     github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
@@ -1720,6 +1780,7 @@ def reconcile(
         feed_context=feed_context,
         existing=existing,
         now=now,
+        on_issue_created=on_issue_created,
     )
     c2, u2, cl2 = _reconcile_per_slug(
         findings,
@@ -1772,6 +1833,13 @@ def main(argv: list[str] | None = None) -> int:
             "becomes a feed-health finding"
         ),
     )
+    ap.add_argument(
+        "--unexpected-body-evidence",
+        help=(
+            "write the rows behind each unexpected-body finding to this JSON path, for "
+            "scripts/remedy_unexpected_bodies.py (read-only; adds no provider fetches)"
+        ),
+    )
     ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--config-dir", default="config")
     args = ap.parse_args(argv)
@@ -1801,6 +1869,7 @@ def main(argv: list[str] | None = None) -> int:
     state_dir = pull_canonical_state(site_config, output_dir)
 
     timeline_diagnostics: list[dict] | None = [] if args.timeline_diagnostics else None
+    unexpected_evidence: list | None = [] if args.unexpected_body_evidence else None
     now = datetime.now(UTC)
     findings = audit_all(
         cities,
@@ -1809,6 +1878,7 @@ def main(argv: list[str] | None = None) -> int:
         check_enclosures_net=args.enclosures,
         check_meetings_urls_net=args.meetings_urls,
         timeline_diagnostics=timeline_diagnostics,
+        unexpected_evidence=unexpected_evidence,
         persist_timeline_integrity=args.persist_timeline_integrity and not args.dry_run,
         timeline_repair_min_delta=args.timeline_repair_min_delta,
         timeline_repair_cohort=args.timeline_repair_cohort,
@@ -1822,6 +1892,12 @@ def main(argv: list[str] | None = None) -> int:
             for row in timeline_diagnostics:
                 f.write(json.dumps(row, sort_keys=True) + "\n")
         print(f"timeline diagnostics: wrote {len(timeline_diagnostics)} row(s) to {path}")
+    if args.unexpected_body_evidence and unexpected_evidence is not None:
+        from citypods.audit_remedy import write_evidence_file
+
+        path = Path(args.unexpected_body_evidence)
+        count = write_evidence_file(unexpected_evidence, path, repo_root=".")
+        print(f"unexpected-body evidence: wrote {count} source bundle(s) to {path}")
     if args.persist_timeline_integrity and not args.dry_run:
         storage = make_storage(site_config, site_config.get("base_url", ""), output_dir)
         prefixes = sorted({f"sources/{source_key(city)}/" for city in cities})
@@ -1836,6 +1912,7 @@ def main(argv: list[str] | None = None) -> int:
     city_of = {c.slug: (c.city_entity or c.slug) for c in cities}
     github_repo = site_config.get("github_repo")
     feed_context = {c.slug: _feed_context(c, github_repo=github_repo, now=now) for c in cities}
+    newly_created: dict[str, int] = {}
     reconcile(
         findings,
         dry_run=args.dry_run,
@@ -1844,7 +1921,11 @@ def main(argv: list[str] | None = None) -> int:
         feed_context=feed_context,
         github_repo=github_repo,
         now=now,
+        on_issue_created=newly_created.__setitem__,
     )
+    unexpected_body_issue = newly_created.get("unexpected-body")
+    if unexpected_body_issue is not None:
+        _dispatch_remedy_workflow(unexpected_body_issue, github_repo=github_repo)
     return 0
 
 

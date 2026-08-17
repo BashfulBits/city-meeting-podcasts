@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Configurable global token estimate buffer (`token_estimate_buffer`).** Added a new top-level
+  setting `token_estimate_buffer` (e.g. `0.90`) in `config/provider_limits.yml` that applies a
+  scaling multiplier to all compiled token rate budgets (route `tpm`, provider `monthly_tpm`,
+  and provider `tpm`) across `llm_routes.json` and `dispatch_limits.json`. This provides a
+  zero-runtime-overhead calibration knob against token estimation drift and rate limit 429s.
+
 ### Fixed
 
 - **Legacy agenda records with partial state can now be reset and rebuilt safely.** Added the
@@ -25,6 +33,79 @@ Phase R (Research-Tool Surface)._
   `AgendaTextStage` now requires the artifact key for its accepted-document reuse fast path, so a
   missing pointer cannot permanently prevent chapter dispatch. This is a metadata repair only:
   it does not bump the agenda pipeline version or invalidate completed agenda documents globally.
+  
+- **`/remedy` command to re-run remediation on an issue that grew new rows.** `audit.yml`
+  dispatches `remedy-unexpected-bodies.yml` automatically, but only on the run that *creates* a
+  consolidated `unexpected-body` issue — not on a later run that adds or changes rows on one
+  still open, so nothing kicks off remediation for those newer findings by itself. Commenting
+  `/remedy` on that issue re-dispatches it. `remedy-commands.yml` follows `stale-commands.yml`'s
+  shape exactly: the same `citypods.github_permissions` write-or-higher check (not the possibly
+  stale `author_association` alone) via `scripts/remedy_commands.py`, which also confirms the
+  commented-on issue actually carries the audit's own `unexpected-body` marker before dispatching
+  — so `/remedy` on an unrelated issue, or from a non-collaborator, does nothing but post an
+  explanation. No `pip install` needed for the check itself: `citypods/github_permissions.py`
+  has zero third-party imports.
+
+- **Automated remediation for `unexpected-body` audit findings.** The daily audit reports provider
+  labels no feed selector covers; classifying one is a taxonomy call, and this wires an LLM into
+  that step under a strict trust boundary. The response schema carries no path and no YAML — the
+  model returns a feed slug, an action, and provider GUIDs, and every value is re-derived from the
+  audit's own evidence before anything is written: the label must have been observed for that
+  source, target slugs must be feeds on that same source, GUIDs must belong to episodes carrying
+  the label, and a new slug must be well-formed and unused. Anything unverifiable is rejected with
+  a reason and reported rather than applied, and the applier resolves slugs to paths through a map
+  built by scanning `config/feeds`, so no write path originates from model output. Feed edits are
+  line-level insertions (`citypods/feed_yaml_edit.py`) that preserve the hand-written comments a
+  `safe_dump` round-trip would erase, each re-parsed and diffed before the write. Evidence is
+  collected during the audit's existing fetch (`audit_feeds.py --unexpected-body-evidence`, reusing
+  the new `collect_unexpected_bodies`), so there is no second provider fetch and no second
+  definition of "unmatched". Applied changes are gated on config reload plus repo-wide Ruff lint,
+  Ruff format, and the full `pytest -q`, reverting the tree on failure.
+
+  Runs automatically: `audit.yml` dispatches `remedy-unexpected-bodies.yml` (its own
+  `workflow_dispatch`, invoked via `gh workflow run` with `audit.yml`'s narrowly-scoped
+  `actions: write`) the moment `reconcile()` *creates* a new consolidated `unexpected-body`
+  issue — never on a later run that only updates an already-open one, so this fires once per
+  fresh finding, not once per day it stays open. Deliberately not an `issues: opened` listener:
+  that fires for any issue any GitHub user opens on this public repo with an attacker-controlled
+  body, forcing the remedy workflow to re-verify the triggering issue's authorship and content
+  before trusting it. Dispatching from `audit.yml`'s own job needs none of that — only something
+  already holding `actions: write` on the repo can reach `workflow_dispatch` at all. Every
+  terminal outcome (opened or reused PR, nothing to change, or verification failure) posts one
+  comment back on the issue with the full classification and a link to the PR; re-runs over
+  unchanged findings reuse the same digest-named branch and PR instead of erroring on a
+  duplicate `gh pr create`. Still runnable manually from the Actions tab.
+
+- **Direct LLM calls now route through the Cloudflare AI Gateway, and do so with the right URL.**
+  A direct provider call is proxied through the gateway whenever it's enabled and configured, so
+  runner-side requests land in the same analytics surface as the Worker's. The gateway is a
+  transparent proxy, so this is an observability change, not a routing one — it is on by default,
+  with `LLM_AI_GATEWAY=0` as the
+  kill switch. Two things make it safe: the rewrite is scoped to the **direct** transport
+  (`_provider_options(..., direct=…)`), leaving the `llm-dispatch` payload untouched — the Worker
+  already applies its own gateway, and handing it an `api_base` would double-proxy the call; and
+  each route's generated `ai_gateway_chat_path` now actually contributes its prefix to `api_base`.
+  LiteLLM appends `/chat/completions` on its own, so a gateway `api_base` of
+  `…/google-ai-studio` resolves to a 404 — Gemini's OpenAI-compat endpoint lives under
+  `/v1beta/openai`, and Mistral's under `/v1`. The field was previously plumbed through
+  `LLMRoute` and the compiled catalog but never read. Routing tests now assert the full request
+  URL for every gateway provider rather than `api_base` alone, cover the kill switch and the
+  unconfigured-gateway fallback, and pin that the dispatch payload carries neither `api_base` nor
+  `cf-aig-authorization`. `AI_GATEWAY_AUTH_TOKEN` is wired into the four workflows that make
+  direct provider calls, with a workflow contract test so a new one cannot silently miss it.
+
+- **Resolve 7 unexpected meeting bodies from the feed-health audit (#1231).** The daily audit
+  flagged seven provider labels no feed selector covered. Recurring series were unioned onto the
+  owning feed's `body_any`: Addison's bare `Special Meeting` (35 rows) onto City Council, and Fort
+  Worth's provider-duplicated `Audit and Finance Committee Audit and Finance Committee` (14 rows)
+  onto the Audit Committee feed — the duplicated label matches by substring, so the single
+  un-duplicated selector covers it. Pflugerville's bare `TIRZ` label (5 rows) got a dedicated
+  `pflugerville-tx-tirz-board` feed. True one-offs were pinned by exact provider GUID under
+  `body_includes`: Arlington's `Virtual Town Hall on Future Active Adult Center`, Dallas's
+  `Purchasing Bids 7-23-2015` (alongside the existing `7-30-2015` row), Denton's `Joint Luncheon
+  with Library Board` (Council is the only configured body of the pair), and Waco's `Texas Ranger
+  Hall of Fame & Museum Advisory Board Meeting` — routed to the Boards and Commissions feed rather
+  than City Council, since an advisory board is not a Council session.
 
 - **Cross-lane `links` clobber silently dropped `agenda_text_artifact_key` (and any other
   `links` entry) on push.** `links` was the one derived field never added to `ARTIFACT_BLOCKS` —

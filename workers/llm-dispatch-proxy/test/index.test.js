@@ -2080,11 +2080,11 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
   assert.equal(batchResult.count, 2);
   assert.equal(batchResult.completedCount, 2);
   assert.equal(calls.length, 2);
-  // Candidate 0: delay 0ms. Candidate 1: delay <= 3840ms (max of RPM 2000ms, TPM 3840ms for 1024 tokens).
+  // Candidate 0: delay 0ms. Candidate 1: delay <= 4267ms (max of RPM 2000ms, TPM 4266.67ms for 1024 tokens with 90% buffer).
   assert.equal(slept.length, 1);
   assert.ok(
-    slept[0] > 3_000 && slept[0] <= 3_840,
-    `expected slept delay within (3000, 3840], got ${slept[0]}`,
+    slept[0] > 3_000 && slept[0] <= 4_300,
+    `expected slept delay within (3000, 4300], got ${slept[0]}`,
   );
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });

@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from citypods.compute.llm_policy import ROUTE_REGISTRY
+
 _PINNED_SHA = re.compile(r"@[0-9a-f]{40}(?:\s|$)")
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
@@ -110,6 +112,24 @@ def test_stale_commands_are_authorized_review_prs_from_fresh_main():
     assert "git push --force-with-lease" in run
     assert "HEAD:$BRANCH" in run
     assert "HEAD:main" not in run
+
+
+def test_remedy_workflows_request_static_minimum_permissions():
+    commands, command_job = _job("remedy-commands.yml", "remedy")
+    assert commands["permissions"] == {}
+    assert command_job["permissions"] == {
+        "actions": "write",
+        "contents": "read",
+        "issues": "write",
+    }
+
+    remedy, remedy_job = _job("remedy-unexpected-bodies.yml", "remedy")
+    assert remedy["permissions"] == {"contents": "read", "issues": "write"}
+    assert remedy_job["permissions"] == {
+        "contents": "write",
+        "issues": "write",
+        "pull-requests": "write",
+    }
 
 
 def test_issue_command_workflows_share_exact_repository_permission_gate():
@@ -1296,3 +1316,43 @@ def test_availability_digest_scopes_secrets_to_steps_that_need_them():
             k.startswith(("B2_", "R2_", "CLOUDFLARE_", "GRANICUS_"))
             for k in (step.get("env") or {})
         )
+
+
+# Every provider API key any route can be dispatched with. Derived from the compiled catalog
+# rather than hand-listed, so a provider added to config/provider_limits.yml (e.g. #1223/#1135's
+# SambaNova, SiliconFlow, Kilo, OpenRouter, and the Gemini secondary account) is covered
+# automatically instead of silently bypassing the gateway-auth assertion below.
+_DIRECT_PROVIDER_KEYS = frozenset(
+    route.api_key_env for route in ROUTE_REGISTRY.values() if route.api_key_env
+)
+
+
+def _direct_llm_steps() -> list[tuple[str, dict]]:
+    found = []
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        wf = yaml.safe_load(path.read_text())
+        for job in (wf.get("jobs") or {}).values():
+            for step in job.get("steps") or []:
+                env = step.get("env") or {}
+                if any(key in env for key in _DIRECT_PROVIDER_KEYS):
+                    found.append((path.name, step))
+    return found
+
+
+def test_direct_llm_steps_that_reach_the_gateway_can_authenticate_to_it():
+    """A step routed through the AI Gateway must carry the token the gateway may require.
+
+    `citypods.compute.llm` routes direct calls via the gateway whenever `CLOUDFLARE_ACCOUNT_ID`
+    is present (the `LLM_AI_GATEWAY=0` kill switch aside). That account id is set in nearly every
+    workflow for R2, so a step that gained provider keys without `AI_GATEWAY_AUTH_TOKEN` would
+    silently start failing against an authenticated gateway.
+    """
+    steps = _direct_llm_steps()
+    assert steps, "expected at least one direct-provider LLM step"
+    missing = [
+        f"{name}: {step.get('name', '<unnamed>')}"
+        for name, step in steps
+        if "CLOUDFLARE_ACCOUNT_ID" in (step.get("env") or {})
+        and "AI_GATEWAY_AUTH_TOKEN" not in (step.get("env") or {})
+    ]
+    assert missing == []

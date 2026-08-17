@@ -43,6 +43,49 @@ def _json_default(value: object) -> str:
     raise TypeError(f"{type(value).__name__} is not JSON serializable")
 
 
+def _validate_token_buffer(raw_buffer: Any) -> float:
+    """Validate and normalize the global token estimate buffer multiplier.
+
+    Returns a float multiplier in (0.0, 1.0]. A missing/null value defaults to 1.0 (unbuffered).
+    Strings with a trailing '%' (e.g. '90%') are parsed as percentages. Values outside (0.0, 1.0]
+    or non-numeric types are rejected.
+    """
+    if raw_buffer is None:
+        return 1.0
+    if isinstance(raw_buffer, bool):
+        raise ValueError(f"token_estimate_buffer must be a number, got boolean {raw_buffer!r}")
+    if isinstance(raw_buffer, str):
+        val_str = raw_buffer.strip()
+        if val_str.endswith("%"):
+            try:
+                numeric_val = float(val_str[:-1].strip()) / 100.0
+            except ValueError as exc:
+                raise ValueError(
+                    f"token_estimate_buffer has invalid percentage value: {raw_buffer!r}"
+                ) from exc
+        else:
+            try:
+                numeric_val = float(val_str)
+            except ValueError as exc:
+                raise ValueError(
+                    f"token_estimate_buffer has invalid numeric value: {raw_buffer!r}"
+                ) from exc
+    elif isinstance(raw_buffer, (int, float)):
+        numeric_val = float(raw_buffer)
+    else:
+        raise ValueError(f"token_estimate_buffer must be a number, got {type(raw_buffer).__name__}")
+
+    if not math.isfinite(numeric_val) or numeric_val <= 0:
+        raise ValueError(
+            f"token_estimate_buffer must be a positive finite number, got {raw_buffer!r}"
+        )
+    if numeric_val > 1.0:
+        raise ValueError(
+            f"token_estimate_buffer must be <= 1.0 (e.g. 0.90 for 90%), got {raw_buffer!r}"
+        )
+    return numeric_val
+
+
 def _direct_model(provider: str, upstream_model: str) -> str:
     """Return the LiteLLM model selector for a compiled provider route.
 
@@ -133,6 +176,10 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
                     str(source.get("provider", "")), str(source.get("upstream_model", ""))
                 ),
                 "api_base": provider_cfg.get("api_base", ""),
+                "ai_gateway_slug": provider_cfg.get("ai_gateway_slug", source.get("provider", "")),
+                "ai_gateway_chat_path": provider_cfg.get(
+                    "ai_gateway_chat_path", "/chat/completions"
+                ),
                 "chat_path": provider_cfg.get("chat_path", "/v1/chat/completions"),
                 "api_key_env": (account or {}).get("api_key_env", ""),
                 "reset_timezone": source.get(
@@ -525,7 +572,24 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
             file=sys.stderr,
         )
 
+    raw_buffer = raw.get("token_estimate_buffer")
+    if raw_buffer is None:
+        raw_buffer = raw.get("token_usage_buffer")
+    token_estimate_buffer = _validate_token_buffer(raw_buffer)
+
     providers = raw.get("providers", {})
+    if token_estimate_buffer != 1.0:
+        for provider_cfg in providers.values():
+            if isinstance(provider_cfg, dict):
+                if provider_cfg.get("monthly_tpm") is not None:
+                    provider_cfg["monthly_tpm"] = max(
+                        1, int(math.floor(provider_cfg["monthly_tpm"] * token_estimate_buffer))
+                    )
+                if provider_cfg.get("tpm") is not None:
+                    provider_cfg["tpm"] = max(
+                        1, int(math.floor(provider_cfg["tpm"] * token_estimate_buffer))
+                    )
+
     routes = raw.get("routes", [])
     structured_output_profiles = _normalize_structured_output_profiles(
         raw.get("structured_output_profiles")
@@ -533,6 +597,8 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
     normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
     for route in normalized_routes:
         _validate_pricing_windows(route)
+        if route.get("tpm") is not None and token_estimate_buffer != 1.0:
+            route["tpm"] = max(1, int(math.floor(route["tpm"] * token_estimate_buffer)))
         provider_cfg = providers.get(route.get("provider"), {})
         for limit_name in ("input_context_limit", "output_context_limit"):
             value = route.get(limit_name)
@@ -568,6 +634,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
             "source": str(INPUT_YAML.relative_to(REPO_ROOT)),
             "routes_count": len(normalized_routes),
             "providers_count": len(providers),
+            "token_estimate_buffer": token_estimate_buffer,
         },
         "providers": providers,
         "structured_output_profiles": structured_output_profiles,

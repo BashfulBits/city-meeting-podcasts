@@ -419,6 +419,133 @@ The pipeline routes LLM jobs across 10 independent providers via [`config/provid
 \* The route-level values in `config/provider_limits.yml` are authoritative; this column summarizes
 the main native/gateway ceilings and intentionally does not replace the per-route catalog.
 
+### Unexpected-Body Remediation
+
+The daily audit's `unexpected-body` check reports provider labels no feed selector covers.
+Resolving one is a taxonomy decision, and the repository applies a fixed three-way rule:
+
+| Action | When | Effect |
+|---|---|---|
+| `union` | An alternate label or series name for a body that already has a feed | Appends to that feed's `source.body_any` |
+| `single_uid_inclusion` | A genuine one-off: special event, typo, dated label | Appends `{provider_guid, body}` to `source.body_includes` |
+| `new_feed` | A recurring, distinct board or commission | Creates `config/feeds/<slug>.yml` |
+
+Two rules constrain the choice. A **joint meeting** whose two bodies both have feeds is listed on
+both, so neither podcast loses it; when only one is configured it attaches there. And a body that
+is *not* a session of the target feed's own body — an independent advisory board, say — belongs on
+its own feed or a boards/commissions feed, never on a City Council feed.
+
+Selectors match by **normalized substring**, which makes a broader selector strictly subsume a
+narrower one: `body: "TIRZ"` already matches `"TIRZ Board"`, so adding the latter to `body_any`
+is dead config. Conversely a bare label like `"Special Meeting"` is only safe when no sibling
+feed on the same source carries it as a substring — worth checking, because per-body feeds share
+one source.
+
+#### Trust boundary
+
+`citypods/audit_remedy.py` uses an LLM for the taxonomy judgement only. **The model proposes; the
+module decides.** The response schema (`BodyProposal`) has no path or YAML field at all — the
+model returns a feed *slug*, an action, and provider GUIDs — and `validate_proposals` re-derives
+every value from the evidence bundle before anything is written:
+
+- `unexpected_body` must be a label the audit actually observed for that source.
+- `target_feeds` must be existing slugs **on that same source**, so a proposal cannot move a
+  meeting onto an unrelated city's podcast.
+- `provider_guids` must belong to episodes carrying that label.
+- `new_feed_slug` must be well-formed and unused.
+
+Anything failing is dropped with a reason and surfaced in the report rather than applied. The
+applier resolves a slug to a path through a map built by scanning `config/feeds` itself, so no
+write path ever originates from model output.
+
+Edits go through `citypods/feed_yaml_edit.py`, which inserts lines rather than round-tripping
+through `safe_dump` — feed YAML carries hand-written comments explaining individual selectors, and
+a round-trip would erase them and reflow every quoted scalar. Each edit is re-parsed and diffed
+(`assert_only_addition`) before the file is written, so a malformed insertion fails loudly.
+
+Evidence comes from the audit's own run (`audit_feeds.py --unexpected-body-evidence`), reusing
+`collect_unexpected_bodies` so remediation classifies exactly the rows the audit reported, with no
+second provider fetch and no second definition of "unmatched". `verify_remedy_mutations` then
+gates any applied change on config reload plus repo-wide Ruff lint, Ruff format, and `pytest -q`;
+a failure reverts the working tree instead of leaving it dirty.
+
+#### Trigger: dispatched by the audit run, not by watching for the issue
+
+`remedy-unexpected-bodies.yml` runs whenever `audit.yml`'s `reconcile()` *creates* a new
+consolidated `unexpected-body` issue — never on a later run that only adds rows to one still
+open, so remediation kicks off once per fresh finding rather than once per day it stays open.
+`_reconcile_grouped`'s `on_issue_created(check, issue_number)` hook fires only on that create
+branch; `scripts/audit_feeds.py`'s `main()` wires it to `_dispatch_remedy_workflow`, which runs
+`gh workflow run remedy-unexpected-bodies.yml -f issue=N -f apply=true` — the same
+`workflow_dispatch` entrypoint a human uses from the Actions tab, invoked with `audit.yml`'s own
+narrowly-scoped `actions: write` permission. A dispatch failure only warns; the issue itself is
+already correctly filed either way, and a maintainer can always run it manually.
+
+This is deliberately **not** an `issues: opened` listener on the remedy workflow. That trigger
+fires for every issue any GitHub user opens on this public repo, with a body that is entirely
+attacker-controlled — the workflow itself would then have to re-verify who filed the triggering
+issue and that its content actually matches before trusting it, and any lapse there is a
+free-standing LLM-quota/CI-minutes/spurious-PR abuse vector. Dispatching from `audit.yml`'s own
+job sidesteps that class of problem rather than defending against it: `workflow_dispatch` has no
+externally reachable surface at all — only something already holding `actions: write` on the
+repo can invoke it.
+
+**Catching up an issue that grew new rows.** The once-per-creation rule above means a later audit
+run that adds rows to an already-open `unexpected-body` issue does not re-trigger anything —
+those newer findings just sit there until someone acts. `remedy-commands.yml` covers that gap:
+commenting `/remedy` on the issue re-dispatches `remedy-unexpected-bodies.yml` the same way
+`audit.yml` does. It follows `stale-commands.yml`'s established slash-command shape exactly,
+including its permission gate — `scripts/remedy_commands.py` calls the shared
+`citypods.github_permissions.require_repository_write`, the same policy `stale-commands.yml` and
+the R12 issue-command flow use, rather than trusting the comment's `author_association` alone —
+and additionally confirms the commented-on issue actually carries the audit's own
+`<!-- citypods:feed-health:key=unexpected-body -->` marker before dispatching, so `/remedy` does
+nothing but explain itself when typed on an unrelated issue or by a non-collaborator.
+
+#### Cloudflare AI Gateway (direct transport only)
+
+A direct provider call is proxied through a Cloudflare AI Gateway whenever the gateway is both
+enabled and configured, so it lands in one analytics/log surface alongside the Worker's. The
+gateway is a transparent proxy — same upstream, same response body — so enabling it must never
+change a model's reply. It is therefore **on by default**, with `LLM_AI_GATEWAY=0` as the kill
+switch for a gateway outage. A call falls back to the provider's own upstream — silently, not as
+an error — whenever `LLM_AI_GATEWAY=0` is set, `CLOUDFLARE_ACCOUNT_ID`/`AI_GATEWAY_BASE_URL` is
+unset, or a route has no `ai_gateway_slug`; the dispatch transport is always excluded (below).
+
+The rewrite is scoped to the **direct** transport. `llm-dispatch` requests are unaffected: the
+Worker already fronts its own provider calls with the gateway on its side, and the payload sent to
+it is a provider-neutral job description rather than a LiteLLM call, so injecting an `api_base`
+there would double-proxy the request. `_provider_options(..., direct=…)` in
+[`citypods/compute/llm.py`](citypods/compute/llm.py) is that seam; the dispatch payload builder
+leaves it at its `False` default.
+
+Each route contributes two generated fields (`ai_gateway_slug`, `ai_gateway_chat_path`, compiled
+from `config/provider_limits.yml`). The slug names the gateway's provider segment — Cloudflare
+requires a `custom-` prefix for custom providers, hence `custom-zai`, `custom-opencode`. The chat
+path matters because **LiteLLM appends `/chat/completions` itself**, so only the part *before*
+that suffix belongs in `api_base`:
+
+| Provider | Gateway `api_base` | Resulting request URL |
+|---|---|---|
+| `gemini` | `…/google-ai-studio/v1beta/openai` | `…/v1beta/openai/chat/completions` |
+| `mistral` | `…/mistral/v1` | `…/mistral/v1/chat/completions` |
+| `deepseek`, `zai`, … | `…/deepseek` | `…/deepseek/chat/completions` |
+
+Dropping that prefix is a silent 404 on Gemini and Mistral only — the providers whose OpenAI-compat
+endpoint is not at the root — which is why the routing tests assert the full request URL rather
+than `api_base` alone.
+
+Configuration: `CLOUDFLARE_ACCOUNT_ID` + optional `AI_GATEWAY_ID` (default `citypods-dispatch`)
+derive the standard URL, or `AI_GATEWAY_BASE_URL` overrides it outright.
+`AI_GATEWAY_AUTH_TOKEN` supplies the `cf-aig-authorization` header an authenticated gateway
+requires — but it is not itself a fallback condition. A configured gateway (base URL + slug both
+present) with no token still routes through the gateway, just without that header: correct for a
+gateway that doesn't require auth, and a genuine misconfiguration otherwise, surfacing as the
+gateway rejecting the call rather than the provider seeing it. Set both together, as the four
+direct-calling workflows below do. Provider credentials are unaffected either way — they're
+unchanged and still sent per-route, since the gateway does not hold them. `llm-compat-probe.yml`
+deliberately has no account id wired, so it keeps probing raw provider endpoints.
+
 Gemini Live is not part of the R5 batch route: it is a persistent real-time multimodal/WebSocket model and
 does not match the current structured JSON batch contract. Gemini 3 Flash Preview is also excluded from the
 first high-volume R5 route because its account limit is too small. Both may be revisited for their intended
@@ -451,8 +578,13 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
   `llm-dispatch-worker-deploy.yml` (path-scoped test/deploy for the Cron-paced LLM Worker),
   `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
-  provider calls), `audit.yml` (daily feed-health → GitHub issues), `contracts.yml` (weekly live endpoint
-  contracts), `asr-bench.yml` (manual ASR benchmark), `audio-integrity.yml` (daily rotating,
+  provider calls), `audit.yml` (daily feed-health → GitHub issues; on creating a new
+  consolidated `unexpected-body` issue, dispatches `remedy-unexpected-bodies.yml` for it),
+  `remedy-unexpected-bodies.yml` (classifies that issue's findings, applies what survives
+  validation, and opens a PR; workflow_dispatch-only — see the trust-boundary note below for
+  why it does not also listen for `issues: opened`), `remedy-commands.yml` (the `/remedy`
+  slash command that re-dispatches it for an issue that grew rows after its first pass),
+  `contracts.yml` (weekly live endpoint contracts), `asr-bench.yml` (manual ASR benchmark), `audio-integrity.yml` (daily rotating,
   wall-clock-bounded audit of trusted content-addressed audio pointers — full catalog sweep
   monthly), `audio-gc.yml` (**"Storage reclaim"**, weekly —
   the unified reclaim policy, GH#496): reconciles the R2/B2 lifecycle rules, runs the orphan GC

@@ -90,6 +90,22 @@ class Finding:
     message: str
 
 
+@dataclass(frozen=True)
+class UnexpectedBodyEvidence:
+    """One source's ``unexpected-body`` rows plus the context needed to classify them.
+
+    Collected during the audit's own fetch, so automated remediation
+    (:mod:`citypods.audit_remedy`) never re-fetches a provider or re-derives which rows are
+    unmatched. Holds live objects; the remedy tooling serializes them into an evidence bundle.
+    """
+
+    source_key: str
+    city: City
+    related_cities: list[City]
+    rows: dict[str, dict[str, object]]
+    records: dict[str, dict]
+
+
 # ---------------------------------------------------------------------------
 # Archive-diff triage (issue #109)
 # ---------------------------------------------------------------------------
@@ -294,18 +310,18 @@ def check_view_cap(slug: str, view_counts: list[int], *, cap: int = 100) -> Find
     return None
 
 
-def check_unexpected_bodies(
-    slug: str,
+def collect_unexpected_bodies(
     episodes: list[Episode],
     records: Mapping[str, dict],
     *,
     related_cities: Iterable[City],
-) -> Finding | None:
-    """Find new or repeated provider labels not covered by any feed on this source.
+) -> dict[str, dict[str, object]]:
+    """The structured rows behind the ``unexpected-body`` finding, keyed by normalized label.
 
-    Historical excluded labels are ignored to avoid turning every known committee into an issue.
-    A label listed in ``body_includes`` is treated specially: a later provider row with the same
-    label but a different GUID is a useful signal that a one-off naming exception became a pattern.
+    Split out of :func:`check_unexpected_bodies` so automated remediation
+    (:mod:`citypods.audit_remedy`) classifies exactly the rows the audit reports, rather than
+    re-deriving "unmatched" with its own subtly different rules. Each value carries the provider's
+    verbatim ``body``, any ``one_offs`` sharing that label, and the ``episodes`` themselves.
     """
     specs: list[tuple[BodySelector, tuple[BodyInclusion, ...]]] = []
     one_offs: list[BodyInclusion] = []
@@ -316,7 +332,7 @@ def check_unexpected_bodies(
             specs.append((body, inclusions))
             one_offs.extend(inclusions)
     if not specs:
-        return None
+        return {}
 
     archived_labels = {body_key(record.get("body")) for record in records.values()}
     unexpected: dict[str, dict[str, object]] = {}
@@ -343,11 +359,33 @@ def check_unexpected_bodies(
         )
         row["episodes"].append(episode)
 
-    if not unexpected:
+    return unexpected
+
+
+def check_unexpected_bodies(
+    slug: str,
+    episodes: list[Episode],
+    records: Mapping[str, dict],
+    *,
+    related_cities: Iterable[City],
+) -> Finding | None:
+    """Find new or repeated provider labels not covered by any feed on this source.
+
+    Historical excluded labels are ignored to avoid turning every known committee into an issue.
+    A label listed in ``body_includes`` is treated specially: a later provider row with the same
+    label but a different GUID is a useful signal that a one-off naming exception became a pattern.
+    """
+    rows = collect_unexpected_bodies(episodes, records, related_cities=related_cities)
+    return _unexpected_body_finding(slug, rows)
+
+
+def _unexpected_body_finding(slug: str, rows: dict[str, dict[str, object]]) -> Finding | None:
+    """Render collected rows as the ``unexpected-body`` finding, or None when there are none."""
+    if not rows:
         return None
 
     details: list[str] = []
-    for row in unexpected.values():
+    for row in rows.values():
         row_episodes = row["episodes"]
         examples = "; ".join(
             f"title={episode.title!r}, published={episode.published.date()}, "
@@ -1496,6 +1534,7 @@ def audit_city(
     timeline_repair_min_delta: float | None = None,
     timeline_repair_cohort: str | None = None,
     timeline_finding_min_delta: float = 1.0,
+    unexpected_evidence: list[UnexpectedBodyEvidence] | None = None,
 ) -> list[Finding]:
     """Fetch a city once and run every applicable check, returning all findings.
 
@@ -1514,16 +1553,25 @@ def audit_city(
     # Stable identity + persisted artifacts (hosted audio) so the backlog check can tell a
     # stalled pipeline from a normal in-progress backfill.
     assign_uids(city, episodes)
-    unexpected = (
-        check_unexpected_bodies(
-            city.slug,
-            episodes,
-            records or {},
-            related_cities=related_cities,
-        )
-        if related_cities is not None
-        else None
-    )
+    unexpected = None
+    if related_cities is not None:
+        related_cities = list(related_cities)
+        rows = collect_unexpected_bodies(episodes, records or {}, related_cities=related_cities)
+        unexpected = _unexpected_body_finding(city.slug, rows)
+        if rows and unexpected_evidence is not None:
+            # Same fetch, same rows the finding reports. Automated remediation consumes this
+            # rather than re-deriving "unmatched" with its own rules.
+            from citypods.records import source_key
+
+            unexpected_evidence.append(
+                UnexpectedBodyEvidence(
+                    source_key=source_key(city),
+                    city=city,
+                    related_cities=related_cities,
+                    rows=rows,
+                    records=dict(records or {}),
+                )
+            )
     if records is not None:
         merge_persisted(episodes, records)
 
@@ -1880,9 +1928,13 @@ def audit_all(
     timeline_repair_min_delta: float | None = None,
     timeline_repair_cohort: str | None = None,
     timeline_finding_min_delta: float = 1.0,
+    unexpected_evidence: list[UnexpectedBodyEvidence] | None = None,
 ) -> list[Finding]:
     """Run every check across all cities. One fetch per city; ``view_counts`` and the
-    per-source record store are gathered so the provider-specific checks apply."""
+    per-source record store are gathered so the provider-specific checks apply.
+
+    Passing ``unexpected_evidence`` collects the per-source rows behind each ``unexpected-body``
+    finding for automated remediation, without a second provider fetch."""
     import tempfile
 
     from citypods.media import _probe_audio_duration_details, _probe_audio_duration_header
@@ -2028,6 +2080,7 @@ def audit_all(
             related_cities=(
                 cities_by_source[src_key] if src_key not in unexpected_checked_sources else None
             ),
+            unexpected_evidence=unexpected_evidence,
         )
         findings.extend(city_findings)
         if src_key not in unexpected_checked_sources and not any(
