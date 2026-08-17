@@ -180,6 +180,60 @@ def test_agenda_stage_retains_last_accepted_artifact_on_new_document_rejection(
     assert ep.agenda_text_quality["last_assessment"]["assessment_attempts"] == 2
 
 
+def test_agenda_stage_does_not_reuse_accepted_text_without_artifact_key(tmp_path, monkeypatch):
+    import citypods.agenda_text as agenda_text
+    import citypods.http as http
+    import citypods.stages as stages
+
+    ep = _ep("g1")
+    ep.links = {"agenda": "https://example.test/agenda.pdf"}
+    ep.agenda_text_url = ep.links["agenda"]
+    ep.agenda_backup_url = "https://cdn/old-backup.json"
+    ep.agenda_text_quality = {
+        "status": "accepted",
+        "eligibility": "agenda",
+        "pipeline_version": agenda_text.AGENDA_TEXT_QUALITY_VERSION,
+        "source_url": ep.agenda_text_url,
+    }
+    fetched = []
+
+    def fetch_document(*args, **kwargs):
+        fetched.append(1)
+        return b"agenda", "txt"
+
+    monkeypatch.setattr(http, "fetch_document_bytes", fetch_document)
+    monkeypatch.setattr(stages, "_validated_document_url", lambda city, url: url)
+    monkeypatch.setattr(
+        agenda_text,
+        "assess_agenda_document",
+        lambda *args, **kwargs: (
+            AgendaTextAssessment(
+                "Agenda item 1\nAgenda item 2",
+                kwargs["source_url"],
+                "txt",
+                "native",
+                "accepted",
+                "agenda",
+                "complete",
+            ),
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        stages,
+        "_store_document",
+        lambda ctx, source, uid, kind, content, content_type="text/plain": (
+            f"https://cdn/{kind}.json"
+        ),
+    )
+
+    stats = AgendaTextStage().process(None, _city(), [ep], _ctx(tmp_path))
+
+    assert fetched == [1]
+    assert stats.ran == 1
+    assert ep.links["agenda_text_artifact_key"].startswith("documents/")
+
+
 def test_audio_stage_skips_withheld_availability(tmp_path):
     # H16 PR3: a confirmed-empty/withheld episode must not be encoded/hosted, while a playable
     # sibling in the same set is processed normally and its record block is left untouched.

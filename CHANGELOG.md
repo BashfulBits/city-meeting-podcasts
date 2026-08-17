@@ -25,6 +25,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Legacy agenda records with partial state can now be reset and rebuilt safely.** Added the
+  dry-run-first `reset-agenda-chapter-state.yml` recovery workflow and
+  `scripts/reset_agenda_chapter_state.py`, which targets only records missing
+  `links["agenda_text_artifact_key"]`, preserves official provider links, clears stale derived
+  agenda/chapter state, and pushes audio/chapter-owned blocks through the race-safe merge path.
+  The repair and chapter lanes now share a CAS-backed R2 maintenance mutex, checked immediately
+  before durable chapter pushes so a concurrent chapter run cannot restore reset state.
+  `AgendaTextStage` now requires the artifact key for its accepted-document reuse fast path, so a
+  missing pointer cannot permanently prevent chapter dispatch. This is a metadata repair only:
+  it does not bump the agenda pipeline version or invalidate completed agenda documents globally.
+  
 - **`/remedy` command to re-run remediation on an issue that grew new rows.** `audit.yml`
   dispatches `remedy-unexpected-bodies.yml` automatically, but only on the run that *creates* a
   consolidated `unexpected-body` issue — not on a later run that adds or changes rows on one

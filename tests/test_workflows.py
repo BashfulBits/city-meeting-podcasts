@@ -1094,6 +1094,45 @@ def test_reset_backoff_workflow_exposes_targeted_hosted_filters():
     assert step_env["RECORD_UID"] == "${{ inputs.uid }}"
 
 
+def test_agenda_chapter_reset_workflow_is_manual_dry_run_by_default_and_targeted():
+    wf, job = _job("reset-agenda-chapter-state.yml")
+    assert set(_on(wf)) == {"workflow_dispatch"}
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+    assert inputs["provider"]["default"] == ""
+    assert inputs["source"]["default"] == ""
+    assert inputs["uid"]["default"] == ""
+    assert inputs["max_records"]["default"] == "25000"
+    assert inputs["apply"]["type"] == "boolean"
+    assert inputs["apply"]["default"] is False
+
+    step = next(s for s in job["steps"] if s.get("name") == "Reset partial agenda chapter state")
+    run = step["run"]
+    assert 'args+=(--provider "$PROVIDER")' in run
+    assert 'args+=(--source "$SOURCE")' in run
+    assert 'args+=(--uid "$RECORD_UID")' in run
+    assert "args+=(--apply)" in run
+    assert '"$GIT_REF" != "refs/heads/main"' in run
+    assert step["env"]["RECORD_UID"] == "${{ inputs.uid }}"
+    assert "UID" not in step["env"]
+    assert wf["permissions"]["actions"] == "read"
+
+
+@pytest.mark.parametrize("workflow", ["chapter-agenda.yml", "chapter-locator.yml"])
+def test_chapter_workflows_use_shared_maintenance_lease(workflow):
+    _wf, job = _job(workflow)
+    step = next(s for s in job["steps"] if s.get("name") and "agenda" in s["name"].lower())
+    env = step["env"]
+    assert env["CITYPODS_MAINTENANCE_LEASE_KEY"] == ("maintenance-leases/agenda-chapter-reset.json")
+    assert "github.run_id" in env["CITYPODS_MAINTENANCE_LEASE_OWNER"]
+    for name in (
+        "CLOUDFLARE_ACCOUNT_ID",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+        "R2_BUCKET",
+    ):
+        assert name in env
+
+
 def test_duration_normalize_workflow_is_manual_bounded_and_archived():
     wf, job = _job("duration-normalize.yml")
     assert set(_on(wf)) == {"workflow_dispatch"}

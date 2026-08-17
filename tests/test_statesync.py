@@ -317,6 +317,33 @@ def test_push_records_merged_preserves_concurrent_audio(tmp_path):
     assert load_records(state_dir, sk)["u1"]["audio"]["url"] == "NEW"
 
 
+def test_push_records_merged_checks_maintenance_lease_before_writing(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    save_records(state_dir, "src1", {"u1": {"uid": "u1"}})
+
+    class _Lease:
+        def __init__(self):
+            self.checked = 0
+
+        def assert_held(self):
+            self.checked += 1
+
+    lease = _Lease()
+    assert (
+        push_records_merged(
+            bucket,
+            state_dir,
+            ["src1"],
+            protected_blocks=protected_blocks_for_lane("chapter"),
+            lane="chapter",
+            maintenance_lease=lease,
+        )
+        == 1
+    )
+    assert lease.checked == 1
+
+
 def test_push_calendar_records_merged_preserves_concurrent_history(tmp_path):
     bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
     state_dir = tmp_path / "state"

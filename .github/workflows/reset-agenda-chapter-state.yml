@@ -1,0 +1,115 @@
+name: Reset partial agenda chapter state
+
+# One-time recovery for the legacy agenda artifact-pointer loss. Start with apply unchecked to
+# inspect the exact cohort, then run again with apply checked from main. The normal Audio and
+# chapter workflows rebuild the cleared derived state afterward.
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Only this provider (e.g. civicplus); blank = all providers"
+        required: false
+        type: string
+        default: ""
+      source:
+        description: "Only this source key; blank = all sources"
+        required: false
+        type: string
+        default: ""
+      uid:
+        description: "Only this record UID; blank = all matching records"
+        required: false
+        type: string
+        default: ""
+      max_records:
+        description: "Maximum matching records to reset in this run"
+        required: true
+        type: string
+        default: "25000"
+      apply:
+        description: "Actually clear and push state (unchecked = dry-run)"
+        required: false
+        type: boolean
+        default: false
+
+# Serialize with Audio. The job also performs a friendly wait for the two chapter workflows, but
+# the script's R2 maintenance lease is the atomic correctness boundary for reset vs. chapter writes.
+# GitHub Actions concurrency groups cannot atomically join all three existing groups.
+concurrency:
+  group: audio
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+
+      - name: Wait for active audio and chapter runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for workflow in audio.yml chapter-agenda.yml chapter-locator.yml; do
+            for attempt in $(seq 1 40); do
+              active=$(gh run list --workflow "$workflow" --status in_progress --json databaseId --limit 5 2>/dev/null || echo "[]")
+              queued=$(gh run list --workflow "$workflow" --status queued --json databaseId --limit 5 2>/dev/null || echo "[]")
+              active_count=$(printf '%s\n' "$active" | jq 'length')
+              queued_count=$(printf '%s\n' "$queued" | jq 'length')
+              if [ "$active_count" -eq 0 ] && [ "$queued_count" -eq 0 ]; then
+                echo "$workflow is idle"
+                break
+              fi
+              if [ "$attempt" -eq 40 ]; then
+                echo "$workflow remained active for 20 minutes; refusing to reset state" >&2
+                exit 1
+              fi
+              echo "$workflow is active; waiting 30 seconds ($attempt/40)"
+              sleep 30
+            done
+          done
+
+      - name: Reset partial agenda chapter state
+        env:
+          PROVIDER: ${{ inputs.provider }}
+          SOURCE: ${{ inputs.source }}
+          RECORD_UID: ${{ inputs.uid }}
+          MAX_RECORDS: ${{ inputs.max_records }}
+          APPLY_INPUT: ${{ inputs.apply }}
+          GIT_REF: ${{ github.ref }}
+        run: |
+          if [ "$APPLY_INPUT" = "true" ] && [ "$GIT_REF" != "refs/heads/main" ]; then
+            echo "apply is allowed only from the main branch (got $GIT_REF)" >&2
+            exit 1
+          fi
+          args=(--max-records "$MAX_RECORDS")
+          if [ -n "$PROVIDER" ]; then args+=(--provider "$PROVIDER"); fi
+          if [ -n "$SOURCE" ]; then args+=(--source "$SOURCE"); fi
+          if [ -n "$RECORD_UID" ]; then args+=(--uid "$RECORD_UID"); fi
+          if [ "$APPLY_INPUT" = "true" ]; then args+=(--apply); fi
+          PYTHONPATH=. python scripts/reset_agenda_chapter_state.py "${args[@]}"
