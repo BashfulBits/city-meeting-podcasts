@@ -50,7 +50,7 @@ jobs:
           # catalog-storage key: it cannot list this bucket.
           R2_ACCESS_KEY_ID: ${{ secrets.R2_RECLAIM_ACCESS_KEY }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_RECLAIM_SECRET_ACCESS_KEY }}
-          # R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}  # enable for a jurisdiction-specific endpoint
+          # R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}  # uncomment for jurisdiction-specific buckets
         run: |
           set -o pipefail
           ARGS=(--bucket citypods-llm-dispatch --workers 4 --r2-retries 5)
