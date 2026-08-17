@@ -397,7 +397,12 @@ def test_classify_parses_a_fenced_response(evidence):
 def test_classify_raises_when_the_request_is_deferred(evidence):
     class DeferringBackend:
         def run_inference(self, job):
-            return JobHandle(backend="litellm", task=job.task, recipe_hash=job.recipe_hash)
+            return JobHandle(
+                backend="litellm",
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                ref="queued-remedy",
+            )
 
     with pytest.raises(RuntimeError, match="deferred"):
         classify_unexpected_bodies(evidence, storage=MemStorage(), backend=DeferringBackend())

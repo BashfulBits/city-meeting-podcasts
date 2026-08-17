@@ -217,6 +217,10 @@ def _open_pull_request(issue: str, report_md: str, evidence_path: Path, repo_roo
         ],
         cwd=repo_root,
     )
+    # Checkout runs with `persist-credentials: false` (repo-wide policy, so a compromised
+    # package script cannot read a token out of the git config during `pip install -e .`). Wire
+    # credentials in only now, immediately before the push.
+    _run(["gh", "auth", "setup-git"], cwd=repo_root)
     _run(["git", "push", "-u", "origin", branch], cwd=repo_root)
 
     body = (
