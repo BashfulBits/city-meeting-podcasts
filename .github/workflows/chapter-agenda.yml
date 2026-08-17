@@ -3,7 +3,8 @@ name: Chapter agenda extraction
 on:
   schedule:
     # The Worker owns provider pacing; this workflow only submits/finalizes available work.
-    - cron: "*/15 * * * *"
+    # Run on even UTC hours; chapter-locator uses the alternating odd-hour slots.
+    - cron: "0 */2 * * *"
   workflow_dispatch: {}
 
 concurrency:
