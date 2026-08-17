@@ -175,5 +175,5 @@ def test_both_flash_lite_routes_present_with_real_free_tier_quotas():
         assert route.free and route.transport == "direct"
         assert route.quota.rpm == 15
         assert route.quota.rpd == 500
-        assert route.quota.tpm == 250_000
+        assert route.quota.tpm == 225_000
         assert route.quota.reset_timezone == "America/Los_Angeles"

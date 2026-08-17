@@ -5,6 +5,10 @@
 source: Centralized provider limits registry
 observed_on: 2026-08-13
 
+# Global token estimate buffer multiplier applied to token budgets (TPM, monthly_tpm) during
+# compilation to safeguard against token estimation drift and prevent 429 rate limit spikes.
+token_estimate_buffer: 0.90
+
 # Context ceilings are required on every physical route below. They are not provider defaults:
 # model families differ, and a gateway/account can expose a lower ceiling than the native model.
 
