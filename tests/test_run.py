@@ -146,6 +146,23 @@ def test_build_closes_compute_backend_when_impl_raises(monkeypatch):
     assert backend.closed is True
 
 
+def test_chapter_build_claims_and_releases_maintenance_lease(monkeypatch, tmp_path):
+    from tests._cas_fake import MemCAS
+
+    storage = MemCAS()
+    captured = {}
+    monkeypatch.setenv("CITYPODS_MAINTENANCE_LEASE_KEY", "maintenance/test.json")
+    monkeypatch.setenv("CITYPODS_MAINTENANCE_LEASE_OWNER", "test-owner")
+    monkeypatch.setattr(run, "load_site_config", lambda path: {"defaults": {}})
+    monkeypatch.setattr(run, "make_storage", lambda *args: storage)
+    monkeypatch.setattr(run, "_build_impl", lambda **kwargs: captured.update(kwargs) or [])
+
+    assert run.build(lane="chapter-agenda", output_dir=tmp_path) == []
+    assert captured["maintenance_lease"] is not None
+    payload, _etag = storage.get_bytes("maintenance/test.json")
+    assert json.loads(payload)["state"] == "released"
+
+
 def test_normalize_episode_durations_prefers_probe_without_listing(monkeypatch):
     ep = _ep("g-probe", hosted="https://cdn/g-probe.m4a")
     ep.audio_key = "audio/src/g-probe.m4a"

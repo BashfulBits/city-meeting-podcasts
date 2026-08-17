@@ -32,8 +32,9 @@ on:
         type: boolean
         default: false
 
-# Serialize with Audio. The job also waits for the two chapter workflows because GitHub Actions
-# concurrency groups cannot atomically join three existing groups.
+# Serialize with Audio. The job also performs a friendly wait for the two chapter workflows, but
+# the script's R2 maintenance lease is the atomic correctness boundary for reset vs. chapter writes.
+# GitHub Actions concurrency groups cannot atomically join all three existing groups.
 concurrency:
   group: audio
   cancel-in-progress: false

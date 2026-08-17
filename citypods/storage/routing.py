@@ -43,6 +43,8 @@ from citypods.storage.base import StorageBackend
 #   - ``provider-leases/`` (H17 PR6): the cross-process provider concurrency slots; each
 #     ``provider-leases/<domain>/slot-<i>.json`` is an independent CAS object claimed by
 #     ``put_cas``. Slot keys are derived (``0..N-1``), never listed.
+#   - ``maintenance-leases/``: short-lived workflow mutexes for manual repairs that must exclude
+#     a sibling lane across its read/modify/push window; keys are fixed and never listed.
 COORDINATION_PREFIXES: tuple[str, ...] = (
     "state/compute_budget.json",
     "state/llm_budget.json",
@@ -52,6 +54,7 @@ COORDINATION_PREFIXES: tuple[str, ...] = (
     "work-leases/",
     "work-leases-index/",
     "provider-leases/",
+    "maintenance-leases/",
 )
 
 # INVARIANT — R2 holds ONLY ephemeral, derivable objects. Two forces make a canonical record on R2
@@ -90,6 +93,7 @@ _EPHEMERAL_R2_PREFIXES: dict[str, str] = {
     # Provider concurrency slots: transient N-fixed CAS objects; a lost slot just frees capacity and
     # is re-created on the next claim. Carries no durable state.
     "provider-leases/": "transient concurrency slots; re-created on next claim",
+    "maintenance-leases/": "short-lived workflow mutexes; expiry recovers crashed holders",
 }
 
 

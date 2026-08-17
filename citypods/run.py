@@ -72,6 +72,13 @@ from citypods.models import (
     City,
     Episode,
 )
+from citypods.ops.maintenance_leases import (
+    AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+    MaintenanceLease,
+)
+from citypods.ops.maintenance_leases import (
+    acquire as acquire_maintenance_lease,
+)
 from citypods.ops.workqueue import (
     build_manifest,
     load_manifest,
@@ -1965,6 +1972,7 @@ def _build_impl(
     no_refresh: bool = False,
     shard_plan_path: str | Path | None = None,
     state_snapshot_restored: bool = False,
+    maintenance_lease: MaintenanceLease | None = None,
     _compute_backend_holder: list[object] | None = None,
 ) -> list[CityResult]:
     """Build the site and/or backfill heavy enrichment, in one of three phases:
@@ -2985,15 +2993,15 @@ def _build_impl(
                 # alone does not (an ASR run finishing after an audio run would otherwise erase
                 # freshly hosted audio — review/12 §H6). run_events are append-only per-run files
                 # (no shared-field clobber), so a plain scoped push is correct for them.
-                pushed = push_records_merged(
-                    storage,
-                    state_dir,
-                    owned,
-                    protected_blocks=protected_blocks_for_lane(lane),
-                    lane=lane,
-                    owned_uids=shard_owned_uids,
-                    log=lambda msg: print(msg, flush=True),
-                )
+                push_kwargs = {
+                    "protected_blocks": protected_blocks_for_lane(lane),
+                    "lane": lane,
+                    "owned_uids": shard_owned_uids,
+                    "log": lambda msg: print(msg, flush=True),
+                }
+                if maintenance_lease is not None:
+                    push_kwargs["maintenance_lease"] = maintenance_lease
+                pushed = push_records_merged(storage, state_dir, owned, **push_kwargs)
                 pushed += push_calendar_records_merged(
                     storage,
                     state_dir,
@@ -3025,6 +3033,8 @@ def _build_impl(
                     log=lambda msg: print(msg, flush=True),
                 )
             else:
+                if maintenance_lease is not None:
+                    maintenance_lease.assert_held()
                 pushed = push_state(storage, state_dir, log=lambda msg: print(msg, flush=True))
             if pushed:
                 print(f"state: pushed {pushed} file(s) to durable storage", flush=True)
@@ -3065,6 +3075,25 @@ def build(
 ) -> list[CityResult]:
     """Run a build and always close a subprocess-backed compute backend."""
     compute_backend_holder: list[object] = []
+    maintenance_lease: MaintenanceLease | None = None
+    if lane in {"chapter-agenda", "chapter-locator", "chapter"} and not dry_run:
+        lease_key = os.environ.get("CITYPODS_MAINTENANCE_LEASE_KEY")
+        if lease_key:
+            lease_site_config = load_site_config(site_config_path)
+            lease_storage = make_storage(lease_site_config, base_url or "", Path(output_dir))
+            if lease_storage is None:
+                raise RuntimeError(
+                    "chapter lane requires configured storage for the maintenance lease"
+                )
+            lease_owner = os.environ.get("CITYPODS_MAINTENANCE_LEASE_OWNER") or (
+                f"github-actions:{os.environ.get('GITHUB_WORKFLOW', 'local')}"
+                f":{os.environ.get('GITHUB_RUN_ID', 'unknown')}"
+            )
+            maintenance_lease = acquire_maintenance_lease(
+                lease_storage,
+                owner=lease_owner,
+                key=lease_key or AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+            )
     try:
         return _build_impl(
             site_config_path=site_config_path,
@@ -3082,9 +3111,12 @@ def build(
             no_refresh=no_refresh,
             shard_plan_path=shard_plan_path,
             state_snapshot_restored=state_snapshot_restored,
+            maintenance_lease=maintenance_lease,
             _compute_backend_holder=compute_backend_holder,
         )
     finally:
+        if maintenance_lease is not None:
+            maintenance_lease.release()
         for compute_backend in reversed(compute_backend_holder):
             close_compute = getattr(compute_backend, "close", None)
             if callable(close_compute):

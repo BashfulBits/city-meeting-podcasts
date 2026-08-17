@@ -192,7 +192,7 @@ def test_agenda_stage_does_not_reuse_accepted_text_without_artifact_key(tmp_path
     ep.agenda_text_quality = {
         "status": "accepted",
         "eligibility": "agenda",
-        "pipeline_version": "3",
+        "pipeline_version": agenda_text.AGENDA_TEXT_QUALITY_VERSION,
         "source_url": ep.agenda_text_url,
     }
     fetched = []

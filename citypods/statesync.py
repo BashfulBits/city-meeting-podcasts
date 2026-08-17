@@ -645,6 +645,7 @@ def push_records_merged(
     protected_blocks,
     lane: str | None = None,
     owned_uids: dict[str, frozenset[str]] | None = None,
+    maintenance_lease=None,
     log=None,
     raise_on_transient: bool = False,
 ) -> int:
@@ -680,6 +681,10 @@ def push_records_merged(
 
     if not _supported(storage) or not hasattr(storage, "put_file"):
         return 0
+    if maintenance_lease is not None:
+        # Chapter reset and chapter-lane writes share one CAS-backed mutex. Check it after all
+        # local work is complete and immediately before the remote-preserving merge begins.
+        maintenance_lease.assert_held()
     state_dir = Path(state_dir)
     protected = frozenset(protected_blocks)
     emit = log or (lambda msg: print(msg, flush=True))

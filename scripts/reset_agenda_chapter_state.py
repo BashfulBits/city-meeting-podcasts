@@ -21,10 +21,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 from citypods.config import load_city_configs, load_site_config
+from citypods.ops.maintenance_leases import (
+    AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+)
+from citypods.ops.maintenance_leases import (
+    acquire as acquire_maintenance_lease,
+)
 from citypods.records import (
     load_records,
     protected_blocks_for_lane,
@@ -168,6 +175,7 @@ def reset_agenda_chapter_state(
     *,
     apply: bool = False,
     storage=None,
+    maintenance_lease=None,
 ) -> dict:
     """Reset planned records and, when requested, push both owned blocks safely."""
     touched = sorted(planned)
@@ -203,6 +211,7 @@ def reset_agenda_chapter_state(
                 protected_blocks=protected_blocks_for_lane(lane),
                 lane=lane,
                 owned_uids=owned_uids,
+                maintenance_lease=maintenance_lease,
             )
     return {"reset": reset_count, "touched_sources": touched, "pushed": pushed}
 
@@ -259,7 +268,25 @@ def main(argv: list[str] | None = None) -> int:
         print("dry-run: re-run with --apply to clear and push these records")
         return 0
 
-    summary = reset_agenda_chapter_state(state_dir, planned, apply=True, storage=storage)
+    lease_owner = os.environ.get("CITYPODS_MAINTENANCE_LEASE_OWNER") or (
+        f"github-actions:{os.environ.get('GITHUB_WORKFLOW', 'manual-reset')}"
+        f":{os.environ.get('GITHUB_RUN_ID', 'local')}"
+    )
+    maintenance_lease = acquire_maintenance_lease(
+        storage,
+        owner=lease_owner,
+        key=AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+    )
+    try:
+        summary = reset_agenda_chapter_state(
+            state_dir,
+            planned,
+            apply=True,
+            storage=storage,
+            maintenance_lease=maintenance_lease,
+        )
+    finally:
+        maintenance_lease.release()
     expected_sources = len(summary["touched_sources"])
     if (
         summary["pushed"]["chapter"] != expected_sources
