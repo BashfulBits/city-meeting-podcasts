@@ -43,6 +43,22 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Mistral provider paused: monthly token budget exhausted (2026-08-18 hotfix).** Mistral moved
+  to account-wide monthly token metering; the current cycle's allowance is used up (resets
+  2026-08-31). Pinned `rpd: 0` on all seven Mistral routes in `config/provider_limits.yml`
+  (`mistral_codestral_2508_primary`, `mistral_devstral_2512_primary`,
+  `mistral_small_2603_primary`, `mistral_medium_2508_primary`, `mistral_medium_2505_primary`,
+  `mistral_large_2512_primary`, `mistral_large_3_primary`,
+  `mistral_labs_leanstral_1_5_1_primary`), recompiled via `scripts/compile_llm_limits.py`. This
+  routes through the existing quota-exhaustion path (`LLMBudget.available()`/`select_route()`)
+  rather than the route's `rpm`/`tpm` fields, so dispatch is deferred and retried (at each local
+  midnight, via `_next_quota_reset`) instead of hard-failing callers like
+  `AgendaChapterCandidatesStage` that dispatch to Mistral (`AGENDA_PRODUCTION_MODEL`)
+  unconditionally, and avoids the `ZeroDivisionError` a literal `rpm`/`tpm` of `0` would hit in
+  `LLMBudget.reserve()`'s rate-schedule math. `providers.mistral.monthly_tpm` was also set to `0`
+  as a documentation-of-record value, though it is not read by the scheduler or Worker today.
+  Remove the `rpd: 0` overrides once the monthly allowance resets and a real budget is sized.
+
 - **LLM dispatch v2's `enqueue_batch`/`poll_batch` payload I/O against production storage
   (2026-08-18 incident follow-up).** Production wires `LiteLLMBackend`'s `storage=` to
   `citypods.storage.routing.RoutingStorage` (B2 primary + R2 coordination), whose
