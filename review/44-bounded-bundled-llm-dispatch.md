@@ -737,6 +737,132 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
 - Migrate remaining GitHub workflows to v2 by configuration, one workflow/task/route family at a
   time, once Phase 1's dominant-site cutover and Phase 2/3 have proven stable.
 
+## Rollout incident retrospective (2026-08-18) — read before building Phase 2–4
+
+Phase 1 (PR #1253) and Phase 2's dispatch pipeline (PR #1254) both landed with passing code review
+and passing tests. Production stayed broken through **six sequential hotfixes** before a single
+`enqueue-batch` call ever completed a real round trip against `citypods-llm-dispatch-v2`. Each bug
+below independently passed its own review and its own test suite; none would have been caught by
+reading the diff harder. They needed **live traffic against the real Cloudflare binding, secrets,
+and Workers Logs surface** — something no test in this repo (or in the incident's own local repro
+attempts) exercises. List order is discovery order, not severity: **later bugs were masked by
+earlier ones** — a real request had to clear bug *N* before bug *N+1* could even manifest, so each
+fix "worked" (no error, or a different error) right up until the next one blocked it.
+
+1. **`RoutingStorage`'s `cas_capable` gate silently blocked every B2 payload write ([PR
+   #1256](https://github.com/BashfulBits/city-meeting-podcasts/pull/1256)).** `enqueue_batch`/
+   `poll_batch` (`citypods/compute/llm.py`) wrote/read job payloads through `self.storage` directly.
+   In production that's `citypods.storage.routing.RoutingStorage` (B2 primary + R2 coordination);
+   its `COORDINATION_PREFIXES` allow-list correctly excludes `payloads/`/`results/` (they're
+   B2-resident by design, not R2 coordination state), so those keys routed to the B2 primary and
+   `RoutingStorage.put_cas`/`get_bytes` then, correctly per their own invariant, refused the call —
+   B2 is deliberately marked non-`cas_capable` there. Every write raised `NotImplementedError`
+   before the batch ever reached the Worker over HTTP, silently swallowed by the caller's own
+   per-item error handling. **Missed because:** the client-side test suite
+   (`tests/test_compute_llm_dispatch_v2.py`) used a flat `MockStorage` with `cas_capable = True`
+   everywhere — it doesn't reproduce prefix-based routing, so it can't fail this way no matter what
+   the code does. **Guard for later phases:** any new client-side storage access for job
+   payloads/results must go through `_storage_client()` (which now reaches past the router to its
+   `.primary` backend) — never a raw `self.storage` call — and any test exercising it needs a real
+   `RoutingStorage` instance, not a flat mock, or it proves nothing.
+
+2. **`_chapter_job_result` re-polled the entire stale v1 backlog on every run ([PR
+   #1257](https://github.com/BashfulBits/city-meeting-podcasts/pull/1257)).** It called
+   `backend.reconcile()` on *every* `JobHandle` `run_inference` returned, including a pre-existing
+   deferred handle from before `LLM_DISPATCH_V2_URL` was even configured (`backend !=
+   "llm-dispatch-v2"`). v1 never had a poll-batch endpoint, so reconciling one meant one `GET
+   /v1/requests/{id}` Worker invocation per stale episode, on *every* chapter-agenda/chapter-locator
+   run, with no staleness cutoff short of `llm_deferred.py`'s 38-day TTL — measured at ~1980 such
+   polls in under 10 minutes against the real backlog, all returning `202` (still pending), zero
+   progress. **Guard for later phases:** never inline-reconcile a handle whose `backend` isn't the
+   current dispatch generation's own value; leave all cross-generation reconciliation to the
+   deferred sweep's own (batched-where-possible, far less frequent) cadence. This will recur for
+   the *next* backend generation too if a future migration doesn't repeat this exclusion.
+
+3. **Workers Logs (dashboard observability toggle) isn't config-as-code by default ([PR
+   #1257](https://github.com/BashfulBits/city-meeting-podcasts/pull/1257)).** Logs were enabled by
+   hand in the dashboard to diagnose the incident and reverted to disabled on the very next
+   `wrangler deploy`, because `wrangler.jsonc` never declared `observability.enabled`. **Guard:**
+   every dashboard-settable deploy-relevant setting this project relies on (observability, cron
+   triggers, anything else added in Phase 2–4) must be declared explicitly in `wrangler.jsonc`, not
+   left as an assumed-persistent out-of-band toggle — an undeclared setting resets to wrangler's
+   default on every deploy, silently.
+
+4. **`dispatch_v2_url`/`dispatch_v2_auth_token` were never wired into every backend construction
+   site ([PR #1258](https://github.com/BashfulBits/city-meeting-podcasts/pull/1258)).**
+   `LLMBackendConfig` (`citypods/compute/llm.py`) has no env-reading `__post_init__` — a field
+   omitted from a manual `LLMBackendConfig(...)` call is `None`, period, regardless of what's set in
+   the environment. `citypods/run.py`'s `tag_backend` (the actual backend the tag lane uses) and
+   `citypods/tournament.py`'s `_backend()` both hand-rolled only `dispatch_url`/
+   `dispatch_auth_token` and were never updated when v2 shipped, so every `queue_only=True` policy
+   from those two fell straight through to the legacy v1 branch — regardless of secrets, env vars,
+   or any other fix being correct. Only `_chapter_llm_backend` (`citypods/stages.py`) and
+   `scripts/llm_deferred_sweep.py` built from `LLMBackendConfig.from_env()`, the complete source of
+   truth, and were therefore ever correctly wired. **Guard for later phases:** every
+   `LiteLLMBackend`/`LLMBackendConfig` construction site must build from `.from_env()` via
+   `dataclasses.replace()`, overriding only the fields that specific call site actually owns — never
+   hand-copy a subset of env vars into a fresh `LLMBackendConfig(...)` call. This closes the bug
+   class for any *future* field added to `.from_env()` too, not just today's.
+
+5. **`BEARER_TOKEN` was unset on the deployed Worker (operational, not code).** `validateConfig(env)`
+   runs before any routing, so every request — including unauthenticated `/healthz` — failed with
+   `"Invalid config: BEARER_TOKEN must be set"`. This produced literally zero Durable Object activity
+   (the DO was never reached) while looking, from the Worker's invocation count alone, like traffic
+   was landing. **Guard:** `/healthz` (or an equivalent auth-free, DO-free endpoint) is the fastest
+   possible live-signal check whenever "the DO shows nothing" is reported — it isolates
+   config/secrets problems from RPC/binding/application problems in one request, with no auth token
+   needed to run it.
+
+6. **`console.error("x failed", err)`'s second argument never reaches Workers Logs ([PR
+   #1259](https://github.com/BashfulBits/city-meeting-podcasts/pull/1259)).** Cloudflare's exported
+   Workers Logs reliably capture only `console.error`'s first **string** argument — an `Error`
+   object passed alongside it is dropped entirely, even after adding a custom Logs field in the
+   dashboard, and the Durable Object's own RPC-transport trace for the same call can report
+   `outcome: "ok"` even when the *caller* is about to throw, so there was no error detail anywhere
+   to recover without a code change. **Guard:** every `console.error`/`errorResponse` in this
+   Worker must render a thrown value into a string (`describeError()`-style: name + message + stack,
+   or `String(err)` as a fallback) before logging or returning it — never pass a bare `Error` as a
+   second argument and assume it'll show up somewhere.
+
+7. **`LLMSchedulerDO` never extended `DurableObject` — the actual root cause of the entire day ([PR
+   #1260](https://github.com/BashfulBits/city-meeting-podcasts/pull/1260)).** `index.js`'s
+   `getCoordinator()` calls `env.LLM_SCHEDULER.getByName("global-v2")` — Cloudflare's
+   named-Durable-Object RPC binding style, which requires the class itself to `extend DurableObject`
+   (from `"cloudflare:workers"`) to support RPC method calls at all. `LLMSchedulerDO` never did this,
+   from Phase 1's very first deploy. Every `enqueueBatch`/`pollBatch`/`resolveUnknownBatch` call
+   failed with ``TypeError: The receiving Durable Object does not support RPC, because its class was
+   not declared with `extends DurableObject` `` — invisible until bug 6's fix surfaced the real
+   message, and invisible to every local repro attempt because **this repo's own test suite
+   constructs `new LLMSchedulerDO(...)` directly and calls its methods directly**, bypassing the
+   real binding/RPC layer this bug lives in entirely. Bugs 1–4 above were all real, independently
+   necessary fixes — none of them could ever matter until a request reached a *working* RPC call,
+   and none of them ever did, because this was broken underneath all of them the whole time. Fixed
+   with a dynamic `import("cloudflare:workers")` (falling back to a plain class under Node, since
+   that module only exists in the real Workers runtime) and a regression test asserting
+   `LLMSchedulerDO.prototype`'s chain extends something other than plain `Object` — a guard against
+   the exact failure mode recurring, not a way to exercise the real platform requirement under
+   `node --test`.
+
+**Before shipping any new `coordinator.js` RPC method in Phase 2–4** (`claimDispatchWindow`,
+`attemptStarted`, `authorizeRetry`, `completeBatch`, and anything added later): a green `node --test`
+run proves the SQL/business logic works, and nothing more — it does **not** prove the method is
+reachable at all through the real binding. Deploy to a real Cloudflare account (even a throwaway
+one) and drive it with a real authenticated HTTP request before considering any new RPC method
+done, and confirm the call shows up in the DO's own `jsrpc` trace (not just "the client saw no
+error" — see bug 1, where the client saw no error for a different reason).
+
+A related, non-review/44 operational gotcha hit repeatedly while testing this rollout: cancelling a
+`chapter-agenda`/`chapter-locator` GitHub Actions run mid-flight does not run its
+`finally: maintenance_lease.release()` cleanup (`citypods/run.py`) — GitHub Actions' hard-kill on
+cancel doesn't give Python's `finally` a chance to execute — leaving
+`maintenance-leases/agenda-chapter-reset.json` held for its full 6-hour TTL
+(`MAINTENANCE_LEASE_TTL_SECONDS`, `citypods/ops/maintenance_leases.py`). Deleting that R2 object
+directly is exactly equivalent to the lease never having been taken (`acquire()` treats a missing
+object as free) and is the fastest unblock short of waiting out the TTL. This is a pre-existing
+property of the maintenance-lease mechanism itself, not something Phase 1/2 introduced — noted here
+only because it repeatedly interrupted testing this rollout and is easy to mistake for a v2 dispatch
+problem when it happens mid-incident.
+
 ## Implementation spec (build-unit handoff)
 
 The sections above establish *what* and *why*; this section adds the *how* at a level literal

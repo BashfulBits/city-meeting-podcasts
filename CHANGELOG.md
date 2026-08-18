@@ -66,6 +66,51 @@ Phase R (Research-Tool Surface)._
   the real `RoutingStorage` (not the flat mock the rest of the suite uses, which doesn't
   reproduce the prefix-routing gate and is why this shipped untested against the real topology).
 
+- **Stale v1-backlog reconcile storm in `_chapter_job_result` (2026-08-18 incident, continued).**
+  `citypods/stages.py`'s `_chapter_job_result` called `backend.reconcile()` on every `JobHandle`
+  `run_inference` returned, including a pre-existing deferred handle from before
+  `LLM_DISPATCH_V2_URL` was configured (`backend != "llm-dispatch-v2"`). v1 never had a
+  poll-batch endpoint, so reconciling one meant one `GET /v1/requests/{id}` Worker invocation per
+  stale episode on every chapter-agenda/chapter-locator run — measured at ~1980 such polls in
+  under 10 minutes, all returning `202`, zero progress. Fixed by only reconciling v2-backed
+  handles; a stale v1 handle is now left untouched and still reported pending. Also declares
+  `"observability": { "enabled": true }` in `workers/llm-dispatch-v2/wrangler.jsonc` — Workers
+  Logs, enabled by hand in the dashboard to diagnose this incident, kept reverting to disabled on
+  the next deploy because nothing in source declared the setting.
+
+- **`dispatch_v2_url`/`dispatch_v2_auth_token` never wired into the tag/tournament/r5-benchmark
+  backends (2026-08-18 incident, continued).** `LLMBackendConfig` has no env-reading
+  `__post_init__`, so a field omitted from a manual construction is `None` regardless of the
+  environment. `citypods/run.py`'s `tag_backend` (the tag lane's actual backend) and
+  `citypods/tournament.py`'s `_backend()` hand-rolled only `dispatch_url`/`dispatch_auth_token`
+  and were never updated when v2 shipped — every `queue_only=True` policy from those two fell
+  straight through to the legacy v1 branch no matter what was configured. Fixed by building all
+  three from `LLMBackendConfig.from_env()` via `dataclasses.replace()` instead of hand-copying
+  env vars, closing the bug class for any future field added there too.
+
+- **`console.error`'s second argument silently dropped by Cloudflare Workers Logs (2026-08-18
+  incident, continued).** `console.error("x failed", err)` in `workers/llm-dispatch-v2/src/index.js`
+  never surfaced the actual `Error` in exported logs — only the literal call-site string did,
+  even with a custom Logs field added in the dashboard. Added `describeError()`, rendering any
+  thrown value into a string used both in `console.error` and the HTTP response body's `detail`
+  field (previously a generic `"Coordinator request failed"`), so the real cause now also shows
+  up in the Python client's own error output.
+
+- **`LLMSchedulerDO` never extended `DurableObject` — the actual root cause of the whole 2026-08-18
+  incident.** `workers/llm-dispatch-v2/src/index.js`'s `getCoordinator()` calls
+  `env.LLM_SCHEDULER.getByName("global-v2")`, Cloudflare's named-Durable-Object RPC binding style,
+  which requires the class itself to `extend DurableObject` (from `"cloudflare:workers"`) to
+  support RPC calls at all. `LLMSchedulerDO` never did, from Phase 1's first deploy — every
+  `enqueueBatch`/`pollBatch`/`resolveUnknownBatch` call failed with `TypeError: The receiving
+  Durable Object does not support RPC, ...`, invisible to this repo's test suite because it
+  constructs `new LLMSchedulerDO(...)` directly and calls its methods directly, bypassing the
+  real binding/RPC layer entirely. None of the four fixes above could ever have mattered until a
+  request reached a working RPC call, and none of them ever did. Fixed with a dynamic
+  `import("cloudflare:workers")` (falling back to a plain class under the Node-based test suite,
+  where that module doesn't exist) and a regression test guarding the `extends` clause. Full
+  retrospective with guards for Phase 2–4 work in review/44's "Rollout incident retrospective
+  (2026-08-18)".
+
 - **Legacy agenda records with partial state can now be reset and rebuilt safely.** Added the
   dry-run-first `reset-agenda-chapter-state.yml` recovery workflow and
   `scripts/reset_agenda_chapter_state.py`, which targets only records missing
