@@ -4,6 +4,15 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-17",
   "compatibility_flags": ["nodejs_compat"],
+  // Explicit, not just a dashboard toggle: Workers Logs (covering this script's fetch/scheduled
+  // events AND its LLMSchedulerDO's own events -- both are the same deployed script) were
+  // enabled by hand in the dashboard on 2026-08-18 to diagnose the payload-storage/reconcile
+  // incidents, and reverted to disabled on the next `wrangler deploy` because nothing in source
+  // declared the setting -- a deploy without this block resets to wrangler's default rather than
+  // preserving whatever was set out-of-band. Declaring it here makes it survive every deploy.
+  "observability": {
+    "enabled": true
+  },
   "durable_objects": {
     "bindings": [
       {

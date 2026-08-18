@@ -5934,12 +5934,29 @@ def _write_chapter_json(storage, key: str, value: dict) -> str:
 
 
 def _chapter_job_result(backend, job):
-    """Submit once and poll/reconcile once; leave longer waits to the deferred sweep."""
+    """Submit once and poll/reconcile once for a v2-backed handle; leave longer waits, and every
+    v1-backed handle, to the deferred sweep.
+
+    ``run_inference`` on an already-dispatched ``recipe_hash`` returns the existing deferred
+    ``JobHandle`` on record rather than resubmitting -- for a fresh v2 submission that's cheap to
+    reconcile immediately (one DO-backed RPC). For a handle left over from before
+    ``LLM_DISPATCH_V2_URL`` was wired in (``backend != "llm-dispatch-v2"``), reconciling here
+    means this stage re-polls v1's unbatched ``GET /v1/requests/{id}`` for EVERY such episode on
+    EVERY run -- one Worker invocation each, with no batching (v1 never had a poll-batch
+    endpoint) and no staleness cutoff short of ``llm_deferred.py``'s 38-day TTL. A 2026-08-18
+    chapter-agenda run against that backlog produced ~1980 such polls in under 10 minutes, all
+    returning 202 (still pending) -- pure Worker-request cost with zero progress. Leave those
+    entirely to `llm_deferred_sweep.py`'s own (batched-where-possible, far less frequent)
+    reconciliation instead of inline-reconciling the whole stale backlog here every time this
+    stage runs; the caller already treats an unreconciled ``JobHandle`` exactly like a
+    reconciled-but-still-pending one (``stats.defer("llm-pending")``), so skipping this call for
+    a stale handle changes cost, not correctness.
+    """
 
     from citypods.compute.base import JobHandle, JobResult
 
     result = backend.run_inference(job)
-    if isinstance(result, JobHandle):
+    if isinstance(result, JobHandle) and result.backend == "llm-dispatch-v2":
         completed = backend.reconcile(result)
         if isinstance(completed, JobResult):
             return completed

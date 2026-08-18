@@ -61,16 +61,21 @@ def _ctx(storage: LocalStorage | None = None, *, dry_run: bool = False, stop=Non
 
 
 class FakeBackend:
-    def __init__(self, outcome: JobHandle | JobResult | None = None):
+    def __init__(self, outcome: JobHandle | JobResult | None = None, *, reconcile_result=None):
         self.outcome = outcome
         self.submitted_jobs: list = []
+        self.reconcile_calls: list = []
+        # When set, reconcile() returns this instead of echoing the handle back unchanged --
+        # lets a test simulate a v2 handle that resolves immediately on reconcile.
+        self._reconcile_result = reconcile_result
 
     def run_inference(self, job):
         self.submitted_jobs.append(job)
         return self.outcome
 
     def reconcile(self, handle):
-        return handle
+        self.reconcile_calls.append(handle)
+        return self._reconcile_result if self._reconcile_result is not None else handle
 
 
 def test_stage_skips_on_dry_run_or_missing_storage(tmp_path: Path):
@@ -134,6 +139,81 @@ def test_stage_records_pending_on_job_handle(tmp_path: Path):
     assert ep.generated_agenda_candidates["status"] == "pending"
     assert ep.generated_agenda_candidates["job_ref"] == "job-ref-12345"
     assert ep.generated_agenda_candidates["model"] == "mistral/mistral-medium-2508"
+
+
+def test_stage_does_not_reconcile_stale_v1_handle(tmp_path: Path):
+    """Regression test for the 2026-08-18 polling-storm incident: a pending JobHandle left over
+    from before LLM_DISPATCH_V2_URL was wired in (backend != "llm-dispatch-v2") must not be
+    reconciled inline -- that re-polls v1's unbatched GET /v1/requests/{id} for every such
+    episode on every run, with no staleness cutoff. It must still be reported as pending."""
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-stale-v1")
+    key = ep.links["agenda_text_artifact_key"]
+    _put_storage_bytes(storage, key, b"1. Call to order\n2. Public hearing")
+
+    stale_handle = JobHandle(
+        task="agenda-item-extract",
+        ref="chatcmpl-stale-v1",
+        recipe_hash="recipe-hash-stale-v1",
+        backend="litellm",  # a pre-v2 handle, not "llm-dispatch-v2"
+    )
+    backend = FakeBackend(stale_handle)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.defer_reasons.get("llm-pending") == 1
+    assert backend.reconcile_calls == []  # the whole point: never polled
+    assert ep.generated_agenda_candidates["job_ref"] == "chatcmpl-stale-v1"
+
+
+def test_stage_reconciles_fresh_v2_handle(tmp_path: Path):
+    """A handle backed by v2 is still reconciled inline (one cheap DO-backed RPC) -- and if it
+    resolves immediately, the stage finalizes it in the same pass rather than waiting a full
+    extra run."""
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-fresh-v2")
+    key = ep.links["agenda_text_artifact_key"]
+    agenda_text = "1. Call to order"
+    _put_storage_bytes(storage, key, agenda_text.encode("utf-8"))
+
+    v2_handle = JobHandle(
+        task="agenda-item-extract",
+        ref="job-v2-abc",
+        recipe_hash="recipe-hash-v2-abc",
+        backend="llm-dispatch-v2",
+    )
+    model_output = json.dumps(
+        {
+            "items": [
+                {
+                    "display_ref": "1",
+                    "title": "Call to order",
+                    "evidence_quote": "1. Call to order",
+                    "line_start": 1,
+                    "line_end": 1,
+                }
+            ]
+        }
+    )
+    resolved = JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe-hash-v2-abc",
+        output={"choices": [{"message": {"content": model_output}}]},
+    )
+    backend = FakeBackend(v2_handle, reconcile_result=resolved)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert len(backend.reconcile_calls) == 1
+    assert backend.reconcile_calls[0] is v2_handle
+    assert stats.ran == 1
+    assert ep.generated_agenda_candidates["status"] == "completed"
 
 
 def test_stage_finalizes_and_writes_artifact_on_job_result(tmp_path: Path):
