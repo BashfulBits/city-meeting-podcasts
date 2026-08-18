@@ -25,9 +25,16 @@ implies a scale of problem this design doesn't actually solve.
     `agenda_text_artifact_key`-less records so the pipeline rediscovers agendas and chapter lanes
     "submit their normal Mistral and Gemini jobs" again — almost certainly the backfill in
     progress. Combined with v1's ingress path — one synchronous POST per `InferenceJob` — a bulk
-    rebuild of chapter/tag records plausibly explains the ~126k/~2,600 gap: the overwhelming
-    majority of invocations are *ingress* requests creating jobs, not requests that reach a
-    provider.
+    rebuild of chapter/tag records plausibly explains the ~126k/~2,600 gap.
+  - **Correction from review/43's own measured request-shape model: don't assume it's all
+    ingress.** review/43's production request-shape table (`enqueue`/`dispatch`/`poll` at a given
+    jobs/day rate) found polling — not enqueue — is the dominant share of Worker-request volume at
+    scale: **~60% of the request budget at 50,000 jobs/day**, from the existing ~2.5-polls-per-job
+    `JobHandle` reconciliation sweep (automated, run as part of normal pipeline operation — distinct
+    from ad hoc manual/interactive polling). The Workers Logs breakdown in Verification must
+    therefore split invocations by `enqueue-batch` vs. `poll-batch` vs. cron-dispatch, not assume
+    ingress is the whole story. This directly changes Phase 1's scope below: batching enqueue alone
+    may not resolve the incident if reconciliation polling turns out to be the larger share.
 - **Steady-state dispatch target: ~5,000 LLM calls/day** (near-max sustained submission rate at
   today's usage). This is **not the real provider-side ceiling** — see below — it's a working
   planning number for how much this design needs to *reliably sustain*, not the most it could ever
@@ -37,11 +44,18 @@ implies a scale of problem this design doesn't actually solve.
   routes carry only `rpm` (no daily cap encoded — nominally hundreds of thousands/day at full
   utilization). review/41's narrower 4–6-route mental model is stale; the catalog now spans 9
   providers (Gemini/Gemma, Mistral, Groq, SambaNova, SiliconFlow, Z.AI, OpenRouter, Kilo, OpenCode).
-  **Routes are not the constraint on growth toward more cities.**
+  **Routes are not the constraint on growth toward more cities.** This independently corroborates
+  review/43's own 2026-08-14 measurement of **66,120/day** aggregate free-tier capacity (~46/minute)
+  against which it found "provider rate limits are roughly 23x from binding" — two separate analyses
+  landing on the same number, ~5 days apart, as the route catalog grew slightly.
 - **The real Free-tier bottleneck is Cloudflare's own per-invocation Worker CPU limit (10ms) and
   the shared DO SQLite row-write/request budget (100,000/day)**, both of which scale with jobs
   actually dispatched — independent of whether cron-pull or a Queue triggers the dispatch. This is
   why "Why cron pull, not Queue" below is reasoned from CPU/SQLite cost, not from provider capacity.
+  review/43 derived the equivalent v1 ceiling precisely: **Worker requests (100,000/day) bind around
+  ~20,000 jobs/day "at today's request shape"** — i.e. before batching enqueue/poll — which is
+  consistent with why a backfill submitting jobs one-at-a-time blew past the daily ceiling in hours,
+  not days.
 
 This reframes what "success" means for this design: it is not trying to raise LLM throughput toward
 providers' real ~66,620+/day ceiling. It is trying to (a) stop v1's un-batched ingress path from
@@ -117,6 +131,20 @@ DO's own SQLite transaction — a separate CPU budget from the executor Worker's
 CPU should be materially lower than v1's per-job cost, but this must be **profiled on the actual v2
 code**, not assumed (see the profiling gate under "Bounded initial configuration").
 
+**Set expectations from review/43's own measured data, not a clean linear model.** review/43
+profiled v1's batch concurrency directly and found cost **superlinear above N≈2**: N=1→N=2 followed
+the predicted ~0.90ms/operation rate, but N=2→N=3 cost ~2.8ms/op — three times the rate — and N=3
+ended up *worse per-request* than N=2, from GC/live-set pressure of holding multiple resident
+canonical records simultaneously, not from operation count. v2's executor holds B2 payloads and
+Gateway responses resident per bundled job the same way v1 holds canonical records, so the same
+mechanism plausibly applies. Treat `MAX_BUNDLE_JOBS = 4, 8, 12` in the profiling pass below as
+covering the *plausible range*, not as equally likely outcomes — expect the safe ceiling to land
+closer to the low end (v1's own wall was N=3) rather than assume Worker-CPU headroom scales cleanly
+with job count. This does not change the decision to keep cron-pull; it only means "raise
+`MAX_BUNDLE_JOBS` as far as profiling supports" (below) may support less than hoped, and that's fine
+— the real target is ~5,000/day, comfortably reachable even at a small bundle size across 1,440
+daily ticks.
+
 **Documented growth trigger.** When profiled Worker-CPU or DO SQLite-write usage approaches 75% of
 its Free-tier ceiling at the then-current dispatch volume, the next step is **Workers Paid
 ($5/mo)** — which raises the CPU-per-invocation limit from 10ms to 30s and lifts the other Free-tier
@@ -171,7 +199,16 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
 | `MAX_JOBS_PER_UTC_DAY` | 20,000–50,000 (profiled gate) | Hard ingestion admission cap, independent of dispatch — bounds `enqueueBatch` inserts so a backfill-scale ingest can't itself exhaust the shared DO SQLite row-write budget (see Demand model and the split budget below) |
 | `ENQUEUE_BATCH_MAX` | profiled gate (target: low hundreds to low thousands of jobs/call) | Jobs accepted per single `enqueue-batch` RPC — sized so reaching `MAX_JOBS_PER_UTC_DAY` takes tens of calls, not thousands |
-| `POLL_BATCH_MAX` | profiled gate (target: modest — poll volume is research/interactive GitHub-issue-response use, not automated per-job reconciliation, so expected total call volume is on the order of ~100/day) | Statuses/results returned per single `poll-batch` RPC |
+| `POLL_BATCH_MAX` | profiled gate (target: enough to cover the largest single reconciliation sweep in one call — see note below) | Statuses/results returned per single `poll-batch` RPC |
+
+**`POLL_BATCH_MAX` covers two different traffic shapes; size it for the larger one.** There are two
+distinct poll use cases, not one: (a) the automated `JobHandle` reconciliation sweep that runs as
+part of normal pipeline operation — review/43 measured this at ~2.5 polls/job in v1's current
+unbatched shape, which is why it identified polling as ~60% of Worker-request volume at scale, not
+a minor share — and (b) manual/interactive research or GitHub-issue-response polling, low-volume
+(~100/day) by nature. Batching (a) into one `poll-batch` call per reconciliation run (Phase 1) is
+what actually relieves request-count pressure; (b) was never the concern. Confirm the actual
+enqueue/poll split for today's incident (Verification) before finalizing this value.
 | `MAX_RESPONSE_SECONDS` | 720 | Shared response deadline; leaves finalization margin below 15 min |
 | `FINALIZATION_RESERVE_SECONDS` | 90 | Time retained for B2 persistence and `completeBatch` |
 | `LEASE_DURATION_SECONDS` | 840 | Covers deadline; stays below cron duration |
@@ -413,11 +450,16 @@ running two dispatch systems at once; Phase 4 is real but non-blocking follow-up
 
 ### Phase 1 — Stop the ingest flood (highest priority)
 
-This alone removes the flood that broke today's 100,000/day Workers request ceiling: v1's ingress
-path did one synchronous POST per `InferenceJob`, and the dominant volume driver (chapter/tag lanes,
-per the `reset-agenda-chapter-state.yml` connection in the Demand model — confirm with the Workers
-Logs breakdown in Verification) was creating jobs one at a time. Dispatch capability is **not**
-required for this phase to relieve the incident — jobs can sit `queued` in the DO.
+This alone removes the flood that broke today's 100,000/day Workers request ceiling — **provided it
+covers polling, not only enqueue.** v1's ingress path did one synchronous POST per `InferenceJob`,
+and the dominant volume driver (chapter/tag lanes, per the `reset-agenda-chapter-state.yml`
+connection in the Demand model) was creating jobs one at a time — but review/43's own measured
+request-shape model found the automated `JobHandle` reconciliation sweep (~2.5 polls/job) is
+typically the *larger* share of Worker-request volume, ~60% at scale, not enqueue. The Workers Logs
+breakdown in Verification must confirm the actual enqueue-vs-poll split for today's incident before
+this phase is considered complete — if polling dominates, batching enqueue alone won't resolve it.
+Dispatch capability is **not** required for this phase to relieve the incident — jobs can sit
+`queued` in the DO.
 
 - Create `workers/llm-dispatch-v2/` as a separate Worker deployment with a SQLite DO class and a
   separate B2 prefix. Keep the existing v1 Worker unchanged.
@@ -429,13 +471,16 @@ required for this phase to relieve the incident — jobs can sit `queued` in the
     `enqueueBatch` RPC (the rest of `coordinator.js` lands in Phase 2).
   - Add `src/b2.js` for SigV4 request payload persistence with bounded body reads and timeouts.
   - Add migrations using `new_sqlite_classes`; use RPC methods rather than public DO fetch routes.
-- Implement `POST /v2/jobs:enqueue-batch` (ingress Worker), including the `MAX_JOBS_PER_UTC_DAY`
-  admission cap and `ENQUEUE_BATCH_MAX` per-call limit from day one — not deferred to a later phase,
-  since the point of this phase is not repeating today's failure mode.
-- Batch the dominant-volume call site: restructure it from "submit one job, get a handle back
-  immediately" to "accumulate a batch, submit once" against the new client method in
-  `citypods/compute/llm.py`. Cut that call site's new-job submission over to v2 ingest as soon as
-  both land.
+- Implement **both** `POST /v2/jobs:enqueue-batch` and `POST /v2/jobs:poll-batch` (ingress Worker)
+  in this phase, including the `MAX_JOBS_PER_UTC_DAY` admission cap and `ENQUEUE_BATCH_MAX`/
+  `POLL_BATCH_MAX` per-call limits from day one — not deferred to a later phase, and not enqueue
+  alone, since review/43's request-shape data says polling is plausibly the larger share of the
+  volume this phase needs to fix.
+- Batch the dominant-volume call site on **both** its enqueue and its reconciliation-poll paths:
+  restructure enqueue from "submit one job, get a handle back immediately" to "accumulate a batch,
+  submit once," and restructure the `JobHandle` reconciliation sweep from one poll per outstanding
+  handle to one `poll-batch` call per run, against new client methods in `citypods/compute/llm.py`.
+  Cut that call site's new-job submission and reconciliation over to v2 as soon as both land.
 - Add client-side throttling (in `citypods/compute/llm.py` and/or GitHub Actions
   `concurrency`/rate-limiting on the calling workflows) so callers self-limit *before* making a
   request once known headroom is exhausted, not just get rejected after — a DO-side cap alone still
@@ -480,7 +525,11 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   50% of each shared route's real `provider_limits.yml` rpm/rpd/tpm for every route both systems
   could dispatch against, so worst-case combined usage stays under 100% of the real limit even if
   both are maximally active at once. This overlay is temporary configuration, not a permanent
-  architecture change — removed at the Phase 3 exit gate.
+  architecture change — removed at the Phase 3 exit gate. **This is a rate-ledger semantics change
+  to v1**, and review/43's own Decision gates require explicit maintainer sign-off before changing
+  rate-ledger semantics (the same discipline applied to its Step 1/Step 3 changes, each with a
+  recorded approval note) — record an equivalent explicit approval here before deploying the halved
+  `dispatch_limits.json`-derived values to v1, not as an implicit side effect of the v2 rollout.
 - Once shadow validation passes, cut the split-capped dispatch live and begin draining Phase 1's
   ingested jobs.
 
@@ -520,6 +569,455 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   promotions) without logging request payloads or provider credentials.
 - Migrate remaining GitHub workflows to v2 by configuration, one workflow/task/route family at a
   time, once Phase 1's dominant-site cutover and Phase 2/3 have proven stable.
+
+## Implementation spec (build-unit handoff)
+
+The sections above establish *what* and *why*; this section adds the *how* at a level literal
+enough to hand one build unit at a time to a smaller model without it needing to make a design
+decision — every type, RPC signature, and algorithm step is spelled out rather than described in
+prose. This is a build-time reference, not a maturity level: this project's doc lifecycle
+(`review/11` §3) has no rung above **L3 Dev-ready**, and this spec doesn't invent one — review/44
+stays L3. Each unit below states its file, its exact contract, and what it must *not* do. Cross-
+reference the prose sections above for rationale; this section states behavior only.
+
+**Working order:** build and unit-test each unit against the pseudocode and table schemas below
+*before* wiring it into the Phase 1/2 sequencing above. A unit that passes its own contract tests in
+isolation (fake DO storage, fake B2, fake clock) is safe to integrate; do not skip straight to
+integration testing.
+
+### Unit 1 — SQL schema (`src/coordinator.js`, DO constructor; Phase 1 creates `jobs`+`scheduler`, Phase 2 adds the rest)
+
+All tables are created with `CREATE TABLE IF NOT EXISTS` in the DO constructor, guarded by
+`migrations` with `new_sqlite_classes` per the wrangler config. Timestamps are Unix milliseconds
+(`INTEGER`), not ISO strings — comparisons and arithmetic must stay in integer ms throughout every
+unit below. No table stores payload or response bytes.
+
+```sql
+CREATE TABLE IF NOT EXISTS jobs (
+  id                          TEXT PRIMARY KEY,
+  idempotency_key             TEXT NOT NULL UNIQUE,
+  request_digest              TEXT NOT NULL,        -- hash of the normalized request body; see Unit 2
+  provider_idempotency_key    TEXT,                  -- NULL unless the route's provider supports one
+  state                       TEXT NOT NULL CHECK (state IN
+                                 ('queued','leased','unknown_attempt','completed','retryable',
+                                  'failed','purge_pending')),
+  priority                    INTEGER NOT NULL DEFAULT 1 CHECK (priority IN (0,1)),
+  policy_json                 TEXT NOT NULL,         -- opaque to the DO; passed through to the executor
+  prompt_family                TEXT NOT NULL,
+  input_token_estimate        INTEGER NOT NULL,
+  max_output_token_estimate   INTEGER NOT NULL,
+  payload_key                 TEXT NOT NULL,         -- B2 key, set at enqueue
+  result_key                  TEXT,                  -- B2 key, set at completion
+  lease_token                 TEXT,
+  lease_route_id              TEXT,
+  lease_expires_at            INTEGER,
+  bundle_id                   TEXT,
+  attempts                    INTEGER NOT NULL DEFAULT 0,
+  created_at                  INTEGER NOT NULL,
+  updated_at                  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_state_priority_created
+  ON jobs (state, priority, created_at);   -- the ordering pass in Unit 4 scans this index
+
+CREATE TABLE IF NOT EXISTS routes (
+  route_id                TEXT PRIMARY KEY,
+  rpm_window_start        INTEGER NOT NULL DEFAULT 0,
+  rpm_count                INTEGER NOT NULL DEFAULT 0,
+  tpm_window_start         INTEGER NOT NULL DEFAULT 0,
+  tpm_reserved             INTEGER NOT NULL DEFAULT 0,
+  full_token_budget        REAL NOT NULL DEFAULT 0,     -- refillable bucket; see Unit 4 step 4c
+  token_budget_updated_at  INTEGER NOT NULL DEFAULT 0,
+  provisional_reservation  INTEGER NOT NULL DEFAULT 0,
+  settled_usage             INTEGER NOT NULL DEFAULT 0,
+  cost_accumulated          REAL NOT NULL DEFAULT 0,
+  throttle_streak           INTEGER NOT NULL DEFAULT 0,
+  last_provider_status      INTEGER,
+  blocked_until             INTEGER,
+  buffer_seconds            REAL NOT NULL DEFAULT 0      -- adaptive 429 buffer; see Unit 6
+);
+
+CREATE TABLE IF NOT EXISTS bundles (
+  bundle_id            TEXT PRIMARY KEY,
+  execution_token      TEXT NOT NULL,
+  state                TEXT NOT NULL CHECK (state IN ('active','completed','expired')),
+  lease_expires_at     INTEGER NOT NULL,
+  active_call_count    INTEGER NOT NULL DEFAULT 0,
+  dispatch_window_end  INTEGER NOT NULL,
+  created_at           INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS attempts (
+  attempt_id              TEXT PRIMARY KEY,
+  job_id                  TEXT NOT NULL,
+  route_id                TEXT NOT NULL,
+  planned_at               INTEGER NOT NULL,
+  actual_start_at          INTEGER,
+  actual_end_at            INTEGER,
+  observed_input_tokens    INTEGER,
+  observed_output_tokens   INTEGER,
+  start_state              TEXT NOT NULL CHECK (start_state IN ('planned','started','unknown')),
+  outcome                  TEXT CHECK (outcome IN
+                              ('success','retryable_error','terminal_error','deferred_late')),
+  provider_status_code     INTEGER,
+  gateway_correlation_id   TEXT,
+  created_at               INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS estimates (
+  key                      TEXT PRIMARY KEY,   -- "<route_id>:<model>:<prompt_family>"
+  margin_tokens             INTEGER NOT NULL,
+  sample_count              INTEGER NOT NULL DEFAULT 0,
+  recent_observed_summary   TEXT,               -- bounded JSON array, see Unit 5
+  updated_at                INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS scheduler (
+  id                          INTEGER PRIMARY KEY CHECK (id = 1),  -- singleton row, always id=1
+  utc_day                     TEXT NOT NULL,     -- "YYYY-MM-DD"
+  bundle_count_today          INTEGER NOT NULL DEFAULT 0,
+  jobs_ingested_today         INTEGER NOT NULL DEFAULT 0,
+  cleanup_cursor               TEXT,
+  next_maintenance_alarm_at    INTEGER
+);
+```
+
+**Do not** add a `payload` or `response` column to any table above — B2 is the sole store for those
+(see "B2-only payload storage"). **Do not** use `AUTOINCREMENT` ids — every id (`jobs.id`,
+`attempts.attempt_id`, `bundles.bundle_id`) is a caller-supplied UUID/ULID so retries are
+idempotent by construction; a DB-assigned id would make a retried insert non-idempotent.
+
+### Unit 2 — `enqueueBatch` RPC (`src/coordinator.js`; Phase 1)
+
+```
+enqueueBatch(jobs: EnqueueJobInput[]) -> EnqueueBatchResult
+
+type EnqueueJobInput = {
+  id: string                       // caller-supplied UUID, becomes jobs.id
+  idempotency_key: string
+  request_digest: string           // sha256 of the normalized request body, hex
+  policy_json: string
+  prompt_family: string
+  input_token_estimate: number
+  max_output_token_estimate: number
+  payload_key: string              // B2 key the ingress Worker already wrote the payload to
+  priority?: 0 | 1                 // default 1 if omitted
+}
+
+type EnqueueBatchResult = {
+  accepted: { id: string }[]
+  rejected: { id: string, reason: 'daily_cap_exceeded' | 'idempotency_conflict' }[]
+}
+```
+
+Algorithm (one SQLite transaction for the whole batch — do not open a transaction per job):
+
+1. Roll `scheduler.utc_day` forward if the current UTC date differs from the stored one, resetting
+   `bundle_count_today` and `jobs_ingested_today` to 0 in the same write.
+2. For each input job, in array order:
+   a. If `scheduler.jobs_ingested_today + (count accepted so far in this call) >=
+      MAX_JOBS_PER_UTC_DAY`, add it to `rejected` with reason `daily_cap_exceeded` and continue to
+      the next job — **do not** abort the whole batch; partial acceptance is correct.
+   b. Look up `idempotency_key` in `jobs`. If a row exists:
+      - If its `request_digest` matches, add its existing `id` to `accepted` (idempotent replay —
+        this is not a new job) and continue.
+      - If its `request_digest` differs, add to `rejected` with reason `idempotency_conflict` — this
+        is a reused key with different content, and must fail loudly per the ingress API's stated
+        contract, never silently overwrite.
+   c. Otherwise, `INSERT` a new `jobs` row: `state='queued'`, `attempts=0`,
+      `created_at=updated_at=now()`, `priority = input.priority ?? 1`, all other columns copied
+      from the input. Add `id` to `accepted`.
+3. Increment `scheduler.jobs_ingested_today` by the number of newly-inserted rows (not replays, not
+   rejections).
+4. Commit. Return `{ accepted, rejected }`.
+
+**Do not** call `attemptStarted`, touch `routes`, or perform any B2 I/O inside this RPC — the DO
+never reads B2 payloads (see "Components and responsibilities"). The ingress Worker writes the B2
+payload *before* calling `enqueueBatch`, per the "Ingress and status APIs" ordering.
+
+### Unit 3 — `pollBatch` RPC (`src/coordinator.js`; Phase 1)
+
+```
+pollBatch(ids: string[]) -> PollBatchResult
+
+type PollBatchResult = {
+  statuses: {
+    id: string
+    state: JobState                 // the jobs.state enum value
+    result_key: string | null       // present once state === 'completed'
+    error: string | null            // present once state === 'failed'
+    attempts: number
+  }[]
+}
+```
+
+Single `SELECT id, state, result_key, error_json, attempts FROM jobs WHERE id IN (...ids)`, one
+query for the whole batch — **do not** loop one query per id. An id not found returns no entry in
+`statuses` (the caller distinguishes "not found" from every real state by absence, not a sentinel
+state string). The ingress Worker resolves `result_key`/B2 reads for `poll-batch`'s HTTP response
+after this RPC returns — the DO itself never reads B2.
+
+### Unit 4 — `claimDispatchWindow` RPC (`src/coordinator.js`; Phase 2) — admission, ordering, pacing
+
+```
+claimDispatchWindow(now: number, windowSeconds: number) -> ClaimResult
+
+type ClaimResult = {
+  bundle_id: string | null          // null iff jobs is empty
+  execution_token: string | null
+  jobs: {
+    id: string
+    payload_key: string
+    lease_token: string
+    route_id: string
+    token_reservation: number
+    wait_ms: number                 // relative to RPC response receipt — see "execution flow" step 5
+    not_before_at: number           // absolute, audit-only
+    min_inter_request_gap_ms: number
+  }[]
+}
+```
+
+One SQLite transaction for the whole call. Pseudocode (variable names match the table columns
+above):
+
+```
+function claimDispatchWindow(now, windowSeconds):
+  if scheduler.bundle_count_today >= MAX_BUNDLES_PER_UTC_DAY: return empty ClaimResult
+  if count(bundles WHERE state='active') >= MAX_ACTIVE_BUNDLES: return empty ClaimResult
+  if sum(bundles.active_call_count WHERE state='active') >= MAX_IN_FLIGHT_LLM_CALLS:
+    return empty ClaimResult
+
+  candidates = SELECT * FROM jobs WHERE state='queued'
+               ORDER BY priority ASC, created_at ASC   -- priority=0 first, then FIFO within a class
+               LIMIT (some generous multiple of MAX_BUNDLE_JOBS, e.g. 4x, to give the route-fill
+                      pass below enough to choose from without a full table scan)
+
+  # Pass 1: fill from distinct eligible routes
+  chosen = []
+  seen_routes = {}
+  for job in candidates:
+    if len(chosen) >= MAX_BUNDLE_JOBS: break
+    eligible_routes = routesEligibleFor(job)   # policy_json.allowed_models -> route catalog lookup
+    for route in eligible_routes:
+      if route.route_id in seen_routes: continue   # distinct-routes-first: skip on pass 1
+      if not routeHasCapacityFor(route, job, now, windowSeconds): continue
+      chosen.append({job, route})
+      seen_routes[route.route_id] = true
+      break
+
+  # Pass 2: fill remaining slots — aged jobs win their bucket, then larger token estimate, then FIFO
+  remaining_candidates = [c for c in candidates if c.job not in chosen]
+  # split into aged (waited >= MAX_QUEUE_WAIT_SECONDS) and not-aged; aged bucket sorts first,
+  # each bucket internally sorted by input_token_estimate + max_output_token_estimate DESC,
+  # created_at ASC as the final tiebreaker
+  for job in orderedByAgingThenSize(remaining_candidates, now):
+    if len(chosen) >= MAX_BUNDLE_JOBS: break
+    for route in routesEligibleFor(job):
+      if routeAlreadyHasNJobsInThisBundle(route, chosen) >= MAX_JOBS_PER_ROUTE_PER_BUNDLE: continue
+      if not routeHasCapacityFor(route, job, now, windowSeconds): continue
+      chosen.append({job, route})
+      break
+
+  if chosen is empty: return empty ClaimResult
+
+  bundle_id = uuid()
+  execution_token = uuid()
+  INSERT INTO bundles (bundle_id, execution_token, state='active',
+                        lease_expires_at=now+LEASE_DURATION_SECONDS*1000,
+                        active_call_count=len(chosen), dispatch_window_end=now+windowSeconds*1000,
+                        created_at=now)
+
+  result_jobs = []
+  for route_id, route_group in groupBy(chosen, 'route_id'):
+    lane_time = now   # each route lane sequences its own jobs independently
+    for {job, route} in route_group (in the order selected above):
+      wait_ms, not_before_at, reservation = computeRouteLaneWait(route, job, lane_time, now)
+      if not_before_at + estimatedCallDurationCeiling > dispatch_window_end:
+        continue    # "returns no job whose normal safe start is after the window deadline"
+      lease_token = uuid()
+      UPDATE jobs SET state='leased', lease_token=lease_token, lease_route_id=route.route_id,
+                       lease_expires_at=bundles.lease_expires_at, bundle_id=bundle_id,
+                       updated_at=now WHERE id=job.id
+      applyProvisionalReservation(route, reservation, not_before_at)   # advances route's ledger
+      result_jobs.append({id, payload_key, lease_token, route_id, token_reservation=reservation,
+                           wait_ms, not_before_at, min_inter_request_gap_ms})
+      lane_time = not_before_at + min_inter_request_gap_ms   # next job in this lane starts from here
+
+  scheduler.bundle_count_today += 1
+  return { bundle_id, execution_token, jobs: result_jobs }
+```
+
+`routeHasCapacityFor` and `computeRouteLaneWait` implement the RPM-gap / rolling-TPM / full-bucket /
+buffer / `blocked_until` reasoning from "Claim, ordering, pacing, and execution flow" steps 3–5 —
+write these as pure functions over a `routes` row plus `now`, so they're unit-testable without a
+DO transaction around them. `token_reservation = max(job.input_token_estimate +
+job.max_output_token_estimate, configured floor, estimates table's calibrated margin for
+route_id:model:prompt_family)` — never lower than any of the three.
+
+**Do not** let `wait_ms` be computed from `now` at claim time and then reused verbatim by the
+executor — the "execution flow" section is explicit that `wait_ms` is measured *from RPC response
+receipt*, so the executor (Unit 6) must apply it relative to when its own `fetch` to the DO
+resolves, not relative to `now` inside this function.
+
+### Unit 5 — `completeBatch` RPC (`src/coordinator.js`; Phase 2)
+
+```
+completeBatch(bundle_id: string, execution_token: string, results: AttemptResult[]) -> void
+
+type AttemptResult = {
+  job_id: string
+  lease_token: string
+  attempt_id: string
+  planned_at: number
+  actual_start_at: number | null    // null iff never started (deferred_late)
+  actual_end_at: number | null
+  observed_input_tokens: number | null
+  observed_output_tokens: number | null
+  outcome: 'success' | 'retryable_error' | 'terminal_error' | 'deferred_late'
+  provider_status_code: number | null
+  gateway_correlation_id: string | null
+  result_key: string | null         // B2 key, present iff outcome === 'success'
+}
+```
+
+One transaction. First: `SELECT execution_token FROM bundles WHERE bundle_id=?`; if it doesn't
+match the caller's `execution_token`, or the bundle row doesn't exist, **return silently as a
+no-op** (stale completion — see "Timeout and 429 behavior"). Otherwise, for each `AttemptResult`:
+
+1. `INSERT INTO attempts` with all supplied fields.
+2. `SELECT lease_token, state FROM jobs WHERE id=job_id`. If `lease_token` doesn't match, skip this
+   job (stale/duplicate completion for an already-settled job) — do not error the whole batch.
+3. Map `outcome` to the job's new `state`: `success -> 'completed'` (set `result_key`),
+   `retryable_error -> 'retryable'`, `terminal_error -> 'failed'`, `deferred_late -> 'queued'`
+   (return it to the pool, clear `lease_token`/`bundle_id`, **do not** increment `attempts` for a
+   `deferred_late` outcome — it was never actually started).
+4. Settle the route's provisional reservation: if `observed_input_tokens`/`observed_output_tokens`
+   are present, replace the provisional reservation for this attempt with the observed usage;
+   otherwise leave the conservative estimate as the settled usage. **Never** move the route's
+   next-safe-time earlier than what an already-admitted later job in the same lane assumed — only
+   release capacity forward, per "The DO never pulls a future reservation forward."
+   `actual_end_at - actual_start_at` beyond the estimate is fine to note for calibration (Unit 7)
+   but must not retroactively shrink another job's already-issued `wait_ms`.
+5. Mark `bundles.state='completed'` once every leased job for this bundle has a terminal or
+   requeued state.
+
+### Unit 6 — Executor (`workers/llm-dispatch-v2/src/index.js` scheduled handler; Phase 2)
+
+```
+async function scheduled(event, env, ctx):
+  plan = await coordinator.claimDispatchWindow(Date.now(), DISPATCH_WINDOW_SECONDS)
+  if plan.jobs.length === 0: return   # no B2 access, no further DO calls — "no-work cron ticks
+                                        #  have no B2 access" from the test plan
+  received_at = Date.now()             # wait_ms is relative to THIS instant, not plan-build time
+
+  lanes = groupBy(plan.jobs, 'route_id')
+  results = []
+  await Promise.allSettled(lanes.map(async (lane_jobs) => {
+    predecessor_actual_start = null
+    for job in lane_jobs (in the order the DO returned them):
+      target_time = received_at + job.wait_ms
+      if predecessor_actual_start !== null:
+        target_time = max(target_time, predecessor_actual_start + job.min_inter_request_gap_ms)
+      if target_time > plan.bundle deadline (received_at + DISPATCH_WINDOW_SECONDS*1000):
+        results.push({...deferred_late fields, job_id: job.id, lease_token: job.lease_token,
+                       outcome: 'deferred_late'})
+        continue   # skip; do not sleep past the window
+      await sleepUntil(target_time)
+      payload = await b2.getJson(job.payload_key)   # read AFTER the wait, not before
+      attempt_id = uuid()
+      if routeSupportsProviderIdempotency(job.route_id):
+        idempotency_header = job.provider_idempotency_key   # from the job's own stored key
+      else:
+        await coordinator.attemptStarted(job.id, job.lease_token, attempt_id, Date.now())
+      actual_start = Date.now()
+      predecessor_actual_start = actual_start
+      response = await callAiGateway(job, payload, idempotency_header, abortSignal)
+      actual_end = Date.now()
+      if response.status === 429:
+        auth = await coordinator.authorizeRetry(job.id, job.lease_token, attempt_id, Date.now())
+        if auth.authorized: continue-this-lane-with-retry-barrier(auth.retry_not_before)
+        else: results.push({...terminal_error from this 429})
+        continue
+      if response.ok:
+        result_key = `results/${job.id}/${job.lease_token}.json`
+        await b2.putJson(result_key, response.body)   # write BEFORE completeBatch
+        results.push({job_id: job.id, lease_token: job.lease_token, attempt_id, outcome: 'success',
+                       result_key, actual_start_at: actual_start, actual_end_at: actual_end,
+                       observed_input_tokens, observed_output_tokens, provider_status_code: 200})
+      else:
+        results.push({...terminal_error or retryable_error per status code})
+  }))
+
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, results)
+```
+
+**Do not** start any lane's first request before its `wait_ms` has elapsed *from `received_at`*, and
+**do not** let one lane's `await` block another lane — `Promise.allSettled` over independent lane
+loops, never a single sequential loop across lanes. **Do not** call `b2.getJson` for any job before
+its computed `target_time` — reading the payload early doesn't save time (the wait is about provider
+pacing, not I/O) and complicates the "no B2 access on a no-work tick" invariant if the wait is later
+aborted.
+
+### Unit 7 — Calibration (`estimates` table; Phase 2, folds into `completeBatch`)
+
+After step 4 of Unit 5, when `observed_input_tokens + observed_output_tokens` exceeds the current
+`estimates` row's `margin_tokens` for that `route_id:model:prompt_family` key: `UPDATE estimates SET
+margin_tokens = observed total, sample_count = sample_count + 1, updated_at = now`. **Never**
+decrease `margin_tokens` from this path — the only way a margin goes down is a separate, explicit
+configuration change (per "The calibrator is bounded and can only increase protection
+automatically"). Insert a new row (`margin_tokens = ESTIMATE_MARGIN` floor) the first time a
+route:model:prompt_family key is observed.
+
+### Unit 8 — HTTP contracts (ingress Worker `src/index.js`; Phase 1)
+
+All bodies are JSON, all responses `application/json`. Every endpoint requires the existing
+authentication mechanism already used by v1 (reuse, do not reinvent).
+
+```
+POST /v2/jobs:enqueue-batch
+  body:     { jobs: EnqueueJobInput[] }        // see Unit 2; length <= ENQUEUE_BATCH_MAX or 400
+  200 body: EnqueueBatchResult                  // see Unit 2
+  400:      { error: 'batch_too_large' | 'invalid_job', detail: string }
+
+POST /v2/jobs:poll-batch
+  body:     { ids: string[] }                   // length <= POLL_BATCH_MAX or 400
+  200 body: { statuses: (PollBatchResult['statuses'][number] & { result?: object })[] }
+            // Worker resolves result_key -> B2 read -> inlines as `result` for state='completed'
+  400:      { error: 'batch_too_large' }
+
+POST /v2/jobs/{id}:schema-retry
+  body:     { corrected_payload_key: string }    // ingress Worker already wrote this to B2
+  200 body: { id: string, idempotency_key: string }   // new job under the schema-retry namespace
+  404:      { error: 'not_found' }
+
+POST /v2/jobs:resolve-unknown-batch
+  body:     { attempt_ids: string[] }
+  200 body: { resolved: string[], not_found: string[] }
+
+GET /healthz
+  200 body: { ok: true }                          // no B2 or DO work — routing health only
+```
+
+**Do not** add any endpoint beyond these five to the public Worker. Route selection, ledger
+mutation, and B2 payload reads never happen in the ingress Worker outside `poll-batch`'s
+result-inlining step — everything else is a pass-through to the DO RPCs above.
+
+### Unit 9 — Startup validator (`src/index.js` module scope, run once per isolate)
+
+```
+function validateConfig(env):
+  assert(env.DISPATCH_WINDOW_SECONDS + env.MAX_RESPONSE_SECONDS + env.FINALIZATION_RESERVE_SECONDS
+         <= env.LEASE_DURATION_SECONDS)
+  assert(env.LEASE_DURATION_SECONDS < env.CRON_EXECUTION_LIMIT_SECONDS)
+  assert(env.MAX_BUNDLES_PER_UTC_DAY < env.CRON_TICK_SECONDS's implied 1440 ticks/day)
+  # projected-usage-vs-75%-ceiling check, per "Bounded initial configuration":
+  for each Free-resource row in that table, compute projected daily use from the above config and
+  assert it stays under 0.75 * the row's included daily limit; throw a descriptive error naming
+  which resource and by how much it's over, not a generic assertion failure.
+```
+
+Call this at module scope (not inside a request handler) so a bad deploy fails at the very first
+invocation rather than partway through traffic.
 
 ## Test and acceptance plan
 
