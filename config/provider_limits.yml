@@ -49,7 +49,11 @@ providers:
     chat_path: /v1/chat/completions
     # Mistral's account-wide limit is 60 RPM (one submission per second), shared by every model.
     rpm: 60
-    monthly_tpm: 1000000000
+    # HOTFIX (2026-08-18): Mistral switched to account-wide monthly token metering (effective
+    # until the policy is re-evaluated after their next billing cycle reset on 2026-08-31).
+    # Zeroed out as a stopgap to stop consumption until a real monthly allowance is sized -- see
+    # AGENTS.md / review/11 for the follow-up to pick a real value.
+    monthly_tpm: 0
     reset_day: 1
     accounts:
       - id: primary
