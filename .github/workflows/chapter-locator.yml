@@ -50,4 +50,6 @@ jobs:
           LLM_MODE: dispatch
           LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
           LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
         run: python -m citypods.cli enrich --lane chapter-locator
