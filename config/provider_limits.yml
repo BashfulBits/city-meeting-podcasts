@@ -518,6 +518,15 @@ routes:
   # ==========================================
   # MISTRAL ROUTES (Audited Exact Quotas)
   # ==========================================
+  # HOTFIX (2026-08-18): Mistral's account-wide monthly token allowance is exhausted (their new
+  # metered-per-month policy, effective until the 2026-08-31 reset). `rpd: 0` pins every route's
+  # daily request quota to zero, which the scheduler already treats as ordinary quota exhaustion:
+  # `select_route`/`llm_budget.available()` reject every dispatch and the deferred-request sweep
+  # retries at each local midnight (see `_next_quota_reset`) rather than hard-failing callers like
+  # `AgendaChapterCandidatesStage` (chapter_titles.AGENDA_PRODUCTION_MODEL) that dispatch to
+  # Mistral unconditionally. Remove the `rpd: 0` overrides (restoring the commented true values
+  # below) once the monthly allowance resets and a real budget is sized.
+  #
   # Codestral 2508: 2.08 RPS (124 RPM), 625k TPM
   - route_id: mistral_codestral_2508_primary
     model: mistral/codestral-2508
@@ -527,6 +536,7 @@ routes:
     output_context_limit: 256000
     account_id: primary
     rpm: 124
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 625000
     free: true
 
@@ -539,6 +549,7 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 49
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 1000000
     free: true
 
@@ -551,6 +562,7 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 49
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 50000
     free: true
 
@@ -563,6 +575,7 @@ routes:
     output_context_limit: 131072
     account_id: primary
     rpm: 22
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 356250
     free: true
 
@@ -575,6 +588,7 @@ routes:
     output_context_limit: 131072
     account_id: primary
     rpm: 25
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 375000
     free: true
 
@@ -587,6 +601,7 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 4
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -599,6 +614,7 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 4
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -611,6 +627,7 @@ routes:
     output_context_limit: 131072
     account_id: primary
     rpm: 37
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 5000000
     free: true
 
