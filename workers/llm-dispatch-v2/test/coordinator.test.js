@@ -7,6 +7,20 @@ function makeCoordinator(env, { sql, storage } = createMockSqlStorage()) {
   return { coordinator: new LLMSchedulerDO({ storage }, env), sql, storage };
 }
 
+test("LLMSchedulerDO extends a base class (regression: real getByName()-style RPC requires this)", () => {
+  // Regression test for the 2026-08-18 incident: every enqueueBatch/pollBatch/resolveUnknownBatch
+  // call failed with "The receiving Durable Object does not support RPC, because its class was
+  // not declared with `extends DurableObject`" from Phase 1's very first deploy onward, silently
+  // -- the DO's own RPC-transport trace still reported outcome "ok" (the error surfaces only on
+  // the calling Worker's side), and this suite calls `new LLMSchedulerDO(...)` directly, bypassing
+  // the real binding/RPC layer entirely, so it never caught this. Can't exercise the real
+  // "cloudflare:workers" DurableObject base class under plain Node (coordinator.js falls back to
+  // a plain class there -- see its own comment), but this at least guards against a future
+  // accidental removal of the `extends` clause reintroducing the exact same failure mode.
+  const proto = Object.getPrototypeOf(LLMSchedulerDO.prototype);
+  assert.notEqual(proto, Object.prototype, "LLMSchedulerDO must extend a base class, not plain Object");
+});
+
 test("LLMSchedulerDO initializes schema and scheduler row", () => {
   const { sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
 
