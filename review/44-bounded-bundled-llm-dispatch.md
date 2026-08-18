@@ -168,9 +168,20 @@ start past its planned time defeats that precision exactly when route diversity 
 case the paragraph above hoped would give v2 more headroom. **Fix at the source, in Unit 4, not with
 a second concurrency limiter bolted onto Unit 6:** cap the number of *distinct routes* (lanes)
 `claimDispatchWindow` selects into one bundle at a new `MAX_CONCURRENT_ROUTE_LANES` (initial value
-**5** — one slot of headroom under the platform's 6-connection ceiling, since the executor's `claim`
-and `completeBatch` calls sit at the bundle's boundaries and shouldn't ordinarily overlap a lane, but
-headroom costs nothing here). `MAX_BUNDLE_JOBS` can still profile higher than
+**5, not the full 6**). Unit 6's `scheduled()` is structured so `claimDispatchWindow` fully resolves
+*before* the lanes start and `completeBatch` only starts *after* `Promise.allSettled` resolves every
+lane — so, strictly by that sequencing, those two boundary DO calls provably never share the
+connection budget with a lane, and 6 concurrent lanes would fit today. The margin isn't there to
+cover that; it's there for two things sequencing alone doesn't cover: (a) Cloudflare's docs don't
+confirm whether a Worker→DO binding call is accounted identically to `fetch()` for this limit — if
+it's held open even slightly differently than a plain `fetch()`, 6 lanes plus an in-flight
+`attemptStarted`/`authorizeRetry` call within one of them could momentarily touch 7; and (b) a future
+change to Unit 6 (a retry path, a diagnostic call) that doesn't perfectly preserve "one connection
+per lane at a time" fails safe into unused headroom instead of straight into the platform's
+queue-not-error behavior, which is easy to ship without noticing since it degrades pacing precision
+rather than throwing. The cost of the margin is one fewer lane per bundle, spread across 1,440 daily
+ticks — negligible against the ~5,000/day target; the cost of being wrong at the literal ceiling is a
+silent, hard-to-diagnose pacing regression. `MAX_BUNDLE_JOBS` can still profile higher than
 `MAX_CONCURRENT_ROUTE_LANES` — extra jobs on an already-selected route queue *behind* that route's
 own lane (via `MAX_JOBS_PER_ROUTE_PER_BUNDLE`, still just 1 concurrent connection per lane, sequenced
 same as today) rather than opening a new concurrent lane. This is a **correction to Unit 4's
