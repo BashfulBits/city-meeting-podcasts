@@ -226,9 +226,44 @@ def main(argv: list[str] | None = None) -> int:
     snapshot = load_deferred_snapshot(storage)
     prune_expired_failure_markers(storage)
     if datetime.now(UTC) < deadline_at:
+        # Excludes a deferred_request-bearing handle (the client-side daily-cap/429 short-circuit
+        # in enqueue_batch, tagged backend="llm-dispatch-v2" but never actually enqueued
+        # server-side) -- reconcile() itself branches the same way (_reconcile_deferred vs.
+        # poll_batch), and polling a ref the coordinator has no record of is pure waste.
+        v2_handles = [
+            h
+            for h in snapshot.pending()
+            if h.backend == "llm-dispatch-v2" and h.deferred_request is None
+        ]
+        # A handle poll_batch actually resolves here (poll_batch already persisted it via
+        # write_deferred) must be marked completed in THIS in-memory snapshot and skipped by the
+        # per-handle loop below -- otherwise every v2 handle gets polled a second time
+        # individually via reconcile(), which reproduces the one-poll-per-handle request volume
+        # this batch call exists to eliminate (review/44 Phase 1). A handle NOT resolved here
+        # (still pending, or poll_batch raised -- see poll_batch's own docstring on why an
+        # exception here means "nothing in this batch was resolved") simply falls through to the
+        # per-handle loop as before, which re-derives the precise per-handle outcome.
+        batch_resolved_refs: set[str] = set()
+        if v2_handles:
+            try:
+                v2_results = backend.poll_batch(v2_handles)
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"llm-deferred-sweep: batch poll for v2 handles failed: {exc}",
+                    file=sys.stderr,
+                )
+            else:
+                for handle in v2_handles:
+                    result = v2_results.get(handle.ref)
+                    if result is not None:
+                        completed += 1
+                        snapshot.mark_completed(handle.recipe_hash, result)
+                        batch_resolved_refs.add(handle.ref)
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
+            if handle.backend == "llm-dispatch-v2" and handle.ref in batch_resolved_refs:
+                continue
             reconciled_handle = _with_sweep_deadline(handle, deadline_at)
             deferred = reconciled_handle.deferred_request
             # A queue-only tag handle remains pending immediately after a successful Worker

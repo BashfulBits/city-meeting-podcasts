@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "citypods-llm-dispatch-v2",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LLM_SCHEDULER",
+        "class_name": "LLMSchedulerDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LLMSchedulerDO"]
+    }
+  ],
+  // Cron trigger lands with Phase 2's scheduled handler. An empty handler wired to a per-minute
+  // cron today would spend 1,440 Worker invocations/day against the exact Free-tier budget this
+  // design protects, for zero work -- see index.js's scheduled() stub.
+  "vars": {
+    "MAX_BUNDLE_JOBS": "4",
+    "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "4",
+    "MAX_CONCURRENT_ROUTE_LANES": "5",
+    "DISPATCH_WINDOW_SECONDS": "25",
+    "CRON_TICK_SECONDS": "60",
+    "MAX_ACTIVE_BUNDLES": "2",
+    "MAX_IN_FLIGHT_LLM_CALLS": "8",
+    "MAX_BUNDLES_PER_UTC_DAY": "1000",
+    "MAX_JOBS_PER_UTC_DAY": "20000",
+    "ENQUEUE_BATCH_MAX": "1000",
+    "POLL_BATCH_MAX": "1000",
+    "MAX_RESPONSE_SECONDS": "720",
+    "FINALIZATION_RESERVE_SECONDS": "90",
+    "LEASE_DURATION_SECONDS": "840",
+    "CRON_EXECUTION_LIMIT_SECONDS": "900",
+    "MAX_429_RETRIES": "1",
+    "MAX_429_BACKOFF_SECONDS": "60",
+    "UNKNOWN_ATTEMPT_POLICY": "hold",
+    "MAX_QUEUE_WAIT_SECONDS": "3600",
+    "COMPLETED_RETENTION_DAYS": "38"
+  }
+}

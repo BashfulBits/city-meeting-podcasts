@@ -557,7 +557,7 @@ Sequenced as a priority-ordered DAG, not five same-weighted steps: Phase 1 is wh
 today's incident and should land first; Phase 2 depends on it; Phase 3 is the exit condition for
 running two dispatch systems at once; Phase 4 is real but non-blocking follow-up.
 
-### Phase 1 — Stop the ingest flood (highest priority)
+### Phase 1 — Stop the ingest flood (highest priority) · *Implemented in [PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253)*
 
 This alone removes the flood that broke today's 100,000/day Workers request ceiling — **provided it
 covers polling, not only enqueue.** v1's ingress path did one synchronous POST per `InferenceJob`,

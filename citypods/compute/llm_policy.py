@@ -48,6 +48,11 @@ class LLMRequestPolicy:
     # Worker dispatch lane.  ``fast`` drains short requests before a scheduled invocation risks
     # starting work it cannot finish; ``long`` opts into the bounded long-context timeout lane.
     timeout_class: Literal["fast", "long"] = "long"
+    # llm-dispatch-v2's admission-time fast lane (review/44 "Bounded initial configuration"):
+    # 0 sorts ahead of 1 in the scheduler DO's `ORDER BY priority ASC, created_at ASC`. Settable
+    # only at submission (LiteLLMBackend.enqueue_batch reads this field directly); there is
+    # deliberately no API to edit priority on an already-queued job.
+    priority: Literal[0, 1] = 1
 
 
 @dataclass(frozen=True)
@@ -141,7 +146,7 @@ class QuotaPolicy:
 @dataclass(frozen=True)
 class LLMRoute:
     model: str
-    transport: Literal["direct", "mistral-dispatch", "llm-dispatch"]
+    transport: Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"]
     free: bool
     quota: QuotaPolicy
     pricing: PricingPolicy
@@ -150,7 +155,9 @@ class LLMRoute:
     # exactly one upstream request and must reserve only that one, even when the caller's
     # structured-output contract is present.
     max_provider_attempts: int | None = None
-    transports: tuple[Literal["direct", "mistral-dispatch", "llm-dispatch"], ...] = ("direct",)
+    transports: tuple[
+        Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"], ...
+    ] = ("direct",)
     # Physical route identity and direct LiteLLM adapter metadata.  Empty defaults preserve the
     # small hand-built routes used by unit tests and old callers; generated routes always fill all
     # fields and use ``route_id`` as their shared-ledger key.
