@@ -3,8 +3,32 @@
  * Backed by SQLite inside Cloudflare Workers.
  */
 
-export class LLMSchedulerDO {
+/**
+ * index.js's getCoordinator() reaches this class through env.LLM_SCHEDULER.getByName(), the
+ * named-Durable-Object RPC binding style. That style requires the class itself to extend the
+ * runtime's `DurableObject` base class (from "cloudflare:workers") -- without it, calling any
+ * RPC method on the stub throws "The receiving Durable Object does not support RPC, because its
+ * class was not declared with `extends DurableObject`" (confirmed against a live incident,
+ * 2026-08-18: every enqueueBatch call failed this way from Phase 1's very first deploy, silently,
+ * because the DO's own RPC-transport trace still reports outcome "ok" -- the error surfaces only
+ * on the calling Worker's side -- and this repo's test suite calls `new LLMSchedulerDO(...)`
+ * directly, bypassing the real binding/RPC layer entirely, so it never exercised this).
+ *
+ * "cloudflare:workers" only exists under the real Workers runtime; this repo's test suite runs
+ * under plain Node (`node --test`, using `node:sqlite`) for speed, so import it dynamically and
+ * fall back to a no-op base class there. The fallback is never reached in production -- only in
+ * tests that construct LLMSchedulerDO directly and call its methods without a real DO binding.
+ */
+let DurableObjectBase;
+try {
+  ({ DurableObject: DurableObjectBase } = await import("cloudflare:workers"));
+} catch {
+  DurableObjectBase = class {};
+}
+
+export class LLMSchedulerDO extends DurableObjectBase {
   constructor(ctx, env) {
+    super(ctx, env);
     this.ctx = ctx;
     this.env = env || {};
     this.sql = ctx?.storage?.sql || ctx?.sql;
