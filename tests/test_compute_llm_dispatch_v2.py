@@ -228,17 +228,15 @@ def test_enqueue_batch_and_poll_batch_work_through_production_routing_storage():
     # poll_batch's result read must reach the same B2 primary the Worker itself would use.
     handle = results[0]
     result_key = f"results/{handle.ref}/response.json"
-    primary.files[result_key] = json.dumps(
-        {"choices": [{"message": {"content": "hi"}}]}
-    ).encode("utf-8")
+    primary.files[result_key] = json.dumps({"choices": [{"message": {"content": "hi"}}]}).encode(
+        "utf-8"
+    )
 
     def mock_poll(url, json=None, headers=None, timeout=None):
         return _mock_response(
             status_code=200,
             json_data={
-                "statuses": [
-                    {"id": handle.ref, "state": "completed", "result_key": result_key}
-                ]
+                "statuses": [{"id": handle.ref, "state": "completed", "result_key": result_key}]
             },
         )
 
