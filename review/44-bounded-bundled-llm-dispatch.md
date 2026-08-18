@@ -141,23 +141,60 @@ transfer to v2's architecture, where **all queueing and pacing is handled by the
 not by the executor holding a bundle in memory at once**. Unit 6's executor reads each job's B2
 payload *after* that job's paced `wait_ms` elapses, one at a time within its route lane; across
 lanes, peak resident-payload count at any instant is bounded by the number of *concurrently active
-lanes* (roughly the number of distinct routes in the bundle), not by `MAX_BUNDLE_JOBS` itself. A
-bundle of 12 jobs spread across 4 routes could plausibly hold far fewer than 12 payloads resident at
-once, if each lane releases a job's payload/response references before starting its next paced job.
-This is a real architectural difference from v1's measurement, and it's still worth checking, not
-assuming either way: profile `MAX_BUNDLE_JOBS = 4, 8, 12` **as a function of both total bundle size
-and route diversity** (e.g. 8 jobs across 2 routes vs. 8 jobs across 8 routes) to see whether GC
-pressure tracks peak concurrent residency or total bundle size — if it's the former, v2 may have
-materially more headroom than v1's N≈2-3 wall suggests, precisely because the DO-driven pacing keeps
-concurrent residency low even at a larger nominal bundle size. This does not change the decision to
-keep cron-pull either way; the real target is ~5,000/day, comfortably reachable even at a modest
-bundle size across 1,440 daily ticks.
+lanes*, not by `MAX_BUNDLE_JOBS` itself, if each lane releases a job's payload/response references
+before starting its next paced job. This is a real architectural difference from v1's measurement,
+and it's still worth checking, not assuming either way: profile `MAX_BUNDLE_JOBS = 4, 8, 12` **as a
+function of both total bundle size and route diversity** (e.g. 8 jobs across 2 routes vs. 8 jobs
+across `MAX_CONCURRENT_ROUTE_LANES` routes) to see whether GC pressure tracks peak concurrent
+residency or total bundle size within the lane-count ceiling below — if it's the former, v2 may have
+materially more headroom than v1's N≈2-3 wall suggests for `MAX_BUNDLE_JOBS` *itself* (many jobs per
+lane, sequenced), even though the number of *concurrently active lanes* is now a hard platform
+ceiling, not a free variable (see immediately below). This does not change the decision to keep
+cron-pull either way; the real target is ~5,000/day, comfortably reachable even at a modest bundle
+size across 1,440 daily ticks.
+
+**Cloudflare's per-invocation connection limit hard-caps route diversity per bundle — this is a
+platform fact, not a profiling variable.** Every Worker invocation — Free and Paid alike, this does
+not improve with a plan upgrade — may have **at most six outbound connections simultaneously waiting
+for response headers** (`fetch()`, KV, Cache, R2, Queues, TCP sockets, and — treated conservatively
+here since Cloudflare's docs don't explicitly confirm or exclude Durable Object binding calls from
+this accounting — DO RPCs too). [Workers limits
+docs](https://developers.cloudflare.com/workers/platform/limits/). A seventh concurrent connection
+attempt is **queued, not rejected**, until a slot frees — so this cannot crash a request, but it
+silently reorders execution relative to what the DO's claim plan assumed: the whole reason
+`claimDispatchWindow` computes a precise `wait_ms`/`min_inter_request_gap_ms` per route lane is to
+respect each route's real RPM pacing, and a platform-level connection queue that delays a lane's
+start past its planned time defeats that precision exactly when route diversity is highest — the
+case the paragraph above hoped would give v2 more headroom. **Fix at the source, in Unit 4, not with
+a second concurrency limiter bolted onto Unit 6:** cap the number of *distinct routes* (lanes)
+`claimDispatchWindow` selects into one bundle at a new `MAX_CONCURRENT_ROUTE_LANES` (initial value
+**5, not the full 6**). Unit 6's `scheduled()` is structured so `claimDispatchWindow` fully resolves
+*before* the lanes start and `completeBatch` only starts *after* `Promise.allSettled` resolves every
+lane — so, strictly by that sequencing, those two boundary DO calls provably never share the
+connection budget with a lane, and 6 concurrent lanes would fit today. The margin isn't there to
+cover that; it's there for two things sequencing alone doesn't cover: (a) Cloudflare's docs don't
+confirm whether a Worker→DO binding call is accounted identically to `fetch()` for this limit — if
+it's held open even slightly differently than a plain `fetch()`, 6 lanes plus an in-flight
+`attemptStarted`/`authorizeRetry` call within one of them could momentarily touch 7; and (b) a future
+change to Unit 6 (a retry path, a diagnostic call) that doesn't perfectly preserve "one connection
+per lane at a time" fails safe into unused headroom instead of straight into the platform's
+queue-not-error behavior, which is easy to ship without noticing since it degrades pacing precision
+rather than throwing. The cost of the margin is one fewer lane per bundle, spread across 1,440 daily
+ticks — negligible against the ~5,000/day target; the cost of being wrong at the literal ceiling is a
+silent, hard-to-diagnose pacing regression. `MAX_BUNDLE_JOBS` can still profile higher than
+`MAX_CONCURRENT_ROUTE_LANES` — extra jobs on an already-selected route queue *behind* that route's
+own lane (via `MAX_JOBS_PER_ROUTE_PER_BUNDLE`, still just 1 concurrent connection per lane, sequenced
+same as today) rather than opening a new concurrent lane. This is a **correction to Unit 4's
+selection algorithm**, applied there in this revision — see the guardrail added to that unit.
 
 **Documented growth trigger.** When profiled Worker-CPU or DO SQLite-write usage approaches 75% of
 its Free-tier ceiling at the then-current dispatch volume, the next step is **Workers Paid
-($5/mo)** — which raises the CPU-per-invocation limit from 10ms to 30s and lifts the other Free-tier
-ceilings — not a Queue. A Queue adds complexity without relieving the constraint that's actually
-binding; Workers Paid relieves it directly.
+($5/mo)** — which raises the CPU-per-invocation limit from 10ms to 30s and the subrequest-per-invocation
+ceiling from 50 to 10,000 — not a Queue. A Queue adds complexity without relieving the constraint
+that's actually binding; Workers Paid relieves it directly. **The six-simultaneous-connection limit
+is the one Free-tier ceiling that Workers Paid does *not* lift** — it is identical on both plans — so
+`MAX_CONCURRENT_ROUTE_LANES` stays load-bearing even after a plan upgrade; only the *subrequest
+count* ceiling (50 → 10,000/invocation) and CPU time improve with Paid.
 
 ```mermaid
 flowchart LR
@@ -180,8 +217,10 @@ control data and never prompt or response bodies.
 
 ### Components and responsibilities
 
-- **Ingress Worker:** authenticates and validates a batch, stages B2 request payloads, calls
-  `enqueueBatch`, and serves batched status reads. It never selects routes or reserves capacity.
+- **Ingress Worker:** authenticates and validates a batch, calls `enqueueBatch`, and serves batched
+  status reads. It never selects routes, reserves capacity, or touches B2 (see "Cloudflare
+  connection and subrequest limits" below — B2 payload staging belongs to the caller, which already
+  holds B2 credentials for every other artifact type it writes).
 - **Scheduler DO:** owns job/route state, leases, the ledger, pacing plan, attempt-start records,
   retry authorization, estimate calibration, and cleanup index. It never reads B2 payloads, starts a
   Worker, or awaits model calls.
@@ -200,6 +239,7 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | --- | ---: | --- |
 | `MAX_BUNDLE_JOBS` | 4 | Maximum LLM calls claimed by one Worker cron |
 | `MAX_JOBS_PER_ROUTE_PER_BUNDLE` | 4 | Allows a paced same-route sequence when it fits |
+| `MAX_CONCURRENT_ROUTE_LANES` | 5 | Hard cap on distinct routes (concurrent lanes) per bundle — stays under Cloudflare's 6-simultaneous-connection-per-invocation ceiling (identical on Free and Paid; see "Cloudflare connection and subrequest limits" below) |
 | `DISPATCH_WINDOW_SECONDS` | 25 | Latest planned provider-call start after a cron tick |
 | `CRON_TICK_SECONDS` | 60 | Existing Worker dispatch cadence; bounds new-work latency |
 | `MAX_ACTIVE_BUNDLES` | 2 | Bound for partially completed or abandoned dispatch plans |
@@ -250,6 +290,33 @@ headroom. Cloudflare counts DO alarm invocations and RPC sessions as DO requests
 `setAlarm()` as a SQLite row write. See
 [DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
 
+**Key cost clarification: one executor cron tick = one Worker invocation, containing multiple
+subrequests.** The 1,440 daily cron ticks consume 1,440 Worker invocations (Workers Free limit:
+100,000/day). Within each invocation, the executor may call the DO twice (claim + complete, counted
+as DO requests, not Worker invocations), read and write multiple payloads to B2 (subrequests, not
+Worker invocations), and make multiple AI Gateway calls (also separate from Worker invocations but
+counted against your AI Gateway quota). Similarly, each ingress `enqueueBatch` or `poll-batch` is one
+Worker invocation — see below for why it does *not* scale its own B2 subrequest count with batch
+size. The Worker **invocation** count (100k/day) is the outer loop; **DO requests** (100k/day),
+**subrequests per invocation**, and **AI Gateway requests** (provider-governed) are separate budgets.
+
+**Cloudflare connection and subrequest limits (verified against current docs, 2026-08-17).** Two
+distinct per-invocation ceilings apply, and both are identical on Free and Paid unless noted:
+
+| Limit | Free | Paid | Behavior when exceeded |
+| --- | ---: | ---: | --- |
+| Simultaneous connections waiting for response headers | 6 | 6 (unchanged) | Queued, not rejected, until a slot frees — see the route-lane-count fix above |
+| Total subrequests per invocation (`fetch()`, KV, R2, Cache, D1) | 50 | 10,000 | Hard per-invocation ceiling |
+
+[Workers limits docs](https://developers.cloudflare.com/workers/platform/limits/). This is why
+`ENQUEUE_BATCH_MAX`/`POLL_BATCH_MAX` can safely target "low hundreds to low thousands" per call even
+on Free: **the ingress Worker's own subrequest cost per `enqueue-batch`/`poll-batch` call is O(1) —
+one DO RPC — never O(batch size)**, because B2 payload I/O for both endpoints belongs to the caller,
+not the Worker (see "Ingress and status APIs" below). If a future change ever made the ingress
+Worker do one B2 op per job in a batch, a "low hundreds" batch would blow straight through the
+50-subrequest Free ceiling on the very first oversized call — this is a correctness constraint on
+the *architecture*, not just a tuning knob.
+
 **Ingestion admission is bounded on both ends, not just at the DO.** A DO-side admission cap
 (`MAX_JOBS_PER_UTC_DAY`) alone still lets a runaway GitHub workflow hammer the ingress Worker with
 rejected-but-still-counted requests — exactly today's failure mode (see Demand model). Client-side
@@ -261,6 +328,25 @@ The AI Gateway request is a separate product request. It is not a second Worker 
 provider quotas and its own rate limits remain authoritative. In particular, Cloudflare-managed
 Unified Billing has a 200-request-per-60-second-per-gateway limit; BYOK does not use that specific
 limit. See [AI Gateway limits](https://developers.cloudflare.com/ai-gateway/reference/limits/).
+
+**There is no binding shortcut that avoids the AI Gateway subrequest.** Workers AI's own
+`@cf/*`-model binding (`env.AI.run(...)`) can call Cloudflare-hosted models without a `fetch()`
+subrequest, but none of v2's routes are Workers AI models — all nine providers (Gemini/Gemma,
+Mistral, Groq, SambaNova, SiliconFlow, Z.AI, OpenRouter, Kilo, OpenCode) are third-party,
+BYOK-authenticated providers reached through AI Gateway's HTTP proxy endpoint, which is always a
+genuine outbound `fetch()` subrequest and counts toward both limits in the table above. There is no
+way to avoid this subrequest for these providers.
+
+**BYOK against Google AI Studio's free tier is confirmed working — this project already does it in
+production.** v1's proxy Worker
+([`workers/llm-dispatch-proxy/src/index.js`](../workers/llm-dispatch-proxy/src/index.js)) sends
+`Authorization: Bearer <GEMINI_API_KEY>` (our own free-tier key, via
+`config/provider_limits.yml`'s `gemini.accounts[].api_key_env`) through AI Gateway's
+`google-ai-studio` slug against Google's OpenAI-compatible endpoint, unconditionally for any route
+where `usesGateway` is true — there is no per-provider carve-out that falls back to a direct,
+gateway-bypassing call. The `gemini_*` free routes in `provider_limits.yml` (`rpd: 500`, `rpm: 15`,
+matching Google AI Studio's actual free-tier ceiling) are live, dispatched routes today, per the
+Demand model's ~2,600–3,500 real LLM calls/day. v2 should reuse this exact mechanism unchanged.
 
 ## Data model and protocol
 
@@ -290,19 +376,27 @@ invocations from issuing duplicate provider calls.
 
 ### Ingress and status APIs
 
-The public Worker, not the DO, exposes authenticated endpoints:
+The public Worker, not the DO, exposes authenticated endpoints. **It never performs B2 I/O, for any
+endpoint** — see "Cloudflare connection and subrequest limits" above for why: an ingress endpoint's
+own subrequest cost must stay O(1) regardless of batch size, and B2 credentials for every artifact
+type the pipeline writes already live in the calling Python client
+(`citypods/storage/s3.py`'s `b2_from_env()`), not the Worker.
 
-- **`POST /v2/jobs:enqueue-batch`:** accepts up to `ENQUEUE_BATCH_MAX` jobs, stages B2 payloads,
-  and makes one `enqueueBatch` RPC. Each job may set an optional `priority: 0|1` (default `1`) —
-  this is the only supported way to set priority; there is deliberately no separate API to edit
-  priority on an already-queued job after the fact (that's a recovery/testing operation, not
-  production traffic — Cloudflare's dashboard Data Studio and `wrangler dev`'s Local Explorer SQL
-  Studio both support browsing and writing SQLite-backed DO storage directly, so a bespoke endpoint
-  isn't needed; see the note under the ordering pass below).
-- **`POST /v2/jobs:poll-batch`:** returns up to `POLL_BATCH_MAX` statuses/results in one DO RPC
-  and bounded B2 reads.
+- **`POST /v2/jobs:enqueue-batch`:** accepts up to `ENQUEUE_BATCH_MAX` jobs, each already carrying a
+  `payload_key` the *caller* wrote directly to B2 before assembling the batch, and makes one
+  `enqueueBatch` RPC. Each job may set an optional `priority: 0|1` (default `1`) — this is the only
+  supported way to set priority; there is deliberately no separate API to edit priority on an
+  already-queued job after the fact (that's a recovery/testing operation, not production traffic —
+  Cloudflare's dashboard Data Studio and `wrangler dev`'s Local Explorer SQL Studio both support
+  browsing and writing SQLite-backed DO storage directly, so a bespoke endpoint isn't needed; see the
+  note under the ordering pass below).
+- **`POST /v2/jobs:poll-batch`:** returns up to `POLL_BATCH_MAX` statuses in one DO RPC —
+  `result_key` only, never an inlined result body. A caller that needs a specific job's full result
+  fetches it directly from B2 itself (same `b2_from_env()` credentials), exactly once, only for the
+  job(s) it actually needs — not proactively for every completed job in a reconciliation sweep.
 - **`POST /v2/jobs/{id}:schema-retry`:** preserves schema-correction semantics with a new payload
-  and idempotency namespace.
+  and idempotency namespace; the caller writes the corrected payload to B2 first, same as
+  `enqueue-batch`.
 - **`POST /v2/jobs:resolve-unknown-batch`:** an authenticated, bounded operator/GitHub-worker
   action that acknowledges `unknown_attempt` records and creates explicit retry job identities.
 - **`GET /healthz`:** does no B2 or DO work; used only for routing health.
@@ -311,11 +405,12 @@ The existing Python client batches all enqueue and poll operations available in 
 removes the old one-request-per-`JobHandle` correlation. Each handle records whether it belongs to
 the legacy or v2 transport, so reconciliation never queries the wrong system.
 
-Ingress preassigns each job id, writes its B2 payload, then makes one `enqueueBatch` RPC. A failed
-or losing idempotency race can therefore leave an unreferenced payload object, which is safe and is
-deleted by the bounded cleanup path. The DO validates an immutable request digest with the
-idempotency key, so a reused key with different contents fails loudly rather than corrupting an
-earlier job.
+The caller preassigns each job id, writes its B2 payload directly (its own credentials, not
+proxied through the ingress Worker), then makes one `enqueueBatch` RPC with the resulting
+`payload_key`s. A failed or losing idempotency race can therefore leave an unreferenced payload
+object, which is safe and is deleted by the bounded cleanup path. The DO validates an immutable
+request digest with the idempotency key, so a reused key with different contents fails loudly
+rather than corrupting an earlier job.
 
 ### Claim, ordering, pacing, and execution flow
 
@@ -434,17 +529,23 @@ burst/request capacity, not merely because it requires an otherwise quiet route 
 
 v2 uses a separate B2 prefix, for example `llm-dispatch-v2/`, with a dedicated least-privilege
 application key. It uses the existing SigV4 approach; there is no R2 binding, R2 API call, B2 queue
-manifest, or B2 scheduler-control record in v2.
+manifest, or B2 scheduler-control record in v2. **Only the caller (Python client) and the executor
+Worker hold this key — the ingress Worker never does** (see "Cloudflare connection and subrequest
+limits" and "Ingress and status APIs").
 
-- **`payloads/<job-id>/request.json`:** retained until terminal job cleanup.
-- **`results/<job-id>/<lease-token>.json`:** retained for `COMPLETED_RETENTION_DAYS`.
+- **`payloads/<job-id>/request.json`:** written by the caller; retained until terminal job cleanup.
+- **`results/<job-id>/<lease-token>.json`:** written by the executor Worker; retained for
+  `COMPLETED_RETENTION_DAYS`.
 
-The scheduler indexes terminal rows by `completed_at`. A daily bounded maintenance request asks the
-DO for at most `CLEANUP_BATCH_SIZE` `purge_pending` jobs, deletes their B2 payload/result keys, and
-calls `confirmPurge` to remove the corresponding SQLite rows. The operation is idempotent: a crash
-after B2 deletion merely repeats a delete. It never performs an unbounded B2 or DO list. B2's
-existing version-retention backstop keeps accidental deletions recoverable for its configured
-window.
+The scheduler indexes terminal rows by `completed_at`. A daily bounded maintenance request (run from
+the executor Worker, which already holds B2 credentials) asks the DO for at most `CLEANUP_BATCH_SIZE`
+`purge_pending` jobs, deletes their B2 payload/result keys, and calls `confirmPurge` to remove the
+corresponding SQLite rows. The operation is idempotent: a crash after B2 deletion merely repeats a
+delete. It never performs an unbounded B2 or DO list. B2's existing version-retention backstop keeps
+accidental deletions recoverable for its configured window. Size `CLEANUP_BATCH_SIZE` (and
+`ORPHAN_SWEEP_LIMIT` below) well under the per-invocation subrequest ceiling (50 Free / 10,000 Paid;
+see "Cloudflare connection and subrequest limits") — each purged/swept key is its own B2 delete
+subrequest, same accounting as everywhere else in this design.
 
 A separate cursor-based orphan sweep examines at most `ORPHAN_SWEEP_LIMIT` old B2 payload keys per
 run. It deletes a key only after the DO confirms its preassigned job id was never accepted. This
@@ -469,6 +570,25 @@ this phase is considered complete — if polling dominates, batching enqueue alo
 Dispatch capability is **not** required for this phase to relieve the incident — jobs can sit
 `queued` in the DO.
 
+> **Revision note (2026-08-17): this phase's scope changed after verifying Cloudflare's real
+> connection/subrequest limits — check any already-written code against this before calling Phase 1
+> done.** The ingress Worker must **never** perform B2 I/O itself, for any endpoint, at any batch
+> size — see "Cloudflare connection and subrequest limits" above. If the current implementation has
+> the `enqueue-batch` or `poll-batch` handler writing/reading a B2 object per job in the batch (a
+> natural first draft, and what earlier language in this doc implied), **that breaks on the very
+> first batch over ~45 jobs on Free tier** (50-subrequest-per-invocation hard ceiling) and silently
+> queues/slows down well before that even on Paid. The fix is two-directional and was already
+> mostly in scope here (see the `citypods/compute/llm.py` bullet below), so this is a narrower change
+> than it might sound: (1) `enqueue-batch` must not write B2 payloads — the caller (Python client)
+> writes each job's payload directly to B2 with its own existing credentials
+> (`citypods/storage/s3.py`'s `b2_from_env()`, the same mechanism already used for every other
+> artifact type) *before* assembling the batch, and passes only `payload_key` references; (2)
+> `poll-batch` must not inline B2 result bodies — return `result_key` only, and have the caller fetch
+> a specific job's result directly from B2 only when it actually needs the bytes, not proactively for
+> every completed job in a sweep. `src/b2.js` (below) should not exist in the ingress Worker at all
+> under this correction — there is no B2 credential or SigV4 logic needed there once neither endpoint
+> touches B2.
+
 - Create `workers/llm-dispatch-v2/` as a separate Worker deployment with a SQLite DO class and a
   separate B2 prefix. Keep the existing v1 Worker unchanged.
   - Extract only pure route-catalog selection and response-normalization helpers from v1; do not
@@ -477,18 +597,26 @@ Dispatch capability is **not** required for this phase to relieve the incident �
     shapes land in Phase 2).
   - Add `src/coordinator.js` with, at minimum, the `jobs` and `scheduler` SQL schema and the
     `enqueueBatch` RPC (the rest of `coordinator.js` lands in Phase 2).
-  - Add `src/b2.js` for SigV4 request payload persistence with bounded body reads and timeouts.
+  - Do **not** add a B2 module to the ingress Worker — see the revision note above.
+    `workers/llm-dispatch-proxy/`'s existing SigV4 B2 approach only needs to exist on the *executor*
+    Worker (Phase 2, for reading claimed payloads and writing results), never on ingress.
   - Add migrations using `new_sqlite_classes`; use RPC methods rather than public DO fetch routes.
 - Implement **both** `POST /v2/jobs:enqueue-batch` and `POST /v2/jobs:poll-batch` (ingress Worker)
   in this phase, including the `MAX_JOBS_PER_UTC_DAY` admission cap and `ENQUEUE_BATCH_MAX`/
   `POLL_BATCH_MAX` per-call limits from day one — not deferred to a later phase, and not enqueue
   alone, since review/43's request-shape data says polling is plausibly the larger share of the
-  volume this phase needs to fix.
+  volume this phase needs to fix. Neither endpoint touches B2 (revision note above); each is a
+  validate-then-single-DO-RPC pass-through, so their own subrequest cost is O(1) regardless of
+  `ENQUEUE_BATCH_MAX`/`POLL_BATCH_MAX`.
 - Batch the dominant-volume call site on **both** its enqueue and its reconciliation-poll paths:
   restructure enqueue from "submit one job, get a handle back immediately" to "accumulate a batch,
   submit once," and restructure the `JobHandle` reconciliation sweep from one poll per outstanding
   handle to one `poll-batch` call per run, against new client methods in `citypods/compute/llm.py`.
-  Cut that call site's new-job submission and reconciliation over to v2 as soon as both land.
+  Those new client methods are also where each job's B2 payload write (and any on-demand result
+  read) now lives, using the existing `citypods/storage/s3.py` `b2_from_env()` credentials — this
+  was already the natural place for it even before the revision note above, so most of this bullet's
+  scope is unchanged. Cut that call site's new-job submission and reconciliation over to v2 as soon
+  as both land.
 - Add client-side throttling (in `citypods/compute/llm.py` and/or GitHub Actions
   `concurrency`/rate-limiting on the calling workflows) so callers self-limit *before* making a
   request once known headroom is exhausted, not just get rejected after — a DO-side cap alone still
@@ -717,7 +845,9 @@ type EnqueueJobInput = {
   prompt_family: string
   input_token_estimate: number
   max_output_token_estimate: number
-  payload_key: string              // B2 key the ingress Worker already wrote the payload to
+  payload_key: string              // B2 key the CALLER already wrote the payload to, directly,
+                                    // before assembling the batch -- not the ingress Worker; see
+                                    // "Cloudflare connection and subrequest limits"
   priority?: 0 | 1                 // default 1 if omitted
 }
 
@@ -749,8 +879,13 @@ Algorithm (one SQLite transaction for the whole batch — do not open a transact
 4. Commit. Return `{ accepted, rejected }`.
 
 **Do not** call `attemptStarted`, touch `routes`, or perform any B2 I/O inside this RPC — the DO
-never reads B2 payloads (see "Components and responsibilities"). The ingress Worker writes the B2
-payload *before* calling `enqueueBatch`, per the "Ingress and status APIs" ordering.
+never reads B2 payloads (see "Components and responsibilities"). The *caller* writes the B2 payload
+directly, with its own credentials, before calling `enqueueBatch` — not the ingress Worker, and not
+this RPC — per the "Ingress and status APIs" ordering. **This keeps `enqueueBatch`'s own cost at one
+SQLite transaction regardless of batch size** — no B2 subrequest anywhere in this RPC or its calling
+HTTP handler — which is what lets `ENQUEUE_BATCH_MAX` safely target low hundreds to low thousands of
+jobs per call without approaching the Free-tier 50-subrequest-per-invocation ceiling (see "Cloudflare
+connection and subrequest limits").
 
 ### Unit 3 — `pollBatch` RPC (`src/coordinator.js`; Phase 1)
 
@@ -771,8 +906,12 @@ type PollBatchResult = {
 Single `SELECT id, state, result_key, error_json, attempts FROM jobs WHERE id IN (...ids)`, one
 query for the whole batch — **do not** loop one query per id. An id not found returns no entry in
 `statuses` (the caller distinguishes "not found" from every real state by absence, not a sentinel
-state string). The ingress Worker resolves `result_key`/B2 reads for `poll-batch`'s HTTP response
-after this RPC returns — the DO itself never reads B2.
+state string). The ingress Worker's `poll-batch` HTTP handler returns this RPC's `result_key`s
+**unresolved** — it does not read the referenced B2 objects itself. Neither the DO nor the ingress
+Worker ever reads B2 in this path; a caller that wants a specific job's full result reads that one
+B2 object directly, itself, only when it actually needs the bytes (see "Ingress and status APIs").
+This keeps `pollBatch`'s HTTP handler at one DO RPC regardless of `POLL_BATCH_MAX`, for the same
+reason `enqueueBatch`'s handler stays O(1) — see "Cloudflare connection and subrequest limits."
 
 ### Unit 4 — `claimDispatchWindow` RPC (`src/coordinator.js`; Phase 2) — admission, ordering, pacing
 
@@ -810,11 +949,15 @@ function claimDispatchWindow(now, windowSeconds):
                LIMIT (some generous multiple of MAX_BUNDLE_JOBS, e.g. 4x, to give the route-fill
                       pass below enough to choose from without a full table scan)
 
-  # Pass 1: fill from distinct eligible routes
+  # Pass 1: fill from distinct eligible routes, capped at MAX_CONCURRENT_ROUTE_LANES lanes total —
+  # the executor (Unit 6) runs one lane per distinct route concurrently, and Cloudflare allows at
+  # most 6 simultaneous outbound connections per invocation (Free and Paid alike); this cap must
+  # never be exceeded regardless of how many distinct routes are eligible.
   chosen = []
   seen_routes = {}
   for job in candidates:
     if len(chosen) >= MAX_BUNDLE_JOBS: break
+    if len(seen_routes) >= MAX_CONCURRENT_ROUTE_LANES: break   # never open another new lane
     eligible_routes = routesEligibleFor(job)   # policy_json.allowed_models -> route catalog lookup
     for route in eligible_routes:
       if route.route_id in seen_routes: continue   # distinct-routes-first: skip on pass 1
@@ -823,7 +966,11 @@ function claimDispatchWindow(now, windowSeconds):
       seen_routes[route.route_id] = true
       break
 
-  # Pass 2: fill remaining slots — aged jobs win their bucket, then larger token estimate, then FIFO
+  # Pass 2: fill remaining slots — aged jobs win their bucket, then larger token estimate, then FIFO.
+  # May still open a NEW lane if pass 1 left room under MAX_CONCURRENT_ROUTE_LANES (e.g. pass 1's
+  # scan found fewer distinct eligible routes among the earliest candidates than the cap allows);
+  # once the lane cap is reached, pass 2 may only add jobs to an already-open lane, sequenced behind
+  # it via MAX_JOBS_PER_ROUTE_PER_BUNDLE — never opens lane number MAX_CONCURRENT_ROUTE_LANES+1.
   remaining_candidates = [c for c in candidates if c.job not in chosen]
   # split into aged (waited >= MAX_QUEUE_WAIT_SECONDS) and not-aged; aged bucket sorts first,
   # each bucket internally sorted by input_token_estimate + max_output_token_estimate DESC,
@@ -831,9 +978,12 @@ function claimDispatchWindow(now, windowSeconds):
   for job in orderedByAgingThenSize(remaining_candidates, now):
     if len(chosen) >= MAX_BUNDLE_JOBS: break
     for route in routesEligibleFor(job):
+      is_new_lane = route.route_id not in seen_routes
+      if is_new_lane and len(seen_routes) >= MAX_CONCURRENT_ROUTE_LANES: continue  # lane cap; skip
       if routeAlreadyHasNJobsInThisBundle(route, chosen) >= MAX_JOBS_PER_ROUTE_PER_BUNDLE: continue
       if not routeHasCapacityFor(route, job, now, windowSeconds): continue
       chosen.append({job, route})
+      seen_routes[route.route_id] = true
       break
 
   if chosen is empty: return empty ClaimResult
@@ -876,6 +1026,13 @@ route_id:model:prompt_family)` — never lower than any of the three.
 executor — the "execution flow" section is explicit that `wait_ms` is measured *from RPC response
 receipt*, so the executor (Unit 6) must apply it relative to when its own `fetch` to the DO
 resolves, not relative to `now` inside this function.
+
+**Do not** remove or raise the `MAX_CONCURRENT_ROUTE_LANES` cap in pass 1/pass 2 above without
+re-verifying Cloudflare's simultaneous-connection limit (see "Cloudflare connection and subrequest
+limits") — it exists so Unit 6's executor never needs more concurrent outbound connections than the
+platform allows per invocation. `MAX_BUNDLE_JOBS` may still profile higher than
+`MAX_CONCURRENT_ROUTE_LANES`; extra jobs sequence behind an already-open lane
+(`MAX_JOBS_PER_ROUTE_PER_BUNDLE`) rather than opening a new one.
 
 ### Unit 5 — `completeBatch` RPC (`src/coordinator.js`; Phase 2)
 
@@ -976,10 +1133,23 @@ its computed `target_time` — reading the payload early doesn't save time (the 
 pacing, not I/O) and complicates the "no B2 access on a no-work tick" invariant if the wait is later
 aborted.
 
+**`Promise.allSettled` over all of `lanes` is safe here — no separate concurrency limiter needed in
+this unit — only because Unit 4 already caps the number of distinct routes (lanes) `chosen` at
+`MAX_CONCURRENT_ROUTE_LANES` at claim time.** Within one lane, every step is sequential (`await`
+chained), so a lane never holds more than one outbound connection open at once; across lanes,
+`Promise.allSettled` runs at most `MAX_CONCURRENT_ROUTE_LANES` of them concurrently, which is why
+that constant is set with headroom under Cloudflare's 6-simultaneous-connection-per-invocation limit
+(see "Cloudflare connection and subrequest limits"). **Do not** add a client-side semaphore/worker-pool
+around this `Promise.allSettled` as a "fix" if profiling ever shows more than
+`MAX_CONCURRENT_ROUTE_LANES` lanes in a plan — that would silently defer jobs the DO's ledger already
+reserved provisional capacity for, past their planned `wait_ms`, without the DO ever finding out; fix
+it at the source, in Unit 4's selection cap, not here.
+
 **This just-in-time-per-lane read pattern is also what the "Cron pull vs. a Cloudflare Queue push"
 profiling note above is counting on:** because a job's payload/response references aren't held past
 its own step in its lane's loop, peak resident-payload count at any instant is bounded by concurrent
-*lane* count, not by `MAX_BUNDLE_JOBS`. Do not "optimize" this into a bulk pre-fetch of every job's
+*lane* count (now hard-capped at `MAX_CONCURRENT_ROUTE_LANES`, not just softly bounded by GC
+behavior), not by `MAX_BUNDLE_JOBS`. Do not "optimize" this into a bulk pre-fetch of every job's
 payload at the top of `scheduled()` — that would recreate v1's whole-batch-resident shape and the
 GC pressure that came with it, defeating the reason this pattern is worth profiling separately.
 
@@ -1000,18 +1170,21 @@ authentication mechanism already used by v1 (reuse, do not reinvent).
 
 ```
 POST /v2/jobs:enqueue-batch
-  body:     { jobs: EnqueueJobInput[] }        // see Unit 2; length <= ENQUEUE_BATCH_MAX or 400
+  body:     { jobs: EnqueueJobInput[] }        // see Unit 2; each job's payload_key already points
+                                                // to an object the CALLER wrote directly to B2;
+                                                // length <= ENQUEUE_BATCH_MAX or 400
   200 body: EnqueueBatchResult                  // see Unit 2
   400:      { error: 'batch_too_large' | 'invalid_job', detail: string }
 
 POST /v2/jobs:poll-batch
   body:     { ids: string[] }                   // length <= POLL_BATCH_MAX or 400
-  200 body: { statuses: (PollBatchResult['statuses'][number] & { result?: object })[] }
-            // Worker resolves result_key -> B2 read -> inlines as `result` for state='completed'
+  200 body: { statuses: PollBatchResult['statuses'] }
+            // result_key ONLY -- never inlined result bytes. The caller reads a specific job's
+            // result directly from B2 itself, only when it actually needs it (see Unit 3).
   400:      { error: 'batch_too_large' }
 
 POST /v2/jobs/{id}:schema-retry
-  body:     { corrected_payload_key: string }    // ingress Worker already wrote this to B2
+  body:     { corrected_payload_key: string }    // CALLER already wrote this to B2, directly
   200 body: { id: string, idempotency_key: string }   // new job under the schema-retry namespace
   404:      { error: 'not_found' }
 
@@ -1023,9 +1196,11 @@ GET /healthz
   200 body: { ok: true }                          // no B2 or DO work — routing health only
 ```
 
-**Do not** add any endpoint beyond these five to the public Worker. Route selection, ledger
-mutation, and B2 payload reads never happen in the ingress Worker outside `poll-batch`'s
-result-inlining step — everything else is a pass-through to the DO RPCs above.
+**Do not** add any endpoint beyond these five to the public Worker, and do not add B2 I/O to any of
+them. Route selection, ledger mutation, and B2 reads/writes never happen in the ingress Worker at
+all — every endpoint above is validate-then-single-DO-RPC, so its own subrequest cost is O(1)
+regardless of batch size (see "Cloudflare connection and subrequest limits"). The Worker never holds
+B2 credentials.
 
 ### Unit 9 — Startup validator (`src/index.js` module scope, run once per isolate)
 
@@ -1035,6 +1210,13 @@ function validateConfig(env):
          <= env.LEASE_DURATION_SECONDS)
   assert(env.LEASE_DURATION_SECONDS < env.CRON_EXECUTION_LIMIT_SECONDS)
   assert(env.MAX_BUNDLES_PER_UTC_DAY < env.CRON_TICK_SECONDS's implied 1440 ticks/day)
+  # Cloudflare's simultaneous-connection ceiling is 6/invocation on every plan (Free and Paid) --
+  # this does NOT relax with a plan upgrade, unlike CPU time and subrequest count below. Fail closed
+  # with headroom rather than trusting the initial-value table never drifts.
+  assert(env.MAX_CONCURRENT_ROUTE_LANES <= 5,
+         "MAX_CONCURRENT_ROUTE_LANES must leave headroom under Cloudflare's fixed 6-simultaneous-" +
+         "connection-per-invocation limit (same on Free and Paid) -- see review/44 'Cloudflare " +
+         "connection and subrequest limits'")
   # projected-usage-vs-75%-ceiling check, per "Bounded initial configuration":
   for each Free-resource row in that table, compute projected daily use from the above config and
   assert it stays under 0.75 * the row's included daily limit; throw a descriptive error naming
@@ -1055,6 +1237,14 @@ Unit and Miniflare tests must cover:
   breaks ties among otherwise-eligible jobs;
 - admission fills distinct eligible routes first, then prefers larger conservative estimates, with
   stable FIFO ties; a smaller job wins after the configured aging deadline;
+- `claimDispatchWindow` never selects more than `MAX_CONCURRENT_ROUTE_LANES` distinct routes into one
+  bundle, across both the distinct-routes-first pass and the aging/size pass, even when more distinct
+  eligible routes exist in the candidate set — extra jobs land on an already-open lane instead;
+- `enqueue-batch` and `poll-batch` HTTP handlers make zero B2 subrequests regardless of batch size —
+  a Miniflare test asserts subrequest count stays constant (not O(batch size)) across a 1-job and a
+  `ENQUEUE_BATCH_MAX`/`POLL_BATCH_MAX`-sized batch, catching a regression back to per-job B2 I/O in
+  the ingress Worker before it can blow the Free-tier 50-subrequest-per-invocation ceiling in
+  production;
 - `enqueueBatch` rejects once `MAX_JOBS_PER_UTC_DAY` is reached for the day, and rejection is cheap
   enough (no B2 write, no route/ledger work) that a runaway caller hitting it repeatedly does not
   itself become a new CPU or request-budget problem;
@@ -1100,10 +1290,13 @@ unbounded ingestion burst sharing the same 100,000/day ceiling. During any windo
 split-cap coexistence is active, the canary must also confirm combined v1+v2 usage per shared route
 stays under the real `provider_limits.yml` rpm/rpd/tpm — not just under each system's own halved
 view of it. The canary must establish payload/result/subrequest caps from CPU, memory, and
-connection profiling, including the `MAX_BUNDLE_JOBS` = 4/8/12 profiling pass from "Cron pull vs. a
-Cloudflare Queue push." Only then increase active-bundle or in-flight-call capacity, raise the
-same-route cap, lengthen the dispatch window, or raise the daily bundle or ingestion cap through a
-new measured capacity review — informed by the real aggregate route capacity in the Demand model, so
+connection profiling, including the `MAX_BUNDLE_JOBS` = 4/8/12 profiling pass **against both total
+bundle size and route diversity** from "Cron pull vs. a Cloudflare Queue push" — `MAX_BUNDLE_JOBS`
+may still be raised by this profiling pass, but `MAX_CONCURRENT_ROUTE_LANES` may not, since it is
+fixed by Cloudflare's platform-wide connection limit, not by what profiling finds safe. Only then
+increase active-bundle or in-flight-call capacity, raise the same-route cap, lengthen the dispatch
+window, or raise the daily bundle or ingestion cap through a new measured capacity review — informed
+by the real aggregate route capacity in the Demand model, so
 route capacity is never the limiting assumption, only Worker CPU and DO SQLite writes are.
 
 ## Consequences and rejected alternatives
@@ -1144,3 +1337,15 @@ route capacity is never the limiting assumption, only Worker CPU and DO SQLite w
   — dashboard Data Studio and `wrangler dev`'s Local Explorer SQL Studio, both of which support
   browsing and writing SQLite-backed DO storage directly (used for the priority-field recovery edit
   path above instead of a bespoke endpoint).
+- [Workers platform limits](https://developers.cloudflare.com/workers/platform/limits/) — verified
+  2026-08-17: 6 simultaneous connections waiting for response headers per invocation (Free and Paid,
+  queued not rejected past 6), 50/10,000 total subrequests per invocation (Free/Paid). Source for
+  `MAX_CONCURRENT_ROUTE_LANES` and the enqueue/poll-batch B2-staging correction, both above.
+- [Durable Objects platform limits](https://developers.cloudflare.com/durable-objects/platform/limits/)
+  — DOs have their own outgoing 6-simultaneous-connection limit; whether a Worker→DO binding call
+  counts against the *Worker's* 6-connection budget is not explicitly documented, so this design
+  treats it conservatively (counts it) pending empirical profiling.
+- [AI Gateway providers: Google AI Studio](https://developers.cloudflare.com/ai-gateway/providers/google-ai-studio/)
+  and `workers/llm-dispatch-proxy/src/index.js` — confirms BYOK against Google AI Studio's free tier
+  works through AI Gateway's request-header method (`Authorization: Bearer <key>`), and that v1
+  already does this in production today for the `gemini_*` free routes.
