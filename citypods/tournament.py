@@ -225,12 +225,21 @@ def pairwise_judge(
 
 
 def _backend(model: str, storage) -> LiteLLMBackend:
+    # Start from LLMBackendConfig.from_env() -- the complete, single source of truth for every
+    # dispatch-relevant environment variable -- and override only model/mode. This used to
+    # hand-roll dispatch_url/dispatch_auth_token alone: LLMBackendConfig has no env-reading
+    # __post_init__, so the omitted dispatch_v2_url/dispatch_v2_auth_token fields were always
+    # None, and pairwise_judge's queue_only=True policy always fell through to
+    # _enqueue_durable_policy_job's legacy v1 branch regardless of LLM_DISPATCH_V2_URL being set.
+    # Building from .from_env() means a future field added there can't silently miss this call
+    # site again. See the 2026-08-18 incident notes in review/44.
+    from dataclasses import replace
+
     return LiteLLMBackend(
-        LLMBackendConfig(
+        replace(
+            LLMBackendConfig.from_env(),
             model=model,
             mode="dispatch" if model.startswith("mistral/") else "direct",
-            dispatch_url=__import__("os").environ.get("LLM_DISPATCH_URL"),
-            dispatch_auth_token=__import__("os").environ.get("LLM_DISPATCH_AUTH_TOKEN"),
         ),
         storage=storage,
     )
