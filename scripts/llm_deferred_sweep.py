@@ -226,6 +226,15 @@ def main(argv: list[str] | None = None) -> int:
     snapshot = load_deferred_snapshot(storage)
     prune_expired_failure_markers(storage)
     if datetime.now(UTC) < deadline_at:
+        v2_handles = [h for h in snapshot.pending() if h.backend == "llm-dispatch-v2"]
+        if v2_handles:
+            try:
+                backend.poll_batch(v2_handles)
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"llm-deferred-sweep: batch poll for v2 handles failed: {exc}",
+                    file=sys.stderr,
+                )
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break

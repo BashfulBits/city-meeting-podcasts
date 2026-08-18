@@ -1,0 +1,9 @@
+{
+  "name": "llm-dispatch-v2",
+  "version": "0.1.0",
+  "description": "Bounded bundled LLM dispatch coordinator and ingress Worker",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

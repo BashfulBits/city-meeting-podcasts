@@ -141,7 +141,7 @@ class QuotaPolicy:
 @dataclass(frozen=True)
 class LLMRoute:
     model: str
-    transport: Literal["direct", "mistral-dispatch", "llm-dispatch"]
+    transport: Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"]
     free: bool
     quota: QuotaPolicy
     pricing: PricingPolicy
@@ -150,7 +150,9 @@ class LLMRoute:
     # exactly one upstream request and must reserve only that one, even when the caller's
     # structured-output contract is present.
     max_provider_attempts: int | None = None
-    transports: tuple[Literal["direct", "mistral-dispatch", "llm-dispatch"], ...] = ("direct",)
+    transports: tuple[
+        Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"], ...
+    ] = ("direct",)
     # Physical route identity and direct LiteLLM adapter metadata.  Empty defaults preserve the
     # small hand-built routes used by unit tests and old callers; generated routes always fill all
     # fields and use ``route_id`` as their shared-ledger key.

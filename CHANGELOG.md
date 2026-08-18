@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Phase 1 of bounded bundled LLM dispatch (review/44).** Implemented the initial parallel
+  `workers/llm-dispatch-v2/` deployment with SQLite-backed `LLMSchedulerDO` Durable Object
+  coordinator, pure validate-then-DO pass-through with zero Worker-side B2 I/O on ingress, and
+  batch ingress/polling endpoints (`/v2/jobs:enqueue-batch`, `/v2/jobs:poll-batch`,
+  `/v2/jobs:resolve-unknown-batch`, `/v2/jobs/{id}:schema-retry`). Added `enqueue_batch` and
+  `poll_batch` methods to `LiteLLMBackend` in `citypods/compute/llm.py` with direct B2 payload
+  staging and client-side throttling to self-limit before making HTTP requests, updated
+  `llm_deferred_sweep.py` with batch v2 polling, and updated `citypods/compute/llm_policy.py`.
+
 - **Configurable global token estimate buffer (`token_estimate_buffer`).** Added a new top-level
   setting `token_estimate_buffer` (e.g. `0.90`) in `config/provider_limits.yml` that applies a
   scaling multiplier to all compiled token rate budgets (route `tpm`, provider `monthly_tpm`,

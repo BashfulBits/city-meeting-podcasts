@@ -14,6 +14,7 @@ transport or reason produced it.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import math
@@ -21,7 +22,8 @@ import os
 import re
 import sys
 import time
-from collections.abc import Callable, Mapping
+import uuid
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
@@ -56,6 +58,7 @@ from citypods.compute.llm_policy import (
 from citypods.compute.llm_scheduler import SelectionResult, select_and_reserve, select_route
 from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
+from citypods.storage.s3 import b2_from_env
 
 LLM_TASKS: frozenset[Task] = frozenset(
     {
@@ -293,6 +296,9 @@ class LLMBackendConfig:
     mode: Literal["direct", "dispatch"] = "direct"
     dispatch_url: str | None = None
     dispatch_auth_token: str | None = None
+    dispatch_v2_url: str | None = None
+    dispatch_v2_auth_token: str | None = None
+    daily_ingest_cap: int | None = None
     timeout_seconds: float = 30.0
     # Extra routes a policy-bearing call may spill onto once ``model``'s own per-minute/daily quota
     # window fills -- e.g. tagging pins ``gemini-3.1-flash-lite`` as the recipe/calibration route
@@ -312,11 +318,21 @@ class LLMBackendConfig:
         it. The ``Literal`` annotation on ``mode`` documents the two valid values; it does not
         (and must not) silently coerce an invalid environment value into one of them.
         """
+        daily_cap_str = os.environ.get("CITYPODS_LLM_DAILY_INGEST_CAP") or os.environ.get(
+            "LLM_DAILY_INGEST_CAP"
+        )
+        daily_cap = int(daily_cap_str) if daily_cap_str else None
         return cls(
             model=os.environ.get("LLM_MODEL") or cls.model,
             mode=cast("Literal['direct', 'dispatch']", os.environ.get("LLM_MODE") or cls.mode),
             dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
             dispatch_auth_token=os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
+            dispatch_v2_url=os.environ.get("CITYPODS_LLM_DISPATCH_V2_URL")
+            or os.environ.get("LLM_DISPATCH_V2_URL"),
+            dispatch_v2_auth_token=os.environ.get("CITYPODS_LLM_DISPATCH_V2_AUTH_TOKEN")
+            or os.environ.get("LLM_DISPATCH_V2_AUTH_TOKEN")
+            or os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
+            daily_ingest_cap=daily_cap,
             timeout_seconds=float(os.environ.get("LLM_TIMEOUT_SECONDS", cls.timeout_seconds)),
         )
 
@@ -513,6 +529,8 @@ class LiteLLMBackend(Backend):
         self._completion = completion
         self._session = http_session or requests.Session()
         self.storage = storage
+        self._daily_ingest_admitted: int = 0
+        self._daily_ingest_exhausted: bool = False
 
     def _available_transports(self) -> frozenset[str]:
         """Which transports a policy-bearing call from *this instance* can reach right now.
@@ -525,12 +543,22 @@ class LiteLLMBackend(Backend):
         freely across every route regardless of which transport backs it.
         """
         if self.config.mode == "dispatch":
-            return frozenset({"mistral-dispatch", "llm-dispatch"})
+            transports = {"mistral-dispatch", "llm-dispatch"}
+            if self.config.dispatch_v2_url:
+                transports.add("llm-dispatch-v2")
+            return frozenset(transports)
         transports = {"direct"}
         if self.config.dispatch_url:
             transports.add("mistral-dispatch")
             transports.add("llm-dispatch")
+        if self.config.dispatch_v2_url:
+            transports.add("llm-dispatch-v2")
         return frozenset(transports)
+
+    def _storage_client(self):
+        if self.storage is not None:
+            return self.storage
+        return b2_from_env()
 
     def _completion_fn(self) -> Callable[..., Any]:
         """Resolve LiteLLM lazily so users of ASR-only paths need not install the extra."""
@@ -1030,6 +1058,8 @@ class LiteLLMBackend(Backend):
         messages: list[dict[str, Any]],
     ) -> JobResult | JobHandle:
         """Submit durable backlog work without reserving runner-side provider capacity."""
+        if self.config.dispatch_v2_url:
+            return self.enqueue_batch([job])[0]
         if not self.config.dispatch_url:
             raise LLMBackendError("durable queue policy requires LLM_DISPATCH_URL")
         allowed = policy.allowed_models or (self.config.model,)
@@ -1521,6 +1551,11 @@ class LiteLLMBackend(Backend):
     def reconcile(self, handle: JobHandle) -> JobResult | None:
         """Return a validated result when ready, or ``None`` while still pending -- uniformly for
         a deferred-direct handle (re-runs selection) or a genuine Worker dispatch (polls it)."""
+        if handle.backend == "llm-dispatch-v2":
+            if handle.deferred_request is not None:
+                return self._reconcile_deferred(handle)
+            poll_res = self.poll_batch([handle])
+            return poll_res.get(handle.ref)
         if handle.backend != self.name:
             raise ValueError(f"cannot reconcile handle for backend {handle.backend!r}")
         if handle.deferred_request is not None:
@@ -1662,6 +1697,269 @@ class LiteLLMBackend(Backend):
             except Exception:
                 pass
         return result
+
+    def enqueue_batch(self, jobs: Sequence[InferenceJob]) -> list[JobResult | JobHandle]:
+        """Submit a batch of InferenceJobs to v2 dispatch with B2 payload staging.
+
+        Directly writes B2 payload keys from the client before submitting the batch metadata
+        to the ingress Worker. Applies client-side throttling to avoid submitting requests
+        when daily caps or rate limits have been exhausted.
+        """
+        if not jobs:
+            return []
+
+        out: list[JobResult | JobHandle | None] = [None] * len(jobs)
+        uncached_indices: list[int] = []
+        for i, job in enumerate(jobs):
+            cached = look_up_deferred(self.storage, job.recipe_hash)
+            if isinstance(cached, JobResult):
+                out[i] = cached
+            else:
+                uncached_indices.append(i)
+
+        if not uncached_indices:
+            return [cast("JobResult | JobHandle", r) for r in out]
+
+        if self._daily_ingest_exhausted or (
+            self.config.daily_ingest_cap is not None
+            and self._daily_ingest_admitted >= self.config.daily_ingest_cap
+        ):
+            for idx in uncached_indices:
+                job = jobs[idx]
+                policy = (
+                    job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+                ) or getattr(job, "policy", None)
+                out[idx] = JobHandle(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    backend="llm-dispatch-v2",
+                    ref=f"deferred-daily-cap-{job.recipe_hash}",
+                    deferred_request=DeferredLLMRequest(
+                        messages=tuple(_messages(job)),
+                        policy=policy or LLMRequestPolicy(),
+                        output_token_budget=self._output_token_budget(job),
+                    ),
+                )
+            return [cast("JobResult | JobHandle", r) for r in out]
+
+        if not self.config.dispatch_v2_url:
+            for idx in uncached_indices:
+                job = jobs[idx]
+                out[idx] = self.run_inference(job)
+            return [cast("JobResult | JobHandle", r) for r in out]
+
+        prepared_jobs: list[dict[str, Any]] = []
+        job_meta: list[tuple[int, InferenceJob, str | None, str, str]] = []
+        storage = self._storage_client()
+
+        for idx in uncached_indices:
+            job = jobs[idx]
+            policy = (
+                job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+            ) or getattr(job, "policy", None)
+            structured = self._response_model(job)
+            structured_name, model = structured if structured else (None, None)
+            allowed = (policy.allowed_models if policy and policy.allowed_models else None) or (
+                self.config.model,
+            )
+            logical_model = canonical_model(allowed[0])
+            job_id = str(uuid.uuid4())
+            payload_key = f"payloads/{job_id}/request.json"
+
+            payload = self._payload(
+                job,
+                model,
+                resolved_model=logical_model,
+                policy=policy,
+                output_token_budget=self._output_token_budget(job),
+            )
+            canonical_payload_str = json.dumps(payload, sort_keys=True)
+            request_digest = hashlib.sha256(canonical_payload_str.encode("utf-8")).hexdigest()
+            idempotency_key = f"{job.recipe_hash}:durable-queue-v2" if job.recipe_hash else job_id
+
+            if storage is not None:
+                storage.write_bytes(
+                    payload_key,
+                    canonical_payload_str.encode("utf-8"),
+                    content_type="application/json",
+                )
+
+            messages = _messages(job)
+            in_tokens = estimate_tokens(messages)
+            out_tokens = self._output_token_budget(job)
+            priority = 0 if policy and getattr(policy, "priority", 1) == 0 else 1
+
+            prepared_jobs.append(
+                {
+                    "id": job_id,
+                    "idempotency_key": idempotency_key,
+                    "request_digest": request_digest,
+                    "prompt_family": job.task,
+                    "input_token_estimate": in_tokens,
+                    "max_output_token_estimate": out_tokens,
+                    "payload_key": payload_key,
+                    "priority": priority,
+                    "policy_json": json.dumps(
+                        {
+                            "allowed_models": allowed,
+                            "allow_paid": (
+                                getattr(policy, "allow_paid", False) if policy else False
+                            ),
+                        }
+                    ),
+                }
+            )
+            job_meta.append((idx, job, structured_name, logical_model, job_id))
+
+        headers = {"content-type": "application/json"}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:enqueue-batch")
+        try:
+            response = self._session.post(
+                url,
+                json={"jobs": prepared_jobs},
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 enqueue-batch request failed") from exc
+
+        if response.status_code == 429:
+            self._daily_ingest_exhausted = True
+            for idx, job, _sname, _lmodel, _jid in job_meta:
+                policy = (
+                    job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+                ) or getattr(job, "policy", None)
+                out[idx] = JobHandle(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    backend="llm-dispatch-v2",
+                    ref=f"deferred-429-{job.recipe_hash}",
+                    deferred_request=DeferredLLMRequest(
+                        messages=tuple(_messages(job)),
+                        policy=policy or LLMRequestPolicy(),
+                        output_token_budget=self._output_token_budget(job),
+                    ),
+                )
+            return [cast("JobResult | JobHandle", r) for r in out]
+
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 enqueue-batch returned HTTP {response.status_code}: "
+                f"{response.text}"
+            )
+
+        data = response.json()
+        accepted_ids = {a["id"] for a in data.get("accepted", []) if isinstance(a, dict)}
+        rejected_by_id = {
+            r["id"]: r.get("reason") for r in data.get("rejected", []) if isinstance(r, dict)
+        }
+
+        for idx, job, structured_name, logical_model, job_id in job_meta:
+            if job_id in accepted_ids:
+                self._daily_ingest_admitted += 1
+                handle = JobHandle(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    backend="llm-dispatch-v2",
+                    ref=job_id,
+                    structured_output=structured_name,
+                    model=logical_model,
+                )
+                write_deferred(self.storage, job.recipe_hash, handle)
+                out[idx] = handle
+            else:
+                reason = rejected_by_id.get(job_id, "unknown")
+                if reason == "daily_cap_exceeded":
+                    self._daily_ingest_exhausted = True
+                    policy = (
+                        job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+                    ) or getattr(job, "policy", None)
+                    out[idx] = JobHandle(
+                        task=job.task,
+                        recipe_hash=job.recipe_hash,
+                        backend="llm-dispatch-v2",
+                        ref=f"deferred-cap-{job.recipe_hash}",
+                        deferred_request=DeferredLLMRequest(
+                            messages=tuple(_messages(job)),
+                            policy=policy or LLMRequestPolicy(),
+                            output_token_budget=self._output_token_budget(job),
+                        ),
+                    )
+                elif reason == "idempotency_conflict":
+                    raise LLMBackendError(f"LLM dispatch v2 idempotency conflict for job {job_id}")
+                else:
+                    raise LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
+
+        return [cast("JobResult | JobHandle", r) for r in out]
+
+    def poll_batch(self, handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+        """Poll multiple v2 handles in a single request and fetch completed results directly
+        from B2."""
+        v2_handles = [h for h in handles if h.backend == "llm-dispatch-v2"]
+        if not v2_handles:
+            return {}
+        if not self.config.dispatch_v2_url:
+            return {h.ref: None for h in v2_handles}
+
+        ids = [h.ref for h in v2_handles]
+        headers = {"content-type": "application/json"}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:poll-batch")
+        try:
+            response = self._session.post(
+                url,
+                json={"ids": ids},
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 poll-batch request failed") from exc
+
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 poll-batch returned HTTP {response.status_code}: {response.text}"
+            )
+
+        data = response.json()
+        statuses = {s["id"]: s for s in data.get("statuses", []) if isinstance(s, dict)}
+        results: dict[str, JobResult | None] = {}
+        storage = self._storage_client()
+
+        for h in v2_handles:
+            st = statuses.get(h.ref)
+            if not st:
+                results[h.ref] = None
+                continue
+
+            state = st.get("state")
+            if state == "completed" and st.get("result_key"):
+                result_key = st["result_key"]
+                output: dict[str, Any] = {}
+                if storage is not None:
+                    raw_bytes = storage.read_bytes(result_key)
+                    if raw_bytes:
+                        output = json.loads(raw_bytes.decode("utf-8"))
+                res = JobResult(
+                    task=h.task,
+                    recipe_hash=h.recipe_hash,
+                    output=output,
+                    model=h.model,
+                )
+                write_deferred(self.storage, h.recipe_hash, res)
+                results[h.ref] = res
+            elif state == "failed":
+                raise LLMBackendError(
+                    f"LLM dispatch v2 job {h.ref} failed permanently: {st.get('error')}"
+                )
+            else:
+                results[h.ref] = None
+
+        return results
 
     def _settle_dispatched_reservation(self, handle: JobHandle, output: Mapping[str, Any]) -> None:
         """Settle a Worker-owned reservation from its terminal raw response.

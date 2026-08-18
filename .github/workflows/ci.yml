@@ -90,6 +90,10 @@ jobs:
         working-directory: workers/granicus-media-proxy
         run: npm test
 
+      - name: Test LLM Dispatch v2 Cloudflare Worker
+        working-directory: workers/llm-dispatch-v2
+        run: npm test
+
   # Dependency-pinning policy enforcement (review/22). Keeps pins from rotting.
   deps:
     runs-on: ubuntu-latest
