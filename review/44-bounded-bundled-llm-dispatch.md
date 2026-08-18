@@ -131,19 +131,27 @@ DO's own SQLite transaction — a separate CPU budget from the executor Worker's
 CPU should be materially lower than v1's per-job cost, but this must be **profiled on the actual v2
 code**, not assumed (see the profiling gate under "Bounded initial configuration").
 
-**Set expectations from review/43's own measured data, not a clean linear model.** review/43
-profiled v1's batch concurrency directly and found cost **superlinear above N≈2**: N=1→N=2 followed
-the predicted ~0.90ms/operation rate, but N=2→N=3 cost ~2.8ms/op — three times the rate — and N=3
-ended up *worse per-request* than N=2, from GC/live-set pressure of holding multiple resident
-canonical records simultaneously, not from operation count. v2's executor holds B2 payloads and
-Gateway responses resident per bundled job the same way v1 holds canonical records, so the same
-mechanism plausibly applies. Treat `MAX_BUNDLE_JOBS = 4, 8, 12` in the profiling pass below as
-covering the *plausible range*, not as equally likely outcomes — expect the safe ceiling to land
-closer to the low end (v1's own wall was N=3) rather than assume Worker-CPU headroom scales cleanly
-with job count. This does not change the decision to keep cron-pull; it only means "raise
-`MAX_BUNDLE_JOBS` as far as profiling supports" (below) may support less than hoped, and that's fine
-— the real target is ~5,000/day, comfortably reachable even at a small bundle size across 1,440
-daily ticks.
+**review/43's superlinearity finding is a signal to profile for, not an assumption to import
+unchanged.** review/43 profiled v1's batch concurrency directly and found cost **superlinear above
+N≈2**: N=1→N=2 followed the predicted ~0.90ms/operation rate, but N=2→N=3 cost ~2.8ms/op — three
+times the rate — and N=3 ended up *worse per-request* than N=2, from GC/live-set pressure of holding
+multiple resident canonical records **simultaneously**. That mechanism is specific to how v1
+processes a batch — with the whole batch's records resident together — and does not automatically
+transfer to v2's architecture, where **all queueing and pacing is handled by the DO's claim plan,
+not by the executor holding a bundle in memory at once**. Unit 6's executor reads each job's B2
+payload *after* that job's paced `wait_ms` elapses, one at a time within its route lane; across
+lanes, peak resident-payload count at any instant is bounded by the number of *concurrently active
+lanes* (roughly the number of distinct routes in the bundle), not by `MAX_BUNDLE_JOBS` itself. A
+bundle of 12 jobs spread across 4 routes could plausibly hold far fewer than 12 payloads resident at
+once, if each lane releases a job's payload/response references before starting its next paced job.
+This is a real architectural difference from v1's measurement, and it's still worth checking, not
+assuming either way: profile `MAX_BUNDLE_JOBS = 4, 8, 12` **as a function of both total bundle size
+and route diversity** (e.g. 8 jobs across 2 routes vs. 8 jobs across 8 routes) to see whether GC
+pressure tracks peak concurrent residency or total bundle size — if it's the former, v2 may have
+materially more headroom than v1's N≈2-3 wall suggests, precisely because the DO-driven pacing keeps
+concurrent residency low even at a larger nominal bundle size. This does not change the decision to
+keep cron-pull either way; the real target is ~5,000/day, comfortably reachable even at a modest
+bundle size across 1,440 daily ticks.
 
 **Documented growth trigger.** When profiled Worker-CPU or DO SQLite-write usage approaches 75% of
 its Free-tier ceiling at the then-current dispatch volume, the next step is **Workers Paid
@@ -525,11 +533,21 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   50% of each shared route's real `provider_limits.yml` rpm/rpd/tpm for every route both systems
   could dispatch against, so worst-case combined usage stays under 100% of the real limit even if
   both are maximally active at once. This overlay is temporary configuration, not a permanent
-  architecture change — removed at the Phase 3 exit gate. **This is a rate-ledger semantics change
-  to v1**, and review/43's own Decision gates require explicit maintainer sign-off before changing
-  rate-ledger semantics (the same discipline applied to its Step 1/Step 3 changes, each with a
-  recorded approval note) — record an equivalent explicit approval here before deploying the halved
-  `dispatch_limits.json`-derived values to v1, not as an implicit side effect of the v2 rollout.
+  architecture change — removed at the Phase 3 exit gate.
+
+  **Approval recorded (maintainer, 2026-08-17).** This is a rate-ledger semantics change to v1, and
+  review/43's own Decision gates require explicit sign-off before changing rate-ledger semantics
+  (the same discipline recorded for its Step 1/Step 3 changes) — so state precisely what was
+  approved, per that same convention: halving v1's `dispatch_limits.json`-derived rpm/rpd/tpm for
+  every route v2 could also dispatch against, for as long as Phase 2/3 coexistence runs, then
+  restoring v1's values to 1x at the same moment v2 flips to 1x and v1 is retired (Phase 3) — so the
+  halving window and v1's own remaining lifetime are the same window, not a separate one to track.
+  Approved specifically to simplify the migration story: it replaces a bespoke v1→v2 pending-record
+  migration tool (rejected — see Phase 3) with a configuration-only change on both sides, at the
+  cost of running v1 at half its normal throughput while it drains. No cost cap or correctness
+  invariant is weakened by this — the actual per-request idempotency/CAS guarantees on both sides
+  are unaffected — it only lowers the two systems' independent admission ceilings so their sum stays
+  safe.
 - Once shadow validation passes, cut the split-capped dispatch live and begin draining Phase 1's
   ingested jobs.
 
@@ -957,6 +975,13 @@ loops, never a single sequential loop across lanes. **Do not** call `b2.getJson`
 its computed `target_time` — reading the payload early doesn't save time (the wait is about provider
 pacing, not I/O) and complicates the "no B2 access on a no-work tick" invariant if the wait is later
 aborted.
+
+**This just-in-time-per-lane read pattern is also what the "Cron pull vs. a Cloudflare Queue push"
+profiling note above is counting on:** because a job's payload/response references aren't held past
+its own step in its lane's loop, peak resident-payload count at any instant is bounded by concurrent
+*lane* count, not by `MAX_BUNDLE_JOBS`. Do not "optimize" this into a bulk pre-fetch of every job's
+payload at the top of `scheduled()` — that would recreate v1's whole-batch-resident shape and the
+GC pressure that came with it, defeating the reason this pattern is worth profiling separately.
 
 ### Unit 7 — Calibration (`estimates` table; Phase 2, folds into `completeBatch`)
 
