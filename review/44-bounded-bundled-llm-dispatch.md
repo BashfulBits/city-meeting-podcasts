@@ -1,11 +1,54 @@
 # review/44 — Bounded bundled LLM dispatch with Durable Objects
 
-**Maturity: L2 design · authored 2026-08-17 · proposed parallel successor to the R10 Worker**
+**Maturity: L3 dev-ready · authored 2026-08-17, matured to L3 2026-08-17 · proposed parallel
+successor to the R10 Worker**
 
 Owner: dispatch Worker maintainers. Scope: a new `workers/llm-dispatch-v2/` deployment, the
 `citypods.compute` dispatch client, and GitHub workflow configuration. The existing
 `workers/llm-dispatch-proxy/` remains the production transport until this design meets its canary
 and parity gates.
+
+## Demand model
+
+This design exists because the dispatch Worker was invoked ~126,000 times on 2026-08-17. That
+figure needs unpacking before it can drive any capacity decision, because taken at face value it
+implies a scale of problem this design doesn't actually solve.
+
+- **~126k is Worker HTTP invocations, not LLM calls.** Real LLM calls that same day, per Cloudflare
+  AI Gateway: **~2,600 measured by 18:00** (~18 hours in), extrapolating to roughly **3,000–3,500/day**
+  at that pace — and Worker invocations crossed the 100,000/day Workers Free ceiling within that
+  same ~18-hour window. The acute breach happened fast, driven by submission rate, not a full day's
+  accumulation.
+  - **Inferred cause (needs confirmation against Workers Logs before being treated as fact): a
+    backfill.** `reset-agenda-chapter-state.yml`
+    ([f54e4d9](https://github.com/BashfulBits/city-meeting-podcasts/commit/f54e4d9)) clears
+    `agenda_text_artifact_key`-less records so the pipeline rediscovers agendas and chapter lanes
+    "submit their normal Mistral and Gemini jobs" again — almost certainly the backfill in
+    progress. Combined with v1's ingress path — one synchronous POST per `InferenceJob` — a bulk
+    rebuild of chapter/tag records plausibly explains the ~126k/~2,600 gap: the overwhelming
+    majority of invocations are *ingress* requests creating jobs, not requests that reach a
+    provider.
+- **Steady-state dispatch target: ~5,000 LLM calls/day** (near-max sustained submission rate at
+  today's usage). This is **not the real provider-side ceiling** — see below — it's a working
+  planning number for how much this design needs to *reliably sustain*, not the most it could ever
+  need to admit.
+- **Real aggregate free-route capacity is abundant, not scarce.** Summing `config/provider_limits.yml`:
+  29 free routes with an explicit `rpd` total **66,620 requests/day**; a further 8 free Mistral
+  routes carry only `rpm` (no daily cap encoded — nominally hundreds of thousands/day at full
+  utilization). review/41's narrower 4–6-route mental model is stale; the catalog now spans 9
+  providers (Gemini/Gemma, Mistral, Groq, SambaNova, SiliconFlow, Z.AI, OpenRouter, Kilo, OpenCode).
+  **Routes are not the constraint on growth toward more cities.**
+- **The real Free-tier bottleneck is Cloudflare's own per-invocation Worker CPU limit (10ms) and
+  the shared DO SQLite row-write/request budget (100,000/day)**, both of which scale with jobs
+  actually dispatched — independent of whether cron-pull or a Queue triggers the dispatch. This is
+  why "Why cron pull, not Queue" below is reasoned from CPU/SQLite cost, not from provider capacity.
+
+This reframes what "success" means for this design: it is not trying to raise LLM throughput toward
+providers' real ~66,620+/day ceiling. It is trying to (a) stop v1's un-batched ingress path from
+generating one Worker invocation per job created, which is what actually broke the Free-tier request
+ceiling today, and (b) sustain a paced ~5,000/day dispatch rate reliably within Cloudflare's Worker
+CPU and DO SQLite budgets, with a documented, numbered trigger for when those Free-tier budgets —
+not provider quota — become the limiting factor.
 
 ## Decision
 
@@ -41,6 +84,44 @@ lost-work shape as the earlier agenda race. The DO's SQLite transaction is the s
 There is therefore no B2 queue-manifest read or write. A Worker performs one `claimDispatchWindow`
 RPC; B2 is only prompt/result storage. The DO selects across all ready routes rather than exposing
 the first objects in a storage prefix, eliminating route head-of-line blocking.
+
+### Cron pull vs. a Cloudflare Queue push, reasoned from the actual bottleneck
+
+This tradeoff was reopened and re-closed with numbers, because it's tempting to assume a Queue
+would raise the achievable dispatch ceiling. It doesn't, and the reasoning matters enough to spell
+out rather than assert:
+
+- **What a Queue would need to buy:** either more successfully-dispatched LLM calls/day, or relief
+  on Worker/DO request budget.
+- **What it can't buy:** more calls than providers will accept — moot here, since real aggregate
+  route capacity (~66,620+/day, see Demand model) is already roughly 15x the ~5,000/day target.
+  Provider throughput was never the limit.
+- **What it also can't buy: relief on the actual binding costs.** DO SQLite row-writes (lease,
+  `attemptStarted`, `completeBatch`, cleanup) and Worker CPU-per-invocation are incurred per
+  dispatched job under *either* transport — a Queue-triggered executor invocation does the same
+  JSON/route work and writes the same rows as a cron-triggered one. A Queue's separate 10,000-op/day
+  allowance doesn't touch either ceiling.
+- **What it costs instead:** a new product surface, at-least-once delivery semantics layered on top
+  of the fencing already built for cron-pull, a DO→Queue write that isn't atomic with the DO's own
+  SQLite transaction (an outbox problem — bounded by the existing lease-reap fallback, but still
+  added surface), and DLQ handling.
+
+Cron-pull's ceiling (`MAX_BUNDLE_JOBS × 1,440 ticks/day`) is not route-constrained; it's
+Worker-CPU- and DO-write-constrained, and a Queue doesn't relieve either constraint. **Decision:
+keep cron-pull.** The `MAX_BUNDLE_JOBS=4` / `MAX_BUNDLES_PER_UTC_DAY=1,000` values below were chosen
+conservatively, not derived from real route pacing — e.g. Gemma routes at 30 RPM could pace ~12
+calls into one 25-second dispatch window; the config allows 4 — because they may instead be close
+to a real Worker-CPU ceiling per invocation (review/43 measured v1 at ~8ms CPU for a single-job
+dispatch against the 10ms Free-tier limit). v2 offloads most of that per-job bookkeeping into the
+DO's own SQLite transaction — a separate CPU budget from the executor Worker's — so the executor's
+CPU should be materially lower than v1's per-job cost, but this must be **profiled on the actual v2
+code**, not assumed (see the profiling gate under "Bounded initial configuration").
+
+**Documented growth trigger.** When profiled Worker-CPU or DO SQLite-write usage approaches 75% of
+its Free-tier ceiling at the then-current dispatch volume, the next step is **Workers Paid
+($5/mo)** — which raises the CPU-per-invocation limit from 10ms to 30s and lifts the other Free-tier
+ceilings — not a Queue. A Queue adds complexity without relieving the constraint that's actually
+binding; Workers Paid relieves it directly.
 
 ```mermaid
 flowchart LR
@@ -88,6 +169,9 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_ACTIVE_BUNDLES` | 2 | Bound for partially completed or abandoned dispatch plans |
 | `MAX_IN_FLIGHT_LLM_CALLS` | 8 | Separate global cap; avoids one slow bundle serializing all work |
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
+| `MAX_JOBS_PER_UTC_DAY` | 20,000–50,000 (profiled gate) | Hard ingestion admission cap, independent of dispatch — bounds `enqueueBatch` inserts so a backfill-scale ingest can't itself exhaust the shared DO SQLite row-write budget (see Demand model and the split budget below) |
+| `ENQUEUE_BATCH_MAX` | profiled gate (target: low hundreds to low thousands of jobs/call) | Jobs accepted per single `enqueue-batch` RPC — sized so reaching `MAX_JOBS_PER_UTC_DAY` takes tens of calls, not thousands |
+| `POLL_BATCH_MAX` | profiled gate (target: modest — poll volume is research/interactive GitHub-issue-response use, not automated per-job reconciliation, so expected total call volume is on the order of ~100/day) | Statuses/results returned per single `poll-batch` RPC |
 | `MAX_RESPONSE_SECONDS` | 720 | Shared response deadline; leaves finalization margin below 15 min |
 | `FINALIZATION_RESERVE_SECONDS` | 90 | Time retained for B2 persistence and `completeBatch` |
 | `LEASE_DURATION_SECONDS` | 840 | Covers deadline; stays below cron duration |
@@ -109,15 +193,24 @@ there is work, so their fixed daily cost is accounted for separately:
 | --- | ---: | ---: |
 | Cron/executor Worker requests | 1,440 ticks | 100,000 |
 | Scheduler DO requests | 1,440 claim + <=4k start + 1k finish + <=4k retry | 100,000 |
-| DO SQLite row writes | under 45,000 plus bounded cleanup | 100,000 |
+| DO SQLite row writes — dispatch-lifecycle | under 45,000 plus bounded cleanup (lease + `attemptStarted` + `completeBatch` + cleanup; profiled gate — scales with `MAX_BUNDLE_JOBS`/`MAX_BUNDLES_PER_UTC_DAY`) | shares the 100,000 total below with ingestion |
+| DO SQLite row writes — ingestion | one insert per `enqueueBatch`-admitted job, up to `MAX_JOBS_PER_UTC_DAY` (profiled gate) | shares the 100,000 total below with dispatch-lifecycle |
+| DO SQLite row writes — combined total | dispatch-lifecycle + ingestion, held under the 75% admission-rejection threshold | 100,000 |
 | Queue operations | 0 | 10,000 |
 | R2 operations from v2 | 0 | shared R2 allowance |
-| LLM calls | up to 4,000 | provider- and Gateway-limited |
+| LLM calls | up to 4,000 (see Demand model — this is the Free-tier-budget-driven ceiling, not a provider-capacity one; real aggregate route capacity is ~66,620+/day) | provider- and Gateway-limited |
 
 Ingress and status requests share the Workers and DO limits, so the caps leave substantial request
 headroom. Cloudflare counts DO alarm invocations and RPC sessions as DO requests, and each
 `setAlarm()` as a SQLite row write. See
 [DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+
+**Ingestion admission is bounded on both ends, not just at the DO.** A DO-side admission cap
+(`MAX_JOBS_PER_UTC_DAY`) alone still lets a runaway GitHub workflow hammer the ingress Worker with
+rejected-but-still-counted requests — exactly today's failure mode (see Demand model). Client-side
+throttling in `citypods/compute/llm.py`, and/or GitHub Actions `concurrency`/rate-limiting on the
+calling workflows, must keep callers from making the request at all once known headroom is
+exhausted, not merely handle the rejection after the fact.
 
 The AI Gateway request is a separate product request. It is not a second Worker invocation, but its
 provider quotas and its own rate limits remain authoritative. In particular, Cloudflare-managed
@@ -131,8 +224,9 @@ limit. See [AI Gateway limits](https://developers.cloudflare.com/ai-gateway/refe
 The DO creates SQLite-backed tables in its constructor. Payload bytes are excluded by design.
 
 - **`jobs`:** `id`, unique `idempotency_key`, stable provider idempotency key, state, policy
-  metadata, prompt family, conservative input/max-output token estimates, `payload_key`, and
-  `result_key`; one compact control row per LLM job.
+  metadata, prompt family, conservative input/max-output token estimates, `payload_key`,
+  `result_key`, and `priority` (`0` = admit/dispatch first, `1` = default); one compact control row
+  per LLM job.
 - **`routes`:** `route_id`, paced availability, full token-bucket budget, provisional reservations,
   settled usage, cost, and 429 state; the per-route/account ledger and adaptive buffer.
 - **`bundles`:** `bundle_id`, state, lease expiry, active-call count, and dispatch-window end; the
@@ -154,7 +248,12 @@ invocations from issuing duplicate provider calls.
 The public Worker, not the DO, exposes authenticated endpoints:
 
 - **`POST /v2/jobs:enqueue-batch`:** accepts up to `ENQUEUE_BATCH_MAX` jobs, stages B2 payloads,
-  and makes one `enqueueBatch` RPC.
+  and makes one `enqueueBatch` RPC. Each job may set an optional `priority: 0|1` (default `1`) —
+  this is the only supported way to set priority; there is deliberately no separate API to edit
+  priority on an already-queued job after the fact (that's a recovery/testing operation, not
+  production traffic — Cloudflare's dashboard Data Studio and `wrangler dev`'s Local Explorer SQL
+  Studio both support browsing and writing SQLite-backed DO storage directly, so a bespoke endpoint
+  isn't needed; see the note under the ordering pass below).
 - **`POST /v2/jobs:poll-batch`:** returns up to `POLL_BATCH_MAX` statuses/results in one DO RPC
   and bounded B2 reads.
 - **`POST /v2/jobs/{id}:schema-retry`:** preserves schema-correction semantics with a new payload
@@ -182,11 +281,20 @@ earlier job.
    limits the plan by remaining bundle and in-flight-call capacity; it may return a partial plan. If
    a cap prevents admission, it returns an empty plan promptly.
 3. In one transaction, the DO considers each candidate route's RPM gap, rolling TPM reservation,
-   configured buffer, and repeated-429 `blocked_until`. It first fills slots from distinct eligible
-   routes. A job that has waited `MAX_QUEUE_WAIT_SECONDS` wins its eligible ordering bucket. For all
-   other jobs, when more routes are eligible than slots and when filling remaining slots, it prefers
-   larger conservative token estimates, then stable FIFO order. Only after that first pass may a
-   second job from a route fill a slot.
+   configured buffer, and repeated-429 `blocked_until`. `priority=0` jobs are ordered ahead of
+   `priority=1` jobs within an otherwise-eligible set — a simple binary tie-breaker, not a
+   scheduling class of its own. It first fills slots from distinct eligible routes. A job that has
+   waited `MAX_QUEUE_WAIT_SECONDS` wins its eligible ordering bucket. For all other jobs, when more
+   routes are eligible than slots and when filling remaining slots, it prefers larger conservative
+   token estimates, then stable FIFO order. Only after that first pass may a second job from a route
+   fill a slot. `priority` is set once, at `enqueueBatch` time (see the ingress API above); an
+   operator changing it on an already-`queued` job for recovery/testing is a direct edit through
+   Cloudflare's dashboard Data Studio or `wrangler dev`'s Local Explorer SQL Studio (both support
+   browsing and writing SQLite-backed DO storage — [Access Durable Objects
+   Storage](https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/)),
+   not a bespoke API endpoint — this is a low-volume recovery operation, not production traffic. A
+   job already `leased` is unaffected by a later priority edit; the next claim transaction picks up
+   the new value for anything still `queued`.
 4. For every chosen job, the DO tests both sides of the full dispatch window. Its conservative
    request/token reservation must be valid at the planned start; if an earlier same-route job starts
    late, the route lane must either remain valid at its shifted start or safely return the later job
@@ -299,90 +407,119 @@ recovers ingress-before-DO failures without a catalog-wide B2 list.
 
 ## Implementation plan
 
-### 1. Establish v2 scaffolding and shared protocol
+Sequenced as a priority-ordered DAG, not five same-weighted steps: Phase 1 is what actually stops
+today's incident and should land first; Phase 2 depends on it; Phase 3 is the exit condition for
+running two dispatch systems at once; Phase 4 is real but non-blocking follow-up.
 
-Create `workers/llm-dispatch-v2/` as a separate Worker deployment with a SQLite DO class, a
-one-minute cron trigger, and a separate B2 prefix. Keep the existing v1 Worker unchanged.
+### Phase 1 — Stop the ingest flood (highest priority)
 
-- Extract only pure route-catalog selection and response-normalization helpers from v1; do not fork
-  provider credential logic without tests.
-- Add `src/protocol.js` for validated ingress, route-lane claim-plan, provider idempotency,
-  `attemptStarted`, retry authorization, and completion message shapes.
-- Add `src/coordinator.js` for SQL schema, `enqueueBatch`, `claimDispatchWindow`,
-  `attemptStarted`, `authorizeRetry`, `completeBatch`, lease reaping, and cleanup operations.
-- Add `src/b2.js` for SigV4 request/result persistence with bounded body reads and timeouts.
-- Add migrations using `new_sqlite_classes`; use RPC methods rather than public DO fetch routes.
+This alone removes the flood that broke today's 100,000/day Workers request ceiling: v1's ingress
+path did one synchronous POST per `InferenceJob`, and the dominant volume driver (chapter/tag lanes,
+per the `reset-agenda-chapter-state.yml` connection in the Demand model — confirm with the Workers
+Logs breakdown in Verification) was creating jobs one at a time. Dispatch capability is **not**
+required for this phase to relieve the incident — jobs can sit `queued` in the DO.
 
-### 2. Implement fenced admission and paced cron pull
+- Create `workers/llm-dispatch-v2/` as a separate Worker deployment with a SQLite DO class and a
+  separate B2 prefix. Keep the existing v1 Worker unchanged.
+  - Extract only pure route-catalog selection and response-normalization helpers from v1; do not
+    fork provider credential logic without tests.
+  - Add `src/protocol.js` for validated ingress and completion message shapes (claim-plan/attempt
+    shapes land in Phase 2).
+  - Add `src/coordinator.js` with, at minimum, the `jobs` and `scheduler` SQL schema and the
+    `enqueueBatch` RPC (the rest of `coordinator.js` lands in Phase 2).
+  - Add `src/b2.js` for SigV4 request payload persistence with bounded body reads and timeouts.
+  - Add migrations using `new_sqlite_classes`; use RPC methods rather than public DO fetch routes.
+- Implement `POST /v2/jobs:enqueue-batch` (ingress Worker), including the `MAX_JOBS_PER_UTC_DAY`
+  admission cap and `ENQUEUE_BATCH_MAX` per-call limit from day one — not deferred to a later phase,
+  since the point of this phase is not repeating today's failure mode.
+- Batch the dominant-volume call site: restructure it from "submit one job, get a handle back
+  immediately" to "accumulate a batch, submit once" against the new client method in
+  `citypods/compute/llm.py`. Cut that call site's new-job submission over to v2 ingest as soon as
+  both land.
+- Add client-side throttling (in `citypods/compute/llm.py` and/or GitHub Actions
+  `concurrency`/rate-limiting on the calling workflows) so callers self-limit *before* making a
+  request once known headroom is exhausted, not just get rejected after — a DO-side cap alone still
+  lets a runaway workflow hammer the ingress Worker with rejected-but-still-counted requests.
 
-Implement one transactional claim plan before provider calls.
+### Phase 2 — Bring up DO-driven paced dispatch (second priority)
 
-- Enforce bundle, per-route, active-bundle, in-flight-call, and UTC daily caps.
-- Choose distinct eligible routes first, then larger conservative token estimates, with FIFO only as
-  the final tie-breaker; use aging once `MAX_QUEUE_WAIT_SECONDS` elapses.
-- Calculate route-lane waits from RPM, rolling TPM estimates, full-bucket recovery, route buffer,
-  and 429 state. Reserve the maximum of input/max-output, calibrated margin, and configured floor.
-  Test normal, late, and late-429 timing before returning a bundle.
-- Reserve only the initial call before returning a bundle. `authorizeRetry` makes a separate, fenced
-  reservation only after an actual 429. Retain admitted reservations after an ambiguous executor
-  loss.
-- Return an empty plan rather than a future plan when the first safe start is outside the dispatch
-  window. The next one-minute cron is the next dispatch opportunity.
+Implement one transactional claim plan before provider calls, and the executor that consumes it.
+This is what lets v2 begin draining jobs ingested in Phase 1 across multiple routes.
 
-### 3. Implement the executor and 429 adaptation
+- Fenced admission (`claimDispatchWindow`): enforce bundle, per-route, active-bundle, in-flight-call,
+  and UTC daily caps. Choose `priority=0` jobs first, then distinct eligible routes, then larger
+  conservative token estimates, with FIFO only as the final tie-breaker; use aging once
+  `MAX_QUEUE_WAIT_SECONDS` elapses. Calculate route-lane waits from RPM, rolling TPM estimates,
+  full-bucket recovery, route buffer, and 429 state; reserve the maximum of input/max-output,
+  calibrated margin, and configured floor. Test normal, late, and late-429 timing before returning a
+  bundle. Reserve only the initial call before returning a bundle — `authorizeRetry` makes a
+  separate, fenced reservation only after an actual 429; retain admitted reservations after an
+  ambiguous executor loss. Return an empty plan rather than a future plan when the first safe start
+  is outside the dispatch window.
+- Executor and 429 adaptation: implement the cron handler as one bounded paced `Promise.allSettled`
+  operation. Ask the DO for one plan and return immediately for no work. Run route lanes
+  independently; honor relative `wait_ms`, actual predecessor start, retry barriers, and the
+  dispatch deadline before each provider call. Send the stable idempotency key only through provider
+  adapters that explicitly support it; for all others, obtain a fenced `attemptStarted` record
+  before outbound submission. Read payloads before starting Gateway calls, and enforce profiled
+  aggregate byte and B2 subrequest caps. Write results before `completeBatch`; detect an existing
+  deterministic result after an executor retry or restart. Implement deadline aborts, bounded
+  retry-after sleep, and structured failure records. Add per-route 429 buffers and success decay in
+  the DO. Validate the lease-duration inequality at startup and schedule its exact expiry.
+- **Shadow-mode validation gate, before any real v2 dispatch traffic:** run `claimDispatchWindow` in
+  shadow mode — persist no leases, send no provider request — and compare its route choice, timing,
+  token reservation, and cap decision against recorded v1 work. Require a shadow report for normal,
+  Worker-late, and 429-retry-late scenarios showing a late route lane cannot start a later same-route
+  job too early, age promotions remain bounded, and calibration never makes a reservation less
+  conservative.
+- **Split-cap coexistence, in effect for as long as this phase runs concurrently with v1's still-
+  draining backlog:** v1 and v2 run *independent* rate-limit ledgers against the same underlying
+  provider accounts — each stays under what *it* thinks the limit is, but neither knows about the
+  other's concurrent usage, so combined real usage could exceed the provider's actual RPM/RPD.
+  Configure v1's `dispatch_limits.json`-derived limits and v2's DO route-ledger initial values at
+  50% of each shared route's real `provider_limits.yml` rpm/rpd/tpm for every route both systems
+  could dispatch against, so worst-case combined usage stays under 100% of the real limit even if
+  both are maximally active at once. This overlay is temporary configuration, not a permanent
+  architecture change — removed at the Phase 3 exit gate.
+- Once shadow validation passes, cut the split-capped dispatch live and begin draining Phase 1's
+  ingested jobs.
 
-Implement the cron handler as one bounded paced `Promise.allSettled` operation.
+### Phase 3 — Exit coexistence
 
-- Ask the DO for one plan and return immediately for no work.
-- Run route lanes independently; honor relative `wait_ms`, actual predecessor start, retry barriers,
-  and the dispatch deadline before each provider call.
-- Send the stable idempotency key only through provider adapters that explicitly support it. For all
-  others, obtain a fenced `attemptStarted` record before outbound submission and expose an expired
-  unknown attempt rather than silently repeating it.
-- Read payloads before starting Gateway calls, and enforce profiled aggregate byte and B2
-  subrequest caps so all simultaneous outbound B2 and Gateway requests remain below the Worker
-  connection limit.
-- Write results before `completeBatch`; detect an existing deterministic result after an executor
-  retry or restart.
-- Implement deadline aborts, bounded retry-after sleep, and structured failure records.
-- Report actual start/end times and every attempt to `completeBatch`; settle actual provider usage
-  where supplied, retaining conservative estimates otherwise.
-- Add per-route 429 buffers and success decay in the DO; expose their current values in health
-  metrics without exposing provider credentials or payloads.
-- Validate the lease-duration inequality at startup and schedule its exact expiry; no periodic
-  lease heartbeat is necessary inside the bounded Worker deadline.
+- Monitor v1's pending-record count via `citypods.compute.llm_deferred.list_pending_deferred`
+  (backed by `DEFERRED_INDEX_PENDING_PREFIX` in the deferred registry — the same source the v1
+  sweep itself reads) until it returns empty. This is a checked metric already exposed by existing
+  code, not an assumed timeline or new instrumentation.
+- Flip v2's route ledger from the 50% split-cap back to 1x.
+- Retire v1's cron trigger and Worker.
+- On a v2 enqueue timeout during this window, retry v2 with the same idempotency key. Do **not**
+  automatically submit the same unknown request to legacy v1; that could purchase duplicate model
+  calls. Rollback (if needed before this phase completes) means routing *future* submissions back to
+  v1 while v2 continues to drain and serve the v2 handles it already accepted.
+- No legacy-pending-record migration tooling is needed: v1's own backlog drains under its own
+  ledger (now halved per Phase 2) until empty, at which point it's retired outright. This
+  deliberately does **not** rely on `reset-agenda-chapter-state.yml` as a migration mechanism — that
+  script only covers the agenda/chapter flow, and v1 has other dispatch clients
+  (`citypods/tournament.py`, `citypods/audit_remedy.py`, ad hoc `TagsStage` calls outside the agenda
+  path) whose pending v1 jobs it doesn't know about; reusing it generally would risk silently
+  orphaning those clients' work.
 
-### 4. Add bulk client APIs and observability
+### Phase 4 — Follow-up (non-blocking)
 
-Update `citypods/compute/llm.py`, deferred reconciliation, and the GitHub workflows.
-
-- Add batched enqueue and poll methods while retaining the `JobHandle` public contract.
-- Make `backend="llm-dispatch-v2"` explicit in every v2 handle.
-- Emit one structured event per ingress batch, claim plan, paced provider start, actual attempt,
-  retry authorization, completion batch, lease reaping, and cleanup batch.
-- Track remaining Free-plan headroom: cron ticks, admitted bundles, DO requests/rows, Worker
-  requests, active bundle/call count, planned-versus-actual starts, token-estimate error, and route
-  gaps/buffer state. Emit unknown-attempt count/age, lease deadline, calibration margin, and aging
-  promotions without logging request payloads or provider credentials.
-
-### 5. Shadow admission, prove compatibility, then migrate deliberately
-
-Deploy the v2 Worker under a new name, endpoint, B2 prefix, and DO class. Start with synthetic jobs
-and one low-risk GitHub workflow lane.
-
-- First run `claimDispatchWindow` in shadow mode: persist no leases, send no provider request, and
-  compare its route choice, timing, token reservation, and cap decision against recorded v1 work.
-- Require a shadow report for normal, Worker-late, and 429-retry-late scenarios before active v2
-  submission. It must show that a late route lane cannot start a later same-route job too early,
-  age promotions remain bounded, and calibration never makes a reservation less conservative.
-- Keep legacy enqueue/poll as the default until v2 passes parity and load tests.
-- Migrate one workflow by configuration, then one task/route family at a time.
-- On a v2 enqueue timeout, retry v2 with the same idempotency key. Do **not** automatically submit
-  the same unknown request to legacy; that could purchase duplicate model calls.
-- Rollback means routing *future* submissions back to v1 while v2 continues to drain and serve the
-  v2 handles it already accepted.
-- Do not migrate legacy pending records. Let them drain in v1; only explicitly requeued records
-  enter v2 under a new idempotency namespace.
+- Batch the remaining lower-volume call sites the same way Phase 1 batched the dominant one: the
+  transcribe/align paths in `citypods/stages.py`, `citypods/tournament.py`,
+  `citypods/audit_remedy.py`. (`citypods/discovery/classify.py` is out of scope — it already sets
+  `require_direct=True` per review/41 and never dispatches through the Worker.)
+- Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
+  public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
+  event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,
+  completion batch, lease reaping, and cleanup batch; track remaining Free-plan headroom (cron
+  ticks, admitted bundles, DO requests/rows split by ingestion vs. dispatch-lifecycle, Worker
+  requests, active bundle/call count, planned-versus-actual starts, token-estimate error, route
+  gaps/buffer state, unknown-attempt count/age, lease deadline, calibration margin, aging
+  promotions) without logging request payloads or provider credentials.
+- Migrate remaining GitHub workflows to v2 by configuration, one workflow/task/route family at a
+  time, once Phase 1's dominant-site cutover and Phase 2/3 have proven stable.
 
 ## Test and acceptance plan
 
@@ -390,8 +527,14 @@ Unit and Miniflare tests must cover:
 
 - one transaction admits no more than four jobs, respects the in-flight call cap, and never exceeds
   the same-route bundle cap;
+- `priority=0` jobs are ordered ahead of `priority=1` jobs within an otherwise-eligible admission
+  set; a `priority=0` job never bypasses a route's real capacity/pacing constraints — priority only
+  breaks ties among otherwise-eligible jobs;
 - admission fills distinct eligible routes first, then prefers larger conservative estimates, with
   stable FIFO ties; a smaller job wins after the configured aging deadline;
+- `enqueueBatch` rejects once `MAX_JOBS_PER_UTC_DAY` is reached for the day, and rejection is cheap
+  enough (no B2 write, no route/ledger work) that a runaway caller hitting it repeatedly does not
+  itself become a new CPU or request-budget problem;
 - a plan includes a second same-route job only when its RPM and conservative TPM reservations fit
   both normal and late execution inside the full dispatch window;
 - every returned `wait_ms` is a safe lower bound from Worker receipt. A late predecessor, a late
@@ -419,22 +562,37 @@ Unit and Miniflare tests must cover:
   safely;
 - startup rejects unsafe capacity configurations; and
 - B2 orphan/result cleanup is bounded and idempotent; v1 and v2 `JobHandle` reconciliation can
-  coexist in the same GitHub run.
+  coexist in the same GitHub run; and
+- the split-cap ledger overlay (Phase 2/3) is a configuration value, not hardcoded — v1's and v2's
+  route ledgers can be independently set to a fraction of real `provider_limits.yml` limits and
+  flipped back to 1x, and a test asserts combined admitted usage across both systems for a shared
+  route never exceeds the real limit while both halved ledgers are active.
 
 Before active submission, record a shadow-admission canary with no divergent unsafe plan. Then
 record a seven-day active canary with no unbounded lists or R2 v2 access, and no duplicate job.
-It must not exceed Worker/DO limits, and all counters remain below the configured 75% threshold.
-The canary must establish payload/result/subrequest caps from CPU, memory, and connection profiling.
-Only then increase active-bundle or in-flight-call capacity, raise the same-route cap, lengthen the
-dispatch window, or raise the daily bundle cap through a new measured capacity review.
+It must not exceed Worker/DO limits, and all counters remain below the configured 75% threshold —
+tracked separately for the ingestion and dispatch-lifecycle SQLite-write sub-budgets (see "Bounded
+initial configuration"), since a healthy dispatch-side canary can still be undermined by an
+unbounded ingestion burst sharing the same 100,000/day ceiling. During any window Phase 2/3's
+split-cap coexistence is active, the canary must also confirm combined v1+v2 usage per shared route
+stays under the real `provider_limits.yml` rpm/rpd/tpm — not just under each system's own halved
+view of it. The canary must establish payload/result/subrequest caps from CPU, memory, and
+connection profiling, including the `MAX_BUNDLE_JOBS` = 4/8/12 profiling pass from "Cron pull vs. a
+Cloudflare Queue push." Only then increase active-bundle or in-flight-call capacity, raise the
+same-route cap, lengthen the dispatch window, or raise the daily bundle or ingestion cap through a
+new measured capacity review — informed by the real aggregate route capacity in the Demand model, so
+route capacity is never the limiting assumption, only Worker CPU and DO SQLite writes are.
 
 ## Consequences and rejected alternatives
 
 - **B2 queue-manifest claim:** rejected. Object invalidation is not the atomic scheduler claim and
   can race a newer manifest update. A DO RPC is one low-cost, serialized claim instead.
-- **Cloudflare Queue handoff:** rejected for this v2 version. The already-scheduled one-minute
-  Worker invocation is sufficient; Queue would add a product, operations, and an outbox without
-  improving the chosen cadence.
+- **Cloudflare Queue handoff:** rejected — reopened and re-evaluated on 2026-08-17 (see "Cron pull
+  vs. a Cloudflare Queue push" above), not just carried over from the original draft. Real route
+  capacity (~66,620+/day) is not the bottleneck, and a Queue doesn't relieve the costs that are
+  (Worker CPU-per-invocation, DO SQLite row-writes) — it only adds a product, at-least-once
+  delivery handling, an outbox problem, and a DLQ. Documented growth trigger if Free-tier headroom
+  is exhausted: Workers Paid, not a Queue.
 - **Pre-reserving every retry:** rejected. It wastes token and request headroom on successful jobs.
   A rare fenced `authorizeRetry` RPC accounts for actual 429 retries without blocking other routes.
 - **Direct DO-to-AI Gateway calls:** technically possible, but rejected. The DO would await LLM
@@ -450,6 +608,16 @@ dispatch window, or raise the daily bundle cap through a new measured capacity r
   preserve.
 - [`review/43`](43-llm-dispatch-cpu-reduction-plan.md) — production R2/CPU measurements and v1
   transition context; this design supersedes its future DO/Queue evaluation only for v2.
+- `config/provider_limits.yml` — source of the Demand model's aggregate route-capacity figure
+  (66,620/day across free routes with an explicit `rpd`); reconfirm this sum if the route catalog
+  changes materially, since it's load-bearing for the Queue-rejection decision.
+- `reset-agenda-chapter-state.yml` ([f54e4d9](https://github.com/BashfulBits/city-meeting-podcasts/commit/f54e4d9))
+  — the backfill inferred to be driving today's ingest volume (Demand model); explicitly not reused
+  as a v1→v2 migration mechanism (Phase 3) since it doesn't cover every v1 dispatch client.
 - [Durable Object pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/)
 - [Durable Object alarms](https://developers.cloudflare.com/durable-objects/api/alarms/)
 - [Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)
+- [Access Durable Objects Storage](https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/)
+  — dashboard Data Studio and `wrangler dev`'s Local Explorer SQL Studio, both of which support
+  browsing and writing SQLite-backed DO storage directly (used for the priority-field recovery edit
+  path above instead of a bespoke endpoint).
