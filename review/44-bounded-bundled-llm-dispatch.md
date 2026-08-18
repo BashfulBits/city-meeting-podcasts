@@ -769,11 +769,29 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
 - **`citypods/tags.py`'s own model-generation dispatch (`llm_tag_suggestions`, the call
   `citypods/tournament.py` and `TagsStage` both use to actually generate tag candidates, as
   opposed to the judge-comparison phase already batched above) deliberately not batched in the
-  2026-08-18 follow-up pass.** It validates structured LLM output per chapter, merges results
-  across chapters internally, and already loops over multiple models per chapter — materially more
-  state to thread through a build-then-batch-dispatch restructuring than the chapter-job or
-  judge-comparison call sites, which just build one job and finalize one result. Left as
-  one-job-at-a-time pending its own dedicated pass.
+  2026-08-18 follow-up pass — not because its structured-output validation/merging is hard (that's
+  ordinary finalize-step work, the same shape the three already-batched sites have), but because
+  of two things specific to this call site:**
+  1. `llm_tag_suggestions` recursively splits *one episode* into a variable number of jobs
+     internally: when an episode's chapters don't fit one route's token/byte budget, it calls
+     itself (`_batched=True`) once per chunk and issues one `run_inference` per chunk, merging the
+     chunk results back together. Unlike the chapter stages (always exactly one job per episode),
+     the caller doesn't know how many jobs one episode needs until this function decides it — that
+     chunk-splitting has to be hoisted out of `llm_tag_suggestions` before a caller can accumulate
+     a flat job list across *episodes* and re-attribute each batched result back to the right
+     episode+chunk on finalize.
+  2. `TagsStage` processes episodes through a worker-thread pool sharing a live, incrementally
+     updated per-run dispatch budget (`reserve_tag_dispatch`/`settle_tag_dispatch`/
+     `tag_llm_dispatch_exhausted` in `citypods/stages.py`) — hitting the cap partway through a run
+     changes behavior (skip re-fetching agenda/transcript text) for episodes processed afterward,
+     in the same run. A build-everything-first-then-dispatch-once pass has no natural place for an
+     incremental "has this run already used its budget" check like that, since it would mean
+     building and text-fetching for every remaining episode before finding out the run's cap was
+     already hit partway through. The chapter stages have no equivalent live gate.
+
+  Both are solvable, just a different and larger shape of restructuring than the build→dispatch→
+  finalize pass used at the three sites above. Left as one-job-at-a-time pending its own dedicated
+  pass.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,

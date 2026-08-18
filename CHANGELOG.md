@@ -97,8 +97,11 @@ Phase R (Research-Tool Surface)._
   (`citypods/stages.py`) and `citypods/tournament.py`'s pairwise-judge comparison phase to build
   every job first, dispatch the whole set in one call, then finalize each result against its own
   context. `citypods/tags.py`'s own model-generation dispatch (`llm_tag_suggestions`) and the
-  transcribe/align call sites remain one-job-at-a-time, deferred to review/44 Phase 4 — see that
-  doc for why.
+  transcribe/align call sites remain one-job-at-a-time, deferred to review/44 Phase 4 — not because
+  structured-output validation is hard (that's ordinary finalize-step work, same as the sites
+  above), but because `llm_tag_suggestions` recursively splits one episode into a variable number
+  of jobs internally and `TagsStage` runs episodes through a worker-thread pool sharing a live,
+  incrementally updated per-run dispatch budget; see review/44 Phase 4 for the detail.
 
 - **Read-only v1 dispatch queue-order report (`scripts/report_pending_dispatch_queue.py`,
   `Report LLM dispatch queue` workflow).** Operator diagnostic for the Mistral pause above: lists
