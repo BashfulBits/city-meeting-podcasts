@@ -638,6 +638,30 @@ Dispatch capability is **not** required for this phase to relieve the incident �
   was already the natural place for it even before the revision note above, so most of this bullet's
   scope is unchanged. Cut that call site's new-job submission and reconciliation over to v2 as soon
   as both land.
+
+  > **Revision note (2026-08-18, later the same day): this bullet's "accumulate a batch, submit
+  > once" was never actually implemented, at this or any other call site.** Confirmed by reading
+  > production Cloudflare Worker logs for the chapter-agenda/chapter-locator lane after the six
+  > hotfixes below finally got a real `enqueue-batch` round trip working: every POST body had an
+  > identical single-job `content-length`, and direct code reading of
+  > `AgendaChapterCandidatesStage.process()`'s per-episode loop confirmed why — it called
+  > `run_inference`/`enqueue_batch([job])` once per episode inside the loop, never accumulating
+  > jobs across episodes first. The protocol, DO, and Python client (`enqueue_batch`/`poll_batch`)
+  > were all fully batch-capable up to 1000 jobs/call the whole time; nothing on the caller side
+  > ever used that capacity, so the dominant call site was still making one Worker request per
+  > episode — exactly the per-job request-volume pattern this phase's own text above describes
+  > fixing. Fixed by adding a shared `dispatch_job_batch()` helper (`citypods/compute/llm.py`) that
+  > submits a whole run's jobs in one `enqueue_batch` call (falling back to per-job retry only if
+  > the batch call itself raises, since `enqueue_batch` raises for the *whole* call on a single
+  > job's `idempotency_conflict` rejection) and gives any still-pending v2 handle one immediate
+  > `poll_batch` reconcile pass — then restructuring `AgendaChapterCandidatesStage`,
+  > `ChapterBoundaryLocatorStage` (`citypods/stages.py`), and `citypods/tournament.py`'s
+  > pairwise-judge comparison phase into build-then-batch-dispatch passes. `poll_batch` already
+  > filters to `backend == "llm-dispatch-v2"` handles internally, so the shared helper needs no
+  > separate v1/v2 guard beyond what bug 2 below already fixed. `citypods/tags.py`'s own
+  > model-generation dispatch (`llm_tag_suggestions`) and the transcribe/align call sites are
+  > deliberately left one-job-at-a-time in this pass — see Phase 4 below.
+
 - Add client-side throttling (in `citypods/compute/llm.py` and/or GitHub Actions
   `concurrency`/rate-limiting on the calling workflows) so callers self-limit *before* making a
   request once known headroom is exhausted, not just get rejected after — a DO-side cap alone still
@@ -730,10 +754,23 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
 
 ### Phase 4 — Follow-up (non-blocking)
 
-- Batch the remaining lower-volume call sites the same way Phase 1 batched the dominant one: the
-  transcribe/align paths in `citypods/stages.py`, `citypods/tournament.py`,
-  `citypods/audit_remedy.py`. (`citypods/discovery/classify.py` is out of scope — it already sets
-  `require_direct=True` per review/41 and never dispatches through the Worker.)
+- **Done (2026-08-18, follow-up to Phase 1):** the chapter-agenda/chapter-locator stages
+  (`citypods/stages.py`) and `citypods/tournament.py`'s pairwise-judge comparison phase now
+  accumulate a whole run's jobs and submit them via one `enqueue_batch`/`poll_batch` round trip
+  each, through the shared `dispatch_job_batch()` helper — see the Phase 1 revision note above for
+  why this was still outstanding after Phase 1 "shipped."
+- Batch the remaining lower-volume call sites the same way: the transcribe/align paths in
+  `citypods/stages.py`, `citypods/audit_remedy.py`. (`citypods/discovery/classify.py` is out of
+  scope — it already sets `require_direct=True` per review/41 and never dispatches through the
+  Worker.)
+- **`citypods/tags.py`'s own model-generation dispatch (`llm_tag_suggestions`, the call
+  `citypods/tournament.py` and `TagsStage` both use to actually generate tag candidates, as
+  opposed to the judge-comparison phase already batched above) deliberately not batched in the
+  2026-08-18 follow-up pass.** It validates structured LLM output per chapter, merges results
+  across chapters internally, and already loops over multiple models per chapter — materially more
+  state to thread through a build-then-batch-dispatch restructuring than the chapter-job or
+  judge-comparison call sites, which just build one job and finalize one result. Left as
+  one-job-at-a-time pending its own dedicated pass.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,

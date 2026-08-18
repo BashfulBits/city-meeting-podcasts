@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from citypods import tournament
-from citypods.compute.base import JobHandle
+from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm import LLMStructuredOutputError
 from citypods.tournament import (
     R5_FLASH_MODEL,
@@ -138,3 +138,70 @@ def test_run_skips_episode_on_llm_backend_error(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "skipping 'ep-1'" in out
     assert "completed 0 sample(s)" in out
+
+
+def test_run_batches_all_judge_comparisons_into_one_enqueue_call(tmp_path, monkeypatch):
+    """The actual point of this refactor (see review/44's 2026-08-18 incident retrospective):
+    one sample's pairwise-judge comparisons (CONTESTS x 2 order-swapped pairs, all sharing
+    JUDGE_MODEL) must produce exactly one enqueue_batch call carrying all jobs, not separate
+    single-job calls."""
+    import json as json_lib
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(tournament, "load_site_config", lambda *_a: {"defaults": {}, "tagging": {}})
+    monkeypatch.setattr(
+        tournament, "make_storage", lambda *_a, **_k: SimpleNamespace(cas_capable=True)
+    )
+    monkeypatch.setattr(tournament, "pull_state", lambda *_a, **_k: 0)
+    monkeypatch.setattr(tournament, "push_state", lambda *_a, **_k: 0)
+    monkeypatch.setattr(tournament, "load_taxonomy", lambda *_a, **_k: SimpleNamespace(tags=()))
+    monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
+    monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
+    episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
+    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
+    monkeypatch.setattr(
+        tournament,
+        "chapter_tag_inputs",
+        lambda *_a, **_k: [{"chapter_id": "c1", "title": "Item 1"}],
+    )
+
+    def fake_llm_tag_suggestions(_backend, **kwargs):
+        chapter_id = kwargs["chapter_inputs"][0]["chapter_id"]
+        return [], {chapter_id: [{"id": "housing", "confidence": 0.9}]}, False, "model"
+
+    monkeypatch.setattr(tournament, "llm_tag_suggestions", fake_llm_tag_suggestions)
+
+    class FakeJudgeBackend:
+        def __init__(self):
+            self.enqueue_calls: list[list] = []
+
+        def enqueue_batch(self, jobs):
+            jobs = list(jobs)
+            self.enqueue_calls.append(jobs)
+            decision_body = json_lib.dumps({"winner": "a", "rationale": "clear support"})
+            return [
+                JobResult(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    output={"choices": [{"message": {"content": decision_body}}]},
+                )
+                for job in jobs
+            ]
+
+        def poll_batch(self, handles):
+            return {}
+
+    judge_backend = FakeJudgeBackend()
+    monkeypatch.setattr(tournament, "_backend", lambda _model, _storage: judge_backend)
+
+    exit_code = tournament.run(
+        site_config_path="config/site_config.yml",
+        config_dir="config",
+        output_dir=str(tmp_path),
+        samples=1,
+    )
+
+    assert exit_code == 0
+    assert len(judge_backend.enqueue_calls) == 1  # one call, not per-comparison calls
+    assert len(judge_backend.enqueue_calls[0]) == len(tournament.CONTESTS) * 2

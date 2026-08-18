@@ -83,6 +83,22 @@ Phase R (Research-Tool Surface)._
   `LiteLLMBackend._available_transports()` and `_enqueue_durable_policy_job` both gate on it; the
   Worker deploy itself additionally needs `CLOUDFLARE_LLM_API_TOKEN` as a deploy-time secret.
 
+- **Batch LLM job dispatch at every `queue_only=True` call site (review/44 follow-up).** Production
+  Cloudflare Worker logs showed every `enqueue-batch` POST from the chapter-agenda/chapter-locator
+  lane carried exactly one job — despite the v2 protocol, DO, and `LiteLLMBackend.enqueue_batch`/
+  `poll_batch` all supporting up to 1000 jobs/call since Phase 1, no call site ever actually
+  accumulated more than one job before submitting, so the dominant lane was still making one Worker
+  request per episode. Added `dispatch_job_batch()` to `citypods/compute/llm.py` — one
+  `enqueue_batch` call for a whole run's jobs (falling back to per-job retry only if the batch call
+  itself raises, since `enqueue_batch` raises for the whole call on a single job's
+  `idempotency_conflict`), plus one `poll_batch` reconcile pass for any still-pending v2 handles —
+  and restructured `AgendaChapterCandidatesStage`/`ChapterBoundaryLocatorStage`
+  (`citypods/stages.py`) and `citypods/tournament.py`'s pairwise-judge comparison phase to build
+  every job first, dispatch the whole set in one call, then finalize each result against its own
+  context. `citypods/tags.py`'s own model-generation dispatch (`llm_tag_suggestions`) and the
+  transcribe/align call sites remain one-job-at-a-time, deferred to review/44 Phase 4 — see that
+  doc for why.
+
 - **Read-only v1 dispatch queue-order report (`scripts/report_pending_dispatch_queue.py`,
   `Report LLM dispatch queue` workflow).** Operator diagnostic for the Mistral pause above: lists
   the v1 Worker's pending `ready/` markers in their real R2 lexicographic dispatch order, resolves
