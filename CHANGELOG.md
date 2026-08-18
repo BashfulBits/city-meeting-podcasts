@@ -37,6 +37,33 @@ Phase R (Research-Tool Surface)._
   primary routes remain paused. Increased v1's ready-marker lookahead from 16 to 500 so a run of
   jobs blocked on the primary account is less likely to hide work eligible for another route.
 
+- **Phase 2 of bounded bundled LLM dispatch (review/44): DO-driven paced dispatch.** Brings
+  `workers/llm-dispatch-v2/` online as a real dispatcher, draining jobs Phase 1 ingests. Adds to
+  `src/coordinator.js`: `claimDispatchWindow` (fenced admission — bundle/active-bundle/in-flight/
+  daily caps, priority-then-distinct-route-then-aging-then-size ordering, capped at
+  `MAX_CONCURRENT_ROUTE_LANES` concurrent lanes), `attemptStarted`/`authorizeRetry` (fenced attempt
+  tracking and bounded 429 retry authorization), `completeBatch` (settlement with calibration
+  folded in — margin_tokens only ever increases), and bounded B2 cleanup RPCs
+  (`purgePendingBatch`/`confirmPurge`/`confirmNeverAccepted`). Adds a route-capacity/pacing model
+  in the new `src/pacing.js` (fixed-window RPM/RPD counters plus a refillable TPM token bucket,
+  independently verified by 16 pure-function tests) and route-catalog selection in the new
+  `src/routes.js`, both extracted from `workers/llm-dispatch-proxy`'s existing patterns per Phase
+  1's own instruction to reuse rather than fork provider logic. Implements the `scheduled()`
+  executor in `src/index.js`: claims one paced window per cron tick, runs each route lane
+  independently and just-in-time (no B2 access before a job's own `wait_ms` elapses), and reports
+  every attempt in one `completeBatch` call. Adds a from-scratch AWS SigV4 client
+  (`src/b2.js`, independently cross-verified against a separate Node-crypto re-derivation of the
+  same signatures) for the executor's B2 reads/writes — the ingress Worker still never touches B2.
+  Adds `src/gateway.js` for AI Gateway request construction, adapted from
+  `workers/llm-dispatch-proxy`'s `resolveProviderCredentials`/`upstreamRequestForRoute`.
+  `scripts/compile_llm_limits.py` now also compiles `workers/llm-dispatch-v2/src/dispatch_limits.json`
+  (same catalog shape v1 already gets, kept in sync automatically). The per-minute cron trigger is
+  back in `wrangler.jsonc` now that `scheduled()` does real work. v2 still carries no live traffic
+  in production: no GitHub workflow has been cut over to `enqueue_batch` yet (a separate deployment
+  decision, tracked with Phase 1's dominant-call-site cutover) and no compiled route yet advertises
+  `transport: "llm-dispatch-v2"` (Phase 4) — this phase makes the dispatch pipeline itself real and
+  tested, ready for the shadow-mode validation gate Phase 2's own plan requires before any of that.
+
 - **Phase 1 of bounded bundled LLM dispatch (review/44), implemented in
   [PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253).** Implemented the
   initial parallel `workers/llm-dispatch-v2/` deployment with SQLite-backed `LLMSchedulerDO`

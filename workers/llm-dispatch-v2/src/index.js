@@ -3,6 +3,7 @@
  * Pure validate-then-DO-RPC pass-through with zero B2 I/O on ingress.
  */
 
+import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 import { LLMSchedulerDO } from "./coordinator.js";
 import {
   validateEnqueueBatchRequest,
@@ -10,6 +11,8 @@ import {
   validateResolveUnknownBatchRequest,
   validateSchemaRetryRequest,
 } from "./protocol.js";
+import { B2Client } from "./b2.js";
+import { callAiGateway, observedTokens } from "./gateway.js";
 
 export { LLMSchedulerDO };
 
@@ -280,6 +283,273 @@ export async function handleRequest(request, env) {
   return errorResponse(404, "not_found", `Unknown endpoint: ${path}`);
 }
 
+function sleepUntil(targetTime) {
+  const delayMs = Math.max(0, targetTime - Date.now());
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+/**
+ * No route is currently confirmed to support a client-supplied provider-side idempotency key
+ * (see review/44's "no binding shortcut" note and the executor's own doc comment below) -- every
+ * job takes the attemptStarted-fencing path today. This function exists as the single place a
+ * future per-provider opt-in would be wired in (e.g. a `supports_idempotency_key` flag compiled
+ * into dispatch_limits.json's provider block), so nothing else in this file needs to change.
+ */
+function routeSupportsProviderIdempotency(route, dispatchLimits) {
+  return Boolean(dispatchLimits.providers?.[route.provider]?.supports_idempotency_key);
+}
+
+function b2ClientFromEnv(env) {
+  if (!env.B2_ENDPOINT || !env.B2_KEY_ID || !env.B2_APP_KEY || !env.B2_BUCKET) return null;
+  return new B2Client({
+    endpoint: env.B2_ENDPOINT,
+    bucket: env.B2_BUCKET,
+    keyId: env.B2_KEY_ID,
+    appKey: env.B2_APP_KEY,
+  });
+}
+
+function routeForId(routeId, dispatchLimits) {
+  const stored = dispatchLimits.routes_by_id?.[routeId];
+  return stored ? { ...stored, route_id: routeId } : null;
+}
+
+function baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, outcome) {
+  return {
+    job_id: job.id,
+    lease_token: job.lease_token,
+    attempt_id: attemptId,
+    planned_at: job.not_before_at,
+    actual_start_at: actualStartAt,
+    actual_end_at: actualEndAt,
+    observed_input_tokens: null,
+    observed_output_tokens: null,
+    outcome,
+    provider_status_code: null,
+    gateway_correlation_id: null,
+    result_key: null,
+  };
+}
+
+/**
+ * One provider call for one job, already fenced and paced by the caller. Returns exactly one of:
+ * `{ skip: true }` (lease no longer current -- the DO reaped it; caller must not report anything
+ * for this attempt), `{ retry429: true, actualStartAt, actualEndAt, correlationId }` (caller
+ * decides whether/how to retry), or `{ result }` (a terminal AttemptResult ready for
+ * completeBatch, covering success, transport failure, and every non-429 HTTP status).
+ */
+async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
+  if (!routeSupportsProviderIdempotency(route, dispatchLimits)) {
+    const fence = await coordinator.attemptStarted(job.id, job.lease_token, attemptId, Date.now());
+    if (!fence.fenced) return { skip: true };
+  }
+
+  const actualStartAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), maxResponseMs);
+  let response;
+  try {
+    response = await callAiGateway({ env, route, payload: job.payload, dispatchLimits, idempotencyKey, signal: controller.signal });
+  } catch (err) {
+    return { result: baseAttemptResult(job, attemptId, actualStartAt, Date.now(), "retryable_error") };
+  } finally {
+    clearTimeout(timeout);
+  }
+  const actualEndAt = Date.now();
+
+  if (response.status === 429) {
+    return { retry429: true, actualStartAt, actualEndAt, correlationId: response.correlationId };
+  }
+
+  if (response.ok) {
+    const usage = observedTokens(response.body);
+    const resultKey = `results/${job.id}/${job.lease_token}.json`;
+    try {
+      await b2.putJson(resultKey, response.body);
+      return {
+        result: {
+          ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "success"),
+          observed_input_tokens: usage.input,
+          observed_output_tokens: usage.output,
+          provider_status_code: response.status,
+          gateway_correlation_id: response.correlationId,
+          result_key: resultKey,
+        },
+      };
+    } catch (err) {
+      console.error(`scheduled: failed to write result for job ${job.id}`, err);
+      return {
+        result: {
+          ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
+          observed_input_tokens: usage.input,
+          observed_output_tokens: usage.output,
+          provider_status_code: response.status,
+          gateway_correlation_id: response.correlationId,
+        },
+      };
+    }
+  }
+
+  return {
+    result: {
+      ...baseAttemptResult(
+        job,
+        attemptId,
+        actualStartAt,
+        actualEndAt,
+        response.status >= 500 ? "retryable_error" : "terminal_error"
+      ),
+      provider_status_code: response.status,
+      gateway_correlation_id: response.correlationId,
+    },
+  };
+}
+
+/**
+ * One job's full lifecycle within its lane: pace, read its payload, then attempt/retry until a
+ * terminal AttemptResult exists. Every 429 loops back through authorizeRetry, which itself
+ * enforces MAX_429_RETRIES (see coordinator.js) -- this loop does not separately bound attempts;
+ * it simply keeps retrying for as long as the DO keeps authorizing.
+ */
+async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneState, bundleDeadline, maxResponseMs }) {
+  let targetTime = laneState.receivedAt + job.wait_ms;
+  if (laneState.predecessorActualStart !== null) {
+    targetTime = Math.max(targetTime, laneState.predecessorActualStart + job.min_inter_request_gap_ms);
+  }
+  if (laneState.retryBarrier !== null) targetTime = Math.max(targetTime, laneState.retryBarrier);
+
+  if (targetTime > bundleDeadline) {
+    return baseAttemptResult(job, crypto.randomUUID(), null, null, "deferred_late");
+  }
+
+  await sleepUntil(targetTime);
+
+  let payload;
+  try {
+    payload = await b2.getJson(job.payload_key);
+  } catch (err) {
+    console.error(`scheduled: failed to read payload for job ${job.id}`, err);
+    laneState.predecessorActualStart = Date.now();
+    return baseAttemptResult(job, crypto.randomUUID(), null, null, "retryable_error");
+  }
+  if (payload === null) {
+    console.error(`scheduled: payload missing for job ${job.id} at ${job.payload_key}`);
+    laneState.predecessorActualStart = Date.now();
+    return baseAttemptResult(job, crypto.randomUUID(), null, null, "terminal_error");
+  }
+
+  const route = routeForId(job.route_id, dispatchLimits);
+  const idempotencyKey = routeSupportsProviderIdempotency(route, dispatchLimits)
+    ? job.provider_idempotency_key || null
+    : null;
+  const jobWithPayload = { ...job, payload };
+
+  for (;;) {
+    const attemptId = crypto.randomUUID();
+    const outcome = await attemptProviderCall({
+      env,
+      coordinator,
+      b2,
+      route,
+      dispatchLimits,
+      job: jobWithPayload,
+      attemptId,
+      idempotencyKey,
+      maxResponseMs,
+    });
+
+    if (outcome.skip) {
+      laneState.predecessorActualStart = Date.now();
+      return null; // lease reaped; nothing to report for this attempt
+    }
+
+    if (outcome.result) {
+      laneState.predecessorActualStart = outcome.result.actual_start_at;
+      return outcome.result;
+    }
+
+    // 429: ask the DO whether (and when) a retry is authorized.
+    laneState.predecessorActualStart = outcome.actualStartAt;
+    const auth = await coordinator.authorizeRetry(job.id, job.lease_token, attemptId, Date.now());
+    if (!auth.authorized || auth.retry_not_before > bundleDeadline) {
+      return {
+        ...baseAttemptResult(job, attemptId, outcome.actualStartAt, outcome.actualEndAt, "terminal_error"),
+        provider_status_code: 429,
+        gateway_correlation_id: outcome.correlationId,
+      };
+    }
+    laneState.retryBarrier = auth.retry_not_before;
+    await sleepUntil(auth.retry_not_before);
+    // Loop: re-attempt with a fresh attempt_id, still bounded by the DO's own retry count.
+  }
+}
+
+/**
+ * review/44 Unit 6: claim one paced dispatch window, run each route lane independently and
+ * just-in-time (no B2 access before a job's own wait_ms elapses, no bulk pre-fetch -- see the
+ * unit's own "do not" guardrails), and report every attempt in one completeBatch call.
+ */
+async function runScheduledDispatch(env) {
+  const coordinator = getCoordinator(env);
+  const dispatchLimits = env.DISPATCH_LIMITS_OVERRIDE || DISPATCH_LIMITS;
+  const dispatchWindowSeconds = Number(env.DISPATCH_WINDOW_SECONDS || 25);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), dispatchWindowSeconds);
+  if (!plan.jobs || plan.jobs.length === 0) return; // no B2 access, no further DO calls
+
+  const receivedAt = Date.now(); // wait_ms is relative to THIS instant, not plan-build time
+  const bundleDeadline = receivedAt + dispatchWindowSeconds * 1000;
+  const b2 = b2ClientFromEnv(env);
+  if (!b2) {
+    console.error("scheduled: B2 credentials not configured; cannot execute claimed plan");
+    return;
+  }
+
+  const maxResponseMs = Number(env.MAX_RESPONSE_SECONDS || 720) * 1000;
+
+  const lanes = new Map();
+  for (const job of plan.jobs) {
+    if (!lanes.has(job.route_id)) lanes.set(job.route_id, []);
+    lanes.get(job.route_id).push(job);
+  }
+
+  const results = [];
+  // Promise.allSettled over independent lanes -- safe without a separate concurrency limiter
+  // because claimDispatchWindow already caps distinct routes at MAX_CONCURRENT_ROUTE_LANES (see
+  // Unit 4/Unit 6's own guardrail on why this constant exists).
+  await Promise.allSettled(
+    [...lanes.entries()].map(async ([, laneJobs]) => {
+      const laneState = { receivedAt, predecessorActualStart: null, retryBarrier: null };
+      for (const job of laneJobs) {
+        let result;
+        try {
+          result = await dispatchOneJob({
+            env,
+            coordinator,
+            b2,
+            dispatchLimits,
+            job,
+            laneState,
+            bundleDeadline,
+            maxResponseMs,
+          });
+        } catch (err) {
+          // An unexpected exception here must still produce a completeBatch result -- letting it
+          // propagate would leave this settlement "rejected" (swallowed by Promise.allSettled
+          // below) with nothing pushed for this job, stranding it `leased` with no diagnostic
+          // trace until the lease-expiry sweep eventually reaps it.
+          console.error(`scheduled: unexpected error dispatching job ${job.id}`, err);
+          result = baseAttemptResult(job, crypto.randomUUID(), null, null, "retryable_error");
+          laneState.predecessorActualStart = Date.now();
+        }
+        if (result !== null) results.push(result);
+      }
+    })
+  );
+
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, results);
+}
+
 export default {
   async fetch(request, env, ctx) {
     try {
@@ -291,6 +561,12 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    // Scheduled cron handler lands in Phase 2
+    try {
+      validateConfig(env);
+    } catch (err) {
+      console.error("scheduled: configuration_error", err);
+      return;
+    }
+    ctx.waitUntil(runScheduledDispatch(env));
   },
 };

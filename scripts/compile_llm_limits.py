@@ -30,6 +30,11 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INPUT_YAML = REPO_ROOT / "config" / "provider_limits.yml"
 OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-proxy" / "src" / "dispatch_limits.json"
+# Same catalog shape as OUTPUT_JSON, for review/44's v2 executor Worker (Unit 4's
+# routeHasCapacityFor/routesEligibleFor need the same physical route/provider data v1 has). Kept
+# as a second write of the same compiled catalog, not a cross-Worker-directory import, so v2 has
+# no build/deploy dependency on v1's directory continuing to exist past its Phase 3 retirement.
+V2_OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "dispatch_limits.json"
 PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
 
 _STRUCTURED_OUTPUT_FORMATS = frozenset({"json_schema", "json_object"})
@@ -723,16 +728,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     compiled = compile_limits(discover=args.discover)
+    worker_catalog = _worker_catalog(compiled)
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT_JSON.open("w", encoding="utf-8") as f:
-        json.dump(_worker_catalog(compiled), f, indent=2, default=_json_default)
+        json.dump(worker_catalog, f, indent=2, default=_json_default)
+    V2_OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
+    with V2_OUTPUT_JSON.open("w", encoding="utf-8") as f:
+        json.dump(worker_catalog, f, indent=2, default=_json_default)
     with PYTHON_OUTPUT_JSON.open("w", encoding="utf-8") as f:
         json.dump(_python_routes(compiled), f, indent=2, default=_json_default)
     rel_out = OUTPUT_JSON.relative_to(REPO_ROOT)
+    rel_v2_out = V2_OUTPUT_JSON.relative_to(REPO_ROOT)
     print(
         f"Successfully compiled {compiled['_metadata']['routes_count']} routes "
-        f"across {compiled['_metadata']['providers_count']} providers to {rel_out} and "
-        f"{PYTHON_OUTPUT_JSON.relative_to(REPO_ROOT)}"
+        f"across {compiled['_metadata']['providers_count']} providers to {rel_out}, "
+        f"{rel_v2_out}, and {PYTHON_OUTPUT_JSON.relative_to(REPO_ROOT)}"
     )
 
 
