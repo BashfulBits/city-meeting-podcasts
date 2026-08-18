@@ -27,6 +27,29 @@ function errorResponse(status, error, detail) {
   return jsonResponse({ error, detail }, status);
 }
 
+/**
+ * Render a thrown value into a single string safe to pass as console.error's/errorResponse's
+ * message. Cloudflare Workers Logs only reliably captures console.error's first STRING
+ * argument -- an Error object passed as a second argument (the natural `console.error("x
+ * failed", err)` pattern) is dropped from the exported log entirely, with no way to recover it
+ * short of a code change (confirmed against a live 2026-08-18 coordinator_error incident: the
+ * DO's own RPC trace showed outcome "ok" while the caller's catch block fired, and the deployed
+ * logs carried nothing beyond the literal "enqueueBatch failed" call-site string, even after
+ * adding a custom Logs field). Folding the real message/stack into the string argument, and
+ * into the HTTP response body callers already log/print, means the actual cause survives
+ * without needing dashboard access at all.
+ */
+function describeError(err) {
+  if (err instanceof Error) {
+    return `${err.name}: ${err.message}${err.stack ? `\n${err.stack}` : ""}`;
+  }
+  try {
+    return String(err);
+  } catch {
+    return "unknown error (not stringifiable)";
+  }
+}
+
 export function validateConfig(env) {
   const dispatchWindow = Number(env.DISPATCH_WINDOW_SECONDS || 25);
   const maxResponse = Number(env.MAX_RESPONSE_SECONDS || 720);
@@ -177,8 +200,9 @@ export async function handleRequest(request, env) {
       const result = await coordinator.enqueueBatch(preparedJobs);
       return jsonResponse(result, 200);
     } catch (err) {
-      console.error("enqueueBatch failed", err);
-      return errorResponse(500, "coordinator_error", "Coordinator request failed");
+      const detail = describeError(err);
+      console.error(`enqueueBatch failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
     }
   }
 
@@ -200,8 +224,9 @@ export async function handleRequest(request, env) {
       const result = await coordinator.pollBatch(body.ids);
       return jsonResponse(result, 200);
     } catch (err) {
-      console.error("pollBatch failed", err);
-      return errorResponse(500, "coordinator_error", "Coordinator request failed");
+      const detail = describeError(err);
+      console.error(`pollBatch failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
     }
   }
 
@@ -246,8 +271,9 @@ export async function handleRequest(request, env) {
       const result = await coordinator.resolveUnknownBatch(body.attempt_ids);
       return jsonResponse(result, 200);
     } catch (err) {
-      console.error("resolveUnknownBatch failed", err);
-      return errorResponse(500, "coordinator_error", "Coordinator request failed");
+      const detail = describeError(err);
+      console.error(`resolveUnknownBatch failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
     }
   }
 

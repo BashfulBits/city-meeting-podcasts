@@ -137,6 +137,48 @@ test("POST /v2/jobs:enqueue-batch fails closed when no auth token is configured"
   assert.equal(data.error, "configuration_error");
 });
 
+test("POST /v2/jobs:enqueue-batch surfaces the real error message, not a generic string", async () => {
+  // Regression test for the 2026-08-18 incident: console.error("enqueueBatch failed", err)'s
+  // second argument (the actual Error) never appeared in Cloudflare's exported Workers Logs --
+  // only the literal call-site string did, even with a custom Logs field added in the
+  // dashboard. Diagnosing a real coordinator_error required guessing at the cause blind. Both
+  // the console.error call and the HTTP response body must now carry the real message/stack as
+  // a plain string, which Workers Logs does reliably capture.
+  const env = createMockEnv({
+    LLM_SCHEDULER: {
+      getByName: () => ({
+        async enqueueBatch() {
+          throw new Error("SQLITE_CONSTRAINT: distinctive test failure detail");
+        },
+      }),
+    },
+  });
+
+  const req = new Request("http://localhost/v2/jobs:enqueue-batch", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer secret-token" },
+    body: JSON.stringify({
+      jobs: [
+        {
+          id: "j1",
+          idempotency_key: "k1",
+          request_digest: "d1",
+          prompt_family: "tags",
+          input_token_estimate: 100,
+          max_output_token_estimate: 50,
+          payload_key: "payloads/j1/request.json",
+        },
+      ],
+    }),
+  });
+
+  const res = await worker.fetch(req, env);
+  assert.equal(res.status, 500);
+  const data = await res.json();
+  assert.equal(data.error, "coordinator_error");
+  assert.match(data.detail, /SQLITE_CONSTRAINT: distinctive test failure detail/);
+});
+
 test("POST /v2/jobs:poll-batch polls coordinator and returns result_key without inlining", async () => {
   const env = createMockEnv();
 
