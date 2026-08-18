@@ -643,7 +643,7 @@ Dispatch capability is **not** required for this phase to relieve the incident �
   request once known headroom is exhausted, not just get rejected after — a DO-side cap alone still
   lets a runaway workflow hammer the ingress Worker with rejected-but-still-counted requests.
 
-### Phase 2 — Bring up DO-driven paced dispatch (second priority) · *Dispatch pipeline implemented*
+### Phase 2 — Bring up DO-driven paced dispatch (second priority) · *Dispatch pipeline implemented in [PR #1254](https://github.com/BashfulBits/city-meeting-podcasts/pull/1254)*
 
 Implement one transactional claim plan before provider calls, and the executor that consumes it.
 This is what lets v2 begin draining jobs ingested in Phase 1 across multiple routes.

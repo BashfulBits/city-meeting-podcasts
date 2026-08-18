@@ -37,7 +37,8 @@ Phase R (Research-Tool Surface)._
   primary routes remain paused. Increased v1's ready-marker lookahead from 16 to 500 so a run of
   jobs blocked on the primary account is less likely to hide work eligible for another route.
 
-- **Phase 2 of bounded bundled LLM dispatch (review/44): DO-driven paced dispatch.** Brings
+- **Phase 2 of bounded bundled LLM dispatch (review/44): DO-driven paced dispatch, implemented in
+  [PR #1254](https://github.com/BashfulBits/city-meeting-podcasts/pull/1254).** Brings
   `workers/llm-dispatch-v2/` online as a real dispatcher, draining jobs Phase 1 ingests. Adds to
   `src/coordinator.js`: `claimDispatchWindow` (fenced admission — bundle/active-bundle/in-flight/
   daily caps, priority-then-distinct-route-then-aging-then-size ordering, capped at
