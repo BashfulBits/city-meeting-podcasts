@@ -250,6 +250,16 @@ headroom. Cloudflare counts DO alarm invocations and RPC sessions as DO requests
 `setAlarm()` as a SQLite row write. See
 [DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
 
+**Key cost clarification: one executor cron tick = one Worker invocation, containing multiple
+subrequests.** The 1,440 daily cron ticks consume 1,440 Worker invocations (Workers Free limit:
+100,000/day). Within each invocation, the executor may call the DO twice (claim + complete, counted
+as DO requests, not Worker invocations), read and write multiple payloads to B2 (subrequests, not
+Worker invocations), and make multiple AI Gateway calls (also separate from Worker invocations but
+counted against your AI Gateway quota). Similarly, each ingress `enqueueBatch` or `poll-batch` is one
+Worker invocation that may contain multiple B2 subrequests. The Worker **invocation** count (100k/day)
+is the outer loop; **DO requests** (100k/day), **subrequests per invocation** (configurable connection
+limit, `MAX_B2_SUBREQUESTS`), and **AI Gateway requests** (provider-governed) are separate budgets.
+
 **Ingestion admission is bounded on both ends, not just at the DO.** A DO-side admission cap
 (`MAX_JOBS_PER_UTC_DAY`) alone still lets a runaway GitHub workflow hammer the ingress Worker with
 rejected-but-still-counted requests — exactly today's failure mode (see Demand model). Client-side
