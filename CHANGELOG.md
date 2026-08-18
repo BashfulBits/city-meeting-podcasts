@@ -43,6 +43,29 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch v2's `enqueue_batch`/`poll_batch` payload I/O against production storage
+  (2026-08-18 incident follow-up).** Production wires `LiteLLMBackend`'s `storage=` to
+  `citypods.storage.routing.RoutingStorage` (B2 primary + R2 coordination), whose
+  `COORDINATION_PREFIXES` deliberately excludes `payloads/`/`results/` — v2 job payloads are
+  B2-resident by design (see `workers/llm-dispatch-v2`'s own SigV4 client), not R2 coordination
+  state. `_storage_client()` (used by both `enqueue_batch`'s payload write and `poll_batch`'s
+  result read, `citypods/compute/llm.py`) previously returned the router itself, so every
+  `payloads/…` `put_cas`/`get_bytes` call routed to the B2 primary and then correctly hit
+  `RoutingStorage`'s own safety gate — B2 is deliberately marked non-`cas_capable` there, since it
+  doesn't enforce real If-Match/If-None-Match — raising `NotImplementedError` before the batch
+  ever reached the dispatch Worker over HTTP. This is why wiring `LLM_DISPATCH_V2_URL`/
+  `LLM_DISPATCH_V2_AUTH_TOKEN` into the six GitHub workflows alone did not stop the ingest flood:
+  `citypods-llm-dispatch-v2`/its Durable Object never saw a single request, while the exception
+  was swallowed per-item by `TagsStage`'s existing error handling and every call kept falling
+  through to `llm-dispatch-proxy` (v1). Fixed by having `_storage_client()` reach past the router
+  to its `.primary` B2 backend directly when `self.storage` is a `RoutingStorage` (whose own
+  `put_cas`/`get_bytes` never gated on the `cas_capable` flag to begin with — only the router did)
+  — an unconditional write is exactly right here, since `enqueue_batch` already only ever calls
+  `put_cas` with no `if_match`/`if_none_match` (`job_id` is a fresh UUID per call, so there is no
+  CAS race to protect). Added a regression test in `tests/test_compute_llm_dispatch_v2.py` using
+  the real `RoutingStorage` (not the flat mock the rest of the suite uses, which doesn't
+  reproduce the prefix-routing gate and is why this shipped untested against the real topology).
+
 - **Legacy agenda records with partial state can now be reset and rebuilt safely.** Added the
   dry-run-first `reset-agenda-chapter-state.yml` recovery workflow and
   `scripts/reset_agenda_chapter_state.py`, which targets only records missing

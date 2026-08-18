@@ -589,6 +589,27 @@ Dispatch capability is **not** required for this phase to relieve the incident �
 > under this correction — there is no B2 credential or SigV4 logic needed there once neither endpoint
 > touches B2.
 
+> **Revision note (2026-08-18): the Python client's payload write/read did not honor this design as
+> shipped, and it silently blocked every v2 submission in production.** `enqueue_batch`/`poll_batch`
+> (`citypods/compute/llm.py`) wired their `storage.put_cas`/`get_bytes` calls through whatever
+> `LiteLLMBackend` was constructed with — in production, `citypods.storage.routing.RoutingStorage`
+> (B2 primary + R2 coordination) — instead of the plain `b2_from_env()` client this design called
+> for above. `RoutingStorage`'s `COORDINATION_PREFIXES` correctly excludes `payloads/`/`results/`
+> (they aren't R2 coordination state), so it routed those keys to its B2 primary and then, correctly
+> per its own invariant, refused the call outright — B2 is deliberately marked non-`cas_capable`
+> there. Every enqueue attempt raised `NotImplementedError` before ever reaching the Worker over
+> HTTP: `citypods-llm-dispatch-v2` and its Durable Object saw zero traffic even after wiring
+> `LLM_DISPATCH_V2_URL` into every `queue_only` call site (the fix for the initial 2026-08-18
+> incident report), because the exception was swallowed per-item by `TagsStage`'s existing error
+> handling and every call kept falling through to v1. Fixed in `_storage_client()` by reaching past
+> the router to its `.primary` B2 backend directly whenever `self.storage` is a `RoutingStorage` —
+> `S3CompatibleStorage.put_cas`/`get_bytes` never gated on the `cas_capable` flag themselves, only
+> the router's wrapper did, and `enqueue_batch`'s write was already unconditional (no
+> `if_match`/`if_none_match` — `job_id` is a fresh UUID per call). Regression test added in
+> `tests/test_compute_llm_dispatch_v2.py` using the real `RoutingStorage`, not the flat mock the
+> rest of that suite uses (which doesn't reproduce the prefix-routing gate and is why this shipped
+> untested against the real topology in the first place).
+
 - Create `workers/llm-dispatch-v2/` as a separate Worker deployment with a SQLite DO class and a
   separate B2 prefix. Keep the existing v1 Worker unchanged.
   - Extract only pure route-catalog selection and response-normalization helpers from v1; do not

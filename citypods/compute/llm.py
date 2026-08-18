@@ -577,7 +577,28 @@ class LiteLLMBackend(Backend):
         return frozenset(transports)
 
     def _storage_client(self):
+        """The client v2's ``payloads/``/``results/`` staging writes/reads through.
+
+        This data is B2-resident by design (workers/llm-dispatch-v2's own SigV4 client and
+        wrangler.jsonc's "B2-only payload storage" -- the coordinator never gets R2 credentials),
+        and is written with an unconditional ``put_cas`` (job_id is a fresh UUID per call, so
+        there is no CAS race to protect -- see enqueue_batch's comment). Production's
+        ``self.storage`` is usually a ``RoutingStorage`` whose ``COORDINATION_PREFIXES``
+        deliberately excludes ``payloads/``/``results/`` (they aren't R2 coordination state), so
+        it routes those keys to its B2 primary and then -- correctly, per its own invariant --
+        refuses the put_cas/get_bytes call outright, because B2 is deliberately marked
+        non-cas_capable there (review/17 §5: B2 doesn't enforce real If-Match/If-None-Match, so
+        the router won't let a caller assume atomicity from it). That gate protects callers who
+        need real compare-and-swap; it must not block this unconditional write/read. Go straight
+        to the routed primary so v2 submissions actually reach B2 instead of raising
+        NotImplementedError on every attempt. A non-routing storage (e.g. a test double, or a
+        plain B2/R2 backend from a non-``routing`` deployment) is used exactly as given.
+        """
         if self.storage is not None:
+            if getattr(self.storage, "name", None) == "routing":
+                primary = getattr(self.storage, "primary", None)
+                if primary is not None:
+                    return primary
             return self.storage
         return b2_from_env()
 
