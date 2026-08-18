@@ -83,7 +83,8 @@ Phase R (Research-Tool Surface)._
   `LiteLLMBackend._available_transports()` and `_enqueue_durable_policy_job` both gate on it; the
   Worker deploy itself additionally needs `CLOUDFLARE_LLM_API_TOKEN` as a deploy-time secret.
 
-- **Batch LLM job dispatch at every `queue_only=True` call site (review/44 follow-up).** Production
+- **Batch LLM job dispatch at every `queue_only=True` call site (review/44 follow-up), implemented
+  in [PR #1262](https://github.com/BashfulBits/city-meeting-podcasts/pull/1262).** Production
   Cloudflare Worker logs showed every `enqueue-batch` POST from the chapter-agenda/chapter-locator
   lane carried exactly one job — despite the v2 protocol, DO, and `LiteLLMBackend.enqueue_batch`/
   `poll_batch` all supporting up to 1000 jobs/call since Phase 1, no call site ever actually

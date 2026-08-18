@@ -639,8 +639,10 @@ Dispatch capability is **not** required for this phase to relieve the incident �
   scope is unchanged. Cut that call site's new-job submission and reconciliation over to v2 as soon
   as both land.
 
-  > **Revision note (2026-08-18, later the same day): this bullet's "accumulate a batch, submit
-  > once" was never actually implemented, at this or any other call site.** Confirmed by reading
+  > **Revision note (2026-08-18, later the same day; fixed in [PR
+  > #1262](https://github.com/BashfulBits/city-meeting-podcasts/pull/1262)): this bullet's
+  > "accumulate a batch, submit once" was never actually implemented, at this or any other call
+  > site.** Confirmed by reading
   > production Cloudflare Worker logs for the chapter-agenda/chapter-locator lane after the six
   > hotfixes below finally got a real `enqueue-batch` round trip working: every POST body had an
   > identical single-job `content-length`, and direct code reading of
@@ -754,7 +756,8 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
 
 ### Phase 4 — Follow-up (non-blocking)
 
-- **Done (2026-08-18, follow-up to Phase 1):** the chapter-agenda/chapter-locator stages
+- **Done (2026-08-18, follow-up to Phase 1, [PR
+  #1262](https://github.com/BashfulBits/city-meeting-podcasts/pull/1262)):** the chapter-agenda/chapter-locator stages
   (`citypods/stages.py`) and `citypods/tournament.py`'s pairwise-judge comparison phase now
   accumulate a whole run's jobs and submit them via one `enqueue_batch`/`poll_batch` round trip
   each, through the shared `dispatch_job_batch()` helper — see the Phase 1 revision note above for
