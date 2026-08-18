@@ -325,9 +325,10 @@ def test_token_estimate_buffer_scales_route_and_provider_token_budgets():
     assert gemini["input_context_limit"] == 1048576
     assert gemini["output_context_limit"] == 65536
 
-    # Provider monthly_tpm scaling: 1,000,000,000 * 0.9 = 900,000,000
+    # Provider monthly_tpm scaling: hotfixed to 0 (Mistral's new account-wide monthly metering,
+    # see config/provider_limits.yml), floored to the buffer's minimum of 1.
     mistral = compiled["providers"]["mistral"]
-    assert mistral["monthly_tpm"] == 900_000_000
+    assert mistral["monthly_tpm"] == 1
 
 
 def test_validate_token_buffer_accepts_valid_formats():
