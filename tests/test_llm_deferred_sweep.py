@@ -496,3 +496,50 @@ def test_sweep_batch_polls_v2_handles(monkeypatch):
     assert llm_deferred_sweep.main([]) == 0
     assert len(poll_batch_called_with) == 1
     assert poll_batch_called_with[0].ref == "j1"
+
+
+def test_sweep_skips_reconcile_for_a_handle_the_batch_poll_already_resolved(monkeypatch):
+    # Regression test for the double-poll bug: a handle poll_batch resolves must not also be
+    # polled individually via reconcile() right afterward -- that reintroduces the
+    # one-poll-per-handle request volume Phase 1 exists to eliminate (review/44). A handle the
+    # batch call leaves unresolved (returns None for) must still fall through to reconcile().
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(
+        cas_capable=True,
+        get_file=lambda *args, **kwargs: False,
+        put_file=lambda *args, **kwargs: None,
+        delete=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+
+    resolved_handle = JobHandle(
+        task="tag", recipe_hash="resolved-recipe", backend="llm-dispatch-v2", ref="resolved-id"
+    )
+    pending_handle = JobHandle(
+        task="tag", recipe_hash="pending-recipe", backend="llm-dispatch-v2", ref="pending-id"
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda *_: _snapshot([resolved_handle, pending_handle]),
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
+
+    reconciled_refs = []
+    resolved_result = JobResult(task="tag", recipe_hash="resolved-recipe", output={"ok": True})
+
+    class MockBackend:
+        def poll_batch(self, handles):
+            return {h.ref: (resolved_result if h.ref == "resolved-id" else None) for h in handles}
+
+        def reconcile(self, handle):
+            reconciled_refs.append(handle.ref)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    # The batch-resolved handle must NOT be reconciled again individually...
+    assert "resolved-id" not in reconciled_refs
+    # ...but the handle the batch call left unresolved still goes through reconcile().
+    assert "pending-id" in reconciled_refs

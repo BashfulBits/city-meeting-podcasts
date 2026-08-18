@@ -6,21 +6,50 @@ from unittest.mock import MagicMock
 
 import pytest
 import requests
+from pydantic import BaseModel, ConfigDict
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
-from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMBackendError
+from citypods.compute.llm import (
+    LiteLLMBackend,
+    LLMBackendConfig,
+    LLMBackendError,
+    LLMDispatchTerminalError,
+)
+from citypods.compute.structured import register_response_model
+
+
+class _PongOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pong: bool
+
+
+register_response_model("dispatch-v2-test-pong", _PongOutput)
 
 
 class MockStorage:
+    """Mirrors the real StorageBackend/CAS surface (citypods/storage/s3.py), not an invented
+    shape -- enqueue_batch/poll_batch call put_cas/get_bytes on real storage, and a mock that
+    doesn't match would let a AttributeError-on-real-storage regression pass silently here."""
+
     def __init__(self):
-        self.files = {}
+        self.files: dict[str, bytes] = {}
         self.cas_capable = True
+        self._etag_counter = 0
 
-    def write_bytes(self, key, data, content_type=None):
+    def _next_etag(self) -> str:
+        self._etag_counter += 1
+        return f'"etag-{self._etag_counter}"'
+
+    def put_cas(self, key, data, content_type, *, if_none_match=None, if_match=None):
         self.files[key] = data if isinstance(data, bytes) else str(data).encode("utf-8")
+        etag = self._next_etag()
+        return f"mem://{key}", etag
 
-    def read_bytes(self, key):
-        return self.files.get(key)
+    def get_bytes(self, key):
+        if key not in self.files:
+            return None
+        return self.files[key], self._next_etag()
 
     def exists(self, key):
         return key in self.files
@@ -54,21 +83,23 @@ def _mock_response(status_code=200, json_data=None, headers=None, text=""):
     return resp
 
 
+def _accept_all(url, json=None, headers=None, timeout=None):
+    """A mock coordinator that accepts every job, echoing submitted_id == id for a fresh
+    submission -- matching workers/llm-dispatch-v2/src/coordinator.js's real response shape."""
+    jobs = json.get("jobs", [])
+    return _mock_response(
+        status_code=200,
+        json_data={
+            "accepted": [{"id": j["id"], "submitted_id": j["id"]} for j in jobs],
+            "rejected": [],
+        },
+    )
+
+
 def test_enqueue_batch_submits_jobs_and_persists_payloads_to_b2():
     storage = MockStorage()
     mock_session = MagicMock()
-
-    def mock_post(url, json=None, headers=None, timeout=None):
-        jobs = json.get("jobs", [])
-        return _mock_response(
-            status_code=200,
-            json_data={
-                "accepted": [{"id": j["id"]} for j in jobs],
-                "rejected": [],
-            },
-        )
-
-    mock_session.post.side_effect = mock_post
+    mock_session.post.side_effect = _accept_all
 
     config = LLMBackendConfig(
         model="gemini/gemini-3-flash-preview",
@@ -95,9 +126,25 @@ def test_enqueue_batch_submits_jobs_and_persists_payloads_to_b2():
     assert results[1].backend == "llm-dispatch-v2"
     assert backend._daily_ingest_admitted == 2
 
-    # Check that payloads were written to storage
+    # Check that payloads were written to storage via put_cas (the real storage API)
     stored_payload_keys = [k for k in storage.files if k.startswith("payloads/")]
     assert len(stored_payload_keys) == 2
+
+
+def test_enqueue_batch_requires_cas_capable_storage():
+    mock_session = MagicMock()
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=None)
+
+    job = InferenceJob(
+        task="tag", inputs={"messages": [{"role": "user", "content": "hello"}]}, recipe_hash="r1"
+    )
+    with pytest.raises(LLMBackendError, match="CAS-capable"):
+        backend.enqueue_batch([job])
+    mock_session.post.assert_not_called()
 
 
 def test_enqueue_batch_cached_results():
@@ -137,18 +184,7 @@ def test_enqueue_batch_cached_results():
 def test_enqueue_batch_client_side_throttling():
     storage = MockStorage()
     mock_session = MagicMock()
-
-    def mock_post(url, json=None, headers=None, timeout=None):
-        jobs = json.get("jobs", [])
-        return _mock_response(
-            status_code=200,
-            json_data={
-                "accepted": [{"id": j["id"]} for j in jobs],
-                "rejected": [],
-            },
-        )
-
-    mock_session.post.side_effect = mock_post
+    mock_session.post.side_effect = _accept_all
 
     config = LLMBackendConfig(
         model="gemini/gemini-3-flash-preview",
@@ -208,14 +244,82 @@ def test_enqueue_batch_server_rejections():
     assert backend._daily_ingest_exhausted is True
 
 
+def test_enqueue_batch_mixed_accepted_and_rejected():
+    storage = MockStorage()
+    mock_session = MagicMock()
+
+    def mock_post(url, json=None, headers=None, timeout=None):
+        jobs = json.get("jobs", [])
+        accepted = [{"id": jobs[0]["id"], "submitted_id": jobs[0]["id"]}]
+        rejected = [{"id": jobs[1]["id"], "reason": "idempotency_conflict"}]
+        return _mock_response(
+            status_code=200, json_data={"accepted": accepted, "rejected": rejected}
+        )
+
+    mock_session.post.side_effect = mock_post
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    job1 = InferenceJob(
+        task="tag", inputs={"messages": [{"role": "user", "content": "ok"}]}, recipe_hash="r1"
+    )
+    job2 = InferenceJob(
+        task="tag", inputs={"messages": [{"role": "user", "content": "conflict"}]}, recipe_hash="r2"
+    )
+
+    # The accepted job must still resolve even though a sibling in the same batch is rejected
+    # with idempotency_conflict, which fails loudly per review/44's stated contract.
+    with pytest.raises(LLMBackendError, match="idempotency conflict"):
+        backend.enqueue_batch([job1, job2])
+
+
+def test_enqueue_batch_idempotent_replay_uses_canonical_id_as_ref():
+    # The coordinator returns the ORIGINAL row's id on a replay, distinct from the fresh id this
+    # client always generates -- enqueue_batch must match on submitted_id and use the returned
+    # canonical id as the JobHandle ref, not its own freshly-generated job_id.
+    storage = MockStorage()
+    mock_session = MagicMock()
+
+    def mock_post(url, json=None, headers=None, timeout=None):
+        jobs = json.get("jobs", [])
+        submitted_id = jobs[0]["id"]
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "accepted": [{"id": "original-canonical-id", "submitted_id": submitted_id}],
+                "rejected": [],
+            },
+        )
+
+    mock_session.post.side_effect = mock_post
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    job = InferenceJob(
+        task="tag", inputs={"messages": [{"role": "user", "content": "retry"}]}, recipe_hash="r1"
+    )
+    results = backend.enqueue_batch([job])
+    assert isinstance(results[0], JobHandle)
+    assert results[0].ref == "original-canonical-id"
+
+
 def test_poll_batch_fetches_completed_results_from_b2():
     storage = MockStorage()
     mock_session = MagicMock()
 
-    # Store completed result in mock storage
-    storage.write_bytes(
+    # Store completed result in mock storage via the real put_cas API
+    storage.put_cas(
         "results/j1/lt1.json",
         json.dumps({"choices": [{"message": {"content": "completed result"}}]}).encode("utf-8"),
+        "application/json",
     )
 
     mock_session.post.return_value = _mock_response(
@@ -275,5 +379,108 @@ def test_poll_batch_failed_job_raises():
 
     h1 = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
 
-    with pytest.raises(LLMBackendError, match="failed permanently"):
+    with pytest.raises(LLMDispatchTerminalError, match="failed permanently"):
         backend.poll_batch([h1])
+
+
+def test_poll_batch_missing_result_bytes_stays_pending_not_cached_empty():
+    # A completed state whose result_key isn't (yet) readable from storage must NOT be cached as
+    # an empty JobResult -- write_deferred never downgrades a completed record, so an empty
+    # result would be permanent. It must be reported as still-pending (None) instead.
+    storage = MockStorage()
+    mock_session = MagicMock()
+
+    mock_session.post.return_value = _mock_response(
+        status_code=200,
+        json_data={
+            "statuses": [
+                {
+                    "id": "j1",
+                    "state": "completed",
+                    "result_key": "results/j1/missing.json",
+                    "attempts": 1,
+                }
+            ]
+        },
+    )
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    h1 = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
+    poll_results = backend.poll_batch([h1])
+    assert poll_results["j1"] is None
+
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    # Nothing was ever persisted for this recipe_hash -- it must remain resolvable later, not
+    # permanently stuck as an empty completed record.
+    assert look_up_deferred(storage, "r1") is None
+
+
+def test_poll_batch_validates_structured_output_and_preserves_sibling_results():
+    storage = MockStorage()
+    mock_session = MagicMock()
+
+    storage.put_cas(
+        "results/j-good/lt1.json",
+        json.dumps({"choices": [{"message": {"content": '{"pong": true}'}}]}).encode("utf-8"),
+        "application/json",
+    )
+    storage.put_cas(
+        "results/j-bad/lt1.json",
+        json.dumps({"choices": [{"message": {"content": "not json"}}]}).encode("utf-8"),
+        "application/json",
+    )
+
+    mock_session.post.return_value = _mock_response(
+        status_code=200,
+        json_data={
+            "statuses": [
+                {
+                    "id": "j-good",
+                    "state": "completed",
+                    "result_key": "results/j-good/lt1.json",
+                    "attempts": 1,
+                },
+                {
+                    "id": "j-bad",
+                    "state": "completed",
+                    "result_key": "results/j-bad/lt1.json",
+                    "attempts": 1,
+                },
+            ]
+        },
+    )
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    h_good = JobHandle(
+        task="tag",
+        recipe_hash="r-good",
+        backend="llm-dispatch-v2",
+        ref="j-good",
+        structured_output="dispatch-v2-test-pong",
+    )
+    h_bad = JobHandle(
+        task="tag",
+        recipe_hash="r-bad",
+        backend="llm-dispatch-v2",
+        ref="j-bad",
+        structured_output="dispatch-v2-test-pong",
+    )
+
+    # A malformed structured reply for one handle in the batch must not discard the sibling's
+    # already-resolved, valid outcome -- the exception is raised only after both are processed,
+    # and the caller (scripts/llm_deferred_sweep.py) is expected to fall back to polling each
+    # handle individually, at which point j-good is skipped (already resolved) and j-bad's
+    # precise LLMStructuredOutputError surfaces on its own.
+    with pytest.raises(LLMDispatchTerminalError):
+        backend.poll_batch([h_good, h_bad])

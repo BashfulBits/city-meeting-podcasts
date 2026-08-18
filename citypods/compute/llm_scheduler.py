@@ -293,8 +293,11 @@ def _utilization(route: LLMRoute, ledger_entry) -> float:
     return max(fractions, default=0.0)
 
 
-# Transports that dedupe server-side on `idempotency-key: recipe_hash`.
-_DISPATCH_TRANSPORTS = frozenset({"mistral-dispatch", "llm-dispatch"})
+# Transports that dedupe server-side on `idempotency-key: recipe_hash`. "llm-dispatch-v2" fits
+# this criterion too (coordinator.js derives its idempotency_key from job.recipe_hash), even
+# though no compiled route currently selects it via this scheduler's normal path -- see the
+# matching note on citypods/compute/llm.py's is_dispatch.
+_DISPATCH_TRANSPORTS = frozenset({"mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"})
 
 
 def _selected_transport(

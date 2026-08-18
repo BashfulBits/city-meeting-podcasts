@@ -18,9 +18,9 @@
       "new_sqlite_classes": ["LLMSchedulerDO"]
     }
   ],
-  "triggers": {
-    "crons": ["* * * * *"]
-  },
+  // Cron trigger lands with Phase 2's scheduled handler. An empty handler wired to a per-minute
+  // cron today would spend 1,440 Worker invocations/day against the exact Free-tier budget this
+  // design protects, for zero work -- see index.js's scheduled() stub.
   "vars": {
     "MAX_BUNDLE_JOBS": "4",
     "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "4",

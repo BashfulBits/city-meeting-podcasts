@@ -1,31 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
 import worker, { LLMSchedulerDO, validateConfig } from "../src/index.js";
-
-function createMockSqlStorage() {
-  const db = new DatabaseSync(":memory:");
-
-  return {
-    exec(query, ...params) {
-      const trimmed = query.trim();
-      if (trimmed.startsWith("SELECT") || trimmed.startsWith("select")) {
-        const stmt = db.prepare(query);
-        return stmt.all(...params);
-      }
-      if (params.length > 0) {
-        db.prepare(query).run(...params);
-      } else {
-        db.exec(query);
-      }
-      return [];
-    },
-  };
-}
+import { createMockSqlStorage } from "./helpers.js";
 
 function createMockEnv(overrides = {}) {
-  const sql = createMockSqlStorage();
-  const coordinator = new LLMSchedulerDO({ storage: { sql } }, { MAX_JOBS_PER_UTC_DAY: "100" });
+  const { storage } = createMockSqlStorage();
+  const coordinator = new LLMSchedulerDO({ storage }, { MAX_JOBS_PER_UTC_DAY: "100" });
 
   return {
     BEARER_TOKEN: "secret-token",
@@ -79,6 +59,11 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
       })
     )
   );
+
+  // BEARER_TOKEN unset must fail closed at startup, not silently disable auth per-request.
+  const noTokenEnv = createMockEnv();
+  delete noTokenEnv.BEARER_TOKEN;
+  assert.throws(() => validateConfig(noTokenEnv));
 });
 
 test("GET and HEAD /healthz return 200 without auth", async () => {
@@ -131,7 +116,25 @@ test("POST /v2/jobs:enqueue-batch enforces Bearer auth and enqueues jobs", async
   const res = await worker.fetch(req, env);
   assert.equal(res.status, 200);
   const data = await res.json();
-  assert.deepEqual(data.accepted, [{ id: "j1" }]);
+  assert.deepEqual(data.accepted, [{ id: "j1", submitted_id: "j1" }]);
+});
+
+test("POST /v2/jobs:enqueue-batch fails closed when no auth token is configured", async () => {
+  const env = createMockEnv();
+  delete env.BEARER_TOKEN;
+
+  const req = new Request("http://localhost/v2/jobs:enqueue-batch", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jobs: [] }),
+  });
+  // validateConfig() (called by the fetch handler) also rejects a token-less deployment
+  // outright -- see the dedicated validateConfig assertion below -- but this exercises the
+  // full request path.
+  const res = await worker.fetch(req, env);
+  assert.equal(res.status, 500);
+  const data = await res.json();
+  assert.equal(data.error, "configuration_error");
 });
 
 test("POST /v2/jobs:poll-batch polls coordinator and returns result_key without inlining", async () => {
@@ -169,7 +172,10 @@ test("POST /v2/jobs:poll-batch polls coordinator and returns result_key without 
   assert.equal(data.statuses[0].result_key, null);
 });
 
-test("POST /v2/jobs/{id}:schema-retry creates new retry identity", async () => {
+test("POST /v2/jobs/{id}:schema-retry reports not_implemented rather than a fake success", async () => {
+  // schema-retry semantics land with Phase 2's dispatch machinery -- until then this endpoint
+  // must not return a 200 with an id nothing was ever written for (a caller polling that id
+  // would wait forever). See the note in index.js's schema-retry handler.
   const env = createMockEnv();
   const req = new Request("http://localhost/v2/jobs/j1:schema-retry", {
     method: "POST",
@@ -181,8 +187,7 @@ test("POST /v2/jobs/{id}:schema-retry creates new retry identity", async () => {
   });
 
   const res = await worker.fetch(req, env);
-  assert.equal(res.status, 200);
+  assert.equal(res.status, 501);
   const data = await res.json();
-  assert.ok(data.id);
-  assert.ok(data.idempotency_key.startsWith("j1:schema-retry:"));
+  assert.equal(data.error, "not_implemented");
 });

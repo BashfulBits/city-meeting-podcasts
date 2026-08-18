@@ -17,14 +17,23 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
-- **Phase 1 of bounded bundled LLM dispatch (review/44).** Implemented the initial parallel
-  `workers/llm-dispatch-v2/` deployment with SQLite-backed `LLMSchedulerDO` Durable Object
-  coordinator, pure validate-then-DO pass-through with zero Worker-side B2 I/O on ingress, and
-  batch ingress/polling endpoints (`/v2/jobs:enqueue-batch`, `/v2/jobs:poll-batch`,
-  `/v2/jobs:resolve-unknown-batch`, `/v2/jobs/{id}:schema-retry`). Added `enqueue_batch` and
-  `poll_batch` methods to `LiteLLMBackend` in `citypods/compute/llm.py` with direct B2 payload
-  staging and client-side throttling to self-limit before making HTTP requests, updated
-  `llm_deferred_sweep.py` with batch v2 polling, and updated `citypods/compute/llm_policy.py`.
+- **Phase 1 of bounded bundled LLM dispatch (review/44), implemented in
+  [PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253).** Implemented the
+  initial parallel `workers/llm-dispatch-v2/` deployment with SQLite-backed `LLMSchedulerDO`
+  Durable Object coordinator, pure validate-then-DO pass-through with zero Worker-side B2 I/O on
+  ingress, and batch ingress/polling endpoints (`/v2/jobs:enqueue-batch`, `/v2/jobs:poll-batch`,
+  `/v2/jobs:resolve-unknown-batch`, `/v2/jobs/{id}:schema-retry` — the last two land as stubs;
+  `schema-retry` returns `501` until Phase 2's dispatch machinery exists to back it). Added
+  `enqueue_batch` and `poll_batch` methods to `LiteLLMBackend` in `citypods/compute/llm.py` with
+  direct client-side B2 payload staging (the ingress Worker itself never touches B2 — see
+  review/44's connection/subrequest-limit revision) and client-side throttling to self-limit
+  before making HTTP requests, updated `llm_deferred_sweep.py` to batch-poll v2 handles before
+  its existing per-handle reconciliation loop, and updated `citypods/compute/llm_policy.py`.
+  v2 stays inert until `dispatch_v2_url` is configured (`CITYPODS_LLM_DISPATCH_V2_URL` /
+  `LLM_DISPATCH_V2_URL`, alongside `CITYPODS_LLM_DISPATCH_V2_AUTH_TOKEN` /
+  `LLM_DISPATCH_V2_AUTH_TOKEN` and `CITYPODS_LLM_DAILY_INGEST_CAP` / `LLM_DAILY_INGEST_CAP`), since
+  `LiteLLMBackend._available_transports()` and `_enqueue_durable_policy_job` both gate on it; the
+  Worker deploy itself additionally needs `CLOUDFLARE_LLM_API_TOKEN` as a deploy-time secret.
 
 - **Configurable global token estimate buffer (`token_estimate_buffer`).** Added a new top-level
   setting `token_estimate_buffer` (e.g. `0.90`) in `config/provider_limits.yml` that applies a

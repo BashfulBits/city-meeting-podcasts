@@ -590,6 +590,11 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
   Modal pull worker from `main`, protected by the `modal-production` GitHub Environment),
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
   `llm-dispatch-worker-deploy.yml` (path-scoped test/deploy for the Cron-paced LLM Worker),
+  `llm-dispatch-v2-worker-deploy.yml` (path-scoped test/deploy for `workers/llm-dispatch-v2/`, the
+  parallel SQLite-Durable-Object-coordinator successor from
+  [`review/44`](review/44-bounded-bundled-llm-dispatch.md); Phase 1 only as of
+  [PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253) — v1's Worker above
+  remains the sole production dispatch transport until v2's later phases land),
   `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
   provider calls), `audit.yml` (daily feed-health → GitHub issues; on creating a new
   consolidated `unexpected-body` issue, dispatches `remedy-unexpected-bodies.yml` for it),

@@ -48,6 +48,11 @@ class LLMRequestPolicy:
     # Worker dispatch lane.  ``fast`` drains short requests before a scheduled invocation risks
     # starting work it cannot finish; ``long`` opts into the bounded long-context timeout lane.
     timeout_class: Literal["fast", "long"] = "long"
+    # llm-dispatch-v2's admission-time fast lane (review/44 "Bounded initial configuration"):
+    # 0 sorts ahead of 1 in the scheduler DO's `ORDER BY priority ASC, created_at ASC`. Settable
+    # only at submission (LiteLLMBackend.enqueue_batch reads this field directly); there is
+    # deliberately no API to edit priority on an already-queued job.
+    priority: Literal[0, 1] = 1
 
 
 @dataclass(frozen=True)

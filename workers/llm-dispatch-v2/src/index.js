@@ -72,17 +72,20 @@ export function validateConfig(env) {
       `Invalid config: MAX_JOBS_PER_UTC_DAY (${maxJobsPerDay}) exceeds 75% of included daily limit (${maxJobsBudget})`
     );
   }
+
+  // Fail closed at deploy time, not per-request: an unset BEARER_TOKEN must never silently
+  // disable auth (see hasValidBearer below).
+  if (!env.BEARER_TOKEN) {
+    throw new Error("Invalid config: BEARER_TOKEN must be set");
+  }
 }
 
 async function hasValidBearer(request, env) {
-  const expectedToken =
-    env.BEARER_TOKEN ||
-    env.DISPATCH_AUTH_TOKEN ||
-    env.AUTH_TOKEN ||
-    env.LLM_DISPATCH_AUTH_TOKEN;
-
+  // Exactly one accepted variable name, matching the requirement validateConfig() enforces at
+  // startup -- a deployment can never reach this function with BEARER_TOKEN unset.
+  const expectedToken = env.BEARER_TOKEN;
   if (!expectedToken) {
-    return true; // No auth token configured
+    return false; // Fail closed: refuse all traffic until the secret is configured.
   }
 
   const authHeader = request.headers.get("authorization") || "";
@@ -95,18 +98,17 @@ async function hasValidBearer(request, env) {
   const expectedEncoder = new TextEncoder().encode(expectedToken);
   const tokenEncoder = new TextEncoder().encode(token);
 
-  if (expectedEncoder.byteLength !== tokenEncoder.byteLength) {
-    return false;
-  }
-
+  // Hash both unconditionally, and fold the length difference into the diff accumulator below,
+  // rather than returning early on a byteLength mismatch -- an early return leaks the expected
+  // token's exact length to a timing attacker (matches workers/llm-dispatch-proxy's approach).
   const expectedHash = await crypto.subtle.digest("SHA-256", expectedEncoder);
   const tokenHash = await crypto.subtle.digest("SHA-256", tokenEncoder);
 
   const left = new Uint8Array(expectedHash);
   const right = new Uint8Array(tokenHash);
-  let diff = 0;
+  let diff = expectedEncoder.byteLength ^ tokenEncoder.byteLength;
   for (let i = 0; i < left.length; i++) {
-    diff |= left[i] ^ right[i];
+    diff |= left[i] ^ (right[i] || 0);
   }
   return diff === 0;
 }
@@ -156,7 +158,14 @@ export async function handleRequest(request, env) {
       idempotency_key: rawJob.idempotency_key,
       request_digest: rawJob.request_digest,
       provider_idempotency_key: rawJob.provider_idempotency_key || null,
-      policy_json: typeof rawJob.policy_json === "string" ? rawJob.policy_json : JSON.stringify(rawJob.policy || {}),
+      // rawJob.policy_json is the documented field (see Unit 2's EnqueueJobInput); a caller
+      // that sends it as an object rather than a pre-serialized string must still have it
+      // persisted, not silently dropped by falling through to an unrelated `.policy` field
+      // that appears nowhere else in this protocol.
+      policy_json:
+        typeof rawJob.policy_json === "string"
+          ? rawJob.policy_json
+          : JSON.stringify(rawJob.policy_json ?? {}),
       prompt_family: rawJob.prompt_family,
       input_token_estimate: Number(rawJob.input_token_estimate || 0),
       max_output_token_estimate: Number(rawJob.max_output_token_estimate || 0),
@@ -168,7 +177,8 @@ export async function handleRequest(request, env) {
       const result = await coordinator.enqueueBatch(preparedJobs);
       return jsonResponse(result, 200);
     } catch (err) {
-      return errorResponse(500, "coordinator_error", err.message);
+      console.error("enqueueBatch failed", err);
+      return errorResponse(500, "coordinator_error", "Coordinator request failed");
     }
   }
 
@@ -190,13 +200,12 @@ export async function handleRequest(request, env) {
       const result = await coordinator.pollBatch(body.ids);
       return jsonResponse(result, 200);
     } catch (err) {
-      return errorResponse(500, "coordinator_error", err.message);
+      console.error("pollBatch failed", err);
+      return errorResponse(500, "coordinator_error", "Coordinator request failed");
     }
   }
 
   if (request.method === "POST" && /^\/v2\/jobs\/[^/]+:schema-retry$/.test(path)) {
-    const match = path.match(/^\/v2\/jobs\/([^/]+):schema-retry$/);
-    const jobId = match[1];
     let body;
     try {
       body = await request.json();
@@ -209,9 +218,15 @@ export async function handleRequest(request, env) {
       return errorResponse(400, validation.error, validation.detail);
     }
 
-    const newId = crypto.randomUUID();
-    const newKey = `${jobId}:schema-retry:${Date.now()}`;
-    return jsonResponse({ id: newId, idempotency_key: newKey }, 200);
+    // Schema-retry semantics (a new payload/idempotency namespace persisted through the
+    // coordinator) land with Phase 2's dispatch/structured-output-validation machinery -- this
+    // endpoint must not fabricate an id and claim success for a job that was never actually
+    // written to the jobs table; a caller polling that id would wait forever.
+    return errorResponse(
+      501,
+      "not_implemented",
+      "schema-retry is not yet implemented (lands with Phase 2)"
+    );
   }
 
   if (request.method === "POST" && path === "/v2/jobs:resolve-unknown-batch") {
@@ -231,7 +246,8 @@ export async function handleRequest(request, env) {
       const result = await coordinator.resolveUnknownBatch(body.attempt_ids);
       return jsonResponse(result, 200);
     } catch (err) {
-      return errorResponse(500, "coordinator_error", err.message);
+      console.error("resolveUnknownBatch failed", err);
+      return errorResponse(500, "coordinator_error", "Coordinator request failed");
     }
   }
 

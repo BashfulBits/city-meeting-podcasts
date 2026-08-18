@@ -8,6 +8,14 @@ export async function sha256Hex(data) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Not currently called anywhere in the live request path -- request_digest is validated as a
+// non-empty string only (see validateEnqueueJob) and never independently recomputed from the
+// payload here. If a future change wires computeRequestDigest() into server-side verification,
+// align its canonicalization with the Python producer's first (citypods/compute/llm.py's
+// enqueue_batch uses json.dumps(payload, sort_keys=True), which differs from canonicalJson's
+// compact/raw-UTF-8 output for non-ASCII content) -- otherwise equivalent payloads from the two
+// producers would hash differently and a legitimate idempotent replay could be misdiagnosed as
+// an idempotency_conflict.
 export function canonicalJson(value) {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);

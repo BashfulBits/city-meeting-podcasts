@@ -132,102 +132,125 @@ export class LLMSchedulerDO {
     return Number.isFinite(configured) && configured > 0 ? configured : 20000;
   }
 
+  // Cloudflare's SQLite-backed Durable Object storage caps bound parameters per query at 100
+  // (https://developers.cloudflare.com/durable-objects/platform/limits/) -- chunk any query whose
+  // parameter count scales with caller-supplied batch size (e.g. POLL_BATCH_MAX up to 1000) into
+  // multiple queries of at most this many ids each.
+  static MAX_SQL_BOUND_PARAMS = 100;
+
+  *_chunks(items, size = LLMSchedulerDO.MAX_SQL_BOUND_PARAMS) {
+    for (let offset = 0; offset < items.length; offset += size) {
+      yield items.slice(offset, offset + size);
+    }
+  }
+
   async enqueueBatch(jobs) {
     const sql = this._getSql();
     const now = Date.now();
     const today = this._currentUtcDay();
     const maxJobsToday = this._maxJobsPerUtcDay();
 
-    const accepted = [];
-    const rejected = [];
+    // The whole batch commits or rolls back as one unit -- see review/44 Unit 2 ("one SQLite
+    // transaction for the whole batch"). ctx.storage.transactionSync requires its callback to
+    // run fully synchronously (no await inside), which this loop already does.
+    return this.ctx.storage.transactionSync(() => {
+      const accepted = [];
+      const rejected = [];
 
-    // Check & roll UTC day if changed
-    const schedRows = [...sql.exec("SELECT utc_day, jobs_ingested_today, bundle_count_today FROM scheduler WHERE id = 1")];
-    let jobsIngestedToday = 0;
-    if (schedRows.length > 0) {
-      const sched = schedRows[0];
-      if (sched.utc_day !== today) {
+      // Check & roll UTC day if changed
+      const schedRows = [...sql.exec("SELECT utc_day, jobs_ingested_today, bundle_count_today FROM scheduler WHERE id = 1")];
+      let jobsIngestedToday = 0;
+      if (schedRows.length > 0) {
+        const sched = schedRows[0];
+        if (sched.utc_day !== today) {
+          sql.exec(
+            "UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0 WHERE id = 1",
+            today
+          );
+          jobsIngestedToday = 0;
+        } else {
+          jobsIngestedToday = sched.jobs_ingested_today;
+        }
+      } else {
         sql.exec(
-          "UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0 WHERE id = 1",
+          "INSERT INTO scheduler (id, utc_day, bundle_count_today, jobs_ingested_today) VALUES (1, ?, 0, 0)",
           today
         );
         jobsIngestedToday = 0;
-      } else {
-        jobsIngestedToday = sched.jobs_ingested_today;
-      }
-    } else {
-      sql.exec(
-        "INSERT INTO scheduler (id, utc_day, bundle_count_today, jobs_ingested_today) VALUES (1, ?, 0, 0)",
-        today
-      );
-      jobsIngestedToday = 0;
-    }
-
-    let newlyInsertedCount = 0;
-
-    for (const job of jobs) {
-      // Check daily cap for newly ingested jobs
-      if (jobsIngestedToday + newlyInsertedCount >= maxJobsToday) {
-        rejected.push({ id: job.id, reason: "daily_cap_exceeded" });
-        continue;
       }
 
-      // Check idempotency_key
-      const existing = [...sql.exec(
-        "SELECT id, request_digest, state FROM jobs WHERE idempotency_key = ?",
-        job.idempotency_key
-      )];
+      let newlyInsertedCount = 0;
 
-      if (existing.length > 0) {
-        const row = existing[0];
-        if (row.request_digest === job.request_digest) {
-          // Idempotent replay: return existing ID
-          accepted.push({ id: row.id });
-        } else {
-          // Reused key with different payload: fail loudly
-          rejected.push({ id: job.id, reason: "idempotency_conflict" });
+      for (const job of jobs) {
+        // Check idempotency_key FIRST, before the daily cap. A replay of an already-accepted
+        // job must still succeed once the cap is reached that day -- it doesn't consume new
+        // admission capacity, and rejecting it as daily_cap_exceeded would orphan the caller's
+        // retry of a job that was, in fact, already accepted.
+        const existing = [...sql.exec(
+          "SELECT id, request_digest, state FROM jobs WHERE idempotency_key = ?",
+          job.idempotency_key
+        )];
+
+        if (existing.length > 0) {
+          const row = existing[0];
+          if (row.request_digest === job.request_digest) {
+            // Idempotent replay: return the existing row's canonical id, tagged with the
+            // caller's own submitted id so the caller can always match this response back to
+            // its own request even when the canonical id differs (e.g. a retry that generated
+            // a fresh id locally before learning the original was already accepted).
+            accepted.push({ id: row.id, submitted_id: job.id });
+          } else {
+            // Reused key with different payload: fail loudly
+            rejected.push({ id: job.id, reason: "idempotency_conflict" });
+          }
+          continue;
         }
-        continue;
+
+        // Only a genuinely new job consumes daily admission capacity.
+        if (jobsIngestedToday + newlyInsertedCount >= maxJobsToday) {
+          rejected.push({ id: job.id, reason: "daily_cap_exceeded" });
+          continue;
+        }
+
+        // Insert new job
+        const priority = job.priority !== undefined ? job.priority : 1;
+        const policyJson = typeof job.policy_json === "string" ? job.policy_json : JSON.stringify(job.policy_json || {});
+        const providerIdempotencyKey = job.provider_idempotency_key || null;
+
+        sql.exec(
+          `INSERT INTO jobs (
+            id, idempotency_key, request_digest, provider_idempotency_key,
+            state, priority, policy_json, prompt_family,
+            input_token_estimate, max_output_token_estimate,
+            payload_key, attempts, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+          job.id,
+          job.idempotency_key,
+          job.request_digest,
+          providerIdempotencyKey,
+          priority,
+          policyJson,
+          job.prompt_family,
+          job.input_token_estimate,
+          job.max_output_token_estimate,
+          job.payload_key,
+          now,
+          now
+        );
+
+        newlyInsertedCount++;
+        accepted.push({ id: job.id, submitted_id: job.id });
       }
 
-      // Insert new job
-      const priority = job.priority !== undefined ? job.priority : 1;
-      const policyJson = typeof job.policy_json === "string" ? job.policy_json : JSON.stringify(job.policy_json || {});
-      const providerIdempotencyKey = job.provider_idempotency_key || null;
+      if (newlyInsertedCount > 0) {
+        sql.exec(
+          "UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + ? WHERE id = 1",
+          newlyInsertedCount
+        );
+      }
 
-      sql.exec(
-        `INSERT INTO jobs (
-          id, idempotency_key, request_digest, provider_idempotency_key,
-          state, priority, policy_json, prompt_family,
-          input_token_estimate, max_output_token_estimate,
-          payload_key, attempts, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-        job.id,
-        job.idempotency_key,
-        job.request_digest,
-        providerIdempotencyKey,
-        priority,
-        policyJson,
-        job.prompt_family,
-        job.input_token_estimate,
-        job.max_output_token_estimate,
-        job.payload_key,
-        now,
-        now
-      );
-
-      newlyInsertedCount++;
-      accepted.push({ id: job.id });
-    }
-
-    if (newlyInsertedCount > 0) {
-      sql.exec(
-        "UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + ? WHERE id = 1",
-        newlyInsertedCount
-      );
-    }
-
-    return { accepted, rejected };
+      return { accepted, rejected };
+    });
   }
 
   async pollBatch(ids) {
@@ -236,19 +259,23 @@ export class LLMSchedulerDO {
     }
 
     const sql = this._getSql();
-    const placeholders = ids.map(() => "?").join(",");
-    const rows = [...sql.exec(
-      `SELECT id, state, result_key, attempts FROM jobs WHERE id IN (${placeholders})`,
-      ...ids
-    )];
-
-    const statuses = rows.map((row) => ({
-      id: row.id,
-      state: row.state,
-      result_key: row.state === "completed" ? row.result_key : null,
-      error: row.state === "failed" ? "job_failed" : null,
-      attempts: row.attempts,
-    }));
+    const statuses = [];
+    for (const chunk of this._chunks(ids)) {
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = [...sql.exec(
+        `SELECT id, state, result_key, attempts FROM jobs WHERE id IN (${placeholders})`,
+        ...chunk
+      )];
+      for (const row of rows) {
+        statuses.push({
+          id: row.id,
+          state: row.state,
+          result_key: row.state === "completed" ? row.result_key : null,
+          error: row.state === "failed" ? "job_failed" : null,
+          attempts: row.attempts,
+        });
+      }
+    }
 
     return { statuses };
   }
@@ -258,15 +285,21 @@ export class LLMSchedulerDO {
       return { resolved: [], not_found: [] };
     }
     const sql = this._getSql();
+    const foundIds = new Set();
+    for (const chunk of this._chunks(attemptIds)) {
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = [...sql.exec(
+        `SELECT attempt_id FROM attempts WHERE attempt_id IN (${placeholders})`,
+        ...chunk
+      )];
+      for (const row of rows) {
+        foundIds.add(row.attempt_id);
+      }
+    }
     const resolved = [];
     const not_found = [];
     for (const attemptId of attemptIds) {
-      const rows = [...sql.exec("SELECT attempt_id FROM attempts WHERE attempt_id = ?", attemptId)];
-      if (rows.length > 0) {
-        resolved.push(attemptId);
-      } else {
-        not_found.push(attemptId);
-      }
+      (foundIds.has(attemptId) ? resolved : not_found).push(attemptId);
     }
     return { resolved, not_found };
   }

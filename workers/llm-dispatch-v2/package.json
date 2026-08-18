@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Bounded bundled LLM dispatch coordinator and ingress Worker",
   "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "test": "node --test test/*.test.js"
   }
