@@ -3,6 +3,23 @@ import test from "node:test";
 
 import DISPATCH_LIMITS from "../src/dispatch_limits.json" with { type: "json" };
 
+// Ops hotfix (2026-08-18, config/provider_limits.yml): every Mistral route ships with `rpd: 0`
+// in the real compiled catalog above, pausing the provider account-wide because its monthly
+// token allowance is exhausted (resets 2026-08-31). This suite uses "mistral/mistral-large-2512"
+// as its default fixture model throughout -- most tests here exercise generic dispatch mechanics
+// (credential resolution, pacing, batching, ledger CAS, retries) against the *real* compiled
+// catalog rather than a synthetic stand-in, and were never meant to also assert on today's
+// operational quota state. Restore this one field on the in-memory copy so those tests keep
+// exercising real behavior; the shipped dispatch_limits.json (and the Worker deployed from it)
+// keeps `rpd: 0` untouched. Quota-exhaustion behavior itself, including `rpd`, already has its
+// own dedicated coverage against synthetic route objects (see "routeAvailable respects
+// rpm/rpd/tpm/blocked_until independently" below) -- unaffected by this restore.
+for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
+  if (route.provider === "mistral") {
+    route.rpd = null;
+  }
+}
+
 import {
   acquireCronLease,
   config,
