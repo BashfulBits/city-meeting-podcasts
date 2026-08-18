@@ -131,6 +131,125 @@ def test_enqueue_batch_submits_jobs_and_persists_payloads_to_b2():
     assert len(stored_payload_keys) == 2
 
 
+def test_enqueue_batch_and_poll_batch_work_through_production_routing_storage():
+    """Regression test for the 2026-08-18 incident: production wires LiteLLMBackend's storage=
+    to citypods.storage.routing.RoutingStorage (B2 primary + R2 coordination), whose
+    COORDINATION_PREFIXES deliberately excludes "payloads/"/"results/" (v2 payloads are
+    B2-resident by design, not R2 coordination state). Before the fix, _storage_client()
+    returned the router itself, so put_cas/get_bytes on a "payloads/" key routed to the B2
+    primary and then raised NotImplementedError, because B2 is deliberately marked
+    non-cas_capable at the router (real CAS semantics aren't guaranteed there) -- every v2
+    enqueue_batch call failed before ever reaching the dispatch Worker, explaining zero
+    Cloudflare-side v2 activity despite dispatch_v2_url being correctly configured. This test
+    uses the real RoutingStorage (not the flat MockStorage above, which doesn't reproduce the
+    prefix-routing gate) to prove enqueue_batch/poll_batch reach the B2 primary directly."""
+    from citypods.storage.routing import RoutingStorage
+
+    class FakeB2Primary:
+        """Mirrors S3CompatibleStorage's real shape: cas_capable=False is just an advisory
+        flag stored on the instance -- put_cas/get_bytes themselves never check it, matching
+        citypods/storage/s3.py's S3CompatibleStorage (B2 silently accepts an unconditional
+        put_object; it just isn't a real compare-and-swap)."""
+
+        def __init__(self):
+            self.name = "b2"
+            self.cas_capable = False
+            self.files: dict[str, bytes] = {}
+            self._etag = 0
+
+        def put_cas(self, key, data, content_type, *, if_none_match=None, if_match=None):
+            self.files[key] = data if isinstance(data, bytes) else str(data).encode("utf-8")
+            self._etag += 1
+            return f"mem://{key}", f'"etag-{self._etag}"'
+
+        def get_bytes(self, key):
+            if key not in self.files:
+                return None
+            self._etag += 1
+            return self.files[key], f'"etag-{self._etag}"'
+
+        def exists(self, key):
+            return key in self.files
+
+        def delete(self, key):
+            self.files.pop(key, None)
+
+        def put_file(self, key, local_path, content_type=None):
+            self.files[key] = Path(local_path).read_bytes()
+            return "mem://" + key
+
+        def get_file(self, key, local_path):
+            if key not in self.files:
+                return False
+            p = Path(local_path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(self.files[key])
+            return True
+
+        def list_objects(self, prefix=""):
+            for k in sorted(self.files):
+                if k.startswith(prefix):
+                    yield k, None
+
+    class FakeR2Coordination(FakeB2Primary):
+        def __init__(self):
+            super().__init__()
+            self.name = "r2"
+            self.cas_capable = True
+
+    primary = FakeB2Primary()
+    coordination = FakeR2Coordination()
+    routing_storage = RoutingStorage(primary=primary, coordination=coordination)
+    assert routing_storage.cas_capable is True  # router-level flag: R2 coordination present
+
+    mock_session = MagicMock()
+    mock_session.post.side_effect = _accept_all
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=routing_storage)
+
+    job = InferenceJob(
+        task="tag",
+        inputs={"messages": [{"role": "user", "content": "hello"}]},
+        recipe_hash="recipe-routing-1",
+    )
+    results = backend.enqueue_batch([job])
+    assert len(results) == 1
+    assert isinstance(results[0], JobHandle)
+
+    # The payload landed on the B2 primary directly, not the R2 coordination backend -- and not
+    # nowhere (silently swallowed).
+    stored_keys = [k for k in primary.files if k.startswith("payloads/")]
+    assert len(stored_keys) == 1
+    assert not any(k.startswith("payloads/") for k in coordination.files)
+
+    # poll_batch's result read must reach the same B2 primary the Worker itself would use.
+    handle = results[0]
+    result_key = f"results/{handle.ref}/response.json"
+    primary.files[result_key] = json.dumps(
+        {"choices": [{"message": {"content": "hi"}}]}
+    ).encode("utf-8")
+
+    def mock_poll(url, json=None, headers=None, timeout=None):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": handle.ref, "state": "completed", "result_key": result_key}
+                ]
+            },
+        )
+
+    mock_session.post.side_effect = mock_poll
+    polled = backend.poll_batch([handle])
+    assert len(polled) == 1
+    result = polled[handle.ref]
+    assert isinstance(result, JobResult)
+    assert result.output == {"choices": [{"message": {"content": "hi"}}]}
+
+
 def test_enqueue_batch_requires_cas_capable_storage():
     mock_session = MagicMock()
     config = LLMBackendConfig(
