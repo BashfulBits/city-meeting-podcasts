@@ -104,14 +104,20 @@ class LocatorRequest:
 
     ``model`` is the primary/first candidate -- unchanged contract for callers (mostly the
     research scripts under scripts/research/agenda_chapters/) that build a direct single-model
-    backend from it. ``models`` (additive) carries the full same-priority candidate band for a
-    caller that wants to build an ``LLMRequestPolicy(allowed_models=...)`` instead.
+    backend from it, several of which construct ``LocatorRequest`` directly without ``models``.
+    ``models`` (additive) carries the full same-priority candidate band for a caller that wants to
+    build an ``LLMRequestPolicy(allowed_models=...)`` instead; it defaults to ``(model,)`` when
+    omitted, so every existing single-model construction site stays valid.
     """
 
     messages: tuple[dict[str, str], ...]
     model: str
-    models: tuple[str, ...]
     input_tokens: int
+    models: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.models:
+            object.__setattr__(self, "models", (self.model,))
 
 
 _VTT_TIMING = re.compile(
