@@ -1,0 +1,60 @@
+name: Report LLM dispatch queue
+
+# Read-only operator diagnostic: lists the v1 dispatch Worker's pending `ready/` queue in its real
+# dispatch order and, for each job, which route(s) its model can reach and whether those routes
+# currently report capacity. Answers "is <provider> blocking other jobs by sitting ahead of them
+# in queue order" without guessing from static config alone. Never writes to R2 -- no marker
+# relocation, no requeue, no ledger mutation (see scripts/report_pending_dispatch_queue.py).
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max ready/ markers to inspect, in queue order"
+        required: false
+        type: string
+        default: "500"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-dispatch-queue-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    # workflow_dispatch can target arbitrary refs. Never expose production R2 credentials to code
+    # outside the reviewed default branch, even for a read-only report.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install R2 client
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+
+      - name: Build queue report
+        env:
+          LIMIT_INPUT: ${{ inputs.limit }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Dedicated credentials scoped to the private dispatch bucket -- same as the reindex
+          # workflow. Do not reuse the catalog-storage key: it cannot list this bucket.
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_RECLAIM_ACCESS_KEY }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_RECLAIM_SECRET_ACCESS_KEY }}
+          # R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}  # uncomment for jurisdiction-specific buckets
+        run: |
+          set -o pipefail
+          python -u scripts/report_pending_dispatch_queue.py \
+            --bucket citypods-llm-dispatch \
+            --workers 8 \
+            --limit "${LIMIT_INPUT:-500}" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
