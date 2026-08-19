@@ -18,13 +18,37 @@ LOCATOR_CONTRACT = "agenda-chapter-locate"
 # ``mistral-large-2512`` is useful for external audit, but the paced Worker advertises this
 # maintained alias and accepts the provider-qualified form below.
 MISTRAL_LOCATOR_MODEL = "mistral/mistral-large-2512"
+# Free-tier peers of MISTRAL_LOCATOR_MODEL (hotfix follow-up: Mistral's account-wide monthly
+# budget is exhausted, see config/provider_limits.yml). These are catalog `model` keys from
+# citypods/compute/llm_routes.json -- the scheduler pools every physical route sharing one of
+# these keys and matches `allowed_models` against them, so an unqualified/provider-prefixed name
+# would silently match nothing. `deepseek/deepseek-v4-flash` also pools the paid SiliconFlow/
+# DeepSeek-direct routes, but every caller here defaults to `LLMRequestPolicy.allow_paid=False`,
+# so only the OpenCode Zen free tier is ever actually selected under that shared key.
+DEEPSEEK_FREE_LOCATOR_MODEL = "deepseek/deepseek-v4-flash"
+NEMOTRON_LOCATOR_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
 PRODUCTION_LOCATOR_MODEL = "gemini/gemini-3.5-flash-lite"
 # Mistral Large 3 accepts 256k total tokens. Reserve enough output room for a long chapter list
 # plus one structured-output repair. Gemini's documented 1M input window has the same reserve.
 MISTRAL_CONTEXT_TOKENS = 256_000
+DEEPSEEK_FREE_CONTEXT_TOKENS = 200_000
+NEMOTRON_CONTEXT_TOKENS = 1_000_000
 GEMINI_CONTEXT_TOKENS = 1_048_576
 LOCATOR_OUTPUT_TOKEN_RESERVE = 16_384
+# Ascending-ceiling bands of same-priority candidates. Every model in a band can hold any request
+# that lands in it -- the scheduler's own availability/pacing ranking (not this order) picks among
+# them. Gemini's free quota is tiny (20 RPD) and is deliberately kept out of every band below its
+# own: it is a last-resort escalation once no free-model band fits, not a peer of the others.
+_LOCATOR_MODEL_BANDS: tuple[tuple[int, tuple[str, ...]], ...] = (
+    (
+        DEEPSEEK_FREE_CONTEXT_TOKENS,
+        (MISTRAL_LOCATOR_MODEL, DEEPSEEK_FREE_LOCATOR_MODEL, NEMOTRON_LOCATOR_MODEL),
+    ),
+    (MISTRAL_CONTEXT_TOKENS, (MISTRAL_LOCATOR_MODEL, NEMOTRON_LOCATOR_MODEL)),
+    (NEMOTRON_CONTEXT_TOKENS, (NEMOTRON_LOCATOR_MODEL,)),
+    (GEMINI_CONTEXT_TOKENS, (GEMINI_LOCATOR_MODEL,)),
+)
 
 
 @dataclass(frozen=True)
@@ -76,10 +100,17 @@ class LocatorAgendaItem:
 
 @dataclass(frozen=True)
 class LocatorRequest:
-    """A complete shadow-job payload and its deterministic model route."""
+    """A complete shadow-job payload and its candidate model route(s).
+
+    ``model`` is the primary/first candidate -- unchanged contract for callers (mostly the
+    research scripts under scripts/research/agenda_chapters/) that build a direct single-model
+    backend from it. ``models`` (additive) carries the full same-priority candidate band for a
+    caller that wants to build an ``LLMRequestPolicy(allowed_models=...)`` instead.
+    """
 
     messages: tuple[dict[str, str], ...]
     model: str
+    models: tuple[str, ...]
     input_tokens: int
 
 
@@ -303,24 +334,31 @@ def _format_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d}.{milliseconds:03d}"
 
 
-def select_locator_model(input_tokens: int) -> str:
-    """Choose Mistral by default, escalating only for a measured context overflow.
+def select_locator_models(input_tokens: int) -> tuple[str, ...]:
+    """Return every same-priority locator model that can hold this request.
 
     The estimate must include the instruction and response reserve, since provider context limits
     include every input and output token. Nothing is truncated: an over-limit request is an
     explicit non-admission until a future long-context/chunking evaluation decides otherwise.
+    Candidates are drawn from ``_LOCATOR_MODEL_BANDS``, the narrowest band the request fits in --
+    Mistral is escalated past, not preferred within a band; a caller free to pick among the
+    returned set (e.g. via ``LLMRequestPolicy.allowed_models``) should let real availability decide.
     """
     if input_tokens < 0:
         raise ValueError("input_tokens must be non-negative")
     reserved_tokens = input_tokens + LOCATOR_OUTPUT_TOKEN_RESERVE
-    if reserved_tokens <= MISTRAL_CONTEXT_TOKENS:
-        return MISTRAL_LOCATOR_MODEL
-    if reserved_tokens <= GEMINI_CONTEXT_TOKENS:
-        return GEMINI_LOCATOR_MODEL
+    for ceiling, candidates in _LOCATOR_MODEL_BANDS:
+        if reserved_tokens <= ceiling:
+            return candidates
     raise ValueError(
         "locator payload exceeds the Gemini context budget "
         f"({reserved_tokens} > {GEMINI_CONTEXT_TOKENS} tokens)"
     )
+
+
+def select_locator_model(input_tokens: int) -> str:
+    """Backward-compatible single-model selector: the primary candidate for this request size."""
+    return select_locator_models(input_tokens)[0]
 
 
 def build_locator_request(
@@ -413,9 +451,11 @@ def build_locator_request(
     from citypods.compute.llm_policy import estimate_tokens
 
     input_tokens = estimate_tokens(list(messages))
+    models = select_locator_models(input_tokens)
     return LocatorRequest(
         messages=messages,
-        model=select_locator_model(input_tokens),
+        model=models[0],
+        models=models,
         input_tokens=input_tokens,
     )
 
@@ -440,11 +480,14 @@ def build_production_locator_request(
     return LocatorRequest(
         messages=request.messages,
         model=PRODUCTION_LOCATOR_MODEL,
+        models=(PRODUCTION_LOCATOR_MODEL,),
         input_tokens=request.input_tokens,
     )
 
 
 __all__ = [
+    "DEEPSEEK_FREE_CONTEXT_TOKENS",
+    "DEEPSEEK_FREE_LOCATOR_MODEL",
     "GEMINI_CONTEXT_TOKENS",
     "GEMINI_LOCATOR_MODEL",
     "LOCATOR_CONTRACT",
@@ -455,6 +498,8 @@ __all__ = [
     "LocatorUnit",
     "MISTRAL_CONTEXT_TOKENS",
     "MISTRAL_LOCATOR_MODEL",
+    "NEMOTRON_CONTEXT_TOKENS",
+    "NEMOTRON_LOCATOR_MODEL",
     "PRODUCTION_LOCATOR_MODEL",
     "build_locator_request",
     "build_locator_units",
@@ -463,5 +508,6 @@ __all__ = [
     "locator_units_from_vtt",
     "locator_units_from_words",
     "select_locator_model",
+    "select_locator_models",
     "validate_locator_response",
 ]

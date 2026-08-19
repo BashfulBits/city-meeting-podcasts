@@ -32,13 +32,20 @@ from citypods.tags import (
 MODELS = (
     "gemini/gemini-3.1-flash-lite",
     "deepseek/deepseek-v4-flash",
-    "mistral/mistral-large-2512",
+    # Hotfix follow-up (Mistral's account-wide monthly budget is exhausted, see
+    # config/provider_limits.yml): mistral/mistral-large-2512 replaced with zai/glm-4.7-flash,
+    # plus google/gemma-4-26b-a4b-it added as a 4th contestant. Both are free routes.
+    "zai/glm-4.7-flash",
+    "google/gemma-4-26b-a4b-it",
 )
 JUDGE_MODEL = "google/gemma-4-31b-it"
 CONTESTS = (
     ("deepseek/deepseek-v4-flash", "gemini/gemini-3.1-flash-lite", JUDGE_MODEL),
-    ("deepseek/deepseek-v4-flash", "mistral/mistral-large-2512", JUDGE_MODEL),
-    ("gemini/gemini-3.1-flash-lite", "mistral/mistral-large-2512", JUDGE_MODEL),
+    ("deepseek/deepseek-v4-flash", "zai/glm-4.7-flash", JUDGE_MODEL),
+    ("deepseek/deepseek-v4-flash", "google/gemma-4-26b-a4b-it", JUDGE_MODEL),
+    ("gemini/gemini-3.1-flash-lite", "zai/glm-4.7-flash", JUDGE_MODEL),
+    ("gemini/gemini-3.1-flash-lite", "google/gemma-4-26b-a4b-it", JUDGE_MODEL),
+    ("zai/glm-4.7-flash", "google/gemma-4-26b-a4b-it", JUDGE_MODEL),
 )
 STATE = "llm_tournament.json"
 JUDGE_CONTRACT = "tournament-tag-judge"
@@ -46,7 +53,7 @@ R5_FLASH_MODEL = "litellm:gemini/gemini-3.1-flash-lite"
 
 
 def contest_plan() -> tuple[tuple[str, str, str], ...]:
-    """The immutable 3-way round robin; a judge is never a contestant."""
+    """The immutable 4-way round robin (6 pairs); a judge is never a contestant."""
     return CONTESTS
 
 

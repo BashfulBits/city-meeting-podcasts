@@ -23,9 +23,43 @@ def test_agenda_job_is_pinned_and_idempotent():
     assert first.task == "agenda-item-extract"
     assert first.recipe_hash == second.recipe_hash
     assert first.inputs["structured_output"] == "agenda-chapter-item-extract"
-    assert first.inputs["llm_policy"].allowed_models == ("mistral/mistral-medium-2508",)
+    assert first.inputs["llm_policy"].allowed_models == (
+        "mistral/mistral-medium-2508",
+        "meta-llama/llama-3.3-70b-instruct",
+    )
     assert first.inputs["llm_policy"].queue_only is True
     assert first.inputs["llm_policy"].deadline_at is None
+
+
+def test_finalize_agenda_job_records_the_actually_dispatched_model():
+    """AGENDA_PRODUCTION_MODELS (R13) offers same-priority alternates; the artifact must record
+    whichever one the scheduler actually reserved (result.model), not the label constant."""
+    valid_content = json.dumps(
+        {
+            "items": [
+                {
+                    "display_ref": "Item 1",
+                    "title": "Call to order",
+                    "evidence_quote": "Item 1. Call to order",
+                    "line_start": 1,
+                    "line_end": 1,
+                }
+            ]
+        }
+    )
+    result = JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe-agenda-456",
+        output={"choices": [{"message": {"content": valid_content}}]},
+        model="meta-llama/llama-3.3-70b-instruct",
+    )
+    artifact = finalize_agenda_job(
+        result,
+        episode_uid="ep-1",
+        agenda_text="Item 1. Call to order",
+        agenda_source_hash="agenda-sha-1",
+    )
+    assert artifact.model == "meta-llama/llama-3.3-70b-instruct"
 
 
 def test_agenda_job_recipe_changes_with_candidate_hints():
@@ -159,6 +193,8 @@ def test_finalize_agenda_job_valid_and_invalid_responses():
     )
     assert artifact.episode_uid == "ep-1"
     assert artifact.recipe == "recipe-agenda-123"
+    # No result.model set (e.g. a legacy/non-policy-driven backend) falls back to the label model.
+    assert artifact.model == "mistral/mistral-medium-2508"
     assert len(artifact.items) == 2
     assert artifact.items[0].display_ref == "Item 1"
     assert artifact.items[0].title == "Call to order"

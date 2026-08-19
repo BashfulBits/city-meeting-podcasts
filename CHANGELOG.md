@@ -43,6 +43,25 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Free-model alternates for jobs that dispatched only to Mistral (2026-08-18 follow-up to the
+  Mistral pause below).** Agenda-chapter extraction (`chapter_titles.AGENDA_PRODUCTION_MODEL`) now
+  has `meta-llama/llama-3.3-70b-instruct` as a same-priority alternate
+  (`AGENDA_PRODUCTION_MODELS`), with `finalize_agenda_job`/`ChapterAgendaCandidatesStage` now
+  recording whichever model the scheduler actually dispatched to (`result.model`) instead of
+  always labeling the artifact with the pinned constant. The shadow-only locator/title-equivalence
+  selector (`chapter_locator.select_locator_model`) is now `select_locator_models`, returning every
+  same-priority candidate for a request's size instead of one: Mistral is supplemented with the
+  free `deepseek/deepseek-v4-flash` (OpenCode Zen tier) and `nvidia/nemotron-3-ultra-550b-a55b:free`
+  routes below their respective context ceilings, with Gemini kept as a last-resort escalation
+  beyond every free tier (its free quota is tiny). `LocatorRequest`/`AgendaItemExtractionRequest`/
+  `TitleEquivalenceRequest` gained an additive `models: tuple[str, ...]` field alongside the
+  existing single `model: str` (still the primary candidate), so the research scripts that build a
+  direct single-model backend from `.model` are unaffected. The weekly topic-tag tournament
+  (`tournament.py`, `.github/workflows/llm-tournament.yml`) replaced its Mistral contestant with
+  `zai/glm-4.7-flash` and added `google/gemma-4-26b-a4b-it` as a 4th contestant, growing
+  `CONTESTS` to the full 6-pair round robin. Removed the now-dead `mistral/mistral-small-2603`
+  entries from `r5_benchmark.OPTIONAL_TAGGER_MODEL` and `audit_remedy.REMEDY_MODELS`.
+
 - **Mistral provider paused: monthly token budget exhausted (2026-08-18 hotfix).** Mistral moved
   to account-wide monthly token metering; the current cycle's allowance is used up (resets
   2026-08-31). Pinned `rpd: 0` on all seven Mistral routes in `config/provider_limits.yml`

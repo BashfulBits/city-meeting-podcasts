@@ -15,12 +15,18 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from citypods.agenda_text import AgendaTitleCandidate, agenda_title_similarity
-from citypods.chapter_locator import select_locator_model
+from citypods.chapter_locator import select_locator_models
 from citypods.compute.llm_policy import estimate_tokens
 
 AGENDA_ITEM_EXTRACTOR_CONTRACT = "agenda-chapter-item-extract"
 TITLE_EQUIVALENCE_CONTRACT = "agenda-chapter-title-equivalence"
 AGENDA_PRODUCTION_MODEL = "mistral/mistral-medium-2508"
+# Same-priority alternate for AGENDA_PRODUCTION_MODEL (hotfix follow-up: Mistral's account-wide
+# monthly budget is exhausted, see config/provider_limits.yml). The scheduler's own
+# availability/pacing ranking picks between these -- this is not a preferred-then-fallback order.
+# `AGENDA_PRODUCTION_MODEL` itself stays the label used for recipe-hash/provenance defaults; the
+# actually-dispatched model is recorded separately via `JobResult.model`/`JobHandle.model` (R13).
+AGENDA_PRODUCTION_MODELS = (AGENDA_PRODUCTION_MODEL, "meta-llama/llama-3.3-70b-instruct")
 
 _PROMPT_VARIANT_INSTRUCTIONS = {
     "standard": "",
@@ -116,11 +122,16 @@ class ExtractedAgendaItem:
 
 @dataclass(frozen=True)
 class AgendaItemExtractionRequest:
-    """A direct, source-line-addressable agenda-item extraction request."""
+    """A direct, source-line-addressable agenda-item extraction request.
+
+    ``model`` is the primary/first candidate; ``models`` (additive) carries the full same-priority
+    candidate band from ``select_locator_models`` when the caller didn't pin an explicit model.
+    """
 
     source_line_count: int
     messages: tuple[dict[str, str], ...]
     model: str
+    models: tuple[str, ...]
     input_tokens: int
 
 
@@ -169,10 +180,15 @@ class AgendaItemRecoveryAssessment:
 
 @dataclass(frozen=True)
 class TitleEquivalenceRequest:
-    """A held-out semantic comparison request; never used to generate agenda items."""
+    """A held-out semantic comparison request; never used to generate agenda items.
+
+    ``model`` is the primary/first candidate; ``models`` (additive) carries the full same-priority
+    candidate band from ``select_locator_models``.
+    """
 
     messages: tuple[dict[str, str], ...]
     model: str
+    models: tuple[str, ...]
     input_tokens: int
 
 
@@ -376,10 +392,12 @@ def build_agenda_item_extraction_request(
         },
     )
     input_tokens = estimate_tokens(list(messages))
+    models = (model,) if model else select_locator_models(input_tokens)
     return AgendaItemExtractionRequest(
         source_line_count=len(source_lines),
         messages=messages,
-        model=model or select_locator_model(input_tokens),
+        model=models[0],
+        models=models,
         input_tokens=input_tokens,
     )
 
@@ -432,9 +450,11 @@ def build_title_equivalence_request(
         },
     )
     input_tokens = estimate_tokens(list(messages))
+    models = select_locator_models(input_tokens)
     return TitleEquivalenceRequest(
         messages=messages,
-        model=select_locator_model(input_tokens),
+        model=models[0],
+        models=models,
         input_tokens=input_tokens,
     )
 
@@ -977,6 +997,7 @@ def match_title_candidates(
 
 __all__ = [
     "AGENDA_PRODUCTION_MODEL",
+    "AGENDA_PRODUCTION_MODELS",
     "AGENDA_ITEM_EXTRACTOR_CONTRACT",
     "AGENDA_EXTRACTION_PROMPT_VARIANTS",
     "TITLE_EQUIVALENCE_CONTRACT",
