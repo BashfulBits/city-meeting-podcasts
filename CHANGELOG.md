@@ -35,6 +35,20 @@ Phase R (Research-Tool Surface)._
   `LiteLLMBackend._available_transports()` and `_enqueue_durable_policy_job` both gate on it; the
   Worker deploy itself additionally needs `CLOUDFLARE_LLM_API_TOKEN` as a deploy-time secret.
 
+- **Read-only v1 dispatch queue-order report (`scripts/report_pending_dispatch_queue.py`,
+  `Report LLM dispatch queue` workflow).** Operator diagnostic for the Mistral pause above: lists
+  the v1 Worker's pending `ready/` markers in their real R2 lexicographic dispatch order, resolves
+  each job's candidate routes via the same `model_aliases`/`model_routes_map` lookup
+  `workers/llm-dispatch-proxy/src/index.js` uses, and checks each candidate against
+  `state/dispatch_budget.json` and its compiled `rpd` to flag routes paused (`rpd: 0`),
+  reactively blocked (`blocked_until`), or reporting capacity. Never writes to R2 — no marker
+  relocation, requeue, or ledger mutation. Flags whether a job is only reachable through
+  currently-paused routes ("STUCK") vs. has an open alternative ("ELIGIBLE"), and separately
+  whether it sits within the Worker's 16-marker (`DEFAULT_READY_LOOKAHEAD`) lookahead window —
+  since `dispatchBatch`'s per-tick scan already skips a `no_capacity` head in place (or relocates
+  it once blocked past `DEFER_IN_PLACE_SECONDS`) rather than stalling on it, a run of STUCK jobs
+  at the queue head only actually blocks a later job once it fills that whole lookahead window.
+
 - **Configurable global token estimate buffer (`token_estimate_buffer`).** Added a new top-level
   setting `token_estimate_buffer` (e.g. `0.90`) in `config/provider_limits.yml` that applies a
   scaling multiplier to all compiled token rate budgets (route `tpm`, provider `monthly_tpm`,
