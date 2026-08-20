@@ -134,6 +134,7 @@ const ENV = {
   PROVIDER_NAME: "mistral",
   UPSTREAM_MODEL: "mistral-large-2512",
   MISTRAL_API_KEY: "mistral-secret",
+  MISTRAL_API_KEY_SECONDARY: "mistral-secondary-secret",
   GEMINI_API_KEY: "gemini-primary-secret",
   GEMINI_API_KEY_SECONDARY: "gemini-secondary-secret",
   DEEPSEEK_API_KEY: "deepseek-secret",
@@ -710,6 +711,12 @@ test("ready-marker lookahead skips a blocked provider and dispatches a later pro
       version: 1,
       routes: {
         mistral_large_2512_primary: {
+          requests_minute: 1,
+          requests_day: 1,
+          tokens_minute: 0,
+          requests_available_at: new Date(now.getTime() + 60_000).toISOString(),
+        },
+        mistral_large_2512_secondary: {
           requests_minute: 1,
           requests_day: 1,
           tokens_minute: 0,
@@ -1839,7 +1846,9 @@ test("credential-resolution failure never touches the ledger, and a persistent l
   await handleRequest(chatRequest(undefined, "cred-then-ledger-failure"), env);
 
   // First: a missing secret must fail the record without ever writing rate usage to the coordinator.
-  const { MISTRAL_API_KEY, ...withoutMistralKey } = env;
+  const withoutMistralKey = { ...env };
+  delete withoutMistralKey.MISTRAL_API_KEY;
+  delete withoutMistralKey.MISTRAL_API_KEY_SECONDARY;
   const credFailure = await dispatchOne(withoutMistralKey, okUpstream(), new Date());
   assert.equal(credFailure.status, "failed");
   const storedCoord = await env.LLM_QUEUE.get("state/dispatch_coordinator.json");
@@ -1992,24 +2001,24 @@ test("dispatchBatch staggers same-route candidates within allowed stagger delay"
     },
   );
   assert.equal(batchResult.status, "completed");
-  // mistral-large-2512 has rpm=4 (15s interval).
-  // Candidate 0 has delayMs=0.
-  // Candidate 1 has delayMs=15000 <= MAX_IN_BATCH_STAGGER_SECONDS (20s) -> admitted.
-  // Candidate 2 has delayMs=30000 > 20s -> deferred in place.
-  assert.equal(batchResult.count, 2);
-  assert.equal(batchResult.completedCount, 2);
-  assert.equal(calls.length, 2);
-  assert.equal(slept.length, 1);
-  assert.ok(
-    slept[0] > 13_000 && slept[0] <= 15_000,
-    `expected slept delay within (13000, 15000], got ${slept[0]}`,
-  );
+  // The secondary native route and the independent paid fallback let three candidates proceed;
+  // the two paced submissions wait for the native route's 15-second interval.
+  assert.equal(batchResult.count, 3);
+  assert.equal(batchResult.completedCount, 3);
+  assert.equal(calls.length, 3);
+  assert.equal(slept.length, 2);
+  for (const delay of slept) {
+    assert.ok(
+      delay > 13_000 && delay <= 16_000,
+      `expected slept delay within (13000, 16000], got ${delay}`,
+    );
+  }
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 2);
+  assert.equal(completedObjects.length, 3);
 });
 
 test("dispatchBatch defers same-route candidates when MAX_IN_BATCH_STAGGER_SECONDS is 0", async () => {
@@ -2386,7 +2395,7 @@ test("the Free-plan scheduler prioritizes fast work before long work", async () 
     null,
     now.getTime() + 820_000,
   );
-  assert.equal(selected.length, 2);
+  assert.equal(selected.length, 3);
   const records = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completed = await Promise.all(
     records.objects.map(async (object) => ({ key: object.key, record: await (await env.LLM_QUEUE.get(object.key)).json() })),
@@ -2658,6 +2667,7 @@ test("a batch that dispatches nothing persists a reaped reservation but not a wi
   // about what is worth a write: window keys are recomputed from `now` on every load, while an
   // abandoned reservation is durable state nothing else will clear.
   const route = "mistral_large_2512_primary";
+  const secondaryRoute = "mistral_large_2512_secondary";
   // Ahead of the enqueues below, so their markers are already eligible when the batch runs.
   const now = new Date(Date.now() + 1_000);
 
@@ -2674,6 +2684,17 @@ test("a batch that dispatches nothing persists a reaped reservation but not a wi
         requests_day_key: "1999-01-01",
         blocked_until: new Date(now.getTime() + 3_600_000).toISOString(),
         inflight,
+      },
+      [secondaryRoute]: {
+        requests_minute: 0,
+        tokens_minute: 0,
+        requests_available_at: "",
+        tokens_available_at: "",
+        requests_minute_key: "1999-01-01T00:00",
+        requests_day: 0,
+        requests_day_key: "1999-01-01",
+        blocked_until: new Date(now.getTime() + 3_600_000).toISOString(),
+        inflight: {},
       },
     },
   });

@@ -37,7 +37,7 @@ const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
 // without returning to the old prompt-scanning design.
 const DEFAULT_BATCH_CONCURRENCY = 1;
 const DEFAULT_MAX_TOTAL_REQUESTS = 1;
-const DEFAULT_READY_LOOKAHEAD = 16;
+const DEFAULT_READY_LOOKAHEAD = 500;
 // Maximum delay an admitted candidate is allowed to wait in memory before initiating its
 // upstream HTTP/TCP connection. Kept small (20s) so the connection is established well within
 // Cloudflare's 30-second idle/execution limit while enabling high-RPM models (e.g. Gemma 4 at 30 RPM = 2s)

@@ -114,6 +114,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          MISTRAL_API_KEY_SECONDARY: ${{ secrets.MISTRAL_API_KEY_SECONDARY }}
           # Free-form dispatch inputs: pass through env, never inline them into `run:` shell text.
           ISSUE_INPUT: ${{ inputs.issue }}
           APPLY_INPUT: ${{ inputs.apply }}

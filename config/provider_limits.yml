@@ -58,6 +58,8 @@ providers:
     accounts:
       - id: primary
         api_key_env: MISTRAL_API_KEY
+      - id: secondary
+        api_key_env: MISTRAL_API_KEY_SECONDARY
   gemini:
     api_base: https://generativelanguage.googleapis.com/v1beta/openai
     ai_gateway_slug: google-ai-studio
@@ -518,14 +520,14 @@ routes:
   # ==========================================
   # MISTRAL ROUTES (Audited Exact Quotas)
   # ==========================================
-  # HOTFIX (2026-08-18): Mistral's account-wide monthly token allowance is exhausted (their new
-  # metered-per-month policy, effective until the 2026-08-31 reset). `rpd: 0` pins every route's
+  # HOTFIX (2026-08-18): the primary Mistral account's monthly token allowance is exhausted. Its
+  # `rpd: 0` pins every primary route's
   # daily request quota to zero, which the scheduler already treats as ordinary quota exhaustion:
   # `select_route`/`llm_budget.available()` reject every dispatch and the deferred-request sweep
   # retries at each local midnight (see `_next_quota_reset`) rather than hard-failing callers like
   # `AgendaChapterCandidatesStage` (chapter_titles.AGENDA_PRODUCTION_MODEL) that dispatch to
-  # Mistral unconditionally. Remove the `rpd: 0` overrides (restoring the commented true values
-  # below) once the monthly allowance resets and a real budget is sized.
+  # Mistral unconditionally. Secondary-account routes retain the same limits the primary routes
+  # had before the pause, allowing the independent secondary quota to drain the backlog.
   #
   # Codestral 2508: 2.08 RPS (124 RPM), 625k TPM
   - route_id: mistral_codestral_2508_primary
@@ -628,6 +630,95 @@ routes:
     account_id: primary
     rpm: 37
     rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
+    tpm: 5000000
+    free: true
+
+  # Secondary account: original per-model limits, independent of the paused primary account.
+  - route_id: mistral_codestral_2508_secondary
+    model: mistral/codestral-2508
+    provider: mistral
+    upstream_model: codestral-2508
+    input_context_limit: 256000
+    output_context_limit: 256000
+    account_id: secondary
+    rpm: 124
+    tpm: 625000
+    free: true
+
+  - route_id: mistral_devstral_2512_secondary
+    model: mistral/devstral-2512
+    provider: mistral
+    upstream_model: devstral-2512
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: secondary
+    rpm: 49
+    tpm: 1000000
+    free: true
+
+  - route_id: mistral_small_2603_secondary
+    model: mistral/mistral-small-2603
+    provider: mistral
+    upstream_model: mistral-small-2603
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: secondary
+    rpm: 49
+    tpm: 50000
+    free: true
+
+  - route_id: mistral_medium_2508_secondary
+    model: mistral/mistral-medium-2508
+    provider: mistral
+    upstream_model: mistral-medium-2508
+    input_context_limit: 131072
+    output_context_limit: 131072
+    account_id: secondary
+    rpm: 22
+    tpm: 356250
+    free: true
+
+  - route_id: mistral_medium_2505_secondary
+    model: mistral/mistral-medium-2505
+    provider: mistral
+    upstream_model: mistral-medium-2505
+    input_context_limit: 131072
+    output_context_limit: 131072
+    account_id: secondary
+    rpm: 25
+    tpm: 375000
+    free: true
+
+  - route_id: mistral_large_2512_secondary
+    model: mistral/mistral-large-2512
+    provider: mistral
+    upstream_model: mistral-large-2512
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: secondary
+    rpm: 4
+    tpm: 250000
+    free: true
+
+  - route_id: mistral_large_3_secondary
+    model: mistral/mistral-large-3
+    provider: mistral
+    upstream_model: mistral-large-3
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: secondary
+    rpm: 4
+    tpm: 250000
+    free: true
+
+  - route_id: mistral_labs_leanstral_1_5_1_secondary
+    model: mistral/labs-leanstral-1-5-1
+    provider: mistral
+    upstream_model: labs-leanstral-1-5-1
+    input_context_limit: 262144
+    output_context_limit: 131072
+    account_id: secondary
+    rpm: 37
     tpm: 5000000
     free: true
 

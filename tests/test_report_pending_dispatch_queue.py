@@ -142,14 +142,14 @@ def test_build_report_flags_beyond_lookahead(monkeypatch):
         "scripts.report_pending_dispatch_queue._load_dispatch_limits",
         lambda: DISPATCH_LIMITS,
     )
-    keys = [f"ready/{i:03d}-1-fast-000-job{i}.json" for i in range(18)]
+    keys = [f"ready/{i:03d}-1-fast-000-job{i}.json" for i in range(502)]
     heads = {key: _meta(f"job{i}", "gemini/flash") for i, key in enumerate(keys)}
     client = _Client(heads=heads, pages=[_page(*keys)])
 
-    rows = build_report(client, "dispatch", limit=100, workers=4, now=datetime.now(UTC))
+    rows = build_report(client, "dispatch", limit=502, workers=4, now=datetime.now(UTC))
 
-    assert rows[15]["within_lookahead"] is True
-    assert rows[16]["within_lookahead"] is False
+    assert rows[499]["within_lookahead"] is True
+    assert rows[500]["within_lookahead"] is False
 
 
 def test_build_report_skips_unreadable_marker(monkeypatch):

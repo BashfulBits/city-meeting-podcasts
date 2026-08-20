@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Secondary Mistral dispatch capacity and deeper v1 queue lookahead.** Added independent
+  secondary-account routes for every native Mistral model, using `MISTRAL_API_KEY_SECONDARY` and
+  the same RPM/TPM limits each primary route had before its temporary `rpd: 0` quota pause. The
+  primary routes remain paused. Increased v1's ready-marker lookahead from 16 to 500 so a run of
+  jobs blocked on the primary account is less likely to hide work eligible for another route.
+
 - **Phase 1 of bounded bundled LLM dispatch (review/44), implemented in
   [PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253).** Implemented the
   initial parallel `workers/llm-dispatch-v2/` deployment with SQLite-backed `LLMSchedulerDO`
@@ -44,7 +50,7 @@ Phase R (Research-Tool Surface)._
   reactively blocked (`blocked_until`), or reporting capacity. Never writes to R2 — no marker
   relocation, requeue, or ledger mutation. Flags whether a job is only reachable through
   currently-paused routes ("STUCK") vs. has an open alternative ("ELIGIBLE"), and separately
-  whether it sits within the Worker's 16-marker (`DEFAULT_READY_LOOKAHEAD`) lookahead window —
+  whether it sits within the Worker's 500-marker (`DEFAULT_READY_LOOKAHEAD`) lookahead window —
   since `dispatchBatch`'s per-tick scan already skips a `no_capacity` head in place (or relocates
   it once blocked past `DEFER_IN_PLACE_SECONDS`) rather than stalling on it, a run of STUCK jobs
   at the queue head only actually blocks a later job once it fills that whole lookahead window.
