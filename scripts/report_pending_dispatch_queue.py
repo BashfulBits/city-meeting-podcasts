@@ -40,7 +40,7 @@ DEFAULT_WORKERS = 8
 # Matches the Worker's DEFAULT_READY_LOOKAHEAD -- a single scheduled tick only ever looks at this
 # many markers, so a job past this position depends on earlier markers being dispatched/relocated
 # first, not just on its own route's availability.
-DEFAULT_READY_LOOKAHEAD = 16
+DEFAULT_READY_LOOKAHEAD = 500
 DISPATCH_LIMITS_PATH = (
     Path(__file__).resolve().parent.parent
     / "workers"
@@ -223,7 +223,11 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
             ", ".join(f"{c['route_id']}[{c['provider']}:{c['state']}]" for c in row["candidates"])
             or "(no configured route)"
         )
-        lookahead_flag = "" if row["within_lookahead"] else "  [beyond 16-marker lookahead]"
+        lookahead_flag = (
+            ""
+            if row["within_lookahead"]
+            else f"  [beyond {DEFAULT_READY_LOOKAHEAD}-marker lookahead]"
+        )
         print(
             f"{row['position']:>4}  {row['verdict']:<8} {row['priority']:<9} "
             f"{row['id']:<40} model={row['model']}{lookahead_flag}"
@@ -246,9 +250,9 @@ def _print_summary(rows: list[dict[str, Any]]) -> None:
     # The direct answer to "is mistral blocking other jobs by queue position": find the longest
     # unbroken run of STUCK jobs starting at position 1, and report the first ELIGIBLE job's
     # position. Per the Worker's loadReadyHeads/dispatchBatch loop, a STUCK head does NOT stop the
-    # scan within one lookahead window (16 markers) -- it's skipped in place (or relocated once
+    # scan within one lookahead window (500 markers) -- it's skipped in place (or relocated once
     # blocked past DEFER_IN_PLACE_SECONDS) and the loop advances to the next marker. So a STUCK run
-    # only actually blocks dispatch if it fills the entire 16-marker lookahead window.
+    # only actually blocks dispatch if it fills the entire 500-marker lookahead window.
     head_run = 0
     for row in rows:
         if row["verdict"] != "STUCK":
@@ -264,8 +268,9 @@ def _print_summary(rows: list[dict[str, Any]]) -> None:
         )
         if first_eligible["position"] <= DEFAULT_READY_LOOKAHEAD:
             print(
-                "-> within the Worker's 16-marker lookahead window: a scheduled tick reaches and "
-                "can dispatch it even with STUCK jobs ahead of it in queue order."
+                f"-> within the Worker's {DEFAULT_READY_LOOKAHEAD}-marker lookahead window: a "
+                "scheduled tick reaches and can dispatch it even with STUCK jobs ahead of it in "
+                "queue order."
             )
         else:
             print(
