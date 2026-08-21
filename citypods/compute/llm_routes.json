@@ -13,6 +13,14 @@
     "opencode/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "opencode/nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free"
   },
+  "model_routing": {
+    "mistral/mistral-medium-2508": [
+      "gemini/gemini-3.5-flash-lite"
+    ],
+    "mistral/mistral-medium-2505": [
+      "gemini/gemini-3.5-flash-lite"
+    ]
+  },
   "routes": [
     {
       "route_id": "gemini_3_5_flash_lite_primary",

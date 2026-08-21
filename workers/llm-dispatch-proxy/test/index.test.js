@@ -318,6 +318,51 @@ test("the stored record's model is the canonical requested model, not an upstrea
   assert.equal(record.request.model, "gemini/gemini-3-flash-preview");
 });
 
+test("a request for a model_routing source model is also made eligible for its overflow target", async () => {
+  // config/provider_limits.yml's `model_routing` maps Mistral Medium to Gemini 3.5 Flash Lite so
+  // the backlog can drain onto Gemini's independent free-tier capacity without editing the jobs
+  // that dispatch Mistral Medium themselves (2026-08-21 hotfix). The Worker must expand
+  // `policy.allowed_models` the same way the Python scheduler does, whether or not the caller
+  // passed its own `allowed_models`.
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "model-routing-implicit", "mistral/mistral-medium-2508"),
+    env,
+  );
+  assert.equal(queued.status, 202);
+  const body = await queued.json();
+  const stored = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(stored.model, "mistral/mistral-medium-2508");
+  assert.deepEqual(stored.policy.allowed_models, [
+    "mistral/mistral-medium-2508",
+    "gemini/gemini-3.5-flash-lite",
+  ]);
+
+  const withExplicitAllowlist = await handleRequest(
+    chatRequest(undefined, "model-routing-explicit", "mistral/mistral-medium-2508", {
+      allowed_models: ["mistral/mistral-medium-2508"],
+    }),
+    env,
+  );
+  assert.equal(withExplicitAllowlist.status, 202);
+  const explicitBody = await withExplicitAllowlist.json();
+  const explicitStored = await (
+    await env.LLM_QUEUE.get(`requests/${explicitBody.id}.json`)
+  ).json();
+  assert.deepEqual(explicitStored.policy.allowed_models, [
+    "mistral/mistral-medium-2508",
+    "gemini/gemini-3.5-flash-lite",
+  ]);
+
+  // A model with no configured overflow (the fixture default) is unaffected.
+  const unrouted = await handleRequest(chatRequest(undefined, "model-routing-none"), env);
+  const unroutedBody = await unrouted.json();
+  const unroutedStored = await (
+    await env.LLM_QUEUE.get(`requests/${unroutedBody.id}.json`)
+  ).json();
+  assert.equal(unroutedStored.policy.allowed_models, undefined);
+});
+
 test("accepts the configured default route but rejects an unrecognized model", async () => {
   const env = isolatedEnv();
   const accepted = await handleRequest(chatRequest(undefined, "provider-qualified"), env);

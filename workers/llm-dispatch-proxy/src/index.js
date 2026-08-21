@@ -890,6 +890,19 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
     policy.allowed_models = allowedModels;
   }
 
+  // `model_routing` (compiled from config/provider_limits.yml's `model_routing`) is a general,
+  // config-driven overflow map: every request for a routed model becomes eligible for its
+  // configured target model(s) too, whether or not the caller passed `allowed_models` itself.
+  // `selectRoute` below already tries `policy.allowed_models` in order and falls through past a
+  // merely-full earlier model, so appending here is enough -- no other call site needs to know.
+  const overflowTargets = (dispatchLimits.model_routing?.[canonicalModel] || [])
+    .map((target) => canonicalModelName(target, dispatchLimits))
+    .filter((target) => configuredModels.includes(target));
+  if (overflowTargets.length > 0) {
+    const base = policy.allowed_models || [canonicalModel];
+    policy.allowed_models = [...new Set([...base, ...overflowTargets])];
+  }
+
   return {
     model: canonicalModel,
     request,

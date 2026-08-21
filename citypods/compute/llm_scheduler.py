@@ -21,6 +21,7 @@ from citypods.compute.llm_budget import (
     serialize_llm_budget,
 )
 from citypods.compute.llm_policy import (
+    MODEL_ROUTING,
     ROUTE_REGISTRY,
     LLMRequestPolicy,
     LLMRoute,
@@ -373,11 +374,24 @@ def select_route(
     """
     rejected: list[tuple[str, str]] = []
     candidates: list[tuple[LLMRoute, str, float, datetime, float, int, int, str]] = []
-    allowed = (
-        {canonical_model(model) for model in policy.allowed_models}
-        if policy.allowed_models is not None
-        else None
-    )
+    allowed: set[str] | None = None
+    # The models the caller actually asked for, before `model_routing` expansion -- used only to
+    # break a tie in favor of the caller's own choice (see the ranking key below), never to reject
+    # an overflow model outright.
+    requested: set[str] | None = None
+    if policy.allowed_models is not None:
+        allowed = set()
+        requested = set()
+        for model in policy.allowed_models:
+            canonical = canonical_model(model)
+            allowed.add(canonical)
+            requested.add(canonical)
+            # `model_routing` (config/provider_limits.yml) is a general, config-driven overflow
+            # map: a job pinned to one model becomes eligible for that model's configured target
+            # models too, without the caller changing at all. Ranking below still prefers the
+            # caller's own model when both are equally eligible (see `not_requested` in the ranking
+            # key), so this only matters once the pinned model's own routes are exhausted or paused.
+            allowed.update(canonical_model(target) for target in MODEL_ROUTING.get(canonical, ()))
     # Earliest time an otherwise-allowed route (transport/allowlist/paid gates all passed) that is
     # only *temporarily* unavailable -- a rate schedule full, daily quota spent, under a real 429
     # block, or waiting for its cheapest price window -- is predicted to become eligible again. A
@@ -491,7 +505,19 @@ def select_route(
         )
     route, route_key, _, predicted, _, route_requests, route_tokens, transport = min(
         candidates,
-        key=lambda item: (not item[0].free, item[2], item[4], item[3], item[0].model, item[1]),
+        # A `model_routing`-injected overflow model only wins a tie against the caller's own
+        # requested model(s) -- real exhaustion (rpm/rpd/tpm/cost) is already decided above by
+        # `ledger.available()` filtering the ineligible route out of `candidates` entirely; this
+        # tiebreak is purely between routes that are *both* still eligible right now.
+        key=lambda item: (
+            not item[0].free,
+            item[2],
+            item[4],
+            item[3],
+            requested is not None and item[0].model not in requested,
+            item[0].model,
+            item[1],
+        ),
     )
     rejected.extend(
         (candidate.model, "lower-ranked eligible route")
