@@ -643,10 +643,18 @@ Dispatch capability is **not** required for this phase to relieve the incident �
   request once known headroom is exhausted, not just get rejected after — a DO-side cap alone still
   lets a runaway workflow hammer the ingress Worker with rejected-but-still-counted requests.
 
-### Phase 2 — Bring up DO-driven paced dispatch (second priority)
+### Phase 2 — Bring up DO-driven paced dispatch (second priority) · *Dispatch pipeline implemented in [PR #1254](https://github.com/BashfulBits/city-meeting-podcasts/pull/1254)*
 
 Implement one transactional claim plan before provider calls, and the executor that consumes it.
 This is what lets v2 begin draining jobs ingested in Phase 1 across multiple routes.
+
+> **Status note: the dispatch pipeline (`claimDispatchWindow`, `attemptStarted`/`authorizeRetry`,
+> `completeBatch` + calibration, the paced executor, B2 SigV4 client, AI Gateway request
+> construction, bounded cleanup) is implemented and tested — see the first two bullets below. The
+> shadow-mode validation gate and the split-cap coexistence cutover (the third and fourth bullets)
+> are operational steps against real recorded v1 traffic and real production config, not something
+> that ships as code in this pass — they still need to happen, in order, before this phase is
+> complete and before v2 carries any real dispatch traffic.**
 
 - Fenced admission (`claimDispatchWindow`): enforce bundle, per-route, active-bundle, in-flight-call,
   and UTC daily caps. Choose `priority=0` jobs first, then distinct eligible routes, then larger

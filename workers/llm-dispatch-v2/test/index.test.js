@@ -60,6 +60,16 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     )
   );
 
+  // ESTIMATED_CALL_DURATION_CEILING_SECONDS >= DISPATCH_WINDOW_SECONDS
+  assert.throws(() =>
+    validateConfig(
+      createMockEnv({
+        DISPATCH_WINDOW_SECONDS: "25",
+        ESTIMATED_CALL_DURATION_CEILING_SECONDS: "25",
+      })
+    )
+  );
+
   // BEARER_TOKEN unset must fail closed at startup, not silently disable auth per-request.
   const noTokenEnv = createMockEnv();
   delete noTokenEnv.BEARER_TOKEN;

@@ -27,9 +27,12 @@
       "new_sqlite_classes": ["LLMSchedulerDO"]
     }
   ],
-  // Cron trigger lands with Phase 2's scheduled handler. An empty handler wired to a per-minute
-  // cron today would spend 1,440 Worker invocations/day against the exact Free-tier budget this
-  // design protects, for zero work -- see index.js's scheduled() stub.
+  // Phase 2's scheduled() handler now does real work (claimDispatchWindow + dispatch), so the
+  // per-minute cron this design's own request/CPU budget was built around is back -- see
+  // "Bounded initial configuration": 1,440 ticks/day, well inside every Free-tier ceiling.
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   "vars": {
     "MAX_BUNDLE_JOBS": "4",
     "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "4",
@@ -48,8 +51,26 @@
     "CRON_EXECUTION_LIMIT_SECONDS": "900",
     "MAX_429_RETRIES": "1",
     "MAX_429_BACKOFF_SECONDS": "60",
+    "MAX_ROUTE_BUFFER_SECONDS": "120",
     "UNKNOWN_ATTEMPT_POLICY": "hold",
     "MAX_QUEUE_WAIT_SECONDS": "3600",
-    "COMPLETED_RETENTION_DAYS": "38"
+    "COMPLETED_RETENTION_DAYS": "38",
+    // Conservative upper bound on one provider call's duration, used only to keep the DO from
+    // admitting a job whose planned start technically fits before the dispatch window's end but
+    // would still plausibly still be running past it -- see pacing.js and Unit 4's
+    // routeHasCapacityFor. Deliberately well under MAX_RESPONSE_SECONDS, which is the executor's
+    // actual per-call abort deadline, not an admission-time estimate.
+    "ESTIMATED_CALL_DURATION_CEILING_SECONDS": "20"
   }
+  // Secrets (never plain vars -- set with `wrangler secret put <NAME>`, one time, matching
+  // workers/llm-dispatch-proxy's existing pattern): BEARER_TOKEN (ingress auth), every provider's
+  // API_KEY_ENV from config/provider_limits.yml (e.g. GEMINI_API_KEY, MISTRAL_API_KEY --
+  // whichever routes this deployment actually dispatches to), AI_GATEWAY_AUTH_TOKEN (Cloudflare
+  // AI Gateway's own "Authenticated Gateway" token, independent of provider keys), and the
+  // executor's B2 credentials -- B2_ENDPOINT, B2_KEY_ID, B2_APP_KEY, B2_BUCKET (a dedicated
+  // least-privilege application key scoped to this design's own B2 prefix, e.g.
+  // "llm-dispatch-v2/", per "B2-only payload storage and bounded cleanup" -- never the ingress
+  // Worker's credentials, which does not and must not hold any). CLOUDFLARE_ACCOUNT_ID and
+  // AI_GATEWAY_ID (or AI_GATEWAY_BASE_URL directly) route calls through AI Gateway rather than
+  // straight to each provider; see "Why cron pull, not Queue" for why that's not optional.
 }

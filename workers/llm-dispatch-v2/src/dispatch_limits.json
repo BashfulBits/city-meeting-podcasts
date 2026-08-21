@@ -1,0 +1,1338 @@
+{
+  "_metadata": {
+    "source": "config/provider_limits.yml",
+    "routes_count": 47,
+    "providers_count": 10,
+    "token_estimate_buffer": 0.9
+  },
+  "providers": {
+    "mistral": {
+      "api_base": "https://api.mistral.ai",
+      "ai_gateway_slug": "mistral",
+      "ai_gateway_chat_path": "/v1/chat/completions",
+      "chat_path": "/v1/chat/completions",
+      "rpm": 60,
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "MISTRAL_API_KEY"
+        }
+      ]
+    },
+    "gemini": {
+      "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "ai_gateway_slug": "google-ai-studio",
+      "ai_gateway_chat_path": "/v1beta/openai/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "America/Los_Angeles",
+      "accounts": [
+        {
+          "id": "project_primary",
+          "api_key_env": "GEMINI_API_KEY"
+        },
+        {
+          "id": "project_secondary",
+          "api_key_env": "GEMINI_API_KEY_SECONDARY"
+        }
+      ]
+    },
+    "deepseek": {
+      "api_base": "https://api.deepseek.com/v1",
+      "ai_gateway_slug": "deepseek",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "DEEPSEEK_API_KEY"
+        }
+      ]
+    },
+    "siliconflow": {
+      "api_base": "https://api.siliconflow.com/v1",
+      "ai_gateway_slug": "custom-siliconflow",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "SILICONFLOW_API_KEY"
+        }
+      ]
+    },
+    "groq": {
+      "api_base": "https://api.groq.com/openai/v1",
+      "ai_gateway_slug": "groq",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "GROQ_API_KEY"
+        }
+      ]
+    },
+    "sambanova": {
+      "api_base": "https://api.sambanova.ai/v1",
+      "ai_gateway_slug": "custom-sambanova",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "SAMBANOVA_API_KEY"
+        }
+      ]
+    },
+    "zai": {
+      "api_base": "https://api.z.ai/api/paas/v4",
+      "ai_gateway_slug": "custom-zai",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "ZAI_API_KEY"
+        }
+      ]
+    },
+    "openrouter": {
+      "api_base": "https://openrouter.ai/api/v1",
+      "ai_gateway_slug": "openrouter",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "OPENROUTER_API_KEY"
+        }
+      ]
+    },
+    "kilo": {
+      "api_base": "https://api.kilo.ai/api/gateway",
+      "ai_gateway_slug": "custom-kilo",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "KILO_API_KEY"
+        }
+      ]
+    },
+    "opencode": {
+      "api_base": "https://opencode.ai/zen/v1",
+      "ai_gateway_slug": "custom-opencode",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "OPENCODE_API_KEY"
+        }
+      ]
+    }
+  },
+  "routes_by_id": {
+    "gemini_3_5_flash_lite_primary": {
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemini_3_5_flash_lite_secondary": {
+      "route_id": "gemini_3_5_flash_lite_secondary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash-lite",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_secondary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemini_3_1_flash_lite_primary": {
+      "route_id": "gemini_3_1_flash_lite_primary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.1-flash-lite",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemini_3_1_flash_lite_secondary": {
+      "route_id": "gemini_3_1_flash_lite_secondary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.1-flash-lite",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_secondary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemma_4_26b_primary": {
+      "route_id": "gemma_4_26b_primary",
+      "provider": "gemini",
+      "upstream_model": "gemma-4-26b-a4b-it",
+      "input_context_limit": 262144,
+      "output_context_limit": 32768,
+      "account_id": "project_primary",
+      "rpm": 30,
+      "rpd": 14400,
+      "tpm": 14400,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemma_4_26b_secondary": {
+      "route_id": "gemma_4_26b_secondary",
+      "provider": "gemini",
+      "upstream_model": "gemma-4-26b-a4b-it",
+      "input_context_limit": 262144,
+      "output_context_limit": 32768,
+      "account_id": "project_secondary",
+      "rpm": 30,
+      "rpd": 14400,
+      "tpm": 14400,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemma_4_31b_primary": {
+      "route_id": "gemma_4_31b_primary",
+      "provider": "gemini",
+      "upstream_model": "gemma-4-31b-it",
+      "input_context_limit": 262144,
+      "output_context_limit": 32768,
+      "account_id": "project_primary",
+      "rpm": 30,
+      "rpd": 14400,
+      "tpm": 14400,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemma_4_31b_secondary": {
+      "route_id": "gemma_4_31b_secondary",
+      "provider": "gemini",
+      "upstream_model": "gemma-4-31b-it",
+      "input_context_limit": 262144,
+      "output_context_limit": 32768,
+      "account_id": "project_secondary",
+      "rpm": 30,
+      "rpd": 14400,
+      "tpm": 14400,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemini_3_flash_preview_primary": {
+      "route_id": "gemini_3_flash_preview_primary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3-flash-preview",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_primary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemini_3_flash_preview_secondary": {
+      "route_id": "gemini_3_flash_preview_secondary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3-flash-preview",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_secondary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemini_3_6_flash_primary": {
+      "route_id": "gemini_3_6_flash_primary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.6-flash",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_primary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemini_3_6_flash_secondary": {
+      "route_id": "gemini_3_6_flash_secondary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.6-flash",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_secondary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemini_3_5_flash_primary": {
+      "route_id": "gemini_3_5_flash_primary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_primary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "gemini_3_5_flash_secondary": {
+      "route_id": "gemini_3_5_flash_secondary",
+      "provider": "gemini",
+      "upstream_model": "gemini-3.5-flash",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "project_secondary",
+      "rpm": 5,
+      "rpd": 20,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems"
+      ]
+    },
+    "groq_llama_3_3_70b_versatile_primary": {
+      "route_id": "groq_llama_3_3_70b_versatile_primary",
+      "provider": "groq",
+      "upstream_model": "llama-3.3-70b-versatile",
+      "input_context_limit": 131072,
+      "output_context_limit": 32768,
+      "account_id": "primary",
+      "rpm": 30,
+      "rpd": 1000,
+      "tpm": 5400,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "sambanova_llama_3_3_70b_instruct_primary": {
+      "route_id": "sambanova_llama_3_3_70b_instruct_primary",
+      "provider": "sambanova",
+      "upstream_model": "Meta-Llama-3.3-70B-Instruct",
+      "input_context_limit": 131072,
+      "output_context_limit": 32768,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 1000,
+      "tpm": 90000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "openrouter_meta_llama_llama_3_3_70b_instruct": {
+      "route_id": "openrouter_meta_llama_llama_3_3_70b_instruct",
+      "provider": "openrouter",
+      "upstream_model": "meta-llama/llama-3.3-70b-instruct",
+      "input_context_limit": 131072,
+      "output_context_limit": 16384,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1e-07,
+      "output_per_token": 4e-07,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "sambanova_qwen_2_5_72b_instruct_primary": {
+      "route_id": "sambanova_qwen_2_5_72b_instruct_primary",
+      "provider": "sambanova",
+      "upstream_model": "Qwen2.5-72B-Instruct",
+      "input_context_limit": 131072,
+      "output_context_limit": 8192,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 1000,
+      "tpm": 90000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "siliconflow_qwen_2_5_72b_primary": {
+      "route_id": "siliconflow_qwen_2_5_72b_primary",
+      "provider": "siliconflow",
+      "upstream_model": "Qwen/Qwen2.5-72B-Instruct",
+      "input_context_limit": 33000,
+      "output_context_limit": 4000,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 7e-08,
+      "output_per_token": 2.8e-07,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "siliconflow_deepseek_v4_flash_primary": {
+      "route_id": "siliconflow_deepseek_v4_flash_primary",
+      "provider": "siliconflow",
+      "upstream_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+      "input_context_limit": 1000000,
+      "output_context_limit": 384000,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 4.9e-08,
+      "output_per_token": 1.96e-07,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "deepseek_v4_flash_primary": {
+      "route_id": "deepseek_v4_flash_primary",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-flash",
+      "input_context_limit": 1000000,
+      "output_context_limit": 384000,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1.4e-07,
+      "output_per_token": 2.8e-07,
+      "pricing": {
+        "periods": [
+          {
+            "effective_at": "1970-01-01T00:00:00+00:00",
+            "input_per_token": 1.4e-07,
+            "output_per_token": 2.8e-07
+          },
+          {
+            "effective_at": "2026-08-16T16:00:00+00:00",
+            "input_per_token": 2.2e-07,
+            "output_per_token": 6.6e-07,
+            "windows": [
+              {
+                "tz": "UTC",
+                "start": "01:00",
+                "end": "04:00",
+                "multiplier": 2.0
+              },
+              {
+                "tz": "UTC",
+                "start": "06:00",
+                "end": "10:00",
+                "multiplier": 2.0
+              }
+            ]
+          }
+        ]
+      },
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "deepseek_v4_pro_primary": {
+      "route_id": "deepseek_v4_pro_primary",
+      "provider": "deepseek",
+      "upstream_model": "deepseek-v4-pro",
+      "input_context_limit": 1000000,
+      "output_context_limit": 384000,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 4.35e-07,
+      "output_per_token": 8.7e-07,
+      "pricing": {
+        "periods": [
+          {
+            "effective_at": "1970-01-01T00:00:00+00:00",
+            "input_per_token": 4.35e-07,
+            "output_per_token": 8.7e-07
+          },
+          {
+            "effective_at": "2026-08-16T16:00:00+00:00",
+            "input_per_token": 6.6e-07,
+            "output_per_token": 1.98e-06,
+            "windows": [
+              {
+                "tz": "UTC",
+                "start": "01:00",
+                "end": "04:00",
+                "multiplier": 2.0
+              },
+              {
+                "tz": "UTC",
+                "start": "06:00",
+                "end": "10:00",
+                "multiplier": 2.0
+              }
+            ]
+          }
+        ]
+      },
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_codestral_2508_primary": {
+      "route_id": "mistral_codestral_2508_primary",
+      "provider": "mistral",
+      "upstream_model": "codestral-2508",
+      "input_context_limit": 256000,
+      "output_context_limit": 256000,
+      "account_id": "primary",
+      "rpm": 124,
+      "rpd": null,
+      "tpm": 562500,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_devstral_2512_primary": {
+      "route_id": "mistral_devstral_2512_primary",
+      "provider": "mistral",
+      "upstream_model": "devstral-2512",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "account_id": "primary",
+      "rpm": 49,
+      "rpd": null,
+      "tpm": 900000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_small_2603_primary": {
+      "route_id": "mistral_small_2603_primary",
+      "provider": "mistral",
+      "upstream_model": "mistral-small-2603",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "account_id": "primary",
+      "rpm": 49,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_medium_2508_primary": {
+      "route_id": "mistral_medium_2508_primary",
+      "provider": "mistral",
+      "upstream_model": "mistral-medium-2508",
+      "input_context_limit": 131072,
+      "output_context_limit": 131072,
+      "account_id": "primary",
+      "rpm": 22,
+      "rpd": null,
+      "tpm": 320625,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_medium_2505_primary": {
+      "route_id": "mistral_medium_2505_primary",
+      "provider": "mistral",
+      "upstream_model": "mistral-medium-2505",
+      "input_context_limit": 131072,
+      "output_context_limit": 131072,
+      "account_id": "primary",
+      "rpm": 25,
+      "rpd": null,
+      "tpm": 337500,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_large_2512_primary": {
+      "route_id": "mistral_large_2512_primary",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-2512",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "account_id": "primary",
+      "rpm": 4,
+      "rpd": null,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_large_3_primary": {
+      "route_id": "mistral_large_3_primary",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-3",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "account_id": "primary",
+      "rpm": 4,
+      "rpd": null,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_labs_leanstral_1_5_1_primary": {
+      "route_id": "mistral_labs_leanstral_1_5_1_primary",
+      "provider": "mistral",
+      "upstream_model": "labs-leanstral-1-5-1",
+      "input_context_limit": 262144,
+      "output_context_limit": 131072,
+      "account_id": "primary",
+      "rpm": 37,
+      "rpd": null,
+      "tpm": 4500000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "zai_glm_4_7_flash_primary": {
+      "route_id": "zai_glm_4_7_flash_primary",
+      "provider": "zai",
+      "upstream_model": "glm-4.7-flash",
+      "input_context_limit": 200000,
+      "output_context_limit": 131072,
+      "account_id": "primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": null,
+      "concurrency": 2,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "zai_glm_4_5_flash_primary": {
+      "route_id": "zai_glm_4_5_flash_primary",
+      "provider": "zai",
+      "upstream_model": "glm-4.5-flash",
+      "input_context_limit": 200000,
+      "output_context_limit": 98304,
+      "account_id": "primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": null,
+      "concurrency": 2,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "zai_glm_4_7_flashx_primary": {
+      "route_id": "zai_glm_4_7_flashx_primary",
+      "provider": "zai",
+      "upstream_model": "glm-4.7-flashx",
+      "input_context_limit": 200000,
+      "output_context_limit": 131072,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 7e-08,
+      "output_per_token": 4e-07,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "zai_glm_4_7_primary": {
+      "route_id": "zai_glm_4_7_primary",
+      "provider": "zai",
+      "upstream_model": "glm-4.7",
+      "input_context_limit": 200000,
+      "output_context_limit": 131072,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 6e-07,
+      "output_per_token": 2.2e-06,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "zai_glm_5_primary": {
+      "route_id": "zai_glm_5_primary",
+      "provider": "zai",
+      "upstream_model": "glm-5",
+      "input_context_limit": 200000,
+      "output_context_limit": 131072,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1e-06,
+      "output_per_token": 3.2e-06,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "openrouter_google_gemma_4_31b_it_free": {
+      "route_id": "openrouter_google_gemma_4_31b_it_free",
+      "provider": "openrouter",
+      "upstream_model": "google/gemma-4-31b-it:free",
+      "input_context_limit": 262144,
+      "output_context_limit": 32768,
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 200,
+      "tpm": null,
+      "concurrency": 1,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "openrouter_google_gemma_4_26b_a4b_it_free": {
+      "route_id": "openrouter_google_gemma_4_26b_a4b_it_free",
+      "provider": "openrouter",
+      "upstream_model": "google/gemma-4-26b-a4b-it:free",
+      "input_context_limit": 131072,
+      "output_context_limit": 32768,
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 200,
+      "tpm": null,
+      "concurrency": 1,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free": {
+      "route_id": "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
+      "provider": "openrouter",
+      "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_context_limit": 1000000,
+      "output_context_limit": 65536,
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 200,
+      "tpm": null,
+      "concurrency": 1,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "openrouter_nvidia_nemotron_3_super_120b_a12b_free": {
+      "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
+      "provider": "openrouter",
+      "upstream_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 200,
+      "tpm": null,
+      "concurrency": 1,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "openrouter_qwen_qwen3_235b_a22b_2507": {
+      "route_id": "openrouter_qwen_qwen3_235b_a22b_2507",
+      "provider": "openrouter",
+      "upstream_model": "qwen/qwen3-235b-a22b-2507",
+      "input_context_limit": 262144,
+      "output_context_limit": 16384,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 9e-08,
+      "output_per_token": 3.6e-07,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "openrouter_mistralai_mistral_small_3_2_24b_instruct": {
+      "route_id": "openrouter_mistralai_mistral_small_3_2_24b_instruct",
+      "provider": "openrouter",
+      "upstream_model": "mistralai/mistral-small-3.2-24b-instruct",
+      "input_context_limit": 256000,
+      "output_context_limit": 16384,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 9e-08,
+      "output_per_token": 2.7e-07,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "openrouter_openai_gpt_4o_mini": {
+      "route_id": "openrouter_openai_gpt_4o_mini",
+      "provider": "openrouter",
+      "upstream_model": "openai/gpt-4o-mini",
+      "input_context_limit": 128000,
+      "output_context_limit": 16384,
+      "account_id": "primary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": 5,
+      "free": false,
+      "input_per_token": 1.5e-07,
+      "output_per_token": 6e-07,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "kilo_stepfun_step_3_7_flash_free": {
+      "route_id": "kilo_stepfun_step_3_7_flash_free",
+      "provider": "kilo",
+      "upstream_model": "stepfun/step-3.7-flash:free",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 90000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "kilo_nvidia_nemotron_3_ultra_550b_a55b_free": {
+      "route_id": "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
+      "provider": "kilo",
+      "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_context_limit": 1000000,
+      "output_context_limit": 65536,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 90000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "opencode_deepseek_v4_flash_free": {
+      "route_id": "opencode_deepseek_v4_flash_free",
+      "provider": "opencode",
+      "upstream_model": "deepseek-v4-flash-free",
+      "input_context_limit": 200000,
+      "output_context_limit": 128000,
+      "account_id": "primary",
+      "rpm": 30,
+      "rpd": 500,
+      "tpm": 225000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "opencode_mimo_v2_5_free": {
+      "route_id": "opencode_mimo_v2_5_free",
+      "provider": "opencode",
+      "upstream_model": "mimo-v2.5-free",
+      "input_context_limit": 200000,
+      "output_context_limit": 32000,
+      "account_id": "primary",
+      "rpm": 30,
+      "rpd": 500,
+      "tpm": 90000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "opencode_nemotron_3_ultra_free": {
+      "route_id": "opencode_nemotron_3_ultra_free",
+      "provider": "opencode",
+      "upstream_model": "nemotron-3-ultra-free",
+      "input_context_limit": 1000000,
+      "output_context_limit": 128000,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 90000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    }
+  },
+  "model_routes_map": {
+    "gemini/gemini-3.5-flash-lite": [
+      "gemini_3_5_flash_lite_primary",
+      "gemini_3_5_flash_lite_secondary"
+    ],
+    "gemini/gemini-3.1-flash-lite": [
+      "gemini_3_1_flash_lite_primary",
+      "gemini_3_1_flash_lite_secondary"
+    ],
+    "google/gemma-4-26b-a4b-it": [
+      "gemma_4_26b_primary",
+      "gemma_4_26b_secondary",
+      "openrouter_google_gemma_4_26b_a4b_it_free"
+    ],
+    "google/gemma-4-31b-it": [
+      "gemma_4_31b_primary",
+      "gemma_4_31b_secondary",
+      "openrouter_google_gemma_4_31b_it_free"
+    ],
+    "gemini/gemini-3-flash-preview": [
+      "gemini_3_flash_preview_primary",
+      "gemini_3_flash_preview_secondary"
+    ],
+    "gemini/gemini-3.6-flash": [
+      "gemini_3_6_flash_primary",
+      "gemini_3_6_flash_secondary"
+    ],
+    "gemini/gemini-3.5-flash": [
+      "gemini_3_5_flash_primary",
+      "gemini_3_5_flash_secondary"
+    ],
+    "meta-llama/llama-3.3-70b-instruct": [
+      "groq_llama_3_3_70b_versatile_primary",
+      "sambanova_llama_3_3_70b_instruct_primary",
+      "openrouter_meta_llama_llama_3_3_70b_instruct"
+    ],
+    "qwen/qwen-2.5-72b-instruct": [
+      "sambanova_qwen_2_5_72b_instruct_primary",
+      "siliconflow_qwen_2_5_72b_primary"
+    ],
+    "deepseek/deepseek-v4-flash": [
+      "siliconflow_deepseek_v4_flash_primary",
+      "deepseek_v4_flash_primary",
+      "opencode_deepseek_v4_flash_free"
+    ],
+    "deepseek/deepseek-v4-pro": [
+      "deepseek_v4_pro_primary"
+    ],
+    "mistral/codestral-2508": [
+      "mistral_codestral_2508_primary"
+    ],
+    "mistral/devstral-2512": [
+      "mistral_devstral_2512_primary"
+    ],
+    "mistral/mistral-small-2603": [
+      "mistral_small_2603_primary"
+    ],
+    "mistral/mistral-medium-2508": [
+      "mistral_medium_2508_primary"
+    ],
+    "mistral/mistral-medium-2505": [
+      "mistral_medium_2505_primary"
+    ],
+    "mistral/mistral-large-2512": [
+      "mistral_large_2512_primary"
+    ],
+    "mistral/mistral-large-3": [
+      "mistral_large_3_primary"
+    ],
+    "mistral/labs-leanstral-1-5-1": [
+      "mistral_labs_leanstral_1_5_1_primary"
+    ],
+    "zai/glm-4.7-flash": [
+      "zai_glm_4_7_flash_primary"
+    ],
+    "zai/glm-4.5-flash": [
+      "zai_glm_4_5_flash_primary"
+    ],
+    "zai/glm-4.7-flashx": [
+      "zai_glm_4_7_flashx_primary"
+    ],
+    "zai/glm-4.7": [
+      "zai_glm_4_7_primary"
+    ],
+    "zai/glm-5": [
+      "zai_glm_5_primary"
+    ],
+    "nvidia/nemotron-3-ultra-550b-a55b:free": [
+      "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
+      "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
+      "opencode_nemotron_3_ultra_free"
+    ],
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free": [
+      "openrouter_nvidia_nemotron_3_super_120b_a12b_free"
+    ],
+    "openrouter/qwen/qwen3-235b-a22b-2507": [
+      "openrouter_qwen_qwen3_235b_a22b_2507"
+    ],
+    "openrouter/mistralai/mistral-small-3.2-24b-instruct": [
+      "openrouter_mistralai_mistral_small_3_2_24b_instruct"
+    ],
+    "openrouter/openai/gpt-4o-mini": [
+      "openrouter_openai_gpt_4o_mini"
+    ],
+    "kilo/stepfun/step-3.7-flash:free": [
+      "kilo_stepfun_step_3_7_flash_free"
+    ],
+    "opencode/mimo-v2.5-free": [
+      "opencode_mimo_v2_5_free"
+    ]
+  },
+  "model_aliases": {
+    "deepseek/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
+    "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "opencode/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
+    "opencode/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
+    "opencode/nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
+    "gemini/gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite": "gemini/gemini-3.1-flash-lite",
+    "gemini/gemini-3.1-flash-lite": "gemini/gemini-3.1-flash-lite",
+    "gemma-4-26b-a4b-it": "google/gemma-4-26b-a4b-it",
+    "gemini/gemma-4-26b-a4b-it": "google/gemma-4-26b-a4b-it",
+    "gemma-4-31b-it": "google/gemma-4-31b-it",
+    "gemini/gemma-4-31b-it": "google/gemma-4-31b-it",
+    "gemini-3-flash-preview": "gemini/gemini-3-flash-preview",
+    "gemini/gemini-3-flash-preview": "gemini/gemini-3-flash-preview",
+    "gemini-3.6-flash": "gemini/gemini-3.6-flash",
+    "gemini/gemini-3.6-flash": "gemini/gemini-3.6-flash",
+    "gemini-3.5-flash": "gemini/gemini-3.5-flash",
+    "gemini/gemini-3.5-flash": "gemini/gemini-3.5-flash",
+    "llama-3.3-70b-versatile": "meta-llama/llama-3.3-70b-instruct",
+    "groq/llama-3.3-70b-versatile": "meta-llama/llama-3.3-70b-instruct",
+    "Meta-Llama-3.3-70B-Instruct": "meta-llama/llama-3.3-70b-instruct",
+    "sambanova/Meta-Llama-3.3-70B-Instruct": "meta-llama/llama-3.3-70b-instruct",
+    "meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
+    "openrouter/meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
+    "Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
+    "sambanova/Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
+    "Qwen/Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
+    "siliconflow/Qwen/Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
+    "deepseek-ai/DeepSeek-V4-Flash-0731": "deepseek/deepseek-v4-flash",
+    "siliconflow/deepseek-ai/DeepSeek-V4-Flash-0731": "deepseek/deepseek-v4-flash",
+    "deepseek-v4-flash": "deepseek/deepseek-v4-flash",
+    "deepseek/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
+    "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-pro": "deepseek/deepseek-v4-pro",
+    "codestral-2508": "mistral/codestral-2508",
+    "mistral/codestral-2508": "mistral/codestral-2508",
+    "devstral-2512": "mistral/devstral-2512",
+    "mistral/devstral-2512": "mistral/devstral-2512",
+    "mistral-small-2603": "mistral/mistral-small-2603",
+    "mistral/mistral-small-2603": "mistral/mistral-small-2603",
+    "mistral-medium-2508": "mistral/mistral-medium-2508",
+    "mistral/mistral-medium-2508": "mistral/mistral-medium-2508",
+    "mistral-medium-2505": "mistral/mistral-medium-2505",
+    "mistral/mistral-medium-2505": "mistral/mistral-medium-2505",
+    "mistral-large-2512": "mistral/mistral-large-2512",
+    "mistral/mistral-large-2512": "mistral/mistral-large-2512",
+    "mistral-large-3": "mistral/mistral-large-3",
+    "mistral/mistral-large-3": "mistral/mistral-large-3",
+    "labs-leanstral-1-5-1": "mistral/labs-leanstral-1-5-1",
+    "mistral/labs-leanstral-1-5-1": "mistral/labs-leanstral-1-5-1",
+    "glm-4.7-flash": "zai/glm-4.7-flash",
+    "zai/glm-4.7-flash": "zai/glm-4.7-flash",
+    "glm-4.5-flash": "zai/glm-4.5-flash",
+    "zai/glm-4.5-flash": "zai/glm-4.5-flash",
+    "glm-4.7-flashx": "zai/glm-4.7-flashx",
+    "zai/glm-4.7-flashx": "zai/glm-4.7-flashx",
+    "glm-4.7": "zai/glm-4.7",
+    "zai/glm-4.7": "zai/glm-4.7",
+    "glm-5": "zai/glm-5",
+    "zai/glm-5": "zai/glm-5",
+    "google/gemma-4-31b-it:free": "google/gemma-4-31b-it",
+    "openrouter/google/gemma-4-31b-it:free": "google/gemma-4-31b-it",
+    "google/gemma-4-26b-a4b-it:free": "google/gemma-4-26b-a4b-it",
+    "openrouter/google/gemma-4-26b-a4b-it:free": "google/gemma-4-26b-a4b-it",
+    "nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-super-120b-a12b:free": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "qwen/qwen3-235b-a22b-2507": "openrouter/qwen/qwen3-235b-a22b-2507",
+    "openrouter/qwen/qwen3-235b-a22b-2507": "openrouter/qwen/qwen3-235b-a22b-2507",
+    "mistralai/mistral-small-3.2-24b-instruct": "openrouter/mistralai/mistral-small-3.2-24b-instruct",
+    "openrouter/mistralai/mistral-small-3.2-24b-instruct": "openrouter/mistralai/mistral-small-3.2-24b-instruct",
+    "openai/gpt-4o-mini": "openrouter/openai/gpt-4o-mini",
+    "openrouter/openai/gpt-4o-mini": "openrouter/openai/gpt-4o-mini",
+    "stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
+    "kilo/stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
+    "deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
+    "mimo-v2.5-free": "opencode/mimo-v2.5-free",
+    "opencode/mimo-v2.5-free": "opencode/mimo-v2.5-free",
+    "nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free"
+  }
+}
