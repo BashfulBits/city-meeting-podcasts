@@ -729,3 +729,37 @@ def test_dispatch_job_batch_isolates_a_single_rejected_job():
     assert call_count["enqueue"] == 1 + len(jobs)
     assert len(results) == 2
     assert all(isinstance(r, JobHandle) for r in results)
+
+
+def test_dispatch_job_batch_chunks_large_batch_over_one_thousand():
+    """Batches exceeding ENQUEUE_BATCH_MAX (1000) are partitioned across multiple calls."""
+    storage = MockStorage()
+    enqueue_batch_sizes = []
+
+    def _enqueue(url, json=None, **_kw):
+        jobs = json.get("jobs", [])
+        enqueue_batch_sizes.append(len(jobs))
+        return _accept_all(url, json=json)
+
+    mock_session = MagicMock()
+    mock_session.post.side_effect = _router({":enqueue-batch": _enqueue})
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={"messages": [{"role": "user", "content": f"job {i}"}]},
+            recipe_hash=f"recipe-chunk-{i}",
+        )
+        for i in range(1050)
+    ]
+
+    results = dispatch_job_batch(backend, jobs)
+
+    assert len(results) == 1050
+    assert enqueue_batch_sizes == [1000, 50]
+    assert all(isinstance(r, JobHandle) for r in results)

@@ -528,8 +528,12 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                         "error": str(result)[:500],
                     }
                     judge_pending = True
-                _persist_state(state, state_path, storage, state_dir)
-        if judge_pending or len(decisions) != 6 or any(d is None for d in decisions):
+            _persist_state(state, state_path, storage, state_dir)
+        if (
+            judge_pending
+            or len(decisions) != len(CONTESTS) * 2
+            or any(d is None for d in decisions)
+        ):
             continue
         state["results"].append(
             {

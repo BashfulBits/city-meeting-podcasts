@@ -2216,18 +2216,21 @@ def dispatch_job_batch(
     if not jobs:
         return []
 
-    try:
-        results: list[JobResult | JobHandle | Exception] = list(backend.enqueue_batch(jobs))
-    except Exception:  # noqa: BLE001 -- enqueue_batch raises for the WHOLE call on a single
-        # job's rejection (e.g. idempotency_conflict), which would otherwise cost every other
-        # job in this batch its own already-correct submission. Retry one job at a time so a
-        # single bad job costs only itself, matching the old per-job code's isolation.
-        results = []
-        for job in jobs:
-            try:
-                results.append(backend.enqueue_batch([job])[0])
-            except Exception as job_exc:  # noqa: BLE001 -- isolate this one job's failure
-                results.append(job_exc)
+    max_batch_size = 1000
+    results: list[JobResult | JobHandle | Exception] = []
+    for chunk_start in range(0, len(jobs), max_batch_size):
+        chunk = jobs[chunk_start : chunk_start + max_batch_size]
+        try:
+            results.extend(backend.enqueue_batch(chunk))
+        except Exception:  # noqa: BLE001 -- enqueue_batch raises for the WHOLE call on a single
+            # job's rejection (e.g. idempotency_conflict), which would otherwise cost every other
+            # job in this batch its own already-correct submission. Retry one job at a time so a
+            # single bad job costs only itself, matching the old per-job code's isolation.
+            for job in chunk:
+                try:
+                    results.append(backend.enqueue_batch([job])[0])
+                except Exception as job_exc:  # noqa: BLE001 -- isolate this one job's failure
+                    results.append(job_exc)
 
     pending_handles = [r for r in results if isinstance(r, JobHandle)]
     if not pending_handles:
