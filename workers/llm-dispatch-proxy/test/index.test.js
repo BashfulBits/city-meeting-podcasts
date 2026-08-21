@@ -361,6 +361,25 @@ test("a request for a model_routing source model is also made eligible for its o
     await env.LLM_QUEUE.get(`requests/${unroutedBody.id}.json`)
   ).json();
   assert.equal(unroutedStored.policy.allowed_models, undefined);
+
+  // CodeRabbit, PR #1268: a routed source model elsewhere in an explicit `allowed_models` list
+  // (not the request's own `model`) must still get its overflow target expanded.
+  const unrelatedRequestModel = await handleRequest(
+    chatRequest(undefined, "model-routing-unrelated-request-model", "mistral/mistral-large-2512", {
+      allowed_models: ["mistral/mistral-large-2512", "mistral/mistral-medium-2508"],
+    }),
+    env,
+  );
+  assert.equal(unrelatedRequestModel.status, 202);
+  const unrelatedBody = await unrelatedRequestModel.json();
+  const unrelatedStored = await (
+    await env.LLM_QUEUE.get(`requests/${unrelatedBody.id}.json`)
+  ).json();
+  assert.deepEqual(unrelatedStored.policy.allowed_models, [
+    "mistral/mistral-large-2512",
+    "mistral/mistral-medium-2508",
+    "gemini/gemini-3.5-flash-lite",
+  ]);
 });
 
 test("accepts the configured default route but rejects an unrecognized model", async () => {

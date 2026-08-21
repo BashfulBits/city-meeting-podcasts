@@ -223,6 +223,18 @@ def test_validated_model_routing_rejects_self_routing():
         )
 
 
+def test_validated_model_routing_rejects_a_non_mapping_top_level_value():
+    for invalid in ([], "canonical/model", 1, True):
+        with pytest.raises(ValueError, match="mapping of source models"):
+            compile_llm_limits._validated_model_routing(
+                invalid, model_aliases={}, canonical_models=set()
+            )
+    assert (
+        compile_llm_limits._validated_model_routing(None, model_aliases={}, canonical_models=set())
+        == {}
+    )
+
+
 def test_validated_model_routing_rejects_a_non_list_or_empty_target():
     with pytest.raises(ValueError, match="non-empty list"):
         compile_llm_limits._validated_model_routing(

@@ -505,16 +505,21 @@ def select_route(
         )
     route, route_key, _, predicted, _, route_requests, route_tokens, transport = min(
         candidates,
-        # A `model_routing`-injected overflow model only wins a tie against the caller's own
-        # requested model(s) -- real exhaustion (rpm/rpd/tpm/cost) is already decided above by
-        # `ledger.available()` filtering the ineligible route out of `candidates` entirely; this
-        # tiebreak is purely between routes that are *both* still eligible right now.
+        # A `model_routing`-injected overflow model only wins over the caller's own requested
+        # model(s) once every requested model is genuinely unavailable -- real exhaustion
+        # (rpm/rpd/tpm/cost) is already decided above by `ledger.available()` filtering the
+        # ineligible route out of `candidates` entirely, so this dimension only distinguishes a
+        # requested route that's merely busier/costlier-right-now from an overflow route that
+        # happens to look cheaper, which must not win. Ranking first on requested-vs-overflow
+        # (before free/cost/utilization) mirrors the Worker's `selectRoute`, which fully exhausts
+        # one model's free-then-paid routes before ever trying the next model in the list
+        # (CodeRabbit, PR #1268).
         key=lambda item: (
+            requested is not None and item[0].model not in requested,
             not item[0].free,
             item[2],
             item[4],
             item[3],
-            requested is not None and item[0].model not in requested,
             item[0].model,
             item[1],
         ),

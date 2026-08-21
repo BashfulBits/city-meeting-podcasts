@@ -552,8 +552,16 @@ def _validated_model_routing(
             raise ValueError(f"model_routing {where} references unknown model {selector!r}")
         return canonical
 
+    if raw_model_routing is None:
+        return {}
+    if not isinstance(raw_model_routing, dict):
+        raise ValueError(
+            f"model_routing must be a mapping of source models to target lists, "
+            f"got {raw_model_routing!r}"
+        )
+
     result: dict[str, list[str]] = {}
-    for source, targets in (raw_model_routing or {}).items():
+    for source, targets in raw_model_routing.items():
         canonical_source = resolve(source, where=f"key {source!r}")
         if not isinstance(targets, list) or not targets:
             raise ValueError(f"model_routing[{source!r}] must be a non-empty list of target models")
