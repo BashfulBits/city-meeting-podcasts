@@ -87,17 +87,16 @@ export async function signRequest({
     .map(([k, v]) => `${uriEncode(k)}=${uriEncode(v)}`)
     .join("&");
 
-  const allHeaders = {
-    ...headers,
-    host,
-    "x-amz-content-sha256": payloadHash,
-    "x-amz-date": amzDate,
-  };
-  const sortedHeaderNames = Object.keys(allHeaders)
-    .map((k) => k.toLowerCase())
-    .sort();
+  const allHeaders = {};
+  for (const [k, v] of Object.entries(headers)) {
+    allHeaders[k.toLowerCase()] = v;
+  }
+  allHeaders["host"] = host;
+  allHeaders["x-amz-content-sha256"] = payloadHash;
+  allHeaders["x-amz-date"] = amzDate;
+  const sortedHeaderNames = Object.keys(allHeaders).sort();
   const canonicalHeaders =
-    sortedHeaderNames.map((name) => `${name}:${String(allHeaders[name]).trim()}\n`).join("") ;
+    sortedHeaderNames.map((name) => `${name}:${String(allHeaders[name]).trim()}\n`).join("");
   const signedHeaders = sortedHeaderNames.join(";");
 
   const canonicalRequest = [

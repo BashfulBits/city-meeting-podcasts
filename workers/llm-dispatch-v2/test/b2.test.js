@@ -19,8 +19,14 @@ function referenceSignature({ method, host, region, path, query, headers, body, 
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join("&");
-  const allHeaders = { ...headers, host, "x-amz-content-sha256": payloadHash, "x-amz-date": amzDate };
-  const sortedNames = Object.keys(allHeaders).map((k) => k.toLowerCase()).sort();
+  const allHeaders = {};
+  for (const [k, v] of Object.entries(headers)) {
+    allHeaders[k.toLowerCase()] = v;
+  }
+  allHeaders["host"] = host;
+  allHeaders["x-amz-content-sha256"] = payloadHash;
+  allHeaders["x-amz-date"] = amzDate;
+  const sortedNames = Object.keys(allHeaders).sort();
   const canonicalHeaders = sortedNames.map((n) => `${n}:${String(allHeaders[n]).trim()}\n`).join("");
   const signedHeaders = sortedNames.join(";");
 
@@ -114,4 +120,23 @@ test("signRequest sorts query parameters and percent-encodes them consistently",
 test("regionFromEndpoint extracts the region segment from a Backblaze-style host", () => {
   assert.equal(regionFromEndpoint("s3.us-west-004.backblazeb2.com"), "us-west-004");
   assert.equal(regionFromEndpoint("s3.eu-central-003.backblazeb2.com"), "eu-central-003");
+});
+
+test("signRequest correctly resolves mixed-case headers in canonical headers", async () => {
+  const now = new Date("2024-03-15T00:00:00.000Z");
+  const params = {
+    method: "PUT",
+    host: "s3.us-west-004.backblazeb2.com",
+    region: "us-west-004",
+    path: "/my-bucket/results/job-1/result.json",
+    query: [],
+    headers: { "Content-Type": "application/json" },
+    body: '{"status":"ok"}',
+    accessKeyId: "0041234567890abcdef",
+    secretAccessKey: "K004abcdefghijklmnopqrstuvwxyz0123456789",
+    now,
+  };
+  const headers = await signRequest(params);
+  const reference = referenceSignature({ ...params, amzDate: "20240315T000000Z", dateStamp: "20240315" });
+  assert.equal(headers.authorization, reference.authorization);
 });

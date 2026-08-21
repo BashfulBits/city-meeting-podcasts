@@ -161,6 +161,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   _ensureColumn(table, column, definition) {
+    const ALLOWED_TABLES = new Set(["routes", "jobs", "bundles", "attempts", "estimates", "scheduler"]);
+    const ALLOWED_COLUMNS = new Set(["rpd_window_start", "rpd_count"]);
+    const ALLOWED_DEFINITIONS = new Set(["INTEGER NOT NULL DEFAULT 0"]);
+    if (!ALLOWED_TABLES.has(table) || !ALLOWED_COLUMNS.has(column) || !ALLOWED_DEFINITIONS.has(definition)) {
+      throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
+    }
     const sql = this._getSql();
     const columns = [...sql.exec(`PRAGMA table_info(${table})`)];
     if (columns.some((c) => c.name === column)) return;
@@ -1042,6 +1048,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _modelForRoute(routeId) {
     const catalog = this._dispatchLimits();
+    const modelRoutesMap = catalog?.model_routes_map || {};
+    for (const [model, routeIds] of Object.entries(modelRoutesMap)) {
+      if (Array.isArray(routeIds) && routeIds.includes(routeId)) {
+        return model;
+      }
+    }
     return catalog?.routes_by_id?.[routeId]?.model || catalog?.routes_by_id?.[routeId]?.upstream_model || routeId;
   }
 

@@ -257,10 +257,10 @@ test("scheduled() does nothing when B2 credentials are not configured", async ()
     await worker.scheduled({}, env, { waitUntil: (p) => waitUntilPromises.push(p) });
     await Promise.all(waitUntilPromises);
 
-    assert.equal(fetchCalls, 0); // claimDispatchWindow leases the job, but nothing gets called
+    assert.equal(fetchCalls, 0); // No fetch calls made when B2 credentials missing
     const coordinator = env.LLM_SCHEDULER.getByName();
     const pollRes = await coordinator.pollBatch(["job-nob2"]);
-    assert.equal(pollRes.statuses[0].state, "leased"); // left leased, not silently dropped
+    assert.equal(pollRes.statuses[0].state, "queued"); // remains queued without leasing when B2 is missing
   } finally {
     globalThis.fetch = originalFetch;
   }

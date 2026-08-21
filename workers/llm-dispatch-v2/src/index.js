@@ -99,6 +99,14 @@ export function validateConfig(env) {
     );
   }
 
+  const estimatedCallDurationCeiling = Number(env.ESTIMATED_CALL_DURATION_CEILING_SECONDS || 20);
+  if (estimatedCallDurationCeiling >= dispatchWindow) {
+    throw new Error(
+      `Invalid config: ESTIMATED_CALL_DURATION_CEILING_SECONDS (${estimatedCallDurationCeiling}) ` +
+      `must be < DISPATCH_WINDOW_SECONDS (${dispatchWindow})`
+    );
+  }
+
   // Fail closed at deploy time, not per-request: an unset BEARER_TOKEN must never silently
   // disable auth (see hasValidBearer below).
   if (!env.BEARER_TOKEN) {
@@ -439,6 +447,11 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
   }
 
   const route = routeForId(job.route_id, dispatchLimits);
+  if (!route) {
+    console.error(`scheduled: unknown route ${job.route_id} for job ${job.id}`);
+    laneState.predecessorActualStart = Date.now();
+    return baseAttemptResult(job, crypto.randomUUID(), null, null, "terminal_error");
+  }
   const idempotencyKey = routeSupportsProviderIdempotency(route, dispatchLimits)
     ? job.provider_idempotency_key || null
     : null;
@@ -490,6 +503,12 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
  * unit's own "do not" guardrails), and report every attempt in one completeBatch call.
  */
 async function runScheduledDispatch(env) {
+  const b2 = b2ClientFromEnv(env);
+  if (!b2) {
+    console.error("scheduled: B2 credentials not configured; cannot execute claimed plan");
+    return;
+  }
+
   const coordinator = getCoordinator(env);
   const dispatchLimits = env.DISPATCH_LIMITS_OVERRIDE || DISPATCH_LIMITS;
   const dispatchWindowSeconds = Number(env.DISPATCH_WINDOW_SECONDS || 25);
@@ -499,12 +518,6 @@ async function runScheduledDispatch(env) {
 
   const receivedAt = Date.now(); // wait_ms is relative to THIS instant, not plan-build time
   const bundleDeadline = receivedAt + dispatchWindowSeconds * 1000;
-  const b2 = b2ClientFromEnv(env);
-  if (!b2) {
-    console.error("scheduled: B2 credentials not configured; cannot execute claimed plan");
-    return;
-  }
-
   const maxResponseMs = Number(env.MAX_RESPONSE_SECONDS || 720) * 1000;
 
   const lanes = new Map();
@@ -547,8 +560,13 @@ async function runScheduledDispatch(env) {
     })
   );
 
-  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, results);
+  try {
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, results);
+  } catch (err) {
+    console.error(`scheduled: completeBatch failed for bundle ${plan.bundle_id}: ${describeError(err)}`, err);
+  }
 }
+
 
 export default {
   async fetch(request, env, ctx) {
