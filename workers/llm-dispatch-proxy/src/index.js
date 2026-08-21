@@ -890,6 +890,24 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
     policy.allowed_models = allowedModels;
   }
 
+  // `model_routing` (compiled from config/provider_limits.yml's `model_routing`) is a general,
+  // config-driven overflow map: every model eligible for this request -- the request's own model
+  // plus any explicit `allowed_models` the caller passed -- becomes eligible for its own
+  // configured target model(s) too. `citypods.compute.llm_scheduler.select_route` expands every
+  // entry in `policy.allowed_models` the same way, so this must too, not just `canonicalModel`.
+  // `selectRoute` below already tries `policy.allowed_models` in order and falls through past a
+  // merely-full earlier model, so appending here is enough -- no other call site needs to know.
+  const allowedModelsBase = policy.allowed_models || [canonicalModel];
+  const expandedAllowedModels = allowedModelsBase.flatMap((model) => [
+    model,
+    ...(dispatchLimits.model_routing?.[model] || [])
+      .map((target) => canonicalModelName(target, dispatchLimits))
+      .filter((target) => configuredModels.includes(target)),
+  ]);
+  if (expandedAllowedModels.length > allowedModelsBase.length) {
+    policy.allowed_models = [...new Set(expandedAllowedModels)];
+  }
+
   return {
     model: canonicalModel,
     request,

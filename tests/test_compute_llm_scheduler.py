@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from citypods.compute import llm_scheduler
 from citypods.compute.llm_budget import (
     LLMBudget,
     LLMReservation,
@@ -439,6 +440,86 @@ def test_production_mistral_medium_is_available_directly_after_catalog_expansion
     )
     assert included.model == model
     assert included.transport == "direct"
+
+
+def _model_routing_fixture_routes() -> dict[str, LLMRoute]:
+    requested = LLMRoute(
+        model="requested/model",
+        transport="direct",
+        transports=("direct",),
+        free=True,
+        quota=QuotaPolicy(rpm=10),
+        pricing=PricingPolicy(),
+    )
+    overflow = LLMRoute(
+        model="overflow/model",
+        transport="direct",
+        transports=("direct",),
+        free=True,
+        quota=QuotaPolicy(rpm=10),
+        pricing=PricingPolicy(),
+    )
+    return {requested.model: requested, overflow.model: overflow}
+
+
+def test_requested_model_wins_over_a_busier_but_still_eligible_overflow_target(monkeypatch):
+    """CodeRabbit, PR #1268: utilization/cost must not let a merely-busier requested model lose to
+    an idle overflow model -- overflow should only win once the requested model has no capacity
+    left at all, matching the Worker's `selectRoute`, which fully exhausts one model's own routes
+    before ever trying the next model in `allowed_models`."""
+    routes = _model_routing_fixture_routes()
+    monkeypatch.setattr(llm_scheduler, "MODEL_ROUTING", {"requested/model": ("overflow/model",)})
+
+    budget = LLMBudget()
+    ledger = budget._ledger("requested/model", NOW, route=routes["requested/model"])
+    ledger.requests_minute = 8  # 80% utilized, but still under the rpm=10 cap
+
+    selection = select_route(
+        LLMRequestPolicy(allowed_models=("requested/model",)),
+        routes=routes,
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=64,
+        now=NOW,
+    )
+    assert selection.model == "requested/model"
+
+
+def test_overflow_target_is_used_once_the_requested_model_has_no_capacity(monkeypatch):
+    routes = _model_routing_fixture_routes()
+    monkeypatch.setattr(llm_scheduler, "MODEL_ROUTING", {"requested/model": ("overflow/model",)})
+
+    budget = LLMBudget()
+    ledger = budget._ledger("requested/model", NOW, route=routes["requested/model"])
+    ledger.requests_minute = 10  # fully exhausted (rpm=10)
+
+    selection = select_route(
+        LLMRequestPolicy(allowed_models=("requested/model",)),
+        routes=routes,
+        ledger=budget,
+        available_transports=DIRECT,
+        estimated_tokens=64,
+        now=NOW,
+    )
+    assert selection.model == "overflow/model"
+
+
+def test_a_model_with_no_configured_overflow_is_unaffected_by_model_routing(monkeypatch):
+    routes = _model_routing_fixture_routes()
+    monkeypatch.setattr(llm_scheduler, "MODEL_ROUTING", {"requested/model": ("overflow/model",)})
+
+    selection = select_route(
+        LLMRequestPolicy(allowed_models=("overflow/model",)),
+        routes=routes,
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=64,
+        now=NOW,
+    )
+    assert selection.model == "overflow/model"
+    # `model_routing` is directional: routing "requested/model" -> "overflow/model" does not
+    # implicitly make "overflow/model" callers eligible for "requested/model" too.
+    assert ("requested/model", "allowlist gate") in selection.rejected
 
 
 def test_retry_at_is_next_minute_when_only_the_per_minute_window_is_full():

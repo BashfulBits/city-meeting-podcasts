@@ -17,6 +17,20 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Cross-model overflow routing (`model_routing`) and a Mistral Medium → Gemini 3.5 Flash Lite
+  route.** Added an optional `model_routing` map to `config/provider_limits.yml`: a job pinned to
+  one model (`allowed_models=(source,)`) becomes eligible for its configured target model(s) too,
+  once the source's own routes are exhausted or paused — extra daily capacity for a job without
+  editing the job or caller. Compiled into both `citypods/compute/llm_routes.json` and
+  `workers/llm-dispatch-proxy/src/dispatch_limits.json`; the Python scheduler
+  (`llm_scheduler.select_route`) and the `llm-dispatch-proxy` Worker
+  (`normalizeChatRequest`) both expand a request's allowed models the same way, so it applies
+  uniformly across transports. Ties still prefer the caller's own requested model over an
+  overflow target when both are equally eligible. Routed Mistral Medium (2508/2505) to Gemini 3.5
+  Flash Lite's independent free-tier pool as the first use, to help drain the queued-request
+  backlog built up during Mistral's monthly-quota pause (see the secondary-capacity entry above)
+  without touching the queued jobs themselves.
+
 - **Secondary Mistral dispatch capacity and deeper v1 queue lookahead.** Added independent
   secondary-account routes for every native Mistral model, using `MISTRAL_API_KEY_SECONDARY` and
   the same RPM/TPM limits each primary route had before its temporary `rpd: 0` quota pause. The

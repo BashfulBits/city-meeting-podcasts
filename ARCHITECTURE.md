@@ -364,7 +364,10 @@ total on `/admin/status`.
   plus a compact date-ordered `ready/` marker; a per-minute Free-plan Cron Trigger lists a bounded
   lookahead of compact markers and reads canonical requests only for viable candidates (constant in
   queue depth) before claiming one request per scheduled run,
-  ranks each request's canonical model's candidate routes (free before paid, then cheapest) against
+  ranks each request's canonical model's candidate routes (free before paid, then cheapest,
+  optionally expanded with a configured cross-model overflow target from `model_routing` --
+  2026-08-21; a job pinned to one model becomes eligible for its target model too once its own
+  routes are exhausted/paused, ties still favoring the caller's own model) against
   a **per-route/per-account ledger** (`state/dispatch_coordinator.json`, R2, mirroring
   `llm_budget.py`'s versioned minute/day window, cost, `blocked_until`, and `inflight` shape
   alongside the single-runner cron lease),

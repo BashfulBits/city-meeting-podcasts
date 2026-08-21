@@ -198,6 +198,7 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
     return {
         "_metadata": compiled["_metadata"],
         "model_aliases": compiled.get("model_aliases", {}),
+        "model_routing": compiled.get("model_routing", {}),
         "routes": routes,
     }
 
@@ -293,6 +294,9 @@ def _worker_catalog(compiled: dict[str, Any]) -> dict[str, Any]:
             for model, route_ids in compiled.get("model_routes_map", {}).items()
         },
         "model_aliases": worker_aliases,
+        "model_routing": {
+            model: list(targets) for model, targets in compiled.get("model_routing", {}).items()
+        },
     }
 
 
@@ -524,6 +528,53 @@ def _validated_routes(
     return normalized_routes, routes_by_id, model_routes_map, model_aliases
 
 
+def _validated_model_routing(
+    raw_model_routing: Any,
+    *,
+    model_aliases: dict[str, str],
+    canonical_models: set[str],
+) -> dict[str, list[str]]:
+    """Normalize and validate the optional cross-model overflow map (``model_routing`` in the YAML).
+
+    Each key names a model whose callers may also be satisfied by any of its listed target models
+    once its own routes are exhausted/unavailable -- extra capacity for a job pinned to one model,
+    without editing the job itself. Keys and values may use either a canonical model or a legacy
+    alias; both resolve through ``model_aliases`` the same way a route's own ``model`` selector
+    does. An unknown model on either side is a hard compile error, so a typo can't silently produce
+    a routing entry nothing ever reaches.
+    """
+
+    def resolve(selector: Any, *, where: str) -> str:
+        if not isinstance(selector, str) or not selector.strip():
+            raise ValueError(f"model_routing {where} has an invalid model selector: {selector!r}")
+        canonical = model_aliases.get(selector, selector)
+        if canonical not in canonical_models:
+            raise ValueError(f"model_routing {where} references unknown model {selector!r}")
+        return canonical
+
+    if raw_model_routing is None:
+        return {}
+    if not isinstance(raw_model_routing, dict):
+        raise ValueError(
+            f"model_routing must be a mapping of source models to target lists, "
+            f"got {raw_model_routing!r}"
+        )
+
+    result: dict[str, list[str]] = {}
+    for source, targets in raw_model_routing.items():
+        canonical_source = resolve(source, where=f"key {source!r}")
+        if not isinstance(targets, list) or not targets:
+            raise ValueError(f"model_routing[{source!r}] must be a non-empty list of target models")
+        resolved = result.setdefault(canonical_source, [])
+        for target in targets:
+            canonical_target = resolve(target, where=f"target for {source!r}")
+            if canonical_target == canonical_source:
+                raise ValueError(f"model_routing[{source!r}] cannot route a model to itself")
+            if canonical_target not in resolved:
+                resolved.append(canonical_target)
+    return result
+
+
 def _validate_pricing_windows(route: dict[str, Any]) -> None:
     """Reject a rate window that can never reach a lower price.
 
@@ -595,6 +646,11 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         raw.get("structured_output_profiles")
     )
     normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
+    model_routing = _validated_model_routing(
+        raw.get("model_routing"),
+        model_aliases=model_aliases,
+        canonical_models=set(model_routes_map),
+    )
     for route in normalized_routes:
         _validate_pricing_windows(route)
         if route.get("tpm") is not None and token_estimate_buffer != 1.0:
@@ -642,6 +698,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         "routes_by_id": routes_by_id,
         "model_routes_map": model_routes_map,
         "model_aliases": model_aliases,
+        "model_routing": model_routing,
     }
     return compiled
 

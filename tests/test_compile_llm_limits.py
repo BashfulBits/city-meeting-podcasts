@@ -28,6 +28,7 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
         "routes_by_id",
         "model_routes_map",
         "model_aliases",
+        "model_routing",
     }
     assert len(worker["routes_by_id"]) == len(compiled["routes"])
     assert "routes" not in worker
@@ -172,6 +173,80 @@ def test_full_day_pricing_surcharge_is_rejected():
                     "windows": [{"tz": "UTC", "start": "00:00", "end": "00:00", "multiplier": 2}]
                 },
             }
+        )
+
+
+def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
+    compiled = compile_llm_limits.compile_limits()
+    assert compiled["model_routing"]["mistral/mistral-medium-2508"] == [
+        "gemini/gemini-3.5-flash-lite"
+    ]
+    assert compiled["model_routing"]["mistral/mistral-medium-2505"] == [
+        "gemini/gemini-3.5-flash-lite"
+    ]
+    worker = compile_llm_limits._worker_catalog(compiled)
+    python_catalog = compile_llm_limits._python_routes(compiled)
+    assert worker["model_routing"] == compiled["model_routing"]
+    assert python_catalog["model_routing"] == compiled["model_routing"]
+
+
+def test_validated_model_routing_resolves_legacy_aliases_and_dedups():
+    routing = compile_llm_limits._validated_model_routing(
+        {"legacy/source": ["legacy/target", "canonical/target"]},
+        model_aliases={"legacy/source": "canonical/source", "legacy/target": "canonical/target"},
+        canonical_models={"canonical/source", "canonical/target"},
+    )
+    assert routing == {"canonical/source": ["canonical/target"]}
+
+
+def test_validated_model_routing_rejects_an_unknown_model():
+    with pytest.raises(ValueError, match="unknown model"):
+        compile_llm_limits._validated_model_routing(
+            {"canonical/source": ["missing/target"]},
+            model_aliases={},
+            canonical_models={"canonical/source"},
+        )
+    with pytest.raises(ValueError, match="unknown model"):
+        compile_llm_limits._validated_model_routing(
+            {"missing/source": ["canonical/target"]},
+            model_aliases={},
+            canonical_models={"canonical/target"},
+        )
+
+
+def test_validated_model_routing_rejects_self_routing():
+    with pytest.raises(ValueError, match="route a model to itself"):
+        compile_llm_limits._validated_model_routing(
+            {"canonical/model": ["canonical/model"]},
+            model_aliases={},
+            canonical_models={"canonical/model"},
+        )
+
+
+def test_validated_model_routing_rejects_a_non_mapping_top_level_value():
+    for invalid in ([], "canonical/model", 1, True):
+        with pytest.raises(ValueError, match="mapping of source models"):
+            compile_llm_limits._validated_model_routing(
+                invalid, model_aliases={}, canonical_models=set()
+            )
+    assert (
+        compile_llm_limits._validated_model_routing(None, model_aliases={}, canonical_models=set())
+        == {}
+    )
+
+
+def test_validated_model_routing_rejects_a_non_list_or_empty_target():
+    with pytest.raises(ValueError, match="non-empty list"):
+        compile_llm_limits._validated_model_routing(
+            {"canonical/model": "canonical/other"},
+            model_aliases={},
+            canonical_models={"canonical/model", "canonical/other"},
+        )
+    with pytest.raises(ValueError, match="non-empty list"):
+        compile_llm_limits._validated_model_routing(
+            {"canonical/model": []},
+            model_aliases={},
+            canonical_models={"canonical/model"},
         )
 
 

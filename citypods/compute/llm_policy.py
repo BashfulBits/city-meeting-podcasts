@@ -196,12 +196,12 @@ class LLMRoute:
 _DEEPSEEK_WINDOW = PeakWindow("UTC", time(16, 30), time(0, 30), 0.5)
 
 
-def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
+def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str, tuple[str, ...]]]:
     path = Path(__file__).with_name("llm_routes.json")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [], {}
+        return [], {}, {}
     except json.JSONDecodeError as exc:
         raise RuntimeError(
             f"Invalid generated LLM route catalog at {path}; rerun scripts/compile_llm_limits.py"
@@ -312,10 +312,15 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
         for source, target in (raw.get("model_aliases") or {}).items()
         if str(source) and str(target)
     }
-    return result, aliases
+    routing = {
+        str(source): tuple(str(target) for target in targets if str(target))
+        for source, targets in (raw.get("model_routing") or {}).items()
+        if str(source) and targets
+    }
+    return result, aliases, routing
 
 
-_GENERATED_ROUTES, MODEL_ALIASES = _load_generated_catalog()
+_GENERATED_ROUTES, MODEL_ALIASES, MODEL_ROUTING = _load_generated_catalog()
 
 
 def canonical_model(model: str) -> str:
@@ -514,6 +519,7 @@ __all__ = [
     "LLMRequestPolicy",
     "LLMRoute",
     "MODEL_ALIASES",
+    "MODEL_ROUTING",
     "PeakWindow",
     "PricingPeriod",
     "PricingPolicy",
