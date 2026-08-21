@@ -9,14 +9,26 @@ import DISPATCH_LIMITS from "../src/dispatch_limits.json" with { type: "json" };
 // as its default fixture model throughout -- most tests here exercise generic dispatch mechanics
 // (credential resolution, pacing, batching, ledger CAS, retries) against the *real* compiled
 // catalog rather than a synthetic stand-in, and were never meant to also assert on today's
-// operational quota state. Restore this one field on the in-memory copy so those tests keep
-// exercising real behavior; the shipped dispatch_limits.json (and the Worker deployed from it)
-// keeps `rpd: 0` untouched. Quota-exhaustion behavior itself, including `rpd`, already has its
-// own dedicated coverage against synthetic route objects (see "routeAvailable respects
-// rpm/rpd/tpm/blocked_until independently" below) -- unaffected by this restore.
+// operational quota state. Restore this field and unscale split-cap overlay on the in-memory copy
+// so those tests keep exercising real behavior; the shipped dispatch_limits.json (and the Worker
+// deployed from it) keeps `rpd: 0` and 50% split-cap limits untouched. Quota-exhaustion behavior
+// itself, including `rpd`, already has its own dedicated coverage against synthetic route objects.
+const splitCap = DISPATCH_LIMITS._metadata?.split_cap_multiplier || 1.0;
+if (splitCap < 1.0) {
+  for (const provider of Object.values(DISPATCH_LIMITS.providers)) {
+    if (provider.rpm) provider.rpm = Math.round(provider.rpm / splitCap);
+    if (provider.monthly_tpm) provider.monthly_tpm = Math.round(provider.monthly_tpm / splitCap);
+    if (provider.tpm) provider.tpm = Math.round(provider.tpm / splitCap);
+  }
+}
 for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
   if (route.provider === "mistral") {
     route.rpd = null;
+  }
+  if (splitCap < 1.0) {
+    if (route.rpm) route.rpm = Math.round(route.rpm / splitCap);
+    if (route.rpd) route.rpd = Math.round(route.rpd / splitCap);
+    if (route.tpm) route.tpm = Math.round(route.tpm / splitCap);
   }
 }
 

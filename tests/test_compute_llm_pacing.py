@@ -173,7 +173,7 @@ def test_both_flash_lite_routes_present_with_real_free_tier_quotas():
     for model in ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite"):
         route = ROUTES[model]
         assert route.free and route.transport == "direct"
-        assert route.quota.rpm == 15
-        assert route.quota.rpd == 500
-        assert route.quota.tpm == 225_000
+        assert route.quota.rpm == 7
+        assert route.quota.rpd == 250
+        assert route.quota.tpm == 112_500
         assert route.quota.reset_timezone == "America/Los_Angeles"
