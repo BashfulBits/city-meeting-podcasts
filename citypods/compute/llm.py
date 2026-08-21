@@ -2183,6 +2183,71 @@ class LiteLLMBackend(Backend):
     poll = reconcile
 
 
+def dispatch_job_batch(
+    backend: LiteLLMBackend, jobs: Sequence[InferenceJob]
+) -> list[JobResult | JobHandle | Exception]:
+    """Submit a whole run's jobs in one `enqueue_batch` call, then give any v2-backed pending
+    handle one immediate reconcile pass via a single batched `poll_batch` call, instead of a
+    caller submitting (and separately reconciling) one job at a time in a loop.
+
+    Shared by every caller that used to build N `InferenceJob`s and call `run_inference` on each
+    one individually -- `citypods/stages.py`'s chapter-agenda/chapter-locator stages and
+    `citypods/tournament.py`'s pairwise-judge comparisons, as of 2026-08-18. See review/44's
+    2026-08-18 incident retrospective: the dispatch v2 protocol/DO/`enqueue_batch`/`poll_batch`
+    were always batch-capable end to end, but no caller ever actually accumulated more than one
+    job per call before this -- every one submitted and reconciled a single job per iteration of
+    its own loop, which is exactly the per-job Worker-request volume that incident flagged as the
+    thing worth fixing next.
+
+    `enqueue_batch(jobs)` is a strict, behavior-preserving generalization of calling
+    `run_inference` once per job for a `queue_only=True` policy: both check `look_up_deferred`/
+    write the resulting handle back per job, and both fall through the same
+    `_enqueue_durable_policy_job` dispatch path -- `enqueue_batch` just does it for N jobs in one
+    SQLite transaction and one Worker request instead of N of each. `poll_batch` already filters
+    to `backend == "llm-dispatch-v2"` handles internally, so passing it every pending handle
+    (v1-backed ones included) is exactly as safe as an explicit per-handle backend check would be
+    -- see `citypods/stages.py`'s prior 2026-08-18 fix for that exact guard, now subsumed here.
+
+    Returns one entry per input job, in the same order, each either a `JobResult`, a `JobHandle`
+    still pending, or an `Exception` if that specific job's own submission failed (the caller is
+    expected to check for this and attribute it to that job, same as it would a `run_inference`
+    raise in the old per-job code).
+    """
+    if not jobs:
+        return []
+
+    max_batch_size = 1000
+    results: list[JobResult | JobHandle | Exception] = []
+    for chunk_start in range(0, len(jobs), max_batch_size):
+        chunk = jobs[chunk_start : chunk_start + max_batch_size]
+        try:
+            results.extend(backend.enqueue_batch(chunk))
+        except Exception:  # noqa: BLE001 -- enqueue_batch raises for the WHOLE call on a single
+            # job's rejection (e.g. idempotency_conflict), which would otherwise cost every other
+            # job in this batch its own already-correct submission. Retry one job at a time so a
+            # single bad job costs only itself, matching the old per-job code's isolation.
+            for job in chunk:
+                try:
+                    results.append(backend.enqueue_batch([job])[0])
+                except Exception as job_exc:  # noqa: BLE001 -- isolate this one job's failure
+                    results.append(job_exc)
+
+    pending_handles = [r for r in results if isinstance(r, JobHandle)]
+    if not pending_handles:
+        return results
+    try:
+        polled = backend.poll_batch(pending_handles)
+    except Exception:  # noqa: BLE001 -- a poll_batch failure (e.g. a terminal error surfacing
+        # for one unrelated handle in this same batch) must not discard every other handle's
+        # already-accepted state -- leave pending handles pending; the deferred sweep resolves
+        # them on its own cadence either way.
+        return results
+    return [
+        polled[r.ref] if isinstance(r, JobHandle) and polled.get(r.ref) is not None else r
+        for r in results
+    ]
+
+
 __all__ = [
     "LLMBackendConfig",
     "LLMBackendError",
@@ -2193,4 +2258,5 @@ __all__ = [
     "SUPPORTED_MODELS",
     "TASK_PROMPTS",
     "TASK_VERSIONS",
+    "dispatch_job_batch",
 ]

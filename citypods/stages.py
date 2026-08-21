@@ -5933,37 +5933,6 @@ def _write_chapter_json(storage, key: str, value: dict) -> str:
         return storage.put_file(key, path, "application/json")
 
 
-def _chapter_job_result(backend, job):
-    """Submit once and poll/reconcile once for a v2-backed handle; leave longer waits, and every
-    v1-backed handle, to the deferred sweep.
-
-    ``run_inference`` on an already-dispatched ``recipe_hash`` returns the existing deferred
-    ``JobHandle`` on record rather than resubmitting -- for a fresh v2 submission that's cheap to
-    reconcile immediately (one DO-backed RPC). For a handle left over from before
-    ``LLM_DISPATCH_V2_URL`` was wired in (``backend != "llm-dispatch-v2"``), reconciling here
-    means this stage re-polls v1's unbatched ``GET /v1/requests/{id}`` for EVERY such episode on
-    EVERY run -- one Worker invocation each, with no batching (v1 never had a poll-batch
-    endpoint) and no staleness cutoff short of ``llm_deferred.py``'s 38-day TTL. A 2026-08-18
-    chapter-agenda run against that backlog produced ~1980 such polls in under 10 minutes, all
-    returning 202 (still pending) -- pure Worker-request cost with zero progress. Leave those
-    entirely to `llm_deferred_sweep.py`'s own (batched-where-possible, far less frequent)
-    reconciliation instead of inline-reconciling the whole stale backlog here every time this
-    stage runs; the caller already treats an unreconciled ``JobHandle`` exactly like a
-    reconciled-but-still-pending one (``stats.defer("llm-pending")``), so skipping this call for
-    a stale handle changes cost, not correctness.
-    """
-
-    from citypods.compute.base import JobHandle, JobResult
-
-    result = backend.run_inference(job)
-    if isinstance(result, JobHandle) and result.backend == "llm-dispatch-v2":
-        completed = backend.reconcile(result)
-        if isinstance(completed, JobResult):
-            return completed
-        return result
-    return result
-
-
 class AgendaChapterCandidatesStage:
     """Extract source-grounded agenda candidates through the production Mistral route."""
 
@@ -5976,10 +5945,19 @@ class AgendaChapterCandidatesStage:
         from citypods.chapter_artifacts import artifact_key
         from citypods.chapter_jobs import build_agenda_job, finalize_agenda_job
         from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
+        from citypods.compute.base import JobHandle, JobResult
+        from citypods.compute.llm import dispatch_job_batch
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
             return stats
+
+        # Pass 1: validate and build every eligible episode's job without dispatching any of
+        # them yet, so the whole run's jobs can be submitted in one enqueue_batch call below
+        # instead of one Worker request per episode (see review/44's 2026-08-18 incident
+        # retrospective -- per-job dispatch/reconcile calls were exactly the Worker-request
+        # volume that incident flagged as the thing worth fixing next).
+        prepared: list[tuple[Episode, str, Any, str, str]] = []
         for ep in _materialize_set(
             episodes,
             city.full_artifact_episodes,
@@ -6012,18 +5990,35 @@ class AgendaChapterCandidatesStage:
                 continue
             agenda_text = raw.decode("utf-8", errors="replace")
             source_hash = hashlib.sha256(raw).hexdigest()
+            if ctx.stop is not None and ctx.stop():
+                stats.defer("stop-signal")
+                continue
             try:
                 job = build_agenda_job(
                     episode_uid=uid,
                     agenda_text=agenda_text,
                     agenda_source_hash=source_hash,
                 )
-                if ctx.stop is not None and ctx.stop():
-                    stats.defer("stop-signal")
-                    continue
-                result = _chapter_job_result(_chapter_llm_backend(ctx), job)
-                from citypods.compute.base import JobHandle, JobResult
+            except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
+                # build pass for every other episode
+                stats.errors.append(f"{uid}: agenda chapter extraction: {exc}")
+                continue
+            prepared.append((ep, uid, job, agenda_text, source_hash))
 
+        if not prepared:
+            return stats
+
+        # Pass 2: one dispatch for the whole batch.
+        results = dispatch_job_batch(
+            _chapter_llm_backend(ctx), [job for _, _, job, _, _ in prepared]
+        )
+
+        # Pass 3: finalize each episode against its own result, same as the old per-job code.
+        for (ep, uid, job, agenda_text, source_hash), result in zip(prepared, results, strict=True):
+            if isinstance(result, Exception):
+                stats.errors.append(f"{uid}: agenda chapter extraction: {result}")
+                continue
+            try:
                 if isinstance(result, JobHandle):
                     ep.generated_agenda_candidates = {
                         "status": "pending",
@@ -6054,7 +6049,8 @@ class AgendaChapterCandidatesStage:
                     "artifact_url": url,
                 }
                 stats.ran += 1
-            except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort lane
+            except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
+                # finalize pass for every other episode
                 stats.errors.append(f"{uid}: agenda chapter extraction: {exc}")
         return stats
 
@@ -6071,10 +6067,17 @@ class ChapterBoundaryLocatorStage:
         from citypods.chapter_artifacts import AgendaCandidatesArtifact, artifact_key
         from citypods.chapter_jobs import build_locator_job, finalize_locator_job
         from citypods.chapter_locator import build_locator_units
+        from citypods.compute.base import JobHandle, JobResult
+        from citypods.compute.llm import dispatch_job_batch
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
             return stats
+
+        # Pass 1: validate and build every eligible episode's job without dispatching any of
+        # them yet -- see AgendaChapterCandidatesStage.process for why (review/44's 2026-08-18
+        # incident retrospective).
+        prepared: list[tuple[Episode, str, Any, Any, str, list, str, dict]] = []
         for ep in _materialize_set(
             episodes,
             city.full_artifact_episodes,
@@ -6094,6 +6097,9 @@ class ChapterBoundaryLocatorStage:
             if not units:
                 stats.defer("missing-timed-transcript")
                 continue
+            if ctx.stop is not None and ctx.stop():
+                stats.defer("stop-signal")
+                continue
             try:
                 agenda = AgendaCandidatesArtifact.from_dict(raw_agenda)
                 selected_data = words if unit_source == "words" else vtt
@@ -6104,12 +6110,28 @@ class ChapterBoundaryLocatorStage:
                     transcript_hash=transcript_hash,
                     units=units,
                 )
-                if ctx.stop is not None and ctx.stop():
-                    stats.defer("stop-signal")
-                    continue
-                result = _chapter_job_result(_chapter_llm_backend(ctx), job)
-                from citypods.compute.base import JobHandle, JobResult
+            except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
+                # build pass for every other episode
+                stats.errors.append(f"{uid}: chapter locator: {exc}")
+                continue
+            prepared.append((ep, uid, job, agenda, transcript_hash, units, unit_source, raw_agenda))
 
+        if not prepared:
+            return stats
+
+        # Pass 2: one dispatch for the whole batch.
+        results = dispatch_job_batch(
+            _chapter_llm_backend(ctx), [job for _, _, job, _, _, _, _, _ in prepared]
+        )
+
+        # Pass 3: finalize each episode against its own result, same as the old per-job code.
+        for (ep, uid, job, agenda, transcript_hash, units, unit_source, raw_agenda), result in zip(
+            prepared, results, strict=True
+        ):
+            if isinstance(result, Exception):
+                stats.errors.append(f"{uid}: chapter locator: {result}")
+                continue
+            try:
                 if isinstance(result, JobHandle):
                     raw_agenda = dict(raw_agenda)
                     raw_agenda.update(
@@ -6170,7 +6192,8 @@ class ChapterBoundaryLocatorStage:
                     "transcript_unit_source": unit_source,
                 }
                 stats.ran += 1
-            except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort lane
+            except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
+                # finalize pass for every other episode
                 stats.errors.append(f"{uid}: chapter locator: {exc}")
         return stats
 

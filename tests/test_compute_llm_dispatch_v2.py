@@ -1,6 +1,7 @@
 """Tests for bounded bundled LLM dispatch v2 Python client."""
 
 import json
+import json as _json_module  # alias for use inside mocks whose own `json=` kwarg shadows the name
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -14,6 +15,7 @@ from citypods.compute.llm import (
     LLMBackendConfig,
     LLMBackendError,
     LLMDispatchTerminalError,
+    dispatch_job_batch,
 )
 from citypods.compute.structured import register_response_model
 
@@ -601,3 +603,163 @@ def test_poll_batch_validates_structured_output_and_preserves_sibling_results():
     # precise LLMStructuredOutputError surfaces on its own.
     with pytest.raises(LLMDispatchTerminalError):
         backend.poll_batch([h_good, h_bad])
+
+
+def _router(routes: dict):
+    """Route a mocked session's POST calls by URL suffix -- lets a single mock_session simulate
+    both the enqueue-batch and poll-batch endpoints dispatch_job_batch calls in sequence."""
+
+    def _post(url, json=None, headers=None, timeout=None):
+        for suffix, handler in routes.items():
+            if url.endswith(suffix):
+                return handler(url, json=json, headers=headers, timeout=timeout)
+        raise AssertionError(f"unexpected POST to {url}")
+
+    return _post
+
+
+def test_dispatch_job_batch_submits_all_jobs_in_one_call_and_reconciles_pending():
+    """The actual point of this function (see review/44's 2026-08-18 incident retrospective): N
+    jobs must produce exactly one enqueue-batch call and, for any still-pending v2 handle, exactly
+    one poll-batch call -- not N of each."""
+    storage = MockStorage()
+    enqueue_calls = []
+    poll_calls = []
+
+    def _enqueue(url, json=None, **_kw):
+        enqueue_calls.append(json)
+        return _accept_all(url, json=json)
+
+    def _poll(url, json=None, **_kw):
+        poll_calls.append(json)
+        ids = json.get("ids", [])
+        # Resolve only the first id; the second stays pending, matching a real still-in-flight
+        # handle -- proves per-handle results are mapped back correctly, not just "all resolved".
+        statuses = [{"id": ids[0], "state": "completed", "result_key": f"results/{ids[0]}.json"}]
+        storage.put_cas(
+            f"results/{ids[0]}.json",
+            _json_module.dumps({"choices": [{"message": {"content": "resolved"}}]}).encode("utf-8"),
+            "application/json",
+        )
+        return _mock_response(status_code=200, json_data={"statuses": statuses})
+
+    mock_session = MagicMock()
+    mock_session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _poll})
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={"messages": [{"role": "user", "content": f"job {i}"}]},
+            recipe_hash=f"recipe-batch-{i}",
+        )
+        for i in range(2)
+    ]
+
+    results = dispatch_job_batch(backend, jobs)
+
+    assert len(enqueue_calls) == 1
+    assert len(enqueue_calls[0]["jobs"]) == 2
+    assert len(poll_calls) == 1
+    assert len(poll_calls[0]["ids"]) == 2
+
+    assert len(results) == 2
+    assert isinstance(results[0], JobResult)
+    assert isinstance(results[1], JobHandle)
+
+
+def test_dispatch_job_batch_returns_empty_list_for_no_jobs():
+    storage = MockStorage()
+    mock_session = MagicMock()
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    assert dispatch_job_batch(backend, []) == []
+    mock_session.post.assert_not_called()
+
+
+def test_dispatch_job_batch_isolates_a_single_rejected_job():
+    """enqueue_batch raises for the WHOLE call when one job in the batch is rejected (e.g.
+    idempotency_conflict) -- dispatch_job_batch must retry one job at a time in that case so the
+    other, otherwise-valid jobs in the batch still succeed instead of all being lost."""
+    storage = MockStorage()
+    call_count = {"enqueue": 0}
+
+    def _enqueue(url, json=None, **_kw):
+        jobs = json.get("jobs", [])
+        call_count["enqueue"] += 1
+        if len(jobs) > 1:
+            # Simulate the whole-batch rejection enqueue_batch raises on for a single bad job.
+            return _mock_response(
+                status_code=200,
+                json_data={
+                    "accepted": [],
+                    "rejected": [{"id": j["id"], "reason": "idempotency_conflict"} for j in jobs],
+                },
+            )
+        return _accept_all(url, json=json)
+
+    mock_session = MagicMock()
+    mock_session.post.side_effect = _router({":enqueue-batch": _enqueue})
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={"messages": [{"role": "user", "content": f"job {i}"}]},
+            recipe_hash=f"recipe-isolate-{i}",
+        )
+        for i in range(2)
+    ]
+
+    results = dispatch_job_batch(backend, jobs)
+
+    # The whole-batch call was attempted once (and rejected), then each job was retried alone.
+    assert call_count["enqueue"] == 1 + len(jobs)
+    assert len(results) == 2
+    assert all(isinstance(r, JobHandle) for r in results)
+
+
+def test_dispatch_job_batch_chunks_large_batch_over_one_thousand():
+    """Batches exceeding ENQUEUE_BATCH_MAX (1000) are partitioned across multiple calls."""
+    storage = MockStorage()
+    enqueue_batch_sizes = []
+
+    def _enqueue(url, json=None, **_kw):
+        jobs = json.get("jobs", [])
+        enqueue_batch_sizes.append(len(jobs))
+        return _accept_all(url, json=json)
+
+    mock_session = MagicMock()
+    mock_session.post.side_effect = _router({":enqueue-batch": _enqueue})
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={"messages": [{"role": "user", "content": f"job {i}"}]},
+            recipe_hash=f"recipe-chunk-{i}",
+        )
+        for i in range(1050)
+    ]
+
+    results = dispatch_job_batch(backend, jobs)
+
+    assert len(results) == 1050
+    assert enqueue_batch_sizes == [1000, 50]
+    assert all(isinstance(r, JobHandle) for r in results)

@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
-from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMBackendError
+from citypods.compute.llm import (
+    LiteLLMBackend,
+    LLMBackendConfig,
+    LLMBackendError,
+    dispatch_job_batch,
+)
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 from citypods.config import load_city_configs, load_site_config
@@ -99,6 +104,21 @@ class PairwiseEvaluatorSpec:
     criteria: str = "Compare source support, omissions, overreach, evidence quality, and fit."
 
 
+@dataclass(frozen=True)
+class _PendingComparison:
+    """One comparison awaiting batched dispatch in `run()` -- everything the result-processing
+    pass needs to know once `dispatch_job_batch` returns, keyed back to its slot in `decisions`
+    and its `comparison_store` entry."""
+
+    slot: int
+    comparison_key: str
+    job: InferenceJob
+    left: str
+    right: str
+    judge: str
+    first: str
+
+
 def blind_candidate(candidate: Any, *, fields: tuple[str, ...] | None = None) -> Any:
     """Remove route/recipe provenance before presenting a candidate to an independent judge."""
     if not isinstance(candidate, dict):
@@ -167,8 +187,7 @@ def _judge_model(contract: str = JUDGE_CONTRACT):
     return model
 
 
-def pairwise_judge(
-    backend: Any,
+def _build_pairwise_judge_job(
     *,
     spec: PairwiseEvaluatorSpec,
     source: Any,
@@ -176,20 +195,18 @@ def pairwise_judge(
     candidate_b: Any,
     judge_model: str,
     recipe_hash: str,
-    deadline_at: datetime | None = None,
     allow_paid: bool = True,
     candidate_models: tuple[str, ...] = (),
-) -> tuple[dict[str, Any] | None, bool]:
-    """Run one blinded pairwise judgment, returning ``(decision, pending)``.
-
-    The engine accepts arbitrary JSON-serializable source/candidate payloads, so an R6 summary
-    comparison can use the same order-swapping and durable-state envelope without pretending that
-    summaries are discrete taxonomy candidates.
-    """
+) -> InferenceJob:
+    """Build one blinded pairwise-judgment InferenceJob without dispatching it -- shared by
+    `pairwise_judge` (the single-job entry point) and `run()`'s batched judge dispatch (see
+    review/44's 2026-08-18 incident retrospective: no caller ever batched more than one job per
+    call before this, which was exactly the per-comparison Worker-request volume that incident
+    flagged as worth fixing next)."""
     if judge_model in set(candidate_models):
         raise ValueError("pairwise judge route must be independent from candidate routes")
     _judge_model(spec.contract)
-    job = InferenceJob(
+    return InferenceJob(
         task=spec.task,
         recipe_hash=recipe_hash,
         inputs={
@@ -224,11 +241,51 @@ def pairwise_judge(
             ),
         },
     )
+
+
+def _finalize_pairwise_judge(result: JobResult, spec: PairwiseEvaluatorSpec) -> dict[str, Any]:
+    """Parse a resolved judge JobResult into a decision dict -- the other half of the old
+    single-call `pairwise_judge`, split out so `run()`'s batched dispatch can build every
+    comparison's job up front, submit them all in one call, and finalize each result separately."""
+    decision = _judge_model(spec.contract).model_validate_json(_content(result))
+    return {"winner": decision.winner, "rationale": decision.rationale}
+
+
+def pairwise_judge(
+    backend: Any,
+    *,
+    spec: PairwiseEvaluatorSpec,
+    source: Any,
+    candidate_a: Any,
+    candidate_b: Any,
+    judge_model: str,
+    recipe_hash: str,
+    deadline_at: datetime | None = None,
+    allow_paid: bool = True,
+    candidate_models: tuple[str, ...] = (),
+) -> tuple[dict[str, Any] | None, bool]:
+    """Run one blinded pairwise judgment, returning ``(decision, pending)``.
+
+    The engine accepts arbitrary JSON-serializable source/candidate payloads, so an R6 summary
+    comparison can use the same order-swapping and durable-state envelope without pretending that
+    summaries are discrete taxonomy candidates. Kept as the single-comparison entry point (used
+    directly by tests and any other caller); `run()`'s own loop uses `_build_pairwise_judge_job`
+    plus `citypods.compute.llm.dispatch_job_batch` directly for real multi-comparison batching.
+    """
+    job = _build_pairwise_judge_job(
+        spec=spec,
+        source=source,
+        candidate_a=candidate_a,
+        candidate_b=candidate_b,
+        judge_model=judge_model,
+        recipe_hash=recipe_hash,
+        allow_paid=allow_paid,
+        candidate_models=candidate_models,
+    )
     result = backend.run_inference(job)
     if isinstance(result, JobHandle):
         return None, True
-    decision = _judge_model(spec.contract).model_validate_json(_content(result))
-    return {"winner": decision.winner, "rationale": decision.rationale}, False
+    return _finalize_pairwise_judge(result, spec), False
 
 
 def _backend(model: str, storage) -> LiteLLMBackend:
@@ -368,8 +425,22 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
             outputs[model] = chapter_tags.get(chapter_id, [])
         if contest_failed or len(outputs) != len(MODELS):
             continue
-        decisions = []
-        judge_pending = False
+        # Pass 1: for each of the 6 comparisons (3 CONTESTS x 2 order-swapped pairs), reuse a
+        # prior resolved decision from state if there is one, otherwise build its job without
+        # dispatching yet -- so the whole sample's still-outstanding comparisons can be submitted
+        # in one batch call below instead of up to 6 separate ones (see review/44's 2026-08-18
+        # incident retrospective: per-comparison dispatch was exactly the Worker-request volume
+        # that incident flagged as worth fixing next).
+        judge_spec = PairwiseEvaluatorSpec(
+            task="tag",
+            purpose="tournament:tag-judge",
+            criteria=(
+                "Judge source support, omissions, over-tagging, evidence quality, and taxonomy fit."
+            ),
+        )
+        decisions: list[dict[str, Any] | None] = []
+        to_dispatch: list[_PendingComparison] = []
+        comparison_store = state.setdefault("comparisons", {})
         for left, right, judge in CONTESTS:
             for first, second in order_swapped_pairs(left, right):
                 comparison_key = comparison_id(
@@ -380,7 +451,8 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     second_model=second,
                     judge_model=judge,
                 )
-                comparison_store = state.setdefault("comparisons", {})
+                slot = len(decisions)
+                decisions.append(None)
                 prior_comparison = comparison_store.get(comparison_key)
                 if (
                     isinstance(prior_comparison, dict)
@@ -388,73 +460,80 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                 ):
                     prior_record = prior_comparison.get("decision_record")
                     if isinstance(prior_record, dict):
-                        decisions.append(dict(prior_record))
+                        decisions[slot] = dict(prior_record)
                         continue
                     # A hand-repaired or partially-written state entry must not make a sample
                     # permanently incomplete. Re-run only this missing comparison and replace the
                     # malformed envelope with a complete decision record below.
-                try:
-                    decision, pending = pairwise_judge(
-                        _backend(judge, storage),
-                        spec=PairwiseEvaluatorSpec(
-                            task="tag",
-                            purpose="tournament:tag-judge",
-                            criteria=(
-                                "Judge source support, omissions, over-tagging, evidence quality, "
-                                "and taxonomy fit."
-                            ),
-                        ),
-                        source=source,
-                        candidate_a=judge_candidates(outputs[first]),
-                        candidate_b=judge_candidates(outputs[second]),
-                        judge_model=judge,
-                        recipe_hash=comparison_key,
-                        deadline_at=deadline,
-                        candidate_models=(left, right),
-                    )
-                except LLMBackendError as exc:
-                    print(f"llm-tournament: skipping {ep.uid!r} judge {judge}: {exc}")
-                    comparison_store[comparison_key] = {
-                        "status": "error",
-                        "comparison_id": comparison_key,
-                        "task": "tag",
-                        "subject_id": f"{ep.uid}:{chapter_id}",
-                        "error": str(exc)[:500],
-                    }
-                    _persist_state(state, state_path, storage, state_dir)
-                    judge_pending = True
-                    break
-                if pending:
-                    comparison_store[comparison_key] = {
+                job = _build_pairwise_judge_job(
+                    spec=judge_spec,
+                    source=source,
+                    candidate_a=judge_candidates(outputs[first]),
+                    candidate_b=judge_candidates(outputs[second]),
+                    judge_model=judge,
+                    recipe_hash=comparison_key,
+                    candidate_models=(left, right),
+                )
+                to_dispatch.append(
+                    _PendingComparison(slot, comparison_key, job, left, right, judge, first)
+                )
+
+        # Pass 2: one batch dispatch per distinct judge model among this sample's outstanding
+        # comparisons (today that's always just JUDGE_MODEL -- CONTESTS pins one judge for all
+        # three contests -- but grouping by judge rather than assuming a single one keeps this
+        # correct if that ever changes).
+        judge_pending = False
+        for judge in {item.judge for item in to_dispatch}:
+            group = [item for item in to_dispatch if item.judge == judge]
+            results = dispatch_job_batch(_backend(judge, storage), [item.job for item in group])
+            for item, result in zip(group, results, strict=True):
+                if isinstance(result, JobHandle):
+                    comparison_store[item.comparison_key] = {
                         "status": "pending",
-                        "comparison_id": comparison_key,
+                        "comparison_id": item.comparison_key,
                         "task": "tag",
                         "subject_id": f"{ep.uid}:{chapter_id}",
                     }
-                    _persist_state(state, state_path, storage, state_dir)
                     judge_pending = True
-                    break
-                decision_record = {
-                    "left": left,
-                    "right": right,
-                    "judge": judge,
-                    "first": first,
-                    "comparison_id": comparison_key,
-                    "winner": decision["winner"] if decision else "tie",
-                    "rationale": decision["rationale"] if decision else "",
-                }
-                decisions.append(decision_record)
-                comparison_store[comparison_key] = {
-                    "status": "resolved",
-                    "comparison_id": comparison_key,
-                    "task": "tag",
-                    "subject_id": f"{ep.uid}:{chapter_id}",
-                    "decision_record": decision_record,
-                }
-                _persist_state(state, state_path, storage, state_dir)
-            if judge_pending:
-                break
-        if judge_pending or len(decisions) != 6:
+                elif isinstance(result, JobResult):
+                    decision = _finalize_pairwise_judge(result, judge_spec)
+                    decision_record = {
+                        "left": item.left,
+                        "right": item.right,
+                        "judge": item.judge,
+                        "first": item.first,
+                        "comparison_id": item.comparison_key,
+                        "winner": decision["winner"] if decision else "tie",
+                        "rationale": decision["rationale"] if decision else "",
+                    }
+                    decisions[item.slot] = decision_record
+                    comparison_store[item.comparison_key] = {
+                        "status": "resolved",
+                        "comparison_id": item.comparison_key,
+                        "task": "tag",
+                        "subject_id": f"{ep.uid}:{chapter_id}",
+                        "decision_record": decision_record,
+                    }
+                else:
+                    # dispatch_job_batch's own contract: anything that isn't a JobResult/JobHandle
+                    # is the Exception sentinel for this one comparison's own failed submission
+                    # (e.g. LLMBackendError) -- same per-comparison isolation the old code's
+                    # `except LLMBackendError` gave a single pairwise_judge call.
+                    print(f"llm-tournament: skipping {ep.uid!r} judge {judge}: {result}")
+                    comparison_store[item.comparison_key] = {
+                        "status": "error",
+                        "comparison_id": item.comparison_key,
+                        "task": "tag",
+                        "subject_id": f"{ep.uid}:{chapter_id}",
+                        "error": str(result)[:500],
+                    }
+                    judge_pending = True
+            _persist_state(state, state_path, storage, state_dir)
+        if (
+            judge_pending
+            or len(decisions) != len(CONTESTS) * 2
+            or any(d is None for d in decisions)
+        ):
             continue
         state["results"].append(
             {
