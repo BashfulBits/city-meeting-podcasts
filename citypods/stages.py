@@ -6028,7 +6028,10 @@ class AgendaChapterCandidatesStage:
                     ep.generated_agenda_candidates = {
                         "status": "pending",
                         "recipe": job.recipe_hash,
-                        "model": AGENDA_PRODUCTION_MODEL,
+                        # AGENDA_PRODUCTION_MODELS (R13) now offers more than one same-priority
+                        # candidate; record the model the scheduler actually reserved for this
+                        # dispatch, not just the first/label candidate.
+                        "model": result.model or AGENDA_PRODUCTION_MODEL,
                         "source_hash": source_hash,
                         "job_ref": result.ref,
                     }

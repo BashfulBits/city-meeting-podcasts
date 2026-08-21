@@ -54,7 +54,6 @@ DEFAULT_TAGGER_MODELS = (
     "google/gemma-4-26b-a4b-it",
     "zai/glm-4.7-flash",
 )
-OPTIONAL_TAGGER_MODEL = "mistral/mistral-small-2603"
 DEFAULT_PRELABELER_MODEL = "google/gemma-4-31b-it"
 LABEL_MARKER = "<!-- citypods:r5-benchmark-review "
 

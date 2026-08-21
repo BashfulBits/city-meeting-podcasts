@@ -38,6 +38,11 @@ def test_direct_request_contains_numbered_full_source_lines_and_no_candidate_gat
     request = build_agenda_item_extraction_request(agenda_text=AGENDA)
 
     assert request.model == "mistral/mistral-large-2512"
+    assert request.models == (
+        "mistral/mistral-large-2512",
+        "deepseek/deepseek-v4-flash",
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+    )
     assert request.source_line_count == 7
     assert '"line":4' in request.messages[1]["content"]
     assert '"candidates"' not in request.messages[1]["content"]
@@ -59,6 +64,7 @@ def test_direct_request_records_an_explicit_benchmark_model():
     )
 
     assert request.model == "mistral/mistral-medium-2508"
+    assert request.models == ("mistral/mistral-medium-2508",)
 
 
 def test_direct_request_supplies_soft_hints_without_turning_them_into_a_gate():
@@ -422,6 +428,11 @@ def test_title_equivalence_contract_requires_one_to_one_action_matches():
         generated_titles=["Approve bridge agreement"],
     )
     assert request.model == "mistral/mistral-large-2512"
+    assert request.models == (
+        "mistral/mistral-large-2512",
+        "deepseek/deepseek-v4-flash",
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+    )
     assert "semantic equivalence" in request.messages[0]["content"]
     assert "zero-based" in request.messages[0]["content"]
     result = validate_title_equivalence_response(

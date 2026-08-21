@@ -13,8 +13,8 @@ from citypods.tournament import (
 )
 
 
-def test_round_robin_has_three_independent_judges():
-    assert len(contest_plan()) == 3
+def test_round_robin_has_six_independent_judges():
+    assert len(contest_plan()) == 6
     assert all(judge not in {left, right} for left, right, judge in contest_plan())
 
 
