@@ -667,6 +667,7 @@ routes:
     output_context_limit: 256000
     account_id: secondary
     rpm: 124
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 625000
     free: true
 
@@ -678,6 +679,7 @@ routes:
     output_context_limit: 262144
     account_id: secondary
     rpm: 49
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 1000000
     free: true
 
@@ -689,6 +691,7 @@ routes:
     output_context_limit: 262144
     account_id: secondary
     rpm: 49
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 50000
     free: true
 
@@ -700,6 +703,7 @@ routes:
     output_context_limit: 131072
     account_id: secondary
     rpm: 22
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 356250
     free: true
 
@@ -711,6 +715,7 @@ routes:
     output_context_limit: 131072
     account_id: secondary
     rpm: 25
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 375000
     free: true
 
@@ -722,6 +727,7 @@ routes:
     output_context_limit: 262144
     account_id: secondary
     rpm: 4
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -733,6 +739,7 @@ routes:
     output_context_limit: 262144
     account_id: secondary
     rpm: 4
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -744,6 +751,7 @@ routes:
     output_context_limit: 131072
     account_id: secondary
     rpm: 37
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 5000000
     free: true
 
