@@ -675,17 +675,19 @@ def test_dispatch_job_batch_submits_all_jobs_in_one_call_and_reconciles_pending(
     assert isinstance(results[1], JobHandle)
 
 
-def test_batching_dispatch_backend_collects_run_scoped_queue_only_jobs():
-    """R6 can defer per-episode finalization while issuing one v2 ingress request per run."""
+def test_batching_dispatch_backend_collects_queue_only_jobs_until_flush():
+    """A lane can return pending per-item handles while issuing one v2 batch per run."""
     storage = MockStorage()
     enqueue_calls = []
+    poll_calls = []
 
     def _enqueue(url, json=None, **_kw):
         enqueue_calls.append(json)
         return _accept_all(url, json=json)
 
-    def _poll(*_args, **_kwargs):
-        return _mock_response(status_code=200, json_data={})
+    def _poll(url, json=None, **_kw):
+        poll_calls.append(json)
+        return _mock_response(status_code=200, json_data={"statuses": []})
 
     session = MagicMock()
     session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _poll})
@@ -710,17 +712,22 @@ def test_batching_dispatch_backend_collects_run_scoped_queue_only_jobs():
         for index in range(3)
     ]
 
-    provisional = [batching.run_inference(job) for job in jobs]
-
-    assert all(isinstance(result, JobHandle) for result in provisional)
-    assert all(result.ref.startswith("batch-pending:") for result in provisional)
+    handles = [batching.run_inference(job) for job in jobs]
+    assert all(isinstance(handle, JobHandle) for handle in handles)
+    assert all(handle.ref.startswith("batch-pending:") for handle in handles)
+    assert batching.queued_count == 3
     session.post.assert_not_called()
 
-    outcomes = batching.flush()
+    results = batching.flush()
 
-    assert len(outcomes) == 3
+    assert len(results) == 3
     assert len(enqueue_calls) == 1
     assert len(enqueue_calls[0]["jobs"]) == 3
+    assert len(poll_calls) == 1
+    assert len(poll_calls[0]["ids"]) == 3
+    assert all(isinstance(result, JobHandle) for result in results)
+    assert all(not result.ref.startswith("batch-pending:") for result in results)
+    assert batching.queued_count == 0
 
 
 def test_dispatch_job_batch_returns_empty_list_for_no_jobs():

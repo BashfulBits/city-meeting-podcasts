@@ -156,6 +156,13 @@ merged as of this paragraph's update); R12 is implemented on an unmerged PR. R9 
 activating Renovate and the recurring immutable/checksummed FFmpeg update remain the release-gate work.
 R11's broader vendor coverage (including OneMeeting/Agenda PE/CivicClerk cases) remains follow-up
 work as catalog evidence warrants.
+
+**R10 batching update (2026-08-22).** The remaining high-volume v2 topic-tag caller now batches
+new `queue_only` tagger/prelabeler jobs across the tag lane's worker pool, including recursively
+split chapter windows, through bounded 1,000-job enqueue and poll calls. Its existing incremental
+dispatch cap and no-quota short-circuit remain intact; direct/v1 calls and the tag output contract
+are unchanged, so no pipeline-version bump or backfill is required. See review/44 Phase 4.
+
 | Item | #/GH | Maturity | Breakout |
 |---|---|---|---|
 | Per-meeting permalink pages | #46/GH#157 | **Shipped** (#897, 2026-07-13) | [`review/13`](13-per-meeting-pages-and-search.md) Part A · playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata and canonical provenance with a clear no-recording notice · implementation `1790c9f` plus review fixes `20cc5ed` |

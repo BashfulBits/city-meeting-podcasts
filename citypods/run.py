@@ -1878,6 +1878,22 @@ def _run_enrich_global_queue(
             moment_batcher = BatchingDispatchBackend(ctx.moment_backend)
             ctx.moment_backend = moment_batcher
 
+    # Tags are normally processed one episode per global-queue worker so their cheap rule work
+    # can keep the existing incremental stop/cap behavior.  The durable LLM submission itself is
+    # independent, though: collect every newly created v2 queue-only job across both tag passes
+    # below, then submit it in the client's bounded bulk call before persistence.  The adapter
+    # returns a normal pending handle to TagsStage, so its existing per-episode finalization and
+    # deferred-record contract remain unchanged.  Only a real LiteLLM v2 backend is wrapped;
+    # tests, local/direct backends, and legacy v1 configuration keep their exact old path.
+    tag_batcher = None
+    original_tag_backend = ctx.tag_backend
+    if any(stage.name == "tags" for stage in transcript_stages):
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
+
+        if isinstance(ctx.tag_backend, LiteLLMBackend) and ctx.tag_backend.config.dispatch_v2_url:
+            tag_batcher = BatchingDispatchBackend(ctx.tag_backend)
+            ctx.tag_backend = tag_batcher
+
     with source_cache or _nullcontext():
         if audio_stages:
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
@@ -1942,15 +1958,29 @@ def _run_enrich_global_queue(
                         )
                     print("[enrich] tags-only pass done", flush=True)
 
+    if tag_batcher is not None:
+        from citypods.compute.base import JobHandle, JobResult
+
+        batch_results = tag_batcher.flush()
+        pending = sum(1 for result in batch_results if isinstance(result, JobHandle))
+        completed = sum(1 for result in batch_results if isinstance(result, JobResult))
+        failed = sum(1 for result in batch_results if isinstance(result, Exception))
+        print(
+            f"[enrich] tag LLM batch flush: jobs={len(batch_results)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        ctx.tag_backend = original_tag_backend
+
     if moment_batcher is not None:
         from citypods.compute.base import JobHandle, JobResult
 
-        outcomes = moment_batcher.flush()
-        pending = sum(1 for outcome in outcomes if isinstance(outcome, JobHandle))
-        completed = sum(1 for outcome in outcomes if isinstance(outcome, JobResult))
-        failed = sum(1 for outcome in outcomes if isinstance(outcome, Exception))
+        batch_results = moment_batcher.flush()
+        pending = sum(1 for result in batch_results if isinstance(result, JobHandle))
+        completed = sum(1 for result in batch_results if isinstance(result, JobResult))
+        failed = sum(1 for result in batch_results if isinstance(result, Exception))
         print(
-            f"[enrich] R6 LLM batch flush: jobs={len(outcomes)} pending={pending} "
+            f"[enrich] R6 LLM batch flush: jobs={len(batch_results)} pending={pending} "
             f"completed={completed} errors={failed}",
             flush=True,
         )

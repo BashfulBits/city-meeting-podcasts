@@ -2199,14 +2199,20 @@ class LiteLLMBackend(Backend):
 class BatchingDispatchBackend:
     """Run-scoped collector for independent v2 queue-only jobs.
 
-    Per-episode stages can keep their established deferred-result behavior while this adapter
-    collects newly created durable jobs and submits them in one bounded bulk call at run end.
-    Cached results and already-pending handles continue through the wrapped backend unchanged.
+    Callers that already process their inputs concurrently can use this adapter without changing
+    their per-item finalize path: a new queue-only job receives an ordinary pending ``JobHandle``
+    immediately, while :meth:`flush` later submits all collected jobs through the v2 bulk API.
+    Completed or already-pending deferred records still pass through the wrapped backend unchanged,
+    so a retry can finalize cached work in the same run as before.
+
+    This is deliberately a narrow adapter rather than a new transport.  It only collects jobs that
+    are both ``queue_only`` and configured for v2; direct calls, v1 calls, and every non-policy
+    task retain their existing timing and error behavior.
     """
 
     def __init__(self, backend: LiteLLMBackend):
         self._backend = backend
-        self._queued: dict[str, InferenceJob] = {}
+        self._queued: dict[str, tuple[InferenceJob, JobHandle]] = {}
         self._lock = threading.Lock()
 
     @property
@@ -2245,23 +2251,32 @@ class BatchingDispatchBackend:
         if existing is not None:
             return existing
         if not terminal_failure_retry_allowed(self._backend.storage, job.recipe_hash):
+            # Preserve the wrapped backend's specific terminal-failure error message.
             return self._backend.run_inference(job)
 
         with self._lock:
-            if job.recipe_hash not in self._queued:
-                self._queued[job.recipe_hash] = job
-            return JobHandle(
+            queued = self._queued.get(job.recipe_hash)
+            if queued is not None:
+                return queued[1]
+            handle = JobHandle(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
                 backend="llm-dispatch-v2",
                 ref=f"batch-pending:{job.recipe_hash}",
                 model=canonical_model(self._backend.config.model),
             )
+            self._queued[job.recipe_hash] = (job, handle)
+            return handle
 
     def flush(self) -> list[JobResult | JobHandle | Exception]:
-        """Submit collected jobs through the existing bounded enqueue/poll helper."""
+        """Submit every collected job in bounded enqueue/poll batches.
+
+        The collector is emptied before network I/O.  A failed bulk request therefore follows
+        ``dispatch_job_batch``'s existing per-job fallback, while jobs added after a flush starts
+        remain queued for a subsequent flush instead of being accidentally discarded.
+        """
         with self._lock:
-            jobs = list(self._queued.values())
+            jobs = [job for job, _handle in self._queued.values()]
             self._queued.clear()
         return dispatch_job_batch(self._backend, jobs)
 
