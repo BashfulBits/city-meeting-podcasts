@@ -87,7 +87,8 @@ def main(argv: list[str] | None = None) -> int:
             "chapter",
         ],
         help="work class to run: 'audio' materializes audio only; 'transcribe' runs fresh ASR "
-        "only; 'align' runs forced-alignment only; 'tag' runs bounded LLM topic tagging only. "
+        "only; 'align' runs forced-alignment only; 'tag' runs bounded LLM topic tagging only; "
+        "'moments' runs grounded moment extraction, judging, admission, and clip rendering. "
         "'chapter-agenda' extracts agenda candidates; 'chapter-locator' locates them in the "
         "complete timed transcript; 'chapter' runs both chapter lanes. Default runs the full "
         "enrich (audio + transcript). The sharded workflows pin one lane "

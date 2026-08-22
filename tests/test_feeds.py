@@ -108,6 +108,13 @@ def test_r6_admitted_quote_emits_bounded_podcasting_soundbite(sample_city, sampl
     assert '<podcast:soundbite startTime="10" duration="12"/>' in xml
 
 
+def test_r6_shadow_quote_does_not_emit_a_podcasting_soundbite(sample_city, sample_episodes):
+    sample_episodes[0].moment_pullquote_candidates = [
+        {"admission": "shadow", "quality_score": 1.0, "start": 10, "end": 22}
+    ]
+    assert "podcast:soundbite" not in build_rss(sample_city, sample_episodes, "video", "https://x")
+
+
 def test_enclosure_length_zero(sample_city, sample_episodes):
     xml = build_rss(sample_city, sample_episodes, "video", "https://x")
     assert _items(xml)[0].find("enclosure").get("length") == "0"

@@ -18,6 +18,7 @@ from typing import Any
 from citypods.clips import _clip_timeline
 from citypods.http import HOST_LIMITER, USER_AGENT, make_session
 from citypods.models import Episode
+from citypods.moments import MOMENTS_MAX_SECONDS, MOMENTS_MIN_SECONDS
 from citypods.security import SecurityError, validate_source_url
 
 VIDEO_PIPELINE_VERSION = "2"
@@ -186,10 +187,7 @@ def technical_video_gate(
     """Check the non-negotiable media prerequisites before admission or rendering."""
     if withheld or not captions_available or not source_url:
         return False
-    try:
-        resolved = _safe_media_url(source_url)
-    except SecurityError:
-        return False
+    resolved = _safe_media_url(source_url)
     if not resolved:
         return False
     size = _probe_size(probe_binary, resolved)
@@ -216,10 +214,7 @@ def render_video_clip(
     end = float(candidate.get("end") or 0)
     if end <= start or not source_url or not segments:
         return {"status": "video-unavailable", "reason": "source-or-caption-gate"}
-    try:
-        resolved_source = _safe_media_url(source_url)
-    except SecurityError:
-        return {"status": "video-unavailable", "reason": "unsafe-source-url"}
+    resolved_source = _safe_media_url(source_url)
     if not resolved_source:
         return {"status": "video-unavailable", "reason": "unsafe-or-streaming-source"}
     size = _probe_size(probe_binary, resolved_source)
@@ -248,7 +243,8 @@ def render_video_clip(
     else:
         source_start, source_end = start, end
     duration = source_end - source_start
-    if duration < 8.0 or duration > 90.0:
+    # A single source cut preserves duration; inserted served-time spans are excluded above.
+    if duration < MOMENTS_MIN_SECONDS or duration > MOMENTS_MAX_SECONDS:
         return {"status": "video-unavailable", "reason": "duration-gate"}
     with tempfile.TemporaryDirectory() as temporary:
         temporary_path = Path(temporary)

@@ -8,7 +8,7 @@ import json
 import re
 from pathlib import Path
 
-from citypods.moment_evaluation import _state_lock, load_state, record_review, save_state
+from citypods.moment_evaluation import load_state, record_review, save_state, state_lock
 
 
 def _record_parser(parser: argparse.ArgumentParser) -> None:
@@ -43,7 +43,7 @@ def record(args: argparse.Namespace) -> int:
     }
     if args.crop_anchor:
         overrides["crop_anchor"] = json.loads(args.crop_anchor)
-    with _state_lock(args.state):
+    with state_lock(args.state):
         state = load_state(args.state)
         record_review(
             state,
@@ -88,6 +88,40 @@ def _decision(body: str) -> tuple[dict, str, dict]:
         if not isinstance(controls, dict):
             raise ValueError("R6 review controls must be a JSON object")
     return candidate, labels[0], controls
+
+
+def _validated_ledger_candidate(state_dir: Path, site: dict, candidate: dict) -> dict:
+    """Return the durable candidate matching an issue payload, or reject tampering."""
+    from citypods.config import load_city_configs
+    from citypods.records import load_records, record_to_episode, source_key
+
+    city_slug = str(candidate.get("city_slug") or "")
+    candidate_id = str(candidate.get("candidate_id") or "")
+    cities = {city.slug: city for city in load_city_configs("config", site.get("defaults", {}))}
+    city = cities.get(city_slug)
+    if city is None or not candidate_id:
+        raise ValueError("R6 review payload is missing its packaged city or candidate identity")
+    for raw in load_records(state_dir, source_key(city)).values():
+        for row in record_to_episode(raw).moment_pullquote_candidates:
+            if isinstance(row, dict) and row.get("candidate_id") == candidate_id:
+                for key in (
+                    "candidate_id",
+                    "quality_score",
+                    "meeting_family",
+                    "provider_model",
+                    "prompt_version",
+                    "duration_bucket",
+                    "framing_profile",
+                    "quote",
+                    "start",
+                    "end",
+                ):
+                    if candidate.get(key) != row.get(key):
+                        raise ValueError(
+                            f"R6 review payload differs from durable candidate field {key}"
+                        )
+                return row
+    raise ValueError("R6 review candidate is no longer present in the durable ledger")
 
 
 def package(args: argparse.Namespace) -> int:
@@ -147,7 +181,8 @@ def ingest(args: argparse.Namespace) -> int:
     state_path = state_dir / str(evaluation.get("state_path", "r6_moment_evaluation.json"))
     pull_state(storage, state_dir, only_paths=[state_path])
     candidate, label, controls = _decision(Path(args.issue_body_file).read_text(encoding="utf-8"))
-    with _state_lock(state_path):
+    candidate = _validated_ledger_candidate(state_dir, site, candidate)
+    with state_lock(state_path):
         state = load_state(state_path)
         record_review(
             state,

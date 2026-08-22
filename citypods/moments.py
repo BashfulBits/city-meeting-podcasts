@@ -19,6 +19,8 @@ from citypods.compute.structured import register_response_model, response_model
 MOMENTS_CONTRACT = "moment-extraction"
 MOMENTS_PROMPT_VERSION = "1"
 MOMENTS_PIPELINE_VERSION = "2"
+COUNCIL_MOMENT_MODELS = ("gemini/gemini-3.6-flash", "gemini/gemini-3.5-flash")
+DEFAULT_MOMENT_MODELS = ("gemini/gemini-3.5-flash-lite", "gemini/gemini-3.1-flash-lite")
 MOMENTS_MIN_SECONDS = 8.0
 MOMENTS_MAX_SECONDS = 90.0
 MOMENTS_PADDING_SECONDS = 1.5
@@ -134,6 +136,9 @@ def recipe_hash(
         "models": route_models,
         "meeting_family": meeting_family,
         "evaluation_policy": evaluation_policy,
+        "padding_seconds": MOMENTS_PADDING_SECONDS,
+        "minimum_seconds": MOMENTS_MIN_SECONDS,
+        "maximum_seconds": MOMENTS_MAX_SECONDS,
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
@@ -192,8 +197,14 @@ def normalize_quote_candidate(
     if region is None:
         return None
     quote_start, quote_end = region
-    transcript_start = min(float(row.get("start") or quote_start) for row in transcript_segments)
-    transcript_end = max(float(row.get("end") or quote_end) for row in transcript_segments)
+    transcript_start = min(
+        float(row["start"]) if row.get("start") is not None else quote_start
+        for row in transcript_segments
+    )
+    transcript_end = max(
+        float(row["end"]) if row.get("end") is not None else quote_end
+        for row in transcript_segments
+    )
     start = max(transcript_start, quote_start - MOMENTS_PADDING_SECONDS)
     end = min(transcript_end, quote_end + MOMENTS_PADDING_SECONDS)
     if end - start < MOMENTS_MIN_SECONDS or end - start > MOMENTS_MAX_SECONDS:

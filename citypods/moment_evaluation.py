@@ -96,7 +96,7 @@ def save_state(path: Path, state: Mapping[str, Any]) -> None:
 
 
 @contextmanager
-def _state_lock(path: Path):
+def state_lock(path: Path):
     """Serialize a local R6 state transaction across review and pipeline processes."""
     lock_path = path.with_suffix(path.suffix + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,7 +122,7 @@ def append_judge_observation(
     schema = str(assessment.get("schema_version") or "")
     if not candidate_id or not model or not prompt or not schema:
         raise ValueError("R6 judge observation needs candidate and judge identity")
-    with _state_lock(path):
+    with state_lock(path):
         state = load_state(path)
         rows = state.setdefault("judge_observations", [])
         if any(
@@ -172,10 +172,16 @@ def record_review(
         raise ValueError("R6 review candidate_id must be non-empty")
     for existing in state.setdefault("reviews", []):
         if isinstance(existing, dict) and existing.get("review_id") == review_id:
-            if existing.get("candidate_id") != str(candidate.get("candidate_id") or ""):
-                raise ValueError(
-                    f"R6 review_id {review_id!r} is already assigned to another candidate"
-                )
+            expected = {
+                "candidate_id": str(candidate.get("candidate_id") or ""),
+                "label": label,
+                "reviewer": reviewer,
+                "cell": cell_key(candidate),
+                "quality_score": float(candidate.get("quality_score") or 0.0),
+                "overrides": dict(overrides or {}),
+            }
+            if any(existing.get(key) != value for key, value in expected.items()):
+                raise ValueError(f"conflicting replay for R6 review_id {review_id!r}")
             return existing
     row = {
         "review_id": review_id,
@@ -233,7 +239,9 @@ def refresh_policies(
             )
     for key, rows in grouped.items():
         scores = sorted({float(row.get("quality_score") or 0.0) for row in rows})
-        first = min((_parse_time(row.get("reviewed_at")) for row in rows), default=current)
+        first = min(
+            (_parse_time(row.get("reviewed_at"), default=current) for row in rows), default=current
+        )
         qualified: dict[str, Any] | None = None
         for threshold in scores:
             admitted = [row for row in rows if float(row.get("quality_score") or 0.0) >= threshold]
@@ -314,7 +322,9 @@ def _qualified_policies(
     policies: dict[str, dict[str, Any]] = {}
     for key, rows in grouped.items():
         scores = sorted({float(row["score"]) for row in rows})
-        first = min((_parse_time(row.get("reviewed_at")) for row in rows), default=current)
+        first = min(
+            (_parse_time(row.get("reviewed_at"), default=current) for row in rows), default=current
+        )
         qualified: dict[str, Any] | None = None
         for threshold in scores:
             admitted = [row for row in rows if float(row["score"]) >= threshold]
@@ -423,11 +433,11 @@ def apply_admission(
     return result
 
 
-def _parse_time(value: Any) -> datetime:
+def _parse_time(value: Any, *, default: datetime) -> datetime:
     try:
         parsed = datetime.fromisoformat(str(value))
     except (TypeError, ValueError):
-        return datetime.min.replace(tzinfo=UTC)
+        return default
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
@@ -443,4 +453,5 @@ __all__ = [
     "record_review",
     "refresh_policies",
     "save_state",
+    "state_lock",
 ]

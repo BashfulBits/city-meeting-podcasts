@@ -691,7 +691,12 @@ def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: Cit
             "chapters": ep.chapters,
         }
     elif name == "moments":
-        from citypods.moments import MOMENTS_PIPELINE_VERSION, MOMENTS_PROMPT_VERSION
+        from citypods.moments import (
+            COUNCIL_MOMENT_MODELS,
+            DEFAULT_MOMENT_MODELS,
+            MOMENTS_PIPELINE_VERSION,
+            MOMENTS_PROMPT_VERSION,
+        )
 
         payload = {
             **common,
@@ -704,11 +709,8 @@ def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: Cit
             "recipe": {
                 "pipeline": MOMENTS_PIPELINE_VERSION,
                 "prompt": MOMENTS_PROMPT_VERSION,
-                "council_models": ["gemini/gemini-3.6-flash", "gemini/gemini-3.5-flash"],
-                "default_models": [
-                    "gemini/gemini-3.5-flash-lite",
-                    "gemini/gemini-3.1-flash-lite",
-                ],
+                "council_models": COUNCIL_MOMENT_MODELS,
+                "default_models": DEFAULT_MOMENT_MODELS,
             },
         }
     elif name in {"moment-admission", "moment-judge"}:
@@ -829,6 +831,8 @@ class MomentsStage:
         from citypods.compute.base import InferenceJob, JobHandle, JobResult
         from citypods.compute.llm_policy import LLMRequestPolicy
         from citypods.moments import (
+            COUNCIL_MOMENT_MODELS,
+            DEFAULT_MOMENT_MODELS,
             MOMENTS_CONTRACT,
             candidate_matrix_key,
             ensure_moment_contract,
@@ -856,11 +860,7 @@ class MomentsStage:
         rollout_families = {str(value) for value in rollout}
         if rollout_families and family not in rollout_families:
             return stats
-        allowed_models = (
-            ("gemini/gemini-3.6-flash", "gemini/gemini-3.5-flash")
-            if family == "council"
-            else ("gemini/gemini-3.5-flash-lite", "gemini/gemini-3.1-flash-lite")
-        )
+        allowed_models = COUNCIL_MOMENT_MODELS if family == "council" else DEFAULT_MOMENT_MODELS
         allowed_models = (
             tuple(model for model in allowed_models if model in configured) or allowed_models
         )
@@ -1101,14 +1101,14 @@ class MomentJudgeStage:
             return stats
         ensure_judge_contract()
         for ep in episodes:
+            raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
+            segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
             for candidate in ep.moment_pullquote_candidates:
                 if not isinstance(candidate, dict):
                     continue
                 existing = [
                     row for row in candidate.get("judge_assessments") or [] if isinstance(row, dict)
                 ]
-                raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
-                segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
                 evidence = " ".join(
                     str(row.get("text") or "")
                     for row in segments
@@ -1209,6 +1209,9 @@ class MomentAdmissionStage:
         refresh_policies(state)
         mode = str((ctx.moment_evaluation_config or {}).get("mode") or "manual")
         for ep in episodes:
+            if ctx.stop and ctx.stop():
+                stats.defer("stop")
+                continue
             raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
             segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
             updated: list[dict[str, Any]] = []

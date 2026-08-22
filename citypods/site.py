@@ -290,10 +290,14 @@ def render_meeting_page(
         reverse=True,
     )
     moment_summaries = [
-        row for row in ep.moment_summary_candidates if isinstance(row, dict) and row.get("text")
+        row
+        for row in ep.moment_summary_candidates
+        if isinstance(row, dict) and row.get("text") and row.get("admission") == "admitted"
     ]
     moment_decisions = [
-        row for row in ep.moment_decision_candidates if isinstance(row, dict) and row.get("quote")
+        row
+        for row in ep.moment_decision_candidates
+        if isinstance(row, dict) and row.get("quote") and row.get("admission") == "admitted"
     ]
     report_url = None
     github_repo = (site_config or {}).get("github_repo")

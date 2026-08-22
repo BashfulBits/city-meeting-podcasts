@@ -113,10 +113,37 @@ def test_review_ids_are_idempotent_and_keep_auditable_controls():
         "Good",
         reviewer="maintainer",
         review_id="review-1",
+        overrides={"title": "Safety commitment"},
     )
     assert replay == first
     assert len(state["reviews"]) == 1
     assert state["reviews"][0]["overrides"]["title"] == "Safety commitment"
+
+
+def test_review_id_rejects_a_conflicting_replay():
+    state = {"version": 1, "reviews": [], "policies": {}, "overrides": {}}
+    record_review(state, _candidate(), "Good", reviewer="maintainer", review_id="review-1")
+    import pytest
+
+    with pytest.raises(ValueError, match="conflicting replay"):
+        record_review(state, _candidate(), "Reject", reviewer="maintainer", review_id="review-1")
+
+
+def test_calibration_stays_manual_before_warmup_or_below_precision():
+    for age, good_count in ((29, 27), (31, 20)):
+        state = {"version": 1, "reviews": [], "policies": {}}
+        when = datetime.now(UTC) - timedelta(days=age)
+        for index in range(30):
+            record_review(
+                state,
+                _candidate(candidate_id=f"r6-{age}-{index}", quality_score=0.9 if index else 0.2),
+                "Good" if index < good_count else "Reject",
+                reviewer="maintainer",
+                review_id=f"review-{age}-{index}",
+                reviewed_at=when,
+            )
+        refresh_policies(state)
+        assert all(policy["mode"] == "manual" for policy in state["policies"].values())
 
 
 def test_vtt_parser_accepts_cue_settings_and_quote_padding():
