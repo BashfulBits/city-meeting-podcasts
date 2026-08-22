@@ -25,6 +25,18 @@ Phase R (Research-Tool Surface)._
   shared 40-job extraction/judge allowance into one bounded ingress request; existing records stay
   unchanged until normal staged processing reaches them.
 
+- **Run-batched v2 topic-tag and chapter dispatch (review/44 Phase 4).**
+  `BatchingDispatchBackend` collects new `queue_only` tagger/prelabeler jobs across the tag lane's
+  concurrent per-episode work, including recursively split chapter windows, and now also collects
+  the chapter-agenda and chapter-locator lanes' jobs across their full global queues. Each chapter
+  stage replays only its accepted jobs after the bounded 1,000-job `enqueue_batch`/`poll_batch`
+  flush, retaining its established artifact finalizer and real durable reference; a failed batch
+  submission is recorded on that episode and remains retryable next run. `poll_batch` partitions
+  all v2 status requests at the same 1,000-handle limit, and the deferred sweep no longer follows
+  a successful bulk poll with one singleton poll for every still-pending v2 handle. Cached results,
+  direct/v1 calls, and terminal-error recovery remain unchanged. No recipe, candidate/artifact
+  schema, pipeline version, or backfill behavior changes.
+
 - **Cross-model overflow routing (`model_routing`) and a Mistral Medium → Gemini 3.5 Flash Lite
   route.** Added an optional `model_routing` map to `config/provider_limits.yml`: a job pinned to
   one model (`allowed_models=(source,)`) becomes eligible for its configured target model(s) too,

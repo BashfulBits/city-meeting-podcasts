@@ -766,32 +766,29 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   `citypods/stages.py`, `citypods/audit_remedy.py`. (`citypods/discovery/classify.py` is out of
   scope — it already sets `require_direct=True` per review/41 and never dispatches through the
   Worker.)
-- **`citypods/tags.py`'s own model-generation dispatch (`llm_tag_suggestions`, the call
-  `citypods/tournament.py` and `TagsStage` both use to actually generate tag candidates, as
-  opposed to the judge-comparison phase already batched above) deliberately not batched in the
-  2026-08-18 follow-up pass — not because its structured-output validation/merging is hard (that's
-  ordinary finalize-step work, the same shape the three already-batched sites have), but because
-  of two things specific to this call site:**
-  1. `llm_tag_suggestions` recursively splits *one episode* into a variable number of jobs
-     internally: when an episode's chapters don't fit one route's token/byte budget, it calls
-     itself (`_batched=True`) once per chunk and issues one `run_inference` per chunk, merging the
-     chunk results back together. Unlike the chapter stages (always exactly one job per episode),
-     the caller doesn't know how many jobs one episode needs until this function decides it — that
-     chunk-splitting has to be hoisted out of `llm_tag_suggestions` before a caller can accumulate
-     a flat job list across *episodes* and re-attribute each batched result back to the right
-     episode+chunk on finalize.
-  2. `TagsStage` processes episodes through a worker-thread pool sharing a live, incrementally
-     updated per-run dispatch budget (`reserve_tag_dispatch`/`settle_tag_dispatch`/
-     `tag_llm_dispatch_exhausted` in `citypods/stages.py`) — hitting the cap partway through a run
-     changes behavior (skip re-fetching agenda/transcript text) for episodes processed afterward,
-     in the same run. A build-everything-first-then-dispatch-once pass has no natural place for an
-     incremental "has this run already used its budget" check like that, since it would mean
-     building and text-fetching for every remaining episode before finding out the run's cap was
-     already hit partway through. The chapter stages have no equivalent live gate.
-
-  Both are solvable, just a different and larger shape of restructuring than the build→dispatch→
-  finalize pass used at the three sites above. Left as one-job-at-a-time pending its own dedicated
-  pass.
+- **Implemented (2026-08-22): run-batched topic-tag dispatch.** `BatchingDispatchBackend` wraps
+  the real v2 `LiteLLMBackend` only while the global enrich queue runs `TagsStage`. It immediately
+  returns an ordinary pending handle to each per-episode caller, preserving the existing worker
+  pool, recursive chapter-window splitting, and incremental `reserve_tag_dispatch`/
+  `settle_tag_dispatch` cap. At the end of the tag passes, it flattens every newly created
+  queue-only tagger/prelabeler job into `dispatch_job_batch()`'s bounded 1,000-job enqueue/poll
+  groups.
+  Already-completed and already-pending deferred records still pass straight through, while direct
+  and v1 calls delegate unchanged. A failed per-job submission is recorded against its exact
+  recipe rather than left as a provisional deferral; the normal next run can resubmit it. This
+  changes only transport request shape: no tag recipe, candidate schema, pipeline version, or
+  backfill behavior changes.
+- **Implemented (2026-08-22): run-batched chapter dispatch and complete deferred-sweep polling.**
+  The chapter-agenda and chapter-locator lanes now use the same run-scoped collector around their
+  existing per-episode finalizers. Each stage prepares the global queue, flushes bounded
+  1,000-job enqueue/poll groups, then replays only accepted jobs against the real durable handle
+  or result; a failed batch submission replaces the provisional `batch-pending:` reference with a
+  durable per-episode error and remains eligible next run. The dependent locator pass follows the
+  agenda flush/replay. `LiteLLMBackend.poll_batch()` also partitions every caller's v2 status
+  request at the Worker limit, and `llm_deferred_sweep.py` now treats a successful bulk poll's
+  pending result as authoritative instead of immediately issuing one singleton poll per handle.
+  A terminal or malformed bulk response still deliberately falls back to individual recovery.
+  No artifact schema, recipe, pipeline version, or backfill behavior changes.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,

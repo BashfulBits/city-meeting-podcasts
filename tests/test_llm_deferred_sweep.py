@@ -498,11 +498,10 @@ def test_sweep_batch_polls_v2_handles(monkeypatch):
     assert poll_batch_called_with[0].ref == "j1"
 
 
-def test_sweep_skips_reconcile_for_a_handle_the_batch_poll_already_resolved(monkeypatch):
-    # Regression test for the double-poll bug: a handle poll_batch resolves must not also be
-    # polled individually via reconcile() right afterward -- that reintroduces the
-    # one-poll-per-handle request volume Phase 1 exists to eliminate (review/44). A handle the
-    # batch call leaves unresolved (returns None for) must still fall through to reconcile().
+def test_sweep_skips_reconcile_for_all_handles_observed_by_batch_poll(monkeypatch):
+    # Regression test for the singleton-poll storm: a successful batch poll is authoritative for
+    # both completed and still-pending v2 handles.  Neither may immediately go through
+    # reconcile(), or a sweep with N pending jobs becomes one batch request plus N singletons.
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     fake_storage = SimpleNamespace(
         cas_capable=True,
@@ -541,5 +540,5 @@ def test_sweep_skips_reconcile_for_a_handle_the_batch_poll_already_resolved(monk
     assert llm_deferred_sweep.main([]) == 0
     # The batch-resolved handle must NOT be reconciled again individually...
     assert "resolved-id" not in reconciled_refs
-    # ...but the handle the batch call left unresolved still goes through reconcile().
-    assert "pending-id" in reconciled_refs
+    # ...nor may the batch-observed-but-still-pending handle.
+    assert "pending-id" not in reconciled_refs

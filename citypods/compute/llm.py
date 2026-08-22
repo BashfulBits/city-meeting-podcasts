@@ -123,6 +123,8 @@ _SAFE_DIAGNOSTICS_ENV = "LLM_SAFE_DIAGNOSTICS"
 _PACING_POLL_CAP_SECONDS = 10.0
 # Tiny floor so an "eligible now, but the reserve just lost a race" retry can't hot-spin the CPU.
 _PACING_MIN_SLEEP_SECONDS = 0.2
+# The ingress Worker caps both enqueue and poll payloads at this many jobs.
+_WORKER_BATCH_LIMIT = 1000
 
 # --- Cloudflare AI Gateway (direct transport only) ---------------------------------------------
 # The gateway is an observability shim, not a routing decision: it proxies to the same upstream
@@ -1989,6 +1991,22 @@ class LiteLLMBackend(Backend):
         if not self.config.dispatch_v2_url:
             return {h.ref: None for h in v2_handles}
 
+        # The ingress Worker caps both enqueue and poll payloads. Callers such as
+        # the daily deferred sweep deliberately hand us their whole pending registry, so enforce
+        # that transport limit here rather than depending on every caller to remember it.
+        results: dict[str, JobResult | None] = {}
+        for start in range(0, len(v2_handles), _WORKER_BATCH_LIMIT):
+            results.update(self._poll_batch_chunk(v2_handles[start : start + _WORKER_BATCH_LIMIT]))
+        return results
+
+    def _poll_batch_chunk(self, v2_handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+        """Poll one Worker-sized v2 status batch.
+
+        Kept separate from :meth:`poll_batch` so terminal-error behavior remains exactly the
+        existing per-Worker-call contract: a bad terminal item makes its own chunk fall back to
+        individual reconciliation in the deferred sweep, without ever sending an oversized POST.
+        """
+
         ids = [h.ref for h in v2_handles]
         headers = {"content-type": "application/json"}
         if self.config.dispatch_v2_auth_token:
@@ -2199,14 +2217,20 @@ class LiteLLMBackend(Backend):
 class BatchingDispatchBackend:
     """Run-scoped collector for independent v2 queue-only jobs.
 
-    Per-episode stages can keep their established deferred-result behavior while this adapter
-    collects newly created durable jobs and submits them in one bounded bulk call at run end.
-    Cached results and already-pending handles continue through the wrapped backend unchanged.
+    Callers that already process their inputs concurrently can use this adapter without changing
+    their per-item finalize path: a new queue-only job receives an ordinary pending ``JobHandle``
+    immediately, while :meth:`flush` later submits all collected jobs through the v2 bulk API.
+    Completed or already-pending deferred records still pass through the wrapped backend unchanged,
+    so a retry can finalize cached work in the same run as before.
+
+    This is deliberately a narrow adapter rather than a new transport.  It only collects jobs that
+    are both ``queue_only`` and configured for v2; direct calls, v1 calls, and every non-policy
+    task retain their existing timing and error behavior.
     """
 
     def __init__(self, backend: LiteLLMBackend):
         self._backend = backend
-        self._queued: dict[str, InferenceJob] = {}
+        self._queued: dict[str, tuple[InferenceJob, JobHandle]] = {}
         self._lock = threading.Lock()
 
     @property
@@ -2245,25 +2269,59 @@ class BatchingDispatchBackend:
         if existing is not None:
             return existing
         if not terminal_failure_retry_allowed(self._backend.storage, job.recipe_hash):
+            # Preserve the wrapped backend's specific terminal-failure error message.
             return self._backend.run_inference(job)
 
         with self._lock:
-            if job.recipe_hash not in self._queued:
-                self._queued[job.recipe_hash] = job
-            return JobHandle(
+            queued = self._queued.get(job.recipe_hash)
+            if queued is not None:
+                return queued[1]
+            handle = JobHandle(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
                 backend="llm-dispatch-v2",
                 ref=f"batch-pending:{job.recipe_hash}",
                 model=canonical_model(self._backend.config.model),
             )
+            self._queued[job.recipe_hash] = (job, handle)
+            return handle
 
-    def flush(self) -> list[JobResult | JobHandle | Exception]:
-        """Submit collected jobs through the existing bounded enqueue/poll helper."""
+    def enqueue_batch(self, jobs: Sequence[InferenceJob]) -> list[JobResult | JobHandle]:
+        """Collect a stage's existing ``dispatch_job_batch`` inputs without submitting yet."""
+        return [self.run_inference(job) for job in jobs]
+
+    def poll_batch(self, handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+        """Keep newly collected handles provisional until the run-level :meth:`flush`.
+
+        ``dispatch_job_batch`` calls this after ``enqueue_batch`` as its normal immediate
+        reconcile pass.  Returning no resolutions here leaves a provisional handle in the stage;
+        the runner replays that episode after flush against the wrapped backend's durable record.
+        """
+        return {}
+
+    def flush(self) -> list[BatchDispatchOutcome]:
+        """Submit every collected job in bounded enqueue/poll batches.
+
+        The collector is emptied before network I/O.  A failed bulk request therefore follows
+        ``dispatch_job_batch``'s existing per-job fallback, while jobs added after a flush starts
+        remain queued for a subsequent flush instead of being accidentally discarded.
+        """
         with self._lock:
-            jobs = list(self._queued.values())
+            jobs = [job for job, _handle in self._queued.values()]
             self._queued.clear()
-        return dispatch_job_batch(self._backend, jobs)
+        results = dispatch_job_batch(self._backend, jobs)
+        return [
+            BatchDispatchOutcome(job=job, result=result)
+            for job, result in zip(jobs, results, strict=True)
+        ]
+
+
+@dataclass(frozen=True)
+class BatchDispatchOutcome:
+    """One run-batched submission result paired with its original inference job."""
+
+    job: InferenceJob
+    result: JobResult | JobHandle | Exception
 
 
 def dispatch_job_batch(
@@ -2299,10 +2357,9 @@ def dispatch_job_batch(
     if not jobs:
         return []
 
-    max_batch_size = 1000
     results: list[JobResult | JobHandle | Exception] = []
-    for chunk_start in range(0, len(jobs), max_batch_size):
-        chunk = jobs[chunk_start : chunk_start + max_batch_size]
+    for chunk_start in range(0, len(jobs), _WORKER_BATCH_LIMIT):
+        chunk = jobs[chunk_start : chunk_start + _WORKER_BATCH_LIMIT]
         try:
             results.extend(backend.enqueue_batch(chunk))
         except Exception:  # noqa: BLE001 -- enqueue_batch raises for the WHOLE call on a single
@@ -2332,6 +2389,7 @@ def dispatch_job_batch(
 
 
 __all__ = [
+    "BatchDispatchOutcome",
     "BatchingDispatchBackend",
     "LLMBackendConfig",
     "LLMBackendError",

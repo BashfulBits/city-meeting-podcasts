@@ -1070,6 +1070,7 @@ def llm_tag_suggestions(
         len(agenda_item_titles) > 40_000 or len(transcript_text) > 100_000
     )
     call_metadata = {
+        "job_recipe_hashes": [recipe_hash],
         "input_tokens_estimate": input_tokens_estimate,
         "output_token_budget": 1024,
         "route_input_context_limit": None,
@@ -1194,6 +1195,11 @@ def llm_tag_suggestions(
                         merged.setdefault(chapter_id_value, []).extend(tags)
                 call_metadata.update(
                     {
+                        "job_recipe_hashes": [
+                            recipe
+                            for item in batch_metadata
+                            for recipe in item.get("job_recipe_hashes", [])
+                        ],
                         "input_tokens_estimate": sum(
                             int(item.get("input_tokens_estimate") or 0) for item in batch_metadata
                         ),
