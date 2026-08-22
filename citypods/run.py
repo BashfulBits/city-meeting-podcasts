@@ -2013,6 +2013,7 @@ def _build_impl(
         "transcribe",
         "align",
         "tag",
+        "moments",
         "chapter-agenda",
         "chapter-locator",
         "chapter",
@@ -2038,7 +2039,9 @@ def _build_impl(
     # block, so they must always route through merged persistence even when running without
     # --source or --shard.
     scoped = bool(
-        source or shard or lane in {"tag", "chapter-agenda", "chapter-locator", "chapter"}
+        source
+        or shard
+        or lane in {"tag", "moments", "chapter-agenda", "chapter-locator", "chapter"}
     )
     if source:
         cities = [c for c in cities if source_key(c) == source]
@@ -2471,6 +2474,7 @@ def _build_impl(
             **moments_config,
             **(moments_config.get("evaluation") or {}),
         },
+        moment_max_dispatches=int(moments_config.get("max_dispatches_per_run", 40)),
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
@@ -2597,7 +2601,7 @@ def _build_impl(
                 time_bounded
                 and not dry_run
                 and storage is not None
-                and lane not in ("audio", "tag")
+                and lane not in ("audio", "tag", "moments")
                 and not getattr(compute_backend, "isolates_inference", False)
             ):
                 _try_preload_asr_model(defaults, lane=lane)

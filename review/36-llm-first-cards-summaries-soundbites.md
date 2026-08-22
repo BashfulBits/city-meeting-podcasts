@@ -8,24 +8,41 @@ resolution gates pass. The default output is a 9:16 social canvas with a native-
 video pane, caption bands, and a `citymeetings.fyi` watermark; a quote remains text-admitted when
 video rendering is unavailable.
 
-Council feeds (`meeting_family: council`) use only `gemini/gemini-3.6-flash` followed by
-`gemini/gemini-3.5-flash`. Other families use the existing Lite routes. Every R6 call sets
-`allow_paid=False`; quota exhaustion is deferred. Judge candidates are a separate, disabled-by-
-default configuration and never create or rewrite candidates.
+Council feeds explicitly marked `meeting_family: council` use only `gemini/gemini-3.6-flash` followed
+by `gemini/gemini-3.5-flash`; other families use the existing Lite routes. Every R6 call sets
+`allow_paid=False`; quota exhaustion is deferred. The rollout is limited to council meetings and a
+bounded shared generation/judge dispatch budget per run, so the two free Gemini account pools drain
+gradually rather than selecting a paid route.
 
 The R6 gate has three layers: exact transcript grounding and served-time derivation; deterministic
 media/caption/duration/resolution safety; and a durable human/calibration policy. `Good` admits
 immediately, `Borderline` retains a learning example, and `Reject` always suppresses. Automatic
 admission is globally off initially and can qualify a calibration cell only after 30 days and 30
 ranked examples, with at least 90% Good among score-threshold admissions plus positive and negative
-support. Prompt/model/duration/framing/judge changes create a new cell, and manual decisions win.
+support. Prompt/model/duration/framing changes create a new human-score cell, and manual decisions win.
 
-The implementation lives in `citypods/moments.py`, `citypods/moment_evaluation.py`, and
-`citypods/video_clips.py`, with `MomentsStage` and `VideoClipsStage` after transcript/timeline
-enrichment. It records the R6 candidate ledger separately from official text and keeps video keys
-in the orphan-GC live set. Face/speaker analysis is versioned behind the framing recipe; until an
-analyzer is available or confident, the renderer uses a stable group crop and never upscales below
-the 720-pixel square-pane policy.
+Each configured independent judge (initially Llama, GLM-4.7, Gemini Flash, and GPT-OSS) scores the same
+grounded candidate in the background; it never creates, repairs, or rewrites one. A weekly authenticated
+GitHub Issue review packages candidates after a judge result is present and records exactly one immutable
+`Good`, `Borderline`, or `Reject` decision plus any timing/title/caption/crop controls. The human decision
+is then used to calibrate each judge's own model/prompt/schema cell independently. Once an individual
+judge cell meets the same time, sample, support, and 90% precision rules, it may admit a technically safe
+future candidate at its learned score threshold. This is deliberately not a Llama-versus-GLM tournament:
+multiple judges may qualify, each may independently allow strong candidates, and a regression, model,
+prompt, schema, caption, or framing revision resets only its affected cell. The global manual-only switch
+remains an immediate kill switch.
+
+The implementation lives in `citypods/moments.py`, `citypods/moment_evaluation.py`,
+`citypods/moment_judging.py`, and `citypods/video_clips.py`, with extraction, judging, admission, and
+video stages after transcript/timeline enrichment. Their stage fingerprints are separated so a manual
+review or asynchronous judge result can change admission without re-running extraction. It records the
+R6 candidate ledger separately from official text and keeps video keys in the orphan-GC live set.
+The OpenCV face/mouth-motion analyzer is pinned and versioned behind the framing recipe; it tracks a
+confident active speaker, otherwise uses a stable group crop, honors a manual anchor, and never upscales
+below the 720-pixel square-pane policy. Redirected media is first resolved through the SSRF gate before
+ffprobe/ffmpeg is permitted to fetch it; HLS remains safely text-only until manifest segment validation
+is implemented. `MOMENTS_PIPELINE_VERSION` and the video recipe are now `2`: existing records are
+reprocessed gradually by the normal scheduled lanes, never bulk-invalidated.
 
 **Maturity: L3 (dev-ready) · successor to [`review/30`](30-cards-summaries-soundbites.md) (now deprecated) ·
 ROADMAP R6 (bundles #3/GH#155 cards, #2 auto-summaries, #15/GH#156 soundbites, plus a new decision/direction

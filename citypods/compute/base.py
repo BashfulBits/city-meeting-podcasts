@@ -37,6 +37,7 @@ Task = Literal[
     "agenda-item-extract",
     "agenda-chapter-locate",
     "moment-extraction",
+    "moment-judge",
 ]
 
 

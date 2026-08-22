@@ -18,9 +18,11 @@ from citypods.compute.structured import register_response_model, response_model
 
 MOMENTS_CONTRACT = "moment-extraction"
 MOMENTS_PROMPT_VERSION = "1"
-MOMENTS_PIPELINE_VERSION = "1"
+MOMENTS_PIPELINE_VERSION = "2"
 MOMENTS_MIN_SECONDS = 8.0
 MOMENTS_MAX_SECONDS = 90.0
+MOMENTS_PADDING_SECONDS = 1.5
+MOMENTS_FRAMING_PROFILE = "social-vertical-opencv-mouth-motion-v1"
 
 
 def ensure_moment_contract():
@@ -189,7 +191,11 @@ def normalize_quote_candidate(
     region = transcript_region(quote, transcript_segments)
     if region is None:
         return None
-    start, end = region
+    quote_start, quote_end = region
+    transcript_start = min(float(row.get("start") or quote_start) for row in transcript_segments)
+    transcript_end = max(float(row.get("end") or quote_end) for row in transcript_segments)
+    start = max(transcript_start, quote_start - MOMENTS_PADDING_SECONDS)
+    end = min(transcript_end, quote_end + MOMENTS_PADDING_SECONDS)
     if end - start < MOMENTS_MIN_SECONDS or end - start > MOMENTS_MAX_SECONDS:
         return None
     value = {
@@ -209,7 +215,7 @@ def normalize_quote_candidate(
         "prompt_version": MOMENTS_PROMPT_VERSION,
         "meeting_family": meeting_family,
         "duration_bucket": duration_bucket(end - start),
-        "framing_profile": "social-vertical-v1",
+        "framing_profile": MOMENTS_FRAMING_PROFILE,
         "recipe_hash": recipe,
         "manual_status": None,
         "admission": "shadow",
@@ -217,6 +223,32 @@ def normalize_quote_candidate(
     }
     value["candidate_id"] = candidate_id(value)
     return value
+
+
+def normalize_decision_candidate(
+    candidate: Mapping[str, Any],
+    *,
+    provider_model: str,
+    transcript_segments: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Keep an AI interpretation only when its supporting quote is transcript-grounded."""
+    quote = str(candidate.get("quote") or "").strip()
+    region = transcript_region(quote, transcript_segments)
+    if region is None:
+        return None
+    return {
+        "chapter_id": str(candidate.get("chapter_id") or ""),
+        "decision_type": str(candidate.get("decision_type") or "unclear"),
+        "quote": quote,
+        "start": region[0],
+        "end": region[1],
+        "confidence": float(candidate.get("confidence") or 0.0),
+        "explanation": str(candidate.get("explanation") or "")[:400],
+        "source_kind": "llm",
+        "provider_model": provider_model,
+        "prompt_version": MOMENTS_PROMPT_VERSION,
+        "label": "AI interpretation; not official minutes or vote evidence.",
+    }
 
 
 def quote_safety_gate(candidate: Mapping[str, Any], segments: list[dict[str, Any]]) -> bool:
@@ -239,7 +271,8 @@ def parse_transcript_segments(content: bytes, fmt: str = "vtt") -> list[dict[str
     """Parse the small timed-transcript subset needed for grounding and captions."""
     pattern = re.compile(
         r"(?P<start>\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*"
-        r"(?P<end>\d{2}:\d{2}:\d{2}[.,]\d{3})\s*\n(?P<text>.*?)(?=\n\s*\n|\Z)",
+        r"(?P<end>\d{2}:\d{2}:\d{2}[.,]\d{3})[^\r\n]*\r?\n"
+        r"(?P<text>.*?)(?=\r?\n[ \t]*\r?\n|\Z)",
         re.S,
     )
 
@@ -285,6 +318,8 @@ __all__ = [
     "MOMENTS_CONTRACT",
     "MOMENTS_MAX_SECONDS",
     "MOMENTS_MIN_SECONDS",
+    "MOMENTS_PADDING_SECONDS",
+    "MOMENTS_FRAMING_PROFILE",
     "MOMENTS_PIPELINE_VERSION",
     "MOMENTS_PROMPT_VERSION",
     "candidate_id",
@@ -292,6 +327,7 @@ __all__ = [
     "duration_bucket",
     "ensure_moment_contract",
     "normalize_quote_candidate",
+    "normalize_decision_candidate",
     "parse_transcript_segments",
     "quote_safety_gate",
     "response_payload",

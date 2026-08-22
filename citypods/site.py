@@ -289,6 +289,12 @@ def render_meeting_page(
         key=lambda candidate: float(candidate.get("quality_score") or 0),
         reverse=True,
     )
+    moment_summaries = [
+        row for row in ep.moment_summary_candidates if isinstance(row, dict) and row.get("text")
+    ]
+    moment_decisions = [
+        row for row in ep.moment_decision_candidates if isinstance(row, dict) and row.get("quote")
+    ]
     report_url = None
     github_repo = (site_config or {}).get("github_repo")
     if github_repo and ep.uid:
@@ -316,6 +322,8 @@ def render_meeting_page(
         availability=availability,
         chapters=chapters,
         admitted_moments=admitted_moments,
+        moment_summaries=moment_summaries,
+        moment_decisions=moment_decisions,
         official_links=official_links,
         transcript_client_json=_script_json(transcript_client) if transcript_client else None,
         source_link_url=_source_deeplink(city, ep, 0.0),

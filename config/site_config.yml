@@ -66,6 +66,9 @@ tagging:
 moments:
   enabled: true
   mode: "manual"  # manual | auto; global kill switch back to manual
+  # Initial rollout is intentionally limited to explicit council feeds and round-robin queue work.
+  rollout_meeting_families: [council]
+  max_dispatches_per_run: 40
   llm_model: "gemini/gemini-3.6-flash"
   llm_models:
     - "gemini/gemini-3.6-flash"
@@ -79,7 +82,7 @@ moments:
     minimum_reviews: 30
     required_precision: 0.90
   judges:
-    enabled: false
+    enabled: true
     allow_paid: false
     models:
       - "meta-llama/llama-4-maverick"

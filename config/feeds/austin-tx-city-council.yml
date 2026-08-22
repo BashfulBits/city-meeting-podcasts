@@ -1,6 +1,7 @@
 slug: austin-tx-city-council
 city: austin-tx
 provider: swagit
+meeting_family: council
 source:
   # Combines the three Swagit views that are all Austin City Council business: regular
   # meetings, work sessions, and special-called/budget work sessions (formerly three separate

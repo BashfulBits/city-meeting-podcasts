@@ -1,6 +1,7 @@
 slug: dallas-tx-city-council
 city: dallas-tx
 provider: swagit
+meeting_family: council
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "City Council Agenda Meetings"   # see scripts/discover_swagit.py for other bodies

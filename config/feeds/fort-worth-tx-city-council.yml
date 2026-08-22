@@ -1,6 +1,7 @@
 slug: fort-worth-tx-city-council
 city: fort-worth-tx
 provider: granicus
+meeting_family: council
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "City Council"

@@ -1385,6 +1385,27 @@ def _speakers_fields_from_rec(rec: dict) -> dict:
     }
 
 
+def _moments_fields_from_rec(rec: dict) -> dict:
+    """Normalize the independent R6 artifact block once for record load and merge."""
+    moments = rec.get("moments") or {}
+    if not isinstance(moments, dict):
+        moments = {}
+
+    def list_field(name: str) -> list:
+        value = moments.get(name)
+        return value if isinstance(value, list) else []
+
+    clip = moments.get("video_clip")
+    return {
+        "moment_summary_candidates": list_field("summary_candidates"),
+        "moment_pullquote_candidates": list_field("pullquote_candidates"),
+        "moment_decision_candidates": list_field("decision_candidates"),
+        "moments_llm_recipe_hash": moments.get("recipe_hash"),
+        "moments_llm_call_attempts": list_field("call_attempts"),
+        "moment_video_clip": clip if isinstance(clip, dict) else {},
+    }
+
+
 def _availability_to_dict(av: MediaAvailability | None) -> dict | None:
     """Serialize the durable availability verdict (H16 PR3), or ``None`` to omit the block."""
     if av is None:
@@ -1517,32 +1538,7 @@ def record_to_episode(rec: dict) -> Episode:
             else {}
         ),
         summary=rec.get("summary") or "",
-        moment_summary_candidates=(
-            (rec.get("moments") or {}).get("summary_candidates")
-            if isinstance((rec.get("moments") or {}).get("summary_candidates"), list)
-            else []
-        ),
-        moment_pullquote_candidates=(
-            (rec.get("moments") or {}).get("pullquote_candidates")
-            if isinstance((rec.get("moments") or {}).get("pullquote_candidates"), list)
-            else []
-        ),
-        moment_decision_candidates=(
-            (rec.get("moments") or {}).get("decision_candidates")
-            if isinstance((rec.get("moments") or {}).get("decision_candidates"), list)
-            else []
-        ),
-        moments_llm_recipe_hash=(rec.get("moments") or {}).get("recipe_hash"),
-        moments_llm_call_attempts=(
-            (rec.get("moments") or {}).get("call_attempts")
-            if isinstance((rec.get("moments") or {}).get("call_attempts"), list)
-            else []
-        ),
-        moment_video_clip=(
-            (rec.get("moments") or {}).get("video_clip")
-            if isinstance((rec.get("moments") or {}).get("video_clip"), dict)
-            else {}
-        ),
+        **_moments_fields_from_rec(rec),
         tags=rec.get("tags") if isinstance(rec.get("tags"), list) else [],
         chapter_tags=rec.get("chapter_tags") if isinstance(rec.get("chapter_tags"), list) else [],
         llm_tag_candidates=(
@@ -1781,6 +1777,7 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     "align": frozenset({"transcript"}),
     "diarize": frozenset({"diarize"}),
     "tag": frozenset({"tags"}),
+    "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
     "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
@@ -2034,32 +2031,8 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.audio_encode_time = audio.get("encode_time")
         ep.audio_rebuild = audio.get("rebuild") or ""
         ep.summary = rec.get("summary", ep.summary)
-        moments = rec.get("moments") or {}
-        if isinstance(moments, dict):
-            ep.moment_summary_candidates = (
-                moments.get("summary_candidates")
-                if isinstance(moments.get("summary_candidates"), list)
-                else []
-            )
-            ep.moment_pullquote_candidates = (
-                moments.get("pullquote_candidates")
-                if isinstance(moments.get("pullquote_candidates"), list)
-                else []
-            )
-            ep.moment_decision_candidates = (
-                moments.get("decision_candidates")
-                if isinstance(moments.get("decision_candidates"), list)
-                else []
-            )
-            ep.moments_llm_recipe_hash = moments.get("recipe_hash")
-            ep.moments_llm_call_attempts = (
-                moments.get("call_attempts")
-                if isinstance(moments.get("call_attempts"), list)
-                else []
-            )
-            ep.moment_video_clip = (
-                moments.get("video_clip") if isinstance(moments.get("video_clip"), dict) else {}
-            )
+        for field_name, value in _moments_fields_from_rec(rec).items():
+            setattr(ep, field_name, value)
         transcript_fields = _transcript_fields_from_rec(rec)
         if transcript_fields.get("transcript_key"):
             ep.transcript_key = transcript_fields["transcript_key"]

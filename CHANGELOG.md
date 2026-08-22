@@ -1,10 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Begin R6 grounded moment extraction with free-only council Gemini routing, three-way calibration,
-  admitted-quote RSS/page/search projections, and content-addressed captioned social video clips.
-
 All notable changes to this project are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is **pre-1.0 (beta)** and does not
 yet cut tagged releases, so entries are grouped by milestone (most recent first) rather than by version.
@@ -21,6 +16,12 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 Phase R (Research-Tool Surface)._
 
 ### Added
+
+- **R6 calibrated moments and shareable clips.** Added council-only free Gemini 3.6/3.5 routing,
+  immutable Good/Borderline/Reject review records, background independent judges, deterministic
+  admission gates, RSS soundbites, and grounded captioned MP4 clips. Clips preserve source audio,
+  use a versioned face/mouth-motion speaker crop when confident, and otherwise retain a safe group
+  composition; existing records stay unchanged until normal staged processing reaches them.
 
 - **Cross-model overflow routing (`model_routing`) and a Mistral Medium → Gemini 3.5 Flash Lite
   route.** Added an optional `model_routing` map to `config/provider_limits.yml`: a job pinned to

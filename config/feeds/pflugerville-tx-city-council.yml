@@ -1,6 +1,7 @@
 slug: pflugerville-tx-city-council
 city: pflugerville-tx
 provider: granicus
+meeting_family: council
 source:
   feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
   body: "City Council"

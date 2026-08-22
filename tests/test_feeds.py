@@ -95,6 +95,19 @@ def test_video_uses_video_mime(sample_city, sample_episodes):
     assert enc.get("type") == "video/mp4"
 
 
+def test_r6_admitted_quote_emits_bounded_podcasting_soundbite(sample_city, sample_episodes):
+    sample_episodes[0].moment_pullquote_candidates = [
+        {
+            "admission": "admitted_text_only",
+            "quality_score": 0.9,
+            "start": 10.2,
+            "end": 21.6,
+        }
+    ]
+    xml = build_rss(sample_city, sample_episodes, "video", "https://x")
+    assert '<podcast:soundbite startTime="10" duration="12"/>' in xml
+
+
 def test_enclosure_length_zero(sample_city, sample_episodes):
     xml = build_rss(sample_city, sample_episodes, "video", "https://x")
     assert _items(xml)[0].find("enclosure").get("length") == "0"

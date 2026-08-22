@@ -37,6 +37,22 @@
   {% endfor %}
   {% endif %}
 
+  {% if moment_summaries %}
+  <h2 style="font-size:1rem;margin:1.6rem 0 .4rem;">AI-assisted chapter summaries</h2>
+  <ul>
+  {% for summary in moment_summaries %}
+    <li>{{ summary.text }}</li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if moment_decisions %}
+  <h2 style="font-size:1rem;margin:1.6rem 0 .4rem;">Discussion directions</h2>
+  {% for decision in moment_decisions %}
+  <p class="muted"><strong>AI interpretation, not official minutes:</strong> {{ decision.quote }}</p>
+  {% endfor %}
+  {% endif %}
+
   {% if player_url %}
   <audio id="player" controls preload="metadata" src="{{ player_url }}" style="width:100%;margin:0 0 1rem;"></audio>
   {% endif %}
