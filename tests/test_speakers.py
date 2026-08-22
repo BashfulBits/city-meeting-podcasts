@@ -7,6 +7,7 @@ from citypods.diarize import _mark_overlap, attach_transcript_words
 from citypods.models import City, Episode
 from citypods.records import meeting_page_hash
 from citypods.site import speaker_page_rows
+from citypods.speaker_benchmark import compare
 from citypods.speaker_review import main as speaker_review_main
 from citypods.speakers import (
     assign_turn,
@@ -18,6 +19,7 @@ from citypods.speakers import (
     public_turn,
     quote_attribution,
     refresh_membership_status,
+    shadow_candidate_id,
 )
 
 
@@ -109,6 +111,20 @@ def test_identity_calibration_requires_30_days_30_reviews_and_95_percent():
     assert auto_publish_allowed(state, cell=cell, now=now)
     state["reviews"][1]["correct"] = False
     assert not auto_publish_allowed(state, cell=cell, now=now)
+
+
+def test_shadow_candidate_and_offline_benchmark_are_engine_neutral():
+    turn = {"start": 10.0, "end": 20.0, "cluster": "A", "identity": {"speaker_id": "spk-a"}}
+    candidate = shadow_candidate_id(
+        city_slug="demo-tx", body="Council", episode_uid="one", recipe="rss:pyannote", turn=turn
+    )
+    assert candidate.startswith("r7-")
+    report = compare(
+        [{"start": 10.0, "end": 20.0, "speaker": "Alex", "speaker_id": "spk-a"}],
+        [turn],
+    )
+    assert report["turn_cluster_accuracy"] == 1.0
+    assert report["identity_precision"] == 1.0
 
 
 def test_speaker_pages_only_include_admitted_named_quotes():

@@ -91,6 +91,28 @@ def save_turn_evidence(path: Path, evidence: Mapping[str, Any]) -> None:
     _save_json(path, evidence)
 
 
+def save_evaluation(path: Path, evaluation: Mapping[str, Any]) -> None:
+    """Persist the private, append-only shadow-match review ledger."""
+    _save_json(path, evaluation)
+
+
+def shadow_candidate_id(
+    *, city_slug: str, body: str | None, episode_uid: str, recipe: str, turn: Mapping[str, Any]
+) -> str:
+    """Stable, privacy-safe identity for one reviewable shadow voice assignment."""
+    payload = {
+        "city": city_slug,
+        "body": _norm(body),
+        "episode_uid": episode_uid,
+        "recipe": recipe,
+        "start": turn.get("start"),
+        "end": turn.get("end"),
+        "cluster": turn.get("cluster"),
+        "speaker_id": (turn.get("identity") or {}).get("speaker_id"),
+    }
+    return "r7-" + hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:20]
+
+
 def public_turn(turn: Mapping[str, Any]) -> dict[str, Any]:
     """Remove identity vectors before a diarization artifact can receive a public URL."""
     return {key: value for key, value in turn.items() if key not in {"embedding", "identity"}}
@@ -340,6 +362,8 @@ __all__ = [
     "quote_attribution",
     "refresh_membership_status",
     "save_registry",
+    "save_evaluation",
     "save_turn_evidence",
+    "shadow_candidate_id",
     "speaker_id",
 ]

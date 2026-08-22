@@ -6683,6 +6683,7 @@ class SpeakerIdentityStage:
             quote_attribution,
             refresh_membership_status,
             save_registry,
+            shadow_candidate_id,
         )
 
         stats = StageStats(self.name)
@@ -6731,7 +6732,8 @@ class SpeakerIdentityStage:
                 private_turns, list
             ):
                 private_turns = turns
-            cell = calibration_cell(city.slug, ep.body, str(payload.get("model") or "unknown"))
+            engine_recipe = f"{city.provider}:{payload.get('model') or 'unknown'}"
+            cell = calibration_cell(city.slug, ep.body, engine_recipe)
             publish = auto_publish_allowed(evaluation, cell=cell)
             allowed_ids = {
                 ident
@@ -6770,6 +6772,30 @@ class SpeakerIdentityStage:
                         minimum_score=float(ctx.speaker_config.get("minimum_match_score", 0.75)),
                     )
                 )
+            for turn in enriched_turns:
+                identity = turn.get("identity") if isinstance(turn, dict) else None
+                if not isinstance(identity, dict) or identity.get("status") != "shadow":
+                    continue
+                candidate_id = shadow_candidate_id(
+                    city_slug=city.slug,
+                    body=ep.body,
+                    episode_uid=ep.uid or ep.guid,
+                    recipe=engine_recipe,
+                    turn=turn,
+                )
+                evaluation.setdefault("candidates", {})[candidate_id] = {
+                    "candidate_id": candidate_id,
+                    "city_slug": city.slug,
+                    "body": ep.body or "",
+                    "engine_recipe": engine_recipe,
+                    "episode_uid": ep.uid or ep.guid,
+                    "episode_title": ep.title,
+                    "start": turn.get("start"),
+                    "end": turn.get("end"),
+                    "speaker_id": identity.get("speaker_id"),
+                    "display_name": identity.get("display_name"),
+                    "transcript_text_hash": turn.get("transcript_text_hash"),
+                }
             for candidate in ep.moment_pullquote_candidates:
                 if not isinstance(candidate, dict):
                     continue
@@ -6798,6 +6824,10 @@ class SpeakerIdentityStage:
                 # durable R6 candidate ledger rather than rewriting immutable speaker bytes.
                 stats.ran += 1
         save_registry(ctx.speaker_registry_path, registry)
+        if ctx.speaker_evaluation_state_path is not None:
+            from citypods.speakers import save_evaluation
+
+            save_evaluation(ctx.speaker_evaluation_state_path, evaluation)
         return stats
 
 

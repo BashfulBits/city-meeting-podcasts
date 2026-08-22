@@ -22,6 +22,9 @@ Phase R (Research-Tool Surface)._
   public-identity gate, minutes-backed silent correction, R6 single-speaker pull-quote attribution, and
   static speaker pages. Diarization/version backfills are gradual: only episodes with an eligible retained
   transcript/audio artifact are reconsidered; audio and transcript bytes are never regenerated.
+  A bounded weekly GitHub-review issue workflow now harvests authenticated Correct/Incorrect shadow
+  labels into the private calibration ledger; the pyannote-vs-WeSpeaker gold-set comparator remains an
+  explicit offline run because the gold references are private.
 
 - **R6 calibrated moments and shareable clips.** Added council-only free Gemini 3.6/3.5 routing,
   immutable Good/Borderline/Reject review records, background independent judges, deterministic

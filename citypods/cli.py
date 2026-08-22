@@ -344,6 +344,10 @@ def main(argv: list[str] | None = None) -> int:
         "speaker-review", help="maintain R7 golden voice references and calibration"
     )
     r7.add_argument("speaker_review_args", nargs=argparse.REMAINDER)
+    sb = sub.add_parser(
+        "speaker-benchmark", help="compare pyannote and WeSpeaker against private gold"
+    )
+    sb.add_argument("speaker_benchmark_args", nargs=argparse.REMAINDER)
 
     args = parser.parse_args(argv)
 
@@ -402,6 +406,10 @@ def main(argv: list[str] | None = None) -> int:
         from citypods import speaker_review
 
         return speaker_review.main(args.speaker_review_args)
+    if args.command == "speaker-benchmark":
+        from citypods import speaker_benchmark
+
+        return speaker_benchmark.main(args.speaker_benchmark_args)
 
     return 0
 

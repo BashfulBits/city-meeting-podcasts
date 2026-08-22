@@ -477,8 +477,10 @@ defaults:
   # claim is reclaimed/requeued instead of the ledger going unswept.
   work_lease_reaper_enabled: true
 
-# R7 is intentionally disabled until a curated gold set has qualified each body/context.  The
-# state objects are persisted alongside canonical state, not rendered into public Pages output.
+# R7 is off until a controlled shadow pilot is selected. Its identity gate is independently
+# fail-closed, so enabling it produces private evidence and weekly review candidates but cannot
+# publish a name before its per-body/capture-context calibration cell qualifies. State objects are
+# persisted alongside canonical state, never rendered into public Pages output.
 speakers:
   enabled: false
   model: "pyannote/speaker-diarization-3.1"
@@ -487,6 +489,7 @@ speakers:
   registry_path: "r7_speaker_registry.json"
   evaluation_state_path: "r7_speaker_evaluation.json"
   turn_evidence_path: "r7_speaker_turn_evidence.json"
+  weekly_review_limit: 8
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):

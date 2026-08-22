@@ -17,6 +17,14 @@ issues not yet cut**
 > turn completely covers their interval; each name links to a static cross-meeting speaker page.
 > Provider labels/rosters remain attendance vocabulary, not timestamped identity ground truth.
 
+> **Weekly calibration revision, 2026-08-22.** `speaker-calibration-review.yml` packages at most
+> `speakers.weekly_review_limit` (default 8) durable shadow matches each Monday using the same
+> authenticated GitHub-issue pattern as R5/R6. A maintainer checks Correct/Incorrect and comments
+> `/speaker-ingest`; the workflow verifies the bot label and author association, rechecks the private
+> candidate ledger, then appends the result and closes the issue. The separate `speaker-benchmark`
+> command compares normalized pyannote/WeSpeaker result bundles against a curator-supplied private gold
+> bundle; it is deliberately offline because it must not put reference audio or embeddings in Actions.
+
 > **Matured to L3, 2026-07-13.** The L1 sketch this builds from was already unusually detailed (real
 > CPU-viable model research, a named execution-backend dependency, an explicit naming/confirmation
 > policy) — closer to L2 in places. This pass's main job was verifying that research is still current,
