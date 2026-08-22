@@ -20,6 +20,23 @@
   </div>
   {% endif %}
 
+  {% if admitted_moments %}
+  <h2 style="font-size:1rem;margin:1.6rem 0 .4rem;">Shareable moments</h2>
+  {% for moment in admitted_moments %}
+  <article style="padding:1rem;border:1px solid var(--border);border-radius:12px;margin:.7rem 0;background:var(--card);">
+    {% if moment.title %}<h3 style="margin:0 0 .5rem;font-size:1rem;">{{ moment.title }}</h3>{% endif %}
+    <blockquote style="margin:0 0 .7rem;font-size:1.05rem;">“{{ moment.quote }}”</blockquote>
+    <div class="muted" style="font-size:.85rem;">AI-assisted quote · {{ moment.start | round | int }}–{{ moment.end | round | int }} seconds</div>
+    {% if ep.moment_video_clip.key and ep.moment_video_clip.candidate_id == moment.candidate_id %}
+    <video controls preload="metadata" playsinline style="width:min(100%,420px);margin-top:.8rem;border-radius:8px;" src="{{ ep.moment_video_clip.url }}"></video>
+    <p style="margin:.5rem 0 0;"><a class="btn" href="{{ ep.moment_video_clip.url }}" download>Download/share clip</a></p>
+    {% else %}
+    <p class="muted" style="margin:.5rem 0 0;">Video clip is not available yet; the grounded quote remains linked to the transcript.</p>
+    {% endif %}
+  </article>
+  {% endfor %}
+  {% endif %}
+
   {% if player_url %}
   <audio id="player" controls preload="metadata" src="{{ player_url }}" style="width:100%;margin:0 0 1rem;"></audio>
   {% endif %}

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Begin R6 grounded moment extraction with free-only council Gemini routing, three-way calibration,
+  admitted-quote RSS/page/search projections, and content-addressed captioned social video clips.
+
 All notable changes to this project are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is **pre-1.0 (beta)** and does not
 yet cut tagged releases, so entries are grouped by milestone (most recent first) rather than by version.

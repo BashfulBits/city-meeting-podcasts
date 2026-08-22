@@ -134,6 +134,15 @@ class Episode:
     generated_chapters: list[dict] = field(default_factory=list)
     generated_chapters_spec_hash: str | None = None
     summary: str = ""
+    # R6 moment candidates are additive and remain separate from the provider/legacy summary.
+    moment_summary_candidates: list[dict] = field(default_factory=list)
+    moment_pullquote_candidates: list[dict] = field(default_factory=list)
+    moment_decision_candidates: list[dict] = field(default_factory=list)
+    moments_llm_recipe_hash: str | None = None
+    moments_llm_call_attempts: list[dict] = field(default_factory=list)
+    # The selected admitted quote and rendered social-video artifact are projections of the
+    # candidate ledger, not replacements for official episode text.
+    moment_video_clip: dict = field(default_factory=dict)
     # Versioned catalog taxonomy output.  ``tags_spec_hash`` prevents an enabled LLM path from
     # repeating the same inference when its inputs and taxonomy have not changed.
     tags: list[dict] = field(default_factory=list)

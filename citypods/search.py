@@ -299,6 +299,11 @@ def _record_to_document(
     backup_text, backup_labels = _document_text(backup_data, backup=True)
     minutes_text, _ = _document_text(minutes_data, backup=True)
     tags = [_clean(tag, 500) for tag in _text_values(record.get("tags") or getattr(ep, "tags", []))]
+    admitted_quotes = " ".join(
+        str(row.get("quote") or "")
+        for row in ep.moment_pullquote_candidates
+        if isinstance(row, dict) and row.get("admission") in {"admitted", "admitted_text_only"}
+    )
     date = ep.published.date().isoformat()
     return {
         "id": ep.uid,
@@ -323,7 +328,9 @@ def _record_to_document(
         "minutes_text": minutes_text or None,
         "roster_text": " ".join(_text_values(ep.minutes_roster)),
         "votes_text": " ".join(_text_values(ep.minutes_votes)),
-        "description": _clean(ep.summary or ep.description),
+        "description": _clean(
+            " ".join(part for part in (ep.summary or ep.description, admitted_quotes) if part)
+        ),
     }
 
 

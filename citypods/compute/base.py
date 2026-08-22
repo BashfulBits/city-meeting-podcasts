@@ -36,6 +36,7 @@ Task = Literal[
     "classify-civic-platforms",
     "agenda-item-extract",
     "agenda-chapter-locate",
+    "moment-extraction",
 ]
 
 

@@ -132,7 +132,12 @@ def episode_notes_html(ep: Episode) -> str:
     CDATA terminator ``]]>``."""
     pairs = episode_resource_links(ep)
     is_partial = bool(ep.media_availability and ep.media_availability.is_confirmed_partial())
-    if not ep.summary and not pairs and not is_partial:
+    admitted = [
+        row
+        for row in ep.moment_pullquote_candidates
+        if isinstance(row, dict) and row.get("admission") in {"admitted", "admitted_text_only"}
+    ]
+    if not ep.summary and not pairs and not is_partial and not admitted:
         return ""
     parts: list[str] = []
     if is_partial:
@@ -146,6 +151,11 @@ def episode_notes_html(ep: Episode) -> str:
             f'<li><a href="{escape(url)}">{escape(label)}</a></li>' for label, url in pairs
         )
         parts.append(f"<p>Resources:</p><ul>{lis}</ul>")
+    if admitted:
+        quote = max(admitted, key=lambda row: float(row.get("quality_score") or 0)).get("quote")
+        parts.append(
+            f"<p><strong>AI-assisted shareable moment:</strong> {escape(str(quote or ''))}</p>"
+        )
     return "".join(parts).replace("]]>", "]]&gt;")
 
 
@@ -271,6 +281,7 @@ def build_rss(
                 ),
                 "transcript_url": transcript[0] if transcript else None,
                 "transcript_mime": transcript[1] if transcript else None,
+                "soundbite": _soundbite(ep),
             }
         )
 
@@ -285,3 +296,17 @@ def build_rss(
         artwork_url=artwork_url,
         enclosure_length=ENCLOSURE_LENGTH,
     )
+
+
+def _soundbite(ep: Episode) -> dict[str, int] | None:
+    admitted = [
+        row
+        for row in ep.moment_pullquote_candidates
+        if isinstance(row, dict) and row.get("admission") in {"admitted", "admitted_text_only"}
+    ]
+    if not admitted:
+        return None
+    row = max(admitted, key=lambda candidate: float(candidate.get("quality_score") or 0))
+    start = max(0, round(float(row.get("start") or 0)))
+    end = round(float(row.get("end") or start))
+    return {"start": start, "duration": max(0, end - start)}

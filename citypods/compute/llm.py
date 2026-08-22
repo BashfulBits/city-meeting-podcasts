@@ -68,6 +68,7 @@ LLM_TASKS: frozenset[Task] = frozenset(
         "classify-civic-platforms",
         "agenda-item-extract",
         "agenda-chapter-locate",
+        "moment-extraction",
     }
 )
 TASK_VERSIONS: dict[Task, str] = {
@@ -77,6 +78,7 @@ TASK_VERSIONS: dict[Task, str] = {
     "classify-civic-platforms": "6",
     "agenda-item-extract": "1",
     "agenda-chapter-locate": "1",
+    "moment-extraction": "1",
 }
 
 TASK_PROMPTS: dict[Task, str] = {
@@ -95,6 +97,11 @@ TASK_PROMPTS: dict[Task, str] = {
     ),
     "agenda-chapter-locate": (
         "Locate agenda items in a complete timed transcript using only supplied unit IDs."
+    ),
+    "moment-extraction": (
+        "Extract grounded chapter summaries, pull quotes, and discussion directions from the "
+        "supplied "
+        "meeting material. Never invent transcript quotes or official outcomes."
     ),
 }
 

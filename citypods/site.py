@@ -279,6 +279,16 @@ def render_meeting_page(
             )
         )
     ]
+    admitted_moments = sorted(
+        [
+            candidate
+            for candidate in ep.moment_pullquote_candidates
+            if isinstance(candidate, dict)
+            and candidate.get("admission") in {"admitted", "admitted_text_only"}
+        ],
+        key=lambda candidate: float(candidate.get("quality_score") or 0),
+        reverse=True,
+    )
     report_url = None
     github_repo = (site_config or {}).get("github_repo")
     if github_repo and ep.uid:
@@ -305,6 +315,7 @@ def render_meeting_page(
         duration=_duration(episode_served_duration_seconds(ep) or ep.duration),
         availability=availability,
         chapters=chapters,
+        admitted_moments=admitted_moments,
         official_links=official_links,
         transcript_client_json=_script_json(transcript_client) if transcript_client else None,
         source_link_url=_source_deeplink(city, ep, 0.0),

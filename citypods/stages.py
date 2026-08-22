@@ -298,6 +298,11 @@ class StageContext:
     # Optional R5 structured tag backend.  It is deliberately separate from the ASR backend so a
     # catalog build can run deterministic tags without installing or configuring the LLM extra.
     tag_backend: object | None = None
+    # R6 uses a separate backend/policy so council routes can be restricted to the two configured
+    # free Gemini pools without changing the established R5 tag route.
+    moment_backend: object | None = None
+    moment_evaluation_state_path: Path | None = None
+    moment_evaluation_config: dict = field(default_factory=dict)
     taxonomy_path: Path = Path("config/taxonomy.yml")
     llm_evaluation_state_path: Path | None = None
     llm_evaluation_config: dict = field(default_factory=dict)
@@ -558,6 +563,8 @@ _STAGE_EMPTY_OK = frozenset(
         "chapter_agenda",
         "chapter_locator",
         "generated_chapters",
+        "moments",
+        "video-clips",
     }
 )
 
@@ -570,6 +577,10 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
         return ep.transcript_key or ep.transcript_hosted_url
     if name == "diarize":
         return ep.speakers_key or ep.speakers_url or ep.speakers_error
+    if name == "moments":
+        return ep.moments_llm_recipe_hash or (ep.moment_pullquote_candidates and "moments")
+    if name == "video-clips":
+        return (ep.moment_video_clip or {}).get("key") or (ep.moment_video_clip or {}).get("status")
     if name == "chapter_agenda":
         artifact = ep.generated_agenda_candidates or {}
         return artifact.get("artifact_key") or artifact.get("recipe")
@@ -666,6 +677,24 @@ def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: Cit
             "agenda": ep.agenda_text_url,
             "chapters": ep.chapters,
         }
+    elif name == "moments":
+        payload = {
+            **common,
+            "transcript": ep.transcript_key or ep.transcript_hosted_url,
+            "transcript_words": ep.transcript_words_key,
+            "chapters": ep.chapters,
+            "video": ep.video_url,
+            "meeting_family": city.extra.get("meeting_family", "default"),
+            "recipe": ep.moments_llm_recipe_hash,
+        }
+    elif name == "video-clips":
+        payload = {
+            **common,
+            "moments": ep.moments_llm_recipe_hash,
+            "candidates": ep.moment_pullquote_candidates,
+            "video": ep.video_url,
+            "timeline": dataclasses.asdict(ep.timeline) if ep.timeline else None,
+        }
     else:
         payload = {
             **common,
@@ -699,6 +728,10 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
         return bool(ep.speakers_key or ep.speakers_url or ep.speakers_error)
     if name == "tags":
         return ep.tags_input_fingerprint is not None or bool(ep.tags or ep.chapter_tags)
+    if name == "moments":
+        return bool(ep.moments_llm_recipe_hash or ep.moment_pullquote_candidates)
+    if name == "video-clips":
+        return bool(ep.moment_video_clip)
     if name == "chapter_agenda":
         return (ep.generated_agenda_candidates or {}).get("status") in {
             "completed",
@@ -750,6 +783,305 @@ def _mark_stage_complete(
             "output": stage_output_pointer(stage.name, ep),
             "completed_at": datetime.now(UTC).isoformat(),
         }
+
+
+class MomentsStage:
+    """Extract grounded R6 moments and apply the manual/calibrated admission policy."""
+
+    name = "moments"
+    version = "1"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.chapters import episode_served_chapters
+        from citypods.compute.base import InferenceJob, JobHandle, JobResult
+        from citypods.compute.llm_policy import LLMRequestPolicy
+        from citypods.moment_evaluation import apply_admission, load_state
+        from citypods.moments import (
+            MOMENTS_CONTRACT,
+            candidate_matrix_key,
+            ensure_moment_contract,
+            normalize_quote_candidate,
+            parse_transcript_segments,
+            quote_safety_gate,
+            recipe_hash,
+            response_payload,
+        )
+        from citypods.video_clips import technical_video_gate
+
+        stats = StageStats(self.name)
+        if ctx.moment_backend is None or ctx.storage is None:
+            return stats
+        eval_config = ctx.moment_evaluation_config or {}
+        mode = str(eval_config.get("mode") or "manual")
+        state = (
+            load_state(ctx.moment_evaluation_state_path) if ctx.moment_evaluation_state_path else {}
+        )
+        backend_config = getattr(ctx.moment_backend, "config", None)
+        configured = tuple(
+            str(model)
+            for model in (
+                [getattr(backend_config, "model", "")]
+                + list(getattr(backend_config, "additional_models", ()) or ())
+            )
+            if model
+        )
+        family = str(city.extra.get("meeting_family") or "default")
+        allowed_models = (
+            ("gemini/gemini-3.6-flash", "gemini/gemini-3.5-flash")
+            if family == "council"
+            else ("gemini/gemini-3.5-flash-lite", "gemini/gemini-3.1-flash-lite")
+        )
+        allowed_models = (
+            tuple(model for model in allowed_models if model in configured) or allowed_models
+        )
+        ensure_moment_contract()
+
+        def admit(candidate: dict[str, Any], technical_gate: bool) -> dict[str, Any]:
+            result = apply_admission(
+                candidate, state, technical_gate=technical_gate, global_mode=mode
+            )
+            if result.get("admission") == "admitted" and not quote_safety_gate(result, segments):
+                result.update(
+                    {
+                        "admission": "admitted_text_only",
+                        "display": True,
+                        "admission_reason": "timing-override-gate",
+                    }
+                )
+            return result
+
+        for ep in episodes:
+            if ctx.stop and ctx.stop():
+                stats.defer("stop")
+                continue
+            if not ep.transcript_key or not ep.video_url:
+                stats.quality("shadow-no-source")
+                continue
+            raw = _read_storage_bytes(ctx.storage, ep.transcript_key)
+            segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
+            if not segments:
+                stats.quality("shadow-no-captions")
+                continue
+            chapters = episode_served_chapters(ep)
+            chapter_rows = [
+                {
+                    "chapter_id": str(row.get("id") or row.get("chapter_id") or index),
+                    "title": str(row.get("title") or ""),
+                    "start": row.get("start"),
+                    "end": row.get("end"),
+                }
+                for index, row in enumerate(chapters)
+                if isinstance(row, dict)
+            ]
+            transcript_text = " ".join(str(row.get("text") or "") for row in segments)
+            agenda_key = (ep.links or {}).get("agenda_text_artifact_key")
+            agenda_data = _read_storage_bytes(ctx.storage, agenda_key or "")
+            agenda_text = (agenda_data or b"").decode("utf-8", errors="replace")[:80_000]
+            moments_recipe = recipe_hash(
+                transcript_key=ep.transcript_key,
+                transcript_words_key=ep.transcript_words_key,
+                chapters=chapter_rows,
+                agenda_text_key=agenda_key,
+                route_models=allowed_models,
+                meeting_family=family,
+                evaluation_policy=mode,
+            )
+            if ep.moments_llm_recipe_hash == moments_recipe and ep.moment_pullquote_candidates:
+                technical_gate = technical_video_gate(
+                    ep.video_url,
+                    binary=str(getattr(ctx.ffmpeg, "binary", "ffmpeg")),
+                    captions_available=bool(segments),
+                    withheld=bool(ep.media_availability and ep.media_availability.is_withheld()),
+                )
+                ep.moment_pullquote_candidates = [
+                    admit(row, technical_gate)
+                    for row in ep.moment_pullquote_candidates
+                    if isinstance(row, dict)
+                ]
+                stats.reused += 1
+                continue
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You extract civic meeting moments. Quote only exact contiguous wording "
+                        "from the transcript. Return one summary point per supplied chapter. "
+                        "Do not invent "
+                        "votes, decisions, names, times, or outcomes."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "scope": "moments",
+                            "chapters": chapter_rows,
+                            "transcript": transcript_text,
+                            "agenda_text": agenda_text,
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ]
+            inputs: dict[str, Any] = {
+                "messages": messages,
+                "structured_output": MOMENTS_CONTRACT,
+                "max_tokens": 4096,
+            }
+            inputs["llm_policy"] = LLMRequestPolicy(
+                allowed_models=allowed_models,
+                allow_paid=False,
+                purpose="r6-moments",
+                queue_only=True,
+                timeout_class="long",
+            )
+            try:
+                outcome = ctx.moment_backend.run_inference(
+                    InferenceJob(
+                        task="moment-extraction",
+                        inputs=inputs,
+                        recipe_hash=moments_recipe,
+                    )
+                )
+                if isinstance(outcome, JobHandle):
+                    stats.defer("llm-capacity", sample=ep.uid or ep.guid)
+                    continue
+                if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
+                    raise ValueError("moment backend returned an invalid result")
+                payload = response_payload(outcome.output)
+                model = str(outcome.model or allowed_models[0])
+            except Exception as exc:  # noqa: BLE001 - one bad model response cannot stop a feed.
+                stats.errors.append(f"{ep.uid or ep.guid}: moment extraction deferred ({exc})")
+                stats.defer("llm-error", sample=ep.uid or ep.guid)
+                continue
+
+            summary_by_chapter = {
+                str(row.get("chapter_id")): row
+                for row in payload.get("summary_points", [])
+                if isinstance(row, dict)
+            }
+            required_chapters = {item["chapter_id"] for item in chapter_rows}
+            if required_chapters and set(summary_by_chapter) != required_chapters:
+                stats.defer("summary-chapter-coverage", sample=ep.uid or ep.guid)
+                continue
+            ep.moment_summary_candidates = [
+                {
+                    "chapter_id": row["chapter_id"],
+                    "text": row["text"],
+                    "confidence": row.get("confidence", 0.0),
+                    "source_kind": "llm",
+                    "provider_model": model,
+                    "prompt_version": "1",
+                }
+                for row in summary_by_chapter.values()
+                if row.get("chapter_id") in {item["chapter_id"] for item in chapter_rows}
+            ]
+            candidates: list[dict[str, Any]] = []
+            for raw_candidate in payload.get("pull_quotes", []):
+                if not isinstance(raw_candidate, dict):
+                    continue
+                candidate = normalize_quote_candidate(
+                    raw_candidate,
+                    episode_uid=ep.uid or ep.guid,
+                    provider_model=model,
+                    recipe=moments_recipe,
+                    meeting_family=family,
+                    transcript_segments=segments,
+                )
+                if candidate:
+                    candidates.append(candidate)
+            technical_gate = technical_video_gate(
+                ep.video_url,
+                binary=str(getattr(ctx.ffmpeg, "binary", "ffmpeg")),
+                captions_available=bool(segments),
+                withheld=bool(ep.media_availability and ep.media_availability.is_withheld()),
+            )
+            ep.moment_pullquote_candidates = [
+                admit(candidate, technical_gate) for candidate in candidates
+            ]
+            ep.moment_decision_candidates = [
+                {
+                    **row,
+                    "source_kind": "llm",
+                    "provider_model": model,
+                    "prompt_version": "1",
+                }
+                for row in payload.get("decisions", [])
+                if isinstance(row, dict)
+            ]
+            ep.moments_llm_recipe_hash = moments_recipe
+            ep.moments_llm_call_attempts.append(
+                {
+                    "purpose": "r6-moments",
+                    "status": "completed",
+                    "provider_model": model,
+                    "recipe_hash": moments_recipe,
+                    "candidate_count": len(candidates),
+                    "calibration_cells": [candidate_matrix_key(row) for row in candidates],
+                }
+            )
+            stats.ran += 1
+        return stats
+
+
+class VideoClipsStage:
+    """Materialize the highest-ranked admitted R6 quote as a social video."""
+
+    name = "video-clips"
+    version = "1"
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.moments import parse_transcript_segments
+        from citypods.video_clips import render_video_clip
+
+        stats = StageStats(self.name)
+        if ctx.storage is None:
+            return stats
+        for ep in episodes:
+            admitted = [
+                candidate
+                for candidate in ep.moment_pullquote_candidates
+                if isinstance(candidate, dict) and candidate.get("admission") == "admitted"
+            ]
+            if not admitted:
+                continue
+            selected = max(
+                admitted,
+                key=lambda candidate: (
+                    float(candidate.get("quality_score") or 0),
+                    candidate.get("start", 0),
+                ),
+            )
+            raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
+            segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
+            clip = render_video_clip(
+                ep,
+                selected,
+                source_url=ep.video_url,
+                binary=str(getattr(ctx.ffmpeg, "binary", "ffmpeg")),
+                storage=ctx.storage,
+                segments=segments,
+                timeline_version=(
+                    timeline_digest(ep.timeline, ep.sources) if ep.timeline else "identity"
+                ),
+                crop_anchor=selected.get("crop_anchor"),
+                profile=str(selected.get("output_profile") or "vertical-9x16-square-pane-v1"),
+            )
+            ep.moment_video_clip = {
+                **clip,
+                "candidate_id": selected.get("candidate_id"),
+                "served_start": selected.get("start"),
+                "served_end": selected.get("end"),
+            }
+            if clip.get("status") == "ready":
+                stats.ran += 1
+            else:
+                stats.quality(clip.get("reason") or "video-unavailable")
+        return stats
 
 
 class TagsStage:
@@ -6257,6 +6589,11 @@ def enrich_stages() -> list[EnrichmentStage]:
     ]
 
 
+def r6_stages() -> list[EnrichmentStage]:
+    """R6's opt-in stages, kept separate so legacy stage ordering remains stable."""
+    return [MomentsStage(), VideoClipsStage()]
+
+
 # Which stages each H6b lane runs (review/12 §H6). A lane runs ONLY its own work-class stages so it
 # never re-derives — and so, via the whole-record state push, never regresses — a sibling lane's
 # artifact: the ``transcribe`` lane must not re-run ``audio`` (which would write an audio block from
@@ -6282,6 +6619,7 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     "align": frozenset({"transcript"}),
     "diarize": frozenset({"diarize"}),
     "tag": frozenset({"tags"}),
+    "moments": frozenset({"moments", "video-clips"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
     "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),

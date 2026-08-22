@@ -146,6 +146,7 @@ from citypods.stages import (
     _materialize_set,
     default_stages,
     enrich_stages,
+    r6_stages,
     render_stages,
     run_stages,
     stage_is_dirty,
@@ -2117,7 +2118,9 @@ def _build_impl(
         site_config, state_dir=state_dir, storage=None if dry_run else storage
     )
     tag_backend = None
+    moment_backend = None
     tagging_config = site_config.get("tagging") or {}
+    moments_config = site_config.get("moments") or {}
     tag_max_dispatches = int(tagging_config.get("max_dispatches_per_run", 2000))
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
@@ -2171,6 +2174,30 @@ def _build_impl(
             print(
                 f"tagging: LLM backend unavailable ({exc}); rule-based tags only", file=sys.stderr
             )
+    if moments_config.get("enabled") and not dry_run and phase != "render":
+        from dataclasses import replace as _dc_replace
+
+        from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+
+        try:
+            moment_models = [str(model) for model in (moments_config.get("llm_models") or [])]
+            moment_primary = str(moments_config.get("llm_model") or "gemini/gemini-3.6-flash")
+            if moment_primary not in moment_models:
+                moment_models.insert(0, moment_primary)
+            moment_backend = LiteLLMBackend(
+                _dc_replace(
+                    LLMBackendConfig.from_env(),
+                    model=moment_primary,
+                    additional_models=tuple(
+                        model for model in moment_models if model != moment_primary
+                    ),
+                    mode=str(moments_config.get("llm_mode", "dispatch")),
+                    timeout_seconds=float(moments_config.get("timeout_seconds", 90.0)),
+                ),
+                storage=storage,
+            )
+        except ValueError as exc:
+            print(f"moments: LLM backend unavailable ({exc}); moments deferred", file=sys.stderr)
     if _compute_backend_holder is not None:
         _compute_backend_holder.append(compute_backend)
 
@@ -2214,6 +2241,8 @@ def _build_impl(
     # render-only deploy split would otherwise open — review/12 §H6/H11b).
     persist_records = phase != "render"
     stages = {"render": render_stages, "enrich": enrich_stages, "all": default_stages}[phase]()
+    if (site_config.get("moments") or {}).get("enabled") and phase != "render":
+        stages.extend(r6_stages())
     # Generated chaptering is an explicitly separate asynchronous lane.  It is not included in
     # ordinary audio/enrich runs because agenda/transcript prerequisites may complete in different
     # workflows and the initial rollout is a served-time overlay, not an audio-affecting change.
@@ -2426,12 +2455,21 @@ def _build_impl(
         dry_run=dry_run,
         compute_backend=compute_backend,
         tag_backend=tag_backend,
+        moment_backend=moment_backend,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
         llm_evaluation_state_path=state_dir
         / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
         llm_evaluation_config={
             **(tagging_config.get("evaluation") or {}),
             "prelabeler": tagging_config.get("prelabeler") or {},
+        },
+        moment_evaluation_state_path=state_dir
+        / str(
+            (moments_config.get("evaluation") or {}).get("state_path", "r6_moment_evaluation.json")
+        ),
+        moment_evaluation_config={
+            **moments_config,
+            **(moments_config.get("evaluation") or {}),
         },
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog

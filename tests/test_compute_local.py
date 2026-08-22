@@ -81,6 +81,7 @@ class TestInterface:
             "classify-civic-platforms",
             "agenda-item-extract",
             "agenda-chapter-locate",
+            "moment-extraction",
         }
 
     def test_make_compute_defaults_to_local(self):

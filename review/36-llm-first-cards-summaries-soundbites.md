@@ -1,5 +1,32 @@
 # review/36 — Cards, Summaries, Soundbites & Decisions: LLM-First, Scaffolding Deferred
 
+## R6 implementation addendum — calibrated quotes and shareable video clips
+
+This addendum supersedes the earlier “no standalone clip files” boundary. An admitted pull quote
+now has a content-addressed MP4 projection when the source-media, grounding, caption, URL, and
+resolution gates pass. The default output is a 9:16 social canvas with a native-resolution square
+video pane, caption bands, and a `citymeetings.fyi` watermark; a quote remains text-admitted when
+video rendering is unavailable.
+
+Council feeds (`meeting_family: council`) use only `gemini/gemini-3.6-flash` followed by
+`gemini/gemini-3.5-flash`. Other families use the existing Lite routes. Every R6 call sets
+`allow_paid=False`; quota exhaustion is deferred. Judge candidates are a separate, disabled-by-
+default configuration and never create or rewrite candidates.
+
+The R6 gate has three layers: exact transcript grounding and served-time derivation; deterministic
+media/caption/duration/resolution safety; and a durable human/calibration policy. `Good` admits
+immediately, `Borderline` retains a learning example, and `Reject` always suppresses. Automatic
+admission is globally off initially and can qualify a calibration cell only after 30 days and 30
+ranked examples, with at least 90% Good among score-threshold admissions plus positive and negative
+support. Prompt/model/duration/framing/judge changes create a new cell, and manual decisions win.
+
+The implementation lives in `citypods/moments.py`, `citypods/moment_evaluation.py`, and
+`citypods/video_clips.py`, with `MomentsStage` and `VideoClipsStage` after transcript/timeline
+enrichment. It records the R6 candidate ledger separately from official text and keeps video keys
+in the orphan-GC live set. Face/speaker analysis is versioned behind the framing recipe; until an
+analyzer is available or confident, the renderer uses a stable group crop and never upscales below
+the 720-pixel square-pane policy.
+
 **Maturity: L3 (dev-ready) · successor to [`review/30`](30-cards-summaries-soundbites.md) (now deprecated) ·
 ROADMAP R6 (bundles #3/GH#155 cards, #2 auto-summaries, #15/GH#156 soundbites, plus a new decision/direction
 target) · issues not yet cut**

@@ -61,6 +61,31 @@ tagging:
     # Version the serialized response contract independently of task instructions. Bumping this
     # schedules fresh work for every active candidate whose stored assessment predates it.
     llm_schema_version: "2"
+# R6 grounded moments. Candidate calls are free-only and shadow/manual by default. Council feeds
+# use the two lower-quota long-context Gemini routes; the stage filters this allowlist by family.
+moments:
+  enabled: true
+  mode: "manual"  # manual | auto; global kill switch back to manual
+  llm_model: "gemini/gemini-3.6-flash"
+  llm_models:
+    - "gemini/gemini-3.6-flash"
+    - "gemini/gemini-3.5-flash"
+    - "gemini/gemini-3.5-flash-lite"
+    - "gemini/gemini-3.1-flash-lite"
+  timeout_seconds: 90
+  evaluation:
+    state_path: "r6_moment_evaluation.json"
+    minimum_days: 30
+    minimum_reviews: 30
+    required_precision: 0.90
+  judges:
+    enabled: false
+    allow_paid: false
+    models:
+      - "meta-llama/llama-4-maverick"
+      - "zai/glm-4.7"
+      - "gemini/gemini-3.6-flash"
+      - "openai/gpt-oss-120b"
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)
