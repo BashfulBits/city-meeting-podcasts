@@ -21,6 +21,7 @@ import math
 import os
 import re
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -2195,6 +2196,76 @@ class LiteLLMBackend(Backend):
     poll = reconcile
 
 
+class BatchingDispatchBackend:
+    """Run-scoped collector for independent v2 queue-only jobs.
+
+    Per-episode stages can keep their established deferred-result behavior while this adapter
+    collects newly created durable jobs and submits them in one bounded bulk call at run end.
+    Cached results and already-pending handles continue through the wrapped backend unchanged.
+    """
+
+    def __init__(self, backend: LiteLLMBackend):
+        self._backend = backend
+        self._queued: dict[str, InferenceJob] = {}
+        self._lock = threading.Lock()
+
+    @property
+    def name(self) -> str:
+        return self._backend.name
+
+    @property
+    def config(self) -> LLMBackendConfig:
+        return self._backend.config
+
+    @property
+    def storage(self):
+        return self._backend.storage
+
+    @property
+    def queued_count(self) -> int:
+        with self._lock:
+            return len(self._queued)
+
+    def _can_batch(self, job: InferenceJob) -> bool:
+        policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+        return bool(
+            isinstance(policy, LLMRequestPolicy)
+            and policy.queue_only
+            and self._backend.config.dispatch_v2_url
+            and self._backend.storage is not None
+            and getattr(self._backend.storage, "cas_capable", False)
+            and job.recipe_hash
+        )
+
+    def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
+        if not self._can_batch(job):
+            return self._backend.run_inference(job)
+
+        existing = look_up_deferred(self._backend.storage, job.recipe_hash)
+        if existing is not None:
+            return existing
+        if not terminal_failure_retry_allowed(self._backend.storage, job.recipe_hash):
+            return self._backend.run_inference(job)
+
+        with self._lock:
+            if job.recipe_hash not in self._queued:
+                self._queued[job.recipe_hash] = job
+            return JobHandle(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                backend="llm-dispatch-v2",
+                ref=f"batch-pending:{job.recipe_hash}",
+                model=canonical_model(self._backend.config.model),
+            )
+
+    def flush(self) -> list[JobResult | JobHandle | Exception]:
+        """Submit collected jobs through the existing bounded enqueue/poll helper."""
+        with self._lock:
+            jobs = list(self._queued.values())
+            self._queued.clear()
+        return dispatch_job_batch(self._backend, jobs)
+
+
 def dispatch_job_batch(
     backend: LiteLLMBackend, jobs: Sequence[InferenceJob]
 ) -> list[JobResult | JobHandle | Exception]:
@@ -2261,6 +2332,7 @@ def dispatch_job_batch(
 
 
 __all__ = [
+    "BatchingDispatchBackend",
     "LLMBackendConfig",
     "LLMBackendError",
     "LLMDispatchTerminalError",

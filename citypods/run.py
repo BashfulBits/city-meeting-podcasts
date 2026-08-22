@@ -1861,6 +1861,23 @@ def _run_enrich_global_queue(
         _persist_all()
         mid_run_checkpoint()
 
+    # R6's extraction and independent judge stages are invoked one episode/candidate at a time by
+    # the global queue, but each creates an independent queue-only v2 job. Collect those new jobs
+    # across the entire moments lane and submit one bounded ingress batch after the pass. Existing
+    # deferred handles/results still flow through immediately, so their normal next-run finalizers
+    # and calibration state remain unchanged.
+    moment_batcher = None
+    original_moment_backend = ctx.moment_backend
+    if any(stage.name in {"moments", "moment-judge"} for stage in audio_stages):
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
+
+        if (
+            isinstance(ctx.moment_backend, LiteLLMBackend)
+            and ctx.moment_backend.config.dispatch_v2_url
+        ):
+            moment_batcher = BatchingDispatchBackend(ctx.moment_backend)
+            ctx.moment_backend = moment_batcher
+
     with source_cache or _nullcontext():
         if audio_stages:
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
@@ -1924,6 +1941,20 @@ def _run_enrich_global_queue(
                             on_progress=_checkpoint_if_due,
                         )
                     print("[enrich] tags-only pass done", flush=True)
+
+    if moment_batcher is not None:
+        from citypods.compute.base import JobHandle, JobResult
+
+        outcomes = moment_batcher.flush()
+        pending = sum(1 for outcome in outcomes if isinstance(outcome, JobHandle))
+        completed = sum(1 for outcome in outcomes if isinstance(outcome, JobResult))
+        failed = sum(1 for outcome in outcomes if isinstance(outcome, Exception))
+        print(
+            f"[enrich] R6 LLM batch flush: jobs={len(outcomes)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        ctx.moment_backend = original_moment_backend
 
     # 4) Persist each prepared source (episodes were mutated in place by the passes). Idempotent
     #    repeat of the post-audio-pass persist above; also captures the transcript-pass mutations.
@@ -2280,11 +2311,11 @@ def _build_impl(
                 f"budget: {lane} start cutoff {start_cutoff_min:.0f}m, "
                 f"backstop {backstop_min:.0f}m (+ yield before new starts if superseded)"
             )
-        elif lane == "tag":
-            # The tag lane's own workflow (tag.yml) runs on a daily cron with its own *job*
+        elif lane in {"tag", "moments"}:
+            # Dedicated LLM lanes run on a daily cron with their own *job*
             # timeout, not the 4h-scale cron the generic `run_time_budget_minutes` window is sized
             # for (== that lane's own cron interval, minus a tail -- see the comment above).
-            # `tag_run_time_budget_minutes` gives it a deadline anchored to its own job's timeout,
+            # Their lane budget gives the run a deadline anchored to its own job's timeout,
             # so a run that's still going too long stops dispatching new LLM calls and reaches the
             # end-of-pass persist with margin to spare before GitHub cancels the job outright.
             #
@@ -2306,17 +2337,19 @@ def _build_impl(
             # why `tag.yml`'s job timeout was widened to 240m (mirroring `llm-deferred-sweep.yml`)
             # rather than tuning this number alone. If prepare itself ever needs a hard bound, it
             # needs its own `ctx.stop()` check inside that loop -- this deadline can't reach it.
-            tag_window_min = float(defaults.get("tag_run_time_budget_minutes", 20))
-            tag_deadline_secs = tag_window_min * 60 * safety
-            remaining_secs = max(0.0, tag_deadline_secs - (time.monotonic() - enrich_phase_start))
-            deadline = (time.monotonic() + remaining_secs) if tag_window_min > 0 else None
+            lane_window_key = f"{lane}_run_time_budget_minutes"
+            lane_window_min = float(defaults.get(lane_window_key, 20))
+            lane_deadline_secs = lane_window_min * 60 * safety
+            remaining_secs = max(0.0, lane_deadline_secs - (time.monotonic() - enrich_phase_start))
+            deadline = (time.monotonic() + remaining_secs) if lane_window_min > 0 else None
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
-            if tag_window_min > 0:
+            if lane_window_min > 0:
                 print(
-                    f"budget: tag window {tag_window_min:.0f}m × {safety} (+ yield if superseded)"
+                    f"budget: {lane} window {lane_window_min:.0f}m × {safety} "
+                    "(+ yield if superseded)"
                 )
-            # Topic tag dispatch is asynchronous and not time-critical; omitting tag_llm_deadline
-            # prevents runner-side sleep pacing and ensures worker queue items don't timeout.
+            # The queue owns these asynchronous calls; omit runner-side sleep pacing so accepted
+            # Worker jobs remain durable even when the producer yields.
             tag_llm_deadline = None
         elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
             # Chapter jobs are queued rather than held on a runner. The wall-clock stop bounds
@@ -2971,8 +3004,9 @@ def _build_impl(
             if lane in {"transcribe", "align"}:
                 _history_window_min = float(defaults.get("asr_backstop_minutes", 350))
                 _history_safety = 1.0
-            elif lane == "tag":
-                _history_window_min = float(defaults.get("tag_run_time_budget_minutes", 240))
+            elif lane in {"tag", "moments"}:
+                budget_key = f"{lane}_run_time_budget_minutes"
+                _history_window_min = float(defaults.get(budget_key, 240))
             elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
                 _history_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             _window = _history_window_min * 60 * _history_safety

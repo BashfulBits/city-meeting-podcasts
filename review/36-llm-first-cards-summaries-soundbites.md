@@ -37,6 +37,10 @@ The implementation lives in `citypods/moments.py`, `citypods/moment_evaluation.p
 video stages after transcript/timeline enrichment. Their stage fingerprints are separated so a manual
 review or asynchronous judge result can change admission without re-running extraction. It records the
 R6 candidate ledger separately from official text and keeps video keys in the orphan-GC live set.
+The dedicated `moments.yml` producer sends the bounded shared extraction/judge allowance through the
+v2 dispatch collector as one Worker ingress batch per run; durable handles/results remain finalized on
+later lane passes or by the deferred sweep, so batching changes request shape without changing R6
+candidate recipes, schemas, or calibration behavior.
 The OpenCV face/mouth-motion analyzer is pinned and versioned behind the framing recipe; it tracks a
 confident active speaker, otherwise uses a stable group crop, honors a manual anchor, and never upscales
 below the 720-pixel square-pane policy. Redirected media is first resolved through the SSRF gate before

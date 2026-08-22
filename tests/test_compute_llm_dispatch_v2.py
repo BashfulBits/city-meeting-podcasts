@@ -11,12 +11,14 @@ from pydantic import BaseModel, ConfigDict
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import (
+    BatchingDispatchBackend,
     LiteLLMBackend,
     LLMBackendConfig,
     LLMBackendError,
     LLMDispatchTerminalError,
     dispatch_job_batch,
 )
+from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 
 
@@ -671,6 +673,54 @@ def test_dispatch_job_batch_submits_all_jobs_in_one_call_and_reconciles_pending(
     assert len(results) == 2
     assert isinstance(results[0], JobResult)
     assert isinstance(results[1], JobHandle)
+
+
+def test_batching_dispatch_backend_collects_run_scoped_queue_only_jobs():
+    """R6 can defer per-episode finalization while issuing one v2 ingress request per run."""
+    storage = MockStorage()
+    enqueue_calls = []
+
+    def _enqueue(url, json=None, **_kw):
+        enqueue_calls.append(json)
+        return _accept_all(url, json=json)
+
+    def _poll(*_args, **_kwargs):
+        return _mock_response(status_code=200, json_data={})
+
+    session = MagicMock()
+    session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.6-flash",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    batching = BatchingDispatchBackend(backend)
+    jobs = [
+        InferenceJob(
+            task="moment-extraction",
+            inputs={
+                "messages": [{"role": "user", "content": f"moment {index}"}],
+                "llm_policy": LLMRequestPolicy(queue_only=True),
+            },
+            recipe_hash=f"moment-recipe-{index}",
+        )
+        for index in range(3)
+    ]
+
+    provisional = [batching.run_inference(job) for job in jobs]
+
+    assert all(isinstance(result, JobHandle) for result in provisional)
+    assert all(result.ref.startswith("batch-pending:") for result in provisional)
+    session.post.assert_not_called()
+
+    outcomes = batching.flush()
+
+    assert len(outcomes) == 3
+    assert len(enqueue_calls) == 1
+    assert len(enqueue_calls[0]["jobs"]) == 3
 
 
 def test_dispatch_job_batch_returns_empty_list_for_no_jobs():
