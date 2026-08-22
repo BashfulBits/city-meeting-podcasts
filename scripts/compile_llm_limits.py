@@ -91,6 +91,62 @@ def _validate_token_buffer(raw_buffer: Any) -> float:
     return numeric_val
 
 
+def _validate_split_cap(raw_multiplier: Any) -> float:
+    """Validate and normalize the split-cap multiplier for multi-dispatcher coexistence.
+
+    Returns a float multiplier in (0.0, 1.0]. A missing/null value defaults to 1.0 (unscaled).
+    Strings with a trailing '%' (e.g. '50%') are parsed as percentages. Values outside (0.0, 1.0]
+    or non-numeric types are rejected.
+    """
+    if raw_multiplier is None:
+        return 1.0
+    if isinstance(raw_multiplier, bool):
+        raise ValueError(f"split_cap_multiplier must be a number, got boolean {raw_multiplier!r}")
+    if isinstance(raw_multiplier, str):
+        val_str = raw_multiplier.strip()
+        if val_str.endswith("%"):
+            try:
+                numeric_val = float(val_str[:-1].strip()) / 100.0
+            except ValueError as exc:
+                raise ValueError(
+                    f"split_cap_multiplier has invalid percentage value: {raw_multiplier!r}"
+                ) from exc
+        else:
+            try:
+                numeric_val = float(val_str)
+            except ValueError as exc:
+                raise ValueError(
+                    f"split_cap_multiplier has invalid numeric value: {raw_multiplier!r}"
+                ) from exc
+    elif isinstance(raw_multiplier, (int, float)):
+        numeric_val = float(raw_multiplier)
+    else:
+        raise ValueError(
+            f"split_cap_multiplier must be a number, got {type(raw_multiplier).__name__}"
+        )
+
+    if not math.isfinite(numeric_val) or numeric_val <= 0:
+        raise ValueError(
+            f"split_cap_multiplier must be a positive finite number, got {raw_multiplier!r}"
+        )
+    if numeric_val > 1.0:
+        raise ValueError(
+            f"split_cap_multiplier must be <= 1.0 (e.g. 0.50 for 50%), got {raw_multiplier!r}"
+        )
+    return numeric_val
+
+
+def _scale_rate_limit(value: Any, multiplier: float) -> Any:
+    """Scale a numeric rate limit by multiplier, preserving None and 0."""
+    if value is None or multiplier == 1.0:
+        return value
+    if isinstance(value, (int, float)):
+        if value == 0:
+            return 0
+        return max(1, int(math.floor(value * multiplier)))
+    return value
+
+
 def _direct_model(provider: str, upstream_model: str) -> str:
     """Return the LiteLLM model selector for a compiled provider route.
 
@@ -633,17 +689,28 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         raw_buffer = raw.get("token_usage_buffer")
     token_estimate_buffer = _validate_token_buffer(raw_buffer)
 
+    raw_split_cap = raw.get("split_cap_multiplier")
+    if raw_split_cap is None:
+        raw_split_cap = raw.get("split_cap")
+    split_cap_multiplier = _validate_split_cap(raw_split_cap)
+
     providers = raw.get("providers", {})
-    if token_estimate_buffer != 1.0:
+    if token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0:
         for provider_cfg in providers.values():
             if isinstance(provider_cfg, dict):
+                if provider_cfg.get("rpm") is not None and split_cap_multiplier != 1.0:
+                    provider_cfg["rpm"] = _scale_rate_limit(
+                        provider_cfg["rpm"], split_cap_multiplier
+                    )
                 if provider_cfg.get("monthly_tpm") is not None:
-                    provider_cfg["monthly_tpm"] = max(
-                        1, int(math.floor(provider_cfg["monthly_tpm"] * token_estimate_buffer))
+                    provider_cfg["monthly_tpm"] = _scale_rate_limit(
+                        provider_cfg["monthly_tpm"],
+                        token_estimate_buffer * split_cap_multiplier,
                     )
                 if provider_cfg.get("tpm") is not None:
-                    provider_cfg["tpm"] = max(
-                        1, int(math.floor(provider_cfg["tpm"] * token_estimate_buffer))
+                    provider_cfg["tpm"] = _scale_rate_limit(
+                        provider_cfg["tpm"],
+                        token_estimate_buffer * split_cap_multiplier,
                     )
 
     routes = raw.get("routes", [])
@@ -658,8 +725,17 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
     )
     for route in normalized_routes:
         _validate_pricing_windows(route)
-        if route.get("tpm") is not None and token_estimate_buffer != 1.0:
-            route["tpm"] = max(1, int(math.floor(route["tpm"] * token_estimate_buffer)))
+        if split_cap_multiplier != 1.0:
+            if route.get("rpm") is not None:
+                route["rpm"] = _scale_rate_limit(route["rpm"], split_cap_multiplier)
+            if route.get("rpd") is not None:
+                route["rpd"] = _scale_rate_limit(route["rpd"], split_cap_multiplier)
+        if route.get("tpm") is not None and (
+            token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0
+        ):
+            route["tpm"] = _scale_rate_limit(
+                route["tpm"], token_estimate_buffer * split_cap_multiplier
+            )
         provider_cfg = providers.get(route.get("provider"), {})
         for limit_name in ("input_context_limit", "output_context_limit"):
             value = route.get(limit_name)
@@ -696,6 +772,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
             "routes_count": len(normalized_routes),
             "providers_count": len(providers),
             "token_estimate_buffer": token_estimate_buffer,
+            "split_cap_multiplier": split_cap_multiplier,
         },
         "providers": providers,
         "structured_output_profiles": structured_output_profiles,
