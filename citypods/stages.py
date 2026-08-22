@@ -6686,12 +6686,14 @@ class SpeakerIdentityStage:
         from citypods.speakers import (
             auto_publish_allowed,
             calibration_cell,
+            chair_reference_candidates,
             load_registry,
             load_turn_evidence,
             observe_attendance,
             pilot_selected,
             profile_matches,
             quote_attribution,
+            reference_candidate_id,
             refresh_membership_status,
             save_registry,
             shadow_candidate_id,
@@ -6729,7 +6731,7 @@ class SpeakerIdentityStage:
         for ep in episodes:
             if not pilot_selected(ctx.speaker_config or {}, city.slug, ep.body):
                 continue
-            if not ep.speakers_key or not ep.moment_pullquote_candidates:
+            if not ep.speakers_key:
                 continue
             raw = _read_storage_bytes(ctx.storage, ep.speakers_key)
             try:
@@ -6748,6 +6750,52 @@ class SpeakerIdentityStage:
             ):
                 private_turns = turns
             engine_recipe = f"{city.provider}:{payload.get('model') or 'unknown'}"
+            known_names = [
+                value
+                for person in (registry.get("people") or {}).values()
+                if isinstance(person, dict)
+                for value in [person.get("display_name"), *(person.get("aliases") or [])]
+                if value
+            ]
+            known_names.extend(
+                str(item.get("name"))
+                for item in ep.minutes_roster
+                if isinstance(item, dict) and item.get("name")
+            )
+            if ep.transcript_words_key:
+                words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+                try:
+                    words = json.loads((words_raw or b"{}").decode())
+                except (UnicodeDecodeError, ValueError):
+                    words = {}
+                if isinstance(words, dict):
+                    reference_rows = evaluation.setdefault("reference_candidates", {})
+                    if not isinstance(reference_rows, dict):
+                        reference_rows = {}
+                        evaluation["reference_candidates"] = reference_rows
+                    for candidate in chair_reference_candidates(
+                        words, private_turns, known_names=known_names
+                    ):
+                        candidate_id = reference_candidate_id(
+                            city_slug=city.slug,
+                            body=ep.body,
+                            episode_uid=ep.uid or ep.guid,
+                            recipe=engine_recipe,
+                            proposed_name=str(candidate["display_name"]),
+                            cue_start=float(candidate["cue_start"]),
+                            turn=candidate,
+                        )
+                        if candidate_id not in reference_rows:
+                            stats.quality("chair-reference-candidate")
+                        reference_rows[candidate_id] = {
+                            **candidate,
+                            "candidate_id": candidate_id,
+                            "city_slug": city.slug,
+                            "body": ep.body or "",
+                            "engine_recipe": engine_recipe,
+                            "episode_uid": ep.uid or ep.guid,
+                            "episode_title": ep.title,
+                        }
             cell = calibration_cell(city.slug, ep.body, engine_recipe)
             publish = auto_publish_allowed(evaluation, cell=cell)
             allowed_ids = {
@@ -6811,7 +6859,7 @@ class SpeakerIdentityStage:
                     "display_name": identity.get("display_name"),
                     "transcript_text_hash": turn.get("transcript_text_hash"),
                 }
-            for candidate in ep.moment_pullquote_candidates:
+            for candidate in ep.moment_pullquote_candidates or []:
                 if not isinstance(candidate, dict):
                     continue
                 attribution = quote_attribution(candidate, enriched_turns)

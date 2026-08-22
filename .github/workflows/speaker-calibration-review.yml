@@ -31,7 +31,7 @@ jobs:
           cache: pip
       - name: Install
         run: pip install -e ".[storage]" -c constraints/prod.txt
-      - name: Package bounded R7 shadow-match issues
+      - name: Package bounded R7 speaker review issues
         env:
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
@@ -48,20 +48,49 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh label create speaker-calibration-review --color 5319e7 --force \
-            --description "Bot-managed R7 shadow speaker calibration review issue"
+            --description "Bot-managed R7 speaker calibration review issue"
+          child_count=$(jq '.children | length' speaker-review/review-batch.json)
+          if [ "$child_count" -eq 0 ]; then
+            echo "No unreviewed R7 speaker candidates"
+            exit 0
+          fi
+          title="R7 speaker calibration digest"
+          existing=$(gh issue list --state open --label speaker-calibration-review --limit 500 \
+            --json number,title --jq --arg title "$title" \
+            '[.[] | select(.title == $title)][0].number // empty')
+          if [ -n "$existing" ]; then
+            parent="$existing"
+            gh issue edit "$parent" --body-file speaker-review/parent.md
+          else
+            parent_url=$(gh issue create --title "$title" --label speaker-calibration-review \
+              --body-file speaker-review/parent.md)
+            parent=$(printf '%s' "$parent_url" | awk -F/ '{print $NF}')
+          fi
+          native_children=$(gh issue view "$parent" --json subIssues --jq '[.subIssues.nodes[].number]')
+          attach_child() {
+            child="$1"
+            if ! jq -e --argjson child "$child" 'index($child) != null' \
+              <<<"$native_children" >/dev/null; then
+              gh issue edit "$parent" --add-sub-issue "$child"
+              native_children=$(jq --argjson child "$child" '. + [$child]' <<<"$native_children")
+            fi
+          }
           jq -c '.children[]?' speaker-review/review-batch.json | while read -r row; do
             candidate_id=$(jq -r '.candidate_id' <<<"$row")
             body_file=$(jq -r '.body_file' <<<"$row")
-            title="R7 speaker shadow sample $candidate_id"
+            title=$(jq -r '.title' <<<"$row")
             existing=$(gh issue list --state open --label speaker-calibration-review --limit 500 \
               --json number,title --jq --arg title "$title" \
               '[.[] | select(.title == $title)][0].number // empty')
             if [ -n "$existing" ]; then
-              gh issue edit "$existing" --body-file "speaker-review/$body_file"
+              child="$existing"
+              gh issue edit "$child" --body-file "speaker-review/$body_file"
             else
-              gh issue create --title "$title" --label speaker-calibration-review \
-                --body-file "speaker-review/$body_file"
+              child_url=$(gh issue create --title "$title" --label speaker-calibration-review \
+                --body-file "speaker-review/$body_file")
+              child=$(printf '%s' "$child_url" | awk -F/ '{print $NF}')
             fi
+            attach_child "$child"
           done
 
   ingest:
@@ -69,7 +98,8 @@ jobs:
       github.event_name == 'issue_comment' &&
       startsWith(github.event.comment.body, '/speaker-ingest') &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
-      contains(github.event.issue.labels.*.name, 'speaker-calibration-review')
+      contains(github.event.issue.labels.*.name, 'speaker-calibration-review') &&
+      startsWith(github.event.issue.title, 'R7 speaker ')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -101,4 +131,38 @@ jobs:
           gh issue view "$ISSUE" --json body --jq .body > issue.md
           python -m citypods.cli speaker-review ingest --issue-number "$ISSUE" \
             --issue-body-file issue.md --actor "$ACTOR"
-          gh issue close "$ISSUE" --comment "Stored R7 speaker calibration decision from @$ACTOR."
+          gh issue close "$ISSUE" --comment "Stored R7 speaker review decision from @$ACTOR."
+
+  finalize:
+    if: always() && github.event_name == 'issue_comment'
+    needs: [ingest]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions/setup-gh-cli
+            constraints/gh-cli.txt
+          sparse-checkout-cone-mode: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
+      - name: Close cleared R7 parent batches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          parents=$(gh issue list --state open --label speaker-calibration-review \
+            --limit 500 --json number,title \
+            --jq '[.[] | select(.title == "R7 speaker calibration digest") | .number] | .[]')
+          for parent in $parents; do
+            open_children=$(gh issue view "$parent" --repo "$GH_REPO" --json subIssues \
+              --jq '[.subIssues.nodes[] | select(.state == "OPEN")] | length')
+            if [ "$open_children" -eq 0 ]; then
+              gh issue comment "$parent" --body \
+                "All R7 speaker calibration sub-issues in this batch are resolved — closing."
+              gh issue close "$parent"
+            fi
+          done

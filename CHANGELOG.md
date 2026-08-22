@@ -24,7 +24,9 @@ Phase R (Research-Tool Surface)._
   transcript/audio artifact are reconsidered; audio and transcript bytes are never regenerated.
   A bounded weekly GitHub-review issue workflow now harvests authenticated Correct/Incorrect shadow
   labels into the private calibration ledger; the pyannote-vs-WeSpeaker gold-set comparator remains an
-  explicit offline run because the gold references are private.
+  explicit offline run because the gold references are private. The same weekly parent/sub-issue
+  batch now reviews conservative transcript cues such as “Commissioner X” and “Council Member X”
+  as possible golden voice references without assigning names automatically.
 
 - **R6 calibrated moments and shareable clips.** Added council-only free Gemini 3.6/3.5 routing,
   immutable Good/Borderline/Reject review records, background independent judges, deterministic

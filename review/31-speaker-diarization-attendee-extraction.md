@@ -27,6 +27,16 @@ issues not yet cut**
 > **Pilot selection:** `denton-tx` / `City Council` is the first explicitly allowlisted shadow pilot;
 > all other city/body pairs remain excluded even while R7 processing is enabled.
 
+> **Chair/title-led golden-reference revision, 2026-08-22.** The identity stage now scans timed
+> transcript words for formal recognition cues and common short introductions such as “Commissioner
+> Jane Doe”, “Council Member Jane Doe”, and “Councilmember Jane Doe”. A cue becomes a private
+> `chair-reference` candidate only when a following non-overlapped diarized turn has a private
+> embedding; it never assigns the name. Monday packaging combines shadow-match and chair-reference
+> candidates under one native GitHub parent issue with one sub-issue per candidate. Maintainers check
+> Correct/Incorrect for shadow matches or Approve/Reject for references and use the same
+> `/speaker-ingest` command. Approval copies the already-persisted embedding into the body registry;
+> the issue body and public artifacts contain no embedding or score.
+
 > **Matured to L3, 2026-07-13.** The L1 sketch this builds from was already unusually detailed (real
 > CPU-viable model research, a named execution-backend dependency, an explicit naming/confirmation
 > policy) — closer to L2 in places. This pass's main job was verifying that research is still current,

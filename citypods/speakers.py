@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,6 +23,53 @@ MIN_CALIBRATION_DAYS = 30
 MIN_CALIBRATION_REVIEWS = 30
 REQUIRED_PRECISION = 0.95
 PROFILE_REVIEW_ONLY_AFTER_DAYS = 180
+
+_ANNOUNCEMENT_TITLES: tuple[tuple[str, ...], ...] = (
+    ("council", "member"),
+    ("councilmember",),
+    ("councilman",),
+    ("councilwoman",),
+    ("commissioner",),
+    ("mayor",),
+    ("vice", "mayor"),
+    ("alderman",),
+    ("alderwoman",),
+    ("trustee",),
+    ("supervisor",),
+    ("representative",),
+    ("senator",),
+)
+_RECOGNITION_CUES: tuple[tuple[str, ...], ...] = (
+    ("the", "chair", "recognizes"),
+    ("chair", "recognizes"),
+    ("the", "chair", "recognised"),
+    ("chair", "recognised"),
+    ("i", "recognize"),
+    ("i", "recognise"),
+    ("chair", "calls", "on"),
+    ("the", "chair", "calls", "on"),
+)
+_NAME_STOP_WORDS = frozenset(
+    {
+        "about",
+        "and",
+        "by",
+        "for",
+        "from",
+        "here",
+        "is",
+        "next",
+        "now",
+        "of",
+        "on",
+        "please",
+        "speaking",
+        "the",
+        "to",
+        "will",
+        "with",
+    }
+)
 
 
 def _now() -> datetime:
@@ -127,6 +175,201 @@ def shadow_candidate_id(
         "speaker_id": (turn.get("identity") or {}).get("speaker_id"),
     }
     return "r7-" + hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:20]
+
+
+def reference_candidate_id(
+    *,
+    city_slug: str,
+    body: str | None,
+    episode_uid: str,
+    recipe: str,
+    proposed_name: str,
+    cue_start: float,
+    turn: Mapping[str, Any],
+) -> str:
+    """Return a stable id for a chair/title-led golden-reference candidate."""
+    payload = {
+        "city": city_slug,
+        "body": _norm(body),
+        "episode_uid": episode_uid,
+        "recipe": recipe,
+        "proposed_name": _norm(proposed_name),
+        "cue_start": cue_start,
+        "turn_start": turn.get("start"),
+        "turn_end": turn.get("end"),
+        "cluster": turn.get("cluster"),
+    }
+    return "r7-ref-" + hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:20]
+
+
+def chair_reference_candidates(
+    words: Mapping[str, Any], turns: Iterable[Mapping[str, Any]], *, known_names: Iterable[str] = ()
+) -> list[dict[str, Any]]:
+    """Find conservative title/recognition cues followed by a clean diarized turn.
+
+    This is review evidence only.  It never assigns the proposed name to a turn.  The cue can be a
+    formal recognition (``the chair recognizes...``) or the shorter title-led announcement common
+    in civic recordings (``Commissioner Jane Doe`` / ``Council Member Jane Doe``).  A candidate is
+    emitted only when the next non-overlapped turn has a private embedding, so approval can create
+    a real golden reference without copying audio into the review issue.
+    """
+    rows = list(_timed_word_rows(words))
+    turn_rows = [row for row in turns if isinstance(row, Mapping)]
+    known = {_norm(name): str(name).strip() for name in known_names if str(name).strip()}
+    matches: list[dict[str, Any]] = []
+    for index in range(len(rows)):
+        for cue, kind in ((cue, "chair-recognition") for cue in _RECOGNITION_CUES):
+            if not _sequence_at(rows, index, cue):
+                continue
+            name, end_index = _name_after(rows, index + len(cue), known)
+            if name:
+                matches.append(
+                    _reference_candidate(
+                        rows,
+                        turn_rows,
+                        index,
+                        end_index,
+                        name,
+                        kind,
+                    )
+                )
+        for title in _ANNOUNCEMENT_TITLES:
+            if not _sequence_at(rows, index, title):
+                continue
+            name, end_index = _name_after(rows, index + len(title), known)
+            if name:
+                matches.append(
+                    _reference_candidate(
+                        rows,
+                        turn_rows,
+                        index,
+                        end_index,
+                        name,
+                        "title-announcement",
+                    )
+                )
+    unique: dict[tuple[float, float, str], dict[str, Any]] = {}
+    for candidate in matches:
+        if not candidate:
+            continue
+        key = (
+            float(candidate["start"]),
+            float(candidate["end"]),
+            _norm(candidate["display_name"]),
+        )
+        prior = unique.get(key)
+        if (
+            prior is None
+            or (
+                candidate["cue_kind"] == "chair-recognition"
+                and prior["cue_kind"] != "chair-recognition"
+            )
+            or float(candidate["cue_start"]) < float(prior["cue_start"])
+        ):
+            unique[key] = candidate
+    return list(unique.values())
+
+
+def _timed_word_rows(words: Mapping[str, Any]) -> Iterable[dict[str, Any]]:
+    rows = list(words.get("word_segments") or words.get("words") or [])
+    for segment in words.get("segments") or []:
+        if isinstance(segment, Mapping) and isinstance(segment.get("words"), list):
+            rows.extend(segment["words"])
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        start = row.get("start", row.get("s"))
+        end = row.get("end", row.get("e"))
+        raw = str(row.get("word", row.get("w", row.get("text", "")))).strip()
+        token = re.sub(r"[^\w'-]", "", raw.casefold())
+        if isinstance(start, int | float) and isinstance(end, int | float) and token:
+            yield {"start": float(start), "end": float(end), "raw": raw, "token": token}
+
+
+def _sequence_at(rows: list[dict[str, Any]], index: int, sequence: tuple[str, ...]) -> bool:
+    return [row["token"] for row in rows[index : index + len(sequence)]] == list(sequence)
+
+
+def _name_after(
+    rows: list[dict[str, Any]], start: int, known: Mapping[str, str]
+) -> tuple[str | None, int]:
+    for title in _ANNOUNCEMENT_TITLES:
+        if _sequence_at(rows, start, title):
+            start += len(title)
+            break
+    for length in range(min(4, len(rows) - start), 0, -1):
+        candidate = rows[start : start + length]
+        tokens = [row["token"] for row in candidate]
+        if any(token in _NAME_STOP_WORDS for token in tokens):
+            continue
+        normalized = " ".join(tokens)
+        if normalized in known:
+            return known[normalized], start + length - 1
+    collected: list[str] = []
+    end_index = start - 1
+    for index in range(start, min(len(rows), start + 4)):
+        row = rows[index]
+        token = row["token"]
+        if token in _NAME_STOP_WORDS:
+            break
+        collected.append(row["raw"].strip(" ,:;.!?"))
+        end_index = index
+        if row["raw"].rstrip().endswith((",", ";", ":", ".", "!", "?")):
+            break
+    name = " ".join(part for part in collected if part).strip()
+    return (name if name and any(char.isalpha() for char in name) else None), end_index
+
+
+def _reference_candidate(
+    rows: list[dict[str, Any]],
+    turns: list[Mapping[str, Any]],
+    cue_index: int,
+    name_end_index: int,
+    name: str,
+    cue_kind: str,
+) -> dict[str, Any] | None:
+    cue_start = float(rows[cue_index]["start"])
+    cue_end = float(rows[name_end_index]["end"])
+    source = next(
+        (
+            turn
+            for turn in turns
+            if isinstance(turn.get("start"), int | float)
+            and isinstance(turn.get("end"), int | float)
+            and float(turn["start"]) <= cue_start
+            and float(turn["end"]) >= cue_end
+        ),
+        None,
+    )
+    source_end = float(source["end"]) if source else cue_end
+    eligible = [
+        turn
+        for turn in turns
+        if isinstance(turn.get("start"), int | float)
+        and isinstance(turn.get("end"), int | float)
+        and float(turn["start"]) >= source_end - 0.15
+        and float(turn["start"]) <= source_end + 20.0
+        and not turn.get("overlap")
+        and isinstance(turn.get("embedding"), list)
+        and turn.get("embedding")
+        and (source is None or turn.get("cluster") != source.get("cluster") or turn is not source)
+    ]
+    if not eligible:
+        return None
+    target = min(eligible, key=lambda turn: float(turn["start"]))
+    cue_text = " ".join(row["raw"] for row in rows[cue_index : name_end_index + 1])
+    return {
+        "kind": "chair-reference",
+        "cue_kind": cue_kind,
+        "cue_text": cue_text,
+        "cue_start": cue_start,
+        "cue_end": cue_end,
+        "display_name": name,
+        "start": float(target["start"]),
+        "end": float(target["end"]),
+        "cluster": target.get("cluster"),
+        "transcript_text_hash": target.get("transcript_text_hash"),
+    }
 
 
 def public_turn(turn: Mapping[str, Any]) -> dict[str, Any]:
@@ -367,6 +610,7 @@ __all__ = [
     "assign_turn",
     "auto_publish_allowed",
     "body_key",
+    "chair_reference_candidates",
     "calibration_cell",
     "empty_registry",
     "load_registry",
@@ -377,6 +621,7 @@ __all__ = [
     "public_turn",
     "qualified_profile",
     "quote_attribution",
+    "reference_candidate_id",
     "refresh_membership_status",
     "save_registry",
     "save_evaluation",
