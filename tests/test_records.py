@@ -1661,6 +1661,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "moments",
         }
     )
     assert protected_blocks_for_lane("transcribe") == frozenset(
@@ -1684,6 +1685,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "moments",
         }
     )
     assert protected_blocks_for_lane("align") == frozenset(
@@ -1707,6 +1709,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "moments",
         }
     )
     assert protected_blocks_for_lane("diarize") == frozenset(
@@ -1730,6 +1733,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "moments",
         }
     )
     assert protected_blocks_for_lane("tag") == frozenset(
@@ -1748,6 +1752,7 @@ def test_protected_blocks_for_lane():
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "moments",
         }
     )
     # A full/unscoped run (None) or an unknown lane owns every artifact → protects nothing.

@@ -14,6 +14,7 @@ dependencies = [
     "PyYAML>=6.0",
     "Jinja2>=3.1",
     "Pillow>=10.0",                  # podcast cover-art generation
+    "opencv-python-headless>=4.10",  # pinned R6 face/mouth-motion speaker framing
     "defusedxml>=0.7",               # hardened XML parsing of provider feeds
     "pypdf>=5.0",                     # agenda/minutes PDF text and link extraction
     "beautifulsoup4>=4.12",           # agenda/minutes HTML extraction

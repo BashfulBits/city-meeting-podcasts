@@ -61,6 +61,34 @@ tagging:
     # Version the serialized response contract independently of task instructions. Bumping this
     # schedules fresh work for every active candidate whose stored assessment predates it.
     llm_schema_version: "2"
+# R6 grounded moments. Candidate calls are free-only and shadow/manual by default. Council feeds
+# use the two lower-quota long-context Gemini routes; the stage filters this allowlist by family.
+moments:
+  enabled: true
+  mode: "manual"  # manual | auto; global kill switch back to manual
+  # Initial rollout is intentionally limited to explicit council feeds and round-robin queue work.
+  rollout_meeting_families: [council]
+  max_dispatches_per_run: 40
+  llm_model: "gemini/gemini-3.6-flash"
+  llm_models:
+    - "gemini/gemini-3.6-flash"
+    - "gemini/gemini-3.5-flash"
+    - "gemini/gemini-3.5-flash-lite"
+    - "gemini/gemini-3.1-flash-lite"
+  timeout_seconds: 90
+  evaluation:
+    state_path: "r6_moment_evaluation.json"
+    minimum_days: 30
+    minimum_reviews: 30
+    required_precision: 0.90
+  judges:
+    enabled: true
+    allow_paid: false
+    models:
+      - "meta-llama/llama-4-maverick"
+      - "zai/glm-4.7"
+      - "gemini/gemini-3.6-flash"
+      - "openai/gpt-oss-120b"
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)
@@ -186,6 +214,9 @@ defaults:
   # a 30m job timeout left almost no margin, and GH was hard-cancelling the job before this budget's
   # own graceful stop ever fired, needlessly truncating a run's LLM dispatch submissions.
   tag_run_time_budget_minutes: 160
+  # R6 moment extraction/judging uses the same asynchronous Worker-owned queue. Keep its dedicated
+  # runner below GitHub's hard timeout so it can flush a final batch and persist before yielding.
+  moments_run_time_budget_minutes: 160
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
   # `citypods build --chapters-cap N` to keep its sanity-check fast — see .github/workflows/preview.yml.)
   audio_max_kbps: 96                     # re-host cap: copy audio if <= this, else re-encode to N kbps mono AAC

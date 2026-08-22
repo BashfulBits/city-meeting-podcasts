@@ -81,12 +81,14 @@ def main(argv: list[str] | None = None) -> int:
             "transcribe",
             "align",
             "tag",
+            "moments",
             "chapter-agenda",
             "chapter-locator",
             "chapter",
         ],
         help="work class to run: 'audio' materializes audio only; 'transcribe' runs fresh ASR "
-        "only; 'align' runs forced-alignment only; 'tag' runs bounded LLM topic tagging only. "
+        "only; 'align' runs forced-alignment only; 'tag' runs bounded LLM topic tagging only; "
+        "'moments' runs grounded moment extraction, judging, admission, and clip rendering. "
         "'chapter-agenda' extracts agenda candidates; 'chapter-locator' locates them in the "
         "complete timed transcript; 'chapter' runs both chapter lanes. Default runs the full "
         "enrich (audio + transcript). The sharded workflows pin one lane "
@@ -332,6 +334,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     le.add_argument("llm_evaluation_args", nargs=argparse.REMAINDER)
 
+    r6 = sub.add_parser(
+        "r6-review", help="record an authenticated R6 Good/Borderline/Reject review"
+    )
+    r6.add_argument("r6_review_args", nargs=argparse.REMAINDER)
+
     args = parser.parse_args(argv)
 
     if args.command == "bodies":
@@ -381,6 +388,10 @@ def main(argv: list[str] | None = None) -> int:
         from citypods import llm_tag_review
 
         return llm_tag_review.main(args.llm_evaluation_args)
+    if args.command == "r6-review":
+        from citypods import moment_review
+
+        return moment_review.main(args.r6_review_args)
 
     return 0
 

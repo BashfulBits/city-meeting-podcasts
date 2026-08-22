@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **R6 calibrated moments and shareable clips.** Added council-only free Gemini 3.6/3.5 routing,
+  immutable Good/Borderline/Reject review records, background independent judges, deterministic
+  admission gates, RSS soundbites, and grounded captioned MP4 clips. Clips preserve source audio,
+  use a versioned face/mouth-motion speaker crop when confident, and otherwise retain a safe group
+  composition. The dedicated daily R6 lane carries the v2 dispatch credentials and batches its
+  shared 40-job extraction/judge allowance into one bounded ingress request; existing records stay
+  unchanged until normal staged processing reaches them.
+
 - **Cross-model overflow routing (`model_routing`) and a Mistral Medium → Gemini 3.5 Flash Lite
   route.** Added an optional `model_routing` map to `config/provider_limits.yml`: a job pinned to
   one model (`allowed_models=(source,)`) becomes eligible for its configured target model(s) too,

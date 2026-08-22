@@ -2362,6 +2362,7 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "moments",
         }
     )
     # transcribe plans per-episode → push receives a per-source owned-uid map, not None (§3.2).

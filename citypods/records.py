@@ -1146,6 +1146,13 @@ def referenced_audio_keys(state_dir: Path) -> set[str]:
             speakers_key = (rec.get("speakers") or {}).get("key")
             if speakers_key:
                 keys.add(speakers_key)
+            moments = rec.get("moments") or {}
+            if isinstance(moments, dict):
+                clip = moments.get("video_clip") or {}
+                if isinstance(clip, dict):
+                    for field in ("key", "poster_key", "captions_key"):
+                        if clip.get(field):
+                            keys.add(clip[field])
             provider_transcript = rec.get("provider_transcript") or {}
             if isinstance(provider_transcript, dict):
                 for slot in ("known_good", "candidate"):
@@ -1193,6 +1200,23 @@ def episode_to_record(ep: Episode) -> dict:
         "generated_chapters": ep.generated_chapters or None,
         "generated_chapters_spec_hash": ep.generated_chapters_spec_hash,
         "summary": ep.summary,
+        "moments": {
+            "summary_candidates": ep.moment_summary_candidates or None,
+            "pullquote_candidates": ep.moment_pullquote_candidates or None,
+            "decision_candidates": ep.moment_decision_candidates or None,
+            "recipe_hash": ep.moments_llm_recipe_hash,
+            "call_attempts": ep.moments_llm_call_attempts or None,
+            "video_clip": ep.moment_video_clip or None,
+        }
+        if (
+            ep.moment_summary_candidates
+            or ep.moment_pullquote_candidates
+            or ep.moment_decision_candidates
+            or ep.moments_llm_recipe_hash
+            or ep.moments_llm_call_attempts
+            or ep.moment_video_clip
+        )
+        else None,
         "tags": ep.tags or None,
         "chapter_tags": ep.chapter_tags or None,
         "llm_tag_candidates": ep.llm_tag_candidates or None,
@@ -1361,6 +1385,27 @@ def _speakers_fields_from_rec(rec: dict) -> dict:
     }
 
 
+def _moments_fields_from_rec(rec: dict) -> dict:
+    """Normalize the independent R6 artifact block once for record load and merge."""
+    moments = rec.get("moments") or {}
+    if not isinstance(moments, dict):
+        moments = {}
+
+    def list_field(name: str) -> list:
+        value = moments.get(name)
+        return value if isinstance(value, list) else []
+
+    clip = moments.get("video_clip")
+    return {
+        "moment_summary_candidates": list_field("summary_candidates"),
+        "moment_pullquote_candidates": list_field("pullquote_candidates"),
+        "moment_decision_candidates": list_field("decision_candidates"),
+        "moments_llm_recipe_hash": moments.get("recipe_hash"),
+        "moments_llm_call_attempts": list_field("call_attempts"),
+        "moment_video_clip": clip if isinstance(clip, dict) else {},
+    }
+
+
 def _availability_to_dict(av: MediaAvailability | None) -> dict | None:
     """Serialize the durable availability verdict (H16 PR3), or ``None`` to omit the block."""
     if av is None:
@@ -1493,6 +1538,7 @@ def record_to_episode(rec: dict) -> Episode:
             else {}
         ),
         summary=rec.get("summary") or "",
+        **_moments_fields_from_rec(rec),
         tags=rec.get("tags") if isinstance(rec.get("tags"), list) else [],
         chapter_tags=rec.get("chapter_tags") if isinstance(rec.get("chapter_tags"), list) else [],
         llm_tag_candidates=(
@@ -1671,6 +1717,7 @@ ARTIFACT_BLOCKS: frozenset[str] = frozenset(
         "generated_agenda_candidates",
         "generated_chapters",
         "generated_chapters_spec_hash",
+        "moments",
     }
 )
 PLANNING_FIELDS: frozenset[str] = frozenset(
@@ -1708,6 +1755,7 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
             "tags_input_fingerprint",
         }
     ),
+    "moments": frozenset({"moments"}),
     "chapter-agenda": frozenset({"generated_agenda_candidates"}),
     "chapter-locator": frozenset(
         {"generated_agenda_candidates", "generated_chapters", "generated_chapters_spec_hash"}
@@ -1729,6 +1777,7 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     "align": frozenset({"transcript"}),
     "diarize": frozenset({"diarize"}),
     "tag": frozenset({"tags"}),
+    "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
     "chapter-locator": frozenset({"chapter_locator", "generated_chapters"}),
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
@@ -1982,6 +2031,8 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.audio_encode_time = audio.get("encode_time")
         ep.audio_rebuild = audio.get("rebuild") or ""
         ep.summary = rec.get("summary", ep.summary)
+        for field_name, value in _moments_fields_from_rec(rec).items():
+            setattr(ep, field_name, value)
         transcript_fields = _transcript_fields_from_rec(rec)
         if transcript_fields.get("transcript_key"):
             ep.transcript_key = transcript_fields["transcript_key"]

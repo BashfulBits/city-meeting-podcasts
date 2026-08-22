@@ -153,6 +153,7 @@ numpy==2.5.2
     #   ctranslate2
     #   matplotlib
     #   onnxruntime
+    #   opencv-python-headless
     #   optuna
     #   pandas
     #   pyannote-core
@@ -205,6 +206,8 @@ omegaconf==2.3.1
     # via whisperx
 onnxruntime==1.28.0
     # via faster-whisper
+opencv-python-headless==5.0.0.93
+    # via citypods (pyproject.toml)
 opentelemetry-api==1.44.0
     # via
     #   opentelemetry-exporter-otlp-proto-grpc

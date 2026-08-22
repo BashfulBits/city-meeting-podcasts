@@ -54,6 +54,7 @@ def _step_index(job: dict, needle: str) -> int:
         ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)"),
         ("deploy.yml", "build-deploy", "Render feeds"),
         ("tag.yml", "tag", "Produce bounded LLM topic-tag candidates"),
+        ("moments.yml", "moments", "Produce bounded R6 moment candidates and judge assessments"),
         ("audit.yml", "audit", "Run audit"),
         ("contracts.yml", "contracts", "Probe endpoints + reconcile issues"),
         ("availability-digest.yml", "digest", "Build availability digest"),
@@ -1139,6 +1140,24 @@ def test_chapter_workflows_use_alternating_two_hour_schedules():
 
     assert _on(agenda)["schedule"] == [{"cron": "0 */2 * * *"}]
     assert _on(locator)["schedule"] == [{"cron": "0 1-23/2 * * *"}]
+
+
+def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
+    wf, job = _job("moments.yml", job_name="moments")
+    step = next(
+        item
+        for item in job["steps"]
+        if item.get("name") == "Produce bounded R6 moment candidates and judge assessments"
+    )
+
+    assert _on(wf)["schedule"] == [{"cron": "45 19 * * *"}]
+    assert wf["permissions"] == {"contents": "read", "actions": "read"}
+    assert wf["concurrency"] == {"group": "r6-meeting-moments", "cancel-in-progress": False}
+    assert job["timeout-minutes"] == 180
+    assert "python -m citypods.cli enrich --lane moments" in step["run"]
+    assert "video" in next(item for item in job["steps"] if item.get("name") == "Install")["run"]
+    for name in ("LLM_DISPATCH_V2_URL", "LLM_DISPATCH_V2_AUTH_TOKEN", "B2_ENDPOINT"):
+        assert step["env"][name] == f"${{{{ secrets.{name} }}}}"
 
 
 def test_duration_normalize_workflow_is_manual_bounded_and_archived():
