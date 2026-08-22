@@ -27,6 +27,11 @@
     {% if moment.title %}<h3 style="margin:0 0 .5rem;font-size:1rem;">{{ moment.title }}</h3>{% endif %}
     <blockquote style="margin:0 0 .7rem;font-size:1.05rem;">“{{ moment.quote }}”</blockquote>
     <div class="muted" style="font-size:.85rem;">AI-assisted quote · {{ moment.start | round | int }}–{{ moment.end | round | int }} seconds</div>
+    {% if moment.speaker_attribution %}
+    <div class="muted" style="font-size:.85rem;margin-top:.35rem;">
+      Speaker: <a href="{{ moment.speaker_attribution.url }}">{{ moment.speaker_attribution.display_name }}</a>{% if moment.speaker_attribution.status == 'provisional' %} · provisional{% endif %}
+    </div>
+    {% endif %}
     {% if ep.moment_video_clip.key and ep.moment_video_clip.candidate_id == moment.candidate_id %}
     <video controls preload="metadata" playsinline style="width:min(100%,420px);margin-top:.8rem;border-radius:8px;" src="{{ ep.moment_video_clip.url }}"></video>
     <p style="margin:.5rem 0 0;"><a class="btn" href="{{ ep.moment_video_clip.url }}" download>Download/share clip</a></p>

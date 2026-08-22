@@ -1,9 +1,21 @@
 # review/31 — Speaker Diarization, Minimal Attendee Extraction, and Per-Speaker Pages
 
-**Maturity: L3 (dev-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
+**Maturity: implementation in progress (R7 revision, 2026-08-22) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
 ROADMAP R7 (#7 diarization + a minimal #14 attendee slice; per-speaker pages adopted from
 [`review/25`](25-future-features-and-architecture.md) §2.3 #11) · full pull-forward, gating 1.0 ·
 issues not yet cut**
+
+> **Superseding R7 decision, 2026-08-22.** The original human-confirm-only / WeSpeaker-first
+> design below is retained as historical design context. R7 now uses the pinned pyannote stack for
+> native turn/overlap diarization, while its identity layer remains engine-neutral and benchmarks
+> WeSpeaker on a curated gold set. The implementation keeps private city/body voice-profile
+> registries, requires two maintainer-approved turns from distinct meetings before a recurring
+> official is eligible, and never stores copied reference audio. Public automatic names are
+> provisional voice-only projections only after a per-body/engine 30-day, 30-review, 95%-precision
+> calibration gate. Later official minutes silently constrain/reassign those projections to their
+> roster or remove them. R6 grounded pull quotes inherit a name only if one non-overlapped speaker
+> turn completely covers their interval; each name links to a static cross-meeting speaker page.
+> Provider labels/rosters remain attendance vocabulary, not timestamped identity ground truth.
 
 > **Matured to L3, 2026-07-13.** The L1 sketch this builds from was already unusually detailed (real
 > CPU-viable model research, a named execution-backend dependency, an explicit naming/confirmation

@@ -40,6 +40,7 @@ class LocalBackend:
         * ``transcribe`` — ``audio_path, model, language, compute_type, beam_size,
           initial_prompt, cpu_threads``
         * ``align`` — ``audio_path, sections, model, language, cpu_threads, interpolate_method``
+        * ``diarize`` — ``audio_path, model, token, device``
         """
         inp = job.inputs
         if job.task == "transcribe":
@@ -54,6 +55,16 @@ class LocalBackend:
             )
         elif job.task == "align":
             output = run_alignment(self._asr, inp)
+        elif job.task == "diarize":
+            from citypods.diarize import diarize
+
+            output = diarize(
+                inp["audio_path"],
+                inp.get("model", "pyannote/speaker-diarization-3.1"),
+                embedding_model=inp.get("embedding_model", "pyannote/embedding"),
+                token=inp.get("token"),
+                device=inp.get("device"),
+            )
         else:
             raise ValueError(f"local backend does not implement task {job.task!r}")
         return JobResult(task=job.task, recipe_hash=job.recipe_hash, output=output)

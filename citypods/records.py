@@ -542,6 +542,8 @@ def feed_content_hash(
             e.published.isoformat(),
             e.description,
             e.summary,
+            e.moment_pullquote_candidates,
+            e.moment_video_clip,
             e.tags,
             e.transcript_hosted_url,
             e.transcript_synced,
@@ -580,6 +582,8 @@ def meeting_page_hash(ep: Episode) -> str:
         "published": ep.published.isoformat(),
         "description": ep.description,
         "summary": ep.summary,
+        "moment_pullquote_candidates": ep.moment_pullquote_candidates,
+        "moment_video_clip": ep.moment_video_clip,
         "tags": ep.tags,
         "chapter_tags": ep.chapter_tags,
         "links": sorted((ep.links or {}).items()),
@@ -1299,6 +1303,7 @@ def episode_to_record(ep: Episode) -> dict:
             "confidence": ep.speakers_confidence,
             "pipeline_version": ep.speakers_pipeline_version,
             "error": ep.speakers_error,
+            "source": ep.speakers_source,
         }
         if ep.speakers_key or ep.speakers_error
         else None,
@@ -1382,6 +1387,7 @@ def _speakers_fields_from_rec(rec: dict) -> dict:
         "speakers_confidence": s.get("confidence"),
         "speakers_pipeline_version": s.get("pipeline_version"),
         "speakers_error": s.get("error"),
+        "speakers_source": s.get("source"),
     }
 
 
@@ -1744,6 +1750,7 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     "transcribe": frozenset({"transcript", "provider_transcript"}),
     "align": frozenset({"transcript", "provider_transcript"}),
     "diarize": frozenset({"speakers", "provider_transcript"}),
+    "speaker-identity": frozenset({"speakers", "moments"}),
     "tag": frozenset(
         {
             "tags",
@@ -2073,6 +2080,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
             ep.speakers_confidence = speakers.get("confidence")
             ep.speakers_pipeline_version = speakers.get("pipeline_version")
             ep.speakers_error = speakers.get("error")
+            ep.speakers_source = speakers.get("source")
         # Persisted links are derived artifacts, except a freshly supplied provider link.  In
         # particular an agenda-derived minutes URL must never mask a later canonical provider URL.
         persisted_links = rec.get("links") or {}

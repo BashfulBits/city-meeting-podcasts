@@ -82,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
             "align",
             "tag",
             "moments",
+            "diarize",
+            "speaker-identity",
             "chapter-agenda",
             "chapter-locator",
             "chapter",
@@ -338,6 +340,10 @@ def main(argv: list[str] | None = None) -> int:
         "r6-review", help="record an authenticated R6 Good/Borderline/Reject review"
     )
     r6.add_argument("r6_review_args", nargs=argparse.REMAINDER)
+    r7 = sub.add_parser(
+        "speaker-review", help="maintain R7 golden voice references and calibration"
+    )
+    r7.add_argument("speaker_review_args", nargs=argparse.REMAINDER)
 
     args = parser.parse_args(argv)
 
@@ -392,6 +398,10 @@ def main(argv: list[str] | None = None) -> int:
         from citypods import moment_review
 
         return moment_review.main(args.r6_review_args)
+    if args.command == "speaker-review":
+        from citypods import speaker_review
+
+        return speaker_review.main(args.speaker_review_args)
 
     return 0
 

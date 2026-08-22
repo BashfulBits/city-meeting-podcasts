@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **R7 calibrated speaker attribution (in progress).** Added pyannote-backed native speaker-turn
+  artifacts, private city/body membership and golden-voice registries, the 30-day/30-review/95%-precision
+  public-identity gate, minutes-backed silent correction, R6 single-speaker pull-quote attribution, and
+  static speaker pages. Diarization/version backfills are gradual: only episodes with an eligible retained
+  transcript/audio artifact are reconsidered; audio and transcript bytes are never regenerated.
+
 - **R6 calibrated moments and shareable clips.** Added council-only free Gemini 3.6/3.5 routing,
   immutable Good/Borderline/Reject review records, background independent judges, deterministic
   admission gates, RSS soundbites, and grounded captioned MP4 clips. Clips preserve source audio,

@@ -136,6 +136,8 @@ from citypods.site import (
     render_redirect_feed,
     render_redirect_page,
     render_search_page,
+    render_speaker_page,
+    speaker_page_rows,
 )
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
@@ -148,6 +150,7 @@ from citypods.stages import (
     default_stages,
     enrich_stages,
     r6_stages,
+    r7_stages,
     render_stages,
     run_stages,
     stage_is_dirty,
@@ -1095,6 +1098,19 @@ def _process_city(
             )
             new_entry["meeting_pages"] = rendered_page_cache
             meeting_outputs_changed = rendered_page_cache != page_cache
+            speaker_rows = speaker_page_rows(city, retained_eps, base_url)
+            speakers_dir = city_dir / "speakers"
+            wanted_speakers = set(speaker_rows)
+            for speaker_id, person in speaker_rows.items():
+                target = speakers_dir / speaker_id
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "index.html").write_text(render_speaker_page(city, person, base_url))
+            if speakers_dir.exists():
+                for child in speakers_dir.iterdir():
+                    if child.is_dir() and child.name not in wanted_speakers:
+                        import shutil
+
+                        shutil.rmtree(child)
             archive_hash = _city_archive_hash(city, retained_eps, calendar_records, base_url)
             new_entry["archive_hash"] = archive_hash
             if cache_entry is None or cache_entry.get("archive_hash") != archive_hash:
@@ -1572,7 +1588,7 @@ def _run_enrich_global_queue(
     ]
     # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
     # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
-    post_transcript = {"transcript", "diarize", "tags"}
+    post_transcript = {"transcript", "diarize", "native_diarize", "tags"}
     audio_stages = [
         s
         for s in pipeline.stages
@@ -2357,6 +2373,7 @@ def _build_impl(
     moment_backend = None
     tagging_config = site_config.get("tagging") or {}
     moments_config = site_config.get("moments") or {}
+    speakers_config = site_config.get("speakers") or {}
     tag_max_dispatches = int(tagging_config.get("max_dispatches_per_run", 2000))
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
@@ -2479,6 +2496,8 @@ def _build_impl(
     stages = {"render": render_stages, "enrich": enrich_stages, "all": default_stages}[phase]()
     if (site_config.get("moments") or {}).get("enabled") and phase != "render":
         stages.extend(r6_stages())
+    if speakers_config.get("enabled") and phase != "render":
+        stages.extend(r7_stages())
     # Generated chaptering is an explicitly separate asynchronous lane.  It is not included in
     # ordinary audio/enrich runs because agenda/transcript prerequisites may complete in different
     # workflows and the initial rollout is a served-time overlay, not an audio-affecting change.
@@ -2710,6 +2729,13 @@ def _build_impl(
             **(moments_config.get("evaluation") or {}),
         },
         moment_max_dispatches=int(moments_config.get("max_dispatches_per_run", 40)),
+        speaker_registry_path=state_dir
+        / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
+        speaker_evaluation_state_path=state_dir
+        / str(speakers_config.get("evaluation_state_path", "r7_speaker_evaluation.json")),
+        speaker_turn_evidence_path=state_dir
+        / str(speakers_config.get("turn_evidence_path", "r7_speaker_turn_evidence.json")),
+        speaker_config=speakers_config,
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
@@ -3323,6 +3349,29 @@ def _build_impl(
                     max_events=load_quality_config(site_config).raw_log_cap,
                     log=lambda msg: print(msg, flush=True),
                 )
+                if lane in {"diarize", "speaker-identity"}:
+                    speaker_state_paths = [
+                        str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
+                        str(
+                            speakers_config.get(
+                                "evaluation_state_path", "r7_speaker_evaluation.json"
+                            )
+                        ),
+                    ]
+                    if lane == "diarize":
+                        speaker_state_paths.append(
+                            str(
+                                speakers_config.get(
+                                    "turn_evidence_path", "r7_speaker_turn_evidence.json"
+                                )
+                            )
+                        )
+                    pushed += push_state(
+                        storage,
+                        state_dir,
+                        only_paths=speaker_state_paths,
+                        log=lambda msg: print(msg, flush=True),
+                    )
             else:
                 if maintenance_lease is not None:
                     maintenance_lease.assert_held()
@@ -3583,7 +3632,7 @@ def _write_meeting_pages(
     for child in city_dir.iterdir():
         if not child.is_dir():
             continue
-        if child.name in {"chapters", "archive"}:
+        if child.name in {"chapters", "archive", "speakers"}:
             continue
         if child.name not in wanted and (child / "index.html").exists():
             import shutil
