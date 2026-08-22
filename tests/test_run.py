@@ -2709,3 +2709,37 @@ def test_tag_lane_pre_filters_candidate_episodes(tmp_path, monkeypatch):
     assert len(results) == 1
     # Only ep_dirty should have entered the global candidate queue and been processed!
     assert tag_stage.processed == [ep_dirty]
+
+
+def test_tag_batch_submission_failure_replaces_provisional_defer_with_error():
+    """A rejected batched tag job must not be persisted as a pending worker handle."""
+    from citypods.compute.base import InferenceJob
+    from citypods.compute.llm import BatchDispatchOutcome, LLMBackendError
+    from citypods.run import _record_tag_batch_submission_failures
+
+    ep = _ep("batch-failure")
+    ep.tags_llm_call_attempts = [
+        {
+            "purpose": "topic-tags:tagger",
+            "recipe_hash": "parent-recipe",
+            "job_recipe_hashes": ["parent-recipe-tag-batch-0"],
+            "status": "deferred",
+            "reason": "",
+        }
+    ]
+    failure = BatchDispatchOutcome(
+        job=InferenceJob(task="tag", recipe_hash="parent-recipe-tag-batch-0"),
+        result=LLMBackendError("idempotency conflict"),
+    )
+
+    assert (
+        _record_tag_batch_submission_failures(
+            {"source": {"episodes": [ep], "persist_episodes": [ep]}}, [failure]
+        )
+        == 1
+    )
+    attempt = ep.tags_llm_call_attempts[0]
+    assert attempt["status"] == "error"
+    assert attempt["batch_submission_errors"] == [
+        {"recipe_hash": "parent-recipe-tag-batch-0", "reason": "idempotency conflict"}
+    ]

@@ -774,9 +774,10 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   queue-only tagger/prelabeler job into `dispatch_job_batch()`'s bounded 1,000-job enqueue/poll
   groups.
   Already-completed and already-pending deferred records still pass straight through, while direct
-  and v1 calls delegate unchanged. A crash before the flush leaves no fictitious durable handle;
-  the normal next run resubmits it. This changes only transport request shape: no tag recipe,
-  candidate schema, pipeline version, or backfill behavior changes.
+  and v1 calls delegate unchanged. A failed per-job submission is recorded against its exact
+  recipe rather than left as a provisional deferral; the normal next run can resubmit it. This
+  changes only transport request shape: no tag recipe, candidate schema, pipeline version, or
+  backfill behavior changes.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,

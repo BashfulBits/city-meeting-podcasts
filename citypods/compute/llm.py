@@ -2268,7 +2268,7 @@ class BatchingDispatchBackend:
             self._queued[job.recipe_hash] = (job, handle)
             return handle
 
-    def flush(self) -> list[JobResult | JobHandle | Exception]:
+    def flush(self) -> list[BatchDispatchOutcome]:
         """Submit every collected job in bounded enqueue/poll batches.
 
         The collector is emptied before network I/O.  A failed bulk request therefore follows
@@ -2278,7 +2278,19 @@ class BatchingDispatchBackend:
         with self._lock:
             jobs = [job for job, _handle in self._queued.values()]
             self._queued.clear()
-        return dispatch_job_batch(self._backend, jobs)
+        results = dispatch_job_batch(self._backend, jobs)
+        return [
+            BatchDispatchOutcome(job=job, result=result)
+            for job, result in zip(jobs, results, strict=True)
+        ]
+
+
+@dataclass(frozen=True)
+class BatchDispatchOutcome:
+    """One run-batched submission result paired with its original inference job."""
+
+    job: InferenceJob
+    result: JobResult | JobHandle | Exception
 
 
 def dispatch_job_batch(
@@ -2347,6 +2359,7 @@ def dispatch_job_batch(
 
 
 __all__ = [
+    "BatchDispatchOutcome",
     "BatchingDispatchBackend",
     "LLMBackendConfig",
     "LLMBackendError",

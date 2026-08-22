@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import (
+    BatchDispatchOutcome,
     BatchingDispatchBackend,
     LiteLLMBackend,
     LLMBackendConfig,
@@ -725,9 +726,70 @@ def test_batching_dispatch_backend_collects_queue_only_jobs_until_flush():
     assert len(enqueue_calls[0]["jobs"]) == 3
     assert len(poll_calls) == 1
     assert len(poll_calls[0]["ids"]) == 3
-    assert all(isinstance(result, JobHandle) for result in results)
-    assert all(not result.ref.startswith("batch-pending:") for result in results)
+    assert all(isinstance(outcome.result, JobHandle) for outcome in results)
+    assert all(not outcome.result.ref.startswith("batch-pending:") for outcome in results)
+    assert [outcome.job.recipe_hash for outcome in results] == [job.recipe_hash for job in jobs]
     assert batching.queued_count == 0
+
+
+def test_batching_dispatch_backend_pairs_a_rejected_job_with_its_exception():
+    """A bulk rejection falls back per job without losing which queued recipe failed."""
+    storage = MockStorage()
+
+    def _enqueue(url, json=None, **_kw):
+        jobs = json.get("jobs", [])
+        if len(jobs) > 1:
+            return _mock_response(
+                status_code=200,
+                json_data={
+                    "accepted": [],
+                    "rejected": [
+                        {"id": job["id"], "reason": "idempotency_conflict"} for job in jobs
+                    ],
+                },
+            )
+        job = jobs[0]
+        if job["idempotency_key"].startswith("recipe-batch-rejected:"):
+            return _mock_response(
+                status_code=200,
+                json_data={
+                    "accepted": [],
+                    "rejected": [{"id": job["id"], "reason": "idempotency_conflict"}],
+                },
+            )
+        return _accept_all(url, json=json)
+
+    session = MagicMock()
+    session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _accept_all})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={
+                "messages": [{"role": "user", "content": recipe_hash}],
+                "llm_policy": LLMRequestPolicy(queue_only=True),
+            },
+            recipe_hash=recipe_hash,
+        )
+        for recipe_hash in ("recipe-batch-accepted", "recipe-batch-rejected")
+    ]
+    batching = BatchingDispatchBackend(backend)
+    for job in jobs:
+        batching.run_inference(job)
+
+    outcomes = batching.flush()
+
+    assert isinstance(outcomes[0], BatchDispatchOutcome)
+    assert isinstance(outcomes[0].result, JobHandle)
+    assert outcomes[1].job.recipe_hash == "recipe-batch-rejected"
+    assert isinstance(outcomes[1].result, LLMBackendError)
 
 
 def test_dispatch_job_batch_returns_empty_list_for_no_jobs():

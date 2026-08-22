@@ -1961,12 +1961,12 @@ def _run_enrich_global_queue(
     if tag_batcher is not None:
         from citypods.compute.base import JobHandle, JobResult
 
-        batch_results = tag_batcher.flush()
-        pending = sum(1 for result in batch_results if isinstance(result, JobHandle))
-        completed = sum(1 for result in batch_results if isinstance(result, JobResult))
-        failed = sum(1 for result in batch_results if isinstance(result, Exception))
+        batch_outcomes = tag_batcher.flush()
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = _record_tag_batch_submission_failures(prepared, batch_outcomes)
         print(
-            f"[enrich] tag LLM batch flush: jobs={len(batch_results)} pending={pending} "
+            f"[enrich] tag LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
             f"completed={completed} errors={failed}",
             flush=True,
         )
@@ -1975,12 +1975,12 @@ def _run_enrich_global_queue(
     if moment_batcher is not None:
         from citypods.compute.base import JobHandle, JobResult
 
-        batch_results = moment_batcher.flush()
-        pending = sum(1 for result in batch_results if isinstance(result, JobHandle))
-        completed = sum(1 for result in batch_results if isinstance(result, JobResult))
-        failed = sum(1 for result in batch_results if isinstance(result, Exception))
+        batch_outcomes = moment_batcher.flush()
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, Exception))
         print(
-            f"[enrich] R6 LLM batch flush: jobs={len(batch_results)} pending={pending} "
+            f"[enrich] R6 LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
             f"completed={completed} errors={failed}",
             flush=True,
         )
@@ -2015,6 +2015,48 @@ def _run_enrich_global_queue(
             episodes = prepared.get(key, {}).get("episodes", [])
             results.append(CityResult(c.slug, "built", episode_count=len(episodes)))
     return results
+
+
+def _record_tag_batch_submission_failures(prepared: dict[str, dict], outcomes) -> int:
+    """Turn failed bulk submissions from provisional tag deferrals into durable item errors."""
+    failures = [outcome for outcome in outcomes if isinstance(outcome.result, Exception)]
+    if not failures:
+        return 0
+
+    recorded = 0
+    seen_episodes: set[int] = set()
+    for state in prepared.values():
+        for episode in [*state["episodes"], *state.get("persist_episodes", [])]:
+            if id(episode) in seen_episodes:
+                continue
+            seen_episodes.add(id(episode))
+            for attempt in reversed(episode.tags_llm_call_attempts):
+                if not isinstance(attempt, dict) or attempt.get("status") != "deferred":
+                    continue
+                recipe_hashes = attempt.get("job_recipe_hashes", [attempt.get("recipe_hash")])
+                if not isinstance(recipe_hashes, list):
+                    recipe_hashes = [attempt.get("recipe_hash")]
+                matching = [
+                    outcome for outcome in failures if outcome.job.recipe_hash in recipe_hashes
+                ]
+                if not matching:
+                    continue
+                details = [
+                    {
+                        "recipe_hash": outcome.job.recipe_hash,
+                        "reason": str(outcome.result)[:500],
+                    }
+                    for outcome in matching
+                ]
+                attempt["status"] = "error"
+                attempt["reason"] = f"batch submission failed: {details[0]['reason']}"
+                attempt["batch_submission_errors"] = details
+                recorded += len(matching)
+                break
+    unrecorded = len(failures) - recorded
+    if unrecorded:
+        print(f"[enrich] tag batch failures without a matching episode: {unrecorded}", flush=True)
+    return len(failures)
 
 
 def _build_impl(
