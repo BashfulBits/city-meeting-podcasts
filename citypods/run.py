@@ -143,6 +143,7 @@ from citypods.stages import (
     AgendaChapterCandidatesStage,
     ChapterBoundaryLocatorStage,
     StageContext,
+    StageStats,
     _materialize_set,
     default_stages,
     enrich_stages,
@@ -1910,10 +1911,10 @@ def _run_enrich_global_queue(
         from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend, LLMBackendConfig
 
         if original_chapter_backend is None:
-            original_chapter_backend = LiteLLMBackend(
-                LLMBackendConfig.from_env(), storage=ctx.storage
-            )
-            ctx.chapter_llm_backend = original_chapter_backend
+            chapter_config = LLMBackendConfig.from_env()
+            if chapter_config.dispatch_v2_url:
+                original_chapter_backend = LiteLLMBackend(chapter_config, storage=ctx.storage)
+                ctx.chapter_llm_backend = original_chapter_backend
         if (
             isinstance(original_chapter_backend, LiteLLMBackend)
             and original_chapter_backend.config.dispatch_v2_url
@@ -1931,15 +1932,20 @@ def _run_enrich_global_queue(
                 with ThreadPoolExecutor(max_workers=max_workers) as pool:
                     _run_bounded(
                         pool,
-                        lambda item, stage=chapter_stage: _run_for(item, [stage]),
+                        lambda item, stage=chapter_stage: _run_for(item, [stage], accumulate=False),
                         candidates,
                         max_pending=max_workers,
                     )
 
                 batch_outcomes = chapter_batcher.flush()
-                replay_items, failed = _chapter_batch_replay_items(
+                replay_items, submission_errors = _chapter_batch_replay_items(
                     candidates, chapter_stage.name, batch_outcomes
                 )
+                failed = len(submission_errors)
+                if submission_errors:
+                    pipeline.accumulate_stats(
+                        [StageStats(chapter_stage.name, errors=submission_errors)]
+                    )
                 print(
                     f"[enrich] {chapter_stage.name} LLM batch flush: jobs={len(batch_outcomes)} "
                     f"replay={len(replay_items)} errors={failed}",
@@ -1953,9 +1959,7 @@ def _run_enrich_global_queue(
                     with ThreadPoolExecutor(max_workers=max_workers) as pool:
                         _run_bounded(
                             pool,
-                            lambda item, stage=chapter_stage: _run_for(
-                                item, [stage], accumulate=False
-                            ),
+                            lambda item, stage=chapter_stage: _run_for(item, [stage]),
                             replay_items,
                             max_pending=max_workers,
                         )
@@ -2089,7 +2093,7 @@ def _record_tag_batch_submission_failures(prepared: dict[str, dict], outcomes) -
     if not failures:
         return 0
 
-    recorded = 0
+    unmatched = {id(outcome): outcome for outcome in failures}
     seen_episodes: set[int] = set()
     for state in prepared.values():
         for episode in [*state["episodes"], *state.get("persist_episodes", [])]:
@@ -2103,7 +2107,9 @@ def _record_tag_batch_submission_failures(prepared: dict[str, dict], outcomes) -
                 if not isinstance(recipe_hashes, list):
                     recipe_hashes = [attempt.get("recipe_hash")]
                 matching = [
-                    outcome for outcome in failures if outcome.job.recipe_hash in recipe_hashes
+                    outcome
+                    for outcome in unmatched.values()
+                    if outcome.job.recipe_hash in recipe_hashes
                 ]
                 if not matching:
                     continue
@@ -2117,9 +2123,9 @@ def _record_tag_batch_submission_failures(prepared: dict[str, dict], outcomes) -
                 attempt["status"] = "error"
                 attempt["reason"] = f"batch submission failed: {details[0]['reason']}"
                 attempt["batch_submission_errors"] = details
-                recorded += len(matching)
-                break
-    unrecorded = len(failures) - recorded
+                for outcome in matching:
+                    unmatched.pop(id(outcome), None)
+    unrecorded = len(unmatched)
     if unrecorded:
         print(f"[enrich] tag batch failures without a matching episode: {unrecorded}", flush=True)
     return len(failures)
@@ -2127,7 +2133,7 @@ def _record_tag_batch_submission_failures(prepared: dict[str, dict], outcomes) -
 
 def _chapter_batch_replay_items(
     candidates: list[tuple[str, Episode]], stage_name: str, outcomes
-) -> tuple[list[tuple[str, Episode]], int]:
+) -> tuple[list[tuple[str, Episode]], list[str]]:
     """Select queued chapter items for post-flush finalization and record failed submissions.
 
     Chapter stages intentionally keep their artifact-specific prepare/finalize logic.  During the
@@ -2145,6 +2151,7 @@ def _chapter_batch_replay_items(
     }
     replay: list[tuple[str, Episode]] = []
     recorded_failures: set[str] = set()
+    submission_errors: list[str] = []
 
     for item in candidates:
         _source_key, episode = item
@@ -2158,6 +2165,7 @@ def _chapter_batch_replay_items(
             if stage_name == "chapter_agenda":
                 state.update({"status": "error", "error": f"batch submission failed: {reason}"})
                 state.pop("job_ref", None)
+                submission_errors.append(f"{episode.uid}: agenda chapter extraction: {reason}")
             else:
                 state.update(
                     {
@@ -2166,6 +2174,7 @@ def _chapter_batch_replay_items(
                     }
                 )
                 state.pop("locator_job_ref", None)
+                submission_errors.append(f"{episode.uid}: chapter locator: {reason}")
             episode.generated_agenda_candidates = state
             recorded_failures.add(recipe)
         elif recipe in replay_recipes:
@@ -2177,7 +2186,7 @@ def _chapter_batch_replay_items(
             f"[enrich] chapter batch failures without a matching episode: {unrecorded}",
             flush=True,
         )
-    return replay, len(failures)
+    return replay, submission_errors
 
 
 def _build_impl(

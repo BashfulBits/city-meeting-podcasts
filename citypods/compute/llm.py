@@ -123,6 +123,8 @@ _SAFE_DIAGNOSTICS_ENV = "LLM_SAFE_DIAGNOSTICS"
 _PACING_POLL_CAP_SECONDS = 10.0
 # Tiny floor so an "eligible now, but the reserve just lost a race" retry can't hot-spin the CPU.
 _PACING_MIN_SLEEP_SECONDS = 0.2
+# The ingress Worker caps both enqueue and poll payloads at this many jobs.
+_WORKER_BATCH_LIMIT = 1000
 
 # --- Cloudflare AI Gateway (direct transport only) ---------------------------------------------
 # The gateway is an observability shim, not a routing decision: it proxies to the same upstream
@@ -1989,12 +1991,12 @@ class LiteLLMBackend(Backend):
         if not self.config.dispatch_v2_url:
             return {h.ref: None for h in v2_handles}
 
-        # The ingress Worker caps both enqueue and poll payloads at 1,000 jobs.  Callers such as
+        # The ingress Worker caps both enqueue and poll payloads. Callers such as
         # the daily deferred sweep deliberately hand us their whole pending registry, so enforce
         # that transport limit here rather than depending on every caller to remember it.
         results: dict[str, JobResult | None] = {}
-        for start in range(0, len(v2_handles), 1000):
-            results.update(self._poll_batch_chunk(v2_handles[start : start + 1000]))
+        for start in range(0, len(v2_handles), _WORKER_BATCH_LIMIT):
+            results.update(self._poll_batch_chunk(v2_handles[start : start + _WORKER_BATCH_LIMIT]))
         return results
 
     def _poll_batch_chunk(self, v2_handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
@@ -2355,10 +2357,9 @@ def dispatch_job_batch(
     if not jobs:
         return []
 
-    max_batch_size = 1000
     results: list[JobResult | JobHandle | Exception] = []
-    for chunk_start in range(0, len(jobs), max_batch_size):
-        chunk = jobs[chunk_start : chunk_start + max_batch_size]
+    for chunk_start in range(0, len(jobs), _WORKER_BATCH_LIMIT):
+        chunk = jobs[chunk_start : chunk_start + _WORKER_BATCH_LIMIT]
         try:
             results.extend(backend.enqueue_batch(chunk))
         except Exception:  # noqa: BLE001 -- enqueue_batch raises for the WHOLE call on a single
