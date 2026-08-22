@@ -6622,8 +6622,7 @@ class NativeDiarizeStage:
                                 "audio_path": audio_path,
                                 "model": model,
                                 "embedding_model": embedding_model,
-                                "token": config.get("token")
-                                or os.environ.get("PYANNOTE_AUTH_TOKEN"),
+                                "token": config.get("token") or os.environ.get("HF_TOKEN"),
                                 "device": config.get("device"),
                             },
                             recipe_hash=spec,

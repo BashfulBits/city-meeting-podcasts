@@ -129,13 +129,19 @@ class TestInterface:
 
     def test_diarize_routes_to_lazy_adapter(self, monkeypatch):
         expected = object()
-        monkeypatch.setattr("citypods.diarize.diarize", MagicMock(return_value=expected))
+        diarize = MagicMock(return_value=expected)
+        monkeypatch.setattr("citypods.diarize.diarize", diarize)
         result = LocalBackend(asr=MagicMock()).run_inference(
-            InferenceJob(task="diarize", inputs={"audio_path": "a.m4a"}, recipe_hash="r7")
+            InferenceJob(
+                task="diarize",
+                inputs={"audio_path": "a.m4a", "token": "hf-test"},
+                recipe_hash="r7",
+            )
         )
         assert result.task == "diarize"
         assert result.recipe_hash == "r7"
         assert result.output is expected
+        assert diarize.call_args.kwargs["token"] == "hf-test"
 
     def test_job_handle_shape(self):
         # JobHandle is the dispatch-backend return (H14); just lock its shape here.
