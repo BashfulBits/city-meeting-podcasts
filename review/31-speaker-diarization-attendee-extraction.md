@@ -27,6 +27,15 @@ issues not yet cut**
 > **Pilot selection:** `denton-tx` / `City Council` is the first explicitly allowlisted shadow pilot;
 > all other city/body pairs remain excluded even while R7 processing is enabled.
 
+> **Diarization lane and model preflight, 2026-08-22.** The Denton shadow pilot is now invoked by
+> `.github/workflows/r7-diarization.yml` every six hours and by manual dispatch. It runs the native
+> `diarize` lane before `speaker-identity`, persists only the R7-owned state blocks, and uses the
+> existing `HF_TOKEN` secret. A cached preflight loads both the configured `pyannote.audio` pipeline
+> and embedding model before any meeting work starts. The configured production candidate is
+> `pyannote/speaker-diarization-community-1`; changing that recipe changes the content-addressed
+> diarization key and causes gradual reprocessing, not a destructive bulk invalidation. Public naming
+> remains fail-closed until the existing calibration gate qualifies.
+
 > **Chair/title-led golden-reference revision, 2026-08-22.** The identity stage now scans timed
 > transcript words for formal recognition cues and common short introductions such as “Commissioner
 > Jane Doe”, “Council Member Jane Doe”, and “Councilmember Jane Doe”. A cue becomes a private

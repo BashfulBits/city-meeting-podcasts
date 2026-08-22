@@ -6556,7 +6556,7 @@ class NativeDiarizeStage:
         config = ctx.speaker_config or {}
         if not config.get("enabled") or ctx.dry_run or ctx.storage is None:
             return stats
-        model = str(config.get("model") or "pyannote/speaker-diarization-3.1")
+        model = str(config.get("model") or "pyannote/speaker-diarization-community-1")
         embedding_model = str(config.get("embedding_model") or "pyannote/embedding")
         from citypods.speakers import (
             load_turn_evidence,

@@ -21,7 +21,7 @@ class DiarizeArtifacts:
 
 def diarize(
     audio_path: Path,
-    model: str = "pyannote/speaker-diarization-3.1",
+    model: str = "pyannote/speaker-diarization-community-1",
     *,
     embedding_model: str | None = "pyannote/embedding",
     token: str | None = None,
@@ -44,7 +44,10 @@ def diarize(
             pipeline.to(torch.device(device))
         except (ImportError, AttributeError):
             pass
-    annotation = pipeline(str(audio_path))
+    output = pipeline(str(audio_path))
+    # pyannote.audio 3.x returned an Annotation directly; Community-1 (pyannote.audio 4.x)
+    # returns a structured output with regular and exclusive diarization annotations.
+    annotation = getattr(output, "speaker_diarization", output)
     turns: list[dict[str, Any]] = []
     clusters: dict[str, dict[str, Any]] = {}
     for segment, _, label in annotation.itertracks(yield_label=True):

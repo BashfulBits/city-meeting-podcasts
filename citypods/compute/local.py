@@ -60,7 +60,7 @@ class LocalBackend:
 
             output = diarize(
                 inp["audio_path"],
-                inp.get("model", "pyannote/speaker-diarization-3.1"),
+                inp.get("model", "pyannote/speaker-diarization-community-1"),
                 embedding_model=inp.get("embedding_model", "pyannote/embedding"),
                 token=inp.get("token"),
                 device=inp.get("device"),

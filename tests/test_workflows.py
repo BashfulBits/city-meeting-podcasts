@@ -163,6 +163,31 @@ def test_workflows_use_node24_cache_actions_without_force_flag():
     assert "actions/cache@v5" not in workflow_text
 
 
+def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
+    workflow, job = _job("r7-diarization.yml", "diarize")
+    triggers = _on(workflow)
+    assert triggers["schedule"] == [{"cron": "30 */6 * * *"}]
+    assert "workflow_dispatch" in triggers
+    assert workflow["concurrency"] == {
+        "group": "r7-diarization",
+        "cancel-in-progress": False,
+    }
+    assert workflow["permissions"] == {"contents": "read", "actions": "read"}
+    assert job["timeout-minutes"] == 330
+    preflight = next(
+        step for step in job["steps"] if "preflight_diarization.py" in step.get("run", "")
+    )
+    assert preflight["env"]["HF_TOKEN"] == "${{ secrets.HF_TOKEN }}"
+    assert preflight["env"]["HUGGINGFACE_HUB_TOKEN"] == "${{ secrets.HF_TOKEN }}"
+    diarize = next(step for step in job["steps"] if "--lane diarize" in step.get("run", ""))
+    identity = next(
+        step for step in job["steps"] if "--lane speaker-identity" in step.get("run", "")
+    )
+    assert "--city denton-tx" in diarize["run"]
+    assert "--city denton-tx" in identity["run"]
+    assert _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25") >= 0
+
+
 def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
     workflow = (WORKFLOWS / "city-discovery.yml").read_text()
     site_path = Path(__file__).resolve().parents[1] / "config" / "site_config.yml"
