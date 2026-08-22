@@ -15,6 +15,7 @@ from citypods.speakers import (
     calibration_cell,
     empty_registry,
     observe_attendance,
+    pilot_selected,
     profile_matches,
     public_turn,
     quote_attribution,
@@ -125,6 +126,13 @@ def test_shadow_candidate_and_offline_benchmark_are_engine_neutral():
     )
     assert report["turn_cluster_accuracy"] == 1.0
     assert report["identity_precision"] == 1.0
+
+
+def test_pilot_selection_is_explicit_and_body_scoped():
+    config = {"pilot_bodies": [{"city": "denton-tx", "body": "City Council"}]}
+    assert pilot_selected(config, "denton-tx", "City Council")
+    assert not pilot_selected(config, "denton-tx", "Planning and Zoning Commission")
+    assert not pilot_selected(config, "austin-tx", "City Council")
 
 
 def test_speaker_pages_only_include_admitted_named_quotes():

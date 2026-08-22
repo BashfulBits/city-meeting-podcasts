@@ -42,6 +42,22 @@ def body_key(city_slug: str, body: str | None) -> str:
     return f"{city_slug}:{digest}"
 
 
+def pilot_selected(config: Mapping[str, Any], city_slug: str, body: str | None) -> bool:
+    """Return whether an opt-in R7 pilot explicitly includes this city/body pair.
+
+    An empty allowlist is deliberately not interpreted as "all".  Public-name calibration is a
+    sensitive rollout, so enabling the subsystem without selecting a pilot stays fail-closed.
+    """
+    for row in config.get("pilot_bodies") or []:
+        if not isinstance(row, Mapping):
+            continue
+        if str(row.get("city") or "") != city_slug:
+            continue
+        if _norm(row.get("body")) == _norm(body):
+            return True
+    return False
+
+
 def speaker_id(city_slug: str, body: str | None, display_name: str) -> str:
     """Mint an opaque, body-scoped id only when a reviewer approves a person."""
     digest = hashlib.sha1(f"{body_key(city_slug, body)}:{_norm(display_name)}".encode()).hexdigest()
@@ -357,6 +373,7 @@ __all__ = [
     "load_turn_evidence",
     "observe_attendance",
     "profile_matches",
+    "pilot_selected",
     "public_turn",
     "qualified_profile",
     "quote_attribution",

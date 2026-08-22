@@ -6558,7 +6558,12 @@ class NativeDiarizeStage:
             return stats
         model = str(config.get("model") or "pyannote/speaker-diarization-3.1")
         embedding_model = str(config.get("embedding_model") or "pyannote/embedding")
-        from citypods.speakers import load_turn_evidence, public_turn, save_turn_evidence
+        from citypods.speakers import (
+            load_turn_evidence,
+            pilot_selected,
+            public_turn,
+            save_turn_evidence,
+        )
 
         turn_evidence = (
             load_turn_evidence(ctx.speaker_turn_evidence_path)
@@ -6578,6 +6583,12 @@ class NativeDiarizeStage:
             city_slug=city.slug,
             work_class="transcript-diarize",
         ):
+            if not pilot_selected(config, city.slug, ep.body):
+                # Don't cache a negative selection: a maintainer may add this body to the pilot
+                # later without bumping the diarization recipe. A lightweight later pass will see
+                # it immediately while selected entries still reuse their content-addressed bytes.
+                stats.defer("pilot-not-selected", sample=ep.uid or ep.guid)
+                continue
             if ep.speakers_source == "provider" and ep.speakers_synced:
                 stats.reused += 1
                 continue
@@ -6679,6 +6690,7 @@ class SpeakerIdentityStage:
             load_registry,
             load_turn_evidence,
             observe_attendance,
+            pilot_selected,
             profile_matches,
             quote_attribution,
             refresh_membership_status,
@@ -6696,6 +6708,8 @@ class SpeakerIdentityStage:
             else {"episodes": {}}
         )
         for ep in episodes:
+            if not pilot_selected(ctx.speaker_config or {}, city.slug, ep.body):
+                continue
             if ep.minutes_roster or ep.minutes_votes:
                 observe_attendance(
                     registry,
@@ -6714,6 +6728,8 @@ class SpeakerIdentityStage:
             except (OSError, ValueError):
                 evaluation = {"reviews": []}
         for ep in episodes:
+            if not pilot_selected(ctx.speaker_config or {}, city.slug, ep.body):
+                continue
             if not ep.speakers_key or not ep.moment_pullquote_candidates:
                 continue
             raw = _read_storage_bytes(ctx.storage, ep.speakers_key)

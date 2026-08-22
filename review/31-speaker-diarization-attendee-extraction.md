@@ -24,6 +24,8 @@ issues not yet cut**
 > candidate ledger, then appends the result and closes the issue. The separate `speaker-benchmark`
 > command compares normalized pyannote/WeSpeaker result bundles against a curator-supplied private gold
 > bundle; it is deliberately offline because it must not put reference audio or embeddings in Actions.
+> **Pilot selection:** `denton-tx` / `City Council` is the first explicitly allowlisted shadow pilot;
+> all other city/body pairs remain excluded even while R7 processing is enabled.
 
 > **Matured to L3, 2026-07-13.** The L1 sketch this builds from was already unusually detailed (real
 > CPU-viable model research, a named execution-backend dependency, an explicit naming/confirmation

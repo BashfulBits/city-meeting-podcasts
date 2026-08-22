@@ -477,12 +477,15 @@ defaults:
   # claim is reclaimed/requeued instead of the ledger going unswept.
   work_lease_reaper_enabled: true
 
-# R7 is off until a controlled shadow pilot is selected. Its identity gate is independently
-# fail-closed, so enabling it produces private evidence and weekly review candidates but cannot
-# publish a name before its per-body/capture-context calibration cell qualifies. State objects are
-# persisted alongside canonical state, never rendered into public Pages output.
+# R7's Denton City Council shadow pilot is enabled. Its identity gate is independently fail-closed,
+# so it produces private evidence and weekly review candidates but cannot publish a name before its
+# per-body/capture-context calibration cell qualifies. State objects are persisted alongside
+# canonical state, never rendered into public Pages output.
 speakers:
-  enabled: false
+  enabled: true
+  pilot_bodies:
+    - city: denton-tx
+      body: "City Council"
   model: "pyannote/speaker-diarization-3.1"
   embedding_model: "pyannote/embedding"
   minimum_match_score: 0.75
