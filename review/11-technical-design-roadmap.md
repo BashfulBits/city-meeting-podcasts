@@ -157,11 +157,14 @@ activating Renovate and the recurring immutable/checksummed FFmpeg update remain
 R11's broader vendor coverage (including OneMeeting/Agenda PE/CivicClerk cases) remains follow-up
 work as catalog evidence warrants.
 
-**R10 batching update (2026-08-22).** The remaining high-volume v2 topic-tag caller now batches
-new `queue_only` tagger/prelabeler jobs across the tag lane's worker pool, including recursively
-split chapter windows, through bounded 1,000-job enqueue and poll calls. Its existing incremental
-dispatch cap and no-quota short-circuit remain intact; direct/v1 calls and the tag output contract
-are unchanged, so no pipeline-version bump or backfill is required. See review/44 Phase 4.
+**R10 batching update (2026-08-22).** The high-volume v2 topic-tag caller batches new `queue_only`
+tagger/prelabeler jobs across the tag lane's worker pool, including recursively split chapter
+windows, and the chapter-agenda/chapter-locator lanes now collect their global queues through the
+same bounded 1,000-job transport before replaying their existing finalizers against real durable
+handles/results. `poll_batch` also chunks every v2 status request at that limit; the deferred sweep
+treats a successful bulk pending observation as final for that sweep rather than re-polling every
+handle individually. The tag dispatch cap/no-quota short-circuit, direct/v1 behavior, and terminal
+recovery remain intact; no pipeline-version bump or backfill is required. See review/44 Phase 4.
 
 | Item | #/GH | Maturity | Breakout |
 |---|---|---|---|

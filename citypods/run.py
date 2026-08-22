@@ -1775,7 +1775,7 @@ def _run_enrich_global_queue(
         flush=True,
     )
 
-    def _run_for(item: tuple[str, Episode], stages):
+    def _run_for(item: tuple[str, Episode], stages, *, accumulate: bool = True):
         key, ep = item
         st = prepared[key]
         try:
@@ -1790,7 +1790,8 @@ def _run_enrich_global_queue(
             stats = run_stages(
                 st["provider"], st["city"], [ep], stages, ctx, quiet=ctx.lane != "tag"
             )
-            pipeline.accumulate_stats(stats)
+            if accumulate:
+                pipeline.accumulate_stats(stats)
             return stats
         except Exception as exc:  # noqa: BLE001 — one bad episode must not abort the pass
             print(f"[enrich] global queue item failed source={key} uid={ep.uid}: {exc}", flush=True)
@@ -1894,8 +1895,73 @@ def _run_enrich_global_queue(
             tag_batcher = BatchingDispatchBackend(ctx.tag_backend)
             ctx.tag_backend = tag_batcher
 
+    # Chapter lanes use the same per-episode global queue as audio, but their stages already
+    # know how to build/finalize a durable job independently.  Interpose the same collector used
+    # for tags so their initial per-episode stage calls only prepare jobs; each stage is flushed
+    # once across the run, then replayed against the real deferred records to retain its existing
+    # finalizer and completion-marker behavior.  The chapter lane can contain both stages, so
+    # process agenda before locator rather than collecting their dependent jobs together.
+    chapter_batcher = None
+    original_chapter_backend = getattr(ctx, "chapter_llm_backend", None)
+    chapter_stages = [
+        stage for stage in audio_stages if stage.name in {"chapter_agenda", "chapter_locator"}
+    ]
+    if chapter_stages:
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend, LLMBackendConfig
+
+        if original_chapter_backend is None:
+            original_chapter_backend = LiteLLMBackend(
+                LLMBackendConfig.from_env(), storage=ctx.storage
+            )
+            ctx.chapter_llm_backend = original_chapter_backend
+        if (
+            isinstance(original_chapter_backend, LiteLLMBackend)
+            and original_chapter_backend.config.dispatch_v2_url
+        ):
+            chapter_batcher = BatchingDispatchBackend(original_chapter_backend)
+            ctx.chapter_llm_backend = chapter_batcher
+
     with source_cache or _nullcontext():
-        if audio_stages:
+        if chapter_batcher is not None:
+            for chapter_stage in chapter_stages:
+                print(
+                    f"[enrich] {chapter_stage.name} batch-prepare pass: {len(candidates)} item(s)",
+                    flush=True,
+                )
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    _run_bounded(
+                        pool,
+                        lambda item, stage=chapter_stage: _run_for(item, [stage]),
+                        candidates,
+                        max_pending=max_workers,
+                    )
+
+                batch_outcomes = chapter_batcher.flush()
+                replay_items, failed = _chapter_batch_replay_items(
+                    candidates, chapter_stage.name, batch_outcomes
+                )
+                print(
+                    f"[enrich] {chapter_stage.name} LLM batch flush: jobs={len(batch_outcomes)} "
+                    f"replay={len(replay_items)} errors={failed}",
+                    flush=True,
+                )
+                # The original backend reads the real handle/result that flush() persisted.  A
+                # replay therefore performs no fresh ingress request, but lets the unchanged
+                # stage replace its provisional batch-pending ref and finalize immediate results.
+                ctx.chapter_llm_backend = original_chapter_backend
+                if replay_items:
+                    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                        _run_bounded(
+                            pool,
+                            lambda item, stage=chapter_stage: _run_for(
+                                item, [stage], accumulate=False
+                            ),
+                            replay_items,
+                            max_pending=max_workers,
+                        )
+                ctx.chapter_llm_backend = chapter_batcher
+            ctx.chapter_llm_backend = original_chapter_backend
+        elif audio_stages:
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 _run_bounded(
@@ -2057,6 +2123,61 @@ def _record_tag_batch_submission_failures(prepared: dict[str, dict], outcomes) -
     if unrecorded:
         print(f"[enrich] tag batch failures without a matching episode: {unrecorded}", flush=True)
     return len(failures)
+
+
+def _chapter_batch_replay_items(
+    candidates: list[tuple[str, Episode]], stage_name: str, outcomes
+) -> tuple[list[tuple[str, Episode]], int]:
+    """Select queued chapter items for post-flush finalization and record failed submissions.
+
+    Chapter stages intentionally keep their artifact-specific prepare/finalize logic.  During the
+    collector pass they see a provisional ``batch-pending:`` handle; after flush we replay only
+    jobs that acquired a real durable result/handle.  A failed batch submission must not leave a
+    misleading provisional ref in the persisted episode, and remains dirty for the next lane run.
+    """
+    failures = {
+        outcome.job.recipe_hash: outcome.result
+        for outcome in outcomes
+        if isinstance(outcome.result, Exception)
+    }
+    replay_recipes = {
+        outcome.job.recipe_hash for outcome in outcomes if not isinstance(outcome.result, Exception)
+    }
+    replay: list[tuple[str, Episode]] = []
+    recorded_failures: set[str] = set()
+
+    for item in candidates:
+        _source_key, episode = item
+        state = dict(episode.generated_agenda_candidates or {})
+        recipe_key = "recipe" if stage_name == "chapter_agenda" else "locator_recipe"
+        recipe = state.get(recipe_key)
+        if not isinstance(recipe, str):
+            continue
+        if recipe in failures:
+            reason = str(failures[recipe])[:500]
+            if stage_name == "chapter_agenda":
+                state.update({"status": "error", "error": f"batch submission failed: {reason}"})
+                state.pop("job_ref", None)
+            else:
+                state.update(
+                    {
+                        "locator_status": "error",
+                        "locator_error": f"batch submission failed: {reason}",
+                    }
+                )
+                state.pop("locator_job_ref", None)
+            episode.generated_agenda_candidates = state
+            recorded_failures.add(recipe)
+        elif recipe in replay_recipes:
+            replay.append(item)
+
+    unrecorded = len(failures) - len(recorded_failures)
+    if unrecorded:
+        print(
+            f"[enrich] chapter batch failures without a matching episode: {unrecorded}",
+            flush=True,
+        )
+    return replay, len(failures)
 
 
 def _build_impl(

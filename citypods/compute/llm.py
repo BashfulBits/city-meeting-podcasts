@@ -1989,6 +1989,22 @@ class LiteLLMBackend(Backend):
         if not self.config.dispatch_v2_url:
             return {h.ref: None for h in v2_handles}
 
+        # The ingress Worker caps both enqueue and poll payloads at 1,000 jobs.  Callers such as
+        # the daily deferred sweep deliberately hand us their whole pending registry, so enforce
+        # that transport limit here rather than depending on every caller to remember it.
+        results: dict[str, JobResult | None] = {}
+        for start in range(0, len(v2_handles), 1000):
+            results.update(self._poll_batch_chunk(v2_handles[start : start + 1000]))
+        return results
+
+    def _poll_batch_chunk(self, v2_handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+        """Poll one Worker-sized v2 status batch.
+
+        Kept separate from :meth:`poll_batch` so terminal-error behavior remains exactly the
+        existing per-Worker-call contract: a bad terminal item makes its own chunk fall back to
+        individual reconciliation in the deferred sweep, without ever sending an oversized POST.
+        """
+
         ids = [h.ref for h in v2_handles]
         headers = {"content-type": "application/json"}
         if self.config.dispatch_v2_auth_token:
@@ -2267,6 +2283,19 @@ class BatchingDispatchBackend:
             )
             self._queued[job.recipe_hash] = (job, handle)
             return handle
+
+    def enqueue_batch(self, jobs: Sequence[InferenceJob]) -> list[JobResult | JobHandle]:
+        """Collect a stage's existing ``dispatch_job_batch`` inputs without submitting yet."""
+        return [self.run_inference(job) for job in jobs]
+
+    def poll_batch(self, handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+        """Keep newly collected handles provisional until the run-level :meth:`flush`.
+
+        ``dispatch_job_batch`` calls this after ``enqueue_batch`` as its normal immediate
+        reconcile pass.  Returning no resolutions here leaves a provisional handle in the stage;
+        the runner replays that episode after flush against the wrapped backend's durable record.
+        """
+        return {}
 
     def flush(self) -> list[BatchDispatchOutcome]:
         """Submit every collected job in bounded enqueue/poll batches.

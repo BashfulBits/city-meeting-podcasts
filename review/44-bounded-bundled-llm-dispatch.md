@@ -778,6 +778,17 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   recipe rather than left as a provisional deferral; the normal next run can resubmit it. This
   changes only transport request shape: no tag recipe, candidate schema, pipeline version, or
   backfill behavior changes.
+- **Implemented (2026-08-22): run-batched chapter dispatch and complete deferred-sweep polling.**
+  The chapter-agenda and chapter-locator lanes now use the same run-scoped collector around their
+  existing per-episode finalizers. Each stage prepares the global queue, flushes bounded
+  1,000-job enqueue/poll groups, then replays only accepted jobs against the real durable handle
+  or result; a failed batch submission replaces the provisional `batch-pending:` reference with a
+  durable per-episode error and remains eligible next run. The dependent locator pass follows the
+  agenda flush/replay. `LiteLLMBackend.poll_batch()` also partitions every caller's v2 status
+  request at the Worker limit, and `llm_deferred_sweep.py` now treats a successful bulk poll's
+  pending result as authoritative instead of immediately issuing one singleton poll per handle.
+  A terminal or malformed bulk response still deliberately falls back to individual recovery.
+  No artifact schema, recipe, pipeline version, or backfill behavior changes.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,

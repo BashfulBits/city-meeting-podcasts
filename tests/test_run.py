@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import time
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
 from citypods import run
+from citypods.compute.base import JobHandle
 from citypods.models import AgendaRecord, CalendarIndex, City, Episode
 from citypods.providers import get_provider, register
 from citypods.providers.base import ProviderError
@@ -144,6 +146,45 @@ def test_build_closes_compute_backend_when_impl_raises(monkeypatch):
     with pytest.raises(RuntimeError, match="boom"):
         run.build()
     assert backend.closed is True
+
+
+def test_chapter_batch_replay_uses_real_outcomes_and_records_submission_errors():
+    agenda = _ep("agenda")
+    agenda.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "agenda-recipe",
+        "job_ref": "batch-pending:agenda-recipe",
+    }
+    failed = _ep("failed")
+    failed.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "failed-recipe",
+        "job_ref": "batch-pending:failed-recipe",
+    }
+    outcomes = [
+        SimpleNamespace(
+            job=SimpleNamespace(recipe_hash="agenda-recipe"),
+            result=JobHandle(
+                task="agenda-item-extract",
+                recipe_hash="agenda-recipe",
+                backend="llm-dispatch-v2",
+                ref="real-agenda-job",
+            ),
+        ),
+        SimpleNamespace(
+            job=SimpleNamespace(recipe_hash="failed-recipe"),
+            result=RuntimeError("ingress unavailable"),
+        ),
+    ]
+
+    replay, failures = run._chapter_batch_replay_items(
+        [("source", agenda), ("source", failed)], "chapter_agenda", outcomes
+    )
+
+    assert replay == [("source", agenda)]
+    assert failures == 1
+    assert failed.generated_agenda_candidates["status"] == "error"
+    assert "job_ref" not in failed.generated_agenda_candidates
 
 
 def test_chapter_build_claims_and_releases_maintenance_lease(monkeypatch, tmp_path):

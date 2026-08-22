@@ -235,15 +235,14 @@ def main(argv: list[str] | None = None) -> int:
             for h in snapshot.pending()
             if h.backend == "llm-dispatch-v2" and h.deferred_request is None
         ]
-        # A handle poll_batch actually resolves here (poll_batch already persisted it via
-        # write_deferred) must be marked completed in THIS in-memory snapshot and skipped by the
-        # per-handle loop below -- otherwise every v2 handle gets polled a second time
-        # individually via reconcile(), which reproduces the one-poll-per-handle request volume
-        # this batch call exists to eliminate (review/44 Phase 1). A handle NOT resolved here
-        # (still pending, or poll_batch raised -- see poll_batch's own docstring on why an
-        # exception here means "nothing in this batch was resolved") simply falls through to the
-        # per-handle loop as before, which re-derives the precise per-handle outcome.
-        batch_resolved_refs: set[str] = set()
+        # A successful batch poll observes *every* real v2 handle -- completed results have
+        # already been persisted by poll_batch, and None is an authoritative "still pending"
+        # observation.  Skip all of those handles below: otherwise a daily sweep with N pending
+        # jobs makes one bounded poll plus N singleton polls, defeating the batching that this
+        # script exists to provide.  A batch exception remains the deliberate exception: fall
+        # back to individual reconciliation so malformed/terminal responses retain their precise
+        # per-handle recovery behavior.
+        batch_observed_refs: set[str] = set()
         if v2_handles:
             try:
                 v2_results = backend.poll_batch(v2_handles)
@@ -255,14 +254,17 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 for handle in v2_handles:
                     result = v2_results.get(handle.ref)
+                    batch_observed_refs.add(handle.ref)
+                    seen_pending.add(handle.recipe_hash)
                     if result is not None:
                         completed += 1
                         snapshot.mark_completed(handle.recipe_hash, result)
-                        batch_resolved_refs.add(handle.ref)
+                    else:
+                        still_pending += 1
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
-            if handle.backend == "llm-dispatch-v2" and handle.ref in batch_resolved_refs:
+            if handle.backend == "llm-dispatch-v2" and handle.ref in batch_observed_refs:
                 continue
             reconciled_handle = _with_sweep_deadline(handle, deadline_at)
             deferred = reconciled_handle.deferred_request
