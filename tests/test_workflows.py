@@ -1117,12 +1117,18 @@ def test_agenda_chapter_reset_workflow_is_manual_dry_run_by_default_and_targeted
     assert wf["permissions"]["actions"] == "read"
 
 
-@pytest.mark.parametrize("workflow", ["chapter-agenda.yml", "chapter-locator.yml"])
-def test_chapter_workflows_use_shared_maintenance_lease(workflow):
+@pytest.mark.parametrize(
+    ("workflow", "expected_key"),
+    [
+        ("chapter-agenda.yml", "maintenance-leases/chapter-agenda.json"),
+        ("chapter-locator.yml", "maintenance-leases/chapter-locator.json"),
+    ],
+)
+def test_chapter_workflows_use_per_lane_maintenance_leases(workflow, expected_key):
     _wf, job = _job(workflow)
     step = next(s for s in job["steps"] if s.get("name") and "agenda" in s["name"].lower())
     env = step["env"]
-    assert env["CITYPODS_MAINTENANCE_LEASE_KEY"] == ("maintenance-leases/agenda-chapter-reset.json")
+    assert env["CITYPODS_MAINTENANCE_LEASE_KEY"] == expected_key
     assert "github.run_id" in env["CITYPODS_MAINTENANCE_LEASE_OWNER"]
     for name in (
         "CLOUDFLARE_ACCOUNT_ID",

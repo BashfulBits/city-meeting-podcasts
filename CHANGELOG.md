@@ -25,6 +25,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Separate per-lane chapter maintenance leases.** Separated the shared chapter maintenance mutex
+  into independent per-lane R2 CAS objects (`maintenance-leases/chapter-agenda.json` for
+  `chapter-agenda.yml` and `maintenance-leases/chapter-locator.json` for `chapter-locator.yml`).
+  Previously, both workflows shared `maintenance-leases/agenda-chapter-reset.json`, causing the
+  chapter locator workflow to fail with `MaintenanceLeaseBusy` whenever schedule delays or longer
+  extraction runs overlapped their execution times. `scripts/reset_agenda_chapter_state.py` now
+  claims both leases as a composite transaction before mutating state during manual recovery.
+
 - **Legacy agenda records with partial state can now be reset and rebuilt safely.** Added the
   dry-run-first `reset-agenda-chapter-state.yml` recovery workflow and
   `scripts/reset_agenda_chapter_state.py`, which targets only records missing

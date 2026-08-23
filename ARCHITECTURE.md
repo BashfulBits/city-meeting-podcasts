@@ -223,9 +223,10 @@ markers; and writes explicit null tombstones so scoped merges cannot resurrect s
 pushes the `chapter`-owned blocks first and the `audio`-owned agenda blocks second, reapplying the
 reset snapshot before each push because each scoped merge preserves the sibling lane. This is
 metadata repair only: it does not bump an agenda pipeline version or globally invalidate completed
-documents. The chapter workflows and the repair workflow coordinate through the CAS-backed
-`maintenance-leases/agenda-chapter-reset.json` mutex on R2: chapter runs claim it before starting
-and revalidate it immediately before their durable push; the repair claims it before mutation. The
+documents. The chapter workflows and the repair workflow coordinate through CAS-backed mutexes on
+R2: `chapter-agenda` claims `maintenance-leases/chapter-agenda.json` and `chapter-locator` claims
+`maintenance-leases/chapter-locator.json` before starting and revalidate immediately before their
+durable push; the repair tool claims both leases as a composite transaction before mutation. The
 Actions idle poll remains an operator-friendly wait diagnostic, not the correctness boundary.
 
 Scoped workflow telemetry is append-only under `state/run_events/`. Sibling matrix events sharing

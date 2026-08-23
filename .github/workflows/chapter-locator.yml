@@ -45,7 +45,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-          CITYPODS_MAINTENANCE_LEASE_KEY: maintenance-leases/agenda-chapter-reset.json
+          CITYPODS_MAINTENANCE_LEASE_KEY: maintenance-leases/chapter-locator.json
           CITYPODS_MAINTENANCE_LEASE_OWNER: github-actions:${{ github.workflow }}:${{ github.run_id }}
           LLM_MODE: dispatch
           LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}

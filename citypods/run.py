@@ -73,7 +73,7 @@ from citypods.models import (
     Episode,
 )
 from citypods.ops.maintenance_leases import (
-    AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+    CompositeMaintenanceLease,
     MaintenanceLease,
 )
 from citypods.ops.maintenance_leases import (
@@ -1972,7 +1972,7 @@ def _build_impl(
     no_refresh: bool = False,
     shard_plan_path: str | Path | None = None,
     state_snapshot_restored: bool = False,
-    maintenance_lease: MaintenanceLease | None = None,
+    maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None = None,
     _compute_backend_holder: list[object] | None = None,
 ) -> list[CityResult]:
     """Build the site and/or backfill heavy enrichment, in one of three phases:
@@ -3075,10 +3075,10 @@ def build(
 ) -> list[CityResult]:
     """Run a build and always close a subprocess-backed compute backend."""
     compute_backend_holder: list[object] = []
-    maintenance_lease: MaintenanceLease | None = None
+    maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None = None
     if lane in {"chapter-agenda", "chapter-locator", "chapter"} and not dry_run:
-        lease_key = os.environ.get("CITYPODS_MAINTENANCE_LEASE_KEY")
-        if lease_key:
+        raw_lease_key = os.environ.get("CITYPODS_MAINTENANCE_LEASE_KEY")
+        if raw_lease_key:
             lease_site_config = load_site_config(site_config_path)
             lease_storage = make_storage(lease_site_config, base_url or "", Path(output_dir))
             if lease_storage is None:
@@ -3089,10 +3089,15 @@ def build(
                 f"github-actions:{os.environ.get('GITHUB_WORKFLOW', 'local')}"
                 f":{os.environ.get('GITHUB_RUN_ID', 'unknown')}"
             )
+            target_key: str | tuple[str, ...]
+            if "," in raw_lease_key:
+                target_key = tuple(k.strip() for k in raw_lease_key.split(",") if k.strip())
+            else:
+                target_key = raw_lease_key.strip()
             maintenance_lease = acquire_maintenance_lease(
                 lease_storage,
                 owner=lease_owner,
-                key=lease_key or AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+                key=target_key,
             )
     try:
         return _build_impl(
