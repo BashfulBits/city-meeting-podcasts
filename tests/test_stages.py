@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 
 from citypods.agenda_text import AgendaTextAssessment
@@ -9,9 +10,11 @@ from citypods.models import City, Episode
 from citypods.stages import (
     AgendaTextStage,
     AudioStage,
+    DiarizeRuntimeLog,
     LinksStage,
     StageContext,
     StageStats,
+    _diarize_fits_remaining_budget,
     default_stages,
     enrich_stages,
     render_stages,
@@ -93,6 +96,26 @@ def test_native_diarization_fingerprint_changes_with_model_recipe():
         },
     )
     assert baseline != changed
+
+
+def test_native_diarization_uses_its_own_measured_runtime_budget(tmp_path):
+    path = tmp_path / "diarize-runtime.json"
+    log = DiarizeRuntimeLog(path)
+    log.append(diarize_seconds=30.0, recording_seconds=10.0, recipe="recipe-a")
+    restored = DiarizeRuntimeLog(path)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 100,
+        diarize_start_reserve_seconds=75,
+    )
+    fits, estimate, remaining = _diarize_fits_remaining_budget(ctx, restored, 10.0, "recipe-a")
+    assert not fits
+    assert estimate == 30.0
+    assert remaining is not None and remaining <= 100
+    assert _diarize_fits_remaining_budget(ctx, restored, 10.0, "recipe-b")[0]
 
 
 def _ctx(tmp_path, *, dry_run=False, storage=True, stop=None, chapters_per_source=10_000):

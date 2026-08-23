@@ -143,10 +143,51 @@ def record_calibration(args: argparse.Namespace) -> int:
         correct=args.correct == "yes",
         reviewer=args.reviewer,
         review_id=args.review_id,
+        capture_context=args.capture_context,
     )
     save_evaluation(args.state, state)
-    cell = calibration_cell(args.city, args.body, args.engine_recipe)
+    cell = calibration_cell(
+        args.city, args.body, args.engine_recipe, capture_context=args.capture_context
+    )
     print(json.dumps({"stored": True, "cell": cell}))
+    return 0
+
+
+def record_benchmark(args: argparse.Namespace) -> int:
+    """Record the private gold-set comparison required before this cell can publish names."""
+    try:
+        state = json.loads(args.state.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        state = {"version": 1, "reviews": []}
+    if not isinstance(state, dict):
+        raise ValueError("speaker evaluation state must be a JSON object")
+    cell = calibration_cell(
+        args.city, args.body, args.engine_recipe, capture_context=args.capture_context
+    )
+    row = {
+        "cell": cell,
+        "selected_engine": args.selected_engine,
+        "report_hash": args.report_hash,
+        "reviewer": args.reviewer,
+        "recorded_at": datetime.now(UTC).isoformat(),
+    }
+    benchmarks = state.setdefault("benchmarks", [])
+    prior = next(
+        (
+            item
+            for item in benchmarks
+            if isinstance(item, dict)
+            and item.get("cell") == cell
+            and item.get("report_hash") == args.report_hash
+        ),
+        None,
+    )
+    if prior is None:
+        benchmarks.append(row)
+    elif any(prior.get(key) != value for key, value in row.items() if key != "recorded_at"):
+        raise ValueError("conflicting benchmark record for this calibration cell/report")
+    save_evaluation(args.state, state)
+    print(json.dumps({"stored": True, "cell": cell, "selected_engine": args.selected_engine}))
     return 0
 
 
@@ -160,11 +201,12 @@ def _record_calibration(
     correct: bool,
     reviewer: str,
     review_id: str,
+    capture_context: str,
 ) -> None:
     rows = state.setdefault("reviews", [])
     row = {
         "review_id": review_id,
-        "cell": calibration_cell(city, body, engine_recipe),
+        "cell": calibration_cell(city, body, engine_recipe, capture_context=capture_context),
         "correct": correct,
         "reviewed_at": datetime.now(UTC).isoformat(),
         "reviewer": reviewer,
@@ -187,6 +229,7 @@ def _review_payload(candidate: Mapping[str, object]) -> dict[str, object]:
         "city_slug",
         "body",
         "engine_recipe",
+        "capture_context",
         "episode_uid",
         "start",
         "end",
@@ -201,6 +244,8 @@ def _review_payload(candidate: Mapping[str, object]) -> dict[str, object]:
                 "cue_text",
                 "cue_kind",
                 "embedding_recipe",
+                "cluster",
+                "transcript_text_hash",
             }
         )
     else:
@@ -398,6 +443,9 @@ def ingest(args: argparse.Namespace) -> int:
             "cue_text",
             "cue_kind",
             "embedding_recipe",
+            "capture_context",
+            "cluster",
+            "transcript_text_hash",
         )
     else:
         fields += ("speaker_id",)
@@ -435,6 +483,7 @@ def ingest(args: argparse.Namespace) -> int:
         correct=checked[0] == "Correct",
         reviewer=args.actor,
         review_id=f"github-issue-{args.issue_number}",
+        capture_context=str(current["capture_context"]),
     )
     save_evaluation(state_path, state)
     push_state(
@@ -569,6 +618,7 @@ def main(argv: list[str] | None = None) -> int:
     calibration.add_argument("--correct", choices=("yes", "no"), required=True)
     calibration.add_argument("--reviewer", required=True)
     calibration.add_argument("--review-id", required=True)
+    calibration.add_argument("--capture-context", required=True)
     shadow = sub.add_parser("review-shadow", help="record one reviewed shadow identity match")
     shadow.add_argument("--state", required=True, type=Path)
     shadow.add_argument("--city", required=True)
@@ -578,6 +628,16 @@ def main(argv: list[str] | None = None) -> int:
     shadow.add_argument("--correct", choices=("yes", "no"), required=True)
     shadow.add_argument("--reviewer", required=True)
     shadow.add_argument("--review-id", required=True)
+    shadow.add_argument("--capture-context", required=True)
+    benchmark = sub.add_parser("record-benchmark", help="record a private gold-benchmark decision")
+    benchmark.add_argument("--state", required=True, type=Path)
+    benchmark.add_argument("--city", required=True)
+    benchmark.add_argument("--body", required=True)
+    benchmark.add_argument("--engine-recipe", required=True)
+    benchmark.add_argument("--capture-context", required=True)
+    benchmark.add_argument("--selected-engine", choices=("pyannote", "wespeaker"), required=True)
+    benchmark.add_argument("--report-hash", required=True)
+    benchmark.add_argument("--reviewer", required=True)
     package_parser = sub.add_parser("package", help="package bounded weekly speaker review issues")
     package_parser.add_argument("--site-config", default="config/site_config.yml")
     package_parser.add_argument("--output-dir", default="docs")
@@ -596,6 +656,8 @@ def main(argv: list[str] | None = None) -> int:
         return reject_reference(args)
     if args.command == "resolve-alias":
         return resolve_alias(args)
+    if args.command == "record-benchmark":
+        return record_benchmark(args)
     if args.command == "package":
         return package(args)
     if args.command == "ingest":

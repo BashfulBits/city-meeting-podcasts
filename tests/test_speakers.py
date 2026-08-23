@@ -24,11 +24,13 @@ from citypods.speakers import (
     chair_reference_candidates,
     empty_registry,
     observe_attendance,
+    pilot_capture_context,
     pilot_selected,
     profile_matches,
     public_turn,
     quote_attribution,
     refresh_membership_status,
+    roster_person_ids,
     shadow_candidate_id,
 )
 
@@ -140,6 +142,86 @@ def test_approved_chair_reference_adds_private_embedding_only():
     assert "0.99" not in _review_body(candidate)
 
 
+def test_packaged_chair_reference_can_be_approved_and_ingested(tmp_path, monkeypatch):
+    candidate = {
+        "kind": "chair-reference",
+        "candidate_id": "r7-ref-test",
+        "city_slug": "demo-tx",
+        "body": "Council",
+        "engine_recipe": "rss:pyannote:1:model:embedding",
+        "capture_context": "council-chamber-v1",
+        "episode_uid": "one",
+        "display_name": "Jane Doe",
+        "start": 2.1,
+        "end": 5.0,
+        "cluster": "jane",
+        "cue_start": 0.0,
+        "cue_end": 1.8,
+        "cue_text": "The chair recognizes Jane Doe",
+        "cue_kind": "chair-recognition",
+        "transcript_text_hash": "hash",
+        "embedding_recipe": "embedding",
+    }
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "evaluation.json").write_text(
+        json.dumps({"reference_candidates": {candidate["candidate_id"]: candidate}})
+    )
+    (state_dir / "evidence.json").write_text(
+        json.dumps(
+            {
+                "episodes": {
+                    "one": {
+                        "turns": [
+                            {
+                                "start": 2.1,
+                                "end": 5.0,
+                                "cluster": "jane",
+                                "embedding": [0.1, 0.2],
+                            }
+                        ]
+                    }
+                }
+            }
+        )
+    )
+    issue = tmp_path / "issue.md"
+    issue.write_text(
+        _review_body(candidate).replace(
+            "- [ ] Approve as a golden voice reference",
+            "- [x] Approve as a golden voice reference",
+        )
+    )
+    site = {
+        "speakers": {
+            "evaluation_state_path": "evaluation.json",
+            "registry_path": "registry.json",
+            "turn_evidence_path": "evidence.json",
+        }
+    }
+    monkeypatch.setattr("citypods.config.load_site_config", lambda _: site)
+    monkeypatch.setattr("citypods.state.resolve_state_dir", lambda *_args: state_dir)
+    monkeypatch.setattr("citypods.storage.make_storage", lambda *_args: object())
+    monkeypatch.setattr("citypods.statesync.pull_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("citypods.statesync.push_state", lambda *_args, **_kwargs: 0)
+    assert (
+        speaker_review_main(
+            [
+                "ingest",
+                "--issue-number",
+                "1",
+                "--issue-body-file",
+                str(issue),
+                "--actor",
+                "maintainer",
+            ]
+        )
+        == 0
+    )
+    stored = json.loads((state_dir / "registry.json").read_text())
+    assert next(iter(stored["people"].values()))["references"][0]["embedding"] == [0.1, 0.2]
+
+
 def test_speaker_review_package_groups_reference_and_shadow_children(tmp_path, monkeypatch):
     state_dir = tmp_path / "state"
     state_dir.mkdir()
@@ -245,6 +327,26 @@ def test_profile_matches_only_uses_the_active_embedding_recipe():
     assert profile_matches(registry, [1.0, 0.0], embedding_recipe="new") == []
 
 
+def test_profile_needs_two_distinct_meetings_for_the_active_embedding_recipe():
+    registry = empty_registry()
+    observe_attendance(
+        registry,
+        city_slug="demo-tx",
+        body="Council",
+        episode_uid="one",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        roster=[{"name": "Alex Rivera"}],
+    )
+    person = next(iter(registry["people"].values()))
+    person["references"] = [
+        {"episode_uid": "one", "embedding": [1.0, 0.0], "embedding_recipe": "old"},
+        {"episode_uid": "two", "embedding": [1.0, 0.0], "embedding_recipe": "old"},
+        {"episode_uid": "three", "embedding": [1.0, 0.0], "embedding_recipe": "new"},
+    ]
+    refresh_membership_status(registry, now=datetime(2026, 1, 1, tzinfo=UTC))
+    assert profile_matches(registry, [1.0, 0.0], embedding_recipe="new") == []
+
+
 def test_attendance_aliases_do_not_merge_people_across_bodies():
     registry = empty_registry()
     published = datetime(2026, 1, 1, tzinfo=UTC)
@@ -258,6 +360,29 @@ def test_attendance_aliases_do_not_merge_people_across_bodies():
             roster=[{"name": "Alex Rivera"}],
         )
     assert len(registry["people"]) == 2
+
+
+def test_roster_constraint_accepts_confirmed_aliases_and_preserves_unparseable_minutes():
+    registry = empty_registry()
+    observe_attendance(
+        registry,
+        city_slug="demo-tx",
+        body="Council",
+        episode_uid="one",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        roster=[{"name": "Alexandra Rivera"}],
+    )
+    ident, person = next(iter(registry["people"].items()))
+    person["aliases"] = ["Alex Rivera"]
+    assert roster_person_ids(registry, [{"name": "Alex Rivera"}]) == {ident}
+    assert roster_person_ids(registry, [{"not_name": "broken"}]) is None
+    turn = assign_turn(
+        {"start": 1.0, "end": 2.0},
+        [{"speaker_id": ident, "display_name": "Alexandra Rivera", "score": 0.99}],
+        publish=True,
+        confirmed=True,
+    )
+    assert turn["identity"]["status"] == "confirmed"
 
 
 def test_quote_attribution_rejects_crosstalk_and_partial_turns():
@@ -319,8 +444,11 @@ def test_timed_words_prefer_top_level_rows_over_duplicate_segment_rows():
 
 def test_identity_calibration_requires_30_days_30_reviews_and_95_percent():
     now = datetime(2026, 3, 1, tzinfo=UTC)
-    cell = calibration_cell("demo-tx", "Council", "pyannote-v1")
+    cell = calibration_cell(
+        "demo-tx", "Council", "pyannote-v1", capture_context="council-chamber-v1"
+    )
     state = {
+        "benchmarks": [{"cell": cell, "selected_engine": "pyannote"}],
         "reviews": [
             {
                 "cell": cell,
@@ -328,11 +456,40 @@ def test_identity_calibration_requires_30_days_30_reviews_and_95_percent():
                 "reviewed_at": (now - timedelta(days=31)).isoformat(),
             }
             for index in range(30)
+        ],
+    }
+    assert auto_publish_allowed(state, cell=cell, engine="pyannote", now=now)
+    state["reviews"][1]["correct"] = False
+    assert not auto_publish_allowed(state, cell=cell, engine="pyannote", now=now)
+
+
+def test_identity_calibration_requires_a_private_benchmark_decision():
+    now = datetime(2026, 3, 1, tzinfo=UTC)
+    cell = calibration_cell(
+        "demo-tx", "Council", "pyannote-v1", capture_context="council-chamber-v1"
+    )
+    state = {
+        "reviews": [
+            {"cell": cell, "correct": True, "reviewed_at": (now - timedelta(days=31)).isoformat()}
+            for _ in range(30)
         ]
     }
-    assert auto_publish_allowed(state, cell=cell, now=now)
-    state["reviews"][1]["correct"] = False
-    assert not auto_publish_allowed(state, cell=cell, now=now)
+    assert not auto_publish_allowed(state, cell=cell, engine="pyannote", now=now)
+
+
+def test_identity_calibration_requires_the_benchmarked_engine():
+    now = datetime(2026, 3, 1, tzinfo=UTC)
+    cell = calibration_cell(
+        "demo-tx", "Council", "pyannote-v1", capture_context="council-chamber-v1"
+    )
+    state = {
+        "benchmarks": [{"cell": cell, "selected_engine": "wespeaker"}],
+        "reviews": [
+            {"cell": cell, "correct": True, "reviewed_at": (now - timedelta(days=31)).isoformat()}
+            for _ in range(30)
+        ],
+    }
+    assert not auto_publish_allowed(state, cell=cell, engine="pyannote", now=now)
 
 
 def test_shadow_candidate_and_offline_benchmark_are_engine_neutral():
@@ -367,8 +524,17 @@ def test_benchmark_cases_reject_invalid_turn_shapes():
 
 
 def test_pilot_selection_is_explicit_and_body_scoped():
-    config = {"pilot_bodies": [{"city": "denton-tx", "body": "City Council"}]}
+    config = {
+        "pilot_bodies": [
+            {
+                "city": "denton-tx",
+                "body": "City Council",
+                "capture_context": "council-chamber-v1",
+            }
+        ]
+    }
     assert pilot_selected(config, "denton-tx", "City Council")
+    assert pilot_capture_context(config, "denton-tx", "City Council") == "council-chamber-v1"
     assert not pilot_selected(config, "denton-tx", "Planning and Zoning Commission")
     assert not pilot_selected(config, "austin-tx", "City Council")
 

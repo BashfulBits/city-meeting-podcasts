@@ -36,6 +36,16 @@ issues not yet cut**
 > diarization key and causes gradual reprocessing, not a destructive bulk invalidation. Public naming
 > remains fail-closed until the existing calibration gate qualifies.
 
+> **Pilot-integrity revision, 2026-08-23.** R7 private turn evidence, membership/profile registry,
+> and review evaluation are processed in one serialized city/source ledger pass after concurrent
+> transcript work; they are never last-writer-wins per episode. Golden-reference issue payloads carry
+> only the non-sensitive local turn locator needed to retrieve private evidence, never embeddings or
+> scores. Qualification requires two approved distinct meetings using the *active embedding recipe*.
+> Calibration is additionally scoped to an explicit configured capture context and the effective
+> pipeline/model/embedding recipe. A private pyannote-versus-WeSpeaker benchmark decision must be
+> recorded for that exact cell before its already-calibrated name can publish. Roster-backed matches
+> become confirmed; missing or unparseable rosters make no correction.
+
 > **Chair/title-led golden-reference revision, 2026-08-22.** The identity stage now scans timed
 > transcript words for formal recognition cues and common short introductions such as “Commissioner
 > Jane Doe”, “Council Member Jane Doe”, and “Councilmember Jane Doe”. A cue becomes a private

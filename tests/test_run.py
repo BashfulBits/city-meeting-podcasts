@@ -1416,6 +1416,54 @@ def test_global_queue_persists_after_audio_pass_and_again_after_transcript(tmp_p
     assert events == ["audio:uid-e1", "persist", "transcript:uid-e1", "persist"]
 
 
+def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
+    """R7 private ledgers are written once per source, never by concurrent episode workers."""
+    city = City(
+        slug="c",
+        provider="granicus",
+        source={"feed_url": "https://x.granicus.com/f"},
+        podcast_title="C",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    episodes = [_ep("e1"), _ep("e2")]
+    for episode in episodes:
+        episode.hosted_audio_url = f"https://cdn/{episode.uid}.m4a"
+    events: list[str] = []
+
+    class _Stage:
+        def __init__(self, name):
+            self.name = name
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None
+            )
+            self.stages = [_Stage("native_diarize"), _Stage("speaker_identity")]
+
+        def fetch_merge(self, _city, _key):
+            return object(), episodes, {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            events.append("persist")
+
+    def _run_stages(_provider, _city, batch, stages, _ctx, *, quiet):
+        stage_names = ",".join(stage.name for stage in stages)
+        episode_uids = ",".join(ep.uid for ep in batch)
+        events.append(f"{stage_names}:{episode_uids}")
+        return [StageStats(stage.name, ran=len(batch)) for stage in stages]
+
+    monkeypatch.setattr(run, "run_stages", _run_stages)
+    run._run_enrich_global_queue(_Pipeline(), [city], source_cache=None, max_workers=2, policy=None)
+    assert events == ["native_diarize,speaker_identity:uid-e1,uid-e2", "persist"]
+
+
 def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass(
     tmp_path, monkeypatch
 ):

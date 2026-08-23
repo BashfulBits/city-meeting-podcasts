@@ -169,7 +169,7 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     assert triggers["schedule"] == [{"cron": "30 */6 * * *"}]
     assert "workflow_dispatch" in triggers
     assert workflow["concurrency"] == {
-        "group": "r7-diarization",
+        "group": "r7-speaker-evaluation-state",
         "cancel-in-progress": False,
     }
     assert workflow["permissions"] == {"contents": "read", "actions": "read"}

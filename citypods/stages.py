@@ -318,6 +318,7 @@ class StageContext:
     speaker_registry_path: Path | None = None
     speaker_evaluation_state_path: Path | None = None
     speaker_turn_evidence_path: Path | None = None
+    diarize_runtime_log_path: Path | None = None
     speaker_config: dict = field(default_factory=dict)
     taxonomy_path: Path = Path("config/taxonomy.yml")
     llm_evaluation_state_path: Path | None = None
@@ -432,6 +433,11 @@ class StageContext:
     # cutoff. Stores the previous 100 successful ASR runtime/recording-duration ratios, seeded
     # with a conservative estimate until real samples replace it.
     asr_runtime_log_path: Path | None = None
+    # R7 learns its own local pyannote runtime ratio.  It deliberately never borrows ASR
+    # coefficients: the first pilot run records a sample, then later runs defer work that cannot
+    # fit before the diarization lane cutoff.
+    diarize_start_deadline: float | None = None
+    diarize_start_reserve_seconds: float = 15 * 60
     # H15 Layer 1: state dir for the capped raw-evidence log. Every successful align()/
     # transcribe() call appends a near-zero-cost coverage + word-logprob sample here (see
     # record_l1_sample). None (e.g. dry-run/tests) skips L1 recording.
@@ -2400,6 +2406,76 @@ class AsrRuntimeLog:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"version": 1, "samples": list(self._samples)}
         self.path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+class DiarizeRuntimeLog:
+    """Rolling, recipe-specific pyannote runtime observations for the R7 pilot."""
+
+    max_samples = 100
+
+    def __init__(self, path: Path | None):
+        self.path = path
+        self._samples: list[dict[str, float | str]] = []
+        if path is not None and path.exists():
+            try:
+                raw = json.loads(path.read_text())
+                rows = raw.get("samples", []) if isinstance(raw, dict) else []
+                self._samples = [
+                    row
+                    for row in rows
+                    if isinstance(row, dict)
+                    and isinstance(row.get("diarize_seconds"), int | float)
+                    and isinstance(row.get("recording_seconds"), int | float)
+                    and float(row["diarize_seconds"]) > 0
+                    and float(row["recording_seconds"]) > 0
+                ][-self.max_samples :]
+            except (OSError, ValueError):
+                self._samples = []
+
+    def estimate_seconds(self, recording_seconds: float, *, recipe: str) -> float | None:
+        ratios = [
+            float(row["diarize_seconds"]) / float(row["recording_seconds"])
+            for row in self._samples
+            if row.get("recipe") == recipe
+        ]
+        if not ratios:
+            return None
+        return max(0.0, recording_seconds) * (sum(ratios) / len(ratios))
+
+    def append(self, *, diarize_seconds: float, recording_seconds: float, recipe: str) -> None:
+        if diarize_seconds <= 0 or recording_seconds <= 0:
+            return
+        self._samples.append(
+            {
+                "id": f"{time.time_ns()}-{threading.get_ident()}",
+                "finished_at": time.time(),
+                "diarize_seconds": float(diarize_seconds),
+                "recording_seconds": float(recording_seconds),
+                "recipe": recipe,
+            }
+        )
+        self._samples = self._samples[-self.max_samples :]
+        if self.path is not None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps({"version": 1, "samples": self._samples}, indent=2) + "\n"
+            )
+
+
+def _diarize_fits_remaining_budget(
+    ctx: StageContext, runtime_log: DiarizeRuntimeLog, recording_seconds: float, recipe: str
+) -> tuple[bool, float | None, float | None]:
+    """Return whether a measured R7 profile says another meeting fits before the cutoff."""
+    if ctx.diarize_start_deadline is None:
+        return True, runtime_log.estimate_seconds(recording_seconds, recipe=recipe), None
+    remaining = ctx.diarize_start_deadline - time.monotonic()
+    estimate = runtime_log.estimate_seconds(recording_seconds, recipe=recipe)
+    if remaining <= 0:
+        return False, estimate, remaining
+    if estimate is None:
+        # Seed one observation per recipe; afterwards admission is measured rather than guessed.
+        return True, None, remaining
+    return estimate + ctx.diarize_start_reserve_seconds <= remaining, estimate, remaining
 
 
 def _asr_remaining_start_seconds(ctx: StageContext) -> float | None:
@@ -6561,6 +6637,11 @@ def _diarize_spec_hash(ep: Episode, model: str, embedding_model: str) -> str:
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
 
 
+def _diarize_runtime_recipe(model: str, embedding_model: str) -> str:
+    """Identify a runtime profile without mixing content-addressed episode inputs into it."""
+    return f"{DIARIZE_PIPELINE_VERSION}:{model}:{embedding_model}"
+
+
 def _diarize_object_key(src_key: str, uid: str, spec: str) -> str:
     return f"transcripts/{src_key}/{uid}-diarize-{spec}.speakers.json"
 
@@ -6583,6 +6664,7 @@ class NativeDiarizeStage:
             return stats
         model = str(config.get("model") or DEFAULT_DIARIZE_MODEL)
         embedding_model = str(config.get("embedding_model") or DEFAULT_EMBEDDING_MODEL)
+        runtime_recipe = _diarize_runtime_recipe(model, embedding_model)
         from citypods.speakers import (
             load_turn_evidence,
             pilot_selected,
@@ -6595,6 +6677,7 @@ class NativeDiarizeStage:
             if ctx.speaker_turn_evidence_path is not None
             else {"version": 1, "episodes": {}}
         )
+        runtime_log = DiarizeRuntimeLog(ctx.diarize_runtime_log_path)
         # External workers reserve this work class but do not yet materialize R7 artifacts.  Use
         # the pinned local pyannote stack until their pull-worker writer is implemented instead
         # of accepting a handle that no worker can complete.
@@ -6629,6 +6712,18 @@ class NativeDiarizeStage:
             if ctx.stop is not None and ctx.stop():
                 stats.defer("wall-clock-budget", sample=uid)
                 continue
+            recording_seconds = max(0.0, episode_served_duration_seconds(ep) or 0.0)
+            fits, estimate, remaining = _diarize_fits_remaining_budget(
+                ctx, runtime_log, recording_seconds, runtime_recipe
+            )
+            if not fits:
+                stats.defer("runtime-budget", sample=uid)
+                print(
+                    f"[enrich] diarize defer uid={uid} estimate_s={estimate or 0:.1f} "
+                    f"remaining_s={remaining or 0:.1f}",
+                    flush=True,
+                )
+                continue
             try:
                 words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
                 if words_raw is None:
@@ -6639,6 +6734,7 @@ class NativeDiarizeStage:
                 words = json.loads(words_raw.decode())
                 if not isinstance(words, dict):
                     raise ValueError("timed transcript words must be a JSON object")
+                diarize_started_at = time.monotonic()
                 with _download_audio(ep.hosted_audio_url) as audio_path:
                     outcome = backend.run_inference(
                         InferenceJob(
@@ -6690,6 +6786,11 @@ class NativeDiarizeStage:
                 ep.speakers_pipeline_version = DIARIZE_PIPELINE_VERSION
                 ep.speakers_error = None
                 ep.speakers_source = "native"
+                runtime_log.append(
+                    diarize_seconds=time.monotonic() - diarize_started_at,
+                    recording_seconds=recording_seconds,
+                    recipe=runtime_recipe,
+                )
                 stats.ran += 1
             except Exception as exc:  # noqa: BLE001 - per-item native inference must be restartable.
                 ep.speakers_error = f"native-diarize-error: {exc}"
@@ -6715,11 +6816,13 @@ class SpeakerIdentityStage:
             load_registry,
             load_turn_evidence,
             observe_attendance,
+            pilot_capture_context,
             pilot_selected,
             profile_matches,
             quote_attribution,
             reference_candidate_id,
             refresh_membership_status,
+            roster_person_ids,
             save_registry,
             shadow_candidate_id,
         )
@@ -6774,8 +6877,22 @@ class SpeakerIdentityStage:
                 private_turns, list
             ):
                 private_turns = turns
-            engine_recipe = f"{city.provider}:{payload.get('model') or 'unknown'}"
-            embedding_recipe = str(payload.get("embedding_recipe") or engine_recipe)
+            capture_context = pilot_capture_context(ctx.speaker_config or {}, city.slug, ep.body)
+            if capture_context is None:
+                continue
+            embedding_recipe = str(
+                payload.get("embedding_recipe")
+                or f"{city.provider}:{payload.get('model') or 'unknown'}"
+            )
+            engine_recipe = ":".join(
+                (
+                    city.provider,
+                    str(payload.get("engine") or "unknown"),
+                    str(ep.speakers_pipeline_version or DIARIZE_PIPELINE_VERSION),
+                    str(payload.get("model") or "unknown"),
+                    embedding_recipe,
+                )
+            )
             known_names = [
                 value
                 for person in (registry.get("people") or {}).values()
@@ -6822,9 +6939,16 @@ class SpeakerIdentityStage:
                             "episode_uid": ep.uid or ep.guid,
                             "episode_title": ep.title,
                             "embedding_recipe": embedding_recipe,
+                            "capture_context": capture_context,
                         }
-            cell = calibration_cell(city.slug, ep.body, engine_recipe)
-            publish = auto_publish_allowed(evaluation, cell=cell)
+            cell = calibration_cell(
+                city.slug, ep.body, engine_recipe, capture_context=capture_context
+            )
+            publish = auto_publish_allowed(
+                evaluation,
+                cell=cell,
+                engine=str(payload.get("engine") or ""),
+            )
             allowed_ids = {
                 ident
                 for ident, person in (registry.get("people") or {}).items()
@@ -6833,18 +6957,9 @@ class SpeakerIdentityStage:
             # Once minutes arrive their roster is a correction constraint.  It does not make a
             # name true by itself, but it may silently replace a previous provisional voice-only
             # assignment with the next calibrated roster candidate.
-            if ep.minutes_roster:
-                roster_names = {
-                    str(item.get("name") or "").casefold()
-                    for item in ep.minutes_roster
-                    if isinstance(item, dict) and item.get("name")
-                }
-                allowed_ids &= {
-                    ident
-                    for ident, person in (registry.get("people") or {}).items()
-                    if isinstance(person, dict)
-                    and str(person.get("display_name") or "").casefold() in roster_names
-                }
+            roster_ids = roster_person_ids(registry, ep.minutes_roster)
+            if roster_ids is not None:
+                allowed_ids &= roster_ids
             changed = False
             enriched_turns = []
             for turn in private_turns:
@@ -6864,6 +6979,7 @@ class SpeakerIdentityStage:
                         turn,
                         matches,
                         publish=publish,
+                        confirmed=roster_ids is not None,
                         minimum_score=float(ctx.speaker_config.get("minimum_match_score", 0.75)),
                     )
                 )
@@ -6894,6 +7010,7 @@ class SpeakerIdentityStage:
                     "speaker_id": identity.get("speaker_id"),
                     "display_name": identity.get("display_name"),
                     "transcript_text_hash": turn.get("transcript_text_hash"),
+                    "capture_context": capture_context,
                 }
             for candidate in ep.moment_pullquote_candidates or []:
                 if not isinstance(candidate, dict):

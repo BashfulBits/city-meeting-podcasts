@@ -207,6 +207,10 @@ defaults:
   asr_handoff_minutes: 300
   asr_handoff_reserve_minutes: 10
   asr_backstop_minutes: 350
+  # R7 diarization runs on its own cadence and records a recipe-specific runtime ratio.  The first
+  # sample for a recipe is admitted to seed that profile; later starts must fit before this cutoff.
+  diarize_start_cutoff_minutes: 285
+  diarize_start_reserve_seconds: 900
   # Wall-clock budget for the dedicated `tag` lane (enrich --lane tag, tag.yml). Runs are fast
   # because candidate pre-filtering skips untouched episodes and dispatch mode enqueues work
   # asynchronously without runner-side sleep pacing. Window = tag_run_time_budget_minutes × budget_safety.
@@ -486,12 +490,15 @@ speakers:
   pilot_bodies:
     - city: denton-tx
       body: "City Council"
+      # Calibration is intentionally invalidated if this meeting-audio setup changes.
+      capture_context: "denton-council-chamber-audio-v1"
   model: "pyannote/speaker-diarization-community-1"
   embedding_model: "pyannote/embedding"
   minimum_match_score: 0.75
   registry_path: "r7_speaker_registry.json"
   evaluation_state_path: "r7_speaker_evaluation.json"
   turn_evidence_path: "r7_speaker_turn_evidence.json"
+  runtime_state_path: "r7_diarization_runtime.json"
   weekly_review_limit: 8
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).

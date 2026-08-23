@@ -1605,6 +1605,15 @@ def _run_enrich_global_queue(
         for s in pipeline.stages
         if s.name in post_transcript and (allowed is None or s.name in allowed)
     ]
+    # R7 owns three append-only private ledgers (turn evidence, registry, and review evaluation).
+    # The normal transcript pass deliberately invokes one stage chain per episode concurrently;
+    # running either R7 stage there would let simultaneous load/replace writes lose a sibling's
+    # evidence.  Keep their expensive/model work scoped to the selected city/source set, but run
+    # the two ledger writers once after every per-episode transcript stage has completed.
+    r7_ledger_stages = [
+        stage for stage in transcript_stages if stage.name in {"native_diarize", "speaker_identity"}
+    ]
+    transcript_stages = [stage for stage in transcript_stages if stage not in r7_ledger_stages]
 
     # 1) Prepare every unique source (board feeds share a source_key → dedup so episodes don't
     #    double-count). ProviderError is captured per source and surfaces as that city's result.
@@ -2077,6 +2086,20 @@ def _run_enrich_global_queue(
         )
         ctx.moment_backend = original_moment_backend
 
+    if r7_ledger_stages:
+        print(f"[enrich] R7 ledger pass: {len(prepared)} source(s) (serialized)", flush=True)
+        for source in prepared.values():
+            stats = run_stages(
+                source["provider"],
+                source["city"],
+                source["retained_episodes"],
+                r7_ledger_stages,
+                ctx,
+                quiet=ctx.lane != "tag",
+            )
+            pipeline.accumulate_stats(stats)
+        print("[enrich] R7 ledger pass done", flush=True)
+
     # 4) Persist each prepared source (episodes were mutated in place by the passes). Idempotent
     #    repeat of the post-audio-pass persist above; also captures the transcript-pass mutations.
     _persist_all()
@@ -2531,6 +2554,7 @@ def _build_impl(
     deadline: float | None = None
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
+    diarize_start_deadline: float | None = None
     tag_llm_deadline: datetime | None = None
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
@@ -2546,6 +2570,16 @@ def _build_impl(
             print(
                 f"budget: {lane} start cutoff {start_cutoff_min:.0f}m, "
                 f"backstop {backstop_min:.0f}m (+ yield before new starts if superseded)"
+            )
+        elif lane == "diarize":
+            start_cutoff_min = float(defaults.get("diarize_start_cutoff_minutes", 285))
+            now = time.monotonic()
+            diarize_start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
+            deadline = diarize_start_deadline
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            print(
+                f"budget: diarize start cutoff {start_cutoff_min:.0f}m "
+                "(measured per-recipe admission + yield if superseded)"
             )
         elif lane in {"tag", "moments"}:
             # Dedicated LLM lanes run on a daily cron with their own *job*
@@ -2750,7 +2784,11 @@ def _build_impl(
         / str(speakers_config.get("evaluation_state_path", "r7_speaker_evaluation.json")),
         speaker_turn_evidence_path=state_dir
         / str(speakers_config.get("turn_evidence_path", "r7_speaker_turn_evidence.json")),
+        diarize_runtime_log_path=state_dir
+        / str(speakers_config.get("runtime_state_path", "r7_diarization_runtime.json")),
         speaker_config=speakers_config,
+        diarize_start_deadline=diarize_start_deadline,
+        diarize_start_reserve_seconds=float(defaults.get("diarize_start_reserve_seconds", 15 * 60)),
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
@@ -3378,6 +3416,13 @@ def _build_impl(
                             str(
                                 speakers_config.get(
                                     "turn_evidence_path", "r7_speaker_turn_evidence.json"
+                                )
+                            )
+                        )
+                        speaker_state_paths.append(
+                            str(
+                                speakers_config.get(
+                                    "runtime_state_path", "r7_diarization_runtime.json"
                                 )
                             )
                         )

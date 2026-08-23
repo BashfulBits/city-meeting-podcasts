@@ -106,6 +106,27 @@ def pilot_selected(config: Mapping[str, Any], city_slug: str, body: str | None) 
     return False
 
 
+def pilot_capture_context(
+    config: Mapping[str, Any], city_slug: str, body: str | None
+) -> str | None:
+    """Return the explicit capture context for one selected pilot body.
+
+    Calibration evidence is only portable within a capture setup.  A provider name is too broad:
+    one body can move from a dais mix to an audience mic without changing providers.  Keep the
+    context on the allowlist row so enabling a new setup necessarily creates a new cell.
+    """
+    for row in config.get("pilot_bodies") or []:
+        if not isinstance(row, Mapping):
+            continue
+        if str(row.get("city") or "") != city_slug or _norm(row.get("body")) != _norm(body):
+            continue
+        context = str(row.get("capture_context") or "").strip()
+        if not context:
+            raise ValueError("each R7 pilot body requires a non-empty capture_context")
+        return context
+    return None
+
+
 def speaker_id(city_slug: str, body: str | None, display_name: str) -> str:
     """Mint an opaque, body-scoped id only when a reviewer approves a person."""
     digest = hashlib.sha1(f"{body_key(city_slug, body)}:{_norm(display_name)}".encode()).hexdigest()
@@ -495,9 +516,13 @@ def _cosine(left: Iterable[float], right: Iterable[float]) -> float:
     return sum(x * y for x, y in zip(a, b, strict=True)) / denom if denom else -1.0
 
 
-def qualified_profile(person: Mapping[str, Any]) -> bool:
-    """A public auto-match needs references from two distinct meetings."""
-    references = [row for row in person.get("references", []) if isinstance(row, Mapping)]
+def qualified_profile(person: Mapping[str, Any], *, embedding_recipe: str) -> bool:
+    """A public auto-match needs two meetings under the active embedding recipe."""
+    references = [
+        row
+        for row in person.get("references", [])
+        if isinstance(row, Mapping) and row.get("embedding_recipe") == embedding_recipe
+    ]
     meetings = {str(row.get("episode_uid") or "") for row in references if row.get("embedding")}
     return person.get("status") == "active" and len(meetings - {""}) >= MIN_REFERENCE_MEETINGS
 
@@ -516,7 +541,7 @@ def profile_matches(
             allowed_ids is not None and ident not in allowed_ids
         ):
             continue
-        if not qualified_profile(person):
+        if not qualified_profile(person, embedding_recipe=embedding_recipe):
             continue
         scores = [
             _cosine(embedding, row.get("embedding") or [])
@@ -534,14 +559,58 @@ def profile_matches(
     return sorted(matches, key=lambda row: float(row["score"]), reverse=True)
 
 
-def calibration_cell(city_slug: str, body: str | None, engine_recipe: str) -> str:
-    return "|".join((city_slug, _norm(body), engine_recipe))
+def calibration_cell(
+    city_slug: str,
+    body: str | None,
+    engine_recipe: str,
+    *,
+    capture_context: str,
+) -> str:
+    """Return a body/recipe/capture-scoped calibration cell."""
+    if not str(capture_context).strip():
+        raise ValueError("R7 calibration requires an explicit capture context")
+    return "|".join((city_slug, _norm(body), engine_recipe, _norm(capture_context)))
+
+
+def roster_person_ids(
+    registry: Mapping[str, Any], roster: Iterable[Mapping[str, Any]]
+) -> set[str] | None:
+    """Return registry ids supported by a parseable official roster, or ``None``.
+
+    ``None`` deliberately differs from an empty set: missing or malformed minutes must make no
+    correction, while a valid roster containing no profile holder must remove a stale projection.
+    """
+    names = {
+        _norm(item.get("name"))
+        for item in roster
+        if isinstance(item, Mapping) and str(item.get("name") or "").strip()
+    }
+    if not names:
+        return None
+    matches: set[str] = set()
+    for ident, person in (registry.get("people") or {}).items():
+        if not isinstance(person, Mapping):
+            continue
+        known = {
+            _norm(person.get("display_name")),
+            *(_norm(alias) for alias in person.get("aliases") or []),
+        }
+        if names & (known - {""}):
+            matches.add(str(ident))
+    return matches
 
 
 def auto_publish_allowed(
-    state: Mapping[str, Any], *, cell: str, now: datetime | None = None
+    state: Mapping[str, Any], *, cell: str, engine: str, now: datetime | None = None
 ) -> bool:
     """Require the locked 30-day/30-review/95%-precision calibration policy."""
+    if not any(
+        isinstance(row, Mapping)
+        and row.get("cell") == cell
+        and row.get("selected_engine") == engine
+        for row in state.get("benchmarks", [])
+    ):
+        return False
     rows = [
         row
         for row in state.get("reviews", [])
@@ -562,6 +631,7 @@ def assign_turn(
     matches: list[Mapping[str, Any]],
     *,
     publish: bool,
+    confirmed: bool = False,
     minimum_score: float = 0.75,
 ) -> dict[str, Any]:
     """Attach the best unambiguous identity without ever exposing a raw embedding."""
@@ -578,7 +648,7 @@ def assign_turn(
     result["identity"] = {
         "speaker_id": best.get("speaker_id"),
         "display_name": best.get("display_name"),
-        "status": "provisional" if publish else "shadow",
+        "status": "confirmed" if publish and confirmed else "provisional" if publish else "shadow",
         "method": "voice-profile",
         "match_score": score,
     }
@@ -629,8 +699,10 @@ __all__ = [
     "observe_attendance",
     "profile_matches",
     "pilot_selected",
+    "pilot_capture_context",
     "public_turn",
     "qualified_profile",
+    "roster_person_ids",
     "quote_attribution",
     "reference_candidate_id",
     "refresh_membership_status",

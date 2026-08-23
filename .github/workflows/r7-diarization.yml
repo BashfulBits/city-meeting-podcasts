@@ -10,7 +10,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: r7-diarization
+  # This and the weekly review both replace the same private registry/evaluation artifacts.
+  # A shared group makes those whole-artifact writes serial, as well as serializing diarization runs.
+  group: r7-speaker-evaluation-state
   cancel-in-progress: false
 
 permissions:
