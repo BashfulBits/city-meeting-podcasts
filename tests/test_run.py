@@ -1417,7 +1417,7 @@ def test_global_queue_persists_after_audio_pass_and_again_after_transcript(tmp_p
 
 
 def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
-    """R7 private ledgers are written once per source, never by concurrent episode workers."""
+    """R7 ledger work follows every per-episode transcript stage and checkpoints per source."""
     city = City(
         slug="c",
         provider="granicus",
@@ -1442,7 +1442,11 @@ def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
             self.ctx = StageContext(
                 storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None
             )
-            self.stages = [_Stage("native_diarize"), _Stage("speaker_identity")]
+            self.stages = [
+                _Stage("transcript"),
+                _Stage("native_diarize"),
+                _Stage("speaker_identity"),
+            ]
 
         def fetch_merge(self, _city, _key):
             return object(), episodes, {}, 0
@@ -1459,9 +1463,32 @@ def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
         events.append(f"{stage_names}:{episode_uids}")
         return [StageStats(stage.name, ran=len(batch)) for stage in stages]
 
-    monkeypatch.setattr(run, "run_stages", _run_stages)
-    run._run_enrich_global_queue(_Pipeline(), [city], source_cache=None, max_workers=2, policy=None)
-    assert events == ["native_diarize,speaker_identity:uid-e1,uid-e2", "persist"]
+    clock = {"now": 0.0}
+
+    def _with_elapsed_ledger_run(*args, **kwargs):
+        result = _run_stages(*args, **kwargs)
+        if args[3][0].name == "native_diarize":
+            clock["now"] = 181.0
+        return result
+
+    monkeypatch.setattr(run, "run_stages", _with_elapsed_ledger_run)
+    monkeypatch.setattr(run.time, "monotonic", lambda: clock["now"])
+    run._run_enrich_global_queue(
+        _Pipeline(),
+        [city],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+        mid_run_checkpoint=lambda: events.append("checkpoint"),
+    )
+    assert events == [
+        "transcript:uid-e1",
+        "transcript:uid-e2",
+        "native_diarize,speaker_identity:uid-e1,uid-e2",
+        "persist",
+        "checkpoint",
+        "persist",
+    ]
 
 
 def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass(

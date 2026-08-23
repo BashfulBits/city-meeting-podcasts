@@ -12,6 +12,7 @@ from citypods.stages import (
     AudioStage,
     DiarizeRuntimeLog,
     LinksStage,
+    NativeDiarizeStage,
     StageContext,
     StageStats,
     _diarize_fits_remaining_budget,
@@ -20,6 +21,8 @@ from citypods.stages import (
     render_stages,
     run_stages,
     stage_input_fingerprint,
+    stage_is_dirty,
+    stage_output_pointer,
 )
 from citypods.storage.local import LocalStorage
 
@@ -116,6 +119,17 @@ def test_native_diarization_uses_its_own_measured_runtime_budget(tmp_path):
     assert estimate == 30.0
     assert remaining is not None and remaining <= 100
     assert _diarize_fits_remaining_budget(ctx, restored, 10.0, "recipe-b")[0]
+
+
+def test_native_diarization_errors_remain_retryable():
+    city = _city()
+    episode = _ep("one")
+    episode.speakers_error = "native-diarize-error: temporary storage failure"
+    stage = NativeDiarizeStage()
+
+    assert stage_output_pointer("native_diarize", episode) is None
+    assert stage_is_dirty(stage, episode, city)
+    assert "native_diarize" not in episode.stage_completion
 
 
 def _ctx(tmp_path, *, dry_run=False, storage=True, stop=None, chapters_per_source=10_000):

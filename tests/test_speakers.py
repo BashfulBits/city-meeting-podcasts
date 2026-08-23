@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime, timedelta
+from types import ModuleType
 
 import pytest
 
-from citypods.diarize import _mark_overlap, attach_transcript_words
+from citypods.diarize import _attach_embeddings, _mark_overlap, attach_transcript_words
 from citypods.models import City, Episode
 from citypods.records import meeting_page_hash
 from citypods.site import speaker_page_rows
@@ -33,6 +35,58 @@ from citypods.speakers import (
     roster_person_ids,
     shadow_candidate_id,
 )
+
+
+def test_embedding_inference_receives_the_selected_diarization_device(monkeypatch, tmp_path):
+    inference_instance = type("InferenceInstance", (), {})()
+    inference_instance.crop = lambda *_args: [0.25, 0.75]
+    received: dict[str, object] = {}
+
+    class FakeInference:
+        def __init__(self, _model, *, window, device):
+            received.update({"window": window, "device": device})
+
+        def crop(self, *_args):
+            return inference_instance.crop()
+
+    class FakeModel:
+        @staticmethod
+        def from_pretrained(model, *, token):
+            received.update({"model": model, "token": token})
+            return object()
+
+    class FakeSegment:
+        def __init__(self, start, end):
+            self.start = start
+            self.end = end
+
+    pyannote = ModuleType("pyannote")
+    audio = ModuleType("pyannote.audio")
+    core = ModuleType("pyannote.core")
+    audio.Inference = FakeInference
+    audio.Model = FakeModel
+    core.Segment = FakeSegment
+    pyannote.audio = audio
+    pyannote.core = core
+    torch = ModuleType("torch")
+    torch.device = lambda value: f"device:{value}"
+    monkeypatch.setitem(sys.modules, "pyannote", pyannote)
+    monkeypatch.setitem(sys.modules, "pyannote.audio", audio)
+    monkeypatch.setitem(sys.modules, "pyannote.core", core)
+    monkeypatch.setitem(sys.modules, "torch", torch)
+
+    turns = [{"start": 1.0, "end": 2.0}]
+    _attach_embeddings(
+        tmp_path / "meeting.m4a", turns, "embedding-v1", token="hf-test", device="cuda"
+    )
+
+    assert received == {
+        "model": "embedding-v1",
+        "token": "hf-test",
+        "window": "whole",
+        "device": "device:cuda",
+    }
+    assert turns[0]["embedding"] == [0.25, 0.75]
 
 
 def test_chair_reference_candidates_cover_formal_and_title_led_announcements():

@@ -599,8 +599,10 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
         return ep.audio_key or ep.hosted_audio_url
     if name == "transcript":
         return ep.transcript_key or ep.transcript_hosted_url
-    if name in {"diarize", "native_diarize"}:
+    if name == "diarize":
         return ep.speakers_key or ep.speakers_url or ep.speakers_error
+    if name == "native_diarize":
+        return ep.speakers_key or ep.speakers_url
     if name == "moments":
         return ep.moments_llm_recipe_hash or (ep.moment_pullquote_candidates and "moments")
     if name in {"moment-judge", "moment-admission"}:
@@ -786,8 +788,12 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
         return not (ep.links or {}).get("minutes")
     if name == "transcript":
         return bool(ep.transcript_key or ep.transcript_hosted_url)
-    if name in {"diarize", "native_diarize"}:
+    if name == "diarize":
         return bool(ep.speakers_key or ep.speakers_url or ep.speakers_error)
+    if name == "native_diarize":
+        # Native failures can be transient audio/model/storage errors, so never synthesize a
+        # completion marker from the error string alone.
+        return bool(ep.speakers_key or ep.speakers_url)
     if name == "tags":
         return ep.tags_input_fingerprint is not None or bool(ep.tags or ep.chapter_tags)
     if name == "moments":
@@ -6724,6 +6730,8 @@ class NativeDiarizeStage:
                     flush=True,
                 )
                 continue
+            # Do not let a prior transient error look like this attempt's outcome.
+            ep.speakers_error = None
             try:
                 words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
                 if words_raw is None:
@@ -6743,7 +6751,9 @@ class NativeDiarizeStage:
                                 "audio_path": audio_path,
                                 "model": model,
                                 "embedding_model": embedding_model,
-                                "token": config.get("token") or os.environ.get("HF_TOKEN"),
+                                # Secret-only by design: never read a token from committed config.
+                                "token": os.environ.get("HF_TOKEN")
+                                or os.environ.get("HUGGINGFACE_HUB_TOKEN"),
                                 "device": config.get("device"),
                             },
                             recipe_hash=spec,

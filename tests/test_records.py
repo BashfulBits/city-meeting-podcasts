@@ -1268,6 +1268,7 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
     ep.speakers_synced = True
     ep.speakers_confidence = 0.9
     ep.speakers_pipeline_version = "1"
+    ep.speakers_source = "native"
 
     back = record_to_episode(episode_to_record(ep))
     for attr in (
@@ -1303,6 +1304,7 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "speakers_synced",
         "speakers_confidence",
         "speakers_pipeline_version",
+        "speakers_source",
     ):
         assert getattr(back, attr) == getattr(ep, attr), attr
 

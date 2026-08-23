@@ -1872,13 +1872,13 @@ def _run_enrich_global_queue(
 
     # The audio pass gets a free mid-run persist boundary (it always finishes before the
     # decoupled transcript pass even starts -- the `_persist_all()` call right above this
-    # function). A lane whose ONLY pass is the transcript/tags one (`tag`, `diarize`) has no such
-    # boundary: without this, a mid-run kill during a long transcript/tags-only pass loses every
-    # completed item back to whatever the previous run last persisted, not just the in-flight
+    # function). A lane whose only pass is transcript/tags-shaped (`tag`, `diarize`, or
+    # `speaker-identity`) has no such boundary. A mid-run kill during a long pass loses completed
+    # items back to whatever the previous run last persisted, not just the in-flight
     # ones -- exactly what happened to a scheduled `tag` run that was hard-cancelled by GitHub's
     # job timeout with nothing durably written despite processing real LLM candidates.
     # ``mid_run_checkpoint`` (local `_persist_all()` here, then the caller's durable remote push)
-    # is opt-in per call site -- `None` for every lane except `tag` today -- and runs from
+    # is opt-in per call site -- `None` for every other lane -- and runs from
     # `_run_bounded`'s own calling thread between drain cycles, never concurrently with itself.
     _CHECKPOINT_INTERVAL_SECONDS = 180.0
     _last_checkpoint = {"t": time.monotonic()}
@@ -2098,6 +2098,7 @@ def _run_enrich_global_queue(
                 quiet=ctx.lane != "tag",
             )
             pipeline.accumulate_stats(stats)
+            _checkpoint_if_due()
         print("[enrich] R7 ledger pass done", flush=True)
 
     # 4) Persist each prepared source (episodes were mutated in place by the passes). Idempotent
@@ -2921,7 +2922,8 @@ def _build_impl(
                 _try_preload_asr_model(defaults, lane=lane)
 
             if phase == "enrich":
-                # A lane with no audio pass (`tag` today) has no free mid-run persist boundary --
+                # Lanes with no audio pass (`tag`, `diarize`, and `speaker-identity`) have no free
+                # mid-run persist boundary --
                 # see `_run_enrich_global_queue`'s `mid_run_checkpoint` docstring. Always route
                 # through the foreign-block-preserving merged push (records only; no calendar/
                 # run_events/asr-runtime-log/reconcile -- those aren't what a mid-run checkpoint
@@ -2938,7 +2940,7 @@ def _build_impl(
                 # A failed checkpoint push must not abort the run: the end-of-run push still gets a
                 # chance, and losing one checkpoint only widens the loss window, it doesn't lose
                 # more than today's all-or-nothing behavior would have anyway.
-                def _tag_lane_checkpoint_push() -> None:
+                def _lane_checkpoint_push() -> None:
                     try:
                         owned = sorted({source_key(c) for c in cities})
                         pushed = push_records_merged(
@@ -2952,12 +2954,51 @@ def _build_impl(
                         )
                         if pushed:
                             print(
-                                f"state: tag lane checkpoint pushed {pushed} file(s) to durable "
+                                f"state: {lane} lane checkpoint pushed {pushed} file(s) to durable "
                                 "storage",
                                 flush=True,
                             )
+                        if lane in {"diarize", "speaker-identity"}:
+                            speaker_paths = [
+                                str(
+                                    speakers_config.get("registry_path", "r7_speaker_registry.json")
+                                ),
+                                str(
+                                    speakers_config.get(
+                                        "evaluation_state_path", "r7_speaker_evaluation.json"
+                                    )
+                                ),
+                            ]
+                            if lane == "diarize":
+                                speaker_paths.extend(
+                                    (
+                                        str(
+                                            speakers_config.get(
+                                                "turn_evidence_path",
+                                                "r7_speaker_turn_evidence.json",
+                                            )
+                                        ),
+                                        str(
+                                            speakers_config.get(
+                                                "runtime_state_path",
+                                                "r7_diarization_runtime.json",
+                                            )
+                                        ),
+                                    )
+                                )
+                            pushed = push_state(
+                                storage,
+                                state_dir,
+                                only_paths=speaker_paths,
+                                log=lambda msg: print(msg, flush=True),
+                            )
+                            if pushed:
+                                print(
+                                    f"state: {lane} private checkpoint pushed {pushed} file(s)",
+                                    flush=True,
+                                )
                     except Exception as exc:  # noqa: BLE001 — see comment above
-                        print(f"state: tag lane checkpoint push failed: {exc}", flush=True)
+                        print(f"state: {lane} lane checkpoint push failed: {exc}", flush=True)
 
                 # H5 PR3: the heavy production phase uses the global two-pass queue for true
                 # newest-everywhere-first prioritization across all sources (the per-source pool
@@ -2972,8 +3013,11 @@ def _build_impl(
                     policy=backlog_policy,
                     owned_uids=shard_owned_uids,
                     mid_run_checkpoint=(
-                        _tag_lane_checkpoint_push
-                        if lane == "tag" and persist_records and not dry_run and storage is not None
+                        _lane_checkpoint_push
+                        if lane in {"tag", "diarize", "speaker-identity"}
+                        and persist_records
+                        and not dry_run
+                        and storage is not None
                         else None
                     ),
                 )

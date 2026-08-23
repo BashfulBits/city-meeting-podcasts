@@ -448,7 +448,7 @@ def ingest(args: argparse.Namespace) -> int:
             "transcript_text_hash",
         )
     else:
-        fields += ("speaker_id",)
+        fields += ("speaker_id", "capture_context")
     if not isinstance(current, dict) or any(
         current.get(key) != candidate.get(key) for key in fields
     ):

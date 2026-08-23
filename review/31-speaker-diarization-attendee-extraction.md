@@ -17,6 +17,8 @@ issues not yet cut**
 > turn completely covers their interval; each name links to a static cross-meeting speaker page.
 > Provider labels/rosters remain attendance vocabulary, not timestamped identity ground truth.
 
+---
+
 > **Weekly calibration revision, 2026-08-22.** `speaker-calibration-review.yml` packages at most
 > `speakers.weekly_review_limit` (default 8) durable shadow matches each Monday using the same
 > authenticated GitHub-issue pattern as R5/R6. A maintainer checks Correct/Incorrect and comments
@@ -27,6 +29,8 @@ issues not yet cut**
 > **Pilot selection:** `denton-tx` / `City Council` is the first explicitly allowlisted shadow pilot;
 > all other city/body pairs remain excluded even while R7 processing is enabled.
 
+---
+
 > **Diarization lane and model preflight, 2026-08-22.** The Denton shadow pilot is now invoked by
 > `.github/workflows/r7-diarization.yml` every six hours and by manual dispatch. It runs the native
 > `diarize` lane before `speaker-identity`, persists only the R7-owned state blocks, and uses the
@@ -35,6 +39,8 @@ issues not yet cut**
 > `pyannote/speaker-diarization-community-1`; changing that recipe changes the content-addressed
 > diarization key and causes gradual reprocessing, not a destructive bulk invalidation. Public naming
 > remains fail-closed until the existing calibration gate qualifies.
+
+---
 
 > **Pilot-integrity revision, 2026-08-23.** R7 private turn evidence, membership/profile registry,
 > and review evaluation are processed in one serialized city/source ledger pass after concurrent
@@ -45,6 +51,10 @@ issues not yet cut**
 > pipeline/model/embedding recipe. A private pyannote-versus-WeSpeaker benchmark decision must be
 > recorded for that exact cell before its already-calibrated name can publish. Roster-backed matches
 > become confirmed; missing or unparseable rosters make no correction.
+> The R6 moments and R7 identity lanes share one Actions concurrency group because identity mutates
+> the complete R6 moments block; this prevents either lane from pushing a stale block snapshot.
+
+---
 
 > **Chair/title-led golden-reference revision, 2026-08-22.** The identity stage now scans timed
 > transcript words for formal recognition cues and common short introductions such as “Commissioner
@@ -57,6 +67,8 @@ issues not yet cut**
 > the issue body and public artifacts contain no embedding or score. That approval is a private seed
 > only: `qualified_profile` still requires references from two distinct meetings, and public naming
 > remains blocked by the calibration gate.
+
+---
 
 > **Matured to L3, 2026-07-13.** The L1 sketch this builds from was already unusually detailed (real
 > CPU-viable model research, a named execution-backend dependency, an explicit naming/confirmation

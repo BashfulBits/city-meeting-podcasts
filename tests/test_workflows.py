@@ -185,6 +185,13 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     )
     assert "--city denton-tx" in diarize["run"]
     assert "--city denton-tx" in identity["run"]
+    for name in (
+        "GRANICUS_PROXY_BASE_URL",
+        "GRANICUS_PROXY_TOKEN",
+        "SWAGIT_PROXY_BASE_URL",
+        "SWAGIT_PROXY_TOKEN",
+    ):
+        assert identity["env"][name] == f"${{{{ secrets.{name} }}}}"
     assert _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25") >= 0
 
 
@@ -196,6 +203,11 @@ def test_speaker_calibration_review_gate_matches_packaged_titles():
     for role in ("OWNER", "MEMBER", "COLLABORATOR"):
         assert role in condition
     assert workflow["permissions"] == {"contents": "read", "issues": "write"}
+    finalize = workflow["jobs"]["finalize"]
+    assert finalize["if"] == (
+        "github.event_name == 'issue_comment' && needs.ingest.result == 'success'"
+    )
+    assert finalize["permissions"] == {"contents": "read", "issues": "write"}
 
 
 def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
@@ -1187,7 +1199,10 @@ def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
 
     assert _on(wf)["schedule"] == [{"cron": "45 19 * * *"}]
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
-    assert wf["concurrency"] == {"group": "r6-meeting-moments", "cancel-in-progress": False}
+    assert wf["concurrency"] == {
+        "group": "r7-speaker-evaluation-state",
+        "cancel-in-progress": False,
+    }
     assert job["timeout-minutes"] == 180
     assert "python -m citypods.cli enrich --lane moments" in step["run"]
     assert "video" in next(item for item in job["steps"] if item.get("name") == "Install")["run"]

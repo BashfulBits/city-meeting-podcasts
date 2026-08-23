@@ -2073,17 +2073,8 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.provider_transcript = (
             provider_transcript if isinstance(provider_transcript, dict) else {}
         )
-        speakers = rec.get("speakers") or {}
-        if isinstance(speakers, dict):
-            ep.speakers_key = speakers.get("key")
-            ep.speakers_url = speakers.get("url")
-            ep.speakers_spec_hash = speakers.get("spec_hash")
-            ep.speakers_format = speakers.get("format")
-            ep.speakers_synced = bool(speakers.get("synced", False))
-            ep.speakers_confidence = speakers.get("confidence")
-            ep.speakers_pipeline_version = speakers.get("pipeline_version")
-            ep.speakers_error = speakers.get("error")
-            ep.speakers_source = speakers.get("source")
+        for field_name, value in _speakers_fields_from_rec(rec).items():
+            setattr(ep, field_name, value)
         # Persisted links are derived artifacts, except a freshly supplied provider link.  In
         # particular an agenda-derived minutes URL must never mask a later canonical provider URL.
         persisted_links = rec.get("links") or {}

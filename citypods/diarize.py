@@ -66,7 +66,7 @@ def diarize(
         clusters.setdefault(cluster, {"cluster": cluster, "turn_count": 0})["turn_count"] += 1
     _mark_overlap(turns)
     if embedding_model:
-        _attach_embeddings(audio_path, turns, embedding_model, token=token)
+        _attach_embeddings(audio_path, turns, embedding_model, token=token, device=device)
     return DiarizeArtifacts(
         turns=turns, clusters=list(clusters.values()), engine="pyannote", model=model
     )
@@ -128,7 +128,12 @@ def _mark_overlap(turns: list[dict[str, Any]]) -> None:
 
 
 def _attach_embeddings(
-    audio_path: Path, turns: list[dict[str, Any]], model: str, *, token: str | None
+    audio_path: Path,
+    turns: list[dict[str, Any]],
+    model: str,
+    *,
+    token: str | None,
+    device: str | None,
 ) -> None:
     """Best-effort per-turn embeddings for the separate R7 identity layer.
 
@@ -137,10 +142,15 @@ def _attach_embeddings(
     rather than failing the content-addressed diarization artifact.
     """
     try:
+        import torch
         from pyannote.audio import Inference, Model
         from pyannote.core import Segment
 
-        inference = Inference(Model.from_pretrained(model, token=token), window="whole")
+        inference = Inference(
+            Model.from_pretrained(model, token=token),
+            window="whole",
+            device=torch.device(device) if device else None,
+        )
         for turn in turns:
             vector = inference.crop(
                 str(audio_path), Segment(float(turn["start"]), float(turn["end"]))
