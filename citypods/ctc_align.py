@@ -30,6 +30,9 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
+MMS_FA_URL = "https://dl.fbaipublicfiles.com/mms/torchaudio/ctc_alignment_mling_uroman/model.pt"
+MMS_FA_FILENAME = "model.pt"
+
 _model_cache: dict[str, tuple] = {}
 _model_lock = threading.Lock()
 

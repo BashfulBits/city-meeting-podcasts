@@ -145,6 +145,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **ASR Quality Eval MMS_FA model caching and dependency cascade.** Added
+  `scripts/prepare_mms_fa.py` to provide a robust local cache → B2 mirror → upstream Meta CDN
+  download cascade for the L2 CTC aligner checkpoint (`model.pt`), eliminating CI failures on
+  Actions cache misses. Added `restore-keys` to the MMS_FA cache step in
+  `.github/workflows/asr-quality-eval.yml`. Hardened `.github/workflows/asr-bench.yml` to use the
+  project's SHA256-verified static ffmpeg pin (replacing unpinned `apt-get install ffmpeg`) and
+  `scripts/prepare_whisper.py`. Added aligner model caching to the `align` matrix lane in
+  `.github/workflows/asr.yml`, and updated `review/22-dependency-and-reproducibility-policy.md`.
+
 - **Free-model alternates for jobs that dispatched only to Mistral (2026-08-18 follow-up to the
   Mistral pause below).** Agenda-chapter extraction (`chapter_titles.AGENDA_PRODUCTION_MODEL`) now
   has `meta-llama/llama-3.3-70b-instruct` as a same-priority alternate
