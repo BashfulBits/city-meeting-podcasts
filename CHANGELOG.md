@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **R7 diarization model-access diagnostics.** The preflight now verifies `HF_TOKEN` before
+  loading pyannote and reports invalid credentials, unaccepted gated-model terms, unavailable
+  configured models, Hub availability, and post-access pyannote runtime failures separately. This
+  changes no diarization recipe, artifact schema, or `DIARIZE_PIPELINE_VERSION`; no backfill is
+  triggered.
+
 - **R7 diarization runner provisioning.** Explicitly install FFmpeg's shared runtime before the
   pyannote preflight. Pyannote 4 decodes through torchcodec, which needs the dynamically loaded
   `libav*` libraries rather than merely an `ffmpeg` executable. This does not bump

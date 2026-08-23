@@ -18,6 +18,76 @@ from citypods.config import load_site_config
 from citypods.diarize import DEFAULT_DIARIZE_MODEL
 
 
+def _verify_hf_token(api: object, hub_http_error: type[Exception]) -> None:
+    """Verify the token before a gated-model error can obscure its cause."""
+    try:
+        api.whoami()  # type: ignore[attr-defined]
+    except hub_http_error as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code in {401, 403}:
+            raise RuntimeError(
+                "HF_TOKEN is invalid or no longer authorized. Create a current read token for the "
+                "Hugging Face account that accepted the pyannote model terms, then update the "
+                "repository secret."
+            ) from exc
+        raise RuntimeError(
+            "Hugging Face could not verify HF_TOKEN. Retry the preflight after the Hub is "
+            "available."
+        ) from exc
+
+
+def _load_model(
+    loader: object,
+    model: str,
+    *,
+    label: str,
+    token: str,
+    gated_repo_error: type[Exception],
+    repository_not_found_error: type[Exception],
+    hub_http_error: type[Exception],
+    transport_errors: tuple[type[Exception], ...] = (),
+) -> None:
+    """Load one configured pyannote resource with a diagnosis fit for Actions logs."""
+    try:
+        loader(model, token=token)  # type: ignore[operator]
+    except gated_repo_error as exc:
+        raise RuntimeError(
+            f"HF_TOKEN is valid but lacks access to the gated {label} {model!r}. Accept the "
+            f"terms at https://hf.co/{model} with the account that owns HF_TOKEN, then retry."
+        ) from exc
+    except repository_not_found_error as exc:
+        raise RuntimeError(
+            f"Configured {label} {model!r} was not found or is not accessible to HF_TOKEN. "
+            "Check the configured model identifier and token access."
+        ) from exc
+    except transport_errors as exc:
+        raise RuntimeError(
+            f"Network transport failed while downloading the configured {label} {model!r}. "
+            "Retry the preflight after Hugging Face access is available."
+        ) from exc
+    except hub_http_error as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code in {401, 403}:
+            raise RuntimeError(
+                f"Hugging Face denied download access to the configured {label} {model!r}. "
+                "Verify HF_TOKEN access and the model's terms."
+            ) from exc
+        if status_code == 429:
+            raise RuntimeError(
+                f"Hugging Face rate-limited download of the configured {label} {model!r}. "
+                "Wait for the limit to reset, then retry the preflight."
+            ) from exc
+        raise RuntimeError(
+            f"Hugging Face could not download the configured {label} {model!r}. Retry the "
+            "preflight after the Hub is available."
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 - retain a specific diagnosis for runtime failures.
+        raise RuntimeError(
+            f"pyannote could not initialize the configured {label} {model!r} after Hugging Face "
+            "access succeeded. Check the pinned diarization runtime."
+        ) from exc
+
+
 def configured_models(site_config: Mapping[str, object]) -> tuple[str, str]:
     speakers = site_config.get("speakers")
     if not isinstance(speakers, Mapping) or not speakers.get("enabled"):
@@ -40,20 +110,37 @@ def run_preflight(site_config_path: str = "config/site_config.yml") -> tuple[str
         raise RuntimeError("HF_TOKEN is required to load the gated pyannote models")
 
     try:
+        from huggingface_hub import HfApi
+        from huggingface_hub.errors import GatedRepoError, HfHubHTTPError, RepositoryNotFoundError
         from pyannote.audio import Model, Pipeline
+        from requests import ConnectionError, Timeout
+        from requests.exceptions import ChunkedEncodingError
     except ImportError as exc:
         raise RuntimeError(
-            "pyannote.audio is not installed; install the pinned [asr] runtime"
+            "pyannote.audio and huggingface_hub are required; install the pinned [asr] runtime"
         ) from exc
 
-    try:
-        Pipeline.from_pretrained(model, token=token)
-        Model.from_pretrained(embedding_model, token=token)
-    except Exception as exc:  # noqa: BLE001 - convert provider errors to an actionable preflight.
-        raise RuntimeError(
-            "Hugging Face could not load the configured pyannote models. "
-            "Accept the model terms and verify HF_TOKEN access."
-        ) from exc
+    _verify_hf_token(HfApi(token=token), HfHubHTTPError)
+    _load_model(
+        Pipeline.from_pretrained,
+        model,
+        label="diarization pipeline",
+        token=token,
+        gated_repo_error=GatedRepoError,
+        repository_not_found_error=RepositoryNotFoundError,
+        hub_http_error=HfHubHTTPError,
+        transport_errors=(Timeout, ConnectionError, ChunkedEncodingError),
+    )
+    _load_model(
+        Model.from_pretrained,
+        embedding_model,
+        label="embedding model",
+        token=token,
+        gated_repo_error=GatedRepoError,
+        repository_not_found_error=RepositoryNotFoundError,
+        hub_http_error=HfHubHTTPError,
+        transport_errors=(Timeout, ConnectionError, ChunkedEncodingError),
+    )
     return model, embedding_model
 
 
