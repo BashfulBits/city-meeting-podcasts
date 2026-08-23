@@ -122,6 +122,13 @@ jobs:
       - name: Policy guard (pinned Actions + no re-declared external-worker deps)
         run: python scripts/check_dependency_policy.py
 
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24"
+
+      - name: Validate Renovate configuration
+        run: npx --yes --package renovate renovate-config-validator .github/renovate.json5
+
       - name: Constraints drift gate
         run: |
           if grep -q "NOT YET POPULATED" constraints/*.txt; then
