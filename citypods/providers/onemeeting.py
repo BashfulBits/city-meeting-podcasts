@@ -130,7 +130,9 @@ class OneMeetingProvider:
         if response.status_code == 404:
             return b"[]"
         if response.status_code >= 400:
-            raise ProviderError(f"GET {url} returned {response.status_code}")
+            raise ProviderError(
+                f"GET {url} returned {response.status_code}", status_code=response.status_code
+            )
         return response.content
 
     def fetch_agenda_index(self, source: dict) -> list[AgendaRecord]:

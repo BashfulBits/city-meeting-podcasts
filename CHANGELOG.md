@@ -145,6 +145,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Transient provider HTTP error handling in sharded enrich lanes.** Updated
+  `is_transient_provider_error` and `ProviderError` to recognize retryable HTTP status codes
+  (`500..599`, `429`, `408`, `425`) across exception attributes, responses, causes, and status
+  messages. Prevents transient upstream provider 5xx outages (e.g. Granicus archive index 500s)
+  from failing sharded matrix jobs when all other assigned sources and audio materialization work
+  succeeded.
+
 - **Free-model alternates for jobs that dispatched only to Mistral (2026-08-18 follow-up to the
   Mistral pause below).** Agenda-chapter extraction (`chapter_titles.AGENDA_PRODUCTION_MODEL`) now
   has `meta-llama/llama-3.3-70b-instruct` as a same-priority alternate
