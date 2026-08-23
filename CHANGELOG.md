@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **R7 diarization runner provisioning.** Explicitly install FFmpeg's shared runtime before the
+  pyannote preflight. Pyannote 4 decodes through torchcodec, which needs the dynamically loaded
+  `libav*` libraries rather than merely an `ffmpeg` executable. This does not bump
+  `DIARIZE_PIPELINE_VERSION`: the shadow pilot failed during runtime preflight, so it produced no
+  stored diarization artifacts that need invalidation or backfill.
+
 - **Dynamic `model_routing` expansion and bounded requeues in `workers/llm-dispatch-proxy`.**
   `selectRoute` and `nextCapacityRetryAt` now dynamically expand `model_routing` at dispatch
   time, matching the Python scheduler and ensuring resident R2 records enqueued before an

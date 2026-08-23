@@ -40,6 +40,14 @@ issues not yet cut**
 > diarization key and causes gradual reprocessing, not a destructive bulk invalidation. Public naming
 > remains fail-closed until the existing calibration gate qualifies.
 
+> **Runner provisioning correction, 2026-08-23.** The first scheduled pilot failed before meeting
+> processing because `ubuntu-latest` did not provide the FFmpeg runtime expected by pyannote 4's
+> torchcodec decoder. The workflow now explicitly installs the distro FFmpeg package and verifies
+> both its executable and a discoverable `libavcodec` shared object before model preflight. The
+> project's static production ffmpeg binary cannot substitute here because torchcodec dynamically
+> loads the shared `libav*` libraries. `DIARIZE_PIPELINE_VERSION` is unchanged: the failed preflight
+> produced no stored speaker artifact, so there is nothing to invalidate or backfill.
+
 ---
 
 > **Pilot-integrity revision, 2026-08-23.** R7 private turn evidence, membership/profile registry,
