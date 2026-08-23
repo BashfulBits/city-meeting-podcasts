@@ -71,11 +71,12 @@ import collections
 import dataclasses
 import hashlib
 import json
+import os
 import re
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -89,6 +90,7 @@ from citypods.asr import asr_initial_prompt
 from citypods.bodies import canonical_body, rank_by_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
+from citypods.diarize import DEFAULT_DIARIZE_MODEL, DEFAULT_EMBEDDING_MODEL
 from citypods.durations import (
     episode_duration_hours,
     episode_served_duration_seconds,
@@ -129,6 +131,7 @@ from citypods.records import (
 )
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.security import MAX_REDIRECTS, validate_source_url
+from citypods.speakers import IDENTITY_PIPELINE_VERSION
 from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
 from citypods.transcript_quality import (
     TranscriptQualityRoute,
@@ -310,6 +313,13 @@ class StageContext:
     # result run-local: signed URLs and availability can legitimately change between runs.
     moment_video_gate_cache: dict[str, bool] = field(default_factory=dict)
     moment_video_gate_lock: threading.Lock = field(default_factory=threading.Lock)
+    # R7 keeps private registry/evaluation state separate from the public episode record.  The
+    # registry may contain voice embeddings and is never copied into ``docs/`` artifacts.
+    speaker_registry_path: Path | None = None
+    speaker_evaluation_state_path: Path | None = None
+    speaker_turn_evidence_path: Path | None = None
+    diarize_runtime_log_path: Path | None = None
+    speaker_config: dict = field(default_factory=dict)
     taxonomy_path: Path = Path("config/taxonomy.yml")
     llm_evaluation_state_path: Path | None = None
     llm_evaluation_config: dict = field(default_factory=dict)
@@ -423,6 +433,11 @@ class StageContext:
     # cutoff. Stores the previous 100 successful ASR runtime/recording-duration ratios, seeded
     # with a conservative estimate until real samples replace it.
     asr_runtime_log_path: Path | None = None
+    # R7 learns its own local pyannote runtime ratio.  It deliberately never borrows ASR
+    # coefficients: the first pilot run records a sample, then later runs defer work that cannot
+    # fit before the diarization lane cutoff.
+    diarize_start_deadline: float | None = None
+    diarize_start_reserve_seconds: float = 15 * 60
     # H15 Layer 1: state dir for the capped raw-evidence log. Every successful align()/
     # transcribe() call appends a near-zero-cost coverage + word-logprob sample here (see
     # record_l1_sample). None (e.g. dry-run/tests) skips L1 recording.
@@ -586,6 +601,8 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
         return ep.transcript_key or ep.transcript_hosted_url
     if name == "diarize":
         return ep.speakers_key or ep.speakers_url or ep.speakers_error
+    if name == "native_diarize":
+        return ep.speakers_key or ep.speakers_url
     if name == "moments":
         return ep.moments_llm_recipe_hash or (ep.moment_pullquote_candidates and "moments")
     if name in {"moment-judge", "moment-admission"}:
@@ -603,7 +620,13 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
     return None
 
 
-def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: City) -> str:
+def stage_input_fingerprint(
+    stage: EnrichmentStage | str,
+    ep: Episode,
+    city: City,
+    *,
+    speaker_config: Mapping[str, Any] | None = None,
+) -> str:
     """Hash only the inputs that can invalidate one stage.
 
     This intentionally excludes derived output pointers: a new provider row with the same media
@@ -657,6 +680,19 @@ def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: Cit
             **common,
             "transcript": ep.transcript_key or ep.transcript_hosted_url,
             "recipe": PROVIDER_DIARIZE_PIPELINE_VERSION,
+        }
+    elif name == "native_diarize":
+        config = speaker_config or {}
+        payload = {
+            **common,
+            "audio": ep.audio_key or ep.hosted_audio_url,
+            "transcript": ep.transcript_key or ep.transcript_hosted_url,
+            "transcript_words": ep.transcript_words_key,
+            "recipe": {
+                "pipeline": DIARIZE_PIPELINE_VERSION,
+                "model": config.get("model", DEFAULT_DIARIZE_MODEL),
+                "embedding_model": config.get("embedding_model", DEFAULT_EMBEDDING_MODEL),
+            },
         }
     elif name == "chapter_agenda":
         from citypods.chapter_jobs import AGENDA_PROMPT_VERSION
@@ -754,6 +790,10 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
         return bool(ep.transcript_key or ep.transcript_hosted_url)
     if name == "diarize":
         return bool(ep.speakers_key or ep.speakers_url or ep.speakers_error)
+    if name == "native_diarize":
+        # Native failures can be transient audio/model/storage errors, so never synthesize a
+        # completion marker from the error string alone.
+        return bool(ep.speakers_key or ep.speakers_url)
     if name == "tags":
         return ep.tags_input_fingerprint is not None or bool(ep.tags or ep.chapter_tags)
     if name == "moments":
@@ -776,14 +816,20 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
     return False
 
 
-def stage_is_dirty(stage: EnrichmentStage, ep: Episode, city: City) -> bool:
+def stage_is_dirty(
+    stage: EnrichmentStage,
+    ep: Episode,
+    city: City,
+    *,
+    speaker_config: Mapping[str, Any] | None = None,
+) -> bool:
     # Admission state and asynchronous judge results are external to episode inputs. Both stages
     # are cheap projections, so always revisit them rather than making a human decision wait for a
     # transcript/media mutation before it can take effect.
-    if stage.name in {"moment-admission", "moment-judge"}:
+    if stage.name in {"moment-admission", "moment-judge", "speaker_identity"}:
         return True
     marker = ep.stage_completion.get(stage.name) if isinstance(ep.stage_completion, dict) else None
-    fingerprint = stage_input_fingerprint(stage, ep, city)
+    fingerprint = stage_input_fingerprint(stage, ep, city, speaker_config=speaker_config)
     if not isinstance(marker, dict):
         if not _legacy_stage_complete(stage.name, ep):
             return True
@@ -803,7 +849,12 @@ def stage_is_dirty(stage: EnrichmentStage, ep: Episode, city: City) -> bool:
 
 
 def _mark_stage_complete(
-    stage: EnrichmentStage, episodes: list[Episode], city: City, stat: StageStats
+    stage: EnrichmentStage,
+    episodes: list[Episode],
+    city: City,
+    stat: StageStats,
+    *,
+    speaker_config: Mapping[str, Any] | None = None,
 ) -> None:
     if stat.errors or stat.skipped:
         return
@@ -812,7 +863,9 @@ def _mark_stage_complete(
         ep.stage_completion[stage.name] = {
             "state": state,
             "version": stage.version,
-            "input_fingerprint": stage_input_fingerprint(stage, ep, city),
+            "input_fingerprint": stage_input_fingerprint(
+                stage, ep, city, speaker_config=speaker_config
+            ),
             "output": stage_output_pointer(stage.name, ep),
             "completed_at": datetime.now(UTC).isoformat(),
         }
@@ -2361,6 +2414,76 @@ class AsrRuntimeLog:
         self.path.write_text(json.dumps(payload, indent=2) + "\n")
 
 
+class DiarizeRuntimeLog:
+    """Rolling, recipe-specific pyannote runtime observations for the R7 pilot."""
+
+    max_samples = 100
+
+    def __init__(self, path: Path | None):
+        self.path = path
+        self._samples: list[dict[str, float | str]] = []
+        if path is not None and path.exists():
+            try:
+                raw = json.loads(path.read_text())
+                rows = raw.get("samples", []) if isinstance(raw, dict) else []
+                self._samples = [
+                    row
+                    for row in rows
+                    if isinstance(row, dict)
+                    and isinstance(row.get("diarize_seconds"), int | float)
+                    and isinstance(row.get("recording_seconds"), int | float)
+                    and float(row["diarize_seconds"]) > 0
+                    and float(row["recording_seconds"]) > 0
+                ][-self.max_samples :]
+            except (OSError, ValueError):
+                self._samples = []
+
+    def estimate_seconds(self, recording_seconds: float, *, recipe: str) -> float | None:
+        ratios = [
+            float(row["diarize_seconds"]) / float(row["recording_seconds"])
+            for row in self._samples
+            if row.get("recipe") == recipe
+        ]
+        if not ratios:
+            return None
+        return max(0.0, recording_seconds) * (sum(ratios) / len(ratios))
+
+    def append(self, *, diarize_seconds: float, recording_seconds: float, recipe: str) -> None:
+        if diarize_seconds <= 0 or recording_seconds <= 0:
+            return
+        self._samples.append(
+            {
+                "id": f"{time.time_ns()}-{threading.get_ident()}",
+                "finished_at": time.time(),
+                "diarize_seconds": float(diarize_seconds),
+                "recording_seconds": float(recording_seconds),
+                "recipe": recipe,
+            }
+        )
+        self._samples = self._samples[-self.max_samples :]
+        if self.path is not None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps({"version": 1, "samples": self._samples}, indent=2) + "\n"
+            )
+
+
+def _diarize_fits_remaining_budget(
+    ctx: StageContext, runtime_log: DiarizeRuntimeLog, recording_seconds: float, recipe: str
+) -> tuple[bool, float | None, float | None]:
+    """Return whether a measured R7 profile says another meeting fits before the cutoff."""
+    if ctx.diarize_start_deadline is None:
+        return True, runtime_log.estimate_seconds(recording_seconds, recipe=recipe), None
+    remaining = ctx.diarize_start_deadline - time.monotonic()
+    estimate = runtime_log.estimate_seconds(recording_seconds, recipe=recipe)
+    if remaining <= 0:
+        return False, estimate, remaining
+    if estimate is None:
+        # Seed one observation per recipe; afterwards admission is measured rather than guessed.
+        return True, None, remaining
+    return estimate + ctx.diarize_start_reserve_seconds <= remaining, estimate, remaining
+
+
 def _asr_remaining_start_seconds(ctx: StageContext) -> float | None:
     if ctx.asr_start_deadline is None:
         return None
@@ -3678,6 +3801,7 @@ MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
+DIARIZE_PIPELINE_VERSION = "1"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 CHAPTER_AGENDA_PIPELINE_VERSION = "1"
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
@@ -6492,6 +6616,7 @@ class ProviderTranscriptDiarizeStage:
             ep.speakers_confidence = confidence
             ep.speakers_pipeline_version = PROVIDER_DIARIZE_PIPELINE_VERSION
             ep.speakers_error = None
+            ep.speakers_source = "provider"
             known_good = {
                 **known_good,
                 "diarize_spec_hash": spec,
@@ -6502,6 +6627,433 @@ class ProviderTranscriptDiarizeStage:
             registry["known_good"] = known_good
             ep.provider_transcript = registry
             stats.ran += 1
+        return stats
+
+
+def _diarize_spec_hash(ep: Episode, model: str, embedding_model: str) -> str:
+    spec = {
+        "v": DIARIZE_PIPELINE_VERSION,
+        "audio": ep.audio_key or ep.hosted_audio_url,
+        "words": ep.transcript_words_key,
+        "transcript": ep.transcript_spec_hash,
+        "model": model,
+        "embedding_model": embedding_model,
+    }
+    blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha1(blob.encode()).hexdigest()[:12]
+
+
+def _diarize_runtime_recipe(model: str, embedding_model: str) -> str:
+    """Identify a runtime profile without mixing content-addressed episode inputs into it."""
+    return f"{DIARIZE_PIPELINE_VERSION}:{model}:{embedding_model}"
+
+
+def _diarize_object_key(src_key: str, uid: str, spec: str) -> str:
+    return f"transcripts/{src_key}/{uid}-diarize-{spec}.speakers.json"
+
+
+class NativeDiarizeStage:
+    """Run R7 native diarization on hosted audio without modifying transcript wording."""
+
+    name = "native_diarize"
+    version = DIARIZE_PIPELINE_VERSION
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.compute.base import JobHandle, JobResult
+        from citypods.records import source_key
+
+        stats = StageStats(self.name)
+        config = ctx.speaker_config or {}
+        if not config.get("enabled") or ctx.dry_run or ctx.storage is None:
+            return stats
+        model = str(config.get("model") or DEFAULT_DIARIZE_MODEL)
+        embedding_model = str(config.get("embedding_model") or DEFAULT_EMBEDDING_MODEL)
+        runtime_recipe = _diarize_runtime_recipe(model, embedding_model)
+        from citypods.speakers import (
+            load_turn_evidence,
+            pilot_selected,
+            public_turn,
+            save_turn_evidence,
+        )
+
+        turn_evidence = (
+            load_turn_evidence(ctx.speaker_turn_evidence_path)
+            if ctx.speaker_turn_evidence_path is not None
+            else {"version": 1, "episodes": {}}
+        )
+        runtime_log = DiarizeRuntimeLog(ctx.diarize_runtime_log_path)
+        # External workers reserve this work class but do not yet materialize R7 artifacts.  Use
+        # the pinned local pyannote stack until their pull-worker writer is implemented instead
+        # of accepting a handle that no worker can complete.
+        backend = LocalBackend(asr_mod)
+        src_key = source_key(city)
+        for ep in _materialize_set(
+            episodes,
+            city.full_artifact_episodes,
+            feed_visible_per_body=city.max_episodes,
+            policy=ctx.backlog_policy,
+            city_slug=city.slug,
+            work_class="transcript-diarize",
+        ):
+            if not pilot_selected(config, city.slug, ep.body):
+                # Don't cache a negative selection: a maintainer may add this body to the pilot
+                # later without bumping the diarization recipe. A lightweight later pass will see
+                # it immediately while selected entries still reuse their content-addressed bytes.
+                stats.quality("pilot-not-selected")
+                continue
+            if ep.speakers_source == "provider" and ep.speakers_synced:
+                stats.reused += 1
+                continue
+            if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
+                continue
+            uid = ep.uid or ep.guid
+            spec = _diarize_spec_hash(ep, model, embedding_model)
+            key = _diarize_object_key(src_key, uid, spec)
+            if ep.speakers_key == key and ep.speakers_synced and ctx.storage.exists(key):
+                ep.speakers_url = ctx.storage.public_url(key)
+                stats.reused += 1
+                continue
+            if ctx.stop is not None and ctx.stop():
+                stats.defer("wall-clock-budget", sample=uid)
+                continue
+            recording_seconds = max(0.0, episode_served_duration_seconds(ep) or 0.0)
+            fits, estimate, remaining = _diarize_fits_remaining_budget(
+                ctx, runtime_log, recording_seconds, runtime_recipe
+            )
+            if not fits:
+                stats.defer("runtime-budget", sample=uid)
+                print(
+                    f"[enrich] diarize defer uid={uid} estimate_s={estimate or 0:.1f} "
+                    f"remaining_s={remaining or 0:.1f}",
+                    flush=True,
+                )
+                continue
+            # Do not let a prior transient error look like this attempt's outcome.
+            ep.speakers_error = None
+            try:
+                words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+                if words_raw is None:
+                    stats.defer("missing-timed-words", sample=uid)
+                    continue
+                from citypods.diarize import attach_transcript_words
+
+                words = json.loads(words_raw.decode())
+                if not isinstance(words, dict):
+                    raise ValueError("timed transcript words must be a JSON object")
+                diarize_started_at = time.monotonic()
+                with _download_audio(ep.hosted_audio_url) as audio_path:
+                    outcome = backend.run_inference(
+                        InferenceJob(
+                            task="diarize",
+                            inputs={
+                                "audio_path": audio_path,
+                                "model": model,
+                                "embedding_model": embedding_model,
+                                # Secret-only by design: never read a token from committed config.
+                                "token": os.environ.get("HF_TOKEN")
+                                or os.environ.get("HUGGINGFACE_HUB_TOKEN"),
+                                "device": config.get("device"),
+                            },
+                            recipe_hash=spec,
+                        )
+                    )
+                if isinstance(outcome, JobHandle):
+                    stats.defer("diarize-dispatched", sample=uid)
+                    continue
+                if not isinstance(outcome, JobResult):
+                    raise ValueError("diarize backend returned an invalid result")
+                artifact = outcome.output
+                attach_transcript_words(artifact.turns, words)
+                # The public diarization object deliberately never contains numerical voice
+                # vectors.  They remain private review evidence keyed to this exact recipe.
+                private_turns = [dict(turn) for turn in artifact.turns]
+                turn_evidence.setdefault("episodes", {})[uid] = {
+                    "spec_hash": spec,
+                    "turns": private_turns,
+                }
+                payload = {
+                    "schema": "2",
+                    "basis": "served",
+                    "source": "native",
+                    "engine": getattr(artifact, "engine", "pyannote"),
+                    "model": getattr(artifact, "model", model),
+                    "embedding_recipe": embedding_model,
+                    "clusters": getattr(artifact, "clusters", []),
+                    "turns": [public_turn(turn) for turn in artifact.turns],
+                }
+                with tempfile.TemporaryDirectory() as directory:
+                    dest = Path(directory) / "speakers.json"
+                    dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+                    url = ctx.storage.put_file(key, dest, "application/json")
+                ep.speakers_key = key
+                ep.speakers_url = url
+                ep.speakers_spec_hash = spec
+                ep.speakers_format = "json"
+                ep.speakers_synced = True
+                ep.speakers_confidence = None
+                ep.speakers_pipeline_version = DIARIZE_PIPELINE_VERSION
+                ep.speakers_error = None
+                ep.speakers_source = "native"
+                runtime_log.append(
+                    diarize_seconds=time.monotonic() - diarize_started_at,
+                    recording_seconds=recording_seconds,
+                    recipe=runtime_recipe,
+                )
+                stats.ran += 1
+            except Exception as exc:  # noqa: BLE001 - per-item native inference must be restartable.
+                ep.speakers_error = f"native-diarize-error: {exc}"
+                stats.errors.append(f"{uid}: {exc}")
+        if ctx.speaker_turn_evidence_path is not None:
+            save_turn_evidence(ctx.speaker_turn_evidence_path, turn_evidence)
+        return stats
+
+
+class SpeakerIdentityStage:
+    """Observe minutes continuity and project named turns onto already-grounded R6 quotes."""
+
+    name = "speaker_identity"
+    version = IDENTITY_PIPELINE_VERSION
+
+    def process(
+        self, provider, city: City, episodes: list[Episode], ctx: StageContext
+    ) -> StageStats:
+        from citypods.speakers import (
+            auto_publish_allowed,
+            calibration_cell,
+            chair_reference_candidates,
+            load_registry,
+            load_turn_evidence,
+            observe_attendance,
+            pilot_capture_context,
+            pilot_selected,
+            profile_matches,
+            quote_attribution,
+            reference_candidate_id,
+            refresh_membership_status,
+            roster_person_ids,
+            save_registry,
+            shadow_candidate_id,
+        )
+
+        stats = StageStats(self.name)
+        if ctx.speaker_registry_path is None or ctx.storage is None or ctx.dry_run:
+            return stats
+        registry = load_registry(ctx.speaker_registry_path)
+        turn_evidence = (
+            load_turn_evidence(ctx.speaker_turn_evidence_path)
+            if ctx.speaker_turn_evidence_path is not None
+            else {"episodes": {}}
+        )
+        for ep in episodes:
+            if not pilot_selected(ctx.speaker_config or {}, city.slug, ep.body):
+                continue
+            if ep.minutes_roster or ep.minutes_votes:
+                observe_attendance(
+                    registry,
+                    city_slug=city.slug,
+                    body=ep.body,
+                    episode_uid=ep.uid or ep.guid,
+                    published=ep.published,
+                    roster=ep.minutes_roster,
+                    votes=ep.minutes_votes,
+                )
+        refresh_membership_status(registry)
+        evaluation: dict = {"reviews": []}
+        if ctx.speaker_evaluation_state_path and ctx.speaker_evaluation_state_path.exists():
+            try:
+                evaluation = json.loads(ctx.speaker_evaluation_state_path.read_text())
+            except (OSError, ValueError):
+                evaluation = {"reviews": []}
+        for ep in episodes:
+            if not pilot_selected(ctx.speaker_config or {}, city.slug, ep.body):
+                continue
+            if not ep.speakers_key:
+                continue
+            raw = _read_storage_bytes(ctx.storage, ep.speakers_key)
+            try:
+                payload = json.loads((raw or b"{}").decode())
+            except (UnicodeDecodeError, ValueError):
+                continue
+            turns = payload.get("turns") if isinstance(payload, dict) else None
+            if not isinstance(turns, list):
+                continue
+            private_episode = (turn_evidence.get("episodes") or {}).get(ep.uid or ep.guid, {})
+            if not isinstance(private_episode, dict):
+                private_episode = {}
+            private_turns = private_episode.get("turns")
+            if private_episode.get("spec_hash") != ep.speakers_spec_hash or not isinstance(
+                private_turns, list
+            ):
+                private_turns = turns
+            capture_context = pilot_capture_context(ctx.speaker_config or {}, city.slug, ep.body)
+            if capture_context is None:
+                continue
+            embedding_recipe = str(
+                payload.get("embedding_recipe")
+                or f"{city.provider}:{payload.get('model') or 'unknown'}"
+            )
+            engine_recipe = ":".join(
+                (
+                    city.provider,
+                    str(payload.get("engine") or "unknown"),
+                    str(ep.speakers_pipeline_version or DIARIZE_PIPELINE_VERSION),
+                    str(payload.get("model") or "unknown"),
+                    embedding_recipe,
+                )
+            )
+            known_names = [
+                value
+                for person in (registry.get("people") or {}).values()
+                if isinstance(person, dict)
+                for value in [person.get("display_name"), *(person.get("aliases") or [])]
+                if value
+            ]
+            known_names.extend(
+                str(item.get("name"))
+                for item in ep.minutes_roster
+                if isinstance(item, dict) and item.get("name")
+            )
+            if ep.transcript_words_key:
+                words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+                try:
+                    words = json.loads((words_raw or b"{}").decode())
+                except (UnicodeDecodeError, ValueError):
+                    words = {}
+                if isinstance(words, dict):
+                    reference_rows = evaluation.setdefault("reference_candidates", {})
+                    if not isinstance(reference_rows, dict):
+                        reference_rows = {}
+                        evaluation["reference_candidates"] = reference_rows
+                    for candidate in chair_reference_candidates(
+                        words, private_turns, known_names=known_names
+                    ):
+                        candidate_id = reference_candidate_id(
+                            city_slug=city.slug,
+                            body=ep.body,
+                            episode_uid=ep.uid or ep.guid,
+                            recipe=engine_recipe,
+                            proposed_name=str(candidate["display_name"]),
+                            cue_start=float(candidate["cue_start"]),
+                            turn=candidate,
+                        )
+                        if candidate_id not in reference_rows:
+                            stats.quality("chair-reference-candidate")
+                        reference_rows[candidate_id] = {
+                            **candidate,
+                            "candidate_id": candidate_id,
+                            "city_slug": city.slug,
+                            "body": ep.body or "",
+                            "engine_recipe": engine_recipe,
+                            "episode_uid": ep.uid or ep.guid,
+                            "episode_title": ep.title,
+                            "embedding_recipe": embedding_recipe,
+                            "capture_context": capture_context,
+                        }
+            cell = calibration_cell(
+                city.slug, ep.body, engine_recipe, capture_context=capture_context
+            )
+            publish = auto_publish_allowed(
+                evaluation,
+                cell=cell,
+                engine=str(payload.get("engine") or ""),
+            )
+            allowed_ids = {
+                ident
+                for ident, person in (registry.get("people") or {}).items()
+                if isinstance(person, dict) and person.get("status") == "active"
+            }
+            # Once minutes arrive their roster is a correction constraint.  It does not make a
+            # name true by itself, but it may silently replace a previous provisional voice-only
+            # assignment with the next calibrated roster candidate.
+            roster_ids = roster_person_ids(registry, ep.minutes_roster)
+            if roster_ids is not None:
+                allowed_ids &= roster_ids
+            changed = False
+            enriched_turns = []
+            for turn in private_turns:
+                if not isinstance(turn, dict) or not isinstance(turn.get("embedding"), list):
+                    enriched_turns.append(turn)
+                    continue
+                matches = profile_matches(
+                    registry,
+                    turn["embedding"],
+                    embedding_recipe=embedding_recipe,
+                    allowed_ids=allowed_ids,
+                )
+                from citypods.speakers import assign_turn
+
+                enriched_turns.append(
+                    assign_turn(
+                        turn,
+                        matches,
+                        publish=publish,
+                        confirmed=roster_ids is not None,
+                        minimum_score=float(ctx.speaker_config.get("minimum_match_score", 0.75)),
+                    )
+                )
+            for turn in enriched_turns:
+                identity = turn.get("identity") if isinstance(turn, dict) else None
+                if not isinstance(identity, dict) or identity.get("status") != "shadow":
+                    continue
+                candidate_id = shadow_candidate_id(
+                    city_slug=city.slug,
+                    body=ep.body,
+                    episode_uid=ep.uid or ep.guid,
+                    recipe=engine_recipe,
+                    turn=turn,
+                )
+                candidate_rows = evaluation.setdefault("candidates", {})
+                if not isinstance(candidate_rows, dict):
+                    candidate_rows = {}
+                    evaluation["candidates"] = candidate_rows
+                candidate_rows[candidate_id] = {
+                    "candidate_id": candidate_id,
+                    "city_slug": city.slug,
+                    "body": ep.body or "",
+                    "engine_recipe": engine_recipe,
+                    "episode_uid": ep.uid or ep.guid,
+                    "episode_title": ep.title,
+                    "start": turn.get("start"),
+                    "end": turn.get("end"),
+                    "speaker_id": identity.get("speaker_id"),
+                    "display_name": identity.get("display_name"),
+                    "transcript_text_hash": turn.get("transcript_text_hash"),
+                    "capture_context": capture_context,
+                }
+            for candidate in ep.moment_pullquote_candidates or []:
+                if not isinstance(candidate, dict):
+                    continue
+                attribution = quote_attribution(candidate, enriched_turns)
+                if attribution != candidate.get("speaker_attribution"):
+                    registry.setdefault("history", []).append(
+                        {
+                            "kind": "attribution-correction"
+                            if ep.minutes_roster
+                            else "attribution-projection",
+                            "episode_uid": ep.uid or ep.guid,
+                            "candidate_id": candidate.get("candidate_id"),
+                            "prior": candidate.get("speaker_attribution"),
+                            "next": attribution,
+                            "observed_at": datetime.now(UTC).isoformat(),
+                        }
+                    )
+                    if attribution is None:
+                        candidate.pop("speaker_attribution", None)
+                    else:
+                        candidate["speaker_attribution"] = attribution
+                    changed = True
+            if changed:
+                # The diarization object is content-addressed solely by audio/transcript/model
+                # inputs. Identity is a mutable, calibrated projection, so it belongs on the
+                # durable R6 candidate ledger rather than rewriting immutable speaker bytes.
+                stats.ran += 1
+        save_registry(ctx.speaker_registry_path, registry)
+        if ctx.speaker_evaluation_state_path is not None:
+            from citypods.speakers import save_evaluation
+
+            save_evaluation(ctx.speaker_evaluation_state_path, evaluation)
         return stats
 
 
@@ -6855,6 +7407,11 @@ def r6_stages() -> list[EnrichmentStage]:
     return [MomentsStage(), MomentJudgeStage(), MomentAdmissionStage(), VideoClipsStage()]
 
 
+def r7_stages() -> list[EnrichmentStage]:
+    """R7 is opt-in while its per-body identity calibration warms up."""
+    return [NativeDiarizeStage(), SpeakerIdentityStage()]
+
+
 # Which stages each H6b lane runs (review/12 §H6). A lane runs ONLY its own work-class stages so it
 # never re-derives — and so, via the whole-record state push, never regresses — a sibling lane's
 # artifact: the ``transcribe`` lane must not re-run ``audio`` (which would write an audio block from
@@ -6878,7 +7435,8 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     ),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
-    "diarize": frozenset({"diarize"}),
+    "diarize": frozenset({"diarize", "native_diarize"}),
+    "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
     "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
@@ -6908,7 +7466,11 @@ def run_stages(
     for stage in stages:
         if allowed is not None and stage.name not in allowed:
             continue
-        dirty = [ep for ep in episodes if stage_is_dirty(stage, ep, city)]
+        dirty = [
+            ep
+            for ep in episodes
+            if stage_is_dirty(stage, ep, city, speaker_config=ctx.speaker_config)
+        ]
         clean = len(episodes) - len(dirty)
         if not dirty:
             stat = StageStats(stage.name, reused=clean)
@@ -6930,7 +7492,7 @@ def run_stages(
         stat = stage.process(provider, city, dirty, ctx)
         stat.seconds = time.perf_counter() - t0
         stat.reused += clean
-        _mark_stage_complete(stage, dirty, city, stat)
+        _mark_stage_complete(stage, dirty, city, stat, speaker_config=ctx.speaker_config)
         if not quiet:
             print(
                 f"[enrich] stage done slug={city.slug} provider={city.provider} stage={stage.name} "

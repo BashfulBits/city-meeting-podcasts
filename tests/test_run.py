@@ -230,6 +230,49 @@ def test_chapter_build_claims_and_releases_maintenance_lease(monkeypatch, tmp_pa
     assert json.loads(payload)["state"] == "released"
 
 
+def test_chapter_build_claims_and_releases_composite_maintenance_lease(monkeypatch, tmp_path):
+    from tests._cas_fake import MemCAS
+
+    storage = MemCAS()
+    captured = {}
+    monkeypatch.setenv(
+        "CITYPODS_MAINTENANCE_LEASE_KEY", "maintenance/test-a.json, maintenance/test-b.json"
+    )
+    monkeypatch.setenv("CITYPODS_MAINTENANCE_LEASE_OWNER", "test-owner")
+    monkeypatch.setattr(run, "load_site_config", lambda path: {"defaults": {}})
+    monkeypatch.setattr(run, "make_storage", lambda *args: storage)
+    monkeypatch.setattr(run, "_build_impl", lambda **kwargs: captured.update(kwargs) or [])
+
+    assert run.build(lane="chapter", output_dir=tmp_path) == []
+    assert captured["maintenance_lease"] is not None
+    assert captured["maintenance_lease"].keys == (
+        "maintenance/test-a.json",
+        "maintenance/test-b.json",
+    )
+    for key in ("maintenance/test-a.json", "maintenance/test-b.json"):
+        payload, _etag = storage.get_bytes(key)
+        assert json.loads(payload)["state"] == "released"
+
+
+def test_chapter_record_write_lease_is_scoped_to_the_commit_window():
+    from citypods.ops.maintenance_leases import CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY
+    from tests._cas_fake import MemCAS
+
+    storage = MemCAS()
+    parent = type("ParentLease", (), {"owner": "chapter-owner"})()
+
+    with run._chapter_record_write_lease(
+        storage,
+        lane="chapter-agenda",
+        maintenance_lease=parent,
+    ):
+        payload, _etag = storage.get_bytes(CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY)
+        assert json.loads(payload)["state"] == "held"
+
+    payload, _etag = storage.get_bytes(CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY)
+    assert json.loads(payload)["state"] == "released"
+
+
 def test_normalize_episode_durations_prefers_probe_without_listing(monkeypatch):
     ep = _ep("g-probe", hosted="https://cdn/g-probe.m4a")
     ep.audio_key = "audio/src/g-probe.m4a"
@@ -1414,6 +1457,81 @@ def test_global_queue_persists_after_audio_pass_and_again_after_transcript(tmp_p
     run._run_enrich_global_queue(_Pipeline(), [city], source_cache=None, max_workers=1, policy=None)
 
     assert events == ["audio:uid-e1", "persist", "transcript:uid-e1", "persist"]
+
+
+def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
+    """R7 ledger work follows every per-episode transcript stage and checkpoints per source."""
+    city = City(
+        slug="c",
+        provider="granicus",
+        source={"feed_url": "https://x.granicus.com/f"},
+        podcast_title="C",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    episodes = [_ep("e1"), _ep("e2")]
+    for episode in episodes:
+        episode.hosted_audio_url = f"https://cdn/{episode.uid}.m4a"
+    events: list[str] = []
+
+    class _Stage:
+        def __init__(self, name):
+            self.name = name
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None
+            )
+            self.stages = [
+                _Stage("transcript"),
+                _Stage("native_diarize"),
+                _Stage("speaker_identity"),
+            ]
+
+        def fetch_merge(self, _city, _key):
+            return object(), episodes, {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            events.append("persist")
+
+    def _run_stages(_provider, _city, batch, stages, _ctx, *, quiet):
+        stage_names = ",".join(stage.name for stage in stages)
+        episode_uids = ",".join(ep.uid for ep in batch)
+        events.append(f"{stage_names}:{episode_uids}")
+        return [StageStats(stage.name, ran=len(batch)) for stage in stages]
+
+    clock = {"now": 0.0}
+
+    def _with_elapsed_ledger_run(*args, **kwargs):
+        result = _run_stages(*args, **kwargs)
+        if args[3][0].name == "native_diarize":
+            clock["now"] = 181.0
+        return result
+
+    monkeypatch.setattr(run, "run_stages", _with_elapsed_ledger_run)
+    monkeypatch.setattr(run.time, "monotonic", lambda: clock["now"])
+    run._run_enrich_global_queue(
+        _Pipeline(),
+        [city],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+        mid_run_checkpoint=lambda: events.append("checkpoint"),
+    )
+    assert events == [
+        "transcript:uid-e1",
+        "transcript:uid-e2",
+        "native_diarize,speaker_identity:uid-e1,uid-e2",
+        "persist",
+        "checkpoint",
+        "persist",
+    ]
 
 
 def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass(

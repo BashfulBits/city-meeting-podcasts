@@ -27,7 +27,7 @@ from pathlib import Path
 
 from citypods.config import load_city_configs, load_site_config
 from citypods.ops.maintenance_leases import (
-    AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+    AGENDA_CHAPTER_RESET_MAINTENANCE_LEASE_KEYS,
 )
 from citypods.ops.maintenance_leases import (
     acquire as acquire_maintenance_lease,
@@ -272,10 +272,20 @@ def main(argv: list[str] | None = None) -> int:
         f"github-actions:{os.environ.get('GITHUB_WORKFLOW', 'manual-reset')}"
         f":{os.environ.get('GITHUB_RUN_ID', 'local')}"
     )
+    raw_lease_key = os.environ.get("CITYPODS_MAINTENANCE_LEASE_KEY")
+    target_keys: str | tuple[str, ...]
+    if raw_lease_key:
+        target_keys = (
+            tuple(k.strip() for k in raw_lease_key.split(",") if k.strip())
+            if "," in raw_lease_key
+            else raw_lease_key.strip()
+        )
+    else:
+        target_keys = AGENDA_CHAPTER_RESET_MAINTENANCE_LEASE_KEYS
     maintenance_lease = acquire_maintenance_lease(
         storage,
         owner=lease_owner,
-        key=AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+        key=target_keys,
     )
     try:
         summary = reset_agenda_chapter_state(

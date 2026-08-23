@@ -1992,7 +1992,17 @@ function selectRoute(
   batch = null,
   maxStaggerMs = 0,
 ) {
-  const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
+  const baseModels = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
+  const configuredModels = Object.keys(dispatchLimits.model_routes_map || {});
+  // Dynamically expand model_routing (compiled from config/provider_limits.yml's `model_routing`)
+  // so existing resident R2 records and unexpanded policy.allowed_models can drain onto overflow
+  // routes (e.g. Mistral Medium -> Gemini 3.5 Flash Lite) without requiring canonical record migration.
+  const models = baseModels.flatMap((model) => [
+    model,
+    ...(dispatchLimits.model_routing?.[model] || [])
+      .map((target) => canonicalModelName(target, dispatchLimits))
+      .filter((target) => configuredModels.includes(target)),
+  ]);
   let lastSelection = { chosenRoute: null, reason: "no_configured_route" };
   let retryableSelection = null;
   for (const model of [...new Set(models)]) {
@@ -2018,7 +2028,14 @@ function selectRoute(
 }
 
 function nextCapacityRetryAt(budget, canonicalModels, policy, now, dispatchLimits = DISPATCH_LIMITS) {
-  const models = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
+  const baseModels = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
+  const configuredModels = Object.keys(dispatchLimits.model_routes_map || {});
+  const models = baseModels.flatMap((model) => [
+    model,
+    ...(dispatchLimits.model_routing?.[model] || [])
+      .map((target) => canonicalModelName(target, dispatchLimits))
+      .filter((target) => configuredModels.includes(target)),
+  ]);
   const allowPaid = Boolean(policy?.allow_paid);
   const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
   const resets = [];
@@ -2267,27 +2284,11 @@ async function dispatchBatch(
       let claimed;
       if (!selection.chosenRoute) {
         if (selection.reason === "no_capacity") {
-          // The marker metadata carries the same model and policy the canonical record does, so
-          // the retry time is known without reading the record at all.
-          const retryAt = nextCapacityRetryAt(
-            coordinator,
-            head.record.policy?.allowed_models || head.record.model,
-            head.record.policy,
-            now,
-          );
-          if (retryAt.getTime() - now.getTime() <= cfg.deferInPlaceSeconds * 1000) {
-            // Leave it alone and look at the next head.  This marker was already returned by the
-            // one `list` above, so re-examining it next minute is free, whereas relocating it now
-            // would cost a canonical read, a canonical write, and two marker writes.
-            deferredInPlace.push(head);
-            continue;
-          }
-          const claimStartedAt = profileNow();
-          claimed = await loadReadyClaim(bucket, head, now);
-          candidateProfile.claim_ms = profileElapsed(claimStartedAt);
-          if (!claimed) continue;
-          await requeue(bucket, claimed, now, retryAt.toISOString());
-          lastRequeuedId = claimed.record.id;
+          // Leave it alone and look at the next head.  This marker was already returned by the
+          // one `list` above, so re-examining it next minute is free. If no candidate can be
+          // dispatched, the batch-level fallback relocates at most one head at the end,
+          // preventing an unbounded burst of R2 operations that breaches the Free CPU limit.
+          deferredInPlace.push(head);
           continue;
         }
         const claimStartedAt = profileNow();
@@ -3316,6 +3317,7 @@ export {
   renewCronLease,
   runScheduled,
   requestKey,
+  requestMetadata,
   resolveProviderCredentials,
   routeAvailable,
   selectRoute,
