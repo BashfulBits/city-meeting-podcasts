@@ -67,7 +67,7 @@ by upstream generation time and routinely reads in seconds while CPU stays in si
 milliseconds.
 
 The current shape, measured with `bench/cpu-profile.js` against a 60 KB canonical record and a
-16-marker backlog:
+500-marker backlog:
 
 | Invocation | R2 operations | Bytes moved |
 | --- | --- | --- |
@@ -88,8 +88,8 @@ Rules that keep it there:
   from the current time and re-rolled on every load, so they are never worth an R2 write on their
   own; clearing an `inflight` entry left behind by an older Worker version is, because nothing else
   removes it.
-- **Parse marker metadata lazily.** The lookahead lists 16 markers so a throttled route does not stall
-  the queue head, but a run that dispatches the first one should not parse the other fifteen.
+- **Parse marker metadata lazily.** The lookahead lists 500 markers so a throttled route does not stall
+  the queue head, but a run that dispatches the first one should not parse the other 499.
 
 `test/index.test.js` pins the operation counts above, so a change that reintroduces a round trip
 fails there rather than in production. Run `node bench/cpu-profile.js` for V8 self-time per function;
@@ -141,6 +141,7 @@ token, plus every `api_key_env` named in `config/provider_limits.yml`'s `account
 npx wrangler r2 bucket create citypods-llm-dispatch
 npx wrangler secret put DISPATCH_AUTH_TOKEN
 npx wrangler secret put MISTRAL_API_KEY
+npx wrangler secret put MISTRAL_API_KEY_SECONDARY # second Mistral account, same route limits
 npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put GEMINI_API_KEY_SECONDARY   # second Gemini account/project, same free tier shape
 npx wrangler secret put DEEPSEEK_API_KEY
@@ -246,7 +247,7 @@ To enable:
 ## Scheduling and migration
 
 Every pending canonical record has a compact marker at `ready/<eligible-time>-<priority>-…`. R2
-lists keys lexicographically, so each cron invocation lists a fixed lookahead of 16 markers and
+lists keys lexicographically, so each cron invocation lists a fixed lookahead of 500 markers and
 uses their compact custom metadata to skip a temporarily blocked provider/model without reading
 each marker body. Legacy markers without metadata fall back to a body read. It reads canonical
 requests only for viable candidates or records that must be requeued, then dispatches one request

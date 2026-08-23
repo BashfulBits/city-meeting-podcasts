@@ -24,8 +24,11 @@ narwhals==2.24.0
     # via scikit-learn
 numpy==2.5.1
     # via
+    #   opencv-python-headless
     #   scikit-learn
     #   scipy
+opencv-python-headless==5.0.0.93
+    # via citypods (pyproject.toml)
 pillow==12.3.0
     # via citypods (pyproject.toml)
 pypdf==6.14.2

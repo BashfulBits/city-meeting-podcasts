@@ -365,7 +365,10 @@ total on `/admin/status`.
   plus a compact date-ordered `ready/` marker; a per-minute Free-plan Cron Trigger lists a bounded
   lookahead of compact markers and reads canonical requests only for viable candidates (constant in
   queue depth) before claiming one request per scheduled run,
-  ranks each request's canonical model's candidate routes (free before paid, then cheapest) against
+  ranks each request's canonical model's candidate routes (free before paid, then cheapest,
+  optionally expanded with a configured cross-model overflow target from `model_routing` --
+  2026-08-21; a job pinned to one model becomes eligible for its target model too once its own
+  routes are exhausted/paused, ties still favoring the caller's own model) against
   a **per-route/per-account ledger** (`state/dispatch_coordinator.json`, R2, mirroring
   `llm_budget.py`'s versioned minute/day window, cost, `blocked_until`, and `inflight` shape
   alongside the single-runner cron lease),
@@ -591,6 +594,11 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
   Modal pull worker from `main`, protected by the `modal-production` GitHub Environment),
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
   `llm-dispatch-worker-deploy.yml` (path-scoped test/deploy for the Cron-paced LLM Worker),
+  `llm-dispatch-v2-worker-deploy.yml` (path-scoped test/deploy for `workers/llm-dispatch-v2/`, the
+  parallel SQLite-Durable-Object-coordinator successor from
+  [`review/44`](review/44-bounded-bundled-llm-dispatch.md); Phase 1 only as of
+  [PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253) — v1's Worker above
+  remains the sole production dispatch transport until v2's later phases land),
   `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
   provider calls), `audit.yml` (daily feed-health → GitHub issues; on creating a new
   consolidated `unexpected-body` issue, dispatches `remedy-unexpected-bodies.yml` for it),

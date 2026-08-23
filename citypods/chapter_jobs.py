@@ -22,6 +22,7 @@ from citypods.chapter_locator import (
 from citypods.chapter_titles import (
     AGENDA_ITEM_EXTRACTOR_CONTRACT,
     AGENDA_PRODUCTION_MODEL,
+    AGENDA_PRODUCTION_MODELS,
     build_production_agenda_item_extraction_request,
     ensure_agenda_item_extractor_contract,
     validate_agenda_item_extractor_response,
@@ -93,7 +94,7 @@ def build_agenda_job(
             "messages": list(request.messages),
             "structured_output": AGENDA_ITEM_EXTRACTOR_CONTRACT,
             "llm_policy": LLMRequestPolicy(
-                allowed_models=(AGENDA_PRODUCTION_MODEL,),
+                allowed_models=AGENDA_PRODUCTION_MODELS,
                 purpose="chapter-agenda",
                 # This stage persists its pending recipe and finalizes on a later chapter-lane
                 # pass, so Worker-owned queueing is safer than a runner-side deadline.
@@ -109,9 +110,15 @@ def finalize_agenda_job(
     episode_uid: str,
     agenda_text: str,
     agenda_source_hash: str,
-    model: str = AGENDA_PRODUCTION_MODEL,
+    model: str | None = None,
 ) -> AgendaCandidatesArtifact:
-    """Validate a completed agenda response and build its durable source-backed artifact."""
+    """Validate a completed agenda response and build its durable source-backed artifact.
+
+    ``model`` defaults to ``result.model`` -- the model the scheduler actually dispatched to, now
+    that ``AGENDA_PRODUCTION_MODELS`` (R13) offers more than one same-priority candidate.  Falls
+    back to ``AGENDA_PRODUCTION_MODEL`` only for a caller/backend that never set ``result.model``.
+    """
+    resolved_model = model or result.model or AGENDA_PRODUCTION_MODEL
 
     content = _response_content(result.output)
     items = validate_agenda_item_extractor_response(content, agenda_text=agenda_text)
@@ -136,7 +143,7 @@ def finalize_agenda_job(
     return AgendaCandidatesArtifact(
         episode_uid=episode_uid,
         source_hash=agenda_source_hash,
-        model=model,
+        model=resolved_model,
         prompt_version=AGENDA_PROMPT_VERSION,
         recipe=result.recipe_hash,
         items=tuple(candidates),

@@ -1,6 +1,7 @@
 slug: denton-tx-city-council
 city: denton-tx
 provider: swagit
+meeting_family: council
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "City Council"

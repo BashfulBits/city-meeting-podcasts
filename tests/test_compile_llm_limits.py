@@ -28,6 +28,7 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
         "routes_by_id",
         "model_routes_map",
         "model_aliases",
+        "model_routing",
     }
     assert len(worker["routes_by_id"]) == len(compiled["routes"])
     assert "routes" not in worker
@@ -175,6 +176,80 @@ def test_full_day_pricing_surcharge_is_rejected():
         )
 
 
+def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
+    compiled = compile_llm_limits.compile_limits()
+    assert compiled["model_routing"]["mistral/mistral-medium-2508"] == [
+        "gemini/gemini-3.5-flash-lite"
+    ]
+    assert compiled["model_routing"]["mistral/mistral-medium-2505"] == [
+        "gemini/gemini-3.5-flash-lite"
+    ]
+    worker = compile_llm_limits._worker_catalog(compiled)
+    python_catalog = compile_llm_limits._python_routes(compiled)
+    assert worker["model_routing"] == compiled["model_routing"]
+    assert python_catalog["model_routing"] == compiled["model_routing"]
+
+
+def test_validated_model_routing_resolves_legacy_aliases_and_dedups():
+    routing = compile_llm_limits._validated_model_routing(
+        {"legacy/source": ["legacy/target", "canonical/target"]},
+        model_aliases={"legacy/source": "canonical/source", "legacy/target": "canonical/target"},
+        canonical_models={"canonical/source", "canonical/target"},
+    )
+    assert routing == {"canonical/source": ["canonical/target"]}
+
+
+def test_validated_model_routing_rejects_an_unknown_model():
+    with pytest.raises(ValueError, match="unknown model"):
+        compile_llm_limits._validated_model_routing(
+            {"canonical/source": ["missing/target"]},
+            model_aliases={},
+            canonical_models={"canonical/source"},
+        )
+    with pytest.raises(ValueError, match="unknown model"):
+        compile_llm_limits._validated_model_routing(
+            {"missing/source": ["canonical/target"]},
+            model_aliases={},
+            canonical_models={"canonical/target"},
+        )
+
+
+def test_validated_model_routing_rejects_self_routing():
+    with pytest.raises(ValueError, match="route a model to itself"):
+        compile_llm_limits._validated_model_routing(
+            {"canonical/model": ["canonical/model"]},
+            model_aliases={},
+            canonical_models={"canonical/model"},
+        )
+
+
+def test_validated_model_routing_rejects_a_non_mapping_top_level_value():
+    for invalid in ([], "canonical/model", 1, True):
+        with pytest.raises(ValueError, match="mapping of source models"):
+            compile_llm_limits._validated_model_routing(
+                invalid, model_aliases={}, canonical_models=set()
+            )
+    assert (
+        compile_llm_limits._validated_model_routing(None, model_aliases={}, canonical_models=set())
+        == {}
+    )
+
+
+def test_validated_model_routing_rejects_a_non_list_or_empty_target():
+    with pytest.raises(ValueError, match="non-empty list"):
+        compile_llm_limits._validated_model_routing(
+            {"canonical/model": "canonical/other"},
+            model_aliases={},
+            canonical_models={"canonical/model", "canonical/other"},
+        )
+    with pytest.raises(ValueError, match="non-empty list"):
+        compile_llm_limits._validated_model_routing(
+            {"canonical/model": []},
+            model_aliases={},
+            canonical_models={"canonical/model"},
+        )
+
+
 def test_model_key_aliases_must_not_conflict_with_a_canonical_key():
     routes = [
         {
@@ -312,22 +387,25 @@ def test_run_discovery_bare_flag_covers_only_providers_with_a_discovery_block(mo
 def test_token_estimate_buffer_scales_route_and_provider_token_budgets():
     compiled = compile_llm_limits.compile_limits()
     assert compiled["_metadata"]["token_estimate_buffer"] == 0.9
+    assert compiled["_metadata"]["split_cap_multiplier"] == 0.50
 
-    # Route TPM scaling: 250,000 * 0.9 = 225,000; 16,000 * 0.9 = 14,400
+    # Route TPM scaling with 0.90 buffer and 0.50 split-cap:
+    # 250,000 * 0.9 * 0.5 = 112,500; 16,000 * 0.9 * 0.5 = 7,200
     gemini = compiled["routes_by_id"]["gemini_3_5_flash_lite_primary"]
     gemma = compiled["routes_by_id"]["gemma_4_31b_primary"]
-    assert gemini["tpm"] == 225_000
-    assert gemma["tpm"] == 14_400
+    assert gemini["tpm"] == 112_500
+    assert gemma["tpm"] == 7_200
 
-    # Non-token fields are unscaled
-    assert gemini["rpm"] == 15
-    assert gemini["rpd"] == 500
+    # RPM / RPD scaled by split-cap (0.50)
+    assert gemini["rpm"] == 7
+    assert gemini["rpd"] == 250
     assert gemini["input_context_limit"] == 1048576
     assert gemini["output_context_limit"] == 65536
 
-    # Provider monthly_tpm scaling: 1,000,000,000 * 0.9 = 900,000,000
+    # Provider monthly_tpm scaling: hotfixed to 0 (Mistral's new account-wide monthly metering,
+    # see config/provider_limits.yml), preserved as 0.
     mistral = compiled["providers"]["mistral"]
-    assert mistral["monthly_tpm"] == 900_000_000
+    assert mistral["monthly_tpm"] == 0
 
 
 def test_validate_token_buffer_accepts_valid_formats():
@@ -436,3 +514,83 @@ def test_token_usage_buffer_fallback_key():
         assert compiled["_metadata"]["token_estimate_buffer"] == 0.8
         assert compiled["routes_by_id"]["example_route"]["tpm"] == 4000
         assert compiled["providers"]["example"]["monthly_tpm"] == 800
+
+
+def test_split_cap_multiplier_validation():
+    assert compile_llm_limits._validate_split_cap(None) == 1.0
+    assert compile_llm_limits._validate_split_cap(0.50) == 0.50
+    assert compile_llm_limits._validate_split_cap("50%") == 0.50
+    assert compile_llm_limits._validate_split_cap("0.75") == 0.75
+
+    with pytest.raises(ValueError, match="split_cap_multiplier must be a number"):
+        compile_llm_limits._validate_split_cap(True)
+    with pytest.raises(ValueError, match="split_cap_multiplier must be a positive finite number"):
+        compile_llm_limits._validate_split_cap(0)
+    with pytest.raises(ValueError, match="split_cap_multiplier must be <= 1.0"):
+        compile_llm_limits._validate_split_cap(1.5)
+
+
+def test_split_cap_multiplier_halves_rpm_rpd_tpm():
+    raw = {
+        "split_cap_multiplier": 0.50,
+        "token_estimate_buffer": 1.0,
+        "structured_output_profiles": {
+            "standard_json_schema": {
+                "response_format": "json_schema",
+                "direct_handler": "instructor",
+                "include_schema_in_prompt": False,
+                "strip_schema_keys": [],
+            }
+        },
+        "providers": {
+            "example": {
+                "api_base": "https://example.com",
+                "rpm": 60,
+                "monthly_tpm": 10000,
+                "tpm": 20000,
+            }
+        },
+        "routes": [
+            {
+                "route_id": "example_route",
+                "model": "example/model",
+                "provider": "example",
+                "upstream_model": "model",
+                "input_context_limit": 1000,
+                "output_context_limit": 500,
+                "rpm": 100,
+                "rpd": 1000,
+                "tpm": 40000,
+            },
+            {
+                "route_id": "paused_route",
+                "model": "example/paused",
+                "provider": "example",
+                "upstream_model": "paused",
+                "input_context_limit": 1000,
+                "output_context_limit": 500,
+                "rpm": 10,
+                "rpd": 0,
+                "tpm": 0,
+            },
+        ],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        compiled = compile_llm_limits.compile_limits()
+        assert compiled["_metadata"]["split_cap_multiplier"] == 0.50
+        assert compiled["providers"]["example"]["rpm"] == 30
+        assert compiled["providers"]["example"]["monthly_tpm"] == 5000
+        assert compiled["providers"]["example"]["tpm"] == 10000
+
+        route = compiled["routes_by_id"]["example_route"]
+        assert route["rpm"] == 50
+        assert route["rpd"] == 500
+        assert route["tpm"] == 20000
+
+        paused = compiled["routes_by_id"]["paused_route"]
+        assert paused["rpm"] == 5
+        assert paused["rpd"] == 0  # 0 stays 0, not unpaused to 1
+        assert paused["tpm"] == 0

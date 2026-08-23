@@ -7,12 +7,16 @@ import json
 import pytest
 
 from citypods.chapter_locator import (
+    DEEPSEEK_FREE_CONTEXT_TOKENS,
+    DEEPSEEK_FREE_LOCATOR_MODEL,
     GEMINI_CONTEXT_TOKENS,
     GEMINI_LOCATOR_MODEL,
     LOCATOR_CONTRACT,
     LOCATOR_OUTPUT_TOKEN_RESERVE,
     MISTRAL_CONTEXT_TOKENS,
     MISTRAL_LOCATOR_MODEL,
+    NEMOTRON_CONTEXT_TOKENS,
+    NEMOTRON_LOCATOR_MODEL,
     LocatorAgendaItem,
     build_locator_request,
     build_locator_units,
@@ -20,6 +24,7 @@ from citypods.chapter_locator import (
     locator_units_from_vtt,
     locator_units_from_words,
     select_locator_model,
+    select_locator_models,
     validate_locator_response,
 )
 from citypods.compute.structured import response_model
@@ -240,6 +245,11 @@ def test_request_contains_full_units_and_selects_mistral_by_default():
     )
 
     assert request.model == MISTRAL_LOCATOR_MODEL
+    assert request.models == (
+        MISTRAL_LOCATOR_MODEL,
+        DEEPSEEK_FREE_LOCATOR_MODEL,
+        NEMOTRON_LOCATOR_MODEL,
+    )
     assert request.input_tokens > 0
     material = json.loads(request.messages[1]["content"])
     assert material["agenda_items"] == [
@@ -273,13 +283,48 @@ def test_request_can_carry_research_only_unit_provenance():
     assert "retrieval_provenance" in request.messages[0]["content"]
 
 
-def test_context_routing_escalates_only_after_mistral_budget():
+def test_context_routing_bands_escalate_through_every_free_tier_before_gemini():
+    # Band 1: fits Mistral, the free DeepSeek V4 Flash tier, and Nemotron 3 Ultra alike.
+    assert select_locator_models(DEEPSEEK_FREE_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE) == (
+        MISTRAL_LOCATOR_MODEL,
+        DEEPSEEK_FREE_LOCATOR_MODEL,
+        NEMOTRON_LOCATOR_MODEL,
+    )
+    # Band 2: over the free DeepSeek tier's budget but still within Mistral's and Nemotron's.
+    assert select_locator_models(
+        DEEPSEEK_FREE_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE + 1
+    ) == (MISTRAL_LOCATOR_MODEL, NEMOTRON_LOCATOR_MODEL)
+    assert select_locator_models(MISTRAL_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE) == (
+        MISTRAL_LOCATOR_MODEL,
+        NEMOTRON_LOCATOR_MODEL,
+    )
+    # Band 3: over Mistral's budget too -- only the huge free Nemotron tier still fits.
+    assert select_locator_models(MISTRAL_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE + 1) == (
+        NEMOTRON_LOCATOR_MODEL,
+    )
+    assert select_locator_models(NEMOTRON_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE) == (
+        NEMOTRON_LOCATOR_MODEL,
+    )
+    # Band 4: over every free tier's budget -- last-resort escalation to Gemini.
+    assert select_locator_models(NEMOTRON_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE + 1) == (
+        GEMINI_LOCATOR_MODEL,
+    )
+    with pytest.raises(ValueError, match="Gemini context"):
+        select_locator_models(GEMINI_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE + 1)
+
+
+def test_select_locator_model_returns_the_primary_band_candidate():
+    """Backward-compatible single-model selector: first entry of select_locator_models."""
     assert (
         select_locator_model(MISTRAL_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE)
         == MISTRAL_LOCATOR_MODEL
     )
     assert (
         select_locator_model(MISTRAL_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE + 1)
+        == NEMOTRON_LOCATOR_MODEL
+    )
+    assert (
+        select_locator_model(NEMOTRON_CONTEXT_TOKENS - LOCATOR_OUTPUT_TOKEN_RESERVE + 1)
         == GEMINI_LOCATOR_MODEL
     )
     with pytest.raises(ValueError, match="Gemini context"):

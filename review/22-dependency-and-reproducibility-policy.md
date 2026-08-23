@@ -1,8 +1,8 @@
 # 22 — Dependency Pinning & Update Policy
 
-> **Status:** normative policy (living). Executes the `review/11` Phase-R item
-> *"Runtime/dependency maintenance automation"*. Tracked by the umbrella issue for GH#498 (HF model
-> revisions) and GH#734 (SHA-pin GitHub Actions).
+> **Status:** Shipped (living policy). Executes the `review/11` Phase-R item
+> *"Runtime/dependency maintenance automation"* (ROADMAP R9). Tracked by the umbrella issue for
+> GH#498 (HF model revisions), GH#734 (SHA-pin GitHub Actions), and GH#804 (Renovate maintenance).
 
 ## Why this exists
 

@@ -9,6 +9,12 @@ observed_on: 2026-08-13
 # compilation to safeguard against token estimation drift and prevent 429 rate limit spikes.
 token_estimate_buffer: 0.90
 
+# Split-cap multiplier applied during Phase 2/3 coexistence (review/44) so that aggregate usage
+# across both v1 and v2 dispatchers does not exceed 100% of underlying provider rate limits.
+# Halves RPM, RPD, TPM, and monthly_tpm across all shared routes. Set to 1.0 (or omitted) to
+# restore full 1x capacity once legacy v1 backlog is drained (Phase 3).
+split_cap_multiplier: 0.50
+
 # Context ceilings are required on every physical route below. They are not provider defaults:
 # model families differ, and a gateway/account can expose a lower ceiling than the native model.
 
@@ -39,6 +45,25 @@ structured_output_profiles:
       - minItems
       - maxItems
 
+# Optional cross-model overflow routing. A key names a model whose callers may also be satisfied
+# by any of its listed target models once its own routes are exhausted/unavailable -- extra daily
+# capacity for a job pinned to one model (`allowed_models=(source,)`), without editing the job or
+# caller at all. The compiler resolves both sides through `model_aliases` the same way a route's
+# own `model` selector does, and fails the compile if either side is unknown. Both the Python
+# scheduler (`select_route`) and the `llm-dispatch-proxy` Worker (`normalizeChatRequest`) expand a
+# request's allowed models with this map, so it takes effect for every transport uniformly.
+#
+# HOTFIX (2026-08-21): Mistral's account-wide monthly token allowance is exhausted (see the
+# MISTRAL ROUTES hotfix note below), leaving a backlog of queued Mistral Medium jobs with nowhere
+# to drain. Gemini 3.5 Flash Lite has its own independent free-tier quota pool, so routing Mistral
+# Medium's overflow there adds real daily capacity to clear the backlog without touching the jobs
+# themselves. Revisit once Mistral's monthly budget is re-sized (see AGENTS.md / review/11).
+model_routing:
+  mistral/mistral-medium-2508:
+    - gemini/gemini-3.5-flash-lite
+  mistral/mistral-medium-2505:
+    - gemini/gemini-3.5-flash-lite
+
 # `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
 # through -- required for every provider, not just Mistral.
 providers:
@@ -49,11 +74,17 @@ providers:
     chat_path: /v1/chat/completions
     # Mistral's account-wide limit is 60 RPM (one submission per second), shared by every model.
     rpm: 60
-    monthly_tpm: 1000000000
+    # HOTFIX (2026-08-18): Mistral switched to account-wide monthly token metering (effective
+    # until the policy is re-evaluated after their next billing cycle reset on 2026-08-31).
+    # Zeroed out as a stopgap to stop consumption until a real monthly allowance is sized -- see
+    # AGENTS.md / review/11 for the follow-up to pick a real value.
+    monthly_tpm: 0
     reset_day: 1
     accounts:
       - id: primary
         api_key_env: MISTRAL_API_KEY
+      - id: secondary
+        api_key_env: MISTRAL_API_KEY_SECONDARY
   gemini:
     api_base: https://generativelanguage.googleapis.com/v1beta/openai
     ai_gateway_slug: google-ai-studio
@@ -514,6 +545,15 @@ routes:
   # ==========================================
   # MISTRAL ROUTES (Audited Exact Quotas)
   # ==========================================
+  # HOTFIX (2026-08-18): the primary Mistral account's monthly token allowance is exhausted. Its
+  # `rpd: 0` pins every primary route's
+  # daily request quota to zero, which the scheduler already treats as ordinary quota exhaustion:
+  # `select_route`/`llm_budget.available()` reject every dispatch and the deferred-request sweep
+  # retries at each local midnight (see `_next_quota_reset`) rather than hard-failing callers like
+  # `AgendaChapterCandidatesStage` (chapter_titles.AGENDA_PRODUCTION_MODEL) that dispatch to
+  # Mistral unconditionally. Secondary-account routes retain the same limits the primary routes
+  # had before the pause, allowing the independent secondary quota to drain the backlog.
+  #
   # Codestral 2508: 2.08 RPS (124 RPM), 625k TPM
   - route_id: mistral_codestral_2508_primary
     model: mistral/codestral-2508
@@ -523,6 +563,7 @@ routes:
     output_context_limit: 256000
     account_id: primary
     rpm: 124
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 625000
     free: true
 
@@ -535,6 +576,7 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 49
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 1000000
     free: true
 
@@ -547,6 +589,7 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 49
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 50000
     free: true
 
@@ -559,6 +602,7 @@ routes:
     output_context_limit: 131072
     account_id: primary
     rpm: 22
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 356250
     free: true
 
@@ -571,6 +615,7 @@ routes:
     output_context_limit: 131072
     account_id: primary
     rpm: 25
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 375000
     free: true
 
@@ -583,6 +628,7 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 4
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -595,6 +641,7 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 4
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -607,6 +654,104 @@ routes:
     output_context_limit: 131072
     account_id: primary
     rpm: 37
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
+    tpm: 5000000
+    free: true
+
+  # Secondary account: original per-model limits, independent of the paused primary account.
+  - route_id: mistral_codestral_2508_secondary
+    model: mistral/codestral-2508
+    provider: mistral
+    upstream_model: codestral-2508
+    input_context_limit: 256000
+    output_context_limit: 256000
+    account_id: secondary
+    rpm: 124
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
+    tpm: 625000
+    free: true
+
+  - route_id: mistral_devstral_2512_secondary
+    model: mistral/devstral-2512
+    provider: mistral
+    upstream_model: devstral-2512
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: secondary
+    rpm: 49
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
+    tpm: 1000000
+    free: true
+
+  - route_id: mistral_small_2603_secondary
+    model: mistral/mistral-small-2603
+    provider: mistral
+    upstream_model: mistral-small-2603
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: secondary
+    rpm: 49
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
+    tpm: 50000
+    free: true
+
+  - route_id: mistral_medium_2508_secondary
+    model: mistral/mistral-medium-2508
+    provider: mistral
+    upstream_model: mistral-medium-2508
+    input_context_limit: 131072
+    output_context_limit: 131072
+    account_id: secondary
+    rpm: 22
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
+    tpm: 356250
+    free: true
+
+  - route_id: mistral_medium_2505_secondary
+    model: mistral/mistral-medium-2505
+    provider: mistral
+    upstream_model: mistral-medium-2505
+    input_context_limit: 131072
+    output_context_limit: 131072
+    account_id: secondary
+    rpm: 25
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
+    tpm: 375000
+    free: true
+
+  - route_id: mistral_large_2512_secondary
+    model: mistral/mistral-large-2512
+    provider: mistral
+    upstream_model: mistral-large-2512
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: secondary
+    rpm: 4
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
+    tpm: 250000
+    free: true
+
+  - route_id: mistral_large_3_secondary
+    model: mistral/mistral-large-3
+    provider: mistral
+    upstream_model: mistral-large-3
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: secondary
+    rpm: 4
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
+    tpm: 250000
+    free: true
+
+  - route_id: mistral_labs_leanstral_1_5_1_secondary
+    model: mistral/labs-leanstral-1-5-1
+    provider: mistral
+    upstream_model: labs-leanstral-1-5-1
+    input_context_limit: 262144
+    output_context_limit: 131072
+    account_id: secondary
+    rpm: 37
+    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 5000000
     free: true
 

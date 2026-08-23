@@ -14,14 +14,17 @@ transport or reason produced it.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import math
 import os
 import re
 import sys
+import threading
 import time
-from collections.abc import Callable, Mapping
+import uuid
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
@@ -56,6 +59,7 @@ from citypods.compute.llm_policy import (
 from citypods.compute.llm_scheduler import SelectionResult, select_and_reserve, select_route
 from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
+from citypods.storage.s3 import b2_from_env
 
 LLM_TASKS: frozenset[Task] = frozenset(
     {
@@ -65,6 +69,8 @@ LLM_TASKS: frozenset[Task] = frozenset(
         "classify-civic-platforms",
         "agenda-item-extract",
         "agenda-chapter-locate",
+        "moment-extraction",
+        "moment-judge",
     }
 )
 TASK_VERSIONS: dict[Task, str] = {
@@ -74,6 +80,8 @@ TASK_VERSIONS: dict[Task, str] = {
     "classify-civic-platforms": "6",
     "agenda-item-extract": "1",
     "agenda-chapter-locate": "1",
+    "moment-extraction": "1",
+    "moment-judge": "1",
 }
 
 TASK_PROMPTS: dict[Task, str] = {
@@ -93,6 +101,14 @@ TASK_PROMPTS: dict[Task, str] = {
     "agenda-chapter-locate": (
         "Locate agenda items in a complete timed transcript using only supplied unit IDs."
     ),
+    "moment-extraction": (
+        "Extract grounded chapter summaries, pull quotes, and discussion directions from the "
+        "supplied "
+        "meeting material. Never invent transcript quotes or official outcomes."
+    ),
+    "moment-judge": (
+        "Score a supplied grounded candidate only. Never rewrite, repair, or create a candidate."
+    ),
 }
 
 SUPPORTED_MODELS = frozenset(ROUTE_CANDIDATES)
@@ -107,6 +123,8 @@ _SAFE_DIAGNOSTICS_ENV = "LLM_SAFE_DIAGNOSTICS"
 _PACING_POLL_CAP_SECONDS = 10.0
 # Tiny floor so an "eligible now, but the reserve just lost a race" retry can't hot-spin the CPU.
 _PACING_MIN_SLEEP_SECONDS = 0.2
+# The ingress Worker caps both enqueue and poll payloads at this many jobs.
+_WORKER_BATCH_LIMIT = 1000
 
 # --- Cloudflare AI Gateway (direct transport only) ---------------------------------------------
 # The gateway is an observability shim, not a routing decision: it proxies to the same upstream
@@ -293,6 +311,9 @@ class LLMBackendConfig:
     mode: Literal["direct", "dispatch"] = "direct"
     dispatch_url: str | None = None
     dispatch_auth_token: str | None = None
+    dispatch_v2_url: str | None = None
+    dispatch_v2_auth_token: str | None = None
+    daily_ingest_cap: int | None = None
     timeout_seconds: float = 30.0
     # Extra routes a policy-bearing call may spill onto once ``model``'s own per-minute/daily quota
     # window fills -- e.g. tagging pins ``gemini-3.1-flash-lite`` as the recipe/calibration route
@@ -312,11 +333,21 @@ class LLMBackendConfig:
         it. The ``Literal`` annotation on ``mode`` documents the two valid values; it does not
         (and must not) silently coerce an invalid environment value into one of them.
         """
+        daily_cap_str = os.environ.get("CITYPODS_LLM_DAILY_INGEST_CAP") or os.environ.get(
+            "LLM_DAILY_INGEST_CAP"
+        )
+        daily_cap = int(daily_cap_str) if daily_cap_str else None
         return cls(
             model=os.environ.get("LLM_MODEL") or cls.model,
             mode=cast("Literal['direct', 'dispatch']", os.environ.get("LLM_MODE") or cls.mode),
             dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
             dispatch_auth_token=os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
+            dispatch_v2_url=os.environ.get("CITYPODS_LLM_DISPATCH_V2_URL")
+            or os.environ.get("LLM_DISPATCH_V2_URL"),
+            dispatch_v2_auth_token=os.environ.get("CITYPODS_LLM_DISPATCH_V2_AUTH_TOKEN")
+            or os.environ.get("LLM_DISPATCH_V2_AUTH_TOKEN")
+            or os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
+            daily_ingest_cap=daily_cap,
             timeout_seconds=float(os.environ.get("LLM_TIMEOUT_SECONDS", cls.timeout_seconds)),
         )
 
@@ -513,6 +544,29 @@ class LiteLLMBackend(Backend):
         self._completion = completion
         self._session = http_session or requests.Session()
         self.storage = storage
+        self._daily_ingest_admitted: int = 0
+        self._daily_ingest_exhausted: bool = False
+        # The UTC day _daily_ingest_exhausted was set on, so it can be cleared once the
+        # coordinator's own admission window has rolled over -- without this, a long-running
+        # process (or one started shortly before UTC midnight) that hits the cap once would
+        # short-circuit every job for the rest of its run, even long after the server-side cap
+        # reset and had headroom again.
+        self._daily_ingest_exhausted_day: str | None = None
+
+    def _reset_daily_ingest_state_if_new_day(self) -> None:
+        today = datetime.now(UTC).date().isoformat()
+        stale_day = (
+            self._daily_ingest_exhausted_day is not None
+            and self._daily_ingest_exhausted_day != today
+        )
+        if stale_day:
+            self._daily_ingest_exhausted = False
+            self._daily_ingest_admitted = 0
+        self._daily_ingest_exhausted_day = today
+
+    def _mark_daily_ingest_exhausted(self) -> None:
+        self._daily_ingest_exhausted = True
+        self._daily_ingest_exhausted_day = datetime.now(UTC).date().isoformat()
 
     def _available_transports(self) -> frozenset[str]:
         """Which transports a policy-bearing call from *this instance* can reach right now.
@@ -525,12 +579,43 @@ class LiteLLMBackend(Backend):
         freely across every route regardless of which transport backs it.
         """
         if self.config.mode == "dispatch":
-            return frozenset({"mistral-dispatch", "llm-dispatch"})
+            transports = {"mistral-dispatch", "llm-dispatch"}
+            if self.config.dispatch_v2_url:
+                transports.add("llm-dispatch-v2")
+            return frozenset(transports)
         transports = {"direct"}
         if self.config.dispatch_url:
             transports.add("mistral-dispatch")
             transports.add("llm-dispatch")
+        if self.config.dispatch_v2_url:
+            transports.add("llm-dispatch-v2")
         return frozenset(transports)
+
+    def _storage_client(self):
+        """The client v2's ``payloads/``/``results/`` staging writes/reads through.
+
+        This data is B2-resident by design (workers/llm-dispatch-v2's own SigV4 client and
+        wrangler.jsonc's "B2-only payload storage" -- the coordinator never gets R2 credentials),
+        and is written with an unconditional ``put_cas`` (job_id is a fresh UUID per call, so
+        there is no CAS race to protect -- see enqueue_batch's comment). Production's
+        ``self.storage`` is usually a ``RoutingStorage`` whose ``COORDINATION_PREFIXES``
+        deliberately excludes ``payloads/``/``results/`` (they aren't R2 coordination state), so
+        it routes those keys to its B2 primary and then -- correctly, per its own invariant --
+        refuses the put_cas/get_bytes call outright, because B2 is deliberately marked
+        non-cas_capable there (review/17 §5: B2 doesn't enforce real If-Match/If-None-Match, so
+        the router won't let a caller assume atomicity from it). That gate protects callers who
+        need real compare-and-swap; it must not block this unconditional write/read. Go straight
+        to the routed primary so v2 submissions actually reach B2 instead of raising
+        NotImplementedError on every attempt. A non-routing storage (e.g. a test double, or a
+        plain B2/R2 backend from a non-``routing`` deployment) is used exactly as given.
+        """
+        if self.storage is not None:
+            if getattr(self.storage, "name", None) == "routing":
+                primary = getattr(self.storage, "primary", None)
+                if primary is not None:
+                    return primary
+            return self.storage
+        return b2_from_env()
 
     def _completion_fn(self) -> Callable[..., Any]:
         """Resolve LiteLLM lazily so users of ASR-only paths need not install the extra."""
@@ -1030,6 +1115,8 @@ class LiteLLMBackend(Backend):
         messages: list[dict[str, Any]],
     ) -> JobResult | JobHandle:
         """Submit durable backlog work without reserving runner-side provider capacity."""
+        if self.config.dispatch_v2_url:
+            return self.enqueue_batch([job])[0]
         if not self.config.dispatch_url:
             raise LLMBackendError("durable queue policy requires LLM_DISPATCH_URL")
         allowed = policy.allowed_models or (self.config.model,)
@@ -1195,7 +1282,12 @@ class LiteLLMBackend(Backend):
         # Every compiled route offers both transports. Direct is preferred for a direct-capable
         # runner; dispatch mode selects the Worker, and `allow_dispatch_overflow` explicitly opts
         # a direct-capable runner into the Worker to reach its independent provider/account pool.
-        is_dispatch = selection.transport in {"mistral-dispatch", "llm-dispatch"}
+        # "llm-dispatch-v2" is included even though no compiled route currently advertises it (v2
+        # is only reached today through _enqueue_durable_policy_job's own short-circuit, not
+        # select_route) -- so a future route-catalog change that does advertise it can never
+        # silently fall through to a direct provider call using a runner-side API key, which is
+        # exactly what this dispatch/direct split exists to prevent (review/41).
+        is_dispatch = selection.transport in {"mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"}
         direct_model = route.direct_model or resolved_model
         try:
             if not is_dispatch:
@@ -1521,6 +1613,11 @@ class LiteLLMBackend(Backend):
     def reconcile(self, handle: JobHandle) -> JobResult | None:
         """Return a validated result when ready, or ``None`` while still pending -- uniformly for
         a deferred-direct handle (re-runs selection) or a genuine Worker dispatch (polls it)."""
+        if handle.backend == "llm-dispatch-v2":
+            if handle.deferred_request is not None:
+                return self._reconcile_deferred(handle)
+            poll_res = self.poll_batch([handle])
+            return poll_res.get(handle.ref)
         if handle.backend != self.name:
             raise ValueError(f"cannot reconcile handle for backend {handle.backend!r}")
         if handle.deferred_request is not None:
@@ -1663,6 +1760,339 @@ class LiteLLMBackend(Backend):
                 pass
         return result
 
+    def enqueue_batch(self, jobs: Sequence[InferenceJob]) -> list[JobResult | JobHandle]:
+        """Submit a batch of InferenceJobs to v2 dispatch with B2 payload staging.
+
+        Directly writes B2 payload keys from the client before submitting the batch metadata
+        to the ingress Worker. Applies client-side throttling to avoid submitting requests
+        when daily caps or rate limits have been exhausted.
+        """
+        if not jobs:
+            return []
+
+        if self.storage is None or not getattr(self.storage, "cas_capable", False):
+            # run_inference() raises the same error for the analogous direct-dispatch case;
+            # enqueue_batch reaches the deferred registry (look_up_deferred/write_deferred)
+            # unconditionally below and must fail the same clear way, not with an opaque
+            # AttributeError deep inside it.
+            raise LLMBackendError(
+                "LLM dispatch v2 batch enqueue requires a CAS-capable storage backend"
+            )
+
+        self._reset_daily_ingest_state_if_new_day()
+
+        out: list[JobResult | JobHandle | None] = [None] * len(jobs)
+        uncached_indices: list[int] = []
+        for i, job in enumerate(jobs):
+            cached = look_up_deferred(self.storage, job.recipe_hash)
+            if isinstance(cached, JobResult):
+                out[i] = cached
+            else:
+                uncached_indices.append(i)
+
+        if not uncached_indices:
+            return [cast("JobResult | JobHandle", r) for r in out]
+
+        if self._daily_ingest_exhausted or (
+            self.config.daily_ingest_cap is not None
+            and self._daily_ingest_admitted >= self.config.daily_ingest_cap
+        ):
+            for idx in uncached_indices:
+                job = jobs[idx]
+                policy = (
+                    job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+                ) or getattr(job, "policy", None)
+                out[idx] = JobHandle(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    backend="llm-dispatch-v2",
+                    ref=f"deferred-daily-cap-{job.recipe_hash}",
+                    deferred_request=DeferredLLMRequest(
+                        messages=tuple(_messages(job)),
+                        policy=policy or LLMRequestPolicy(),
+                        output_token_budget=self._output_token_budget(job),
+                    ),
+                )
+            return [cast("JobResult | JobHandle", r) for r in out]
+
+        if not self.config.dispatch_v2_url:
+            for idx in uncached_indices:
+                job = jobs[idx]
+                out[idx] = self.run_inference(job)
+            return [cast("JobResult | JobHandle", r) for r in out]
+
+        prepared_jobs: list[dict[str, Any]] = []
+        job_meta: list[tuple[int, InferenceJob, str | None, str, str]] = []
+        storage = self._storage_client()
+
+        for idx in uncached_indices:
+            job = jobs[idx]
+            policy = (
+                job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+            ) or getattr(job, "policy", None)
+            structured = self._response_model(job)
+            structured_name, model = structured if structured else (None, None)
+            allowed = (policy.allowed_models if policy and policy.allowed_models else None) or (
+                self.config.model,
+            )
+            logical_model = canonical_model(allowed[0])
+            job_id = str(uuid.uuid4())
+            payload_key = f"payloads/{job_id}/request.json"
+
+            payload = self._payload(
+                job,
+                model,
+                resolved_model=logical_model,
+                policy=policy,
+                output_token_budget=self._output_token_budget(job),
+            )
+            canonical_payload_str = json.dumps(payload, sort_keys=True)
+            request_digest = hashlib.sha256(canonical_payload_str.encode("utf-8")).hexdigest()
+            idempotency_key = f"{job.recipe_hash}:durable-queue-v2" if job.recipe_hash else job_id
+
+            if storage is not None:
+                # Unconditional PUT (no if_none_match/if_match): job_id is a fresh UUID for
+                # every call, so there is no concurrent-writer race to guard against here.
+                storage.put_cas(
+                    payload_key,
+                    canonical_payload_str.encode("utf-8"),
+                    "application/json",
+                )
+
+            messages = _messages(job)
+            in_tokens = estimate_tokens(messages)
+            out_tokens = self._output_token_budget(job)
+            priority = policy.priority if policy else 1
+
+            prepared_jobs.append(
+                {
+                    "id": job_id,
+                    "idempotency_key": idempotency_key,
+                    "request_digest": request_digest,
+                    "prompt_family": job.task,
+                    "input_token_estimate": in_tokens,
+                    "max_output_token_estimate": out_tokens,
+                    "payload_key": payload_key,
+                    "priority": priority,
+                    "policy_json": json.dumps(
+                        {
+                            "allowed_models": allowed,
+                            "allow_paid": (
+                                getattr(policy, "allow_paid", False) if policy else False
+                            ),
+                        }
+                    ),
+                }
+            )
+            job_meta.append((idx, job, structured_name, logical_model, job_id))
+
+        headers = {"content-type": "application/json"}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:enqueue-batch")
+        try:
+            response = self._session.post(
+                url,
+                json={"jobs": prepared_jobs},
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 enqueue-batch request failed") from exc
+
+        if response.status_code == 429:
+            self._mark_daily_ingest_exhausted()
+            for idx, job, _sname, _lmodel, _jid in job_meta:
+                policy = (
+                    job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+                ) or getattr(job, "policy", None)
+                out[idx] = JobHandle(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    backend="llm-dispatch-v2",
+                    ref=f"deferred-429-{job.recipe_hash}",
+                    deferred_request=DeferredLLMRequest(
+                        messages=tuple(_messages(job)),
+                        policy=policy or LLMRequestPolicy(),
+                        output_token_budget=self._output_token_budget(job),
+                    ),
+                )
+            return [cast("JobResult | JobHandle", r) for r in out]
+
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 enqueue-batch returned HTTP {response.status_code}: "
+                f"{response.text}"
+            )
+
+        data = response.json()
+        # The coordinator echoes back each entry's `submitted_id` (this client's own job_id)
+        # rather than requiring the caller to match on `id` -- on an idempotent replay, `id` is
+        # the ORIGINAL row's canonical id, which differs from the fresh job_id a retry always
+        # generates locally (coordinator.js's enqueueBatch). Matching on submitted_id (which is
+        # always present and always equal to what this call sent) makes acceptance detection
+        # correct for both a fresh insert and a replay; the canonical `id` becomes this job's
+        # JobHandle ref so later poll_batch calls resolve it.
+        accepted_by_submitted_id = {
+            a["submitted_id"]: a["id"]
+            for a in data.get("accepted", [])
+            if isinstance(a, dict) and "submitted_id" in a
+        }
+        rejected_by_id = {
+            r["id"]: r.get("reason") for r in data.get("rejected", []) if isinstance(r, dict)
+        }
+
+        for idx, job, structured_name, logical_model, job_id in job_meta:
+            if job_id in accepted_by_submitted_id:
+                canonical_id = accepted_by_submitted_id[job_id]
+                self._daily_ingest_admitted += 1
+                handle = JobHandle(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    backend="llm-dispatch-v2",
+                    ref=canonical_id,
+                    structured_output=structured_name,
+                    model=logical_model,
+                )
+                write_deferred(storage, job.recipe_hash, handle)
+                out[idx] = handle
+            else:
+                reason = rejected_by_id.get(job_id, "unknown")
+                if reason == "daily_cap_exceeded":
+                    self._mark_daily_ingest_exhausted()
+                    policy = (
+                        job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+                    ) or getattr(job, "policy", None)
+                    out[idx] = JobHandle(
+                        task=job.task,
+                        recipe_hash=job.recipe_hash,
+                        backend="llm-dispatch-v2",
+                        ref=f"deferred-cap-{job.recipe_hash}",
+                        deferred_request=DeferredLLMRequest(
+                            messages=tuple(_messages(job)),
+                            policy=policy or LLMRequestPolicy(),
+                            output_token_budget=self._output_token_budget(job),
+                        ),
+                    )
+                elif reason == "idempotency_conflict":
+                    raise LLMBackendError(f"LLM dispatch v2 idempotency conflict for job {job_id}")
+                else:
+                    raise LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
+
+        return [cast("JobResult | JobHandle", r) for r in out]
+
+    def poll_batch(self, handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+        """Poll multiple v2 handles in a single request and fetch completed results directly
+        from B2."""
+        v2_handles = [h for h in handles if h.backend == "llm-dispatch-v2"]
+        if not v2_handles:
+            return {}
+        if not self.config.dispatch_v2_url:
+            return {h.ref: None for h in v2_handles}
+
+        # The ingress Worker caps both enqueue and poll payloads. Callers such as
+        # the daily deferred sweep deliberately hand us their whole pending registry, so enforce
+        # that transport limit here rather than depending on every caller to remember it.
+        results: dict[str, JobResult | None] = {}
+        for start in range(0, len(v2_handles), _WORKER_BATCH_LIMIT):
+            results.update(self._poll_batch_chunk(v2_handles[start : start + _WORKER_BATCH_LIMIT]))
+        return results
+
+    def _poll_batch_chunk(self, v2_handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+        """Poll one Worker-sized v2 status batch.
+
+        Kept separate from :meth:`poll_batch` so terminal-error behavior remains exactly the
+        existing per-Worker-call contract: a bad terminal item makes its own chunk fall back to
+        individual reconciliation in the deferred sweep, without ever sending an oversized POST.
+        """
+
+        ids = [h.ref for h in v2_handles]
+        headers = {"content-type": "application/json"}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:poll-batch")
+        try:
+            response = self._session.post(
+                url,
+                json={"ids": ids},
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 poll-batch request failed") from exc
+
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 poll-batch returned HTTP {response.status_code}: {response.text}"
+            )
+
+        data = response.json()
+        statuses = {s["id"]: s for s in data.get("statuses", []) if isinstance(s, dict)}
+        results: dict[str, JobResult | None] = {}
+        storage = self._storage_client()
+        # A terminal condition (provider failure, an unreadable/empty result, or a structured
+        # response that fails validation) must not silently discard every OTHER handle's
+        # already-resolved outcome in this same batch call -- collect the exceptions and raise
+        # once at the end instead of mid-loop. The caller (see scripts/llm_deferred_sweep.py)
+        # treats a raised poll_batch call as "nothing in this batch was resolved," and falls back
+        # to resolving each handle individually via reconcile(), which calls poll_batch again for
+        # just that one handle -- at which point (the len(v2_handles) == 1 branch below) the
+        # original, precise exception (e.g. LLMStructuredOutputError, for the sweep's
+        # schema-correction retry to catch) is re-raised as-is rather than a generic summary.
+        terminal_errors: dict[str, LLMBackendError] = {}
+
+        for h in v2_handles:
+            st = statuses.get(h.ref)
+            if not st:
+                results[h.ref] = None
+                continue
+
+            state = st.get("state")
+            if state == "completed" and st.get("result_key"):
+                result_key = st["result_key"]
+                raw = storage.get_bytes(result_key) if storage is not None else None
+                body = raw[0] if raw else None
+                if not body:
+                    # Never persist an empty/unreadable result as completed: per
+                    # citypods/compute/llm_deferred.py's write_deferred, a completed record is
+                    # terminal and never downgraded back to pending, so caching {} here would be
+                    # permanent. Treat it as still pending; a later poll (once B2
+                    # read-after-write consistency catches up) can resolve it correctly.
+                    results[h.ref] = None
+                    continue
+                try:
+                    output = json.loads(body.decode("utf-8"))
+                    res = self._completed_dispatch_result(
+                        task=h.task,
+                        recipe_hash=h.recipe_hash,
+                        output=output,
+                        structured_output=h.structured_output,
+                        model=h.model,
+                    )
+                except LLMBackendError as exc:
+                    terminal_errors[h.ref] = exc
+                    continue
+                write_deferred(storage, h.recipe_hash, res)
+                results[h.ref] = res
+            elif state == "failed":
+                terminal_errors[h.ref] = LLMDispatchTerminalError(
+                    f"LLM dispatch v2 job {h.ref} failed permanently: {st.get('error')}"
+                )
+            else:
+                results[h.ref] = None
+
+        if terminal_errors:
+            if len(v2_handles) == 1:
+                raise next(iter(terminal_errors.values()))
+            raise LLMDispatchTerminalError(
+                "LLM dispatch v2 batch contained failed or invalid job(s), falling back to "
+                f"individual resolution: {', '.join(terminal_errors)}"
+            )
+
+        return results
+
     def _settle_dispatched_reservation(self, handle: JobHandle, output: Mapping[str, Any]) -> None:
         """Settle a Worker-owned reservation from its terminal raw response.
 
@@ -1784,7 +2214,183 @@ class LiteLLMBackend(Backend):
     poll = reconcile
 
 
+class BatchingDispatchBackend:
+    """Run-scoped collector for independent v2 queue-only jobs.
+
+    Callers that already process their inputs concurrently can use this adapter without changing
+    their per-item finalize path: a new queue-only job receives an ordinary pending ``JobHandle``
+    immediately, while :meth:`flush` later submits all collected jobs through the v2 bulk API.
+    Completed or already-pending deferred records still pass through the wrapped backend unchanged,
+    so a retry can finalize cached work in the same run as before.
+
+    This is deliberately a narrow adapter rather than a new transport.  It only collects jobs that
+    are both ``queue_only`` and configured for v2; direct calls, v1 calls, and every non-policy
+    task retain their existing timing and error behavior.
+    """
+
+    def __init__(self, backend: LiteLLMBackend):
+        self._backend = backend
+        self._queued: dict[str, tuple[InferenceJob, JobHandle]] = {}
+        self._lock = threading.Lock()
+
+    @property
+    def name(self) -> str:
+        return self._backend.name
+
+    @property
+    def config(self) -> LLMBackendConfig:
+        return self._backend.config
+
+    @property
+    def storage(self):
+        return self._backend.storage
+
+    @property
+    def queued_count(self) -> int:
+        with self._lock:
+            return len(self._queued)
+
+    def _can_batch(self, job: InferenceJob) -> bool:
+        policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+        return bool(
+            isinstance(policy, LLMRequestPolicy)
+            and policy.queue_only
+            and self._backend.config.dispatch_v2_url
+            and self._backend.storage is not None
+            and getattr(self._backend.storage, "cas_capable", False)
+            and job.recipe_hash
+        )
+
+    def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
+        if not self._can_batch(job):
+            return self._backend.run_inference(job)
+
+        existing = look_up_deferred(self._backend.storage, job.recipe_hash)
+        if existing is not None:
+            return existing
+        if not terminal_failure_retry_allowed(self._backend.storage, job.recipe_hash):
+            # Preserve the wrapped backend's specific terminal-failure error message.
+            return self._backend.run_inference(job)
+
+        with self._lock:
+            queued = self._queued.get(job.recipe_hash)
+            if queued is not None:
+                return queued[1]
+            handle = JobHandle(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                backend="llm-dispatch-v2",
+                ref=f"batch-pending:{job.recipe_hash}",
+                model=canonical_model(self._backend.config.model),
+            )
+            self._queued[job.recipe_hash] = (job, handle)
+            return handle
+
+    def enqueue_batch(self, jobs: Sequence[InferenceJob]) -> list[JobResult | JobHandle]:
+        """Collect a stage's existing ``dispatch_job_batch`` inputs without submitting yet."""
+        return [self.run_inference(job) for job in jobs]
+
+    def poll_batch(self, handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+        """Keep newly collected handles provisional until the run-level :meth:`flush`.
+
+        ``dispatch_job_batch`` calls this after ``enqueue_batch`` as its normal immediate
+        reconcile pass.  Returning no resolutions here leaves a provisional handle in the stage;
+        the runner replays that episode after flush against the wrapped backend's durable record.
+        """
+        return {}
+
+    def flush(self) -> list[BatchDispatchOutcome]:
+        """Submit every collected job in bounded enqueue/poll batches.
+
+        The collector is emptied before network I/O.  A failed bulk request therefore follows
+        ``dispatch_job_batch``'s existing per-job fallback, while jobs added after a flush starts
+        remain queued for a subsequent flush instead of being accidentally discarded.
+        """
+        with self._lock:
+            jobs = [job for job, _handle in self._queued.values()]
+            self._queued.clear()
+        results = dispatch_job_batch(self._backend, jobs)
+        return [
+            BatchDispatchOutcome(job=job, result=result)
+            for job, result in zip(jobs, results, strict=True)
+        ]
+
+
+@dataclass(frozen=True)
+class BatchDispatchOutcome:
+    """One run-batched submission result paired with its original inference job."""
+
+    job: InferenceJob
+    result: JobResult | JobHandle | Exception
+
+
+def dispatch_job_batch(
+    backend: LiteLLMBackend, jobs: Sequence[InferenceJob]
+) -> list[JobResult | JobHandle | Exception]:
+    """Submit a whole run's jobs in one `enqueue_batch` call, then give any v2-backed pending
+    handle one immediate reconcile pass via a single batched `poll_batch` call, instead of a
+    caller submitting (and separately reconciling) one job at a time in a loop.
+
+    Shared by every caller that used to build N `InferenceJob`s and call `run_inference` on each
+    one individually -- `citypods/stages.py`'s chapter-agenda/chapter-locator stages and
+    `citypods/tournament.py`'s pairwise-judge comparisons, as of 2026-08-18. See review/44's
+    2026-08-18 incident retrospective: the dispatch v2 protocol/DO/`enqueue_batch`/`poll_batch`
+    were always batch-capable end to end, but no caller ever actually accumulated more than one
+    job per call before this -- every one submitted and reconciled a single job per iteration of
+    its own loop, which is exactly the per-job Worker-request volume that incident flagged as the
+    thing worth fixing next.
+
+    `enqueue_batch(jobs)` is a strict, behavior-preserving generalization of calling
+    `run_inference` once per job for a `queue_only=True` policy: both check `look_up_deferred`/
+    write the resulting handle back per job, and both fall through the same
+    `_enqueue_durable_policy_job` dispatch path -- `enqueue_batch` just does it for N jobs in one
+    SQLite transaction and one Worker request instead of N of each. `poll_batch` already filters
+    to `backend == "llm-dispatch-v2"` handles internally, so passing it every pending handle
+    (v1-backed ones included) is exactly as safe as an explicit per-handle backend check would be
+    -- see `citypods/stages.py`'s prior 2026-08-18 fix for that exact guard, now subsumed here.
+
+    Returns one entry per input job, in the same order, each either a `JobResult`, a `JobHandle`
+    still pending, or an `Exception` if that specific job's own submission failed (the caller is
+    expected to check for this and attribute it to that job, same as it would a `run_inference`
+    raise in the old per-job code).
+    """
+    if not jobs:
+        return []
+
+    results: list[JobResult | JobHandle | Exception] = []
+    for chunk_start in range(0, len(jobs), _WORKER_BATCH_LIMIT):
+        chunk = jobs[chunk_start : chunk_start + _WORKER_BATCH_LIMIT]
+        try:
+            results.extend(backend.enqueue_batch(chunk))
+        except Exception:  # noqa: BLE001 -- enqueue_batch raises for the WHOLE call on a single
+            # job's rejection (e.g. idempotency_conflict), which would otherwise cost every other
+            # job in this batch its own already-correct submission. Retry one job at a time so a
+            # single bad job costs only itself, matching the old per-job code's isolation.
+            for job in chunk:
+                try:
+                    results.append(backend.enqueue_batch([job])[0])
+                except Exception as job_exc:  # noqa: BLE001 -- isolate this one job's failure
+                    results.append(job_exc)
+
+    pending_handles = [r for r in results if isinstance(r, JobHandle)]
+    if not pending_handles:
+        return results
+    try:
+        polled = backend.poll_batch(pending_handles)
+    except Exception:  # noqa: BLE001 -- a poll_batch failure (e.g. a terminal error surfacing
+        # for one unrelated handle in this same batch) must not discard every other handle's
+        # already-accepted state -- leave pending handles pending; the deferred sweep resolves
+        # them on its own cadence either way.
+        return results
+    return [
+        polled[r.ref] if isinstance(r, JobHandle) and polled.get(r.ref) is not None else r
+        for r in results
+    ]
+
+
 __all__ = [
+    "BatchDispatchOutcome",
+    "BatchingDispatchBackend",
     "LLMBackendConfig",
     "LLMBackendError",
     "LLMDispatchTerminalError",
@@ -1794,4 +2400,5 @@ __all__ = [
     "SUPPORTED_MODELS",
     "TASK_PROMPTS",
     "TASK_VERSIONS",
+    "dispatch_job_batch",
 ]

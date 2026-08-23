@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from citypods import run
+from citypods.compute.base import InferenceJob, JobHandle
+from citypods.compute.llm import BatchDispatchOutcome, LLMBackendError
 from citypods.models import AgendaRecord, CalendarIndex, City, Episode
 from citypods.providers import get_provider, register
 from citypods.providers.base import ProviderError
@@ -144,6 +146,71 @@ def test_build_closes_compute_backend_when_impl_raises(monkeypatch):
     with pytest.raises(RuntimeError, match="boom"):
         run.build()
     assert backend.closed is True
+
+
+def test_chapter_batch_replay_uses_real_outcomes_and_records_submission_errors():
+    agenda = _ep("agenda")
+    agenda.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "agenda-recipe",
+        "job_ref": "batch-pending:agenda-recipe",
+    }
+    failed = _ep("failed")
+    failed.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "failed-recipe",
+        "job_ref": "batch-pending:failed-recipe",
+    }
+    outcomes = [
+        BatchDispatchOutcome(
+            job=InferenceJob(task="agenda-item-extract", recipe_hash="agenda-recipe"),
+            result=JobHandle(
+                task="agenda-item-extract",
+                recipe_hash="agenda-recipe",
+                backend="llm-dispatch-v2",
+                ref="real-agenda-job",
+            ),
+        ),
+        BatchDispatchOutcome(
+            job=InferenceJob(task="agenda-item-extract", recipe_hash="failed-recipe"),
+            result=RuntimeError("ingress unavailable"),
+        ),
+    ]
+
+    replay, errors = run._chapter_batch_replay_items(
+        [("source", agenda), ("source", failed)], "chapter_agenda", outcomes
+    )
+
+    assert replay == [("source", agenda)]
+    assert errors == ["uid-failed: agenda chapter extraction: ingress unavailable"]
+    assert failed.generated_agenda_candidates["status"] == "error"
+    assert failed.generated_agenda_candidates["error"].endswith("ingress unavailable")
+    assert "job_ref" not in failed.generated_agenda_candidates
+
+
+def test_chapter_batch_replay_records_locator_submission_errors():
+    failed = _ep("locator-failed")
+    failed.generated_agenda_candidates = {
+        "locator_status": "pending",
+        "locator_recipe": "locator-recipe",
+        "locator_job_ref": "batch-pending:locator-recipe",
+    }
+    outcomes = [
+        BatchDispatchOutcome(
+            job=InferenceJob(task="agenda-chapter-locate", recipe_hash="locator-recipe"),
+            result=RuntimeError("ingress unavailable"),
+        )
+    ]
+
+    replay, errors = run._chapter_batch_replay_items(
+        [("source", failed)], "chapter_locator", outcomes
+    )
+
+    assert replay == []
+    assert errors == ["uid-locator-failed: chapter locator: ingress unavailable"]
+    assert failed.generated_agenda_candidates["locator_status"] == "error"
+    assert failed.generated_agenda_candidates["locator_error"].endswith("ingress unavailable")
+    assert "locator_job_ref" not in failed.generated_agenda_candidates
 
 
 def test_chapter_build_claims_and_releases_maintenance_lease(monkeypatch, tmp_path):
@@ -1373,6 +1440,81 @@ def test_global_queue_persists_after_audio_pass_and_again_after_transcript(tmp_p
     assert events == ["audio:uid-e1", "persist", "transcript:uid-e1", "persist"]
 
 
+def test_global_queue_serializes_r7_private_ledger_stages(monkeypatch):
+    """R7 ledger work follows every per-episode transcript stage and checkpoints per source."""
+    city = City(
+        slug="c",
+        provider="granicus",
+        source={"feed_url": "https://x.granicus.com/f"},
+        podcast_title="C",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    episodes = [_ep("e1"), _ep("e2")]
+    for episode in episodes:
+        episode.hosted_audio_url = f"https://cdn/{episode.uid}.m4a"
+    events: list[str] = []
+
+    class _Stage:
+        def __init__(self, name):
+            self.name = name
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane=None
+            )
+            self.stages = [
+                _Stage("transcript"),
+                _Stage("native_diarize"),
+                _Stage("speaker_identity"),
+            ]
+
+        def fetch_merge(self, _city, _key):
+            return object(), episodes, {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            events.append("persist")
+
+    def _run_stages(_provider, _city, batch, stages, _ctx, *, quiet):
+        stage_names = ",".join(stage.name for stage in stages)
+        episode_uids = ",".join(ep.uid for ep in batch)
+        events.append(f"{stage_names}:{episode_uids}")
+        return [StageStats(stage.name, ran=len(batch)) for stage in stages]
+
+    clock = {"now": 0.0}
+
+    def _with_elapsed_ledger_run(*args, **kwargs):
+        result = _run_stages(*args, **kwargs)
+        if args[3][0].name == "native_diarize":
+            clock["now"] = 181.0
+        return result
+
+    monkeypatch.setattr(run, "run_stages", _with_elapsed_ledger_run)
+    monkeypatch.setattr(run.time, "monotonic", lambda: clock["now"])
+    run._run_enrich_global_queue(
+        _Pipeline(),
+        [city],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+        mid_run_checkpoint=lambda: events.append("checkpoint"),
+    )
+    assert events == [
+        "transcript:uid-e1",
+        "transcript:uid-e2",
+        "native_diarize,speaker_identity:uid-e1,uid-e2",
+        "persist",
+        "checkpoint",
+        "persist",
+    ]
+
+
 def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass(
     tmp_path, monkeypatch
 ):
@@ -2386,6 +2528,7 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
             "generated_agenda_candidates",
             "generated_chapters",
             "generated_chapters_spec_hash",
+            "moments",
         }
     )
     # transcribe plans per-episode → push receives a per-source owned-uid map, not None (§3.2).
@@ -2732,3 +2875,54 @@ def test_tag_lane_pre_filters_candidate_episodes(tmp_path, monkeypatch):
     assert len(results) == 1
     # Only ep_dirty should have entered the global candidate queue and been processed!
     assert tag_stage.processed == [ep_dirty]
+
+
+def test_tag_batch_submission_failure_replaces_provisional_defer_with_error():
+    """A rejected batched tag job must not be persisted as a pending worker handle."""
+    from citypods.run import _record_tag_batch_submission_failures
+
+    ep = _ep("batch-failure")
+    ep.tags_llm_call_attempts = [
+        {
+            "purpose": "topic-tags:tagger",
+            "recipe_hash": "parent-recipe",
+            "job_recipe_hashes": ["parent-recipe-tag-batch-0"],
+            "status": "deferred",
+            "reason": "",
+        },
+        {
+            "purpose": "topic-tags:prelabeler",
+            "recipe_hash": "prelabeler-recipe",
+            "job_recipe_hashes": ["prelabeler-recipe-tag-batch-0"],
+            "status": "deferred",
+            "reason": "",
+        },
+    ]
+    failures = [
+        BatchDispatchOutcome(
+            job=InferenceJob(task="tag", recipe_hash="parent-recipe-tag-batch-0"),
+            result=LLMBackendError("idempotency conflict"),
+        ),
+        BatchDispatchOutcome(
+            job=InferenceJob(task="tag", recipe_hash="prelabeler-recipe-tag-batch-0"),
+            result=LLMBackendError("ingress unavailable"),
+        ),
+    ]
+
+    assert (
+        _record_tag_batch_submission_failures(
+            {"source": {"episodes": [ep], "persist_episodes": [ep]}}, failures
+        )
+        == 2
+    )
+    tagger, prelabeler = ep.tags_llm_call_attempts
+    assert tagger["status"] == "error"
+    assert tagger["reason"] == "batch submission failed: idempotency conflict"
+    assert tagger["batch_submission_errors"] == [
+        {"recipe_hash": "parent-recipe-tag-batch-0", "reason": "idempotency conflict"}
+    ]
+    assert prelabeler["status"] == "error"
+    assert prelabeler["reason"] == "batch submission failed: ingress unavailable"
+    assert prelabeler["batch_submission_errors"] == [
+        {"recipe_hash": "prelabeler-recipe-tag-batch-0", "reason": "ingress unavailable"}
+    ]

@@ -115,10 +115,14 @@ multidict==6.7.1
     # via
     #   aiohttp
     #   yarl
+numpy==2.5.2
+    # via opencv-python-headless
 openai==2.45.0
     # via
     #   instructor
     #   litellm
+opencv-python-headless==5.0.0.93
+    # via citypods (pyproject.toml)
 packaging==26.2
     # via huggingface-hub
 pillow==12.3.0

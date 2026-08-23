@@ -61,16 +61,44 @@ def _ctx(storage: LocalStorage | None = None, *, dry_run: bool = False, stop=Non
 
 
 class FakeBackend:
-    def __init__(self, outcome: JobHandle | JobResult | None = None):
+    """Mimics LiteLLMBackend's enqueue_batch/poll_batch contract (see
+    `citypods.compute.llm.dispatch_job_batch`), not the older per-job run_inference/reconcile one
+    it replaced.
+
+    enqueue_batch returns one outcome per submitted job: either the constructor's single
+    ``outcome`` applied uniformly (every current test submits at most one job per stage.process
+    call, except the batching test below), or ``outcomes`` for a distinct result per job in
+    submission order. poll_batch resolves only handles present in ``poll_results`` (a dict keyed
+    by handle ref); anything else comes back unresolved -- matching either a v1-backed handle the
+    real poll_batch would have filtered out internally, or a v2 handle genuinely still pending.
+    """
+
+    def __init__(
+        self,
+        outcome: JobHandle | JobResult | None = None,
+        *,
+        outcomes: list | None = None,
+        poll_results: dict | None = None,
+    ):
         self.outcome = outcome
-        self.submitted_jobs: list = []
+        self._outcomes = outcomes
+        self.enqueue_calls: list[list] = []  # one entry per enqueue_batch call
+        self.submitted_jobs: list = []  # flattened across every enqueue_batch call
+        self.poll_calls: list[list] = []  # one entry per poll_batch call
+        self._poll_results = poll_results or {}
 
-    def run_inference(self, job):
-        self.submitted_jobs.append(job)
-        return self.outcome
+    def enqueue_batch(self, jobs):
+        jobs = list(jobs)
+        self.enqueue_calls.append(jobs)
+        self.submitted_jobs.extend(jobs)
+        if self._outcomes is not None:
+            return list(self._outcomes)
+        return [self.outcome for _ in jobs]
 
-    def reconcile(self, handle):
-        return handle
+    def poll_batch(self, handles):
+        handles = list(handles)
+        self.poll_calls.append(handles)
+        return {h.ref: self._poll_results[h.ref] for h in handles if h.ref in self._poll_results}
 
 
 def test_stage_skips_on_dry_run_or_missing_storage(tmp_path: Path):
@@ -134,6 +162,120 @@ def test_stage_records_pending_on_job_handle(tmp_path: Path):
     assert ep.generated_agenda_candidates["status"] == "pending"
     assert ep.generated_agenda_candidates["job_ref"] == "job-ref-12345"
     assert ep.generated_agenda_candidates["model"] == "mistral/mistral-medium-2508"
+
+
+def test_stage_does_not_resolve_stale_v1_handle_via_poll(tmp_path: Path):
+    """Regression test for the 2026-08-18 polling-storm incident: a pending JobHandle left over
+    from before LLM_DISPATCH_V2_URL was wired in (backend != "llm-dispatch-v2") must not be
+    treated as resolved by the batched reconcile pass. The real poll_batch (citypods/compute/
+    llm.py) filters to v2-backed handles internally before ever sending a v1 GET request -- this
+    FakeBackend mirrors that by only resolving refs present in poll_results, so a stale handle
+    passed in (as any pending handle now is, batched) simply comes back unresolved, still
+    "llm-pending", with no separate per-handle skip logic needed in the stage itself."""
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-stale-v1")
+    key = ep.links["agenda_text_artifact_key"]
+    _put_storage_bytes(storage, key, b"1. Call to order\n2. Public hearing")
+
+    stale_handle = JobHandle(
+        task="agenda-item-extract",
+        ref="chatcmpl-stale-v1",
+        recipe_hash="recipe-hash-stale-v1",
+        backend="litellm",  # a pre-v2 handle, not "llm-dispatch-v2"
+    )
+    backend = FakeBackend(stale_handle)  # no poll_results entry for this ref -> stays pending
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.defer_reasons.get("llm-pending") == 1
+    assert ep.generated_agenda_candidates["job_ref"] == "chatcmpl-stale-v1"
+
+
+def test_stage_reconciles_fresh_v2_handle(tmp_path: Path):
+    """A handle backed by v2 is still reconciled inline (one batched poll_batch call) -- and if
+    it resolves immediately, the stage finalizes it in the same pass rather than waiting a full
+    extra run."""
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-fresh-v2")
+    key = ep.links["agenda_text_artifact_key"]
+    agenda_text = "1. Call to order"
+    _put_storage_bytes(storage, key, agenda_text.encode("utf-8"))
+
+    v2_handle = JobHandle(
+        task="agenda-item-extract",
+        ref="job-v2-abc",
+        recipe_hash="recipe-hash-v2-abc",
+        backend="llm-dispatch-v2",
+    )
+    model_output = json.dumps(
+        {
+            "items": [
+                {
+                    "display_ref": "1",
+                    "title": "Call to order",
+                    "evidence_quote": "1. Call to order",
+                    "line_start": 1,
+                    "line_end": 1,
+                }
+            ]
+        }
+    )
+    resolved = JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe-hash-v2-abc",
+        output={"choices": [{"message": {"content": model_output}}]},
+    )
+    backend = FakeBackend(v2_handle, poll_results={v2_handle.ref: resolved})
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert len(backend.poll_calls) == 1
+    assert backend.poll_calls[0] == [v2_handle]
+    assert stats.ran == 1
+    assert ep.generated_agenda_candidates["status"] == "completed"
+
+
+def test_stage_batches_multiple_episodes_into_one_enqueue_call(tmp_path: Path):
+    """The actual point of this refactor (see review/44's 2026-08-18 incident retrospective):
+    N episodes in one run must produce exactly one enqueue_batch call carrying all N jobs, not N
+    separate single-job calls -- that per-job dispatch pattern was exactly the Worker-request
+    volume the incident flagged. Uses ``outcomes`` to give each episode a distinct JobHandle so
+    the per-episode result mapping (order preserved through the batch call) is verified too, not
+    just the call count."""
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+
+    episodes = [_make_episode(f"ep-batch-{i}") for i in range(3)]
+    for i, ep in enumerate(episodes):
+        _put_storage_bytes(storage, ep.links["agenda_text_artifact_key"], f"1. Item {i}".encode())
+
+    handles = [
+        JobHandle(
+            task="agenda-item-extract",
+            ref=f"job-ref-{i}",
+            recipe_hash=f"recipe-{i}",
+            backend="llm-dispatch-v2",
+        )
+        for i in range(3)
+    ]
+    backend = FakeBackend(outcomes=handles)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, episodes, ctx)
+
+    assert len(backend.enqueue_calls) == 1  # one call, not three
+    assert len(backend.enqueue_calls[0]) == 3  # carrying all three jobs
+    assert stats.defer_reasons.get("llm-pending") == 3
+    for i, ep in enumerate(episodes):
+        assert ep.generated_agenda_candidates["job_ref"] == f"job-ref-{i}"
 
 
 def test_stage_finalizes_and_writes_artifact_on_job_result(tmp_path: Path):

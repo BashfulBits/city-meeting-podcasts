@@ -54,6 +54,7 @@ def _step_index(job: dict, needle: str) -> int:
         ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)"),
         ("deploy.yml", "build-deploy", "Render feeds"),
         ("tag.yml", "tag", "Produce bounded LLM topic-tag candidates"),
+        ("moments.yml", "moments", "Produce bounded R6 moment candidates and judge assessments"),
         ("audit.yml", "audit", "Run audit"),
         ("contracts.yml", "contracts", "Probe endpoints + reconcile issues"),
         ("availability-digest.yml", "digest", "Build availability digest"),
@@ -160,6 +161,59 @@ def test_workflows_use_node24_cache_actions_without_force_flag():
     # SHA-pinned with a `# v5` readability comment; the bare movable tag must not linger.
     assert "actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5" in workflow_text
     assert "actions/cache@v5" not in workflow_text
+
+
+def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
+    workflow, job = _job("r7-diarization.yml", "diarize")
+    triggers = _on(workflow)
+    assert triggers["schedule"] == [{"cron": "30 */6 * * *"}]
+    assert "workflow_dispatch" in triggers
+    assert workflow["concurrency"] == {
+        "group": "r7-speaker-evaluation-state",
+        "cancel-in-progress": False,
+    }
+    assert workflow["permissions"] == {"contents": "read", "actions": "read"}
+    assert job["timeout-minutes"] == 330
+    preflight = next(
+        step for step in job["steps"] if "preflight_diarization.py" in step.get("run", "")
+    )
+    assert preflight["env"]["HF_TOKEN"] == "${{ secrets.HF_TOKEN }}"
+    assert preflight["env"]["HUGGINGFACE_HUB_TOKEN"] == "${{ secrets.HF_TOKEN }}"
+    diarize = next(step for step in job["steps"] if "--lane diarize" in step.get("run", ""))
+    identity = next(
+        step for step in job["steps"] if "--lane speaker-identity" in step.get("run", "")
+    )
+    assert "--city denton-tx" in diarize["run"]
+    assert "--city denton-tx" in identity["run"]
+    for name in (
+        "GRANICUS_PROXY_BASE_URL",
+        "GRANICUS_PROXY_TOKEN",
+        "SWAGIT_PROXY_BASE_URL",
+        "SWAGIT_PROXY_TOKEN",
+    ):
+        assert identity["env"][name] == f"${{{{ secrets.{name} }}}}"
+    assert _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25") >= 0
+    ffmpeg = next(
+        step for step in job["steps"] if step.get("name") == "Install FFmpeg shared runtime"
+    )
+    assert "apt-get install -y -qq --no-install-recommends ffmpeg" in ffmpeg["run"]
+    assert "ldconfig -p | grep -q 'libavcodec.so'" in ffmpeg["run"]
+    assert job["steps"].index(ffmpeg) < job["steps"].index(preflight)
+
+
+def test_speaker_calibration_review_gate_matches_packaged_titles():
+    workflow, ingest = _job("speaker-calibration-review.yml", "ingest")
+    condition = ingest["if"]
+    assert "R7 speaker shadow sample " in condition
+    assert "R7 chair reference " in condition
+    for role in ("OWNER", "MEMBER", "COLLABORATOR"):
+        assert role in condition
+    assert workflow["permissions"] == {"contents": "read", "issues": "write"}
+    finalize = workflow["jobs"]["finalize"]
+    assert finalize["if"] == (
+        "github.event_name == 'issue_comment' && needs.ingest.result == 'success'"
+    )
+    assert finalize["permissions"] == {"contents": "read", "issues": "write"}
 
 
 def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
@@ -812,11 +866,17 @@ def test_ci_has_a_concurrency_group():
 
 def test_ci_runs_granicus_worker_unit_tests():
     _wf, job = _job("ci.yml", job_name="test")
-    step = next(
-        step for step in job["steps"] if step.get("name") == "Test Granicus Cloudflare Worker"
-    )
-    assert step["working-directory"] == "workers/granicus-media-proxy"
-    assert step["run"] == "npm test"
+    expected_workers = {
+        "Test Granicus Cloudflare Worker": "workers/granicus-media-proxy",
+        "Test Swagit List Proxy Worker": "workers/swagit-list-proxy",
+        "Test LLM Dispatch v1 Worker": "workers/llm-dispatch-proxy",
+        "Test LLM Dispatch v2 Worker": "workers/llm-dispatch-v2",
+        "Test City Request Intake Worker": "workers/city-request-intake",
+    }
+    for step_name, work_dir in expected_workers.items():
+        step = next(step for step in job["steps"] if step.get("name") == step_name)
+        assert step["working-directory"] == work_dir
+        assert step["run"] == "npm test"
 
 
 def test_swagit_worker_credentials_reach_provider_fetch_lanes():
@@ -1145,6 +1205,27 @@ def test_chapter_workflows_use_alternating_two_hour_schedules():
 
     assert _on(agenda)["schedule"] == [{"cron": "0 */2 * * *"}]
     assert _on(locator)["schedule"] == [{"cron": "0 1-23/2 * * *"}]
+
+
+def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
+    wf, job = _job("moments.yml", job_name="moments")
+    step = next(
+        item
+        for item in job["steps"]
+        if item.get("name") == "Produce bounded R6 moment candidates and judge assessments"
+    )
+
+    assert _on(wf)["schedule"] == [{"cron": "45 19 * * *"}]
+    assert wf["permissions"] == {"contents": "read", "actions": "read"}
+    assert wf["concurrency"] == {
+        "group": "r7-speaker-evaluation-state",
+        "cancel-in-progress": False,
+    }
+    assert job["timeout-minutes"] == 180
+    assert "python -m citypods.cli enrich --lane moments" in step["run"]
+    assert "video" in next(item for item in job["steps"] if item.get("name") == "Install")["run"]
+    for name in ("LLM_DISPATCH_V2_URL", "LLM_DISPATCH_V2_AUTH_TOKEN", "B2_ENDPOINT"):
+        assert step["env"][name] == f"${{{{ secrets.{name} }}}}"
 
 
 def test_duration_normalize_workflow_is_manual_bounded_and_archived():

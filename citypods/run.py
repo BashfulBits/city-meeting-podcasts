@@ -136,16 +136,22 @@ from citypods.site import (
     render_redirect_feed,
     render_redirect_page,
     render_search_page,
+    render_speaker_page,
+    speaker_page_rows,
 )
+from citypods.speakers import valid_speaker_id
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
     LANE_STAGES,
     AgendaChapterCandidatesStage,
     ChapterBoundaryLocatorStage,
     StageContext,
+    StageStats,
     _materialize_set,
     default_stages,
     enrich_stages,
+    r6_stages,
+    r7_stages,
     render_stages,
     run_stages,
     stage_is_dirty,
@@ -356,7 +362,7 @@ class SourcePipeline:
             if ep.integrity:
                 result.append((uid, "repair_requested"))
             for stage in stages:
-                if stage_is_dirty(stage, ep, city):
+                if stage_is_dirty(stage, ep, city, speaker_config=self.ctx.speaker_config):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result
 
@@ -1093,6 +1099,23 @@ def _process_city(
             )
             new_entry["meeting_pages"] = rendered_page_cache
             meeting_outputs_changed = rendered_page_cache != page_cache
+            speaker_rows = speaker_page_rows(city, retained_eps, base_url)
+            speakers_dir = city_dir / "speakers"
+            wanted_speakers = {
+                speaker_id for speaker_id in speaker_rows if valid_speaker_id(speaker_id)
+            }
+            for speaker_id, person in speaker_rows.items():
+                if not valid_speaker_id(speaker_id):
+                    continue
+                target = speakers_dir / speaker_id
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "index.html").write_text(render_speaker_page(city, person, base_url))
+            if speakers_dir.exists():
+                for child in speakers_dir.iterdir():
+                    if child.is_dir() and child.name not in wanted_speakers:
+                        import shutil
+
+                        shutil.rmtree(child)
             archive_hash = _city_archive_hash(city, retained_eps, calendar_records, base_url)
             new_entry["archive_hash"] = archive_hash
             if cache_entry is None or cache_entry.get("archive_hash") != archive_hash:
@@ -1570,7 +1593,7 @@ def _run_enrich_global_queue(
     ]
     # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
     # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
-    post_transcript = {"transcript", "diarize", "tags"}
+    post_transcript = {"transcript", "diarize", "native_diarize", "speaker_identity", "tags"}
     audio_stages = [
         s
         for s in pipeline.stages
@@ -1582,6 +1605,15 @@ def _run_enrich_global_queue(
         for s in pipeline.stages
         if s.name in post_transcript and (allowed is None or s.name in allowed)
     ]
+    # R7 owns three append-only private ledgers (turn evidence, registry, and review evaluation).
+    # The normal transcript pass deliberately invokes one stage chain per episode concurrently;
+    # running either R7 stage there would let simultaneous load/replace writes lose a sibling's
+    # evidence.  Keep their expensive/model work scoped to the selected city/source set, but run
+    # the two ledger writers once after every per-episode transcript stage has completed.
+    r7_ledger_stages = [
+        stage for stage in transcript_stages if stage.name in {"native_diarize", "speaker_identity"}
+    ]
+    transcript_stages = [stage for stage in transcript_stages if stage not in r7_ledger_stages]
 
     # 1) Prepare every unique source (board feeds share a source_key → dedup so episodes don't
     #    double-count). ProviderError is captured per source and surfaces as that city's result.
@@ -1774,7 +1806,7 @@ def _run_enrich_global_queue(
         flush=True,
     )
 
-    def _run_for(item: tuple[str, Episode], stages):
+    def _run_for(item: tuple[str, Episode], stages, *, accumulate: bool = True):
         key, ep = item
         st = prepared[key]
         try:
@@ -1789,7 +1821,8 @@ def _run_enrich_global_queue(
             stats = run_stages(
                 st["provider"], st["city"], [ep], stages, ctx, quiet=ctx.lane != "tag"
             )
-            pipeline.accumulate_stats(stats)
+            if accumulate:
+                pipeline.accumulate_stats(stats)
             return stats
         except Exception as exc:  # noqa: BLE001 — one bad episode must not abort the pass
             print(f"[enrich] global queue item failed source={key} uid={ep.uid}: {exc}", flush=True)
@@ -1839,13 +1872,13 @@ def _run_enrich_global_queue(
 
     # The audio pass gets a free mid-run persist boundary (it always finishes before the
     # decoupled transcript pass even starts -- the `_persist_all()` call right above this
-    # function). A lane whose ONLY pass is the transcript/tags one (`tag`, `diarize`) has no such
-    # boundary: without this, a mid-run kill during a long transcript/tags-only pass loses every
-    # completed item back to whatever the previous run last persisted, not just the in-flight
+    # function). A lane whose only pass is transcript/tags-shaped (`tag`, `diarize`, or
+    # `speaker-identity`) has no such boundary. A mid-run kill during a long pass loses completed
+    # items back to whatever the previous run last persisted, not just the in-flight
     # ones -- exactly what happened to a scheduled `tag` run that was hard-cancelled by GitHub's
     # job timeout with nothing durably written despite processing real LLM candidates.
     # ``mid_run_checkpoint`` (local `_persist_all()` here, then the caller's durable remote push)
-    # is opt-in per call site -- `None` for every lane except `tag` today -- and runs from
+    # is opt-in per call site -- `None` for every other lane -- and runs from
     # `_run_bounded`'s own calling thread between drain cycles, never concurrently with itself.
     _CHECKPOINT_INTERVAL_SECONDS = 180.0
     _last_checkpoint = {"t": time.monotonic()}
@@ -1860,8 +1893,109 @@ def _run_enrich_global_queue(
         _persist_all()
         mid_run_checkpoint()
 
+    # R6's extraction and independent judge stages are invoked one episode/candidate at a time by
+    # the global queue, but each creates an independent queue-only v2 job. Collect those new jobs
+    # across the entire moments lane and submit one bounded ingress batch after the pass. Existing
+    # deferred handles/results still flow through immediately, so their normal next-run finalizers
+    # and calibration state remain unchanged.
+    moment_batcher = None
+    original_moment_backend = ctx.moment_backend
+    if any(stage.name in {"moments", "moment-judge"} for stage in audio_stages):
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
+
+        if (
+            isinstance(ctx.moment_backend, LiteLLMBackend)
+            and ctx.moment_backend.config.dispatch_v2_url
+        ):
+            moment_batcher = BatchingDispatchBackend(ctx.moment_backend)
+            ctx.moment_backend = moment_batcher
+
+    # Tags are normally processed one episode per global-queue worker so their cheap rule work
+    # can keep the existing incremental stop/cap behavior.  The durable LLM submission itself is
+    # independent, though: collect every newly created v2 queue-only job across both tag passes
+    # below, then submit it in the client's bounded bulk call before persistence.  The adapter
+    # returns a normal pending handle to TagsStage, so its existing per-episode finalization and
+    # deferred-record contract remain unchanged.  Only a real LiteLLM v2 backend is wrapped;
+    # tests, local/direct backends, and legacy v1 configuration keep their exact old path.
+    tag_batcher = None
+    original_tag_backend = ctx.tag_backend
+    if any(stage.name == "tags" for stage in transcript_stages):
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
+
+        if isinstance(ctx.tag_backend, LiteLLMBackend) and ctx.tag_backend.config.dispatch_v2_url:
+            tag_batcher = BatchingDispatchBackend(ctx.tag_backend)
+            ctx.tag_backend = tag_batcher
+
+    # Chapter lanes use the same per-episode global queue as audio, but their stages already
+    # know how to build/finalize a durable job independently.  Interpose the same collector used
+    # for tags so their initial per-episode stage calls only prepare jobs; each stage is flushed
+    # once across the run, then replayed against the real deferred records to retain its existing
+    # finalizer and completion-marker behavior.  The chapter lane can contain both stages, so
+    # process agenda before locator rather than collecting their dependent jobs together.
+    chapter_batcher = None
+    original_chapter_backend = getattr(ctx, "chapter_llm_backend", None)
+    chapter_stages = [
+        stage for stage in audio_stages if stage.name in {"chapter_agenda", "chapter_locator"}
+    ]
+    if chapter_stages:
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend, LLMBackendConfig
+
+        if original_chapter_backend is None:
+            chapter_config = LLMBackendConfig.from_env()
+            if chapter_config.dispatch_v2_url:
+                original_chapter_backend = LiteLLMBackend(chapter_config, storage=ctx.storage)
+                ctx.chapter_llm_backend = original_chapter_backend
+        if (
+            isinstance(original_chapter_backend, LiteLLMBackend)
+            and original_chapter_backend.config.dispatch_v2_url
+        ):
+            chapter_batcher = BatchingDispatchBackend(original_chapter_backend)
+            ctx.chapter_llm_backend = chapter_batcher
+
     with source_cache or _nullcontext():
-        if audio_stages:
+        if chapter_batcher is not None:
+            for chapter_stage in chapter_stages:
+                print(
+                    f"[enrich] {chapter_stage.name} batch-prepare pass: {len(candidates)} item(s)",
+                    flush=True,
+                )
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    _run_bounded(
+                        pool,
+                        lambda item, stage=chapter_stage: _run_for(item, [stage], accumulate=False),
+                        candidates,
+                        max_pending=max_workers,
+                    )
+
+                batch_outcomes = chapter_batcher.flush()
+                replay_items, submission_errors = _chapter_batch_replay_items(
+                    candidates, chapter_stage.name, batch_outcomes
+                )
+                failed = len(submission_errors)
+                if submission_errors:
+                    pipeline.accumulate_stats(
+                        [StageStats(chapter_stage.name, errors=submission_errors)]
+                    )
+                print(
+                    f"[enrich] {chapter_stage.name} LLM batch flush: jobs={len(batch_outcomes)} "
+                    f"replay={len(replay_items)} errors={failed}",
+                    flush=True,
+                )
+                # The original backend reads the real handle/result that flush() persisted.  A
+                # replay therefore performs no fresh ingress request, but lets the unchanged
+                # stage replace its provisional batch-pending ref and finalize immediate results.
+                ctx.chapter_llm_backend = original_chapter_backend
+                if replay_items:
+                    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                        _run_bounded(
+                            pool,
+                            lambda item, stage=chapter_stage: _run_for(item, [stage]),
+                            replay_items,
+                            max_pending=max_workers,
+                        )
+                ctx.chapter_llm_backend = chapter_batcher
+            ctx.chapter_llm_backend = original_chapter_backend
+        elif audio_stages:
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 _run_bounded(
@@ -1924,6 +2058,49 @@ def _run_enrich_global_queue(
                         )
                     print("[enrich] tags-only pass done", flush=True)
 
+    if tag_batcher is not None:
+        from citypods.compute.base import JobHandle, JobResult
+
+        batch_outcomes = tag_batcher.flush()
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = _record_tag_batch_submission_failures(prepared, batch_outcomes)
+        print(
+            f"[enrich] tag LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        ctx.tag_backend = original_tag_backend
+
+    if moment_batcher is not None:
+        from citypods.compute.base import JobHandle, JobResult
+
+        batch_outcomes = moment_batcher.flush()
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, Exception))
+        print(
+            f"[enrich] R6 LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        ctx.moment_backend = original_moment_backend
+
+    if r7_ledger_stages:
+        print(f"[enrich] R7 ledger pass: {len(prepared)} source(s) (serialized)", flush=True)
+        for source in prepared.values():
+            stats = run_stages(
+                source["provider"],
+                source["city"],
+                source["retained_episodes"],
+                r7_ledger_stages,
+                ctx,
+                quiet=ctx.lane != "tag",
+            )
+            pipeline.accumulate_stats(stats)
+            _checkpoint_if_due()
+        print("[enrich] R7 ledger pass done", flush=True)
+
     # 4) Persist each prepared source (episodes were mutated in place by the passes). Idempotent
     #    repeat of the post-audio-pass persist above; also captures the transcript-pass mutations.
     _persist_all()
@@ -1953,6 +2130,108 @@ def _run_enrich_global_queue(
             episodes = prepared.get(key, {}).get("episodes", [])
             results.append(CityResult(c.slug, "built", episode_count=len(episodes)))
     return results
+
+
+def _record_tag_batch_submission_failures(prepared: dict[str, dict], outcomes) -> int:
+    """Turn failed bulk submissions from provisional tag deferrals into durable item errors."""
+    failures = [outcome for outcome in outcomes if isinstance(outcome.result, Exception)]
+    if not failures:
+        return 0
+
+    unmatched = {id(outcome): outcome for outcome in failures}
+    seen_episodes: set[int] = set()
+    for state in prepared.values():
+        for episode in [*state["episodes"], *state.get("persist_episodes", [])]:
+            if id(episode) in seen_episodes:
+                continue
+            seen_episodes.add(id(episode))
+            for attempt in reversed(episode.tags_llm_call_attempts):
+                if not isinstance(attempt, dict) or attempt.get("status") != "deferred":
+                    continue
+                recipe_hashes = attempt.get("job_recipe_hashes", [attempt.get("recipe_hash")])
+                if not isinstance(recipe_hashes, list):
+                    recipe_hashes = [attempt.get("recipe_hash")]
+                matching = [
+                    outcome
+                    for outcome in unmatched.values()
+                    if outcome.job.recipe_hash in recipe_hashes
+                ]
+                if not matching:
+                    continue
+                details = [
+                    {
+                        "recipe_hash": outcome.job.recipe_hash,
+                        "reason": str(outcome.result)[:500],
+                    }
+                    for outcome in matching
+                ]
+                attempt["status"] = "error"
+                attempt["reason"] = f"batch submission failed: {details[0]['reason']}"
+                attempt["batch_submission_errors"] = details
+                for outcome in matching:
+                    unmatched.pop(id(outcome), None)
+    unrecorded = len(unmatched)
+    if unrecorded:
+        print(f"[enrich] tag batch failures without a matching episode: {unrecorded}", flush=True)
+    return len(failures)
+
+
+def _chapter_batch_replay_items(
+    candidates: list[tuple[str, Episode]], stage_name: str, outcomes
+) -> tuple[list[tuple[str, Episode]], list[str]]:
+    """Select queued chapter items for post-flush finalization and record failed submissions.
+
+    Chapter stages intentionally keep their artifact-specific prepare/finalize logic.  During the
+    collector pass they see a provisional ``batch-pending:`` handle; after flush we replay only
+    jobs that acquired a real durable result/handle.  A failed batch submission must not leave a
+    misleading provisional ref in the persisted episode, and remains dirty for the next lane run.
+    """
+    failures = {
+        outcome.job.recipe_hash: outcome.result
+        for outcome in outcomes
+        if isinstance(outcome.result, Exception)
+    }
+    replay_recipes = {
+        outcome.job.recipe_hash for outcome in outcomes if not isinstance(outcome.result, Exception)
+    }
+    replay: list[tuple[str, Episode]] = []
+    recorded_failures: set[str] = set()
+    submission_errors: list[str] = []
+
+    for item in candidates:
+        _source_key, episode = item
+        state = dict(episode.generated_agenda_candidates or {})
+        recipe_key = "recipe" if stage_name == "chapter_agenda" else "locator_recipe"
+        recipe = state.get(recipe_key)
+        if not isinstance(recipe, str):
+            continue
+        if recipe in failures:
+            reason = str(failures[recipe])[:500]
+            if stage_name == "chapter_agenda":
+                state.update({"status": "error", "error": f"batch submission failed: {reason}"})
+                state.pop("job_ref", None)
+                submission_errors.append(f"{episode.uid}: agenda chapter extraction: {reason}")
+            else:
+                state.update(
+                    {
+                        "locator_status": "error",
+                        "locator_error": f"batch submission failed: {reason}",
+                    }
+                )
+                state.pop("locator_job_ref", None)
+                submission_errors.append(f"{episode.uid}: chapter locator: {reason}")
+            episode.generated_agenda_candidates = state
+            recorded_failures.add(recipe)
+        elif recipe in replay_recipes:
+            replay.append(item)
+
+    unrecorded = len(failures) - len(recorded_failures)
+    if unrecorded:
+        print(
+            f"[enrich] chapter batch failures without a matching episode: {unrecorded}",
+            flush=True,
+        )
+    return replay, submission_errors
 
 
 def _build_impl(
@@ -2012,6 +2291,9 @@ def _build_impl(
         "transcribe",
         "align",
         "tag",
+        "moments",
+        "diarize",
+        "speaker-identity",
         "chapter-agenda",
         "chapter-locator",
         "chapter",
@@ -2033,11 +2315,21 @@ def _build_impl(
             raise ValueError(f"no feed or city entity with slug {only_slug!r}")
     # H6b source/shard selection (by source_key, so a city's combined + per-board feeds stay
     # together in one shard and one record store). ``scoped`` marks a partial run for statesync.
-    # Scoped lanes (tag, chapter-agenda, chapter-locator, chapter) only own their specific artifact
-    # block, so they must always route through merged persistence even when running without
-    # --source or --shard.
+    # Scoped lanes only own specific artifact blocks, so they must always route through merged
+    # persistence even when running without --source or --shard.
     scoped = bool(
-        source or shard or lane in {"tag", "chapter-agenda", "chapter-locator", "chapter"}
+        source
+        or shard
+        or lane
+        in {
+            "tag",
+            "moments",
+            "diarize",
+            "speaker-identity",
+            "chapter-agenda",
+            "chapter-locator",
+            "chapter",
+        }
     )
     if source:
         cities = [c for c in cities if source_key(c) == source]
@@ -2117,12 +2409,17 @@ def _build_impl(
         site_config, state_dir=state_dir, storage=None if dry_run else storage
     )
     tag_backend = None
+    moment_backend = None
     tagging_config = site_config.get("tagging") or {}
+    moments_config = site_config.get("moments") or {}
+    speakers_config = site_config.get("speakers") or {}
     tag_max_dispatches = int(tagging_config.get("max_dispatches_per_run", 2000))
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
     if tagging_config.get("enabled") and not dry_run and phase != "render":
+        from dataclasses import replace as _dc_replace
+
         from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 
         try:
@@ -2135,13 +2432,24 @@ def _build_impl(
             # llm_tag_suggestions).
             configured_models = [str(m) for m in (tagging_config.get("llm_models") or [])]
             additional_models = tuple(m for m in configured_models if m != primary_model)
+            # Start from LLMBackendConfig.from_env() -- the complete, single source of truth for
+            # every dispatch-relevant environment variable (dispatch_url/dispatch_auth_token,
+            # dispatch_v2_url/dispatch_v2_auth_token, daily_ingest_cap) -- and override only the
+            # fields site_config.yml's tagging block actually owns. This construction used to
+            # hand-roll only dispatch_url/dispatch_auth_token, which meant tags.py's
+            # queue_only=True calls (tagger and prelabeler) always fell through to
+            # _enqueue_durable_policy_job's legacy v1 branch, regardless of LLM_DISPATCH_V2_URL
+            # being set: LLMBackendConfig has no env-reading __post_init__, so an omitted field
+            # is None, not auto-filled. That's why the tag lane kept dispatching straight to
+            # citypods-llm-dispatch-proxy after v2 activation -- see the 2026-08-18 incident
+            # notes in review/44. Building from .from_env() instead of copying its fields by hand
+            # means a future field added there can't silently miss this call site again.
             tag_backend = LiteLLMBackend(
-                LLMBackendConfig(
+                _dc_replace(
+                    LLMBackendConfig.from_env(),
                     model=primary_model,
                     additional_models=additional_models,
                     mode=str(tagging_config.get("llm_mode", "direct")),
-                    dispatch_url=os.environ.get("LLM_DISPATCH_URL"),
-                    dispatch_auth_token=os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
                     timeout_seconds=float(tagging_config.get("timeout_seconds", 30.0)),
                 ),
                 # R13's scheduler/budget ledger needs CAS-capable storage (state/llm_budget.json,
@@ -2158,6 +2466,30 @@ def _build_impl(
             print(
                 f"tagging: LLM backend unavailable ({exc}); rule-based tags only", file=sys.stderr
             )
+    if moments_config.get("enabled") and not dry_run and phase != "render":
+        from dataclasses import replace as _dc_replace
+
+        from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+
+        try:
+            moment_models = [str(model) for model in (moments_config.get("llm_models") or [])]
+            moment_primary = str(moments_config.get("llm_model") or "gemini/gemini-3.6-flash")
+            if moment_primary not in moment_models:
+                moment_models.insert(0, moment_primary)
+            moment_backend = LiteLLMBackend(
+                _dc_replace(
+                    LLMBackendConfig.from_env(),
+                    model=moment_primary,
+                    additional_models=tuple(
+                        model for model in moment_models if model != moment_primary
+                    ),
+                    mode=str(moments_config.get("llm_mode", "dispatch")),
+                    timeout_seconds=float(moments_config.get("timeout_seconds", 90.0)),
+                ),
+                storage=storage,
+            )
+        except ValueError as exc:
+            print(f"moments: LLM backend unavailable ({exc}); moments deferred", file=sys.stderr)
     if _compute_backend_holder is not None:
         _compute_backend_holder.append(compute_backend)
 
@@ -2201,6 +2533,10 @@ def _build_impl(
     # render-only deploy split would otherwise open — review/12 §H6/H11b).
     persist_records = phase != "render"
     stages = {"render": render_stages, "enrich": enrich_stages, "all": default_stages}[phase]()
+    if (site_config.get("moments") or {}).get("enabled") and phase != "render":
+        stages.extend(r6_stages())
+    if speakers_config.get("enabled") and phase != "render":
+        stages.extend(r7_stages())
     # Generated chaptering is an explicitly separate asynchronous lane.  It is not included in
     # ordinary audio/enrich runs because agenda/transcript prerequisites may complete in different
     # workflows and the initial rollout is a served-time overlay, not an audio-affecting change.
@@ -2219,6 +2555,7 @@ def _build_impl(
     deadline: float | None = None
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
+    diarize_start_deadline: float | None = None
     tag_llm_deadline: datetime | None = None
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
@@ -2235,11 +2572,21 @@ def _build_impl(
                 f"budget: {lane} start cutoff {start_cutoff_min:.0f}m, "
                 f"backstop {backstop_min:.0f}m (+ yield before new starts if superseded)"
             )
-        elif lane == "tag":
-            # The tag lane's own workflow (tag.yml) runs on a daily cron with its own *job*
+        elif lane == "diarize":
+            start_cutoff_min = float(defaults.get("diarize_start_cutoff_minutes", 285))
+            now = time.monotonic()
+            diarize_start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
+            deadline = diarize_start_deadline
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            print(
+                f"budget: diarize start cutoff {start_cutoff_min:.0f}m "
+                "(measured per-recipe admission + yield if superseded)"
+            )
+        elif lane in {"tag", "moments"}:
+            # Dedicated LLM lanes run on a daily cron with their own *job*
             # timeout, not the 4h-scale cron the generic `run_time_budget_minutes` window is sized
             # for (== that lane's own cron interval, minus a tail -- see the comment above).
-            # `tag_run_time_budget_minutes` gives it a deadline anchored to its own job's timeout,
+            # Their lane budget gives the run a deadline anchored to its own job's timeout,
             # so a run that's still going too long stops dispatching new LLM calls and reaches the
             # end-of-pass persist with margin to spare before GitHub cancels the job outright.
             #
@@ -2261,17 +2608,19 @@ def _build_impl(
             # why `tag.yml`'s job timeout was widened to 240m (mirroring `llm-deferred-sweep.yml`)
             # rather than tuning this number alone. If prepare itself ever needs a hard bound, it
             # needs its own `ctx.stop()` check inside that loop -- this deadline can't reach it.
-            tag_window_min = float(defaults.get("tag_run_time_budget_minutes", 20))
-            tag_deadline_secs = tag_window_min * 60 * safety
-            remaining_secs = max(0.0, tag_deadline_secs - (time.monotonic() - enrich_phase_start))
-            deadline = (time.monotonic() + remaining_secs) if tag_window_min > 0 else None
+            lane_window_key = f"{lane}_run_time_budget_minutes"
+            lane_window_min = float(defaults.get(lane_window_key, 20))
+            lane_deadline_secs = lane_window_min * 60 * safety
+            remaining_secs = max(0.0, lane_deadline_secs - (time.monotonic() - enrich_phase_start))
+            deadline = (time.monotonic() + remaining_secs) if lane_window_min > 0 else None
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
-            if tag_window_min > 0:
+            if lane_window_min > 0:
                 print(
-                    f"budget: tag window {tag_window_min:.0f}m × {safety} (+ yield if superseded)"
+                    f"budget: {lane} window {lane_window_min:.0f}m × {safety} "
+                    "(+ yield if superseded)"
                 )
-            # Topic tag dispatch is asynchronous and not time-critical; omitting tag_llm_deadline
-            # prevents runner-side sleep pacing and ensures worker queue items don't timeout.
+            # The queue owns these asynchronous calls; omit runner-side sleep pacing so accepted
+            # Worker jobs remain durable even when the producer yields.
             tag_llm_deadline = None
         elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
             # Chapter jobs are queued rather than held on a runner. The wall-clock stop bounds
@@ -2413,6 +2762,7 @@ def _build_impl(
         dry_run=dry_run,
         compute_backend=compute_backend,
         tag_backend=tag_backend,
+        moment_backend=moment_backend,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
         llm_evaluation_state_path=state_dir
         / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
@@ -2420,6 +2770,26 @@ def _build_impl(
             **(tagging_config.get("evaluation") or {}),
             "prelabeler": tagging_config.get("prelabeler") or {},
         },
+        moment_evaluation_state_path=state_dir
+        / str(
+            (moments_config.get("evaluation") or {}).get("state_path", "r6_moment_evaluation.json")
+        ),
+        moment_evaluation_config={
+            **moments_config,
+            **(moments_config.get("evaluation") or {}),
+        },
+        moment_max_dispatches=int(moments_config.get("max_dispatches_per_run", 40)),
+        speaker_registry_path=state_dir
+        / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
+        speaker_evaluation_state_path=state_dir
+        / str(speakers_config.get("evaluation_state_path", "r7_speaker_evaluation.json")),
+        speaker_turn_evidence_path=state_dir
+        / str(speakers_config.get("turn_evidence_path", "r7_speaker_turn_evidence.json")),
+        diarize_runtime_log_path=state_dir
+        / str(speakers_config.get("runtime_state_path", "r7_diarization_runtime.json")),
+        speaker_config=speakers_config,
+        diarize_start_deadline=diarize_start_deadline,
+        diarize_start_reserve_seconds=float(defaults.get("diarize_start_reserve_seconds", 15 * 60)),
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
@@ -2546,13 +2916,14 @@ def _build_impl(
                 time_bounded
                 and not dry_run
                 and storage is not None
-                and lane not in ("audio", "tag")
+                and lane not in ("audio", "tag", "moments")
                 and not getattr(compute_backend, "isolates_inference", False)
             ):
                 _try_preload_asr_model(defaults, lane=lane)
 
             if phase == "enrich":
-                # A lane with no audio pass (`tag` today) has no free mid-run persist boundary --
+                # Lanes with no audio pass (`tag`, `diarize`, and `speaker-identity`) have no free
+                # mid-run persist boundary --
                 # see `_run_enrich_global_queue`'s `mid_run_checkpoint` docstring. Always route
                 # through the foreign-block-preserving merged push (records only; no calendar/
                 # run_events/asr-runtime-log/reconcile -- those aren't what a mid-run checkpoint
@@ -2569,7 +2940,7 @@ def _build_impl(
                 # A failed checkpoint push must not abort the run: the end-of-run push still gets a
                 # chance, and losing one checkpoint only widens the loss window, it doesn't lose
                 # more than today's all-or-nothing behavior would have anyway.
-                def _tag_lane_checkpoint_push() -> None:
+                def _lane_checkpoint_push() -> None:
                     try:
                         owned = sorted({source_key(c) for c in cities})
                         pushed = push_records_merged(
@@ -2583,12 +2954,51 @@ def _build_impl(
                         )
                         if pushed:
                             print(
-                                f"state: tag lane checkpoint pushed {pushed} file(s) to durable "
+                                f"state: {lane} lane checkpoint pushed {pushed} file(s) to durable "
                                 "storage",
                                 flush=True,
                             )
+                        if lane in {"diarize", "speaker-identity"}:
+                            speaker_paths = [
+                                str(
+                                    speakers_config.get("registry_path", "r7_speaker_registry.json")
+                                ),
+                                str(
+                                    speakers_config.get(
+                                        "evaluation_state_path", "r7_speaker_evaluation.json"
+                                    )
+                                ),
+                            ]
+                            if lane == "diarize":
+                                speaker_paths.extend(
+                                    (
+                                        str(
+                                            speakers_config.get(
+                                                "turn_evidence_path",
+                                                "r7_speaker_turn_evidence.json",
+                                            )
+                                        ),
+                                        str(
+                                            speakers_config.get(
+                                                "runtime_state_path",
+                                                "r7_diarization_runtime.json",
+                                            )
+                                        ),
+                                    )
+                                )
+                            pushed = push_state(
+                                storage,
+                                state_dir,
+                                only_paths=speaker_paths,
+                                log=lambda msg: print(msg, flush=True),
+                            )
+                            if pushed:
+                                print(
+                                    f"state: {lane} private checkpoint pushed {pushed} file(s)",
+                                    flush=True,
+                                )
                     except Exception as exc:  # noqa: BLE001 — see comment above
-                        print(f"state: tag lane checkpoint push failed: {exc}", flush=True)
+                        print(f"state: {lane} lane checkpoint push failed: {exc}", flush=True)
 
                 # H5 PR3: the heavy production phase uses the global two-pass queue for true
                 # newest-everywhere-first prioritization across all sources (the per-source pool
@@ -2603,8 +3013,11 @@ def _build_impl(
                     policy=backlog_policy,
                     owned_uids=shard_owned_uids,
                     mid_run_checkpoint=(
-                        _tag_lane_checkpoint_push
-                        if lane == "tag" and persist_records and not dry_run and storage is not None
+                        _lane_checkpoint_push
+                        if lane in {"tag", "diarize", "speaker-identity"}
+                        and persist_records
+                        and not dry_run
+                        and storage is not None
                         else None
                     ),
                 )
@@ -2916,8 +3329,9 @@ def _build_impl(
             if lane in {"transcribe", "align"}:
                 _history_window_min = float(defaults.get("asr_backstop_minutes", 350))
                 _history_safety = 1.0
-            elif lane == "tag":
-                _history_window_min = float(defaults.get("tag_run_time_budget_minutes", 240))
+            elif lane in {"tag", "moments"}:
+                budget_key = f"{lane}_run_time_budget_minutes"
+                _history_window_min = float(defaults.get(budget_key, 240))
             elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
                 _history_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             _window = _history_window_min * 60 * _history_safety
@@ -3032,6 +3446,36 @@ def _build_impl(
                     max_events=load_quality_config(site_config).raw_log_cap,
                     log=lambda msg: print(msg, flush=True),
                 )
+                if lane in {"diarize", "speaker-identity"}:
+                    speaker_state_paths = [
+                        str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
+                        str(
+                            speakers_config.get(
+                                "evaluation_state_path", "r7_speaker_evaluation.json"
+                            )
+                        ),
+                    ]
+                    if lane == "diarize":
+                        speaker_state_paths.append(
+                            str(
+                                speakers_config.get(
+                                    "turn_evidence_path", "r7_speaker_turn_evidence.json"
+                                )
+                            )
+                        )
+                        speaker_state_paths.append(
+                            str(
+                                speakers_config.get(
+                                    "runtime_state_path", "r7_diarization_runtime.json"
+                                )
+                            )
+                        )
+                    pushed += push_state(
+                        storage,
+                        state_dir,
+                        only_paths=speaker_state_paths,
+                        log=lambda msg: print(msg, flush=True),
+                    )
             else:
                 if maintenance_lease is not None:
                     maintenance_lease.assert_held()
@@ -3297,7 +3741,7 @@ def _write_meeting_pages(
     for child in city_dir.iterdir():
         if not child.is_dir():
             continue
-        if child.name in {"chapters", "archive"}:
+        if child.name in {"chapters", "archive", "speakers"}:
             continue
         if child.name not in wanted and (child / "index.html").exists():
             import shutil

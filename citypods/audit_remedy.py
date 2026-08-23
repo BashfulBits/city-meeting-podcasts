@@ -48,7 +48,6 @@ REMEDY_MODELS = (
     "gemini/gemini-3.6-flash",
     "gemini/gemini-3.5-flash",
     "gemini/gemini-3.5-flash-lite",
-    "mistral/mistral-small-2603",
 )
 
 # Bounds on one evidence bundle. The whole point of the bundle is un-truncated context for the

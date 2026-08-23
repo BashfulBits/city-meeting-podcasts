@@ -15,7 +15,178 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **R7 diarization model-access diagnostics.** The preflight now verifies `HF_TOKEN` before
+  loading pyannote and reports invalid credentials, unaccepted gated-model terms, unavailable
+  configured models, Hub availability, and post-access pyannote runtime failures separately. This
+  changes no diarization recipe, artifact schema, or `DIARIZE_PIPELINE_VERSION`; no backfill is
+  triggered.
+
+- **R7 diarization runner provisioning.** Explicitly install FFmpeg's shared runtime before the
+  pyannote preflight. Pyannote 4 decodes through torchcodec, which needs the dynamically loaded
+  `libav*` libraries rather than merely an `ffmpeg` executable. This does not bump
+  `DIARIZE_PIPELINE_VERSION`: the shadow pilot failed during runtime preflight, so it produced no
+  stored diarization artifacts that need invalidation or backfill.
+
+- **Dynamic `model_routing` expansion and bounded requeues in `workers/llm-dispatch-proxy`.**
+  `selectRoute` and `nextCapacityRetryAt` now dynamically expand `model_routing` at dispatch
+  time, matching the Python scheduler and ensuring resident R2 records enqueued before an
+  overflow route was configured (e.g. Mistral Medium → Gemini 3.5 Flash Lite) immediately
+  benefit from overflow capacity without requiring record migration. In addition, `dispatchBatch`
+  now defers `no_capacity` heads in memory during the candidate preparation loop and relocates at
+  most one blocked head per idle tick, eliminating multi-minute sequential R2 write loops and
+  preventing `exceededCpu` runtime terminations under the Workers Free 10 ms CPU budget.
+
 ### Added
+
+- **R9 runtime and dependency maintenance automation (Shipped).** Implemented the full
+  dependency-pinning and automated maintenance policy from `review/22`. Synchronized
+  `.github/renovate.json5` with complete two-lane rule coverage across all Python runtime,
+  hygiene, output-affecting packages, and Cloudflare Worker manifests. Added a static CI
+  guard (`scripts/check_dependency_policy.py`) that fails if any declared `pyproject.toml`
+  dependency escapes Renovate package rule classification, and expanded `ci.yml` to execute
+  test suites across all 5 Cloudflare Workers (`granicus-media-proxy`, `swagit-list-proxy`,
+  `llm-dispatch-proxy`, `llm-dispatch-v2`, `city-request-intake`).
+
+
+- **R7 calibrated speaker attribution (in progress).** Added pyannote-backed native speaker-turn
+  artifacts, private city/body membership and golden-voice registries, the 30-day/30-review/95%-precision
+  public-identity gate, minutes-backed silent correction, R6 single-speaker pull-quote attribution, and
+  static speaker pages. Diarization/version backfills are gradual: only episodes with an eligible retained
+  transcript/audio artifact are reconsidered; audio and transcript bytes are never regenerated.
+  The pilot now serializes its private state per city/source, uses a recipe-specific measured runtime
+  profile, scopes profiles/calibration to the active embedding and explicit capture context, requires
+  a recorded private benchmark decision before public naming, and confirms valid roster-backed names.
+  A bounded weekly GitHub-review issue workflow now harvests authenticated Correct/Incorrect shadow
+  labels into the private calibration ledger; the pyannote-vs-WeSpeaker gold-set comparator remains an
+  explicit offline run because the gold references are private. The same weekly parent/sub-issue
+  batch now reviews conservative transcript cues such as “Commissioner X” and “Council Member X”
+  as possible golden voice references without assigning names automatically. The Denton pilot now has
+  a scheduled/manual `r7-diarization.yml` lane that runs native diarization followed by identity
+  projection, with a shared `HF_TOKEN` model-access preflight and cached Community-1 runtime. The
+  diarization model recipe is intentionally changed content-addressably, so existing artifacts are
+  retained and reprocessed gradually by the recurring lane rather than invalidated in one backfill.
+
+- **R6 calibrated moments and shareable clips.** Added council-only free Gemini 3.6/3.5 routing,
+  immutable Good/Borderline/Reject review records, background independent judges, deterministic
+  admission gates, RSS soundbites, and grounded captioned MP4 clips. Clips preserve source audio,
+  use a versioned face/mouth-motion speaker crop when confident, and otherwise retain a safe group
+  composition. The dedicated daily R6 lane carries the v2 dispatch credentials and batches its
+  shared 40-job extraction/judge allowance into one bounded ingress request; existing records stay
+  unchanged until normal staged processing reaches them.
+
+- **Run-batched v2 topic-tag and chapter dispatch (review/44 Phase 4).**
+  `BatchingDispatchBackend` collects new `queue_only` tagger/prelabeler jobs across the tag lane's
+  concurrent per-episode work, including recursively split chapter windows, and now also collects
+  the chapter-agenda and chapter-locator lanes' jobs across their full global queues. Each chapter
+  stage replays only its accepted jobs after the bounded 1,000-job `enqueue_batch`/`poll_batch`
+  flush, retaining its established artifact finalizer and real durable reference; a failed batch
+  submission is recorded on that episode and remains retryable next run. `poll_batch` partitions
+  all v2 status requests at the same 1,000-handle limit, and the deferred sweep no longer follows
+  a successful bulk poll with one singleton poll for every still-pending v2 handle. Cached results,
+  direct/v1 calls, and terminal-error recovery remain unchanged. No recipe, candidate/artifact
+  schema, pipeline version, or backfill behavior changes.
+
+- **Cross-model overflow routing (`model_routing`) and a Mistral Medium → Gemini 3.5 Flash Lite
+  route.** Added an optional `model_routing` map to `config/provider_limits.yml`: a job pinned to
+  one model (`allowed_models=(source,)`) becomes eligible for its configured target model(s) too,
+  once the source's own routes are exhausted or paused — extra daily capacity for a job without
+  editing the job or caller. Compiled into both `citypods/compute/llm_routes.json` and
+  `workers/llm-dispatch-proxy/src/dispatch_limits.json`; the Python scheduler
+  (`llm_scheduler.select_route`) and the `llm-dispatch-proxy` Worker
+  (`normalizeChatRequest`) both expand a request's allowed models the same way, so it applies
+  uniformly across transports. Ties still prefer the caller's own requested model over an
+  overflow target when both are equally eligible. Routed Mistral Medium (2508/2505) to Gemini 3.5
+  Flash Lite's independent free-tier pool as the first use, to help drain the queued-request
+  backlog built up during Mistral's monthly-quota pause (see the secondary-capacity entry above)
+  without touching the queued jobs themselves.
+
+- **Secondary Mistral dispatch capacity and deeper v1 queue lookahead.** Added independent
+  secondary-account routes for every native Mistral model, using `MISTRAL_API_KEY_SECONDARY` and
+  the same RPM/TPM limits each primary route had before its temporary `rpd: 0` quota pause. The
+  primary routes remain paused. Increased v1's ready-marker lookahead from 16 to 500 so a run of
+  jobs blocked on the primary account is less likely to hide work eligible for another route.
+
+- **Phase 2 of bounded bundled LLM dispatch (review/44): DO-driven paced dispatch, implemented in
+  [PR #1254](https://github.com/BashfulBits/city-meeting-podcasts/pull/1254).** Brings
+  `workers/llm-dispatch-v2/` online as a real dispatcher, draining jobs Phase 1 ingests. Adds to
+  `src/coordinator.js`: `claimDispatchWindow` (fenced admission — bundle/active-bundle/in-flight/
+  daily caps, priority-then-distinct-route-then-aging-then-size ordering, capped at
+  `MAX_CONCURRENT_ROUTE_LANES` concurrent lanes), `attemptStarted`/`authorizeRetry` (fenced attempt
+  tracking and bounded 429 retry authorization), `completeBatch` (settlement with calibration
+  folded in — margin_tokens only ever increases), and bounded B2 cleanup RPCs
+  (`purgePendingBatch`/`confirmPurge`/`confirmNeverAccepted`). Adds a route-capacity/pacing model
+  in the new `src/pacing.js` (fixed-window RPM/RPD counters plus a refillable TPM token bucket,
+  independently verified by 16 pure-function tests) and route-catalog selection in the new
+  `src/routes.js`, both extracted from `workers/llm-dispatch-proxy`'s existing patterns per Phase
+  1's own instruction to reuse rather than fork provider logic. Implements the `scheduled()`
+  executor in `src/index.js`: claims one paced window per cron tick, runs each route lane
+  independently and just-in-time (no B2 access before a job's own `wait_ms` elapses), and reports
+  every attempt in one `completeBatch` call. Adds a from-scratch AWS SigV4 client
+  (`src/b2.js`, independently cross-verified against a separate Node-crypto re-derivation of the
+  same signatures) for the executor's B2 reads/writes — the ingress Worker still never touches B2.
+  Adds `src/gateway.js` for AI Gateway request construction, adapted from
+  `workers/llm-dispatch-proxy`'s `resolveProviderCredentials`/`upstreamRequestForRoute`.
+  `scripts/compile_llm_limits.py` now also compiles `workers/llm-dispatch-v2/src/dispatch_limits.json`
+  (same catalog shape v1 already gets, kept in sync automatically). The per-minute cron trigger is
+  back in `wrangler.jsonc` now that `scheduled()` does real work. v2 still carries no live traffic
+  in production: no GitHub workflow has been cut over to `enqueue_batch` yet (a separate deployment
+  decision, tracked with Phase 1's dominant-call-site cutover) and no compiled route yet advertises
+  `transport: "llm-dispatch-v2"` (Phase 4) — this phase makes the dispatch pipeline itself real and
+  tested, ready for the shadow-mode validation gate Phase 2's own plan requires before any of that.
+
+- **Phase 1 of bounded bundled LLM dispatch (review/44), implemented in
+  [PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253).** Implemented the
+  initial parallel `workers/llm-dispatch-v2/` deployment with SQLite-backed `LLMSchedulerDO`
+  Durable Object coordinator, pure validate-then-DO pass-through with zero Worker-side B2 I/O on
+  ingress, and batch ingress/polling endpoints (`/v2/jobs:enqueue-batch`, `/v2/jobs:poll-batch`,
+  `/v2/jobs:resolve-unknown-batch`, `/v2/jobs/{id}:schema-retry` — the last two land as stubs;
+  `schema-retry` returns `501` until Phase 2's dispatch machinery exists to back it). Added
+  `enqueue_batch` and `poll_batch` methods to `LiteLLMBackend` in `citypods/compute/llm.py` with
+  direct client-side B2 payload staging (the ingress Worker itself never touches B2 — see
+  review/44's connection/subrequest-limit revision) and client-side throttling to self-limit
+  before making HTTP requests, updated `llm_deferred_sweep.py` to batch-poll v2 handles before
+  its existing per-handle reconciliation loop, and updated `citypods/compute/llm_policy.py`.
+  v2 stays inert until `dispatch_v2_url` is configured (`CITYPODS_LLM_DISPATCH_V2_URL` /
+  `LLM_DISPATCH_V2_URL`, alongside `CITYPODS_LLM_DISPATCH_V2_AUTH_TOKEN` /
+  `LLM_DISPATCH_V2_AUTH_TOKEN` and `CITYPODS_LLM_DAILY_INGEST_CAP` / `LLM_DAILY_INGEST_CAP`), since
+  `LiteLLMBackend._available_transports()` and `_enqueue_durable_policy_job` both gate on it; the
+  Worker deploy itself additionally needs `CLOUDFLARE_LLM_API_TOKEN` as a deploy-time secret.
+
+- **Batch LLM job dispatch at every `queue_only=True` call site (review/44 follow-up), implemented
+  in [PR #1262](https://github.com/BashfulBits/city-meeting-podcasts/pull/1262).** Production
+  Cloudflare Worker logs showed every `enqueue-batch` POST from the chapter-agenda/chapter-locator
+  lane carried exactly one job — despite the v2 protocol, DO, and `LiteLLMBackend.enqueue_batch`/
+  `poll_batch` all supporting up to 1000 jobs/call since Phase 1, no call site ever actually
+  accumulated more than one job before submitting, so the dominant lane was still making one Worker
+  request per episode. Added `dispatch_job_batch()` to `citypods/compute/llm.py` — one
+  `enqueue_batch` call for a whole run's jobs (falling back to per-job retry only if the batch call
+  itself raises, since `enqueue_batch` raises for the whole call on a single job's
+  `idempotency_conflict`), plus one `poll_batch` reconcile pass for any still-pending v2 handles —
+  and restructured `AgendaChapterCandidatesStage`/`ChapterBoundaryLocatorStage`
+  (`citypods/stages.py`) and `citypods/tournament.py`'s pairwise-judge comparison phase to build
+  every job first, dispatch the whole set in one call, then finalize each result against its own
+  context. `citypods/tags.py`'s own model-generation dispatch (`llm_tag_suggestions`) and the
+  transcribe/align call sites remain one-job-at-a-time, deferred to review/44 Phase 4 — not because
+  structured-output validation is hard (that's ordinary finalize-step work, same as the sites
+  above), but because `llm_tag_suggestions` recursively splits one episode into a variable number
+  of jobs internally and `TagsStage` runs episodes through a worker-thread pool sharing a live,
+  incrementally updated per-run dispatch budget; see review/44 Phase 4 for the detail.
+
+- **Read-only v1 dispatch queue-order report (`scripts/report_pending_dispatch_queue.py`,
+  `Report LLM dispatch queue` workflow).** Operator diagnostic for the Mistral pause above: lists
+  the v1 Worker's pending `ready/` markers in their real R2 lexicographic dispatch order, resolves
+  each job's candidate routes via the same `model_aliases`/`model_routes_map` lookup
+  `workers/llm-dispatch-proxy/src/index.js` uses, and checks each candidate against
+  `state/dispatch_budget.json` and its compiled `rpd` to flag routes paused (`rpd: 0`),
+  reactively blocked (`blocked_until`), or reporting capacity. Never writes to R2 — no marker
+  relocation, requeue, or ledger mutation. Flags whether a job is only reachable through
+  currently-paused routes ("STUCK") vs. has an open alternative ("ELIGIBLE"), and separately
+  whether it sits within the Worker's 500-marker (`DEFAULT_READY_LOOKAHEAD`) lookahead window —
+  since `dispatchBatch`'s per-tick scan already skips a `no_capacity` head in place (or relocates
+  it once blocked past `DEFER_IN_PLACE_SECONDS`) rather than stalling on it, a run of STUCK jobs
+  at the queue head only actually blocks a later job once it fills that whole lookahead window.
 
 - **Configurable global token estimate buffer (`token_estimate_buffer`).** Added a new top-level
   setting `token_estimate_buffer` (e.g. `0.90`) in `config/provider_limits.yml` that applies a
@@ -32,6 +203,109 @@ Phase R (Research-Tool Surface)._
   chapter locator workflow to fail with `MaintenanceLeaseBusy` whenever schedule delays or longer
   extraction runs overlapped their execution times. `scripts/reset_agenda_chapter_state.py` now
   claims both leases as a composite transaction before mutating state during manual recovery.
+  
+- **Free-model alternates for jobs that dispatched only to Mistral (2026-08-18 follow-up to the
+  Mistral pause below).** Agenda-chapter extraction (`chapter_titles.AGENDA_PRODUCTION_MODEL`) now
+  has `meta-llama/llama-3.3-70b-instruct` as a same-priority alternate
+  (`AGENDA_PRODUCTION_MODELS`), with `finalize_agenda_job`/`ChapterAgendaCandidatesStage` now
+  recording whichever model the scheduler actually dispatched to (`result.model`) instead of
+  always labeling the artifact with the pinned constant. The shadow-only locator/title-equivalence
+  selector (`chapter_locator.select_locator_model`) is now `select_locator_models`, returning every
+  same-priority candidate for a request's size instead of one: Mistral is supplemented with the
+  free `deepseek/deepseek-v4-flash` (OpenCode Zen tier) and `nvidia/nemotron-3-ultra-550b-a55b:free`
+  routes below their respective context ceilings, with Gemini kept as a last-resort escalation
+  beyond every free tier (its free quota is tiny). `LocatorRequest`/`AgendaItemExtractionRequest`/
+  `TitleEquivalenceRequest` gained an additive `models: tuple[str, ...]` field alongside the
+  existing single `model: str` (still the primary candidate), so the research scripts that build a
+  direct single-model backend from `.model` are unaffected. The weekly topic-tag tournament
+  (`tournament.py`, `.github/workflows/llm-tournament.yml`) replaced its Mistral contestant with
+  `zai/glm-4.7-flash` and added `google/gemma-4-26b-a4b-it` as a 4th contestant, growing
+  `CONTESTS` to the full 6-pair round robin. Removed the now-dead `mistral/mistral-small-2603`
+  entries from `r5_benchmark.OPTIONAL_TAGGER_MODEL` and `audit_remedy.REMEDY_MODELS`.
+
+- **Mistral provider paused: monthly token budget exhausted (2026-08-18 hotfix).** Mistral moved
+  to account-wide monthly token metering; the current cycle's allowance is used up (resets
+  2026-08-31). Pinned `rpd: 0` on all seven Mistral routes in `config/provider_limits.yml`
+  (`mistral_codestral_2508_primary`, `mistral_devstral_2512_primary`,
+  `mistral_small_2603_primary`, `mistral_medium_2508_primary`, `mistral_medium_2505_primary`,
+  `mistral_large_2512_primary`, `mistral_large_3_primary`,
+  `mistral_labs_leanstral_1_5_1_primary`), recompiled via `scripts/compile_llm_limits.py`. This
+  routes through the existing quota-exhaustion path (`LLMBudget.available()`/`select_route()`)
+  rather than the route's `rpm`/`tpm` fields, so dispatch is deferred and retried (at each local
+  midnight, via `_next_quota_reset`) instead of hard-failing callers like
+  `AgendaChapterCandidatesStage` that dispatch to Mistral (`AGENDA_PRODUCTION_MODEL`)
+  unconditionally, and avoids the `ZeroDivisionError` a literal `rpm`/`tpm` of `0` would hit in
+  `LLMBudget.reserve()`'s rate-schedule math. `providers.mistral.monthly_tpm` was also set to `0`
+  as a documentation-of-record value, though it is not read by the scheduler or Worker today.
+  Remove the `rpd: 0` overrides once the monthly allowance resets and a real budget is sized.
+
+- **LLM dispatch v2's `enqueue_batch`/`poll_batch` payload I/O against production storage
+  (2026-08-18 incident follow-up).** Production wires `LiteLLMBackend`'s `storage=` to
+  `citypods.storage.routing.RoutingStorage` (B2 primary + R2 coordination), whose
+  `COORDINATION_PREFIXES` deliberately excludes `payloads/`/`results/` — v2 job payloads are
+  B2-resident by design (see `workers/llm-dispatch-v2`'s own SigV4 client), not R2 coordination
+  state. `_storage_client()` (used by both `enqueue_batch`'s payload write and `poll_batch`'s
+  result read, `citypods/compute/llm.py`) previously returned the router itself, so every
+  `payloads/…` `put_cas`/`get_bytes` call routed to the B2 primary and then correctly hit
+  `RoutingStorage`'s own safety gate — B2 is deliberately marked non-`cas_capable` there, since it
+  doesn't enforce real If-Match/If-None-Match — raising `NotImplementedError` before the batch
+  ever reached the dispatch Worker over HTTP. This is why wiring `LLM_DISPATCH_V2_URL`/
+  `LLM_DISPATCH_V2_AUTH_TOKEN` into the six GitHub workflows alone did not stop the ingest flood:
+  `citypods-llm-dispatch-v2`/its Durable Object never saw a single request, while the exception
+  was swallowed per-item by `TagsStage`'s existing error handling and every call kept falling
+  through to `llm-dispatch-proxy` (v1). Fixed by having `_storage_client()` reach past the router
+  to its `.primary` B2 backend directly when `self.storage` is a `RoutingStorage` (whose own
+  `put_cas`/`get_bytes` never gated on the `cas_capable` flag to begin with — only the router did)
+  — an unconditional write is exactly right here, since `enqueue_batch` already only ever calls
+  `put_cas` with no `if_match`/`if_none_match` (`job_id` is a fresh UUID per call, so there is no
+  CAS race to protect). Added a regression test in `tests/test_compute_llm_dispatch_v2.py` using
+  the real `RoutingStorage` (not the flat mock the rest of the suite uses, which doesn't
+  reproduce the prefix-routing gate and is why this shipped untested against the real topology).
+
+- **Stale v1-backlog reconcile storm in `_chapter_job_result` (2026-08-18 incident, continued).**
+  `citypods/stages.py`'s `_chapter_job_result` called `backend.reconcile()` on every `JobHandle`
+  `run_inference` returned, including a pre-existing deferred handle from before
+  `LLM_DISPATCH_V2_URL` was configured (`backend != "llm-dispatch-v2"`). v1 never had a
+  poll-batch endpoint, so reconciling one meant one `GET /v1/requests/{id}` Worker invocation per
+  stale episode on every chapter-agenda/chapter-locator run — measured at ~1980 such polls in
+  under 10 minutes, all returning `202`, zero progress. Fixed by only reconciling v2-backed
+  handles; a stale v1 handle is now left untouched and still reported pending. Also declares
+  `"observability": { "enabled": true }` in `workers/llm-dispatch-v2/wrangler.jsonc` — Workers
+  Logs, enabled by hand in the dashboard to diagnose this incident, kept reverting to disabled on
+  the next deploy because nothing in source declared the setting.
+
+- **`dispatch_v2_url`/`dispatch_v2_auth_token` never wired into the tag/tournament/r5-benchmark
+  backends (2026-08-18 incident, continued).** `LLMBackendConfig` has no env-reading
+  `__post_init__`, so a field omitted from a manual construction is `None` regardless of the
+  environment. `citypods/run.py`'s `tag_backend` (the tag lane's actual backend) and
+  `citypods/tournament.py`'s `_backend()` hand-rolled only `dispatch_url`/`dispatch_auth_token`
+  and were never updated when v2 shipped — every `queue_only=True` policy from those two fell
+  straight through to the legacy v1 branch no matter what was configured. Fixed by building all
+  three from `LLMBackendConfig.from_env()` via `dataclasses.replace()` instead of hand-copying
+  env vars, closing the bug class for any future field added there too.
+
+- **`console.error`'s second argument silently dropped by Cloudflare Workers Logs (2026-08-18
+  incident, continued).** `console.error("x failed", err)` in `workers/llm-dispatch-v2/src/index.js`
+  never surfaced the actual `Error` in exported logs — only the literal call-site string did,
+  even with a custom Logs field added in the dashboard. Added `describeError()`, rendering any
+  thrown value into a string used both in `console.error` and the HTTP response body's `detail`
+  field (previously a generic `"Coordinator request failed"`), so the real cause now also shows
+  up in the Python client's own error output.
+
+- **`LLMSchedulerDO` never extended `DurableObject` — the actual root cause of the whole 2026-08-18
+  incident.** `workers/llm-dispatch-v2/src/index.js`'s `getCoordinator()` calls
+  `env.LLM_SCHEDULER.getByName("global-v2")`, Cloudflare's named-Durable-Object RPC binding style,
+  which requires the class itself to `extend DurableObject` (from `"cloudflare:workers"`) to
+  support RPC calls at all. `LLMSchedulerDO` never did, from Phase 1's first deploy — every
+  `enqueueBatch`/`pollBatch`/`resolveUnknownBatch` call failed with `TypeError: The receiving
+  Durable Object does not support RPC, ...`, invisible to this repo's test suite because it
+  constructs `new LLMSchedulerDO(...)` directly and calls its methods directly, bypassing the
+  real binding/RPC layer entirely. None of the four fixes above could ever have mattered until a
+  request reached a working RPC call, and none of them ever did. Fixed with a dynamic
+  `import("cloudflare:workers")` (falling back to a plain class under the Node-based test suite,
+  where that module doesn't exist) and a regression test guarding the `extends` clause. Full
+  retrospective with guards for Phase 2–4 work in review/44's "Rollout incident retrospective
+  (2026-08-18)".
 
 - **Legacy agenda records with partial state can now be reset and rebuilt safely.** Added the
   dry-run-first `reset-agenda-chapter-state.yml` recovery workflow and

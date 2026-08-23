@@ -54,7 +54,6 @@ DEFAULT_TAGGER_MODELS = (
     "google/gemma-4-26b-a4b-it",
     "zai/glm-4.7-flash",
 )
-OPTIONAL_TAGGER_MODEL = "mistral/mistral-small-2603"
 DEFAULT_PRELABELER_MODEL = "google/gemma-4-31b-it"
 LABEL_MARKER = "<!-- citypods:r5-benchmark-review "
 
@@ -260,14 +259,21 @@ def create_dataset(
 
 
 def _backend(model: str, storage: Any) -> Any:
+    from dataclasses import replace
+
     from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 
+    # No LLMRequestPolicy/queue_only path currently runs through this backend (r5_benchmark.py
+    # never sets one), so this doesn't fix an active bug the way the matching change in
+    # run.py/tournament.py does -- building from .from_env() here anyway, for consistency, so a
+    # future queue_only policy added here doesn't silently fall through to v1 the same way (see
+    # review/44's 2026-08-18 incident notes: LLMBackendConfig has no env-reading __post_init__,
+    # so a hand-rolled construction that omits a field gets None, not the environment's value).
     return LiteLLMBackend(
-        LLMBackendConfig(
+        replace(
+            LLMBackendConfig.from_env(),
             model=model,
             mode="dispatch" if model.startswith("mistral/") else "direct",
-            dispatch_url=__import__("os").environ.get("LLM_DISPATCH_URL"),
-            dispatch_auth_token=__import__("os").environ.get("LLM_DISPATCH_AUTH_TOKEN"),
         ),
         storage=storage,
     )

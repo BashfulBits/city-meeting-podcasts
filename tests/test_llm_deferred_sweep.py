@@ -456,3 +456,89 @@ def test_sweep_upgrades_other_resumable_production_llm_work_but_not_city_onboard
     assert chapter.deferred_request.policy.deadline_at is None
     assert city.deferred_request.policy.queue_only is False
     assert city.deferred_request.policy.deadline_at == deadline
+
+
+def test_sweep_batch_polls_v2_handles(monkeypatch):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(
+        cas_capable=True,
+        get_file=lambda *args, **kwargs: False,
+        put_file=lambda *args, **kwargs: None,
+        delete=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+
+    v2_handle = JobHandle(
+        task="tag",
+        recipe_hash="v2-recipe",
+        backend="llm-dispatch-v2",
+        ref="j1",
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda *_: _snapshot([v2_handle]),
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
+
+    poll_batch_called_with = []
+
+    class MockBackend:
+        def poll_batch(self, handles):
+            poll_batch_called_with.extend(handles)
+            return {h.ref: None for h in handles}
+
+        def reconcile(self, handle):
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert len(poll_batch_called_with) == 1
+    assert poll_batch_called_with[0].ref == "j1"
+
+
+def test_sweep_skips_reconcile_for_all_handles_observed_by_batch_poll(monkeypatch):
+    # Regression test for the singleton-poll storm: a successful batch poll is authoritative for
+    # both completed and still-pending v2 handles.  Neither may immediately go through
+    # reconcile(), or a sweep with N pending jobs becomes one batch request plus N singletons.
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(
+        cas_capable=True,
+        get_file=lambda *args, **kwargs: False,
+        put_file=lambda *args, **kwargs: None,
+        delete=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+
+    resolved_handle = JobHandle(
+        task="tag", recipe_hash="resolved-recipe", backend="llm-dispatch-v2", ref="resolved-id"
+    )
+    pending_handle = JobHandle(
+        task="tag", recipe_hash="pending-recipe", backend="llm-dispatch-v2", ref="pending-id"
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda *_: _snapshot([resolved_handle, pending_handle]),
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
+
+    reconciled_refs = []
+    resolved_result = JobResult(task="tag", recipe_hash="resolved-recipe", output={"ok": True})
+
+    class MockBackend:
+        def poll_batch(self, handles):
+            return {h.ref: (resolved_result if h.ref == "resolved-id" else None) for h in handles}
+
+        def reconcile(self, handle):
+            reconciled_refs.append(handle.ref)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    # The batch-resolved handle must NOT be reconciled again individually...
+    assert "resolved-id" not in reconciled_refs
+    # ...nor may the batch-observed-but-still-pending handle.
+    assert "pending-id" not in reconciled_refs

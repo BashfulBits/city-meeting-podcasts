@@ -90,6 +90,22 @@ jobs:
         working-directory: workers/granicus-media-proxy
         run: npm test
 
+      - name: Test Swagit List Proxy Worker
+        working-directory: workers/swagit-list-proxy
+        run: npm test
+
+      - name: Test LLM Dispatch v1 Worker
+        working-directory: workers/llm-dispatch-proxy
+        run: npm test
+
+      - name: Test LLM Dispatch v2 Worker
+        working-directory: workers/llm-dispatch-v2
+        run: npm test
+
+      - name: Test City Request Intake Worker
+        working-directory: workers/city-request-intake
+        run: npm test
+
   # Dependency-pinning policy enforcement (review/22). Keeps pins from rotting.
   deps:
     runs-on: ubuntu-latest
@@ -105,6 +121,13 @@ jobs:
 
       - name: Policy guard (pinned Actions + no re-declared external-worker deps)
         run: python scripts/check_dependency_policy.py
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24"
+
+      - name: Validate Renovate configuration
+        run: npx --yes --package renovate renovate-config-validator .github/renovate.json5
 
       - name: Constraints drift gate
         run: |

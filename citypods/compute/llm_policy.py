@@ -48,6 +48,11 @@ class LLMRequestPolicy:
     # Worker dispatch lane.  ``fast`` drains short requests before a scheduled invocation risks
     # starting work it cannot finish; ``long`` opts into the bounded long-context timeout lane.
     timeout_class: Literal["fast", "long"] = "long"
+    # llm-dispatch-v2's admission-time fast lane (review/44 "Bounded initial configuration"):
+    # 0 sorts ahead of 1 in the scheduler DO's `ORDER BY priority ASC, created_at ASC`. Settable
+    # only at submission (LiteLLMBackend.enqueue_batch reads this field directly); there is
+    # deliberately no API to edit priority on an already-queued job.
+    priority: Literal[0, 1] = 1
 
 
 @dataclass(frozen=True)
@@ -141,7 +146,7 @@ class QuotaPolicy:
 @dataclass(frozen=True)
 class LLMRoute:
     model: str
-    transport: Literal["direct", "mistral-dispatch", "llm-dispatch"]
+    transport: Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"]
     free: bool
     quota: QuotaPolicy
     pricing: PricingPolicy
@@ -150,7 +155,9 @@ class LLMRoute:
     # exactly one upstream request and must reserve only that one, even when the caller's
     # structured-output contract is present.
     max_provider_attempts: int | None = None
-    transports: tuple[Literal["direct", "mistral-dispatch", "llm-dispatch"], ...] = ("direct",)
+    transports: tuple[
+        Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"], ...
+    ] = ("direct",)
     # Physical route identity and direct LiteLLM adapter metadata.  Empty defaults preserve the
     # small hand-built routes used by unit tests and old callers; generated routes always fill all
     # fields and use ``route_id`` as their shared-ledger key.
@@ -189,12 +196,12 @@ class LLMRoute:
 _DEEPSEEK_WINDOW = PeakWindow("UTC", time(16, 30), time(0, 30), 0.5)
 
 
-def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
+def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str, tuple[str, ...]]]:
     path = Path(__file__).with_name("llm_routes.json")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [], {}
+        return [], {}, {}
     except json.JSONDecodeError as exc:
         raise RuntimeError(
             f"Invalid generated LLM route catalog at {path}; rerun scripts/compile_llm_limits.py"
@@ -305,10 +312,15 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str]]:
         for source, target in (raw.get("model_aliases") or {}).items()
         if str(source) and str(target)
     }
-    return result, aliases
+    routing = {
+        str(source): tuple(str(target) for target in targets if str(target))
+        for source, targets in (raw.get("model_routing") or {}).items()
+        if str(source) and targets
+    }
+    return result, aliases, routing
 
 
-_GENERATED_ROUTES, MODEL_ALIASES = _load_generated_catalog()
+_GENERATED_ROUTES, MODEL_ALIASES, MODEL_ROUTING = _load_generated_catalog()
 
 
 def canonical_model(model: str) -> str:
@@ -507,6 +519,7 @@ __all__ = [
     "LLMRequestPolicy",
     "LLMRoute",
     "MODEL_ALIASES",
+    "MODEL_ROUTING",
     "PeakWindow",
     "PricingPeriod",
     "PricingPolicy",

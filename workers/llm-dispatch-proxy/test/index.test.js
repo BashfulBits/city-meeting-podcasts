@@ -3,7 +3,37 @@ import test from "node:test";
 
 import DISPATCH_LIMITS from "../src/dispatch_limits.json" with { type: "json" };
 
+// Ops hotfix (2026-08-18, config/provider_limits.yml): every Mistral route ships with `rpd: 0`
+// in the real compiled catalog above, pausing the provider account-wide because its monthly
+// token allowance is exhausted (resets 2026-08-31). This suite uses "mistral/mistral-large-2512"
+// as its default fixture model throughout -- most tests here exercise generic dispatch mechanics
+// (credential resolution, pacing, batching, ledger CAS, retries) against the *real* compiled
+// catalog rather than a synthetic stand-in, and were never meant to also assert on today's
+// operational quota state. Restore this field and unscale split-cap overlay on the in-memory copy
+// so those tests keep exercising real behavior; the shipped dispatch_limits.json (and the Worker
+// deployed from it) keeps `rpd: 0` and 50% split-cap limits untouched. Quota-exhaustion behavior
+// itself, including `rpd`, already has its own dedicated coverage against synthetic route objects.
+const splitCap = DISPATCH_LIMITS._metadata?.split_cap_multiplier || 1.0;
+if (splitCap < 1.0) {
+  for (const provider of Object.values(DISPATCH_LIMITS.providers)) {
+    if (provider.rpm) provider.rpm = Math.round(provider.rpm / splitCap);
+    if (provider.monthly_tpm) provider.monthly_tpm = Math.round(provider.monthly_tpm / splitCap);
+    if (provider.tpm) provider.tpm = Math.round(provider.tpm / splitCap);
+  }
+}
+for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
+  if (route.provider === "mistral") {
+    route.rpd = null;
+  }
+  if (splitCap < 1.0) {
+    if (route.rpm) route.rpm = Math.round(route.rpm / splitCap);
+    if (route.rpd) route.rpd = Math.round(route.rpd / splitCap);
+    if (route.tpm) route.tpm = Math.round(route.tpm / splitCap);
+  }
+}
+
 import {
+  DISPATCH_COORDINATOR_KEY,
   acquireCronLease,
   config,
   dispatchBatch,
@@ -19,6 +49,7 @@ import {
   readyMarker,
   readyMarkerMetadata,
   renewCronLease,
+  requestMetadata,
   resolveProviderCredentials,
   routeAvailable,
   runScheduled,
@@ -117,6 +148,7 @@ const ENV = {
   PROVIDER_NAME: "mistral",
   UPSTREAM_MODEL: "mistral-large-2512",
   MISTRAL_API_KEY: "mistral-secret",
+  MISTRAL_API_KEY_SECONDARY: "mistral-secondary-secret",
   GEMINI_API_KEY: "gemini-primary-secret",
   GEMINI_API_KEY_SECONDARY: "gemini-secondary-secret",
   DEEPSEEK_API_KEY: "deepseek-secret",
@@ -298,6 +330,191 @@ test("the stored record's model is the canonical requested model, not an upstrea
   const record = await stored.json();
   assert.equal(record.model, "gemini/gemini-3-flash-preview");
   assert.equal(record.request.model, "gemini/gemini-3-flash-preview");
+});
+
+test("a request for a model_routing source model is also made eligible for its overflow target", async () => {
+  // config/provider_limits.yml's `model_routing` maps Mistral Medium to Gemini 3.5 Flash Lite so
+  // the backlog can drain onto Gemini's independent free-tier capacity without editing the jobs
+  // that dispatch Mistral Medium themselves (2026-08-21 hotfix). The Worker must expand
+  // `policy.allowed_models` the same way the Python scheduler does, whether or not the caller
+  // passed its own `allowed_models`.
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "model-routing-implicit", "mistral/mistral-medium-2508"),
+    env,
+  );
+  assert.equal(queued.status, 202);
+  const body = await queued.json();
+  const stored = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(stored.model, "mistral/mistral-medium-2508");
+  assert.deepEqual(stored.policy.allowed_models, [
+    "mistral/mistral-medium-2508",
+    "gemini/gemini-3.5-flash-lite",
+  ]);
+
+  const withExplicitAllowlist = await handleRequest(
+    chatRequest(undefined, "model-routing-explicit", "mistral/mistral-medium-2508", {
+      allowed_models: ["mistral/mistral-medium-2508"],
+    }),
+    env,
+  );
+  assert.equal(withExplicitAllowlist.status, 202);
+  const explicitBody = await withExplicitAllowlist.json();
+  const explicitStored = await (
+    await env.LLM_QUEUE.get(`requests/${explicitBody.id}.json`)
+  ).json();
+  assert.deepEqual(explicitStored.policy.allowed_models, [
+    "mistral/mistral-medium-2508",
+    "gemini/gemini-3.5-flash-lite",
+  ]);
+
+  // A model with no configured overflow (the fixture default) is unaffected.
+  const unrouted = await handleRequest(chatRequest(undefined, "model-routing-none"), env);
+  const unroutedBody = await unrouted.json();
+  const unroutedStored = await (
+    await env.LLM_QUEUE.get(`requests/${unroutedBody.id}.json`)
+  ).json();
+  assert.equal(unroutedStored.policy.allowed_models, undefined);
+
+  // CodeRabbit, PR #1268: a routed source model elsewhere in an explicit `allowed_models` list
+  // (not the request's own `model`) must still get its overflow target expanded.
+  const unrelatedRequestModel = await handleRequest(
+    chatRequest(undefined, "model-routing-unrelated-request-model", "mistral/mistral-large-2512", {
+      allowed_models: ["mistral/mistral-large-2512", "mistral/mistral-medium-2508"],
+    }),
+    env,
+  );
+  assert.equal(unrelatedRequestModel.status, 202);
+  const unrelatedBody = await unrelatedRequestModel.json();
+  const unrelatedStored = await (
+    await env.LLM_QUEUE.get(`requests/${unrelatedBody.id}.json`)
+  ).json();
+  assert.deepEqual(unrelatedStored.policy.allowed_models, [
+    "mistral/mistral-large-2512",
+    "mistral/mistral-medium-2508",
+    "gemini/gemini-3.5-flash-lite",
+  ]);
+});
+
+test("selectRoute and nextCapacityRetryAt dynamically expand model_routing for resident records", () => {
+  const dispatchLimits = {
+    model_routing: {
+      "mistral/mistral-medium-2508": ["gemini/gemini-3.5-flash-lite"],
+    },
+    model_routes_map: {
+      "mistral/mistral-medium-2508": ["mistral_medium_paused"],
+      "gemini/gemini-3.5-flash-lite": ["gemini_backup"],
+    },
+    routes_by_id: {
+      mistral_medium_paused: {
+        route_id: "mistral_medium_paused",
+        provider: "mistral",
+        model: "mistral/mistral-medium-2508",
+        free: true,
+        rpd: 0,
+      },
+      gemini_backup: {
+        route_id: "gemini_backup",
+        provider: "gemini",
+        model: "gemini/gemini-3.5-flash-lite",
+        free: true,
+        rpm: 30,
+        rpd: 1500,
+      },
+    },
+  };
+  const now = new Date("2026-08-22T12:00:00Z");
+
+  // A resident record whose policy only carries the unexpanded source model:
+  const residentSelection = selectRoute(
+    { routes: {} },
+    ["mistral/mistral-medium-2508"],
+    { allow_paid: false, estimated_tokens: 100 },
+    now,
+    dispatchLimits,
+  );
+  assert.equal(residentSelection.chosenRoute?.route_id, "gemini_backup");
+
+  // nextCapacityRetryAt also checks the overflow target:
+  const retryAt = nextCapacityRetryAt(
+    { routes: {} },
+    ["mistral/mistral-medium-2508"],
+    { allow_paid: false, estimated_tokens: 100 },
+    now,
+    dispatchLimits,
+  );
+  assert.ok(retryAt.getTime() >= now.getTime());
+});
+
+test("dispatchBatch dispatches a resident job using dynamic model_routing overflow", async () => {
+  const env = isolatedEnv();
+  const now = new Date("2026-08-22T12:00:00Z");
+  const requestId = "chatcmpl-legacy-resident-job-1";
+
+  // Simulate an older resident canonical record created without gemini in allowed_models
+  const record = {
+    version: 1,
+    id: requestId,
+    status: "pending",
+    created_at: now.toISOString(),
+    available_at: now.toISOString(),
+    model: "mistral/mistral-medium-2508",
+    policy: {
+      allowed_models: ["mistral/mistral-medium-2508"],
+    },
+    request: {
+      model: "mistral/mistral-medium-2508",
+      messages: [{ role: "user", content: "hello" }],
+    },
+  };
+  await env.LLM_QUEUE.put(`requests/${requestId}.json`, JSON.stringify(record), {
+    customMetadata: requestMetadata(record),
+  });
+  const mKey = readyKey(record);
+  await env.LLM_QUEUE.put(mKey, JSON.stringify(readyMarker(record)), {
+    customMetadata: readyMarkerMetadata(record),
+  });
+
+  // Zero out mistral capacity in the coordinator ledger to force fallback:
+  const coordinator = {
+    version: 1,
+    lease: null,
+    routes: {
+      mistral_medium_2508_primary: { blocked_until: "2026-08-23T00:00:00Z" },
+      mistral_medium_2508_secondary: { blocked_until: "2026-08-23T00:00:00Z" },
+    },
+    providers: {
+      mistral: { requests_available_at: "2026-08-23T00:00:00Z" },
+    },
+  };
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator), {});
+
+  let dispatchedPayload = null;
+  let dispatchedUrl = null;
+  const fetchImpl = async (url, options) => {
+    dispatchedUrl = url;
+    dispatchedPayload = JSON.parse(options.body);
+    return new Response(
+      JSON.stringify({
+        id: "chatcmpl-gemini-res",
+        object: "chat.completion",
+        choices: [{ message: { role: "assistant", content: "response from gemini" } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  const batchResult = await dispatchBatch(env, fetchImpl, now, 1);
+  assert.equal(batchResult.status, "completed");
+  assert.equal(batchResult.count, 1);
+  assert.equal(batchResult.results[0].status, "completed");
+  assert.equal(batchResult.results[0].routeId, "gemini_3_5_flash_lite_primary");
+  assert.ok(dispatchedPayload.model.includes("gemini"));
+
+  // The finished request is saved as completed and ready marker removed:
+  const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
+  assert.equal(saved.status, "completed");
+  assert.equal(await env.LLM_QUEUE.get(mKey), null);
 });
 
 test("accepts the configured default route but rejects an unrecognized model", async () => {
@@ -693,6 +910,12 @@ test("ready-marker lookahead skips a blocked provider and dispatches a later pro
       version: 1,
       routes: {
         mistral_large_2512_primary: {
+          requests_minute: 1,
+          requests_day: 1,
+          tokens_minute: 0,
+          requests_available_at: new Date(now.getTime() + 60_000).toISOString(),
+        },
+        mistral_large_2512_secondary: {
           requests_minute: 1,
           requests_day: 1,
           tokens_minute: 0,
@@ -1822,7 +2045,9 @@ test("credential-resolution failure never touches the ledger, and a persistent l
   await handleRequest(chatRequest(undefined, "cred-then-ledger-failure"), env);
 
   // First: a missing secret must fail the record without ever writing rate usage to the coordinator.
-  const { MISTRAL_API_KEY, ...withoutMistralKey } = env;
+  const withoutMistralKey = { ...env };
+  delete withoutMistralKey.MISTRAL_API_KEY;
+  delete withoutMistralKey.MISTRAL_API_KEY_SECONDARY;
   const credFailure = await dispatchOne(withoutMistralKey, okUpstream(), new Date());
   assert.equal(credFailure.status, "failed");
   const storedCoord = await env.LLM_QUEUE.get("state/dispatch_coordinator.json");
@@ -1975,24 +2200,24 @@ test("dispatchBatch staggers same-route candidates within allowed stagger delay"
     },
   );
   assert.equal(batchResult.status, "completed");
-  // mistral-large-2512 has rpm=4 (15s interval).
-  // Candidate 0 has delayMs=0.
-  // Candidate 1 has delayMs=15000 <= MAX_IN_BATCH_STAGGER_SECONDS (20s) -> admitted.
-  // Candidate 2 has delayMs=30000 > 20s -> deferred in place.
-  assert.equal(batchResult.count, 2);
-  assert.equal(batchResult.completedCount, 2);
-  assert.equal(calls.length, 2);
-  assert.equal(slept.length, 1);
-  assert.ok(
-    slept[0] > 13_000 && slept[0] <= 15_000,
-    `expected slept delay within (13000, 15000], got ${slept[0]}`,
-  );
+  // The secondary native route and the independent paid fallback let three candidates proceed;
+  // the two paced submissions wait for the native route's 15-second interval.
+  assert.equal(batchResult.count, 3);
+  assert.equal(batchResult.completedCount, 3);
+  assert.equal(calls.length, 3);
+  assert.equal(slept.length, 2);
+  for (const delay of slept) {
+    assert.ok(
+      delay > 13_000 && delay <= 16_000,
+      `expected slept delay within (13000, 16000], got ${delay}`,
+    );
+  }
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 2);
+  assert.equal(completedObjects.length, 3);
 });
 
 test("dispatchBatch defers same-route candidates when MAX_IN_BATCH_STAGGER_SECONDS is 0", async () => {
@@ -2369,7 +2594,7 @@ test("the Free-plan scheduler prioritizes fast work before long work", async () 
     null,
     now.getTime() + 820_000,
   );
-  assert.equal(selected.length, 2);
+  assert.equal(selected.length, 3);
   const records = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completed = await Promise.all(
     records.objects.map(async (object) => ({ key: object.key, record: await (await env.LLM_QUEUE.get(object.key)).json() })),
@@ -2641,6 +2866,7 @@ test("a batch that dispatches nothing persists a reaped reservation but not a wi
   // about what is worth a write: window keys are recomputed from `now` on every load, while an
   // abandoned reservation is durable state nothing else will clear.
   const route = "mistral_large_2512_primary";
+  const secondaryRoute = "mistral_large_2512_secondary";
   // Ahead of the enqueues below, so their markers are already eligible when the batch runs.
   const now = new Date(Date.now() + 1_000);
 
@@ -2657,6 +2883,17 @@ test("a batch that dispatches nothing persists a reaped reservation but not a wi
         requests_day_key: "1999-01-01",
         blocked_until: new Date(now.getTime() + 3_600_000).toISOString(),
         inflight,
+      },
+      [secondaryRoute]: {
+        requests_minute: 0,
+        tokens_minute: 0,
+        requests_available_at: "",
+        tokens_available_at: "",
+        requests_minute_key: "1999-01-01T00:00",
+        requests_day: 0,
+        requests_day_key: "1999-01-01",
+        blocked_until: new Date(now.getTime() + 3_600_000).toISOString(),
+        inflight: {},
       },
     },
   });

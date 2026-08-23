@@ -134,6 +134,15 @@ class Episode:
     generated_chapters: list[dict] = field(default_factory=list)
     generated_chapters_spec_hash: str | None = None
     summary: str = ""
+    # R6 moment candidates are additive and remain separate from the provider/legacy summary.
+    moment_summary_candidates: list[dict] = field(default_factory=list)
+    moment_pullquote_candidates: list[dict] = field(default_factory=list)
+    moment_decision_candidates: list[dict] = field(default_factory=list)
+    moments_llm_recipe_hash: str | None = None
+    moments_llm_call_attempts: list[dict] = field(default_factory=list)
+    # The selected admitted quote and rendered social-video artifact are projections of the
+    # candidate ledger, not replacements for official episode text.
+    moment_video_clip: dict = field(default_factory=dict)
     # Versioned catalog taxonomy output.  ``tags_spec_hash`` prevents an enabled LLM path from
     # repeating the same inference when its inputs and taxonomy have not changed.
     tags: list[dict] = field(default_factory=list)
@@ -228,6 +237,9 @@ class Episode:
     speakers_confidence: float | None = None
     speakers_pipeline_version: str | None = None
     speakers_error: str | None = None
+    # Explicit provenance keeps native R7 output distinct from the pre-existing provider-label
+    # parser.  Both still share one artifact pointer/schema for render consumers.
+    speakers_source: Literal["provider", "native"] | None = None
     # Materialization backoff: when audio re-hosting fails (e.g. a Swagit ``/download`` that
     # redirects to a keyless S3 URL with no usable page media), the count of consecutive failed
     # attempts and the ISO8601 time of the last one are persisted so the media pipeline backs

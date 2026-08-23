@@ -30,6 +30,11 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INPUT_YAML = REPO_ROOT / "config" / "provider_limits.yml"
 OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-proxy" / "src" / "dispatch_limits.json"
+# Same catalog shape as OUTPUT_JSON, for review/44's v2 executor Worker (Unit 4's
+# routeHasCapacityFor/routesEligibleFor need the same physical route/provider data v1 has). Kept
+# as a second write of the same compiled catalog, not a cross-Worker-directory import, so v2 has
+# no build/deploy dependency on v1's directory continuing to exist past its Phase 3 retirement.
+V2_OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "dispatch_limits.json"
 PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
 
 _STRUCTURED_OUTPUT_FORMATS = frozenset({"json_schema", "json_object"})
@@ -84,6 +89,62 @@ def _validate_token_buffer(raw_buffer: Any) -> float:
             f"token_estimate_buffer must be <= 1.0 (e.g. 0.90 for 90%), got {raw_buffer!r}"
         )
     return numeric_val
+
+
+def _validate_split_cap(raw_multiplier: Any) -> float:
+    """Validate and normalize the split-cap multiplier for multi-dispatcher coexistence.
+
+    Returns a float multiplier in (0.0, 1.0]. A missing/null value defaults to 1.0 (unscaled).
+    Strings with a trailing '%' (e.g. '50%') are parsed as percentages. Values outside (0.0, 1.0]
+    or non-numeric types are rejected.
+    """
+    if raw_multiplier is None:
+        return 1.0
+    if isinstance(raw_multiplier, bool):
+        raise ValueError(f"split_cap_multiplier must be a number, got boolean {raw_multiplier!r}")
+    if isinstance(raw_multiplier, str):
+        val_str = raw_multiplier.strip()
+        if val_str.endswith("%"):
+            try:
+                numeric_val = float(val_str[:-1].strip()) / 100.0
+            except ValueError as exc:
+                raise ValueError(
+                    f"split_cap_multiplier has invalid percentage value: {raw_multiplier!r}"
+                ) from exc
+        else:
+            try:
+                numeric_val = float(val_str)
+            except ValueError as exc:
+                raise ValueError(
+                    f"split_cap_multiplier has invalid numeric value: {raw_multiplier!r}"
+                ) from exc
+    elif isinstance(raw_multiplier, (int, float)):
+        numeric_val = float(raw_multiplier)
+    else:
+        raise ValueError(
+            f"split_cap_multiplier must be a number, got {type(raw_multiplier).__name__}"
+        )
+
+    if not math.isfinite(numeric_val) or numeric_val <= 0:
+        raise ValueError(
+            f"split_cap_multiplier must be a positive finite number, got {raw_multiplier!r}"
+        )
+    if numeric_val > 1.0:
+        raise ValueError(
+            f"split_cap_multiplier must be <= 1.0 (e.g. 0.50 for 50%), got {raw_multiplier!r}"
+        )
+    return numeric_val
+
+
+def _scale_rate_limit(value: Any, multiplier: float) -> Any:
+    """Scale a numeric rate limit by multiplier, preserving None and 0."""
+    if value is None or multiplier == 1.0:
+        return value
+    if isinstance(value, (int, float)):
+        if value == 0:
+            return 0
+        return max(1, int(math.floor(value * multiplier)))
+    return value
 
 
 def _direct_model(provider: str, upstream_model: str) -> str:
@@ -198,6 +259,7 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
     return {
         "_metadata": compiled["_metadata"],
         "model_aliases": compiled.get("model_aliases", {}),
+        "model_routing": compiled.get("model_routing", {}),
         "routes": routes,
     }
 
@@ -293,6 +355,9 @@ def _worker_catalog(compiled: dict[str, Any]) -> dict[str, Any]:
             for model, route_ids in compiled.get("model_routes_map", {}).items()
         },
         "model_aliases": worker_aliases,
+        "model_routing": {
+            model: list(targets) for model, targets in compiled.get("model_routing", {}).items()
+        },
     }
 
 
@@ -524,6 +589,53 @@ def _validated_routes(
     return normalized_routes, routes_by_id, model_routes_map, model_aliases
 
 
+def _validated_model_routing(
+    raw_model_routing: Any,
+    *,
+    model_aliases: dict[str, str],
+    canonical_models: set[str],
+) -> dict[str, list[str]]:
+    """Normalize and validate the optional cross-model overflow map (``model_routing`` in the YAML).
+
+    Each key names a model whose callers may also be satisfied by any of its listed target models
+    once its own routes are exhausted/unavailable -- extra capacity for a job pinned to one model,
+    without editing the job itself. Keys and values may use either a canonical model or a legacy
+    alias; both resolve through ``model_aliases`` the same way a route's own ``model`` selector
+    does. An unknown model on either side is a hard compile error, so a typo can't silently produce
+    a routing entry nothing ever reaches.
+    """
+
+    def resolve(selector: Any, *, where: str) -> str:
+        if not isinstance(selector, str) or not selector.strip():
+            raise ValueError(f"model_routing {where} has an invalid model selector: {selector!r}")
+        canonical = model_aliases.get(selector, selector)
+        if canonical not in canonical_models:
+            raise ValueError(f"model_routing {where} references unknown model {selector!r}")
+        return canonical
+
+    if raw_model_routing is None:
+        return {}
+    if not isinstance(raw_model_routing, dict):
+        raise ValueError(
+            f"model_routing must be a mapping of source models to target lists, "
+            f"got {raw_model_routing!r}"
+        )
+
+    result: dict[str, list[str]] = {}
+    for source, targets in raw_model_routing.items():
+        canonical_source = resolve(source, where=f"key {source!r}")
+        if not isinstance(targets, list) or not targets:
+            raise ValueError(f"model_routing[{source!r}] must be a non-empty list of target models")
+        resolved = result.setdefault(canonical_source, [])
+        for target in targets:
+            canonical_target = resolve(target, where=f"target for {source!r}")
+            if canonical_target == canonical_source:
+                raise ValueError(f"model_routing[{source!r}] cannot route a model to itself")
+            if canonical_target not in resolved:
+                resolved.append(canonical_target)
+    return result
+
+
 def _validate_pricing_windows(route: dict[str, Any]) -> None:
     """Reject a rate window that can never reach a lower price.
 
@@ -577,17 +689,28 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         raw_buffer = raw.get("token_usage_buffer")
     token_estimate_buffer = _validate_token_buffer(raw_buffer)
 
+    raw_split_cap = raw.get("split_cap_multiplier")
+    if raw_split_cap is None:
+        raw_split_cap = raw.get("split_cap")
+    split_cap_multiplier = _validate_split_cap(raw_split_cap)
+
     providers = raw.get("providers", {})
-    if token_estimate_buffer != 1.0:
+    if token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0:
         for provider_cfg in providers.values():
             if isinstance(provider_cfg, dict):
+                if provider_cfg.get("rpm") is not None and split_cap_multiplier != 1.0:
+                    provider_cfg["rpm"] = _scale_rate_limit(
+                        provider_cfg["rpm"], split_cap_multiplier
+                    )
                 if provider_cfg.get("monthly_tpm") is not None:
-                    provider_cfg["monthly_tpm"] = max(
-                        1, int(math.floor(provider_cfg["monthly_tpm"] * token_estimate_buffer))
+                    provider_cfg["monthly_tpm"] = _scale_rate_limit(
+                        provider_cfg["monthly_tpm"],
+                        token_estimate_buffer * split_cap_multiplier,
                     )
                 if provider_cfg.get("tpm") is not None:
-                    provider_cfg["tpm"] = max(
-                        1, int(math.floor(provider_cfg["tpm"] * token_estimate_buffer))
+                    provider_cfg["tpm"] = _scale_rate_limit(
+                        provider_cfg["tpm"],
+                        token_estimate_buffer * split_cap_multiplier,
                     )
 
     routes = raw.get("routes", [])
@@ -595,10 +718,24 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         raw.get("structured_output_profiles")
     )
     normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
+    model_routing = _validated_model_routing(
+        raw.get("model_routing"),
+        model_aliases=model_aliases,
+        canonical_models=set(model_routes_map),
+    )
     for route in normalized_routes:
         _validate_pricing_windows(route)
-        if route.get("tpm") is not None and token_estimate_buffer != 1.0:
-            route["tpm"] = max(1, int(math.floor(route["tpm"] * token_estimate_buffer)))
+        if split_cap_multiplier != 1.0:
+            if route.get("rpm") is not None:
+                route["rpm"] = _scale_rate_limit(route["rpm"], split_cap_multiplier)
+            if route.get("rpd") is not None:
+                route["rpd"] = _scale_rate_limit(route["rpd"], split_cap_multiplier)
+        if route.get("tpm") is not None and (
+            token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0
+        ):
+            route["tpm"] = _scale_rate_limit(
+                route["tpm"], token_estimate_buffer * split_cap_multiplier
+            )
         provider_cfg = providers.get(route.get("provider"), {})
         for limit_name in ("input_context_limit", "output_context_limit"):
             value = route.get(limit_name)
@@ -635,6 +772,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
             "routes_count": len(normalized_routes),
             "providers_count": len(providers),
             "token_estimate_buffer": token_estimate_buffer,
+            "split_cap_multiplier": split_cap_multiplier,
         },
         "providers": providers,
         "structured_output_profiles": structured_output_profiles,
@@ -642,6 +780,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         "routes_by_id": routes_by_id,
         "model_routes_map": model_routes_map,
         "model_aliases": model_aliases,
+        "model_routing": model_routing,
     }
     return compiled
 
@@ -666,16 +805,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     compiled = compile_limits(discover=args.discover)
+    worker_catalog = _worker_catalog(compiled)
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT_JSON.open("w", encoding="utf-8") as f:
-        json.dump(_worker_catalog(compiled), f, indent=2, default=_json_default)
+        json.dump(worker_catalog, f, indent=2, default=_json_default)
+    V2_OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
+    with V2_OUTPUT_JSON.open("w", encoding="utf-8") as f:
+        json.dump(worker_catalog, f, indent=2, default=_json_default)
     with PYTHON_OUTPUT_JSON.open("w", encoding="utf-8") as f:
         json.dump(_python_routes(compiled), f, indent=2, default=_json_default)
     rel_out = OUTPUT_JSON.relative_to(REPO_ROOT)
+    rel_v2_out = V2_OUTPUT_JSON.relative_to(REPO_ROOT)
     print(
         f"Successfully compiled {compiled['_metadata']['routes_count']} routes "
-        f"across {compiled['_metadata']['providers_count']} providers to {rel_out} and "
-        f"{PYTHON_OUTPUT_JSON.relative_to(REPO_ROOT)}"
+        f"across {compiled['_metadata']['providers_count']} providers to {rel_out}, "
+        f"{rel_v2_out}, and {PYTHON_OUTPUT_JSON.relative_to(REPO_ROOT)}"
     )
 
 
