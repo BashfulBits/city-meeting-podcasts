@@ -1,0 +1,15 @@
+{% extends "base.html.j2" %}
+{% block title %}{{ person.display_name }} — {{ city.podcast_title }}{% endblock %}
+{% block content %}
+  <p><a class="muted" href="{{ city_url }}">← Back to {{ city.podcast_title }}</a></p>
+  <h1>{{ person.display_name }}</h1>
+  <h2>Meetings</h2>
+  <ul>{% for meeting in person.meetings %}<li><a href="{{ meeting.url }}">{{ meeting.title }}</a> · {{ meeting.published.strftime("%B %-d, %Y") }}</li>{% endfor %}</ul>
+  <h2>Attributed pull quotes</h2>
+  {% for quote in person.quotes %}
+  <article style="padding:1rem;border:1px solid var(--border);border-radius:12px;margin:.7rem 0;background:var(--card);">
+    <blockquote style="margin:0 0 .5rem;">“{{ quote.quote }}”</blockquote>
+    <a href="{{ quote.url }}">{{ quote.meeting_title }}</a> · {{ quote.published.strftime("%B %-d, %Y") }}{% if quote.status == 'provisional' %} · provisional{% endif %}
+  </article>
+  {% endfor %}
+{% endblock %}

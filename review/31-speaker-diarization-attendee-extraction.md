@@ -1,9 +1,74 @@
 # review/31 — Speaker Diarization, Minimal Attendee Extraction, and Per-Speaker Pages
 
-**Maturity: L3 (dev-ready) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
+**Maturity: implementation in progress (R7 revision, 2026-08-22) · breakout of [`review/11`](11-technical-design-roadmap.md) §5.1 ·
 ROADMAP R7 (#7 diarization + a minimal #14 attendee slice; per-speaker pages adopted from
 [`review/25`](25-future-features-and-architecture.md) §2.3 #11) · full pull-forward, gating 1.0 ·
 issues not yet cut**
+
+> **Superseding R7 decision, 2026-08-22.** The original human-confirm-only / WeSpeaker-first
+> design below is retained as historical design context. R7 now uses the pinned pyannote stack for
+> native turn/overlap diarization, while its identity layer remains engine-neutral and benchmarks
+> WeSpeaker on a curated gold set. The implementation keeps private city/body voice-profile
+> registries, requires two maintainer-approved turns from distinct meetings before a recurring
+> official is eligible, and never stores copied reference audio. Public automatic names are
+> provisional voice-only projections only after a per-body/engine 30-day, 30-review, 95%-precision
+> calibration gate. Later official minutes silently constrain/reassign those projections to their
+> roster or remove them. R6 grounded pull quotes inherit a name only if one non-overlapped speaker
+> turn completely covers their interval; each name links to a static cross-meeting speaker page.
+> Provider labels/rosters remain attendance vocabulary, not timestamped identity ground truth.
+
+---
+
+> **Weekly calibration revision, 2026-08-22.** `speaker-calibration-review.yml` packages at most
+> `speakers.weekly_review_limit` (default 8) durable shadow matches each Monday using the same
+> authenticated GitHub-issue pattern as R5/R6. A maintainer checks Correct/Incorrect and comments
+> `/speaker-ingest`; the workflow verifies the bot label and author association, rechecks the private
+> candidate ledger, then appends the result and closes the issue. The separate `speaker-benchmark`
+> command compares normalized pyannote/WeSpeaker result bundles against a curator-supplied private gold
+> bundle; it is deliberately offline because it must not put reference audio or embeddings in Actions.
+> **Pilot selection:** `denton-tx` / `City Council` is the first explicitly allowlisted shadow pilot;
+> all other city/body pairs remain excluded even while R7 processing is enabled.
+
+---
+
+> **Diarization lane and model preflight, 2026-08-22.** The Denton shadow pilot is now invoked by
+> `.github/workflows/r7-diarization.yml` every six hours and by manual dispatch. It runs the native
+> `diarize` lane before `speaker-identity`, persists only the R7-owned state blocks, and uses the
+> existing `HF_TOKEN` secret. A cached preflight loads both the configured `pyannote.audio` pipeline
+> and embedding model before any meeting work starts. The configured production candidate is
+> `pyannote/speaker-diarization-community-1`; changing that recipe changes the content-addressed
+> diarization key and causes gradual reprocessing, not a destructive bulk invalidation. Public naming
+> remains fail-closed until the existing calibration gate qualifies.
+
+---
+
+> **Pilot-integrity revision, 2026-08-23.** R7 private turn evidence, membership/profile registry,
+> and review evaluation are processed in one serialized city/source ledger pass after concurrent
+> transcript work; they are never last-writer-wins per episode. Golden-reference issue payloads carry
+> only the non-sensitive local turn locator needed to retrieve private evidence, never embeddings or
+> scores. Qualification requires two approved distinct meetings using the *active embedding recipe*.
+> Calibration is additionally scoped to an explicit configured capture context and the effective
+> pipeline/model/embedding recipe. A private pyannote-versus-WeSpeaker benchmark decision must be
+> recorded for that exact cell before its already-calibrated name can publish. Roster-backed matches
+> become confirmed; missing or unparseable rosters make no correction.
+> The R6 moments and R7 identity lanes share one Actions concurrency group because identity mutates
+> the complete R6 moments block; this prevents either lane from pushing a stale block snapshot.
+
+---
+
+> **Chair/title-led golden-reference revision, 2026-08-22.** The identity stage now scans timed
+> transcript words for formal recognition cues and common short introductions such as “Commissioner
+> Jane Doe”, “Council Member Jane Doe”, and “Councilmember Jane Doe”. A cue becomes a private
+> `chair-reference` candidate only when a following non-overlapped diarized turn has a private
+> embedding; it never assigns the name. Monday packaging combines shadow-match and chair-reference
+> candidates under one native GitHub parent issue with one sub-issue per candidate. Maintainers check
+> Correct/Incorrect for shadow matches or Approve/Reject for references and use the same
+> `/speaker-ingest` command. Approval copies the already-persisted embedding into the body registry;
+> the issue body and public artifacts contain no embedding or score. That approval is a private seed
+> only: `qualified_profile` still requires references from two distinct meetings, and public naming
+> remains blocked by the calibration gate.
+
+---
 
 > **Matured to L3, 2026-07-13.** The L1 sketch this builds from was already unusually detailed (real
 > CPU-viable model research, a named execution-backend dependency, an explicit naming/confirmation
@@ -13,6 +78,15 @@ issues not yet cut**
 > and test/acceptance detail L3 requires.
 
 ---
+
+## Historical original plan (not normative)
+
+The sections below are preserved as the pre-2026-08-22 design record and research trail. They are not
+implementation or publication requirements: the superseding decision and revisions above define the
+current pyannote-first pipeline, calibrated provisional naming, roster reconciliation, and quote/page
+constraints. In particular, references below to a WeSpeaker-first rollout or universal human-only naming
+are historical; WeSpeaker is now the benchmark comparator, and human review approves voice references
+and calibration labels rather than directly publishing names.
 
 ## §0. What's already shipped vs. what's actually new — checked directly, not assumed
 
@@ -51,7 +125,7 @@ identify-then-confirm naming workflow, (4) per-speaker pages.**
 
 ## Part A — Native speaker diarization
 
-### A.1 Model choice — re-verified, not re-derived from scratch
+### A.1 Historical model research — re-verified, not re-derived from scratch
 
 The L1 sketch's own research (wespeaker ECAPA-TDNN, ~100MB, no HF gate, ~2× transcription cost on CPU)
 checked out on re-verification (2026-07-13): wespeaker's embeddings run at ~0.67s of compute per second
@@ -61,11 +135,9 @@ the sketch scoped it out for the Actions-runner-budget path. **One new data poin
 acting on yet:** a newer library ("Diarize," built on Silero VAD + WeSpeaker ResNet34 embeddings via
 ONNX Runtime + GMM/BIC speaker counting + spectral clustering) claims ~7× pyannote's CPU speed at
 comparable DER (~10.8% vs. ~11.2% on VoxConverse) — but it's a very recent, single-maintainer project with
-no track record here. **Recommendation: keep wespeaker ECAPA-TDNN as the primary choice** (the sketch's
-own conclusion, now re-confirmed current); note the newer library as a future swap candidate if
-wespeaker's real production throughput proves insufficient, not a reason to delay on an unproven
-dependency. `speechbrain` ECAPA-TDNN via `simple-diarizer` stays the documented fallback if wespeaker's
-packaging proves difficult.
+no track record here. This research is retained to define the WeSpeaker benchmark comparator and a
+possible future fallback; it does not select the production stack. The superseding decision above selects
+pyannote first, with a recipe-content-addressed gradual re-diarization path.
 
 ### A.2 Module plan
 

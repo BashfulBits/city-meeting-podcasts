@@ -1268,6 +1268,7 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
     ep.speakers_synced = True
     ep.speakers_confidence = 0.9
     ep.speakers_pipeline_version = "1"
+    ep.speakers_source = "native"
 
     back = record_to_episode(episode_to_record(ep))
     for attr in (
@@ -1303,6 +1304,7 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "speakers_synced",
         "speakers_confidence",
         "speakers_pipeline_version",
+        "speakers_source",
     ):
         assert getattr(back, attr) == getattr(ep, attr), attr
 
@@ -1734,6 +1736,31 @@ def test_protected_blocks_for_lane():
             "generated_chapters",
             "generated_chapters_spec_hash",
             "moments",
+        }
+    )
+    assert protected_blocks_for_lane("speaker-identity") == frozenset(
+        {
+            "audio",
+            "transcript",
+            "provider_transcript",
+            "speakers",
+            "media_availability",
+            "integrity",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_call_attempts",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
+            "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
         }
     )
     assert protected_blocks_for_lane("tag") == frozenset(

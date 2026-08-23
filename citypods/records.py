@@ -542,6 +542,8 @@ def feed_content_hash(
             e.published.isoformat(),
             e.description,
             e.summary,
+            e.moment_pullquote_candidates,
+            e.moment_video_clip,
             e.tags,
             e.transcript_hosted_url,
             e.transcript_synced,
@@ -580,6 +582,8 @@ def meeting_page_hash(ep: Episode) -> str:
         "published": ep.published.isoformat(),
         "description": ep.description,
         "summary": ep.summary,
+        "moment_pullquote_candidates": ep.moment_pullquote_candidates,
+        "moment_video_clip": ep.moment_video_clip,
         "tags": ep.tags,
         "chapter_tags": ep.chapter_tags,
         "links": sorted((ep.links or {}).items()),
@@ -1299,6 +1303,7 @@ def episode_to_record(ep: Episode) -> dict:
             "confidence": ep.speakers_confidence,
             "pipeline_version": ep.speakers_pipeline_version,
             "error": ep.speakers_error,
+            "source": ep.speakers_source,
         }
         if ep.speakers_key or ep.speakers_error
         else None,
@@ -1382,6 +1387,7 @@ def _speakers_fields_from_rec(rec: dict) -> dict:
         "speakers_confidence": s.get("confidence"),
         "speakers_pipeline_version": s.get("pipeline_version"),
         "speakers_error": s.get("error"),
+        "speakers_source": s.get("source"),
     }
 
 
@@ -1744,6 +1750,9 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     "transcribe": frozenset({"transcript", "provider_transcript"}),
     "align": frozenset({"transcript", "provider_transcript"}),
     "diarize": frozenset({"speakers", "provider_transcript"}),
+    # Identity is a mutable projection onto R6 candidates.  It must not re-upload the diarize
+    # lane's speakers block from a stale snapshot while a native artifact is being produced.
+    "speaker-identity": frozenset({"moments"}),
     "tag": frozenset(
         {
             "tags",
@@ -1775,7 +1784,8 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     ),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
-    "diarize": frozenset({"diarize"}),
+    "diarize": frozenset({"diarize", "native_diarize"}),
+    "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
     "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
@@ -2063,16 +2073,8 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.provider_transcript = (
             provider_transcript if isinstance(provider_transcript, dict) else {}
         )
-        speakers = rec.get("speakers") or {}
-        if isinstance(speakers, dict):
-            ep.speakers_key = speakers.get("key")
-            ep.speakers_url = speakers.get("url")
-            ep.speakers_spec_hash = speakers.get("spec_hash")
-            ep.speakers_format = speakers.get("format")
-            ep.speakers_synced = bool(speakers.get("synced", False))
-            ep.speakers_confidence = speakers.get("confidence")
-            ep.speakers_pipeline_version = speakers.get("pipeline_version")
-            ep.speakers_error = speakers.get("error")
+        for field_name, value in _speakers_fields_from_rec(rec).items():
+            setattr(ep, field_name, value)
         # Persisted links are derived artifacts, except a freshly supplied provider link.  In
         # particular an agenda-derived minutes URL must never mask a later canonical provider URL.
         persisted_links = rec.get("links") or {}

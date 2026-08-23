@@ -82,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
             "align",
             "tag",
             "moments",
+            "diarize",
+            "speaker-identity",
             "chapter-agenda",
             "chapter-locator",
             "chapter",
@@ -89,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
         help="work class to run: 'audio' materializes audio only; 'transcribe' runs fresh ASR "
         "only; 'align' runs forced-alignment only; 'tag' runs bounded LLM topic tagging only; "
         "'moments' runs grounded moment extraction, judging, admission, and clip rendering. "
+        "'diarize' runs native speaker diarization over hosted audio; 'speaker-identity' projects "
+        "identities and queues private review candidates. "
         "'chapter-agenda' extracts agenda candidates; 'chapter-locator' locates them in the "
         "complete timed transcript; 'chapter' runs both chapter lanes. Default runs the full "
         "enrich (audio + transcript). The sharded workflows pin one lane "
@@ -338,6 +342,14 @@ def main(argv: list[str] | None = None) -> int:
         "r6-review", help="record an authenticated R6 Good/Borderline/Reject review"
     )
     r6.add_argument("r6_review_args", nargs=argparse.REMAINDER)
+    r7 = sub.add_parser(
+        "speaker-review", help="maintain R7 golden voice references and calibration"
+    )
+    r7.add_argument("speaker_review_args", nargs=argparse.REMAINDER)
+    sb = sub.add_parser(
+        "speaker-benchmark", help="compare pyannote and WeSpeaker against private gold"
+    )
+    sb.add_argument("speaker_benchmark_args", nargs=argparse.REMAINDER)
 
     args = parser.parse_args(argv)
 
@@ -392,6 +404,14 @@ def main(argv: list[str] | None = None) -> int:
         from citypods import moment_review
 
         return moment_review.main(args.r6_review_args)
+    if args.command == "speaker-review":
+        from citypods import speaker_review
+
+        return speaker_review.main(args.speaker_review_args)
+    if args.command == "speaker-benchmark":
+        from citypods import speaker_benchmark
+
+        return speaker_benchmark.main(args.speaker_benchmark_args)
 
     return 0
 

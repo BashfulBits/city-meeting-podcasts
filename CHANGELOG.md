@@ -17,6 +17,24 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **R7 calibrated speaker attribution (in progress).** Added pyannote-backed native speaker-turn
+  artifacts, private city/body membership and golden-voice registries, the 30-day/30-review/95%-precision
+  public-identity gate, minutes-backed silent correction, R6 single-speaker pull-quote attribution, and
+  static speaker pages. Diarization/version backfills are gradual: only episodes with an eligible retained
+  transcript/audio artifact are reconsidered; audio and transcript bytes are never regenerated.
+  The pilot now serializes its private state per city/source, uses a recipe-specific measured runtime
+  profile, scopes profiles/calibration to the active embedding and explicit capture context, requires
+  a recorded private benchmark decision before public naming, and confirms valid roster-backed names.
+  A bounded weekly GitHub-review issue workflow now harvests authenticated Correct/Incorrect shadow
+  labels into the private calibration ledger; the pyannote-vs-WeSpeaker gold-set comparator remains an
+  explicit offline run because the gold references are private. The same weekly parent/sub-issue
+  batch now reviews conservative transcript cues such as “Commissioner X” and “Council Member X”
+  as possible golden voice references without assigning names automatically. The Denton pilot now has
+  a scheduled/manual `r7-diarization.yml` lane that runs native diarization followed by identity
+  projection, with a shared `HF_TOKEN` model-access preflight and cached Community-1 runtime. The
+  diarization model recipe is intentionally changed content-addressably, so existing artifacts are
+  retained and reprocessed gradually by the recurring lane rather than invalidated in one backfill.
+
 - **R6 calibrated moments and shareable clips.** Added council-only free Gemini 3.6/3.5 routing,
   immutable Good/Borderline/Reject review records, background independent judges, deterministic
   admission gates, RSS soundbites, and grounded captioned MP4 clips. Clips preserve source audio,
