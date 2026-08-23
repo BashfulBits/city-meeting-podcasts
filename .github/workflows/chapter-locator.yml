@@ -9,7 +9,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: chapter
+  group: chapter-locator
   cancel-in-progress: false
 
 permissions:

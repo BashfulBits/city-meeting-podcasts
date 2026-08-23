@@ -1199,12 +1199,16 @@ def test_chapter_workflows_use_per_lane_maintenance_leases(workflow, expected_ke
         assert name in env
 
 
-def test_chapter_workflows_share_chapter_concurrency_group():
-    agenda_wf, _agenda_job = _job("chapter-agenda.yml")
-    locator_wf, _locator_job = _job("chapter-locator.yml")
-
-    assert agenda_wf["concurrency"] == {"group": "chapter", "cancel-in-progress": False}
-    assert locator_wf["concurrency"] == {"group": "chapter", "cancel-in-progress": False}
+@pytest.mark.parametrize(
+    ("workflow", "expected_group"),
+    [
+        ("chapter-agenda.yml", "chapter-agenda"),
+        ("chapter-locator.yml", "chapter-locator"),
+    ],
+)
+def test_chapter_workflows_have_independent_concurrency_groups(workflow, expected_group):
+    wf, _job_obj = _job(workflow)
+    assert wf["concurrency"] == {"group": expected_group, "cancel-in-progress": False}
 
 
 def test_chapter_workflows_use_alternating_two_hour_schedules():

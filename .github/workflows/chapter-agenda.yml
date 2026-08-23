@@ -8,7 +8,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: chapter
+  group: chapter-agenda
   cancel-in-progress: false
 
 permissions:

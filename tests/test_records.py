@@ -1935,6 +1935,122 @@ def test_merge_preserving_foreign_diarize_lane_keeps_remote_transcript():
     assert merged["u1"]["speakers"] == {"key": "speaker-json"}
 
 
+def test_merge_preserving_foreign_chapter_agenda_lane_merges_candidates_and_preserves_locator():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {
+                "status": "old",
+                "recipe": "r-old",
+                "items": [{"index": 0, "title": "Old Item"}],
+                "locator_status": "completed",
+                "boundary_artifact_key": "boundary/u1/b1.json",
+                "transcript_unit_source": "words",
+            },
+            "generated_chapters": [{"start": 10.0, "title": "Old Item"}],
+            "generated_chapters_spec_hash": "b1",
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {
+                "status": "completed",
+                "recipe": "r-new",
+                "items": [{"index": 0, "title": "New Item"}],
+            },
+            "generated_chapters": None,
+        }
+    }
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("chapter-agenda"), lane="chapter-agenda"
+    )
+    cand = merged["u1"]["generated_agenda_candidates"]
+    assert cand["status"] == "completed"
+    assert cand["recipe"] == "r-new"
+    assert cand["items"] == [{"index": 0, "title": "New Item"}]
+    assert cand["locator_status"] == "completed"
+    assert cand["boundary_artifact_key"] == "boundary/u1/b1.json"
+    assert cand["transcript_unit_source"] == "words"
+    assert merged["u1"]["generated_chapters"] == [{"start": 10.0, "title": "Old Item"}]
+    assert merged["u1"]["generated_chapters_spec_hash"] == "b1"
+
+
+def test_merge_preserving_foreign_chapter_locator_lane_merges_candidates_and_preserves_agenda():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {
+                "status": "completed",
+                "recipe": "r-agenda",
+                "items": [{"index": 0, "title": "Agenda Item"}],
+            },
+            "generated_chapters": None,
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {
+                "status": "stale-ignore",
+                "recipe": "r-stale",
+                "items": [{"index": 0, "title": "Stale Item"}],
+                "locator_status": "completed",
+                "boundary_artifact_key": "boundary/u1/b2.json",
+                "boundary_artifact_url": "https://cdn/b2.json",
+                "transcript_unit_source": "vtt",
+            },
+            "generated_chapters": [{"start": 25.0, "title": "Agenda Item"}],
+            "generated_chapters_spec_hash": "b2",
+        }
+    }
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("chapter-locator"), lane="chapter-locator"
+    )
+    cand = merged["u1"]["generated_agenda_candidates"]
+    assert cand["status"] == "completed"
+    assert cand["recipe"] == "r-agenda"
+    assert cand["items"] == [{"index": 0, "title": "Agenda Item"}]
+    assert cand["locator_status"] == "completed"
+    assert cand["boundary_artifact_key"] == "boundary/u1/b2.json"
+    assert cand["boundary_artifact_url"] == "https://cdn/b2.json"
+    assert cand["transcript_unit_source"] == "vtt"
+    assert merged["u1"]["generated_chapters"] == [{"start": 25.0, "title": "Agenda Item"}]
+    assert merged["u1"]["generated_chapters_spec_hash"] == "b2"
+
+
+def test_merge_preserving_foreign_unrelated_lane_preserves_entire_agenda_block():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {
+                "status": "completed",
+                "recipe": "r1",
+                "locator_status": "completed",
+            },
+            "generated_chapters": [{"start": 5.0, "title": "Item"}],
+        }
+    }
+    local = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": None,
+            "generated_chapters": None,
+            "transcript": {"key": "t1"},
+        }
+    }
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("transcribe"), lane="transcribe"
+    )
+    assert merged["u1"]["generated_agenda_candidates"] == {
+        "status": "completed",
+        "recipe": "r1",
+        "locator_status": "completed",
+    }
+    assert merged["u1"]["generated_chapters"] == [{"start": 5.0, "title": "Item"}]
+    assert merged["u1"]["transcript"] == {"key": "t1"}
+
+
 def test_availability_block_round_trips():
     from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
 
