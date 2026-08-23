@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from requests import ConnectionError, Timeout
+from requests.exceptions import ChunkedEncodingError
 
 from scripts.preflight_diarization import _load_model, _verify_hf_token
 
@@ -69,6 +71,49 @@ def test_load_model_explains_unknown_or_inaccessible_model():
             gated_repo_error=FakeGatedRepoError,
             repository_not_found_error=FakeRepositoryNotFoundError,
             hub_http_error=FakeHubHTTPError,
+        )
+
+
+@pytest.mark.parametrize(
+    ("status_code", "message"),
+    [
+        (403, "Hugging Face denied download access"),
+        (429, "Hugging Face rate-limited download"),
+    ],
+)
+def test_load_model_separates_access_denial_and_rate_limits(status_code, message):
+    def loader(_model, *, token):
+        assert token == "hf-test"
+        raise FakeHubHTTPError(status_code)
+
+    with pytest.raises(RuntimeError, match=message):
+        _load_model(
+            loader,
+            "pyannote/embedding",
+            label="embedding model",
+            token="hf-test",
+            gated_repo_error=FakeGatedRepoError,
+            repository_not_found_error=FakeRepositoryNotFoundError,
+            hub_http_error=FakeHubHTTPError,
+        )
+
+
+@pytest.mark.parametrize("transport_error", [Timeout, ConnectionError, ChunkedEncodingError])
+def test_load_model_separates_hugging_face_transport_failures(transport_error):
+    def loader(_model, *, token):
+        assert token == "hf-test"
+        raise transport_error()
+
+    with pytest.raises(RuntimeError, match="Network transport failed"):
+        _load_model(
+            loader,
+            "pyannote/embedding",
+            label="embedding model",
+            token="hf-test",
+            gated_repo_error=FakeGatedRepoError,
+            repository_not_found_error=FakeRepositoryNotFoundError,
+            hub_http_error=FakeHubHTTPError,
+            transport_errors=(Timeout, ConnectionError, ChunkedEncodingError),
         )
 
 

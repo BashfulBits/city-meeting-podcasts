@@ -45,6 +45,7 @@ def _load_model(
     gated_repo_error: type[Exception],
     repository_not_found_error: type[Exception],
     hub_http_error: type[Exception],
+    transport_errors: tuple[type[Exception], ...] = (),
 ) -> None:
     """Load one configured pyannote resource with a diagnosis fit for Actions logs."""
     try:
@@ -59,7 +60,23 @@ def _load_model(
             f"Configured {label} {model!r} was not found or is not accessible to HF_TOKEN. "
             "Check the configured model identifier and token access."
         ) from exc
+    except transport_errors as exc:
+        raise RuntimeError(
+            f"Network transport failed while downloading the configured {label} {model!r}. "
+            "Retry the preflight after Hugging Face access is available."
+        ) from exc
     except hub_http_error as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code in {401, 403}:
+            raise RuntimeError(
+                f"Hugging Face denied download access to the configured {label} {model!r}. "
+                "Verify HF_TOKEN access and the model's terms."
+            ) from exc
+        if status_code == 429:
+            raise RuntimeError(
+                f"Hugging Face rate-limited download of the configured {label} {model!r}. "
+                "Wait for the limit to reset, then retry the preflight."
+            ) from exc
         raise RuntimeError(
             f"Hugging Face could not download the configured {label} {model!r}. Retry the "
             "preflight after the Hub is available."
@@ -96,6 +113,8 @@ def run_preflight(site_config_path: str = "config/site_config.yml") -> tuple[str
         from huggingface_hub import HfApi
         from huggingface_hub.errors import GatedRepoError, HfHubHTTPError, RepositoryNotFoundError
         from pyannote.audio import Model, Pipeline
+        from requests import ConnectionError, Timeout
+        from requests.exceptions import ChunkedEncodingError
     except ImportError as exc:
         raise RuntimeError(
             "pyannote.audio and huggingface_hub are required; install the pinned [asr] runtime"
@@ -110,6 +129,7 @@ def run_preflight(site_config_path: str = "config/site_config.yml") -> tuple[str
         gated_repo_error=GatedRepoError,
         repository_not_found_error=RepositoryNotFoundError,
         hub_http_error=HfHubHTTPError,
+        transport_errors=(Timeout, ConnectionError, ChunkedEncodingError),
     )
     _load_model(
         Model.from_pretrained,
@@ -119,6 +139,7 @@ def run_preflight(site_config_path: str = "config/site_config.yml") -> tuple[str
         gated_repo_error=GatedRepoError,
         repository_not_found_error=RepositoryNotFoundError,
         hub_http_error=HfHubHTTPError,
+        transport_errors=(Timeout, ConnectionError, ChunkedEncodingError),
     )
     return model, embedding_model
 
