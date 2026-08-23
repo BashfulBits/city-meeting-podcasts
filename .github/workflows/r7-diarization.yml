@@ -47,8 +47,15 @@ jobs:
       - name: Install pinned diarization runtime
         run: pip install -e ".[asr,storage]" -c constraints/asr.txt
 
-      - name: Check ffmpeg runtime
-        run: ffmpeg -version >/dev/null
+      # pyannote.audio 4 decodes through torchcodec, which dynamically loads FFmpeg's shared
+      # libav* libraries. A standalone/static ffmpeg binary is not sufficient, and ffmpeg is no
+      # longer guaranteed to be present on the moving ubuntu-latest runner image.
+      - name: Install FFmpeg shared runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          ffmpeg -version >/dev/null
+          ldconfig -p | grep -q 'libavcodec.so'
 
       - name: Preflight pyannote model access
         env:

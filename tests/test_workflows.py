@@ -193,6 +193,12 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     ):
         assert identity["env"][name] == f"${{{{ secrets.{name} }}}}"
     assert _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25") >= 0
+    ffmpeg = next(
+        step for step in job["steps"] if step.get("name") == "Install FFmpeg shared runtime"
+    )
+    assert "apt-get install -y -qq --no-install-recommends ffmpeg" in ffmpeg["run"]
+    assert "ldconfig -p | grep -q 'libavcodec.so'" in ffmpeg["run"]
+    assert job["steps"].index(ffmpeg) < job["steps"].index(preflight)
 
 
 def test_speaker_calibration_review_gate_matches_packaged_titles():
