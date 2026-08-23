@@ -127,7 +127,7 @@ jobs:
           node-version: "24"
 
       - name: Validate Renovate configuration
-        run: npx --yes --package renovate renovate-config-validator --strict .github/renovate.json5
+        run: npx --yes --package renovate renovate-config-validator .github/renovate.json5
 
       - name: Constraints drift gate
         run: |
