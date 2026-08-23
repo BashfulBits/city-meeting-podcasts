@@ -28,6 +28,16 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **R9 runtime and dependency maintenance automation (Shipped).** Implemented the full
+  dependency-pinning and automated maintenance policy from `review/22`. Synchronized
+  `.github/renovate.json5` with complete two-lane rule coverage across all Python runtime,
+  hygiene, output-affecting packages, and Cloudflare Worker manifests. Added a static CI
+  guard (`scripts/check_dependency_policy.py`) that fails if any declared `pyproject.toml`
+  dependency escapes Renovate package rule classification, and expanded `ci.yml` to execute
+  test suites across all 5 Cloudflare Workers (`granicus-media-proxy`, `swagit-list-proxy`,
+  `llm-dispatch-proxy`, `llm-dispatch-v2`, `city-request-intake`).
+
+
 - **R7 calibrated speaker attribution (in progress).** Added pyannote-backed native speaker-turn
   artifacts, private city/body membership and golden-voice registries, the 30-day/30-review/95%-precision
   public-identity gate, minutes-backed silent correction, R6 single-speaker pull-quote attribution, and

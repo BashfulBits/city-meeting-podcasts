@@ -860,11 +860,17 @@ def test_ci_has_a_concurrency_group():
 
 def test_ci_runs_granicus_worker_unit_tests():
     _wf, job = _job("ci.yml", job_name="test")
-    step = next(
-        step for step in job["steps"] if step.get("name") == "Test Granicus Cloudflare Worker"
-    )
-    assert step["working-directory"] == "workers/granicus-media-proxy"
-    assert step["run"] == "npm test"
+    expected_workers = {
+        "Test Granicus Cloudflare Worker": "workers/granicus-media-proxy",
+        "Test Swagit List Proxy Worker": "workers/swagit-list-proxy",
+        "Test LLM Dispatch v1 Worker": "workers/llm-dispatch-proxy",
+        "Test LLM Dispatch v2 Worker": "workers/llm-dispatch-v2",
+        "Test City Request Intake Worker": "workers/city-request-intake",
+    }
+    for step_name, work_dir in expected_workers.items():
+        step = next(step for step in job["steps"] if step.get("name") == step_name)
+        assert step["working-directory"] == work_dir
+        assert step["run"] == "npm test"
 
 
 def test_swagit_worker_credentials_reach_provider_fetch_lanes():
