@@ -257,6 +257,9 @@ def speaker_page_rows(city: City, episodes: list[Episode], base_url: str) -> dic
             )
             if not isinstance(attribution, dict) or not attribution.get("speaker_id"):
                 continue
+            meeting_url = meeting_page_url(city, episode, base_url)
+            if not meeting_url:
+                continue
             ident = str(attribution["speaker_id"])
             person = rows.setdefault(
                 ident,
@@ -267,7 +270,6 @@ def speaker_page_rows(city: City, episodes: list[Episode], base_url: str) -> dic
                     "quotes": [],
                 },
             )
-            meeting_url = meeting_page_url(city, episode, base_url)
             person["meetings"].append(
                 {"title": episode.title, "published": episode.published, "url": meeting_url}
             )
@@ -278,9 +280,7 @@ def speaker_page_rows(city: City, episodes: list[Episode], base_url: str) -> dic
                     "status": attribution.get("status"),
                     "meeting_title": episode.title,
                     "published": episode.published,
-                    "url": f"{meeting_url}#t={int(float(candidate.get('start') or 0))}"
-                    if meeting_url
-                    else None,
+                    "url": f"{meeting_url}#t={int(float(candidate.get('start') or 0))}",
                 }
             )
     for person in rows.values():

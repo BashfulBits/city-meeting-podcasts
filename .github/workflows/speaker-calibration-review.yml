@@ -56,7 +56,7 @@ jobs:
           fi
           title="R7 speaker calibration digest"
           existing=$(gh issue list --state open --label speaker-calibration-review --limit 500 \
-            --json number,title --jq --arg title "$title" \
+            --json number,title | jq -r --arg title "$title" \
             '[.[] | select(.title == $title)][0].number // empty')
           if [ -n "$existing" ]; then
             parent="$existing"
@@ -76,11 +76,10 @@ jobs:
             fi
           }
           jq -c '.children[]?' speaker-review/review-batch.json | while read -r row; do
-            candidate_id=$(jq -r '.candidate_id' <<<"$row")
             body_file=$(jq -r '.body_file' <<<"$row")
             title=$(jq -r '.title' <<<"$row")
             existing=$(gh issue list --state open --label speaker-calibration-review --limit 500 \
-              --json number,title --jq --arg title "$title" \
+              --json number,title | jq -r --arg title "$title" \
               '[.[] | select(.title == $title)][0].number // empty')
             if [ -n "$existing" ]; then
               child="$existing"
@@ -99,7 +98,8 @@ jobs:
       startsWith(github.event.comment.body, '/speaker-ingest') &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
       contains(github.event.issue.labels.*.name, 'speaker-calibration-review') &&
-      startsWith(github.event.issue.title, 'R7 speaker ')
+      (startsWith(github.event.issue.title, 'R7 speaker shadow sample ') ||
+       startsWith(github.event.issue.title, 'R7 chair reference '))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6

@@ -6,6 +6,7 @@ import argparse
 import base64
 import json
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from citypods.speakers import (
     save_evaluation,
     save_registry,
     speaker_id,
+    valid_speaker_id,
 )
 
 
@@ -37,6 +39,8 @@ def _load_vector(path: Path) -> list[float]:
 def approve_reference(args: argparse.Namespace) -> int:
     if args.end <= args.start:
         raise ValueError("golden reference end must be after start")
+    if args.speaker_id and not valid_speaker_id(args.speaker_id):
+        raise ValueError("--speaker-id must be an opaque spk-<16 lowercase hex> identifier")
     registry = load_registry(args.registry)
     ident = args.speaker_id or speaker_id(args.city, args.body, args.name)
     people = registry.setdefault("people", {})
@@ -176,8 +180,37 @@ def _record_calibration(
     return None
 
 
+def _review_payload(candidate: Mapping[str, object]) -> dict[str, object]:
+    """Return only the private-ledger fields needed to recheck a review action."""
+    keys = {
+        "candidate_id",
+        "city_slug",
+        "body",
+        "engine_recipe",
+        "episode_uid",
+        "start",
+        "end",
+    }
+    if candidate.get("kind") == "chair-reference":
+        keys.update(
+            {
+                "kind",
+                "display_name",
+                "cue_start",
+                "cue_end",
+                "cue_text",
+                "cue_kind",
+                "embedding_recipe",
+            }
+        )
+    else:
+        keys.update({"speaker_id", "display_name", "transcript_text_hash"})
+    return {key: candidate[key] for key in keys if key in candidate}
+
+
 def _review_body(candidate: dict) -> str:
-    encoded = base64.urlsafe_b64encode(json.dumps(candidate, sort_keys=True).encode()).decode()
+    payload = _review_payload(candidate)
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, sort_keys=True).encode()).decode()
     if candidate.get("kind") == "chair-reference":
         return (
             f"<!-- r7-reference-candidate-b64: {encoded} -->\n"
@@ -207,6 +240,31 @@ def _review_body(candidate: dict) -> str:
     )
 
 
+def _speaker_state_paths(
+    site: Mapping[str, object], state_dir: Path
+) -> tuple[Path, Path, Path, list[str]]:
+    speaker_config = site.get("speakers")
+    if not isinstance(speaker_config, Mapping):
+        raise ValueError("site speakers configuration is required")
+    keys = ("evaluation_state_path", "registry_path", "turn_evidence_path")
+    values: dict[str, str] = {}
+    for key in keys:
+        value = speaker_config.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"site speakers.{key} is required")
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"site speakers.{key} must be a relative state path")
+        values[key] = value
+    relative_paths = [values[key] for key in keys]
+    return (
+        state_dir / values["evaluation_state_path"],
+        state_dir / values["registry_path"],
+        state_dir / values["turn_evidence_path"],
+        relative_paths,
+    )
+
+
 def package(args: argparse.Namespace) -> int:
     from citypods.config import load_site_config
     from citypods.state import resolve_state_dir
@@ -216,11 +274,8 @@ def package(args: argparse.Namespace) -> int:
     site = load_site_config(args.site_config)
     state_dir = resolve_state_dir(site, Path(args.output_dir))
     storage = make_storage(site, site.get("base_url", ""), Path(args.output_dir))
-    speaker_config = site.get("speakers") or {}
-    state_path = state_dir / str(speaker_config.get("evaluation_state_path"))
-    registry_path = state_dir / str(speaker_config.get("registry_path"))
-    evidence_path = state_dir / str(speaker_config.get("turn_evidence_path"))
-    pull_state(storage, state_dir, only_paths=[state_path, registry_path, evidence_path])
+    state_path, registry_path, evidence_path, relative_paths = _speaker_state_paths(site, state_dir)
+    pull_state(storage, state_dir, only_paths=relative_paths)
     state = (
         json.loads(state_path.read_text())
         if state_path.exists()
@@ -316,11 +371,8 @@ def ingest(args: argparse.Namespace) -> int:
     site = load_site_config(args.site_config)
     state_dir = resolve_state_dir(site, Path(args.output_dir))
     storage = make_storage(site, site.get("base_url", ""), Path(args.output_dir))
-    speaker_config = site.get("speakers") or {}
-    state_path = state_dir / str(speaker_config.get("evaluation_state_path"))
-    registry_path = state_dir / str(speaker_config.get("registry_path"))
-    evidence_path = state_dir / str(speaker_config.get("turn_evidence_path"))
-    pull_state(storage, state_dir, only_paths=[state_path, registry_path, evidence_path])
+    state_path, registry_path, evidence_path, relative_paths = _speaker_state_paths(site, state_dir)
+    pull_state(storage, state_dir, only_paths=relative_paths)
     state = (
         json.loads(state_path.read_text())
         if state_path.exists()
@@ -338,7 +390,15 @@ def ingest(args: argparse.Namespace) -> int:
         "end",
     )
     if is_reference:
-        fields += ("kind", "display_name", "cue_start", "cue_end", "cue_text", "cue_kind")
+        fields += (
+            "kind",
+            "display_name",
+            "cue_start",
+            "cue_end",
+            "cue_text",
+            "cue_kind",
+            "embedding_recipe",
+        )
     else:
         fields += ("speaker_id",)
     if not isinstance(current, dict) or any(
@@ -362,10 +422,7 @@ def ingest(args: argparse.Namespace) -> int:
         push_state(
             storage,
             state_dir,
-            only_paths=[
-                str(speaker_config.get("evaluation_state_path")),
-                str(speaker_config.get("registry_path")),
-            ],
+            only_paths=relative_paths[:2],
         )
         print(json.dumps({"stored": True, "candidate_id": current["candidate_id"]}))
         return 0
@@ -383,7 +440,7 @@ def ingest(args: argparse.Namespace) -> int:
     push_state(
         storage,
         state_dir,
-        only_paths=[str((site.get("speakers") or {}).get("evaluation_state_path"))],
+        only_paths=relative_paths[:1],
     )
     print(json.dumps({"stored": True, "candidate_id": current["candidate_id"]}))
     return 0
@@ -462,7 +519,7 @@ def _record_reference_review(
             "end": candidate["end"],
             "text_hash": candidate.get("transcript_text_hash"),
             "embedding": match["embedding"],
-            "embedding_recipe": candidate["engine_recipe"],
+            "embedding_recipe": candidate.get("embedding_recipe") or candidate["engine_recipe"],
             "approved_by": reviewer,
             "approved_at": datetime.now(UTC).isoformat(),
         }

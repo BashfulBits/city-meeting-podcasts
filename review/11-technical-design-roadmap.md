@@ -149,8 +149,8 @@ is empty; it is H15 evidence and never replaces the served artifact by itself. S
 shipped in PR #899 with pacing hardening; R11's core phases are shipped in PRs #906–#908
 (Granicus archive-first discovery, calendar composition/backfill, durable no-video rows, and Swagit
 agenda/minutes links); R2 is shipped in PR #919; R3 is shipped in PR #920; and R4 static search is
-shipped in commits `2f76744` and `60998a0`. R6 and R8 remain design-ready but unimplemented; R7 is
-implemented locally and awaits calibration/rollout;
+shipped in commits `2f76744` and `60998a0`. R8 remains design-ready but unimplemented; R6 and R7 are
+implemented locally, and R7 awaits calibration/rollout;
 **R5 is implemented locally** (the unified chapter-only tag-calibration and evaluator overlay,
 `review/42`, [PR #1186](https://github.com/BashfulBits/city-meeting-podcasts/pull/1186), not yet
 merged as of this paragraph's update); R12 is implemented on an unmerged PR. R9 is partially shipped: the policy, pins, Renovate configuration, and checks exist;

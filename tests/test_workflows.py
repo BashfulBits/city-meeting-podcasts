@@ -188,6 +188,16 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     assert _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25") >= 0
 
 
+def test_speaker_calibration_review_gate_matches_packaged_titles():
+    workflow, ingest = _job("speaker-calibration-review.yml", "ingest")
+    condition = ingest["if"]
+    assert "R7 speaker shadow sample " in condition
+    assert "R7 chair reference " in condition
+    for role in ("OWNER", "MEMBER", "COLLABORATOR"):
+        assert role in condition
+    assert workflow["permissions"] == {"contents": "read", "issues": "write"}
+
+
 def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
     workflow = (WORKFLOWS / "city-discovery.yml").read_text()
     site_path = Path(__file__).resolve().parents[1] / "config" / "site_config.yml"

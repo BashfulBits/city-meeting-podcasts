@@ -1750,7 +1750,9 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     "transcribe": frozenset({"transcript", "provider_transcript"}),
     "align": frozenset({"transcript", "provider_transcript"}),
     "diarize": frozenset({"speakers", "provider_transcript"}),
-    "speaker-identity": frozenset({"speakers", "moments"}),
+    # Identity is a mutable projection onto R6 candidates.  It must not re-upload the diarize
+    # lane's speakers block from a stale snapshot while a native artifact is being produced.
+    "speaker-identity": frozenset({"moments"}),
     "tag": frozenset(
         {
             "tags",
@@ -1782,7 +1784,8 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     ),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
-    "diarize": frozenset({"diarize"}),
+    "diarize": frozenset({"diarize", "native_diarize"}),
+    "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
     "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),

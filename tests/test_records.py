@@ -1736,6 +1736,31 @@ def test_protected_blocks_for_lane():
             "moments",
         }
     )
+    assert protected_blocks_for_lane("speaker-identity") == frozenset(
+        {
+            "audio",
+            "transcript",
+            "provider_transcript",
+            "speakers",
+            "media_availability",
+            "integrity",
+            "agenda_text",
+            "agenda_backup",
+            "minutes_text",
+            "minutes_votes",
+            "minutes_roster",
+            "tags",
+            "chapter_tags",
+            "llm_tag_candidates",
+            "tags_llm_call_attempts",
+            "tags_llm_recipe_hash",
+            "tags_spec_hash",
+            "tags_input_fingerprint",
+            "generated_agenda_candidates",
+            "generated_chapters",
+            "generated_chapters_spec_hash",
+        }
+    )
     assert protected_blocks_for_lane("tag") == frozenset(
         {
             "audio",

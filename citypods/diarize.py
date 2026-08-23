@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+DEFAULT_DIARIZE_MODEL = "pyannote/speaker-diarization-community-1"
+DEFAULT_EMBEDDING_MODEL = "pyannote/embedding"
+
 
 @dataclass(frozen=True)
 class DiarizeArtifacts:
@@ -21,9 +24,9 @@ class DiarizeArtifacts:
 
 def diarize(
     audio_path: Path,
-    model: str = "pyannote/speaker-diarization-community-1",
+    model: str = DEFAULT_DIARIZE_MODEL,
     *,
-    embedding_model: str | None = "pyannote/embedding",
+    embedding_model: str | None = DEFAULT_EMBEDDING_MODEL,
     token: str | None = None,
     device: str | None = None,
 ) -> DiarizeArtifacts:
@@ -97,9 +100,10 @@ def _timed_words(words: Mapping[str, Any]) -> Iterable[tuple[float, float, str]]
     rows = words.get("word_segments") or words.get("words") or []
     if not isinstance(rows, list):
         rows = []
-    for segment in words.get("segments") or []:
-        if isinstance(segment, Mapping) and isinstance(segment.get("words"), list):
-            rows.extend(segment["words"])
+    if not rows:
+        for segment in words.get("segments") or []:
+            if isinstance(segment, Mapping) and isinstance(segment.get("words"), list):
+                rows.extend(segment["words"])
     for row in rows:
         if not isinstance(row, Mapping):
             continue
@@ -148,4 +152,9 @@ def _attach_embeddings(
         return
 
 
-__all__ = ["DiarizeArtifacts", "diarize"]
+__all__ = [
+    "DEFAULT_DIARIZE_MODEL",
+    "DEFAULT_EMBEDDING_MODEL",
+    "DiarizeArtifacts",
+    "diarize",
+]

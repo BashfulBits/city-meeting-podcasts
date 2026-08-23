@@ -139,6 +139,7 @@ from citypods.site import (
     render_speaker_page,
     speaker_page_rows,
 )
+from citypods.speakers import valid_speaker_id
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
     LANE_STAGES,
@@ -361,7 +362,7 @@ class SourcePipeline:
             if ep.integrity:
                 result.append((uid, "repair_requested"))
             for stage in stages:
-                if stage_is_dirty(stage, ep, city):
+                if stage_is_dirty(stage, ep, city, speaker_config=self.ctx.speaker_config):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result
 
@@ -1100,8 +1101,12 @@ def _process_city(
             meeting_outputs_changed = rendered_page_cache != page_cache
             speaker_rows = speaker_page_rows(city, retained_eps, base_url)
             speakers_dir = city_dir / "speakers"
-            wanted_speakers = set(speaker_rows)
+            wanted_speakers = {
+                speaker_id for speaker_id in speaker_rows if valid_speaker_id(speaker_id)
+            }
             for speaker_id, person in speaker_rows.items():
+                if not valid_speaker_id(speaker_id):
+                    continue
                 target = speakers_dir / speaker_id
                 target.mkdir(parents=True, exist_ok=True)
                 (target / "index.html").write_text(render_speaker_page(city, person, base_url))
@@ -1588,7 +1593,7 @@ def _run_enrich_global_queue(
     ]
     # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
     # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
-    post_transcript = {"transcript", "diarize", "native_diarize", "tags"}
+    post_transcript = {"transcript", "diarize", "native_diarize", "speaker_identity", "tags"}
     audio_stages = [
         s
         for s in pipeline.stages
@@ -2263,6 +2268,8 @@ def _build_impl(
         "align",
         "tag",
         "moments",
+        "diarize",
+        "speaker-identity",
         "chapter-agenda",
         "chapter-locator",
         "chapter",
@@ -2284,13 +2291,21 @@ def _build_impl(
             raise ValueError(f"no feed or city entity with slug {only_slug!r}")
     # H6b source/shard selection (by source_key, so a city's combined + per-board feeds stay
     # together in one shard and one record store). ``scoped`` marks a partial run for statesync.
-    # Scoped lanes (tag, chapter-agenda, chapter-locator, chapter) only own their specific artifact
-    # block, so they must always route through merged persistence even when running without
-    # --source or --shard.
+    # Scoped lanes only own specific artifact blocks, so they must always route through merged
+    # persistence even when running without --source or --shard.
     scoped = bool(
         source
         or shard
-        or lane in {"tag", "moments", "chapter-agenda", "chapter-locator", "chapter"}
+        or lane
+        in {
+            "tag",
+            "moments",
+            "diarize",
+            "speaker-identity",
+            "chapter-agenda",
+            "chapter-locator",
+            "chapter",
+        }
     )
     if source:
         cities = [c for c in cities if source_key(c) == source]

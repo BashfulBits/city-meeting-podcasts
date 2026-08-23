@@ -76,7 +76,7 @@ import re
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -90,6 +90,7 @@ from citypods.asr import asr_initial_prompt
 from citypods.bodies import canonical_body, rank_by_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
+from citypods.diarize import DEFAULT_DIARIZE_MODEL, DEFAULT_EMBEDDING_MODEL
 from citypods.durations import (
     episode_duration_hours,
     episode_served_duration_seconds,
@@ -611,7 +612,13 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
     return None
 
 
-def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: City) -> str:
+def stage_input_fingerprint(
+    stage: EnrichmentStage | str,
+    ep: Episode,
+    city: City,
+    *,
+    speaker_config: Mapping[str, Any] | None = None,
+) -> str:
     """Hash only the inputs that can invalidate one stage.
 
     This intentionally excludes derived output pointers: a new provider row with the same media
@@ -667,12 +674,17 @@ def stage_input_fingerprint(stage: EnrichmentStage | str, ep: Episode, city: Cit
             "recipe": PROVIDER_DIARIZE_PIPELINE_VERSION,
         }
     elif name == "native_diarize":
+        config = speaker_config or {}
         payload = {
             **common,
             "audio": ep.audio_key or ep.hosted_audio_url,
             "transcript": ep.transcript_key or ep.transcript_hosted_url,
             "transcript_words": ep.transcript_words_key,
-            "recipe": DIARIZE_PIPELINE_VERSION,
+            "recipe": {
+                "pipeline": DIARIZE_PIPELINE_VERSION,
+                "model": config.get("model", DEFAULT_DIARIZE_MODEL),
+                "embedding_model": config.get("embedding_model", DEFAULT_EMBEDDING_MODEL),
+            },
         }
     elif name == "chapter_agenda":
         from citypods.chapter_jobs import AGENDA_PROMPT_VERSION
@@ -792,14 +804,20 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
     return False
 
 
-def stage_is_dirty(stage: EnrichmentStage, ep: Episode, city: City) -> bool:
+def stage_is_dirty(
+    stage: EnrichmentStage,
+    ep: Episode,
+    city: City,
+    *,
+    speaker_config: Mapping[str, Any] | None = None,
+) -> bool:
     # Admission state and asynchronous judge results are external to episode inputs. Both stages
     # are cheap projections, so always revisit them rather than making a human decision wait for a
     # transcript/media mutation before it can take effect.
     if stage.name in {"moment-admission", "moment-judge", "speaker_identity"}:
         return True
     marker = ep.stage_completion.get(stage.name) if isinstance(ep.stage_completion, dict) else None
-    fingerprint = stage_input_fingerprint(stage, ep, city)
+    fingerprint = stage_input_fingerprint(stage, ep, city, speaker_config=speaker_config)
     if not isinstance(marker, dict):
         if not _legacy_stage_complete(stage.name, ep):
             return True
@@ -819,7 +837,12 @@ def stage_is_dirty(stage: EnrichmentStage, ep: Episode, city: City) -> bool:
 
 
 def _mark_stage_complete(
-    stage: EnrichmentStage, episodes: list[Episode], city: City, stat: StageStats
+    stage: EnrichmentStage,
+    episodes: list[Episode],
+    city: City,
+    stat: StageStats,
+    *,
+    speaker_config: Mapping[str, Any] | None = None,
 ) -> None:
     if stat.errors or stat.skipped:
         return
@@ -828,7 +851,9 @@ def _mark_stage_complete(
         ep.stage_completion[stage.name] = {
             "state": state,
             "version": stage.version,
-            "input_fingerprint": stage_input_fingerprint(stage, ep, city),
+            "input_fingerprint": stage_input_fingerprint(
+                stage, ep, city, speaker_config=speaker_config
+            ),
             "output": stage_output_pointer(stage.name, ep),
             "completed_at": datetime.now(UTC).isoformat(),
         }
@@ -6556,8 +6581,8 @@ class NativeDiarizeStage:
         config = ctx.speaker_config or {}
         if not config.get("enabled") or ctx.dry_run or ctx.storage is None:
             return stats
-        model = str(config.get("model") or "pyannote/speaker-diarization-community-1")
-        embedding_model = str(config.get("embedding_model") or "pyannote/embedding")
+        model = str(config.get("model") or DEFAULT_DIARIZE_MODEL)
+        embedding_model = str(config.get("embedding_model") or DEFAULT_EMBEDDING_MODEL)
         from citypods.speakers import (
             load_turn_evidence,
             pilot_selected,
@@ -6587,7 +6612,7 @@ class NativeDiarizeStage:
                 # Don't cache a negative selection: a maintainer may add this body to the pilot
                 # later without bumping the diarization recipe. A lightweight later pass will see
                 # it immediately while selected entries still reuse their content-addressed bytes.
-                stats.defer("pilot-not-selected", sample=ep.uid or ep.guid)
+                stats.quality("pilot-not-selected")
                 continue
             if ep.speakers_source == "provider" and ep.speakers_synced:
                 stats.reused += 1
@@ -6750,6 +6775,7 @@ class SpeakerIdentityStage:
             ):
                 private_turns = turns
             engine_recipe = f"{city.provider}:{payload.get('model') or 'unknown'}"
+            embedding_recipe = str(payload.get("embedding_recipe") or engine_recipe)
             known_names = [
                 value
                 for person in (registry.get("people") or {}).values()
@@ -6795,6 +6821,7 @@ class SpeakerIdentityStage:
                             "engine_recipe": engine_recipe,
                             "episode_uid": ep.uid or ep.guid,
                             "episode_title": ep.title,
+                            "embedding_recipe": embedding_recipe,
                         }
             cell = calibration_cell(city.slug, ep.body, engine_recipe)
             publish = auto_publish_allowed(evaluation, cell=cell)
@@ -6824,7 +6851,12 @@ class SpeakerIdentityStage:
                 if not isinstance(turn, dict) or not isinstance(turn.get("embedding"), list):
                     enriched_turns.append(turn)
                     continue
-                matches = profile_matches(registry, turn["embedding"], allowed_ids=allowed_ids)
+                matches = profile_matches(
+                    registry,
+                    turn["embedding"],
+                    embedding_recipe=embedding_recipe,
+                    allowed_ids=allowed_ids,
+                )
                 from citypods.speakers import assign_turn
 
                 enriched_turns.append(
@@ -6846,7 +6878,11 @@ class SpeakerIdentityStage:
                     recipe=engine_recipe,
                     turn=turn,
                 )
-                evaluation.setdefault("candidates", {})[candidate_id] = {
+                candidate_rows = evaluation.setdefault("candidates", {})
+                if not isinstance(candidate_rows, dict):
+                    candidate_rows = {}
+                    evaluation["candidates"] = candidate_rows
+                candidate_rows[candidate_id] = {
                     "candidate_id": candidate_id,
                     "city_slug": city.slug,
                     "body": ep.body or "",
@@ -7303,7 +7339,11 @@ def run_stages(
     for stage in stages:
         if allowed is not None and stage.name not in allowed:
             continue
-        dirty = [ep for ep in episodes if stage_is_dirty(stage, ep, city)]
+        dirty = [
+            ep
+            for ep in episodes
+            if stage_is_dirty(stage, ep, city, speaker_config=ctx.speaker_config)
+        ]
         clean = len(episodes) - len(dirty)
         if not dirty:
             stat = StageStats(stage.name, reused=clean)
@@ -7325,7 +7365,7 @@ def run_stages(
         stat = stage.process(provider, city, dirty, ctx)
         stat.seconds = time.perf_counter() - t0
         stat.reused += clean
-        _mark_stage_complete(stage, dirty, city, stat)
+        _mark_stage_complete(stage, dirty, city, stat, speaker_config=ctx.speaker_config)
         if not quiet:
             print(
                 f"[enrich] stage done slug={city.slug} provider={city.provider} stage={stage.name} "

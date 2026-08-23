@@ -44,7 +44,9 @@ issues not yet cut**
 > candidates under one native GitHub parent issue with one sub-issue per candidate. Maintainers check
 > Correct/Incorrect for shadow matches or Approve/Reject for references and use the same
 > `/speaker-ingest` command. Approval copies the already-persisted embedding into the body registry;
-> the issue body and public artifacts contain no embedding or score.
+> the issue body and public artifacts contain no embedding or score. That approval is a private seed
+> only: `qualified_profile` still requires references from two distinct meetings, and public naming
+> remains blocked by the calibration gate.
 
 > **Matured to L3, 2026-07-13.** The L1 sketch this builds from was already unusually detailed (real
 > CPU-viable model research, a named execution-backend dependency, an explicit naming/confirmation
@@ -54,6 +56,15 @@ issues not yet cut**
 > and test/acceptance detail L3 requires.
 
 ---
+
+## Historical original plan (not normative)
+
+The sections below are preserved as the pre-2026-08-22 design record and research trail. They are not
+implementation or publication requirements: the superseding decision and revisions above define the
+current pyannote-first pipeline, calibrated provisional naming, roster reconciliation, and quote/page
+constraints. In particular, references below to a WeSpeaker-first rollout or universal human-only naming
+are historical; WeSpeaker is now the benchmark comparator, and human review approves voice references
+and calibration labels rather than directly publishing names.
 
 ## §0. What's already shipped vs. what's actually new — checked directly, not assumed
 
@@ -92,7 +103,7 @@ identify-then-confirm naming workflow, (4) per-speaker pages.**
 
 ## Part A — Native speaker diarization
 
-### A.1 Model choice — re-verified, not re-derived from scratch
+### A.1 Historical model research — re-verified, not re-derived from scratch
 
 The L1 sketch's own research (wespeaker ECAPA-TDNN, ~100MB, no HF gate, ~2× transcription cost on CPU)
 checked out on re-verification (2026-07-13): wespeaker's embeddings run at ~0.67s of compute per second
@@ -102,11 +113,9 @@ the sketch scoped it out for the Actions-runner-budget path. **One new data poin
 acting on yet:** a newer library ("Diarize," built on Silero VAD + WeSpeaker ResNet34 embeddings via
 ONNX Runtime + GMM/BIC speaker counting + spectral clustering) claims ~7× pyannote's CPU speed at
 comparable DER (~10.8% vs. ~11.2% on VoxConverse) — but it's a very recent, single-maintainer project with
-no track record here. **Recommendation: keep wespeaker ECAPA-TDNN as the primary choice** (the sketch's
-own conclusion, now re-confirmed current); note the newer library as a future swap candidate if
-wespeaker's real production throughput proves insufficient, not a reason to delay on an unproven
-dependency. `speechbrain` ECAPA-TDNN via `simple-diarizer` stays the documented fallback if wespeaker's
-packaging proves difficult.
+no track record here. This research is retained to define the WeSpeaker benchmark comparator and a
+possible future fallback; it does not select the production stack. The superseding decision above selects
+pyannote first, with a recipe-content-addressed gradual re-diarization path.
 
 ### A.2 Module plan
 

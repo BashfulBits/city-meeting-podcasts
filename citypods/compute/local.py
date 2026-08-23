@@ -56,12 +56,12 @@ class LocalBackend:
         elif job.task == "align":
             output = run_alignment(self._asr, inp)
         elif job.task == "diarize":
-            from citypods.diarize import diarize
+            from citypods import diarize as diarize_module
 
-            output = diarize(
+            output = diarize_module.diarize(
                 inp["audio_path"],
-                inp.get("model", "pyannote/speaker-diarization-community-1"),
-                embedding_model=inp.get("embedding_model", "pyannote/embedding"),
+                inp.get("model", diarize_module.DEFAULT_DIARIZE_MODEL),
+                embedding_model=inp.get("embedding_model", diarize_module.DEFAULT_EMBEDDING_MODEL),
                 token=inp.get("token"),
                 device=inp.get("device"),
             )

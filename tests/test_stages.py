@@ -16,6 +16,7 @@ from citypods.stages import (
     enrich_stages,
     render_stages,
     run_stages,
+    stage_input_fingerprint,
 )
 from citypods.storage.local import LocalStorage
 
@@ -68,6 +69,30 @@ def _ep(guid):
         media_kind="hls",
         body="City Council",
     )
+
+
+def test_native_diarization_fingerprint_changes_with_model_recipe():
+    city = _city()
+    episode = _ep("one")
+    baseline = stage_input_fingerprint(
+        "native_diarize",
+        episode,
+        city,
+        speaker_config={
+            "model": "pyannote/speaker-diarization-community-1",
+            "embedding_model": "pyannote/embedding",
+        },
+    )
+    changed = stage_input_fingerprint(
+        "native_diarize",
+        episode,
+        city,
+        speaker_config={
+            "model": "another-model",
+            "embedding_model": "pyannote/embedding",
+        },
+    )
+    assert baseline != changed
 
 
 def _ctx(tmp_path, *, dry_run=False, storage=True, stop=None, chapters_per_source=10_000):

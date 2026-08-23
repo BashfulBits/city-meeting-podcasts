@@ -15,8 +15,7 @@ import sys
 from collections.abc import Mapping
 
 from citypods.config import load_site_config
-
-EXPECTED_MODEL = "pyannote/speaker-diarization-community-1"
+from citypods.diarize import DEFAULT_DIARIZE_MODEL
 
 
 def configured_models(site_config: Mapping[str, object]) -> tuple[str, str]:
@@ -25,9 +24,9 @@ def configured_models(site_config: Mapping[str, object]) -> tuple[str, str]:
         raise RuntimeError("R7 speakers.enabled must be true for the diarization lane")
     model = str(speakers.get("model") or "")
     embedding_model = str(speakers.get("embedding_model") or "")
-    if model != EXPECTED_MODEL:
+    if model != DEFAULT_DIARIZE_MODEL:
         raise RuntimeError(
-            f"R7 model must be {EXPECTED_MODEL!r}; configured {model or '<empty>'!r}"
+            f"R7 model must be {DEFAULT_DIARIZE_MODEL!r}; configured {model or '<empty>'!r}"
         )
     if not embedding_model:
         raise RuntimeError("R7 speakers.embedding_model is required")

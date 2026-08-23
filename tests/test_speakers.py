@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from citypods.diarize import _mark_overlap, attach_transcript_words
 from citypods.models import City, Episode
 from citypods.records import meeting_page_hash
 from citypods.site import speaker_page_rows
-from citypods.speaker_benchmark import compare
+from citypods.speaker_benchmark import _cases, compare
 from citypods.speaker_review import (
     _record_reference_review,
     _review_body,
@@ -133,6 +135,9 @@ def test_approved_chair_reference_adds_private_embedding_only():
     body = _review_body(candidate)
     assert "r7-reference-candidate-b64" in body
     assert "Approve as a golden voice reference" in body
+    candidate["embedding"] = [0.1, 0.2]
+    candidate["match_score"] = 0.99
+    assert "0.99" not in _review_body(candidate)
 
 
 def test_speaker_review_package_groups_reference_and_shadow_children(tmp_path, monkeypatch):
@@ -206,10 +211,11 @@ def test_two_meeting_profile_can_attribute_a_single_speaker_quote():
     person = next(iter(registry["people"].values()))
     person["references"] = [
         {"episode_uid": "one", "embedding": [1.0, 0.0]},
-        {"episode_uid": "two", "embedding": [0.99, 0.01]},
+        {"episode_uid": "two", "embedding": [0.99, 0.01], "embedding_recipe": "recipe-v1"},
     ]
+    person["references"][0]["embedding_recipe"] = "recipe-v1"
     refresh_membership_status(registry, now=published)
-    matches = profile_matches(registry, [1.0, 0.0])
+    matches = profile_matches(registry, [1.0, 0.0], embedding_recipe="recipe-v1")
     turn = assign_turn({"start": 10.0, "end": 25.0, "overlap": False}, matches, publish=True)
     attributed = quote_attribution({"start": 12.0, "end": 20.0}, [turn])
     assert attributed == {
@@ -218,6 +224,40 @@ def test_two_meeting_profile_can_attribute_a_single_speaker_quote():
         "status": "provisional",
         "method": "voice-profile",
     }
+
+
+def test_profile_matches_only_uses_the_active_embedding_recipe():
+    registry = empty_registry()
+    observe_attendance(
+        registry,
+        city_slug="demo-tx",
+        body="Council",
+        episode_uid="one",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        roster=[{"name": "Alex Rivera"}],
+    )
+    person = next(iter(registry["people"].values()))
+    person["references"] = [
+        {"episode_uid": "one", "embedding": [1.0, 0.0], "embedding_recipe": "old"},
+        {"episode_uid": "two", "embedding": [1.0, 0.0], "embedding_recipe": "old"},
+    ]
+    refresh_membership_status(registry, now=datetime(2026, 1, 1, tzinfo=UTC))
+    assert profile_matches(registry, [1.0, 0.0], embedding_recipe="new") == []
+
+
+def test_attendance_aliases_do_not_merge_people_across_bodies():
+    registry = empty_registry()
+    published = datetime(2026, 1, 1, tzinfo=UTC)
+    for body in ("Council", "Airport Board"):
+        observe_attendance(
+            registry,
+            city_slug="demo-tx",
+            body=body,
+            episode_uid=body,
+            published=published,
+            roster=[{"name": "Alex Rivera"}],
+        )
+    assert len(registry["people"]) == 2
 
 
 def test_quote_attribution_rejects_crosstalk_and_partial_turns():
@@ -264,6 +304,19 @@ def test_diarization_turns_receive_only_timed_word_evidence_and_overlap_flags():
     assert "embedding" not in public_turn({"start": 1, "embedding": [0.1]})
 
 
+def test_timed_words_prefer_top_level_rows_over_duplicate_segment_rows():
+    turn = {"start": 10.0, "end": 20.0}
+    attach_transcript_words(
+        [turn],
+        {
+            "words": [{"w": "once", "s": 11.0, "e": 12.0}],
+            "segments": [{"words": [{"w": "once", "s": 11.0, "e": 12.0}]}],
+        },
+    )
+    assert turn["transcript_word_count"] == 1
+    assert len(turn["transcript_text_hash"]) == 64
+
+
 def test_identity_calibration_requires_30_days_30_reviews_and_95_percent():
     now = datetime(2026, 3, 1, tzinfo=UTC)
     cell = calibration_cell("demo-tx", "Council", "pyannote-v1")
@@ -294,6 +347,23 @@ def test_shadow_candidate_and_offline_benchmark_are_engine_neutral():
     )
     assert report["turn_cluster_accuracy"] == 1.0
     assert report["identity_precision"] == 1.0
+
+
+def test_benchmark_overlap_recall_does_not_count_one_gold_region_twice():
+    report = compare(
+        [{"start": 10.0, "end": 20.0, "speaker": "Alex", "overlap": True}],
+        [
+            {"start": 10.0, "end": 15.0, "cluster": "A", "overlap": True},
+            {"start": 15.0, "end": 20.0, "cluster": "B", "overlap": True},
+        ],
+    )
+    assert report["overlap_precision"] == 1.0
+    assert report["overlap_recall"] == 1.0
+
+
+def test_benchmark_cases_reject_invalid_turn_shapes():
+    with pytest.raises(ValueError, match="case 'demo' turn 0 needs numeric start and end"):
+        _cases({"cases": [{"id": "demo", "turns": [{"start": 1}]}]})
 
 
 def test_pilot_selection_is_explicit_and_body_scoped():
@@ -345,6 +415,37 @@ def test_speaker_pages_only_include_admitted_named_quotes():
     rows = speaker_page_rows(city, [episode], "https://example.test")
     assert list(rows) == ["spk-a"]
     assert rows["spk-a"]["quotes"][0]["url"].endswith("/demo-tx/one/#t=12")
+
+
+def test_speaker_pages_skip_attribution_without_a_meeting_page_destination():
+    episode = Episode(
+        guid="",
+        title="Council meeting",
+        published=datetime(2026, 1, 1, tzinfo=UTC),
+        video_url="https://example.test/video",
+    )
+    episode.moment_pullquote_candidates = [
+        {
+            "admission": "admitted",
+            "quote": "A grounded quote.",
+            "start": 12,
+            "speaker_attribution": {
+                "speaker_id": "spk-0123456789abcdef",
+                "display_name": "Alex",
+                "status": "provisional",
+            },
+        }
+    ]
+    city = City(
+        slug="demo-tx",
+        source={},
+        podcast_title="Demo",
+        podcast_author="Demo",
+        podcast_email="demo@example.test",
+        podcast_description="Demo",
+        provider="rss",
+    )
+    assert speaker_page_rows(city, [episode], "https://example.test") == {}
 
 
 def test_meeting_page_hash_changes_when_quote_gains_speaker_attribution():

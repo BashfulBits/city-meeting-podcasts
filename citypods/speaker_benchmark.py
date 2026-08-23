@@ -28,7 +28,17 @@ def _cases(value: object) -> dict[str, list[dict]]:
             or not isinstance(row.get("turns"), list)
         ):
             raise ValueError("each gold/prediction case needs id and turns")
-        result[str(row["id"])] = [dict(turn) for turn in row["turns"] if isinstance(turn, Mapping)]
+        turns: list[dict] = []
+        for index, turn in enumerate(row["turns"]):
+            if not isinstance(turn, Mapping):
+                raise ValueError(f"case {row['id']!r} turn {index} must be an object")
+            start, end = turn.get("start"), turn.get("end")
+            if not isinstance(start, int | float) or not isinstance(end, int | float):
+                raise ValueError(f"case {row['id']!r} turn {index} needs numeric start and end")
+            if float(end) < float(start):
+                raise ValueError(f"case {row['id']!r} turn {index} ends before it starts")
+            turns.append(dict(turn))
+        result[str(row["id"])] = turns
     return result
 
 
@@ -72,6 +82,9 @@ def compare(gold: list[dict], predicted: list[dict], *, boundary_tolerance: floa
     gold_overlap = [row for row in gold if row.get("overlap")]
     pred_overlap = [row for row in predicted if row.get("overlap")]
     overlap_hits = sum(any(_overlap(row, truth) for truth in gold_overlap) for row in pred_overlap)
+    gold_overlap_hits = sum(
+        any(_overlap(row, prediction) for prediction in pred_overlap) for row in gold_overlap
+    )
     starts = [float(row["start"]) for row in gold]
     ends = [float(row["end"]) for row in gold]
     predicted_edges = [float(row[edge]) for row in predicted for edge in ("start", "end")]
@@ -90,7 +103,7 @@ def compare(gold: list[dict], predicted: list[dict], *, boundary_tolerance: floa
     return {
         "turn_cluster_accuracy": correct / total if total else None,
         "overlap_precision": overlap_hits / len(pred_overlap) if pred_overlap else None,
-        "overlap_recall": overlap_hits / len(gold_overlap) if gold_overlap else None,
+        "overlap_recall": gold_overlap_hits / len(gold_overlap) if gold_overlap else None,
         "boundary_recall": boundary_hits / (len(starts) + len(ends)) if starts else None,
         "identity_precision": identity_correct / len(named) if named else None,
         "cluster_map": mapping,

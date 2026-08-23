@@ -112,6 +112,11 @@ def speaker_id(city_slug: str, body: str | None, display_name: str) -> str:
     return f"spk-{digest[:16]}"
 
 
+def valid_speaker_id(value: object) -> bool:
+    """Return whether ``value`` is safe for the public speaker-page path segment."""
+    return isinstance(value, str) and bool(re.fullmatch(r"spk-[0-9a-f]{16}", value))
+
+
 def empty_registry() -> dict[str, Any]:
     return {"version": 1, "people": {}, "history": []}
 
@@ -218,7 +223,7 @@ def chair_reference_candidates(
     known = {_norm(name): str(name).strip() for name in known_names if str(name).strip()}
     matches: list[dict[str, Any]] = []
     for index in range(len(rows)):
-        for cue, kind in ((cue, "chair-recognition") for cue in _RECOGNITION_CUES):
+        for cue in _RECOGNITION_CUES:
             if not _sequence_at(rows, index, cue):
                 continue
             name, end_index = _name_after(rows, index + len(cue), known)
@@ -230,7 +235,7 @@ def chair_reference_candidates(
                         index,
                         end_index,
                         name,
-                        kind,
+                        "chair-recognition",
                     )
                 )
         for title in _ANNOUNCEMENT_TITLES:
@@ -392,10 +397,12 @@ def _parse_time(value: object) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-def _person_by_name(registry: dict[str, Any], name: str) -> tuple[str, dict[str, Any]] | None:
+def _person_by_name(
+    registry: dict[str, Any], name: str, *, body_key_value: str
+) -> tuple[str, dict[str, Any]] | None:
     wanted = _norm(name)
     for ident, person in (registry.get("people") or {}).items():
-        if not isinstance(person, dict):
+        if not isinstance(person, dict) or person.get("body_key") != body_key_value:
             continue
         aliases = [person.get("display_name"), *(person.get("aliases") or [])]
         if any(_norm(alias) == wanted for alias in aliases):
@@ -420,6 +427,8 @@ def observe_attendance(
     """
     seen: dict[str, str] = {}
     for item in roster:
+        if not isinstance(item, Mapping):
+            continue
         name = str(item.get("name") or "").strip()
         if name:
             seen[_norm(name)] = name
@@ -429,7 +438,8 @@ def observe_attendance(
                 name = str(vote["member"]).strip()
                 seen.setdefault(_norm(name), name)
     for name in seen.values():
-        found = _person_by_name(registry, name)
+        scoped_body_key = body_key(city_slug, body)
+        found = _person_by_name(registry, name, body_key_value=scoped_body_key)
         if found is None:
             ident = speaker_id(city_slug, body, name)
             person = {
@@ -496,6 +506,7 @@ def profile_matches(
     registry: Mapping[str, Any],
     embedding: Iterable[float],
     *,
+    embedding_recipe: str,
     allowed_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Rank eligible profiles by the best approved reference similarity."""
@@ -510,7 +521,7 @@ def profile_matches(
         scores = [
             _cosine(embedding, row.get("embedding") or [])
             for row in person.get("references", [])
-            if isinstance(row, Mapping)
+            if isinstance(row, Mapping) and row.get("embedding_recipe") == embedding_recipe
         ]
         if scores:
             matches.append(
@@ -628,4 +639,5 @@ __all__ = [
     "save_turn_evidence",
     "shadow_candidate_id",
     "speaker_id",
+    "valid_speaker_id",
 ]
