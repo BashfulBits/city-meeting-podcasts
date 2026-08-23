@@ -90,8 +90,20 @@ jobs:
         working-directory: workers/granicus-media-proxy
         run: npm test
 
-      - name: Test LLM Dispatch v2 Cloudflare Worker
+      - name: Test Swagit List Proxy Worker
+        working-directory: workers/swagit-list-proxy
+        run: npm test
+
+      - name: Test LLM Dispatch v1 Worker
+        working-directory: workers/llm-dispatch-proxy
+        run: npm test
+
+      - name: Test LLM Dispatch v2 Worker
         working-directory: workers/llm-dispatch-v2
+        run: npm test
+
+      - name: Test City Request Intake Worker
+        working-directory: workers/city-request-intake
         run: npm test
 
   # Dependency-pinning policy enforcement (review/22). Keeps pins from rotting.
