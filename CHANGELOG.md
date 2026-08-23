@@ -145,6 +145,18 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Downstream enrich lane error recovery and thread-safe contract registration (run #313 fix).**
+  Fixed two issues that caused Chapter Agenda extraction (workflow run 313) to exit with code 1.
+  First, `_run_enrich_global_queue` now treats all record-backed downstream enrichment lanes
+  (`transcribe`, `align`, `diarize`, `tag`, `moments`, `chapter-agenda`, `chapter-locator`,
+  `chapter`) as secondary enrichers: when an upstream provider fetch fails (such as an external
+  Granicus HTTP 500 outage), the lane falls back to `pipeline.fetch_merge_from_records` to
+  continue processing existing locally persisted records, and reports unrecoverable source fetch
+  failures as `skipped` rather than `error`. Second, `citypods.compute.structured` contract
+  registration was made thread-safe and idempotent with a global lock, eliminating race conditions
+  in multi-threaded worker pools where concurrent initial invocations caused `ValueError: duplicate
+  or empty structured-output contract`.
+
 - **Free-model alternates for jobs that dispatched only to Mistral (2026-08-18 follow-up to the
   Mistral pause below).** Agenda-chapter extraction (`chapter_titles.AGENDA_PRODUCTION_MODEL`) now
   has `meta-llama/llama-3.3-70b-instruct` as a same-priority alternate

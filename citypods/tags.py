@@ -883,11 +883,22 @@ def ensure_llm_contract():
     import-time side effect instead (`citypods/discovery/classify.py`); this one does not, so it
     needs its own explicit call site wherever reconciliation can happen outside `tags.py` itself.
     """
+    cached = getattr(ensure_llm_contract, "model", None)
+    if cached is not None:
+        return cached
+
+    from citypods.compute.structured import register_response_model, response_model
+
+    try:
+        model = response_model(LLM_CONTRACT)
+        ensure_llm_contract.model = model
+        return model
+    except ValueError:
+        pass
+
     from typing import Literal as _Literal
 
     from pydantic import BaseModel, ConfigDict, Field
-
-    from citypods.compute.structured import register_response_model, response_model
 
     class Evidence(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -911,28 +922,29 @@ def ensure_llm_contract():
         model_config = ConfigDict(extra="forbid")
         tags: list[Suggestion] = Field(default_factory=list, max_length=20)
 
-    # The module-level cache is intentionally attached to the function so the optional Pydantic
-    # import remains lazy and the shared registry still rejects accidental duplicate contracts.
-    model = getattr(ensure_llm_contract, "model", None)
-    if model is None:
-        model = Response
-        register_response_model(LLM_CONTRACT, model)
-        ensure_llm_contract.model = model
-    else:
-        try:
-            response_model(LLM_CONTRACT)
-        except ValueError:
-            register_response_model(LLM_CONTRACT, model)
+    model = register_response_model(LLM_CONTRACT, Response)
+    ensure_llm_contract.model = model
     return model
 
 
 def ensure_prelabeler_contract():
     """Register the independent, discrete candidate-review response contract."""
+    cached = getattr(ensure_prelabeler_contract, "model", None)
+    if cached is not None:
+        return cached
+
+    from citypods.compute.structured import register_response_model, response_model
+
+    try:
+        model = response_model(PRELABELER_CONTRACT)
+        ensure_prelabeler_contract.model = model
+        return model
+    except ValueError:
+        pass
+
     from typing import Literal as _Literal
 
     from pydantic import BaseModel, ConfigDict, Field
-
-    from citypods.compute.structured import register_response_model, response_model
 
     class Assessment(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -946,19 +958,8 @@ def ensure_prelabeler_contract():
         model_config = ConfigDict(extra="forbid")
         assessments: list[Assessment] = Field(default_factory=list, max_length=100)
 
-    model = getattr(ensure_prelabeler_contract, "model", None)
-    if model is None:
-        model = Response
-        try:
-            register_response_model(PRELABELER_CONTRACT, model)
-        except ValueError:
-            model = response_model(PRELABELER_CONTRACT)
-        ensure_prelabeler_contract.model = model
-    else:
-        try:
-            response_model(PRELABELER_CONTRACT)
-        except ValueError:
-            register_response_model(PRELABELER_CONTRACT, model)
+    model = register_response_model(PRELABELER_CONTRACT, Response)
+    ensure_prelabeler_contract.model = model
     return model
 
 

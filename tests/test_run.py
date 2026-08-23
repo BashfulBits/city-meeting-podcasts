@@ -2510,6 +2510,37 @@ def test_transcript_lane_provider_fetch_errors_defer_without_archive(tmp_path, f
     assert "transcript lane deferred" in results[0].detail
 
 
+def test_chapter_agenda_lane_provider_fetch_errors_use_persisted_archive(
+    tmp_path, fake_provider, capsys
+):
+    """Chapter agenda extraction uses stored records when upstream provider scrape fails."""
+    for ep in fake_provider.episodes:
+        ep.media_kind = "hls"
+    cities = _setup(tmp_path)
+    ff = _CountingFfmpeg()
+    first = _build_phase(tmp_path, cities, "enrich", ff, lane="audio")
+    assert [r.status for r in first] == ["built"]
+
+    fake_provider.error = ProviderError("GET https://granicus.example/view returned 500")
+
+    results = _build_phase(tmp_path, cities, "enrich", ff, lane="chapter-agenda")
+
+    out = capsys.readouterr().out
+    assert [r.status for r in results] == ["built"]
+    assert "[enrich] source stale" in out
+
+
+def test_chapter_agenda_lane_provider_fetch_errors_defer_without_archive(tmp_path, fake_provider):
+    """A chapter-agenda run with no archive defers the source instead of failing."""
+    cities = _setup(tmp_path)
+    fake_provider.error = ProviderError("GET https://granicus.example/view returned 500")
+
+    results = _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="chapter-agenda")
+
+    assert [r.status for r in results] == ["skipped"]
+    assert "chapter-agenda lane deferred" in results[0].detail
+
+
 def test_audio_lane_provider_fetch_errors_remain_failed(tmp_path, fake_provider):
     """The audio/full enrich lanes still surface provider fetch failures as run errors."""
     cities = _setup(tmp_path)

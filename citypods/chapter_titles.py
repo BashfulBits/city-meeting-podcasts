@@ -461,19 +461,20 @@ def build_title_equivalence_request(
 
 def ensure_agenda_item_extractor_contract():
     """Register the structured direct-extraction response contract."""
+    from citypods.compute.structured import register_response_model, response_model
+
     cached = getattr(ensure_agenda_item_extractor_contract, "model", None)
     if cached is not None:
-        from citypods.compute.structured import register_response_model, response_model
-
-        try:
-            response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT)
-        except ValueError:
-            register_response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT, cached)
         return cached
 
-    from pydantic import BaseModel, ConfigDict, Field
+    try:
+        model = response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT)
+        ensure_agenda_item_extractor_contract.model = model
+        return model
+    except ValueError:
+        pass
 
-    from citypods.compute.structured import register_response_model, response_model
+    from pydantic import BaseModel, ConfigDict, Field
 
     class Item(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -487,27 +488,27 @@ def ensure_agenda_item_extractor_contract():
         model_config = ConfigDict(extra="forbid")
         items: list[Item] = Field(default_factory=list, max_length=300)
 
-    model = Response
-    register_response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT, model)
+    model = register_response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT, Response)
     ensure_agenda_item_extractor_contract.model = model
     return model
 
 
 def ensure_title_equivalence_contract():
     """Register the benchmark-only semantic title-equivalence response contract."""
+    from citypods.compute.structured import register_response_model, response_model
+
     cached = getattr(ensure_title_equivalence_contract, "model", None)
     if cached is not None:
-        from citypods.compute.structured import register_response_model, response_model
-
-        try:
-            response_model(TITLE_EQUIVALENCE_CONTRACT)
-        except ValueError:
-            register_response_model(TITLE_EQUIVALENCE_CONTRACT, cached)
         return cached
 
-    from pydantic import BaseModel, ConfigDict, Field
+    try:
+        model = response_model(TITLE_EQUIVALENCE_CONTRACT)
+        ensure_title_equivalence_contract.model = model
+        return model
+    except ValueError:
+        pass
 
-    from citypods.compute.structured import register_response_model, response_model
+    from pydantic import BaseModel, ConfigDict, Field
 
     class Match(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -519,8 +520,7 @@ def ensure_title_equivalence_contract():
         canonical_action_indices: list[int] = Field(default_factory=list, max_length=300)
         matches: list[Match] = Field(default_factory=list, max_length=300)
 
-    model = Response
-    register_response_model(TITLE_EQUIVALENCE_CONTRACT, model)
+    model = register_response_model(TITLE_EQUIVALENCE_CONTRACT, Response)
     ensure_title_equivalence_contract.model = model
     return model
 

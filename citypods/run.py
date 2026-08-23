@@ -177,6 +177,18 @@ from citypods.transcript_quality import load_quality_config, load_quality_routes
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
 _SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
+_RECORD_BACKED_LANES = frozenset(
+    {
+        "transcribe",
+        "align",
+        "diarize",
+        "tag",
+        "moments",
+        "chapter-agenda",
+        "chapter-locator",
+        "chapter",
+    }
+)
 
 
 class SourcePipeline:
@@ -554,9 +566,11 @@ class SourcePipeline:
     ) -> tuple[object, list[Episode], dict, int]:
         """Prepare a source from the persisted archive after a transient fetch failure.
 
-        Transcript-only ASR lanes operate on already-hosted audio recorded in ``episodes.json``;
-        they do not need fresh provider metadata to transcribe existing audio.  If the provider
-        refresh fails, load the last-known archive and let the transcript pass continue.
+        Downstream record-backed enrichment lanes (transcribe, align, tag, moments, chapter
+        extraction/locator) operate on already-hosted audio and stored documents in
+        ``episodes.json``; they do not need fresh provider metadata to enrich existing records.
+        If the provider refresh fails, load the last-known archive and let the stage passes
+        continue.
         """
         provider = get_provider(city.provider)
         persisted = load_records(self.state_dir, key)
@@ -1602,7 +1616,7 @@ def _run_enrich_global_queue(
             try:
                 provider, episodes, persisted, seeded = fut.result()
             except (ProviderError, SecurityError) as exc:
-                if ctx.lane in {"transcribe", "align"}:
+                if ctx.lane in _RECORD_BACKED_LANES:
                     try:
                         provider, episodes, persisted, seeded = pipeline.fetch_merge_from_records(
                             rep_city[key], key, exc
@@ -2060,20 +2074,22 @@ def _run_enrich_global_queue(
     #    repeat of the post-audio-pass persist above; also captures the transcript-pass mutations.
     _persist_all()
 
-    # 5) One CityResult per configured city, mirroring its source's outcome.  Transcript lanes are
-    # best-effort backfill workers: a transient provider refresh failure for one shard means that
-    # source simply has no ASR candidates this run.  Treat it as skipped/deferred so the worker can
-    # persist sibling progress and the scheduled ASR lane completes cleanly instead of reddening on
-    # an outage it cannot repair.  Audio/full enrich still report source-fetch errors as errors,
-    # because those lanes own provider materialization work and should surface provider drift.
-    transcript_only_lane = ctx.lane in {"transcribe", "align"}
+    # 5) One CityResult per configured city, mirroring its source's outcome. Record-backed
+    # enrichment lanes (ASR, tags, moments, chapter extraction/locator) are best-effort backfill
+    # workers: a transient provider refresh failure for one source means that source simply has no
+    # new candidates this run. Treat unrecoverable fetch errors as skipped/deferred so the worker
+    # can persist sibling progress and scheduled enrichment lanes complete cleanly instead of
+    # reddening on an upstream provider outage they cannot repair. Primary materialization lanes
+    # (audio / full enrich) still report source-fetch errors as errors to surface provider drift.
+    record_backed_lane = ctx.lane in _RECORD_BACKED_LANES
     results: list[CityResult] = []
     for c in cities:
         key = source_key(c)
         if key in errors:
-            if transcript_only_lane:
+            if record_backed_lane:
+                prefix = "transcript" if ctx.lane in {"transcribe", "align"} else str(ctx.lane)
                 results.append(
-                    CityResult(c.slug, "skipped", detail=f"transcript lane deferred: {errors[key]}")
+                    CityResult(c.slug, "skipped", detail=f"{prefix} lane deferred: {errors[key]}")
                 )
             else:
                 results.append(CityResult(c.slug, "error", detail=errors[key]))
