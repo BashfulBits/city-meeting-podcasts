@@ -254,6 +254,25 @@ def test_chapter_build_claims_and_releases_composite_maintenance_lease(monkeypat
         assert json.loads(payload)["state"] == "released"
 
 
+def test_chapter_record_write_lease_is_scoped_to_the_commit_window():
+    from citypods.ops.maintenance_leases import CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY
+    from tests._cas_fake import MemCAS
+
+    storage = MemCAS()
+    parent = type("ParentLease", (), {"owner": "chapter-owner"})()
+
+    with run._chapter_record_write_lease(
+        storage,
+        lane="chapter-agenda",
+        maintenance_lease=parent,
+    ):
+        payload, _etag = storage.get_bytes(CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY)
+        assert json.loads(payload)["state"] == "held"
+
+    payload, _etag = storage.get_bytes(CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY)
+    assert json.loads(payload)["state"] == "released"
+
+
 def test_normalize_episode_durations_prefers_probe_without_listing(monkeypatch):
     ep = _ep("g-probe", hosted="https://cdn/g-probe.m4a")
     ep.audio_key = "audio/src/g-probe.m4a"

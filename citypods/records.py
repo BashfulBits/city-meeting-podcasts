@@ -2017,7 +2017,14 @@ def merge_preserving_foreign(
             local_agenda = local_rec.get("generated_agenda_candidates")
             remote_agenda = remote_rec.get("generated_agenda_candidates")
             if lane in {"chapter-agenda", "chapter-locator", "chapter", None}:
-                if isinstance(local_agenda, dict) or isinstance(remote_agenda, dict):
+                if (
+                    "generated_agenda_candidates" not in local_rec
+                    and "generated_agenda_candidates" not in protected
+                ):
+                    # An owning full chapter/reset pass deliberately removed the block. Do not
+                    # reconstruct it from remote while preserving sibling fields below.
+                    rec.pop("generated_agenda_candidates", None)
+                elif isinstance(local_agenda, dict) or isinstance(remote_agenda, dict):
                     merged_agenda = dict(remote_agenda) if isinstance(remote_agenda, dict) else {}
                     owned_agenda_keys = (
                         frozenset(local_agenda or {})

@@ -225,9 +225,11 @@ reset snapshot before each push because each scoped merge preserves the sibling 
 metadata repair only: it does not bump an agenda pipeline version or globally invalidate completed
 documents. The chapter workflows and the repair workflow coordinate through CAS-backed mutexes on
 R2: `chapter-agenda` claims `maintenance-leases/chapter-agenda.json` and `chapter-locator` claims
-`maintenance-leases/chapter-locator.json` before starting and revalidate immediately before their
-durable push; the repair tool claims both leases as a composite transaction before mutation. The
-Actions idle poll remains an operator-friendly wait diagnostic, not the correctness boundary.
+`maintenance-leases/chapter-locator.json` before starting. Their LLM work can overlap, but each
+claims the shared `maintenance-leases/chapter-record-write.json` mutex around the complete
+re-read/merge/upload commit to B2; the repair tool claims both lane leases as a composite
+transaction before mutation. The Actions idle poll remains an operator-friendly wait diagnostic,
+not the correctness boundary.
 
 Scoped workflow telemetry is append-only under `state/run_events/`. Sibling matrix events sharing
 `GITHUB_RUN_ID` + phase + lane form one logical run; status/projection aggregates them only after every

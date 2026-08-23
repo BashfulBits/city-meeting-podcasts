@@ -2019,6 +2019,31 @@ def test_merge_preserving_foreign_chapter_locator_lane_merges_candidates_and_pre
     assert merged["u1"]["generated_chapters_spec_hash"] == "b2"
 
 
+def test_merge_preserving_foreign_chapter_lane_keeps_candidate_deletion():
+    remote = {
+        "u1": {
+            "uid": "u1",
+            "generated_agenda_candidates": {
+                "status": "completed",
+                "recipe": "old-agenda-recipe",
+                "locator_status": "completed",
+                "boundary_artifact_key": "boundary/u1/old.json",
+            },
+        }
+    }
+    local = {"u1": {"uid": "u1"}}
+
+    merged = merge_preserving_foreign(
+        remote,
+        local,
+        protected_blocks_for_lane("chapter"),
+        lane="chapter",
+        owned_uids=frozenset({"u1"}),
+    )
+
+    assert "generated_agenda_candidates" not in merged["u1"]
+
+
 def test_merge_preserving_foreign_unrelated_lane_preserves_entire_agenda_block():
     remote = {
         "u1": {

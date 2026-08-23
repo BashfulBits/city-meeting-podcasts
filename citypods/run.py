@@ -21,6 +21,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import contextmanager as _contextmanager
 from contextlib import nullcontext as _nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -73,6 +74,7 @@ from citypods.models import (
     Episode,
 )
 from citypods.ops.maintenance_leases import (
+    CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
     CompositeMaintenanceLease,
     MaintenanceLease,
 )
@@ -2234,6 +2236,28 @@ def _chapter_batch_replay_items(
     return replay, submission_errors
 
 
+@_contextmanager
+def _chapter_record_write_lease(
+    storage,
+    *,
+    lane: str | None,
+    maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None,
+):
+    """Serialize chapter-lane read/merge/write commits without serializing their LLM work."""
+    if lane not in {"chapter-agenda", "chapter-locator"} or maintenance_lease is None:
+        yield
+        return
+    write_lease = acquire_maintenance_lease(
+        storage,
+        owner=maintenance_lease.owner,
+        key=CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
+    )
+    try:
+        yield
+    finally:
+        write_lease.release()
+
+
 def _build_impl(
     *,
     site_config_path: str | Path = "config/site_config.yml",
@@ -3415,7 +3439,15 @@ def _build_impl(
                 }
                 if maintenance_lease is not None:
                     push_kwargs["maintenance_lease"] = maintenance_lease
-                pushed = push_records_merged(storage, state_dir, owned, **push_kwargs)
+                # The per-lane leases let extraction and locator work overlap, but their source
+                # records live on the non-CAS B2 plane. Serialize the complete re-read/merge/upload
+                # critical section so a second lane cannot upload a merge based on an older read.
+                with _chapter_record_write_lease(
+                    storage,
+                    lane=lane,
+                    maintenance_lease=maintenance_lease,
+                ):
+                    pushed = push_records_merged(storage, state_dir, owned, **push_kwargs)
                 pushed += push_calendar_records_merged(
                     storage,
                     state_dir,
