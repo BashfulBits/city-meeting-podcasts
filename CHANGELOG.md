@@ -15,6 +15,17 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **Dynamic `model_routing` expansion and bounded requeues in `workers/llm-dispatch-proxy`.**
+  `selectRoute` and `nextCapacityRetryAt` now dynamically expand `model_routing` at dispatch
+  time, matching the Python scheduler and ensuring resident R2 records enqueued before an
+  overflow route was configured (e.g. Mistral Medium → Gemini 3.5 Flash Lite) immediately
+  benefit from overflow capacity without requiring record migration. In addition, `dispatchBatch`
+  now defers `no_capacity` heads in memory during the candidate preparation loop and relocates at
+  most one blocked head per idle tick, eliminating multi-minute sequential R2 write loops and
+  preventing `exceededCpu` runtime terminations under the Workers Free 10 ms CPU budget.
+
 ### Added
 
 - **R7 calibrated speaker attribution (in progress).** Added pyannote-backed native speaker-turn
