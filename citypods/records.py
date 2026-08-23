@@ -1808,6 +1808,33 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
 # source_key) also touched by chapter-agenda/chapter-locator's own 15-minute-cron pushes.
 _TRANSCRIPT_LINK_LANES: frozenset[str] = frozenset({"transcribe", "align"})
 
+_LOCATOR_AGENDA_CANDIDATE_KEYS: frozenset[str] = frozenset(
+    {
+        "locator_status",
+        "locator_recipe",
+        "locator_job_ref",
+        "boundary_artifact_key",
+        "boundary_artifact_url",
+        "transcript_unit_source",
+    }
+)
+
+
+def _owned_agenda_candidate_keys(lane: str | None, local_agenda: dict) -> frozenset[str]:
+    """Which keys of ``generated_agenda_candidates`` a scoped lane run may overwrite.
+
+    ``chapter-agenda`` owns extraction keys (everything except locator boundary fields);
+    ``chapter-locator`` owns locator boundary fields; an unscoped/full run or ``chapter`` lane
+    owns everything; other scoped lanes own nothing here and preserve remote keys.
+    """
+    if lane == "chapter-agenda":
+        return frozenset(local_agenda) - _LOCATOR_AGENDA_CANDIDATE_KEYS
+    if lane == "chapter-locator":
+        return frozenset(local_agenda) & _LOCATOR_AGENDA_CANDIDATE_KEYS
+    if lane in {"chapter", None}:
+        return frozenset(local_agenda)
+    return frozenset()
+
 
 def _owned_link_keys(lane: str | None, local_links: dict) -> frozenset[str]:
     """Which of ``local_links``' keys a *scoped* lane run may freely overwrite when merging
@@ -1987,7 +2014,32 @@ def merge_preserving_foreign(
                     if key in owned_links or key not in merged_links:
                         merged_links[key] = value
                 rec["links"] = merged_links
+            local_agenda = local_rec.get("generated_agenda_candidates")
+            remote_agenda = remote_rec.get("generated_agenda_candidates")
+            if lane in {"chapter-agenda", "chapter-locator", "chapter", None}:
+                if (
+                    "generated_agenda_candidates" not in local_rec
+                    and "generated_agenda_candidates" not in protected
+                ):
+                    # An owning full chapter/reset pass deliberately removed the block. Do not
+                    # reconstruct it from remote while preserving sibling fields below.
+                    rec.pop("generated_agenda_candidates", None)
+                elif isinstance(local_agenda, dict) or isinstance(remote_agenda, dict):
+                    merged_agenda = dict(remote_agenda) if isinstance(remote_agenda, dict) else {}
+                    owned_agenda_keys = (
+                        frozenset(local_agenda or {})
+                        if not protected
+                        else _owned_agenda_candidate_keys(lane, local_agenda or {})
+                    )
+                    for key, value in (local_agenda or {}).items():
+                        if key in owned_agenda_keys or key not in merged_agenda:
+                            merged_agenda[key] = value
+                    rec["generated_agenda_candidates"] = merged_agenda
+            elif "generated_agenda_candidates" in remote_rec:
+                rec["generated_agenda_candidates"] = remote_rec["generated_agenda_candidates"]
             for block in protected:
+                if block == "generated_agenda_candidates":
+                    continue
                 if block in remote_rec:
                     rec[block] = remote_rec[block]
             _preserve_remote_served_duration_if_protected(rec, remote_rec, protected)

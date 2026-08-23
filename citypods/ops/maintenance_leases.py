@@ -10,12 +10,20 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from citypods.storage import CASConflict
 
 MAINTENANCE_LEASE_PREFIX = "maintenance-leases/"
+CHAPTER_AGENDA_MAINTENANCE_LEASE_KEY = f"{MAINTENANCE_LEASE_PREFIX}chapter-agenda.json"
+CHAPTER_LOCATOR_MAINTENANCE_LEASE_KEY = f"{MAINTENANCE_LEASE_PREFIX}chapter-locator.json"
+CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY = f"{MAINTENANCE_LEASE_PREFIX}chapter-record-write.json"
+AGENDA_CHAPTER_RESET_MAINTENANCE_LEASE_KEYS = (
+    CHAPTER_AGENDA_MAINTENANCE_LEASE_KEY,
+    CHAPTER_LOCATOR_MAINTENANCE_LEASE_KEY,
+)
 AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY = f"{MAINTENANCE_LEASE_PREFIX}agenda-chapter-reset.json"
 MAINTENANCE_LEASE_SCHEMA_VERSION = 1
 MAINTENANCE_LEASE_TTL_SECONDS = 6 * 60 * 60
@@ -147,19 +155,57 @@ class MaintenanceLease:
         self.release()
 
 
-def acquire(
+@dataclass
+class CompositeMaintenanceLease:
+    """A collection of owned maintenance leases coordinated as a single transaction."""
+
+    leases: tuple[MaintenanceLease, ...]
+
+    @property
+    def owner(self) -> str:
+        return self.leases[0].owner if self.leases else ""
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        return tuple(lease.key for lease in self.leases)
+
+    def renew(self) -> None:
+        """Extend all leases and fail closed if any lease was replaced."""
+        for lease in self.leases:
+            lease.renew()
+
+    def assert_held(self) -> None:
+        """Verify ownership across all leases before durable writes."""
+        for lease in self.leases:
+            lease.assert_held()
+
+    def release(self) -> None:
+        """Release all held leases in reverse order."""
+        for lease in reversed(self.leases):
+            lease.release()
+
+    def __enter__(self) -> CompositeMaintenanceLease:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.release()
+
+
+def _acquire_single(
     storage,
     *,
     owner: str,
-    key: str = AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+    key: str,
     ttl_seconds: float = MAINTENANCE_LEASE_TTL_SECONDS,
     now: datetime | None = None,
     max_attempts: int = 8,
 ) -> MaintenanceLease:
-    """Atomically claim an expired or absent maintenance lease, or fail closed."""
+    """Atomically claim a single maintenance lease or fail closed."""
     _assert_cas(storage)
     if not owner.strip():
         raise ValueError("maintenance lease owner must not be empty")
+    if not key.strip():
+        raise ValueError("maintenance lease key must not be empty")
     if ttl_seconds <= 0:
         raise ValueError("maintenance lease TTL must be positive")
     now = now or _now()
@@ -186,3 +232,72 @@ def acquire(
         except CASConflict:
             continue
     raise MaintenanceLeaseBusy(f"could not claim maintenance lease {key} after CAS retries")
+
+
+def acquire(
+    storage,
+    *,
+    owner: str,
+    key: str | Sequence[str] = AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+    ttl_seconds: float = MAINTENANCE_LEASE_TTL_SECONDS,
+    now: datetime | None = None,
+    max_attempts: int = 8,
+) -> MaintenanceLease | CompositeMaintenanceLease:
+    """Atomically claim one or more maintenance leases, or fail closed.
+
+    When multiple keys are provided, already-acquired leases are automatically released
+    if any subsequent key cannot be claimed, avoiding leaked partial locks.
+    """
+    if isinstance(key, (list, tuple, set, frozenset)):
+        keys = tuple(key)
+        if not keys:
+            raise ValueError("maintenance lease keys must not be empty")
+        acquired: list[MaintenanceLease] = []
+        try:
+            for k in keys:
+                acquired.append(
+                    _acquire_single(
+                        storage,
+                        owner=owner,
+                        key=k,
+                        ttl_seconds=ttl_seconds,
+                        now=now,
+                        max_attempts=max_attempts,
+                    )
+                )
+            return CompositeMaintenanceLease(tuple(acquired))
+        except Exception:
+            for lease in reversed(acquired):
+                lease.release()
+            raise
+
+    return _acquire_single(
+        storage,
+        owner=owner,
+        key=key,
+        ttl_seconds=ttl_seconds,
+        now=now,
+        max_attempts=max_attempts,
+    )
+
+
+def acquire_all(
+    storage,
+    *,
+    owner: str,
+    keys: Sequence[str] = AGENDA_CHAPTER_RESET_MAINTENANCE_LEASE_KEYS,
+    ttl_seconds: float = MAINTENANCE_LEASE_TTL_SECONDS,
+    now: datetime | None = None,
+    max_attempts: int = 8,
+) -> CompositeMaintenanceLease:
+    """Atomically claim a sequence of maintenance leases or fail closed."""
+    lease = acquire(
+        storage,
+        owner=owner,
+        key=keys,
+        ttl_seconds=ttl_seconds,
+        now=now,
+        max_attempts=max_attempts,
+    )
+    assert isinstance(lease, CompositeMaintenanceLease)
+    return lease

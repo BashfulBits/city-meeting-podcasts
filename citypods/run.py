@@ -21,6 +21,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import contextmanager as _contextmanager
 from contextlib import nullcontext as _nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -73,7 +74,8 @@ from citypods.models import (
     Episode,
 )
 from citypods.ops.maintenance_leases import (
-    AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+    CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
+    CompositeMaintenanceLease,
     MaintenanceLease,
 )
 from citypods.ops.maintenance_leases import (
@@ -2234,6 +2236,28 @@ def _chapter_batch_replay_items(
     return replay, submission_errors
 
 
+@_contextmanager
+def _chapter_record_write_lease(
+    storage,
+    *,
+    lane: str | None,
+    maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None,
+):
+    """Serialize chapter-lane read/merge/write commits without serializing their LLM work."""
+    if lane not in {"chapter-agenda", "chapter-locator"} or maintenance_lease is None:
+        yield
+        return
+    write_lease = acquire_maintenance_lease(
+        storage,
+        owner=maintenance_lease.owner,
+        key=CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
+    )
+    try:
+        yield
+    finally:
+        write_lease.release()
+
+
 def _build_impl(
     *,
     site_config_path: str | Path = "config/site_config.yml",
@@ -2251,7 +2275,7 @@ def _build_impl(
     no_refresh: bool = False,
     shard_plan_path: str | Path | None = None,
     state_snapshot_restored: bool = False,
-    maintenance_lease: MaintenanceLease | None = None,
+    maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None = None,
     _compute_backend_holder: list[object] | None = None,
 ) -> list[CityResult]:
     """Build the site and/or backfill heavy enrichment, in one of three phases:
@@ -3415,7 +3439,15 @@ def _build_impl(
                 }
                 if maintenance_lease is not None:
                     push_kwargs["maintenance_lease"] = maintenance_lease
-                pushed = push_records_merged(storage, state_dir, owned, **push_kwargs)
+                # The per-lane leases let extraction and locator work overlap, but their source
+                # records live on the non-CAS B2 plane. Serialize the complete re-read/merge/upload
+                # critical section so a second lane cannot upload a merge based on an older read.
+                with _chapter_record_write_lease(
+                    storage,
+                    lane=lane,
+                    maintenance_lease=maintenance_lease,
+                ):
+                    pushed = push_records_merged(storage, state_dir, owned, **push_kwargs)
                 pushed += push_calendar_records_merged(
                     storage,
                     state_dir,
@@ -3519,10 +3551,10 @@ def build(
 ) -> list[CityResult]:
     """Run a build and always close a subprocess-backed compute backend."""
     compute_backend_holder: list[object] = []
-    maintenance_lease: MaintenanceLease | None = None
+    maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None = None
     if lane in {"chapter-agenda", "chapter-locator", "chapter"} and not dry_run:
-        lease_key = os.environ.get("CITYPODS_MAINTENANCE_LEASE_KEY")
-        if lease_key:
+        raw_lease_key = os.environ.get("CITYPODS_MAINTENANCE_LEASE_KEY")
+        if raw_lease_key:
             lease_site_config = load_site_config(site_config_path)
             lease_storage = make_storage(lease_site_config, base_url or "", Path(output_dir))
             if lease_storage is None:
@@ -3533,10 +3565,15 @@ def build(
                 f"github-actions:{os.environ.get('GITHUB_WORKFLOW', 'local')}"
                 f":{os.environ.get('GITHUB_RUN_ID', 'unknown')}"
             )
+            target_key: str | tuple[str, ...]
+            if "," in raw_lease_key:
+                target_key = tuple(k.strip() for k in raw_lease_key.split(",") if k.strip())
+            else:
+                target_key = raw_lease_key.strip()
             maintenance_lease = acquire_maintenance_lease(
                 lease_storage,
                 owner=lease_owner,
-                key=lease_key or AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+                key=target_key,
             )
     try:
         return _build_impl(

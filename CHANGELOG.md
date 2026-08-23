@@ -196,6 +196,20 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Separate per-lane chapter maintenance leases and key-by-key candidate merge.** Separated the
+  shared chapter maintenance mutex into independent per-lane R2 CAS objects
+  (`maintenance-leases/chapter-agenda.json` for `chapter-agenda.yml` and
+  `maintenance-leases/chapter-locator.json` for `chapter-locator.yml`), and made
+  `generated_agenda_candidates` a composite field merged key-by-key in `merge_preserving_foreign`.
+  Previously, both workflows shared `maintenance-leases/agenda-chapter-reset.json`, causing the
+  chapter locator workflow to fail with `MaintenanceLeaseBusy` whenever schedule delays or longer
+  extraction runs overlapped their execution times. `scripts/reset_agenda_chapter_state.py` now
+  claims both leases as a composite transaction before mutating state during manual recovery. A
+  short shared `maintenance-leases/chapter-record-write.json` lease now serializes only the
+  non-CAS B2 read/merge/upload commit, preventing overlapping lanes from losing each other's
+  changes while preserving concurrent extraction work. The merge also honors the chapter reset's
+  explicit deletion of stale `generated_agenda_candidates` state.
+
 - **Free-model alternates for jobs that dispatched only to Mistral (2026-08-18 follow-up to the
   Mistral pause below).** Agenda-chapter extraction (`chapter_titles.AGENDA_PRODUCTION_MODEL`) now
   has `meta-llama/llama-3.3-70b-instruct` as a same-priority alternate
