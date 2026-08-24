@@ -241,7 +241,10 @@ Phase R (Research-Tool Surface)._
   non-CAS B2 read/merge/upload commit, preventing overlapping lanes from losing each other's
   changes while preserving concurrent extraction work. The merge also honors the chapter reset's
   explicit deletion of stale `generated_agenda_candidates` state.
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> origin/fix_audio_shard_failure
 
 - **Free-model alternates for jobs that dispatched only to Mistral (2026-08-18 follow-up to the
   Mistral pause below).** Agenda-chapter extraction (`chapter_titles.AGENDA_PRODUCTION_MODEL`) now
