@@ -127,3 +127,17 @@ def test_validate_build_mixed(tmp_path):
     assert any("bad-city" in f for f in fatals)
     assert any("ok-city" in w for w in warnings)
     assert not any("ok-city" in f for f in fatals)
+
+
+def test_xxe_vulnerability_prevented():
+    # A simple XXE payload
+    xxe_xml = """<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE foo [
+  <!ELEMENT foo ANY >
+  <!ENTITY xxe SYSTEM "file:///etc/passwd" >]><foo>&xxe;</foo>
+"""
+
+    # defusedxml should return an error list with the exception in it
+    errors = validate_feed(xxe_xml)
+    assert len(errors) > 0
+    assert "not well-formed XML" in errors[0]
