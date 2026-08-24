@@ -196,6 +196,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Transient provider HTTP error handling in sharded enrich lanes.** Updated
+  `is_transient_provider_error` and `ProviderError` to recognize retryable HTTP status codes
+  (`500..599`, `429`, `408`, `425`) across exception attributes, responses, causes, and status
+  messages. Prevents transient upstream provider 5xx outages (e.g. Granicus archive index 500s)
+  from failing sharded matrix jobs when all other assigned sources and audio materialization work
+  succeeded.
+
 - **Downstream enrich lane error recovery and thread-safe contract registration (run #313 fix).**
   Fixed two issues that caused Chapter Agenda extraction (workflow run 313) to exit with code 1.
   First, `_run_enrich_global_queue` now treats all record-backed downstream enrichment lanes

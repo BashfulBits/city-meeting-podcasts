@@ -203,7 +203,9 @@ class CivicClerkProvider:
             except requests.RequestException as exc:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
+            raise ProviderError(
+                f"GET {url} returned {resp.status_code}", status_code=resp.status_code
+            )
         return resp.content
 
     def fetch_episodes(self, source: dict) -> list[Episode]:
@@ -241,7 +243,9 @@ class CivicClerkProvider:
             except requests.RequestException as exc:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
+            raise ProviderError(
+                f"GET {url} returned {resp.status_code}", status_code=resp.status_code
+            )
         try:
             data = json.loads(resp.content)
         except json.JSONDecodeError as exc:

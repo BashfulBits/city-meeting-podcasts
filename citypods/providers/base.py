@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
 
@@ -9,19 +10,54 @@ import requests
 
 from citypods.models import ChangeToken, Episode
 
+# Standard transient HTTP status codes: rate limits (429), timeouts (408), early data (425),
+# standard server errors (500, 502, 503, 504), and Cloudflare origin/edge errors (520..527).
+_TRANSIENT_HTTP_STATUSES: frozenset[int] = frozenset(
+    {408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527}
+)
+_STATUS_CODE_RE = re.compile(
+    r"(?:returned|status(?:_code)?|HTTP|code)\s*[:=]?\s*(\d{3})\b",
+    re.IGNORECASE,
+)
+
+
+def _is_transient_status_code(code: int | None) -> bool:
+    if code is None:
+        return False
+    return code in _TRANSIENT_HTTP_STATUSES or 500 <= code <= 599
+
 
 class ProviderError(Exception):
     """Raised when a provider cannot fetch or parse a city's source."""
 
+    def __init__(self, *args: object, status_code: int | None = None) -> None:
+        super().__init__(*args)
+        self.status_code = status_code
+
 
 def is_transient_provider_error(exc: BaseException) -> bool:
-    """Return whether a provider error carries a retryable requests transport cause."""
+    """Return whether a provider error carries a retryable requests transport or HTTP cause."""
     seen: set[int] = set()
     current: BaseException | None = exc
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         if isinstance(current, (requests.ConnectionError, requests.Timeout)):
             return True
+        status = getattr(current, "status_code", None)
+        if isinstance(status, int) and _is_transient_status_code(status):
+            return True
+        response = getattr(current, "response", None)
+        resp_status = getattr(response, "status_code", None)
+        if isinstance(resp_status, int) and _is_transient_status_code(resp_status):
+            return True
+        match = _STATUS_CODE_RE.search(str(current))
+        if match:
+            try:
+                parsed_status = int(match.group(1))
+                if _is_transient_status_code(parsed_status):
+                    return True
+            except ValueError:
+                pass
         current = current.__cause__ or current.__context__
     return False
 

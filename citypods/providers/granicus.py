@@ -290,7 +290,9 @@ class GranicusProvider:
                 except requests.RequestException as exc:
                     raise ProviderError(f"GET {url} failed: {exc}") from exc
                 if resp.status_code >= 400:
-                    raise ProviderError(f"GET {url} returned {resp.status_code}")
+                    raise ProviderError(
+                        f"GET {url} returned {resp.status_code}", status_code=resp.status_code
+                    )
                 for ep in parse_archive_page(resp.content, url):
                     if ep.guid not in seen:  # dedup across views
                         seen.add(ep.guid)
@@ -312,7 +314,9 @@ class GranicusProvider:
             except requests.RequestException as exc:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
+            raise ProviderError(
+                f"GET {url} returned {resp.status_code}", status_code=resp.status_code
+            )
         return parse_index_json(resp.content), None
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:

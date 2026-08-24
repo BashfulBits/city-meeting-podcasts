@@ -2651,7 +2651,7 @@ def test_chapter_agenda_lane_provider_fetch_errors_use_persisted_archive(
 def test_chapter_agenda_lane_provider_fetch_errors_defer_without_archive(tmp_path, fake_provider):
     """A chapter-agenda run with no archive defers the source instead of failing."""
     cities = _setup(tmp_path)
-    fake_provider.error = ProviderError("GET https://granicus.example/view returned 500")
+    fake_provider.error = ProviderError("GET https://granicus.example/view returned 404")
 
     results = _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="chapter-agenda")
 
@@ -2996,3 +2996,140 @@ def test_tag_batch_submission_failure_replaces_provisional_defer_with_error():
     assert prelabeler["batch_submission_errors"] == [
         {"recipe_hash": "prelabeler-recipe-tag-batch-0", "reason": "ingress unavailable"}
     ]
+
+
+def test_global_queue_audio_lane_defers_transient_provider_500_error(monkeypatch):
+    """A transient HTTP 500 error during audio lane prepare defers the affected source so
+    sibling sources can complete and the matrix shard exits cleanly (status='skipped', 0 errors)."""
+    city_good = City(
+        slug="good-city",
+        provider="swagit",
+        source={"feed_url": "https://good.example.com/feed"},
+        podcast_title="Good",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    city_failing = City(
+        slug="failing-city",
+        provider="granicus",
+        source={"feed_url": "https://failing.granicus.com/feed"},
+        podcast_title="Failing",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+
+    class _AudioStage:
+        name = "audio"
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane="audio"
+            )
+            self.stages = [_AudioStage()]
+
+        def fetch_merge(self, city, _key):
+            if city.slug == "failing-city":
+                raise ProviderError(
+                    "GET https://failing.granicus.com/ViewPublisher.php?view_id=9 returned 500",
+                    status_code=500,
+                )
+            return object(), [_ep("good-ep1")], {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            pass
+
+    monkeypatch.setattr(
+        run,
+        "run_stages",
+        lambda _p, _c, batch, stages, _ctx, quiet: [StageStats("audio", ran=1)],
+    )
+
+    results = run._run_enrich_global_queue(
+        _Pipeline(),
+        [city_good, city_failing],
+        source_cache=None,
+        max_workers=2,
+        policy=None,
+    )
+
+    res_by_slug = {r.slug: r for r in results}
+    assert res_by_slug["good-city"].status == "built"
+    assert res_by_slug["failing-city"].status == "skipped"
+    assert "provider fetch deferred" in res_by_slug["failing-city"].detail
+    assert "500" in res_by_slug["failing-city"].detail
+
+
+def test_global_queue_audio_lane_marks_permanent_provider_404_error(monkeypatch):
+    """A permanent HTTP 404 error during audio lane prepare surfaces as a fatal source error
+    so provider drift is not silently hidden."""
+    city_good = City(
+        slug="good-city",
+        provider="swagit",
+        source={"feed_url": "https://good.example.com/feed"},
+        podcast_title="Good",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+    city_drift = City(
+        slug="drift-city",
+        provider="granicus",
+        source={"feed_url": "https://drift.granicus.com/feed"},
+        podcast_title="Drift",
+        podcast_author="A",
+        podcast_email="",
+        podcast_description="",
+        extract_audio=True,
+    )
+
+    class _AudioStage:
+        name = "audio"
+
+    class _Pipeline:
+        def __init__(self):
+            self.ctx = StageContext(
+                storage=None, ffmpeg=None, max_kbps=96, dry_run=False, lane="audio"
+            )
+            self.stages = [_AudioStage()]
+
+        def fetch_merge(self, city, _key):
+            if city.slug == "drift-city":
+                raise ProviderError(
+                    "GET https://drift.granicus.com/feed returned 404",
+                    status_code=404,
+                )
+            return object(), [_ep("good-ep1")], {}, 0
+
+        def accumulate_stats(self, _stats):
+            pass
+
+        def persist_source(self, _key, _eps, _persisted, *, notes):
+            pass
+
+    monkeypatch.setattr(
+        run,
+        "run_stages",
+        lambda _p, _c, batch, stages, _ctx, quiet: [StageStats("audio", ran=1)],
+    )
+
+    results = run._run_enrich_global_queue(
+        _Pipeline(),
+        [city_good, city_drift],
+        source_cache=None,
+        max_workers=2,
+        policy=None,
+    )
+
+    res_by_slug = {r.slug: r for r in results}
+    assert res_by_slug["good-city"].status == "built"
+    assert res_by_slug["drift-city"].status == "error"
+    assert "404" in res_by_slug["drift-city"].detail
