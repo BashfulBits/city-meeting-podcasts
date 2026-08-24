@@ -237,6 +237,9 @@ class Episode:
     speakers_confidence: float | None = None
     speakers_pipeline_version: str | None = None
     speakers_error: str | None = None
+    # Explicit provenance keeps native R7 output distinct from the pre-existing provider-label
+    # parser.  Both still share one artifact pointer/schema for render consumers.
+    speakers_source: Literal["provider", "native"] | None = None
     # Materialization backoff: when audio re-hosting fails (e.g. a Swagit ``/download`` that
     # redirects to a keyless S3 URL with no usable page media), the count of consecutive failed
     # attempts and the ISO8601 time of the last one are persisted so the media pipeline backs

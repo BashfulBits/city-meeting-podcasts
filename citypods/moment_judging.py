@@ -20,6 +20,17 @@ JUDGE_CONTRACT = "moment-judge"
 
 def ensure_judge_contract():
     """Register the judge-only response schema without giving it candidate authority."""
+    cached = getattr(ensure_judge_contract, "model", None)
+    if cached is not None:
+        return cached
+
+    try:
+        model = response_model(JUDGE_CONTRACT)
+        ensure_judge_contract.model = model
+        return model
+    except ValueError:
+        pass
+
     from pydantic import BaseModel, ConfigDict, Field
 
     class Response(BaseModel):
@@ -32,18 +43,8 @@ def ensure_judge_contract():
         admission_score: float = Field(ge=0.0, le=1.0)
         rationale: str = Field(default="", max_length=400)
 
-    model = getattr(ensure_judge_contract, "model", None)
-    if model is None:
-        try:
-            model = response_model(JUDGE_CONTRACT)
-        except ValueError:
-            model = register_response_model(JUDGE_CONTRACT, Response)
-        ensure_judge_contract.model = model
-    else:
-        try:
-            response_model(JUDGE_CONTRACT)
-        except ValueError:
-            register_response_model(JUDGE_CONTRACT, model)
+    model = register_response_model(JUDGE_CONTRACT, Response)
+    ensure_judge_contract.model = model
     return model
 
 

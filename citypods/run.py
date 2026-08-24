@@ -21,6 +21,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import contextmanager as _contextmanager
 from contextlib import nullcontext as _nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -73,7 +74,8 @@ from citypods.models import (
     Episode,
 )
 from citypods.ops.maintenance_leases import (
-    AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+    CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
+    CompositeMaintenanceLease,
     MaintenanceLease,
 )
 from citypods.ops.maintenance_leases import (
@@ -136,7 +138,10 @@ from citypods.site import (
     render_redirect_feed,
     render_redirect_page,
     render_search_page,
+    render_speaker_page,
+    speaker_page_rows,
 )
+from citypods.speakers import valid_speaker_id
 from citypods.stages import (
     ASR_PIPELINE_VERSION,
     LANE_STAGES,
@@ -148,6 +153,7 @@ from citypods.stages import (
     default_stages,
     enrich_stages,
     r6_stages,
+    r7_stages,
     render_stages,
     run_stages,
     stage_is_dirty,
@@ -177,6 +183,19 @@ from citypods.transcript_quality import load_quality_config, load_quality_routes
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
 _SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
+_RECORD_BACKED_LANES = frozenset(
+    {
+        "transcribe",
+        "align",
+        "diarize",
+        "speaker-identity",
+        "tag",
+        "moments",
+        "chapter-agenda",
+        "chapter-locator",
+        "chapter",
+    }
+)
 
 
 class SourcePipeline:
@@ -358,7 +377,7 @@ class SourcePipeline:
             if ep.integrity:
                 result.append((uid, "repair_requested"))
             for stage in stages:
-                if stage_is_dirty(stage, ep, city):
+                if stage_is_dirty(stage, ep, city, speaker_config=self.ctx.speaker_config):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result
 
@@ -554,9 +573,11 @@ class SourcePipeline:
     ) -> tuple[object, list[Episode], dict, int]:
         """Prepare a source from the persisted archive after a transient fetch failure.
 
-        Transcript-only ASR lanes operate on already-hosted audio recorded in ``episodes.json``;
-        they do not need fresh provider metadata to transcribe existing audio.  If the provider
-        refresh fails, load the last-known archive and let the transcript pass continue.
+        Downstream record-backed enrichment lanes (transcribe, align, tag, moments, chapter
+        extraction/locator) operate on already-hosted audio and stored documents in
+        ``episodes.json``; they do not need fresh provider metadata to enrich existing records.
+        If the provider refresh fails, load the last-known archive and let the stage passes
+        continue.
         """
         provider = get_provider(city.provider)
         persisted = load_records(self.state_dir, key)
@@ -1095,6 +1116,23 @@ def _process_city(
             )
             new_entry["meeting_pages"] = rendered_page_cache
             meeting_outputs_changed = rendered_page_cache != page_cache
+            speaker_rows = speaker_page_rows(city, retained_eps, base_url)
+            speakers_dir = city_dir / "speakers"
+            wanted_speakers = {
+                speaker_id for speaker_id in speaker_rows if valid_speaker_id(speaker_id)
+            }
+            for speaker_id, person in speaker_rows.items():
+                if not valid_speaker_id(speaker_id):
+                    continue
+                target = speakers_dir / speaker_id
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "index.html").write_text(render_speaker_page(city, person, base_url))
+            if speakers_dir.exists():
+                for child in speakers_dir.iterdir():
+                    if child.is_dir() and child.name not in wanted_speakers:
+                        import shutil
+
+                        shutil.rmtree(child)
             archive_hash = _city_archive_hash(city, retained_eps, calendar_records, base_url)
             new_entry["archive_hash"] = archive_hash
             if cache_entry is None or cache_entry.get("archive_hash") != archive_hash:
@@ -1572,7 +1610,7 @@ def _run_enrich_global_queue(
     ]
     # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
     # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
-    post_transcript = {"transcript", "diarize", "tags"}
+    post_transcript = {"transcript", "diarize", "native_diarize", "speaker_identity", "tags"}
     audio_stages = [
         s
         for s in pipeline.stages
@@ -1584,6 +1622,15 @@ def _run_enrich_global_queue(
         for s in pipeline.stages
         if s.name in post_transcript and (allowed is None or s.name in allowed)
     ]
+    # R7 owns three append-only private ledgers (turn evidence, registry, and review evaluation).
+    # The normal transcript pass deliberately invokes one stage chain per episode concurrently;
+    # running either R7 stage there would let simultaneous load/replace writes lose a sibling's
+    # evidence.  Keep their expensive/model work scoped to the selected city/source set, but run
+    # the two ledger writers once after every per-episode transcript stage has completed.
+    r7_ledger_stages = [
+        stage for stage in transcript_stages if stage.name in {"native_diarize", "speaker_identity"}
+    ]
+    transcript_stages = [stage for stage in transcript_stages if stage not in r7_ledger_stages]
 
     # 1) Prepare every unique source (board feeds share a source_key → dedup so episodes don't
     #    double-count). ProviderError is captured per source and surfaces as that city's result.
@@ -1602,7 +1649,7 @@ def _run_enrich_global_queue(
             try:
                 provider, episodes, persisted, seeded = fut.result()
             except (ProviderError, SecurityError) as exc:
-                if ctx.lane in {"transcribe", "align"}:
+                if ctx.lane in _RECORD_BACKED_LANES:
                     try:
                         provider, episodes, persisted, seeded = pipeline.fetch_merge_from_records(
                             rep_city[key], key, exc
@@ -1843,13 +1890,13 @@ def _run_enrich_global_queue(
 
     # The audio pass gets a free mid-run persist boundary (it always finishes before the
     # decoupled transcript pass even starts -- the `_persist_all()` call right above this
-    # function). A lane whose ONLY pass is the transcript/tags one (`tag`, `diarize`) has no such
-    # boundary: without this, a mid-run kill during a long transcript/tags-only pass loses every
-    # completed item back to whatever the previous run last persisted, not just the in-flight
+    # function). A lane whose only pass is transcript/tags-shaped (`tag`, `diarize`, or
+    # `speaker-identity`) has no such boundary. A mid-run kill during a long pass loses completed
+    # items back to whatever the previous run last persisted, not just the in-flight
     # ones -- exactly what happened to a scheduled `tag` run that was hard-cancelled by GitHub's
     # job timeout with nothing durably written despite processing real LLM candidates.
     # ``mid_run_checkpoint`` (local `_persist_all()` here, then the caller's durable remote push)
-    # is opt-in per call site -- `None` for every lane except `tag` today -- and runs from
+    # is opt-in per call site -- `None` for every other lane -- and runs from
     # `_run_bounded`'s own calling thread between drain cycles, never concurrently with itself.
     _CHECKPOINT_INTERVAL_SECONDS = 180.0
     _last_checkpoint = {"t": time.monotonic()}
@@ -2057,24 +2104,41 @@ def _run_enrich_global_queue(
         )
         ctx.moment_backend = original_moment_backend
 
+    if r7_ledger_stages:
+        print(f"[enrich] R7 ledger pass: {len(prepared)} source(s) (serialized)", flush=True)
+        for source in prepared.values():
+            stats = run_stages(
+                source["provider"],
+                source["city"],
+                source["retained_episodes"],
+                r7_ledger_stages,
+                ctx,
+                quiet=ctx.lane != "tag",
+            )
+            pipeline.accumulate_stats(stats)
+            _checkpoint_if_due()
+        print("[enrich] R7 ledger pass done", flush=True)
+
     # 4) Persist each prepared source (episodes were mutated in place by the passes). Idempotent
     #    repeat of the post-audio-pass persist above; also captures the transcript-pass mutations.
     _persist_all()
 
-    # 5) One CityResult per configured city, mirroring its source's outcome.  Transcript lanes are
-    # best-effort backfill workers: a transient provider refresh failure for one shard means that
-    # source simply has no ASR candidates this run.  Treat it as skipped/deferred so the worker can
-    # persist sibling progress and the scheduled ASR lane completes cleanly instead of reddening on
-    # an outage it cannot repair.  Audio/full enrich still report source-fetch errors as errors,
-    # because those lanes own provider materialization work and should surface provider drift.
-    transcript_only_lane = ctx.lane in {"transcribe", "align"}
+    # 5) One CityResult per configured city, mirroring its source's outcome. Record-backed
+    # enrichment lanes (ASR, tags, moments, chapter extraction/locator) are best-effort backfill
+    # workers: a transient provider refresh failure for one source means that source simply has no
+    # new candidates this run. Treat unrecoverable fetch errors as skipped/deferred so the worker
+    # can persist sibling progress and scheduled enrichment lanes complete cleanly instead of
+    # reddening on an upstream provider outage they cannot repair. Primary materialization lanes
+    # (audio / full enrich) still report source-fetch errors as errors to surface provider drift.
+    record_backed_lane = ctx.lane in _RECORD_BACKED_LANES
     results: list[CityResult] = []
     for c in cities:
         key = source_key(c)
         if key in errors:
-            if transcript_only_lane:
+            if record_backed_lane:
+                prefix = "transcript" if ctx.lane in {"transcribe", "align"} else str(ctx.lane)
                 results.append(
-                    CityResult(c.slug, "skipped", detail=f"transcript lane deferred: {errors[key]}")
+                    CityResult(c.slug, "skipped", detail=f"{prefix} lane deferred: {errors[key]}")
                 )
             else:
                 results.append(CityResult(c.slug, "error", detail=errors[key]))
@@ -2190,6 +2254,28 @@ def _chapter_batch_replay_items(
     return replay, submission_errors
 
 
+@_contextmanager
+def _chapter_record_write_lease(
+    storage,
+    *,
+    lane: str | None,
+    maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None,
+):
+    """Serialize chapter-lane read/merge/write commits without serializing their LLM work."""
+    if lane not in {"chapter-agenda", "chapter-locator"} or maintenance_lease is None:
+        yield
+        return
+    write_lease = acquire_maintenance_lease(
+        storage,
+        owner=maintenance_lease.owner,
+        key=CHAPTER_RECORD_WRITE_MAINTENANCE_LEASE_KEY,
+    )
+    try:
+        yield
+    finally:
+        write_lease.release()
+
+
 def _build_impl(
     *,
     site_config_path: str | Path = "config/site_config.yml",
@@ -2207,7 +2293,7 @@ def _build_impl(
     no_refresh: bool = False,
     shard_plan_path: str | Path | None = None,
     state_snapshot_restored: bool = False,
-    maintenance_lease: MaintenanceLease | None = None,
+    maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None = None,
     _compute_backend_holder: list[object] | None = None,
 ) -> list[CityResult]:
     """Build the site and/or backfill heavy enrichment, in one of three phases:
@@ -2248,6 +2334,8 @@ def _build_impl(
         "align",
         "tag",
         "moments",
+        "diarize",
+        "speaker-identity",
         "chapter-agenda",
         "chapter-locator",
         "chapter",
@@ -2269,13 +2357,21 @@ def _build_impl(
             raise ValueError(f"no feed or city entity with slug {only_slug!r}")
     # H6b source/shard selection (by source_key, so a city's combined + per-board feeds stay
     # together in one shard and one record store). ``scoped`` marks a partial run for statesync.
-    # Scoped lanes (tag, chapter-agenda, chapter-locator, chapter) only own their specific artifact
-    # block, so they must always route through merged persistence even when running without
-    # --source or --shard.
+    # Scoped lanes only own specific artifact blocks, so they must always route through merged
+    # persistence even when running without --source or --shard.
     scoped = bool(
         source
         or shard
-        or lane in {"tag", "moments", "chapter-agenda", "chapter-locator", "chapter"}
+        or lane
+        in {
+            "tag",
+            "moments",
+            "diarize",
+            "speaker-identity",
+            "chapter-agenda",
+            "chapter-locator",
+            "chapter",
+        }
     )
     if source:
         cities = [c for c in cities if source_key(c) == source]
@@ -2358,6 +2454,7 @@ def _build_impl(
     moment_backend = None
     tagging_config = site_config.get("tagging") or {}
     moments_config = site_config.get("moments") or {}
+    speakers_config = site_config.get("speakers") or {}
     tag_max_dispatches = int(tagging_config.get("max_dispatches_per_run", 2000))
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
@@ -2480,6 +2577,8 @@ def _build_impl(
     stages = {"render": render_stages, "enrich": enrich_stages, "all": default_stages}[phase]()
     if (site_config.get("moments") or {}).get("enabled") and phase != "render":
         stages.extend(r6_stages())
+    if speakers_config.get("enabled") and phase != "render":
+        stages.extend(r7_stages())
     # Generated chaptering is an explicitly separate asynchronous lane.  It is not included in
     # ordinary audio/enrich runs because agenda/transcript prerequisites may complete in different
     # workflows and the initial rollout is a served-time overlay, not an audio-affecting change.
@@ -2498,6 +2597,7 @@ def _build_impl(
     deadline: float | None = None
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
+    diarize_start_deadline: float | None = None
     tag_llm_deadline: datetime | None = None
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
@@ -2513,6 +2613,16 @@ def _build_impl(
             print(
                 f"budget: {lane} start cutoff {start_cutoff_min:.0f}m, "
                 f"backstop {backstop_min:.0f}m (+ yield before new starts if superseded)"
+            )
+        elif lane == "diarize":
+            start_cutoff_min = float(defaults.get("diarize_start_cutoff_minutes", 285))
+            now = time.monotonic()
+            diarize_start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
+            deadline = diarize_start_deadline
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            print(
+                f"budget: diarize start cutoff {start_cutoff_min:.0f}m "
+                "(measured per-recipe admission + yield if superseded)"
             )
         elif lane in {"tag", "moments"}:
             # Dedicated LLM lanes run on a daily cron with their own *job*
@@ -2711,6 +2821,17 @@ def _build_impl(
             **(moments_config.get("evaluation") or {}),
         },
         moment_max_dispatches=int(moments_config.get("max_dispatches_per_run", 40)),
+        speaker_registry_path=state_dir
+        / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
+        speaker_evaluation_state_path=state_dir
+        / str(speakers_config.get("evaluation_state_path", "r7_speaker_evaluation.json")),
+        speaker_turn_evidence_path=state_dir
+        / str(speakers_config.get("turn_evidence_path", "r7_speaker_turn_evidence.json")),
+        diarize_runtime_log_path=state_dir
+        / str(speakers_config.get("runtime_state_path", "r7_diarization_runtime.json")),
+        speaker_config=speakers_config,
+        diarize_start_deadline=diarize_start_deadline,
+        diarize_start_reserve_seconds=float(defaults.get("diarize_start_reserve_seconds", 15 * 60)),
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
@@ -2843,7 +2964,8 @@ def _build_impl(
                 _try_preload_asr_model(defaults, lane=lane)
 
             if phase == "enrich":
-                # A lane with no audio pass (`tag` today) has no free mid-run persist boundary --
+                # Lanes with no audio pass (`tag`, `diarize`, and `speaker-identity`) have no free
+                # mid-run persist boundary --
                 # see `_run_enrich_global_queue`'s `mid_run_checkpoint` docstring. Always route
                 # through the foreign-block-preserving merged push (records only; no calendar/
                 # run_events/asr-runtime-log/reconcile -- those aren't what a mid-run checkpoint
@@ -2860,7 +2982,7 @@ def _build_impl(
                 # A failed checkpoint push must not abort the run: the end-of-run push still gets a
                 # chance, and losing one checkpoint only widens the loss window, it doesn't lose
                 # more than today's all-or-nothing behavior would have anyway.
-                def _tag_lane_checkpoint_push() -> None:
+                def _lane_checkpoint_push() -> None:
                     try:
                         owned = sorted({source_key(c) for c in cities})
                         pushed = push_records_merged(
@@ -2874,12 +2996,51 @@ def _build_impl(
                         )
                         if pushed:
                             print(
-                                f"state: tag lane checkpoint pushed {pushed} file(s) to durable "
+                                f"state: {lane} lane checkpoint pushed {pushed} file(s) to durable "
                                 "storage",
                                 flush=True,
                             )
+                        if lane in {"diarize", "speaker-identity"}:
+                            speaker_paths = [
+                                str(
+                                    speakers_config.get("registry_path", "r7_speaker_registry.json")
+                                ),
+                                str(
+                                    speakers_config.get(
+                                        "evaluation_state_path", "r7_speaker_evaluation.json"
+                                    )
+                                ),
+                            ]
+                            if lane == "diarize":
+                                speaker_paths.extend(
+                                    (
+                                        str(
+                                            speakers_config.get(
+                                                "turn_evidence_path",
+                                                "r7_speaker_turn_evidence.json",
+                                            )
+                                        ),
+                                        str(
+                                            speakers_config.get(
+                                                "runtime_state_path",
+                                                "r7_diarization_runtime.json",
+                                            )
+                                        ),
+                                    )
+                                )
+                            pushed = push_state(
+                                storage,
+                                state_dir,
+                                only_paths=speaker_paths,
+                                log=lambda msg: print(msg, flush=True),
+                            )
+                            if pushed:
+                                print(
+                                    f"state: {lane} private checkpoint pushed {pushed} file(s)",
+                                    flush=True,
+                                )
                     except Exception as exc:  # noqa: BLE001 — see comment above
-                        print(f"state: tag lane checkpoint push failed: {exc}", flush=True)
+                        print(f"state: {lane} lane checkpoint push failed: {exc}", flush=True)
 
                 # H5 PR3: the heavy production phase uses the global two-pass queue for true
                 # newest-everywhere-first prioritization across all sources (the per-source pool
@@ -2894,8 +3055,11 @@ def _build_impl(
                     policy=backlog_policy,
                     owned_uids=shard_owned_uids,
                     mid_run_checkpoint=(
-                        _tag_lane_checkpoint_push
-                        if lane == "tag" and persist_records and not dry_run and storage is not None
+                        _lane_checkpoint_push
+                        if lane in {"tag", "diarize", "speaker-identity"}
+                        and persist_records
+                        and not dry_run
+                        and storage is not None
                         else None
                     ),
                 )
@@ -3293,7 +3457,15 @@ def _build_impl(
                 }
                 if maintenance_lease is not None:
                     push_kwargs["maintenance_lease"] = maintenance_lease
-                pushed = push_records_merged(storage, state_dir, owned, **push_kwargs)
+                # The per-lane leases let extraction and locator work overlap, but their source
+                # records live on the non-CAS B2 plane. Serialize the complete re-read/merge/upload
+                # critical section so a second lane cannot upload a merge based on an older read.
+                with _chapter_record_write_lease(
+                    storage,
+                    lane=lane,
+                    maintenance_lease=maintenance_lease,
+                ):
+                    pushed = push_records_merged(storage, state_dir, owned, **push_kwargs)
                 pushed += push_calendar_records_merged(
                     storage,
                     state_dir,
@@ -3324,6 +3496,36 @@ def _build_impl(
                     max_events=load_quality_config(site_config).raw_log_cap,
                     log=lambda msg: print(msg, flush=True),
                 )
+                if lane in {"diarize", "speaker-identity"}:
+                    speaker_state_paths = [
+                        str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
+                        str(
+                            speakers_config.get(
+                                "evaluation_state_path", "r7_speaker_evaluation.json"
+                            )
+                        ),
+                    ]
+                    if lane == "diarize":
+                        speaker_state_paths.append(
+                            str(
+                                speakers_config.get(
+                                    "turn_evidence_path", "r7_speaker_turn_evidence.json"
+                                )
+                            )
+                        )
+                        speaker_state_paths.append(
+                            str(
+                                speakers_config.get(
+                                    "runtime_state_path", "r7_diarization_runtime.json"
+                                )
+                            )
+                        )
+                    pushed += push_state(
+                        storage,
+                        state_dir,
+                        only_paths=speaker_state_paths,
+                        log=lambda msg: print(msg, flush=True),
+                    )
             else:
                 if maintenance_lease is not None:
                     maintenance_lease.assert_held()
@@ -3367,10 +3569,10 @@ def build(
 ) -> list[CityResult]:
     """Run a build and always close a subprocess-backed compute backend."""
     compute_backend_holder: list[object] = []
-    maintenance_lease: MaintenanceLease | None = None
+    maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None = None
     if lane in {"chapter-agenda", "chapter-locator", "chapter"} and not dry_run:
-        lease_key = os.environ.get("CITYPODS_MAINTENANCE_LEASE_KEY")
-        if lease_key:
+        raw_lease_key = os.environ.get("CITYPODS_MAINTENANCE_LEASE_KEY")
+        if raw_lease_key:
             lease_site_config = load_site_config(site_config_path)
             lease_storage = make_storage(lease_site_config, base_url or "", Path(output_dir))
             if lease_storage is None:
@@ -3381,10 +3583,15 @@ def build(
                 f"github-actions:{os.environ.get('GITHUB_WORKFLOW', 'local')}"
                 f":{os.environ.get('GITHUB_RUN_ID', 'unknown')}"
             )
+            target_key: str | tuple[str, ...]
+            if "," in raw_lease_key:
+                target_key = tuple(k.strip() for k in raw_lease_key.split(",") if k.strip())
+            else:
+                target_key = raw_lease_key.strip()
             maintenance_lease = acquire_maintenance_lease(
                 lease_storage,
                 owner=lease_owner,
-                key=lease_key or AGENDA_CHAPTER_MAINTENANCE_LEASE_KEY,
+                key=target_key,
             )
     try:
         return _build_impl(
@@ -3584,7 +3791,7 @@ def _write_meeting_pages(
     for child in city_dir.iterdir():
         if not child.is_dir():
             continue
-        if child.name in {"chapters", "archive"}:
+        if child.name in {"chapters", "archive", "speakers"}:
             continue
         if child.name not in wanted and (child / "index.html").exists():
             import shutil

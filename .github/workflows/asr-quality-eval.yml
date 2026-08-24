@@ -71,13 +71,22 @@ jobs:
           echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
 
       - name: Cache L2 CTC aligner model (MMS_FA)
-        # ~1.2 GB wav2vec2 checkpoint, downloaded once via torch.hub on first ctc_fit() call.
-        # Fixed key (not content-hashed): the checkpoint URL is stable; bump the -vN suffix only
-        # if citypods/ctc_align.py switches bundles.
+        # ~1.2 GB wav2vec2 checkpoint. Its digest-scoped key must exactly match the model pin in
+        # citypods/ctc_align.py; never restore an older key under a new model identity.
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.cache/torch/hub/checkpoints
-          key: mms-fa-checkpoint-v1
+          key: mms-fa-checkpoint-20ef12963ab
+
+      - name: Prepare MMS_FA aligner model
+        continue-on-error: true
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+        run: python scripts/prepare_mms_fa.py
 
       - name: Sample and evaluate H15 candidates
         env:
