@@ -261,14 +261,20 @@ Grounded in the existing seams (`citypods/storage/`):
   returned by boto3 (includes surrounding quotes). Raise `CASConflict` on 412.
 
   ```python
-  def put_cas(self, key: str, data: bytes, content_type: str, *,
-              if_none_match: str | None = None,
-              if_match: str | None = None) -> tuple[str, str]:
+  def put_cas(
+      self,
+      key: str,
+      data: bytes,
+      content_type: str,
+      *,
+      if_none_match: str | None = None,
+      if_match: str | None = None,
+  ) -> tuple[str, str]:
       kwargs = dict(Bucket=self.bucket, Key=key, Body=data, ContentType=content_type)
       if if_none_match:
           kwargs["IfNoneMatch"] = if_none_match
       if if_match:
-          kwargs["IfMatch"] = if_match          # pass ETag as returned (includes quotes)
+          kwargs["IfMatch"] = if_match  # pass ETag as returned (includes quotes)
       try:
           r = self._client.put_object(**kwargs)
           return self.public_url(key), r["ETag"]

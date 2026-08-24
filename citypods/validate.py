@@ -7,7 +7,9 @@ item elements podcast players actually require, so CI can fail fast on a broken 
 from __future__ import annotations
 
 from pathlib import Path
-from xml.etree import ElementTree as ET
+
+import defusedxml.ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 ITUNES = "http://www.itunes.com/dtds/podcast-1.0.dtd"
 _REDIRECT_TAG = f"{{{ITUNES}}}new-feed-url"
@@ -28,7 +30,7 @@ def validate_feed(xml: str | bytes) -> list[str]:
     errors: list[str] = []
     try:
         root = ET.fromstring(xml.encode() if isinstance(xml, str) else xml)
-    except ET.ParseError as exc:
+    except (ET.ParseError, DefusedXmlException) as exc:
         return [f"not well-formed XML: {exc}"]
 
     if root.tag != "rss":
@@ -102,7 +104,7 @@ def validate_build(
             channel = root.find("channel")
             if channel is not None and channel.find(_REDIRECT_TAG) is not None:
                 continue
-        except ET.ParseError:
+        except (ET.ParseError, DefusedXmlException):
             pass  # fall through; validate_feed will report the parse error
 
         for problem in validate_feed(content):
