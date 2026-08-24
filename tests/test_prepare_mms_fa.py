@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from unittest.mock import MagicMock
 
 from scripts import prepare_mms_fa as pm
@@ -10,22 +11,36 @@ from scripts import prepare_mms_fa as pm
 def test_mms_fa_constants():
     assert pm.MMS_FA_URL.startswith("https://dl.fbaipublicfiles.com/mms/torchaudio/")
     assert pm.SENTINEL == "model.pt"
-    assert pm.B2_PREFIX == "models/mms-fa/v1"
+    assert len(pm.MMS_FA_SHA256) == 64
+    assert pm.B2_PREFIX == f"models/mms-fa/{pm.MMS_FA_SHA256}"
 
 
-def test_complete_checks_non_empty_sentinel(tmp_path):
+def _pin_payload(monkeypatch, payload: bytes) -> None:
+    monkeypatch.setattr(pm, "MMS_FA_SHA256", hashlib.sha256(payload).hexdigest())
+
+
+def test_complete_checks_non_empty_sentinel(monkeypatch, tmp_path):
     assert not pm._complete(tmp_path)
 
     empty_file = tmp_path / pm.SENTINEL
     empty_file.write_bytes(b"")
     assert not pm._complete(tmp_path)
 
-    empty_file.write_bytes(b"non-empty checkpoint bytes")
+    payload = b"non-empty checkpoint bytes"
+    empty_file.write_bytes(payload)
+    _pin_payload(monkeypatch, payload)
     assert pm._complete(tmp_path)
+
+
+def test_complete_rejects_wrong_checkpoint(tmp_path):
+    (tmp_path / pm.SENTINEL).write_bytes(b"wrong checkpoint bytes")
+    assert not pm._complete(tmp_path)
 
 
 def test_download_upstream_atomic_write(monkeypatch, tmp_path):
     import requests
+
+    _pin_payload(monkeypatch, b"fake_weights")
 
     class _FakeResp:
         status_code = 200
@@ -49,6 +64,8 @@ def test_download_upstream_atomic_write(monkeypatch, tmp_path):
 
 def test_download_upstream_retry_on_failure(monkeypatch, tmp_path):
     import requests
+
+    _pin_payload(monkeypatch, b"fake_weights")
 
     attempts = 0
 
@@ -78,7 +95,8 @@ def test_download_upstream_retry_on_failure(monkeypatch, tmp_path):
     assert (tmp_path / pm.SENTINEL).read_bytes() == b"fake_weights"
 
 
-def test_b2_download(tmp_path):
+def test_b2_download(monkeypatch, tmp_path):
+    _pin_payload(monkeypatch, b"b2_checkpoint_data")
     client = MagicMock()
 
     def _fake_download_file(bucket, key, local_path):
@@ -95,7 +113,9 @@ def test_b2_download(tmp_path):
 
 def test_main_short_circuits_on_local_cache(monkeypatch, tmp_path):
     monkeypatch.setattr(pm, "CHECKPOINT_DIR", tmp_path)
-    (tmp_path / pm.SENTINEL).write_bytes(b"existing_cached_weights")
+    payload = b"existing_cached_weights"
+    _pin_payload(monkeypatch, payload)
+    (tmp_path / pm.SENTINEL).write_bytes(payload)
 
     b2_client_mock = MagicMock()
     monkeypatch.setattr(pm, "_b2_client", b2_client_mock)
@@ -112,3 +132,13 @@ def test_main_graceful_on_all_failures(monkeypatch, tmp_path):
 
     exit_code = pm.main()
     assert exit_code == 0
+
+
+def test_main_discards_an_invalid_local_checkpoint(monkeypatch, tmp_path):
+    monkeypatch.setattr(pm, "CHECKPOINT_DIR", tmp_path)
+    (tmp_path / pm.SENTINEL).write_bytes(b"wrong checkpoint bytes")
+    monkeypatch.setattr(pm, "_b2_client", lambda: (None, None))
+    monkeypatch.setattr(pm, "_download_upstream", lambda *a, **k: False)
+
+    assert pm.main() == 0
+    assert not (tmp_path / pm.SENTINEL).exists()

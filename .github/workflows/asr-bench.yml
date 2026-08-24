@@ -65,8 +65,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
       FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
       FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
@@ -78,6 +76,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Install
+        # prepare_whisper.py's B2 mirror needs boto3 from the storage extra.
+        run: pip install -e ".[asr-bench,storage]" -c constraints/asr.txt
 
       - name: Restore build state
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -124,6 +126,9 @@ jobs:
             asr-bench-models-${{ runner.os }}-
 
       - name: Prepare Whisper model
+        # B2 credentials may only execute the canonical main workflow. A manually selected
+        # feature ref can still run the benchmark without the mirror-preparation optimization.
+        if: github.ref == 'refs/heads/main'
         continue-on-error: true
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -134,11 +139,13 @@ jobs:
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
         run: python scripts/prepare_whisper.py
 
-      - name: Install
-        run: pip install -e ".[asr-bench]" -c constraints/asr.txt
-
       - name: Run ASR benchmark
         env:
+          # The benchmark may need authenticated public-model downloads, but no earlier action
+          # receives this token. An empty ASR_MODEL_PATH keeps each --models value authoritative.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+          ASR_MODEL_PATH: ""
           CASE_1: ${{ inputs.case_1 }}
           CASE_2: ${{ inputs.case_2 }}
           CASE_3: ${{ inputs.case_3 }}

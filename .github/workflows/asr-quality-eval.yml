@@ -71,13 +71,12 @@ jobs:
           echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
 
       - name: Cache L2 CTC aligner model (MMS_FA)
-        # ~1.2 GB wav2vec2 checkpoint, restored from Actions cache or prepared via
-        # scripts/prepare_mms_fa.py. Bump the -vN suffix if citypods/ctc_align.py switches bundles.
+        # ~1.2 GB wav2vec2 checkpoint. Its digest-scoped key must exactly match the model pin in
+        # citypods/ctc_align.py; never restore an older key under a new model identity.
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.cache/torch/hub/checkpoints
-          key: mms-fa-checkpoint-v1
-          restore-keys: mms-fa-checkpoint-
+          key: mms-fa-checkpoint-20ef12963ab
 
       - name: Prepare MMS_FA aligner model
         continue-on-error: true

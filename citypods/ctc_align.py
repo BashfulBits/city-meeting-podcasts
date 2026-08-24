@@ -32,6 +32,9 @@ from pathlib import Path
 
 MMS_FA_URL = "https://dl.fbaipublicfiles.com/mms/torchaudio/ctc_alignment_mling_uroman/model.pt"
 MMS_FA_FILENAME = "model.pt"
+# This is the existing torchaudio bundle used by ctc_fit(), not a model change.  Any update must
+# use a new digest-scoped cache/mirror identity and state its H15 evaluation backfill decision.
+MMS_FA_SHA256 = "20ef12963ab4924bef49ac4fc7f58ad5da2ee43b2c11bc8c853c9b90ecdbc680"
 
 _model_cache: dict[str, tuple] = {}
 _model_lock = threading.Lock()

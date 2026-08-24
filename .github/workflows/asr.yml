@@ -117,7 +117,6 @@ jobs:
             ~/.cache/torch/hub/checkpoints
             ~/.cache/huggingface
           key: align-model-wav2vec2-v1
-          restore-keys: align-model-wav2vec2-
 
       # Each worker claims from the shared transcript queue until the start cutoff or a newer run
       # is queued behind it. Completion persists per-item; the next run resumes from storage.

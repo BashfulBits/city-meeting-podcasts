@@ -2,8 +2,8 @@
 """Prepare the torchaudio MMS_FA CTC forced-alignment model checkpoint.
 
 Cascade (in order):
-  1. Local Actions cache hit — ~0 s, ~/.cache/torch/hub/checkpoints/model.pt already present.
-  2. B2 mirror               — models/mms-fa/v1/model.pt (fast, internal B2/Cloudflare CDN).
+  1. Local Actions cache hit — ~0 s, verified model.pt is already present.
+  2. B2 mirror               — digest-scoped, internal B2/Cloudflare CDN.
   3. Upstream Meta CDN       — https://dl.fbaipublicfiles.com/mms/torchaudio/.../model.pt
                                On success: mirror to B2 so future runs use step 2.
 
@@ -13,27 +13,43 @@ Actions cache miss or flaky upstream download.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import time
 from pathlib import Path
 
 # MMS_FA constants canonical in citypods.ctc_align
-from citypods.ctc_align import MMS_FA_FILENAME, MMS_FA_URL
+from citypods.ctc_align import MMS_FA_FILENAME, MMS_FA_SHA256, MMS_FA_URL
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 CHECKPOINT_DIR = Path.home() / ".cache" / "torch" / "hub" / "checkpoints"
 SENTINEL = MMS_FA_FILENAME
-B2_PREFIX = "models/mms-fa/v1"
+B2_PREFIX = f"models/mms-fa/{MMS_FA_SHA256}"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 def _complete(directory: Path) -> bool:
+    """Return whether *directory* has the expected complete, verified checkpoint."""
     target = directory / SENTINEL
-    return target.exists() and target.stat().st_size > 0
+    if not target.exists() or target.stat().st_size == 0:
+        return False
+    digest = hashlib.sha256()
+    with target.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest() == MMS_FA_SHA256
+
+
+def _discard_invalid(directory: Path) -> None:
+    """Remove a checkpoint that did not match the pinned model identity."""
+    target = directory / SENTINEL
+    if target.exists() and not _complete(directory):
+        print(f"  Removing invalid MMS_FA checkpoint: {target}")
+        target.unlink()
 
 
 def _b2_client():
@@ -78,7 +94,10 @@ def _b2_download(client, bucket: str, dest_dir: Path) -> bool:
     print(f"  ← {key} to {target}…")
     client.download_file(bucket, key, str(tmp_path))
     tmp_path.replace(target)
-    return _complete(dest_dir)
+    if _complete(dest_dir):
+        return True
+    _discard_invalid(dest_dir)
+    return False
 
 
 def _download_upstream(url: str, dest_dir: Path, retries: int = 3) -> bool:
@@ -103,6 +122,8 @@ def _download_upstream(url: str, dest_dir: Path, retries: int = 3) -> bool:
             if _complete(dest_dir):
                 print("  Download complete.")
                 return True
+            print("    Downloaded checkpoint did not match the pinned SHA256.")
+            _discard_invalid(dest_dir)
         except Exception as exc:
             print(f"    Attempt {attempt} failed: {exc}")
             if tmp_path.exists():
@@ -126,6 +147,7 @@ def main() -> int:
     if _complete(CHECKPOINT_DIR):
         print(f"[1/3] MMS_FA model found in local cache: {CHECKPOINT_DIR / SENTINEL}")
         return 0
+    _discard_invalid(CHECKPOINT_DIR)
 
     client, bucket = _b2_client()
 
