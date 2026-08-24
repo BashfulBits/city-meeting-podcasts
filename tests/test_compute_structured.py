@@ -4,6 +4,11 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from pydantic import BaseModel
 
+import citypods.compute.structured as structured
+from citypods.chapter_titles import (
+    AGENDA_ITEM_EXTRACTOR_CONTRACT,
+    ensure_agenda_item_extractor_contract,
+)
 from citypods.compute.structured import register_response_model, response_model
 
 
@@ -33,10 +38,17 @@ def test_lookup_unregistered_raises():
 
 def test_idempotent_registration():
     first = register_response_model("test-idempotent", DummyModelA)
-    second = register_response_model("test-idempotent", DummyModelB)
+    second = register_response_model("test-idempotent", DummyModelA)
     assert first is DummyModelA
     assert second is DummyModelA
     assert response_model("test-idempotent") is DummyModelA
+
+
+def test_incompatible_registration_raises():
+    register_response_model("test-conflicting", DummyModelA)
+
+    with pytest.raises(ValueError, match="conflicting structured-output contract"):
+        register_response_model("test-conflicting", DummyModelB)
 
 
 def test_concurrent_registration():
@@ -47,7 +59,7 @@ def test_concurrent_registration():
         barrier.wait()
 
         class LocalModel(BaseModel):
-            idx: int = i
+            value: int = 0
 
         return register_response_model(contract_name, LocalModel)
 
@@ -58,3 +70,27 @@ def test_concurrent_registration():
     # All threads receive the same winning registered class object without exceptions
     assert all(r is results[0] for r in results)
     assert response_model(contract_name) is results[0]
+
+
+def test_agenda_item_extractor_contract_initializes_concurrently(monkeypatch):
+    """The run-313 helper returns one registered model when its first calls overlap."""
+    with structured._LOCK:
+        monkeypatch.delitem(
+            structured._RESPONSE_MODELS, AGENDA_ITEM_EXTRACTOR_CONTRACT, raising=False
+        )
+    monkeypatch.delattr(ensure_agenda_item_extractor_contract, "model", raising=False)
+
+    workers = 8
+    barrier = threading.Barrier(workers)
+    original_register = structured.register_response_model
+
+    def _register_after_all_workers_arrive(name, model):
+        barrier.wait()
+        return original_register(name, model)
+
+    monkeypatch.setattr(structured, "register_response_model", _register_after_all_workers_arrive)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(lambda _: ensure_agenda_item_extractor_contract(), range(workers)))
+
+    assert all(model is results[0] for model in results)
+    assert response_model(AGENDA_ITEM_EXTRACTOR_CONTRACT) is results[0]

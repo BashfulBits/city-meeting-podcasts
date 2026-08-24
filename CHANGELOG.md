@@ -199,14 +199,15 @@ Phase R (Research-Tool Surface)._
 - **Downstream enrich lane error recovery and thread-safe contract registration (run #313 fix).**
   Fixed two issues that caused Chapter Agenda extraction (workflow run 313) to exit with code 1.
   First, `_run_enrich_global_queue` now treats all record-backed downstream enrichment lanes
-  (`transcribe`, `align`, `diarize`, `tag`, `moments`, `chapter-agenda`, `chapter-locator`,
-  `chapter`) as secondary enrichers: when an upstream provider fetch fails (such as an external
-  Granicus HTTP 500 outage), the lane falls back to `pipeline.fetch_merge_from_records` to
-  continue processing existing locally persisted records, and reports unrecoverable source fetch
-  failures as `skipped` rather than `error`. Second, `citypods.compute.structured` contract
-  registration was made thread-safe and idempotent with a global lock, eliminating race conditions
-  in multi-threaded worker pools where concurrent initial invocations caused `ValueError: duplicate
-  or empty structured-output contract`.
+  (`transcribe`, `align`, `diarize`, `speaker-identity`, `tag`, `moments`, `chapter-agenda`,
+  `chapter-locator`, `chapter`) as secondary enrichers: when an upstream provider fetch fails
+  (such as an external Granicus HTTP 500 outage), the lane falls back to
+  `pipeline.fetch_merge_from_records` to continue processing existing locally persisted records,
+  and reports unrecoverable source fetch failures as `skipped` rather than `error`. Second,
+  `citypods.compute.structured` contract registration was made thread-safe and idempotent with a
+  global lock, eliminating race conditions in multi-threaded worker pools where concurrent initial
+  invocations caused `ValueError: duplicate or empty structured-output contract`. Incompatible
+  schemas still fail closed, rather than silently reusing the wrong response contract.
   
 - **ASR Quality Eval MMS_FA model caching and dependency cascade.** Added
   `scripts/prepare_mms_fa.py` to provide a robust local cache → B2 mirror → upstream Meta CDN

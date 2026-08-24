@@ -188,6 +188,7 @@ _RECORD_BACKED_LANES = frozenset(
         "transcribe",
         "align",
         "diarize",
+        "speaker-identity",
         "tag",
         "moments",
         "chapter-agenda",
