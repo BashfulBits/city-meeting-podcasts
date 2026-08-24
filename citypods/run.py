@@ -2930,6 +2930,20 @@ def _build_impl(
     # Fix: load the model here, before the pool opens, so its 5.5 GB peak is resolved to the
     # ~800 MB int8 steady state before any ffmpeg processes spawn.  The process-level cache in
     # asr.py means every TranscriptStage worker reuses this single loaded instance.
+
+    # Pre-load only the ASR model the active lane will use, so a transcribe shard never
+    # pulls in WhisperX and an align shard never pulls in faster-whisper (H6b). The audio
+    # and tag lanes load nothing -- neither runs TranscriptStage (LANE_STAGES).
+    # ``lane=None`` (combined enrich) keeps the faster-whisper preload as before.
+    if (
+        time_bounded
+        and not dry_run
+        and storage is not None
+        and lane not in ("audio", "tag", "moments")
+        and not getattr(compute_backend, "isolates_inference", False)
+    ):
+        _try_preload_asr_model(defaults, lane=lane)
+
     results: list[CityResult] = []
     heartbeat_interval = _heartbeat_interval_seconds()
     heartbeat_requested = "CITYPODS_HEARTBEAT_SECONDS" in os.environ
@@ -2949,19 +2963,6 @@ def _build_impl(
             native_work_gate=_native_work_gate,
             resource_admission=ctx.resource_admission,
         ) as _hb:
-            # Pre-load only the ASR model the active lane will use, so a transcribe shard never
-            # pulls in WhisperX and an align shard never pulls in faster-whisper (H6b). The audio
-            # and tag lanes load nothing -- neither runs TranscriptStage (LANE_STAGES).
-            # ``lane=None`` (combined enrich) keeps the faster-whisper preload as before.
-            if (
-                time_bounded
-                and not dry_run
-                and storage is not None
-                and lane not in ("audio", "tag", "moments")
-                and not getattr(compute_backend, "isolates_inference", False)
-            ):
-                _try_preload_asr_model(defaults, lane=lane)
-
             if phase == "enrich":
                 # Lanes with no audio pass (`tag`, `diarize`, and `speaker-identity`) have no free
                 # mid-run persist boundary --
