@@ -226,19 +226,20 @@ def ensure_locator_contract():
     public helper before it can validate the returned response. This mirrors the existing tag
     contract without adding a task verb to the pre-1.0 compute interface.
     """
+    from citypods.compute.structured import register_response_model, response_model
+
     cached = getattr(ensure_locator_contract, "model", None)
     if cached is not None:
-        from citypods.compute.structured import register_response_model, response_model
-
-        try:
-            response_model(LOCATOR_CONTRACT)
-        except ValueError:
-            register_response_model(LOCATOR_CONTRACT, cached)
         return cached
 
-    from pydantic import BaseModel, ConfigDict, Field
+    try:
+        model = response_model(LOCATOR_CONTRACT)
+        ensure_locator_contract.model = model
+        return model
+    except ValueError:
+        pass
 
-    from citypods.compute.structured import register_response_model, response_model
+    from pydantic import BaseModel, ConfigDict, Field
 
     class Anchor(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -260,8 +261,7 @@ def ensure_locator_contract():
         model_config = ConfigDict(extra="forbid")
         anchors: list[Anchor] = Field(default_factory=list, max_length=200)
 
-    model = Response
-    register_response_model(LOCATOR_CONTRACT, model)
+    model = register_response_model(LOCATOR_CONTRACT, Response)
     ensure_locator_contract.model = model
     return model
 

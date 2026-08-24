@@ -15,7 +15,58 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **R7 diarization model-access diagnostics.** The preflight now verifies `HF_TOKEN` before
+  loading pyannote and reports invalid credentials, unaccepted gated-model terms, unavailable
+  configured models, Hub availability, and post-access pyannote runtime failures separately. This
+  changes no diarization recipe, artifact schema, or `DIARIZE_PIPELINE_VERSION`; no backfill is
+  triggered.
+
+- **R7 diarization runner provisioning.** Explicitly install FFmpeg's shared runtime before the
+  pyannote preflight. Pyannote 4 decodes through torchcodec, which needs the dynamically loaded
+  `libav*` libraries rather than merely an `ffmpeg` executable. This does not bump
+  `DIARIZE_PIPELINE_VERSION`: the shadow pilot failed during runtime preflight, so it produced no
+  stored diarization artifacts that need invalidation or backfill.
+
+- **Dynamic `model_routing` expansion and bounded requeues in `workers/llm-dispatch-proxy`.**
+  `selectRoute` and `nextCapacityRetryAt` now dynamically expand `model_routing` at dispatch
+  time, matching the Python scheduler and ensuring resident R2 records enqueued before an
+  overflow route was configured (e.g. Mistral Medium → Gemini 3.5 Flash Lite) immediately
+  benefit from overflow capacity without requiring record migration. In addition, `dispatchBatch`
+  now defers `no_capacity` heads in memory during the candidate preparation loop and relocates at
+  most one blocked head per idle tick, eliminating multi-minute sequential R2 write loops and
+  preventing `exceededCpu` runtime terminations under the Workers Free 10 ms CPU budget.
+
 ### Added
+
+- **R9 runtime and dependency maintenance automation (Shipped).** Implemented the full
+  dependency-pinning and automated maintenance policy from `review/22`. Synchronized
+  `.github/renovate.json5` with complete two-lane rule coverage across all Python runtime,
+  hygiene, output-affecting packages, and Cloudflare Worker manifests. Added a static CI
+  guard (`scripts/check_dependency_policy.py`) that fails if any declared `pyproject.toml`
+  dependency escapes Renovate package rule classification, and expanded `ci.yml` to execute
+  test suites across all 5 Cloudflare Workers (`granicus-media-proxy`, `swagit-list-proxy`,
+  `llm-dispatch-proxy`, `llm-dispatch-v2`, `city-request-intake`).
+
+
+- **R7 calibrated speaker attribution (in progress).** Added pyannote-backed native speaker-turn
+  artifacts, private city/body membership and golden-voice registries, the 30-day/30-review/95%-precision
+  public-identity gate, minutes-backed silent correction, R6 single-speaker pull-quote attribution, and
+  static speaker pages. Diarization/version backfills are gradual: only episodes with an eligible retained
+  transcript/audio artifact are reconsidered; audio and transcript bytes are never regenerated.
+  The pilot now serializes its private state per city/source, uses a recipe-specific measured runtime
+  profile, scopes profiles/calibration to the active embedding and explicit capture context, requires
+  a recorded private benchmark decision before public naming, and confirms valid roster-backed names.
+  A bounded weekly GitHub-review issue workflow now harvests authenticated Correct/Incorrect shadow
+  labels into the private calibration ledger; the pyannote-vs-WeSpeaker gold-set comparator remains an
+  explicit offline run because the gold references are private. The same weekly parent/sub-issue
+  batch now reviews conservative transcript cues such as “Commissioner X” and “Council Member X”
+  as possible golden voice references without assigning names automatically. The Denton pilot now has
+  a scheduled/manual `r7-diarization.yml` lane that runs native diarization followed by identity
+  projection, with a shared `HF_TOKEN` model-access preflight and cached Community-1 runtime. The
+  diarization model recipe is intentionally changed content-addressably, so existing artifacts are
+  retained and reprocessed gradually by the recurring lane rather than invalidated in one backfill.
 
 - **R6 calibrated moments and shareable clips.** Added council-only free Gemini 3.6/3.5 routing,
   immutable Good/Borderline/Reject review records, background independent judges, deterministic
@@ -151,6 +202,46 @@ Phase R (Research-Tool Surface)._
   messages. Prevents transient upstream provider 5xx outages (e.g. Granicus archive index 500s)
   from failing sharded matrix jobs when all other assigned sources and audio materialization work
   succeeded.
+
+- **Downstream enrich lane error recovery and thread-safe contract registration (run #313 fix).**
+  Fixed two issues that caused Chapter Agenda extraction (workflow run 313) to exit with code 1.
+  First, `_run_enrich_global_queue` now treats all record-backed downstream enrichment lanes
+  (`transcribe`, `align`, `diarize`, `speaker-identity`, `tag`, `moments`, `chapter-agenda`,
+  `chapter-locator`, `chapter`) as secondary enrichers: when an upstream provider fetch fails
+  (such as an external Granicus HTTP 500 outage), the lane falls back to
+  `pipeline.fetch_merge_from_records` to continue processing existing locally persisted records,
+  and reports unrecoverable source fetch failures as `skipped` rather than `error`. Second,
+  `citypods.compute.structured` contract registration was made thread-safe and idempotent with a
+  global lock, eliminating race conditions in multi-threaded worker pools where concurrent initial
+  invocations caused `ValueError: duplicate or empty structured-output contract`. Incompatible
+  schemas still fail closed, rather than silently reusing the wrong response contract.
+  
+- **ASR Quality Eval MMS_FA model caching and dependency cascade.** Added
+  `scripts/prepare_mms_fa.py` to provide a robust local cache → B2 mirror → upstream Meta CDN
+  download cascade for the L2 CTC aligner checkpoint (`model.pt`), eliminating CI failures on
+  Actions cache misses. The existing MMS_FA bytes are now SHA256-verified and all model cache/B2
+  identities are exact, so a future model revision cannot reuse old bytes. This verifies the
+  already-used model and does not change the H15 evaluation recipe or trigger re-scoring.
+  Hardened `.github/workflows/asr-bench.yml` to use the project's SHA256-verified static ffmpeg
+  pin (replacing unpinned `apt-get install ffmpeg`), prepare models after installing its storage
+  dependency, and preserve its selected model matrix. Added aligner model caching to the `align`
+  matrix lane in `.github/workflows/asr.yml`, and updated
+  `review/22-dependency-and-reproducibility-policy.md`.
+  
+- **Separate per-lane chapter maintenance leases and key-by-key candidate merge.** Separated the
+  shared chapter maintenance mutex into independent per-lane R2 CAS objects
+  (`maintenance-leases/chapter-agenda.json` for `chapter-agenda.yml` and
+  `maintenance-leases/chapter-locator.json` for `chapter-locator.yml`), and made
+  `generated_agenda_candidates` a composite field merged key-by-key in `merge_preserving_foreign`.
+  Previously, both workflows shared `maintenance-leases/agenda-chapter-reset.json`, causing the
+  chapter locator workflow to fail with `MaintenanceLeaseBusy` whenever schedule delays or longer
+  extraction runs overlapped their execution times. `scripts/reset_agenda_chapter_state.py` now
+  claims both leases as a composite transaction before mutating state during manual recovery. A
+  short shared `maintenance-leases/chapter-record-write.json` lease now serializes only the
+  non-CAS B2 read/merge/upload commit, preventing overlapping lanes from losing each other's
+  changes while preserving concurrent extraction work. The merge also honors the chapter reset's
+  explicit deletion of stale `generated_agenda_candidates` state.
+>>>>>>> origin/main
 
 - **Free-model alternates for jobs that dispatched only to Mistral (2026-08-18 follow-up to the
   Mistral pause below).** Agenda-chapter extraction (`chapter_titles.AGENDA_PRODUCTION_MODEL`) now

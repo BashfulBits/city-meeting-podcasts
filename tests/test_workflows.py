@@ -163,6 +163,59 @@ def test_workflows_use_node24_cache_actions_without_force_flag():
     assert "actions/cache@v5" not in workflow_text
 
 
+def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
+    workflow, job = _job("r7-diarization.yml", "diarize")
+    triggers = _on(workflow)
+    assert triggers["schedule"] == [{"cron": "30 */6 * * *"}]
+    assert "workflow_dispatch" in triggers
+    assert workflow["concurrency"] == {
+        "group": "r7-speaker-evaluation-state",
+        "cancel-in-progress": False,
+    }
+    assert workflow["permissions"] == {"contents": "read", "actions": "read"}
+    assert job["timeout-minutes"] == 330
+    preflight = next(
+        step for step in job["steps"] if "preflight_diarization.py" in step.get("run", "")
+    )
+    assert preflight["env"]["HF_TOKEN"] == "${{ secrets.HF_TOKEN }}"
+    assert preflight["env"]["HUGGINGFACE_HUB_TOKEN"] == "${{ secrets.HF_TOKEN }}"
+    diarize = next(step for step in job["steps"] if "--lane diarize" in step.get("run", ""))
+    identity = next(
+        step for step in job["steps"] if "--lane speaker-identity" in step.get("run", "")
+    )
+    assert "--city denton-tx" in diarize["run"]
+    assert "--city denton-tx" in identity["run"]
+    for name in (
+        "GRANICUS_PROXY_BASE_URL",
+        "GRANICUS_PROXY_TOKEN",
+        "SWAGIT_PROXY_BASE_URL",
+        "SWAGIT_PROXY_TOKEN",
+    ):
+        assert identity["env"][name] == f"${{{{ secrets.{name} }}}}"
+    assert _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25") >= 0
+    ffmpeg = next(
+        step for step in job["steps"] if step.get("name") == "Install FFmpeg shared runtime"
+    )
+    assert "apt-get install -y -qq --no-install-recommends ffmpeg" in ffmpeg["run"]
+    assert "ldconfig -p | grep -q 'libavcodec.so'" in ffmpeg["run"]
+    assert job["steps"].index(ffmpeg) < job["steps"].index(preflight)
+
+
+def test_speaker_calibration_review_gate_matches_packaged_titles():
+    workflow, ingest = _job("speaker-calibration-review.yml", "ingest")
+    condition = ingest["if"]
+    assert "R7 speaker shadow sample " in condition
+    assert "R7 chair reference " in condition
+    for role in ("OWNER", "MEMBER", "COLLABORATOR"):
+        assert role in condition
+    assert workflow["permissions"] == {"contents": "read", "issues": "write"}
+    finalize = workflow["jobs"]["finalize"]
+    assert finalize["if"] == (
+        "github.event_name == 'issue_comment' && needs.ingest.result == 'success'"
+    )
+    assert finalize["permissions"] == {"contents": "read", "issues": "write"}
+
+
 def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
     workflow = (WORKFLOWS / "city-discovery.yml").read_text()
     site_path = Path(__file__).resolve().parents[1] / "config" / "site_config.yml"
@@ -397,6 +450,12 @@ def test_asr_quality_eval_workflow_is_separate_and_uploads_artifacts():
     )
     assert cache["with"]["path"] == "~/.cache/torch/hub/checkpoints"
     assert "actions/cache@" in cache["uses"]
+    assert cache["with"]["key"] == "mms-fa-checkpoint-20ef12963ab"
+    assert "restore-keys" not in cache["with"]
+    prepare = next(
+        step for step in job["steps"] if step.get("name") == "Prepare MMS_FA aligner model"
+    )
+    assert "scripts/prepare_mms_fa.py" in prepare["run"]
 
 
 def test_asr_quality_review_workflow_is_weekly_issue_packaging():
@@ -736,8 +795,11 @@ def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
         s for s in job["steps"] if s.get("name") == "Cache large-v3-turbo transcription model"
     )
     prepare = next(s for s in job["steps"] if s.get("name") == "Prepare Whisper model")
+    align_cache = next(s for s in job["steps"] if s.get("name") == "Cache aligner model")
     assert cache["if"] == "matrix.lane == 'transcribe'"
     assert prepare["if"] == "matrix.lane == 'transcribe'"
+    assert align_cache["if"] == "matrix.lane == 'align'"
+    assert "restore-keys" not in align_cache["with"]
     install = next(s for s in job["steps"] if s.get("name") == "Install")
     assert 'pip install -e ".[asr-transcribe,storage]"' in install["run"]
     assert 'pip install -e ".[asr-align,storage]"' in install["run"]
@@ -813,11 +875,17 @@ def test_ci_has_a_concurrency_group():
 
 def test_ci_runs_granicus_worker_unit_tests():
     _wf, job = _job("ci.yml", job_name="test")
-    step = next(
-        step for step in job["steps"] if step.get("name") == "Test Granicus Cloudflare Worker"
-    )
-    assert step["working-directory"] == "workers/granicus-media-proxy"
-    assert step["run"] == "npm test"
+    expected_workers = {
+        "Test Granicus Cloudflare Worker": "workers/granicus-media-proxy",
+        "Test Swagit List Proxy Worker": "workers/swagit-list-proxy",
+        "Test LLM Dispatch v1 Worker": "workers/llm-dispatch-proxy",
+        "Test LLM Dispatch v2 Worker": "workers/llm-dispatch-v2",
+        "Test City Request Intake Worker": "workers/city-request-intake",
+    }
+    for step_name, work_dir in expected_workers.items():
+        step = next(step for step in job["steps"] if step.get("name") == step_name)
+        assert step["working-directory"] == work_dir
+        assert step["run"] == "npm test"
 
 
 def test_swagit_worker_credentials_reach_provider_fetch_lanes():
@@ -993,11 +1061,21 @@ def test_asr_bench_workflow_is_manual_serial_and_publishes_report():
     assert inputs["beam_sizes"]["default"] == "5,3,1"
     assert inputs["cpu_threads"]["default"] == "4,2,1"
 
+    ffmpeg = next(s for s in job["steps"] if s.get("name") == "Install verified static ffmpeg")
+    assert "scripts/install_static_ffmpeg.py" in ffmpeg["run"]
+    whisper = next(s for s in job["steps"] if s.get("name") == "Prepare Whisper model")
+    assert "scripts/prepare_whisper.py" in whisper["run"]
+    assert whisper["if"] == "github.ref == 'refs/heads/main'"
+    assert "HF_TOKEN" not in job.get("env", {})
+
     install = next(s for s in job["steps"] if s.get("name") == "Install")
-    assert 'pip install -e ".[asr-bench]"' in install["run"]
+    assert 'pip install -e ".[asr-bench,storage]"' in install["run"]
+    assert job["steps"].index(whisper) > job["steps"].index(install)
 
     bench = next(s for s in job["steps"] if s.get("name") == "Run ASR benchmark")
     run = bench["run"]
+    assert bench["env"]["ASR_MODEL_PATH"] == ""
+    assert bench["env"]["HF_TOKEN"] == "${{ secrets.HF_TOKEN }}"
     assert "python -m citypods.cli asr-bench" in run
     assert '--beam-size "$beam"' in run
     assert 'timeout "${PROFILE_TIMEOUT_MINUTES}m"' in run
@@ -1118,12 +1196,18 @@ def test_agenda_chapter_reset_workflow_is_manual_dry_run_by_default_and_targeted
     assert wf["permissions"]["actions"] == "read"
 
 
-@pytest.mark.parametrize("workflow", ["chapter-agenda.yml", "chapter-locator.yml"])
-def test_chapter_workflows_use_shared_maintenance_lease(workflow):
+@pytest.mark.parametrize(
+    ("workflow", "expected_key"),
+    [
+        ("chapter-agenda.yml", "maintenance-leases/chapter-agenda.json"),
+        ("chapter-locator.yml", "maintenance-leases/chapter-locator.json"),
+    ],
+)
+def test_chapter_workflows_use_per_lane_maintenance_leases(workflow, expected_key):
     _wf, job = _job(workflow)
     step = next(s for s in job["steps"] if s.get("name") and "agenda" in s["name"].lower())
     env = step["env"]
-    assert env["CITYPODS_MAINTENANCE_LEASE_KEY"] == ("maintenance-leases/agenda-chapter-reset.json")
+    assert env["CITYPODS_MAINTENANCE_LEASE_KEY"] == expected_key
     assert "github.run_id" in env["CITYPODS_MAINTENANCE_LEASE_OWNER"]
     for name in (
         "CLOUDFLARE_ACCOUNT_ID",
@@ -1132,6 +1216,18 @@ def test_chapter_workflows_use_shared_maintenance_lease(workflow):
         "R2_BUCKET",
     ):
         assert name in env
+
+
+@pytest.mark.parametrize(
+    ("workflow", "expected_group"),
+    [
+        ("chapter-agenda.yml", "chapter-agenda"),
+        ("chapter-locator.yml", "chapter-locator"),
+    ],
+)
+def test_chapter_workflows_have_independent_concurrency_groups(workflow, expected_group):
+    wf, _job_obj = _job(workflow)
+    assert wf["concurrency"] == {"group": expected_group, "cancel-in-progress": False}
 
 
 def test_chapter_workflows_use_alternating_two_hour_schedules():
@@ -1152,7 +1248,10 @@ def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
 
     assert _on(wf)["schedule"] == [{"cron": "45 19 * * *"}]
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
-    assert wf["concurrency"] == {"group": "r6-meeting-moments", "cancel-in-progress": False}
+    assert wf["concurrency"] == {
+        "group": "r7-speaker-evaluation-state",
+        "cancel-in-progress": False,
+    }
     assert job["timeout-minutes"] == 180
     assert "python -m citypods.cli enrich --lane moments" in step["run"]
     assert "video" in next(item for item in job["steps"] if item.get("name") == "Install")["run"]

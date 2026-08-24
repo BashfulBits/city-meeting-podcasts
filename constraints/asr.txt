@@ -274,7 +274,9 @@ protobuf==7.35.1
     #   onnxruntime
     #   opentelemetry-proto
 pyannote-audio==4.0.7
-    # via whisperx
+    # via
+    #   citypods (pyproject.toml)
+    #   whisperx
 pyannote-core==6.0.1
     # via
     #   pyannote-audio

@@ -103,7 +103,7 @@ class TestInterface:
 
     def test_unknown_task_rejected(self):
         with pytest.raises(ValueError, match="does not implement task"):
-            LocalBackend(asr=MagicMock()).run_inference(InferenceJob(task="diarize"))
+            LocalBackend(asr=MagicMock()).run_inference(InferenceJob(task="unknown"))
 
     def test_job_result_carries_task_and_recipe(self):
         fake = MagicMock()
@@ -126,6 +126,22 @@ class TestInterface:
         assert isinstance(result, JobResult)
         assert result.task == "transcribe"
         assert result.recipe_hash == "cafef00d1234"
+
+    def test_diarize_routes_to_lazy_adapter(self, monkeypatch):
+        expected = object()
+        diarize = MagicMock(return_value=expected)
+        monkeypatch.setattr("citypods.diarize.diarize", diarize)
+        result = LocalBackend(asr=MagicMock()).run_inference(
+            InferenceJob(
+                task="diarize",
+                inputs={"audio_path": "a.m4a", "token": "hf-test"},
+                recipe_hash="r7",
+            )
+        )
+        assert result.task == "diarize"
+        assert result.recipe_hash == "r7"
+        assert result.output is expected
+        assert diarize.call_args.kwargs["token"] == "hf-test"
 
     def test_job_handle_shape(self):
         # JobHandle is the dispatch-backend return (H14); just lock its shape here.

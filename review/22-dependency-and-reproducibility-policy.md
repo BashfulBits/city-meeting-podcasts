@@ -1,8 +1,8 @@
 # 22 — Dependency Pinning & Update Policy
 
-> **Status:** normative policy (living). Executes the `review/11` Phase-R item
-> *"Runtime/dependency maintenance automation"*. Tracked by the umbrella issue for GH#498 (HF model
-> revisions) and GH#734 (SHA-pin GitHub Actions).
+> **Status:** Shipped (living policy). Executes the `review/11` Phase-R item
+> *"Runtime/dependency maintenance automation"* (ROADMAP R9). Tracked by the umbrella issue for
+> GH#498 (HF model revisions), GH#734 (SHA-pin GitHub Actions), and GH#804 (Renovate maintenance).
 
 ## Why this exists
 
@@ -37,8 +37,9 @@ to the existing content-addressed model.
 | Python libraries | `constraints/*.txt` compiled from `pyproject.toml`, consumed via `pip install … -c` | exact `==` version pins (hash-verified `--require-hashes` for the immutable images is a documented follow-up) | Renovate (pip) → recompile | **output-affecting:** `faster-whisper`, `ctranslate2`, `stable-ts`, `Pillow`; **hygiene:** everything else |
 | GitHub Actions | `.github/workflows/*.yml` | full 40-hex commit SHA + `# vN` comment | Renovate (github-actions) | hygiene (build-time) |
 | Base runner image | `.github/audio-runner/Dockerfile` | `@sha256:` digest | Renovate (docker) | output-affecting (toolchain) |
-| Static ffmpeg | `FFMPEG_URL` + `FFMPEG_SHA256` (`audio-runner-image.yml`, `audio.yml`, `asr.yml`, `asr-quality-eval.yml`, `ci.yml`, `dep-bump-smoke.yml`) | immutable release URL + SHA256 | Renovate custom regex, **monthly, smoke-gated** | output-affecting (encode) |
+| Static ffmpeg | `FFMPEG_URL` + `FFMPEG_SHA256` (`audio-runner-image.yml`, `audio.yml`, `asr.yml`, `asr-bench.yml`, `asr-quality-eval.yml`, `ci.yml`, `dep-bump-smoke.yml`) | immutable release URL + SHA256 | Renovate custom regex, **monthly, smoke-gated** | output-affecting (encode) |
 | HF Whisper models | `HF_*_REVISION` constants in `scripts/prepare_whisper.py` | pinned commit-SHA revision | Renovate custom regex → **Dashboard approval** | output-affecting (transcripts) |
+| MMS_FA aligner model | `MMS_FA_URL` + `MMS_FA_SHA256` in `citypods/ctc_align.py` | URL + exact SHA256 | Manual / review-driven | output-affecting (evaluation) |
 | Node / Cloudflare Worker | `workers/*/package-lock.json`, `wranglerVersion`, `setup-node` node version | exact / lockfile | Renovate (npm) | hygiene |
 
 ### Two rules that make it fit the repo
@@ -49,6 +50,9 @@ to the existing content-addressed model.
    (`ASR_PIPELINE_VERSION`, `SilencePlanner.version`, `AUDIO_PIPELINE_VERSION`) and whether stored artifacts are
    invalidated. **Pinning a *current* version is a no-op reproducibility fix: it must NOT bump any
    pipeline version or reprocess artifacts** (explicit in GH#498).
+   MMS_FA follows the same rule: a digest change must use a new cache/mirror identity and state
+   whether retained H15 evaluation data is re-scored. The current checksum pin verifies the
+   already-used bundle, so it does neither.
 2. **One source of truth per class.** External workers do not re-declare dependencies — they install
    from the same compiled constraints and load the same model revision as the runner.
 

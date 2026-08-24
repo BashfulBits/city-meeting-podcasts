@@ -237,6 +237,71 @@ def _script_json(value: dict) -> str:
     return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
+def speaker_page_url(city: City, speaker_id: str, base_url: str) -> str:
+    """Return the body-independent public home for one city-scoped official."""
+    return f"{base_url.rstrip('/')}/{city.slug}/speakers/{speaker_id}/"
+
+
+def speaker_page_rows(city: City, episodes: list[Episode], base_url: str) -> dict[str, dict]:
+    """Project public R6-attributed quotes into per-speaker page rows."""
+    rows: dict[str, dict] = {}
+    for episode in episodes:
+        for candidate in episode.moment_pullquote_candidates:
+            if not isinstance(candidate, dict) or candidate.get("admission") not in {
+                "admitted",
+                "admitted_text_only",
+            }:
+                continue
+            attribution = (
+                candidate.get("speaker_attribution") if isinstance(candidate, dict) else None
+            )
+            if not isinstance(attribution, dict) or not attribution.get("speaker_id"):
+                continue
+            meeting_url = meeting_page_url(city, episode, base_url)
+            if not meeting_url:
+                continue
+            ident = str(attribution["speaker_id"])
+            person = rows.setdefault(
+                ident,
+                {
+                    "speaker_id": ident,
+                    "display_name": attribution.get("display_name") or "Speaker",
+                    "meetings": [],
+                    "quotes": [],
+                },
+            )
+            person["meetings"].append(
+                {"title": episode.title, "published": episode.published, "url": meeting_url}
+            )
+            person["quotes"].append(
+                {
+                    "quote": candidate.get("quote"),
+                    "start": candidate.get("start"),
+                    "status": attribution.get("status"),
+                    "meeting_title": episode.title,
+                    "published": episode.published,
+                    "url": f"{meeting_url}#t={int(float(candidate.get('start') or 0))}",
+                }
+            )
+    for person in rows.values():
+        person["meetings"] = sorted(
+            {row["url"]: row for row in person["meetings"] if row.get("url")}.values(),
+            key=lambda row: row["published"],
+            reverse=True,
+        )
+        person["quotes"].sort(key=lambda row: row["published"], reverse=True)
+    return rows
+
+
+def render_speaker_page(city: City, person: dict, base_url: str) -> str:
+    template = get_env().get_template("speaker.html.j2")
+    return template.render(
+        city=city,
+        person=person,
+        city_url=f"{base_url.rstrip('/')}/{city.slug}/",
+    )
+
+
 def render_meeting_page(
     city: City,
     ep: Episode,
@@ -289,6 +354,10 @@ def render_meeting_page(
         key=lambda candidate: float(candidate.get("quality_score") or 0),
         reverse=True,
     )
+    for candidate in admitted_moments:
+        attribution = candidate.get("speaker_attribution")
+        if isinstance(attribution, dict) and attribution.get("speaker_id"):
+            attribution["url"] = speaker_page_url(city, str(attribution["speaker_id"]), base_url)
     moment_summaries = [
         row
         for row in ep.moment_summary_candidates
