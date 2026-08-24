@@ -29,6 +29,17 @@ MOMENTS_FRAMING_PROFILE = "social-vertical-opencv-mouth-motion-v1"
 
 def ensure_moment_contract():
     """Register the R6 structured response contract lazily and idempotently."""
+    cached = getattr(ensure_moment_contract, "model", None)
+    if cached is not None:
+        return cached
+
+    try:
+        model = response_model(MOMENTS_CONTRACT)
+        ensure_moment_contract.model = model
+        return model
+    except ValueError:
+        pass
+
     from typing import Literal
 
     from pydantic import BaseModel, ConfigDict, Field
@@ -62,18 +73,8 @@ def ensure_moment_contract():
         pull_quotes: list[PullQuote] = Field(default_factory=list, max_length=10)
         decisions: list[Decision] = Field(default_factory=list, max_length=20)
 
-    model = getattr(ensure_moment_contract, "model", None)
-    if model is None:
-        try:
-            model = response_model(MOMENTS_CONTRACT)
-        except ValueError:
-            model = register_response_model(MOMENTS_CONTRACT, Response)
-        ensure_moment_contract.model = model
-    else:
-        try:
-            response_model(MOMENTS_CONTRACT)
-        except ValueError:
-            register_response_model(MOMENTS_CONTRACT, model)
+    model = register_response_model(MOMENTS_CONTRACT, Response)
+    ensure_moment_contract.model = model
     return model
 
 

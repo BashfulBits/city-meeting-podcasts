@@ -175,13 +175,7 @@ def _judge_model(contract: str = JUDGE_CONTRACT):
     models = getattr(_judge_model, "models", {})
     model = models.get(contract)
     if model is None:
-        model = Decision
-        try:
-            register_response_model(contract, model)
-        except ValueError:
-            from citypods.compute.structured import response_model
-
-            model = response_model(contract)
+        model = register_response_model(contract, Decision)
         models[contract] = model
         _judge_model.models = models
     return model
