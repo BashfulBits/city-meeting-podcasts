@@ -196,6 +196,18 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **ASR Quality Eval MMS_FA model caching and dependency cascade.** Added
+  `scripts/prepare_mms_fa.py` to provide a robust local cache → B2 mirror → upstream Meta CDN
+  download cascade for the L2 CTC aligner checkpoint (`model.pt`), eliminating CI failures on
+  Actions cache misses. The existing MMS_FA bytes are now SHA256-verified and all model cache/B2
+  identities are exact, so a future model revision cannot reuse old bytes. This verifies the
+  already-used model and does not change the H15 evaluation recipe or trigger re-scoring.
+  Hardened `.github/workflows/asr-bench.yml` to use the project's SHA256-verified static ffmpeg
+  pin (replacing unpinned `apt-get install ffmpeg`), prepare models after installing its storage
+  dependency, and preserve its selected model matrix. Added aligner model caching to the `align`
+  matrix lane in `.github/workflows/asr.yml`, and updated
+  `review/22-dependency-and-reproducibility-policy.md`.
+  
 - **Separate per-lane chapter maintenance leases and key-by-key candidate merge.** Separated the
   shared chapter maintenance mutex into independent per-lane R2 CAS objects
   (`maintenance-leases/chapter-agenda.json` for `chapter-agenda.yml` and

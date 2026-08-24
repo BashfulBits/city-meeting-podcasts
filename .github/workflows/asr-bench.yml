@@ -65,8 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+      FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -76,6 +76,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Install
+        # prepare_whisper.py's B2 mirror needs boto3 from the storage extra.
+        run: pip install -e ".[asr-bench,storage]" -c constraints/asr.txt
 
       - name: Restore build state
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -87,6 +91,30 @@ jobs:
           restore-keys: |
             build-state-
 
+      - name: Cache static ffmpeg
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ffmpeg-static-linux64-7.1.5-v2
+
+      - name: Install verified static ffmpeg
+        # Self-built (scripts/build_ffmpeg_static.sh), vendored to our own B2 bucket -- not an
+        # upstream/mirror host. FFMPEG_URL built from the B2 secret rather than hardcoded so it's
+        # not duplicated across the workflows that pin ffmpeg (review/22).
+        env:
+          FFMPEG_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+          timeout 300 python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${FFMPEG_DIR}"
+          "${FFMPEG_DIR}/bin/ffmpeg" -version >/dev/null
+          "${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null
+          echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
+
       - name: Cache ASR models
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
@@ -97,14 +125,27 @@ jobs:
           restore-keys: |
             asr-bench-models-${{ runner.os }}-
 
-      - name: Install
-        run: pip install -e ".[asr-bench]" -c constraints/asr.txt
-
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Prepare Whisper model
+        # B2 credentials may only execute the canonical main workflow. A manually selected
+        # feature ref can still run the benchmark without the mirror-preparation optimization.
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+        run: python scripts/prepare_whisper.py
 
       - name: Run ASR benchmark
         env:
+          # The benchmark may need authenticated public-model downloads, but no earlier action
+          # receives this token. An empty ASR_MODEL_PATH keeps each --models value authoritative.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+          ASR_MODEL_PATH: ""
           CASE_1: ${{ inputs.case_1 }}
           CASE_2: ${{ inputs.case_2 }}
           CASE_3: ${{ inputs.case_3 }}

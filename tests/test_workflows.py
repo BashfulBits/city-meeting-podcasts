@@ -450,6 +450,12 @@ def test_asr_quality_eval_workflow_is_separate_and_uploads_artifacts():
     )
     assert cache["with"]["path"] == "~/.cache/torch/hub/checkpoints"
     assert "actions/cache@" in cache["uses"]
+    assert cache["with"]["key"] == "mms-fa-checkpoint-20ef12963ab"
+    assert "restore-keys" not in cache["with"]
+    prepare = next(
+        step for step in job["steps"] if step.get("name") == "Prepare MMS_FA aligner model"
+    )
+    assert "scripts/prepare_mms_fa.py" in prepare["run"]
 
 
 def test_asr_quality_review_workflow_is_weekly_issue_packaging():
@@ -789,8 +795,11 @@ def test_asr_uses_verified_static_ffmpeg_without_baking_whisper_weights():
         s for s in job["steps"] if s.get("name") == "Cache large-v3-turbo transcription model"
     )
     prepare = next(s for s in job["steps"] if s.get("name") == "Prepare Whisper model")
+    align_cache = next(s for s in job["steps"] if s.get("name") == "Cache aligner model")
     assert cache["if"] == "matrix.lane == 'transcribe'"
     assert prepare["if"] == "matrix.lane == 'transcribe'"
+    assert align_cache["if"] == "matrix.lane == 'align'"
+    assert "restore-keys" not in align_cache["with"]
     install = next(s for s in job["steps"] if s.get("name") == "Install")
     assert 'pip install -e ".[asr-transcribe,storage]"' in install["run"]
     assert 'pip install -e ".[asr-align,storage]"' in install["run"]
@@ -1052,11 +1061,21 @@ def test_asr_bench_workflow_is_manual_serial_and_publishes_report():
     assert inputs["beam_sizes"]["default"] == "5,3,1"
     assert inputs["cpu_threads"]["default"] == "4,2,1"
 
+    ffmpeg = next(s for s in job["steps"] if s.get("name") == "Install verified static ffmpeg")
+    assert "scripts/install_static_ffmpeg.py" in ffmpeg["run"]
+    whisper = next(s for s in job["steps"] if s.get("name") == "Prepare Whisper model")
+    assert "scripts/prepare_whisper.py" in whisper["run"]
+    assert whisper["if"] == "github.ref == 'refs/heads/main'"
+    assert "HF_TOKEN" not in job.get("env", {})
+
     install = next(s for s in job["steps"] if s.get("name") == "Install")
-    assert 'pip install -e ".[asr-bench]"' in install["run"]
+    assert 'pip install -e ".[asr-bench,storage]"' in install["run"]
+    assert job["steps"].index(whisper) > job["steps"].index(install)
 
     bench = next(s for s in job["steps"] if s.get("name") == "Run ASR benchmark")
     run = bench["run"]
+    assert bench["env"]["ASR_MODEL_PATH"] == ""
+    assert bench["env"]["HF_TOKEN"] == "${{ secrets.HF_TOKEN }}"
     assert "python -m citypods.cli asr-bench" in run
     assert '--beam-size "$beam"' in run
     assert 'timeout "${PROFILE_TIMEOUT_MINUTES}m"' in run
