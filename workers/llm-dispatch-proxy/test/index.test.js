@@ -33,6 +33,7 @@ for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
 }
 
 import {
+  DISPATCH_COORDINATOR_KEY,
   acquireCronLease,
   config,
   dispatchBatch,
@@ -48,6 +49,7 @@ import {
   readyMarker,
   readyMarkerMetadata,
   renewCronLease,
+  requestMetadata,
   resolveProviderCredentials,
   routeAvailable,
   runScheduled,
@@ -392,6 +394,127 @@ test("a request for a model_routing source model is also made eligible for its o
     "mistral/mistral-medium-2508",
     "gemini/gemini-3.5-flash-lite",
   ]);
+});
+
+test("selectRoute and nextCapacityRetryAt dynamically expand model_routing for resident records", () => {
+  const dispatchLimits = {
+    model_routing: {
+      "mistral/mistral-medium-2508": ["gemini/gemini-3.5-flash-lite"],
+    },
+    model_routes_map: {
+      "mistral/mistral-medium-2508": ["mistral_medium_paused"],
+      "gemini/gemini-3.5-flash-lite": ["gemini_backup"],
+    },
+    routes_by_id: {
+      mistral_medium_paused: {
+        route_id: "mistral_medium_paused",
+        provider: "mistral",
+        model: "mistral/mistral-medium-2508",
+        free: true,
+        rpd: 0,
+      },
+      gemini_backup: {
+        route_id: "gemini_backup",
+        provider: "gemini",
+        model: "gemini/gemini-3.5-flash-lite",
+        free: true,
+        rpm: 30,
+        rpd: 1500,
+      },
+    },
+  };
+  const now = new Date("2026-08-22T12:00:00Z");
+
+  // A resident record whose policy only carries the unexpanded source model:
+  const residentSelection = selectRoute(
+    { routes: {} },
+    ["mistral/mistral-medium-2508"],
+    { allow_paid: false, estimated_tokens: 100 },
+    now,
+    dispatchLimits,
+  );
+  assert.equal(residentSelection.chosenRoute?.route_id, "gemini_backup");
+
+  // nextCapacityRetryAt also checks the overflow target:
+  const retryAt = nextCapacityRetryAt(
+    { routes: {} },
+    ["mistral/mistral-medium-2508"],
+    { allow_paid: false, estimated_tokens: 100 },
+    now,
+    dispatchLimits,
+  );
+  assert.ok(retryAt.getTime() >= now.getTime());
+});
+
+test("dispatchBatch dispatches a resident job using dynamic model_routing overflow", async () => {
+  const env = isolatedEnv();
+  const now = new Date("2026-08-22T12:00:00Z");
+  const requestId = "chatcmpl-legacy-resident-job-1";
+
+  // Simulate an older resident canonical record created without gemini in allowed_models
+  const record = {
+    version: 1,
+    id: requestId,
+    status: "pending",
+    created_at: now.toISOString(),
+    available_at: now.toISOString(),
+    model: "mistral/mistral-medium-2508",
+    policy: {
+      allowed_models: ["mistral/mistral-medium-2508"],
+    },
+    request: {
+      model: "mistral/mistral-medium-2508",
+      messages: [{ role: "user", content: "hello" }],
+    },
+  };
+  await env.LLM_QUEUE.put(`requests/${requestId}.json`, JSON.stringify(record), {
+    customMetadata: requestMetadata(record),
+  });
+  const mKey = readyKey(record);
+  await env.LLM_QUEUE.put(mKey, JSON.stringify(readyMarker(record)), {
+    customMetadata: readyMarkerMetadata(record),
+  });
+
+  // Zero out mistral capacity in the coordinator ledger to force fallback:
+  const coordinator = {
+    version: 1,
+    lease: null,
+    routes: {
+      mistral_medium_2508_primary: { blocked_until: "2026-08-23T00:00:00Z" },
+      mistral_medium_2508_secondary: { blocked_until: "2026-08-23T00:00:00Z" },
+    },
+    providers: {
+      mistral: { requests_available_at: "2026-08-23T00:00:00Z" },
+    },
+  };
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator), {});
+
+  let dispatchedPayload = null;
+  let dispatchedUrl = null;
+  const fetchImpl = async (url, options) => {
+    dispatchedUrl = url;
+    dispatchedPayload = JSON.parse(options.body);
+    return new Response(
+      JSON.stringify({
+        id: "chatcmpl-gemini-res",
+        object: "chat.completion",
+        choices: [{ message: { role: "assistant", content: "response from gemini" } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  const batchResult = await dispatchBatch(env, fetchImpl, now, 1);
+  assert.equal(batchResult.status, "completed");
+  assert.equal(batchResult.count, 1);
+  assert.equal(batchResult.results[0].status, "completed");
+  assert.equal(batchResult.results[0].routeId, "gemini_3_5_flash_lite_primary");
+  assert.ok(dispatchedPayload.model.includes("gemini"));
+
+  // The finished request is saved as completed and ready marker removed:
+  const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
+  assert.equal(saved.status, "completed");
+  assert.equal(await env.LLM_QUEUE.get(mKey), null);
 });
 
 test("accepts the configured default route but rejects an unrecognized model", async () => {

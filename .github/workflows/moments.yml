@@ -13,7 +13,9 @@ permissions:
   actions: read
 
 concurrency:
-  group: r6-meeting-moments
+  # Speaker identity mutates attributions within R6's moments block. Share its private-state
+  # group so neither lane can write that complete block from a stale records snapshot.
+  group: r7-speaker-evaluation-state
   cancel-in-progress: false
 
 jobs:

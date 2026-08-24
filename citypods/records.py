@@ -542,6 +542,8 @@ def feed_content_hash(
             e.published.isoformat(),
             e.description,
             e.summary,
+            e.moment_pullquote_candidates,
+            e.moment_video_clip,
             e.tags,
             e.transcript_hosted_url,
             e.transcript_synced,
@@ -580,6 +582,8 @@ def meeting_page_hash(ep: Episode) -> str:
         "published": ep.published.isoformat(),
         "description": ep.description,
         "summary": ep.summary,
+        "moment_pullquote_candidates": ep.moment_pullquote_candidates,
+        "moment_video_clip": ep.moment_video_clip,
         "tags": ep.tags,
         "chapter_tags": ep.chapter_tags,
         "links": sorted((ep.links or {}).items()),
@@ -1299,6 +1303,7 @@ def episode_to_record(ep: Episode) -> dict:
             "confidence": ep.speakers_confidence,
             "pipeline_version": ep.speakers_pipeline_version,
             "error": ep.speakers_error,
+            "source": ep.speakers_source,
         }
         if ep.speakers_key or ep.speakers_error
         else None,
@@ -1382,6 +1387,7 @@ def _speakers_fields_from_rec(rec: dict) -> dict:
         "speakers_confidence": s.get("confidence"),
         "speakers_pipeline_version": s.get("pipeline_version"),
         "speakers_error": s.get("error"),
+        "speakers_source": s.get("source"),
     }
 
 
@@ -1744,6 +1750,9 @@ _LANE_OWNED_BLOCKS: dict[str, frozenset[str]] = {
     "transcribe": frozenset({"transcript", "provider_transcript"}),
     "align": frozenset({"transcript", "provider_transcript"}),
     "diarize": frozenset({"speakers", "provider_transcript"}),
+    # Identity is a mutable projection onto R6 candidates.  It must not re-upload the diarize
+    # lane's speakers block from a stale snapshot while a native artifact is being produced.
+    "speaker-identity": frozenset({"moments"}),
     "tag": frozenset(
         {
             "tags",
@@ -1775,7 +1784,8 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     ),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
-    "diarize": frozenset({"diarize"}),
+    "diarize": frozenset({"diarize", "native_diarize"}),
+    "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
     "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
     "chapter-agenda": frozenset({"chapter_agenda"}),
@@ -1797,6 +1807,33 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
 # gone again within seconds, for the one source (Fort Worth, ~20 board feeds sharing one
 # source_key) also touched by chapter-agenda/chapter-locator's own 15-minute-cron pushes.
 _TRANSCRIPT_LINK_LANES: frozenset[str] = frozenset({"transcribe", "align"})
+
+_LOCATOR_AGENDA_CANDIDATE_KEYS: frozenset[str] = frozenset(
+    {
+        "locator_status",
+        "locator_recipe",
+        "locator_job_ref",
+        "boundary_artifact_key",
+        "boundary_artifact_url",
+        "transcript_unit_source",
+    }
+)
+
+
+def _owned_agenda_candidate_keys(lane: str | None, local_agenda: dict) -> frozenset[str]:
+    """Which keys of ``generated_agenda_candidates`` a scoped lane run may overwrite.
+
+    ``chapter-agenda`` owns extraction keys (everything except locator boundary fields);
+    ``chapter-locator`` owns locator boundary fields; an unscoped/full run or ``chapter`` lane
+    owns everything; other scoped lanes own nothing here and preserve remote keys.
+    """
+    if lane == "chapter-agenda":
+        return frozenset(local_agenda) - _LOCATOR_AGENDA_CANDIDATE_KEYS
+    if lane == "chapter-locator":
+        return frozenset(local_agenda) & _LOCATOR_AGENDA_CANDIDATE_KEYS
+    if lane in {"chapter", None}:
+        return frozenset(local_agenda)
+    return frozenset()
 
 
 def _owned_link_keys(lane: str | None, local_links: dict) -> frozenset[str]:
@@ -1977,7 +2014,32 @@ def merge_preserving_foreign(
                     if key in owned_links or key not in merged_links:
                         merged_links[key] = value
                 rec["links"] = merged_links
+            local_agenda = local_rec.get("generated_agenda_candidates")
+            remote_agenda = remote_rec.get("generated_agenda_candidates")
+            if lane in {"chapter-agenda", "chapter-locator", "chapter", None}:
+                if (
+                    "generated_agenda_candidates" not in local_rec
+                    and "generated_agenda_candidates" not in protected
+                ):
+                    # An owning full chapter/reset pass deliberately removed the block. Do not
+                    # reconstruct it from remote while preserving sibling fields below.
+                    rec.pop("generated_agenda_candidates", None)
+                elif isinstance(local_agenda, dict) or isinstance(remote_agenda, dict):
+                    merged_agenda = dict(remote_agenda) if isinstance(remote_agenda, dict) else {}
+                    owned_agenda_keys = (
+                        frozenset(local_agenda or {})
+                        if not protected
+                        else _owned_agenda_candidate_keys(lane, local_agenda or {})
+                    )
+                    for key, value in (local_agenda or {}).items():
+                        if key in owned_agenda_keys or key not in merged_agenda:
+                            merged_agenda[key] = value
+                    rec["generated_agenda_candidates"] = merged_agenda
+            elif "generated_agenda_candidates" in remote_rec:
+                rec["generated_agenda_candidates"] = remote_rec["generated_agenda_candidates"]
             for block in protected:
+                if block == "generated_agenda_candidates":
+                    continue
                 if block in remote_rec:
                     rec[block] = remote_rec[block]
             _preserve_remote_served_duration_if_protected(rec, remote_rec, protected)
@@ -2063,16 +2125,8 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.provider_transcript = (
             provider_transcript if isinstance(provider_transcript, dict) else {}
         )
-        speakers = rec.get("speakers") or {}
-        if isinstance(speakers, dict):
-            ep.speakers_key = speakers.get("key")
-            ep.speakers_url = speakers.get("url")
-            ep.speakers_spec_hash = speakers.get("spec_hash")
-            ep.speakers_format = speakers.get("format")
-            ep.speakers_synced = bool(speakers.get("synced", False))
-            ep.speakers_confidence = speakers.get("confidence")
-            ep.speakers_pipeline_version = speakers.get("pipeline_version")
-            ep.speakers_error = speakers.get("error")
+        for field_name, value in _speakers_fields_from_rec(rec).items():
+            setattr(ep, field_name, value)
         # Persisted links are derived artifacts, except a freshly supplied provider link.  In
         # particular an agenda-derived minutes URL must never mask a later canonical provider URL.
         persisted_links = rec.get("links") or {}

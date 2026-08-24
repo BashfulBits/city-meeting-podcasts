@@ -94,11 +94,64 @@ def check_external_worker_deps() -> list[str]:
     return problems
 
 
+def check_renovate_coverage() -> list[str]:
+    """Verify that every declared Python package in pyproject.toml is in renovate.json5."""
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib  # type: ignore[no-redef]
+
+    pyproject_path = ROOT / "pyproject.toml"
+    renovate_path = ROOT / ".github" / "renovate.json5"
+    if not pyproject_path.exists() or not renovate_path.exists():
+        return []
+
+    pyproject_data = tomllib.loads(pyproject_path.read_text())
+    declared_packages: set[str] = set()
+
+    # build-system requires
+    for dep in pyproject_data.get("build-system", {}).get("requires", []):
+        name = re.split(r"[<>=!~; ]", dep.strip())[0].strip()
+        if name:
+            declared_packages.add(_normalize(name))
+
+    # project dependencies
+    for dep in pyproject_data.get("project", {}).get("dependencies", []):
+        name = re.split(r"[<>=!~; ]", dep.strip())[0].strip()
+        if name:
+            declared_packages.add(_normalize(name))
+
+    # optional-dependencies
+    for _extra, deps in pyproject_data.get("project", {}).get("optional-dependencies", {}).items():
+        for dep in deps:
+            name = re.split(r"[<>=!~; ]", dep.strip())[0].strip()
+            if name:
+                declared_packages.add(_normalize(name))
+
+    # Extract all matchPackageNames from renovate.json5
+    renovate_text = renovate_path.read_text()
+    renovate_packages: set[str] = set()
+    # Match matchPackageNames arrays or single strings
+    for m in re.finditer(r'matchPackageNames["\s:]+\[([^\]]+)\]', renovate_text):
+        for pkg in re.findall(r'["\']([^"\']+)["\']', m.group(1)):
+            renovate_packages.add(_normalize(pkg))
+
+    problems: list[str] = []
+    for pkg in sorted(declared_packages):
+        if pkg not in renovate_packages:
+            problems.append(
+                f"pyproject.toml: declared package '{pkg}' is missing from "
+                f".github/renovate.json5 packageRules"
+            )
+    return problems
+
+
 def main() -> int:
     failures = 0
     for title, problems in (
         ("Unpinned GitHub Actions (must be @<40-hex commit SHA>)", check_pinned_actions()),
         ("Hardcoded deps in external-worker image builders", check_external_worker_deps()),
+        ("Unclassified pyproject.toml dependencies in Renovate", check_renovate_coverage()),
     ):
         if problems:
             failures += len(problems)
@@ -108,7 +161,7 @@ def main() -> int:
     if failures:
         print(f"\nDependency-policy check failed: {failures} violation(s). See review/22.")
         return 1
-    print("Dependency-policy check passed (pinned actions + external-worker deps).")
+    print("Dependency-policy check passed (pinned actions, worker deps, and Renovate coverage).")
     return 0
 
 

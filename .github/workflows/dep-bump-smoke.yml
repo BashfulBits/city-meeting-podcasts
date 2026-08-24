@@ -13,6 +13,7 @@ on:
     paths:
       - constraints/**
       - scripts/prepare_whisper.py
+      - scripts/prepare_mms_fa.py
       - scripts/dep_bump_smoke.py
       - scripts/install_static_ffmpeg.py
       - tests/fixtures/smoke/**
