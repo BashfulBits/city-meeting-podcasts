@@ -2881,6 +2881,9 @@ def main(argv: list[str] | None = None) -> int:
             if "no primary outcome checked" in str(exc):
                 print(json.dumps({"stored": False, "reason": "no_decision_checked"}, indent=2))
                 return 0
+            if "missing H15 metadata marker" in str(exc):
+                print(json.dumps({"stored": False, "reason": "missing_h15_metadata"}, indent=2))
+                return 0
             raise
     if args.command == "calibrate":
         report = run_calibration(state_dir, config=config, storage=storage)

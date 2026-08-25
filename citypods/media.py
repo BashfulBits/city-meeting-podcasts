@@ -892,7 +892,7 @@ def _download_audio(
         succeeded = False
 
     try:
-        if not succeeded and not max_seconds:
+        if not succeeded:
             worker_result = _download_granicus_audio_fallback(
                 url,
                 dest,
@@ -905,6 +905,7 @@ def _download_audio(
                 rate_limit_urls=(url,),
                 stop=stop,
                 log=log,
+                max_seconds=max_seconds,
             )
             if worker_result is not None:
                 succeeded = worker_result
@@ -937,6 +938,7 @@ def _download_granicus_audio_fallback(
     rate_limit_urls: Sequence[str],
     stop: Callable[[], bool] | None,
     log: Callable[[str], None] | None,
+    max_seconds: int | None = None,
 ) -> bool | None:
     """Fetch only failed Granicus archive audio through the Worker, with exact byte checks.
 
@@ -965,6 +967,10 @@ def _download_granicus_audio_fallback(
     resolved = False
     raw_dest = dest.with_name(f"{dest.stem}.worker.mp4")
     try:
+        # For truncated probe fetches, cap the byte range so only the initial chunk is pulled
+        effective_max_bytes = (
+            min(max_media_bytes or 8_000_000, 8_000_000) if max_seconds else max_media_bytes
+        )
         # Re-acquire the same provider controls that guarded the failed direct attempt. The
         # Worker host itself is not the provider's CDN, so only the original URL is used for the
         # local/distributed lease; download_verified separately limits Worker-host concurrency.
@@ -976,7 +982,7 @@ def _download_granicus_audio_fallback(
                 proxy_url,
                 fallback.token,
                 raw_dest,
-                max_bytes=max_media_bytes,
+                max_bytes=effective_max_bytes,
                 stop=stop,
             )
             _log_ffmpeg_event(
@@ -996,6 +1002,7 @@ def _download_granicus_audio_fallback(
                 "-vn",
                 "-c:a",
                 "copy",
+                *(["-t", str(max_seconds)] if max_seconds else []),
                 "-f",
                 "matroska",
                 str(dest),
@@ -1011,7 +1018,7 @@ def _download_granicus_audio_fallback(
                 raise_rate_limited=False,
             )
         worker_ok = dest.exists() and dest.stat().st_size > 0
-        if worker_ok and expected_duration:
+        if worker_ok and expected_duration and not max_seconds:
             actual_duration = _probe_duration_secs(dest, ffmpeg_binary)
             worker_ok = (
                 actual_duration is not None

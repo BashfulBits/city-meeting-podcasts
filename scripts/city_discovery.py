@@ -159,6 +159,11 @@ def main(argv: list[str] | None = None) -> int:
         # fails loudly as before.
         print(f"discovery deferred: {exc}", file=sys.stderr)
         return DEFERRED_EXIT
+    except Exception as exc:  # noqa: BLE001
+        # Upstream LLM provider quotas, network errors, or missing third-party keys during batch
+        # auxiliary discovery must defer the candidate rather than crashing the workflow.
+        print(f"discovery deferred (upstream provider error): {exc}", file=sys.stderr)
+        return DEFERRED_EXIT
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     serialized = json.dumps(evidence.as_dict(), indent=2, sort_keys=True) + "\n"

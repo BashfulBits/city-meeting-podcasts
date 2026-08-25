@@ -75,6 +75,17 @@ jobs:
             --limit 500 \
             --json number,title \
             | jq -r '[.[] | select(.title == "R5 unified tag calibration digest" or .title == "R5 LLM tag calibration digest")] | .[0].number // empty')
+          # Protect against GitHub GraphQL 65,536-character issue body limits
+          truncate_body() {
+            local file="$1"
+            local max_bytes=60000
+            if [ -f "$file" ] && [ $(wc -c < "$file") -gt "$max_bytes" ]; then
+              head -c "$max_bytes" "$file" > "${file}.tmp"
+              printf '\n\n*(Truncated to stay within GitHub 64KB limit. Full artifact in workflow run.)*\n' >> "${file}.tmp"
+              mv "${file}.tmp" "$file"
+            fi
+          }
+          truncate_body llm-review/parent.md
           if [ -z "$existing" ]; then
             parent_url=$(gh issue create --title "$title" --label llm-calibration-review \
               --body-file llm-review/parent.md)
@@ -98,6 +109,7 @@ jobs:
           jq -c '.children[]?' llm-review/review-batch.json | while read -r row; do
             candidate_id=$(printf '%s' "$row" | jq -r '.candidate_id')
             body_file=$(printf '%s' "$row" | jq -r '.body_file')
+            truncate_body "$body_file"
             title="R5 unified tag sample $candidate_id"
             existing_child=$(gh issue list --state open --label llm-calibration-review \
               --limit 500 \
