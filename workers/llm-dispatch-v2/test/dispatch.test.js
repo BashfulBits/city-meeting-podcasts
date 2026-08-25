@@ -170,6 +170,37 @@ test("claimDispatchWindow returns empty once MAX_ACTIVE_BUNDLES is reached", asy
   assert.equal(second.bundle_id, null); // one active (uncompleted) bundle already outstanding
 });
 
+test("claimDispatchWindow reaps a bundle whose lease expired without completeBatch, freeing its MAX_ACTIVE_BUNDLES slot", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_ACTIVE_BUNDLES: "1",
+    MAX_BUNDLE_JOBS: "1",
+    LEASE_DURATION_SECONDS: "1",
+  });
+  await coordinator.enqueueBatch([makeJob("j1")]);
+
+  const start = Date.now();
+  const stuck = await coordinator.claimDispatchWindow(start, 25);
+  assert.equal(stuck.jobs.length, 1);
+  // Simulate an executor that never called completeBatch (crash, eviction, uncaught error):
+  // the bundle stays 'active' and its job stays 'leased' with nothing else to move either.
+
+  // Before the lease expires, the stuck bundle still correctly blocks new claims.
+  const tooSoon = await coordinator.claimDispatchWindow(start + 500, 25);
+  assert.equal(tooSoon.bundle_id, null);
+
+  // Once its lease has expired, the next call must reap the stuck bundle and its leased job
+  // instead of returning empty forever.
+  const after = start + 2000;
+  const recovered = await coordinator.claimDispatchWindow(after, 25);
+  assert.ok(recovered.bundle_id);
+  assert.notEqual(recovered.bundle_id, stuck.bundle_id);
+  assert.equal(recovered.jobs.length, 1);
+  assert.equal(recovered.jobs[0].id, "j1");
+
+  const bundleRows = [...sql.exec("SELECT state FROM bundles WHERE bundle_id = ?", stuck.bundle_id)];
+  assert.equal(bundleRows[0].state, "expired");
+});
+
 test("attemptStarted fences on a matching lease and rejects a stale one", async () => {
   const { coordinator } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1")]);

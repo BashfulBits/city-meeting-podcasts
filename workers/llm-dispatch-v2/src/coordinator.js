@@ -615,6 +615,25 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const sched = this._rollUtcDayIfNeeded(now);
       if (sched.bundle_count_today >= maxBundlesPerDay) return EMPTY;
 
+      // Reap bundles whose lease expired without ever reaching completeBatch -- an executor
+      // crash, a CPU/wall-clock eviction mid-tick, or an uncaught error before the final
+      // completeBatch RPC all leave a bundle stuck 'active' forever otherwise, since nothing
+      // else in this file ever moves a bundle out of 'active'. Left unreaped, each one
+      // permanently consumes one of MAX_ACTIVE_BUNDLES's slots -- once that many accumulate,
+      // every future claimDispatchWindow call returns EMPTY at the very next check below,
+      // regardless of how many jobs are queued, with no error anywhere to signal why. Mirrors
+      // the same lease-timeout requeue this DO already does per-job on a `deferred_late`
+      // completeBatch outcome, just applied at the bundle level, before that outcome can ever
+      // be reported.
+      sql.exec(`UPDATE bundles SET state='expired' WHERE state='active' AND lease_expires_at < ?`, now);
+      sql.exec(
+        `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
+                          lease_expires_at=NULL, bundle_id=NULL, updated_at=?
+         WHERE state='leased' AND lease_expires_at < ?`,
+        now,
+        now
+      );
+
       const activeBundles = [...sql.exec("SELECT active_call_count FROM bundles WHERE state='active'")];
       if (activeBundles.length >= maxActiveBundles) return EMPTY;
       const inFlightCalls = activeBundles.reduce((sum, b) => sum + b.active_call_count, 0);
