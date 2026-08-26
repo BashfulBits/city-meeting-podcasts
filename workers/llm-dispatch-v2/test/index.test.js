@@ -92,6 +92,9 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     validateConfig(createMockEnv({ MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "-1" }))
   );
   assert.throws(() =>
+    validateConfig(createMockEnv({ MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "4" }))
+  );
+  assert.throws(() =>
     validateConfig(createMockEnv({ MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY: "1.5" }))
   );
 

@@ -164,6 +164,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         legacy_retryable_recovery_complete  INTEGER NOT NULL DEFAULT 0,
         job_models_backfill_high_watermark  INTEGER,
         job_models_backfill_cursor          INTEGER NOT NULL DEFAULT 0,
+        job_models_backfill_pending_rowid   INTEGER,
+        job_models_backfill_model_offset    INTEGER NOT NULL DEFAULT 0,
+        legacy_retryable_recovery_job_id    TEXT,
+        legacy_retryable_recovery_model_offset INTEGER NOT NULL DEFAULT 0,
         migration_rows_scanned_today        INTEGER NOT NULL DEFAULT 0,
         migration_write_units_today         INTEGER NOT NULL DEFAULT 0
       );
@@ -196,6 +200,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("scheduler", "legacy_retryable_recovery_complete", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "job_models_backfill_high_watermark", "INTEGER");
     this._ensureColumn("scheduler", "job_models_backfill_cursor", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "job_models_backfill_pending_rowid", "INTEGER");
+    this._ensureColumn(
+      "scheduler",
+      "job_models_backfill_model_offset",
+      "INTEGER NOT NULL DEFAULT 0"
+    );
+    this._ensureColumn("scheduler", "legacy_retryable_recovery_job_id", "TEXT");
+    this._ensureColumn(
+      "scheduler",
+      "legacy_retryable_recovery_model_offset",
+      "INTEGER NOT NULL DEFAULT 0"
+    );
     this._ensureColumn("scheduler", "migration_rows_scanned_today", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "migration_write_units_today", "INTEGER NOT NULL DEFAULT 0");
 
@@ -228,6 +244,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["legacy_retryable_recovery_complete", "INTEGER NOT NULL DEFAULT 0"],
       ["job_models_backfill_high_watermark", "INTEGER"],
       ["job_models_backfill_cursor", "INTEGER NOT NULL DEFAULT 0"],
+      ["job_models_backfill_pending_rowid", "INTEGER"],
+      ["job_models_backfill_model_offset", "INTEGER NOT NULL DEFAULT 0"],
+      ["legacy_retryable_recovery_job_id", "TEXT"],
+      ["legacy_retryable_recovery_model_offset", "INTEGER NOT NULL DEFAULT 0"],
       ["migration_rows_scanned_today", "INTEGER NOT NULL DEFAULT 0"],
       ["migration_write_units_today", "INTEGER NOT NULL DEFAULT 0"],
     ]);
@@ -385,7 +405,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const rows = [...sql.exec(
       `SELECT utc_day, bundle_count_today, jobs_ingested_today, job_models_backfill_complete,
               legacy_retryable_recovery_complete, job_models_backfill_high_watermark,
-              job_models_backfill_cursor, migration_rows_scanned_today,
+              job_models_backfill_cursor, job_models_backfill_pending_rowid,
+              job_models_backfill_model_offset, legacy_retryable_recovery_job_id,
+              legacy_retryable_recovery_model_offset, migration_rows_scanned_today,
               migration_write_units_today
        FROM scheduler WHERE id = 1`
     )];
@@ -402,6 +424,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         legacy_retryable_recovery_complete: 0,
         job_models_backfill_high_watermark: null,
         job_models_backfill_cursor: 0,
+        job_models_backfill_pending_rowid: null,
+        job_models_backfill_model_offset: 0,
+        legacy_retryable_recovery_job_id: null,
+        legacy_retryable_recovery_model_offset: 0,
         migration_rows_scanned_today: 0,
         migration_write_units_today: 0,
       };
@@ -702,20 +728,61 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return models.length * LLMSchedulerDO.MIGRATION_MODEL_INDEX_WRITE_UNITS;
   }
 
+  _indexMigrationModelChunk(job, models, modelOffset, remainingWriteUnits) {
+    const offset = Math.min(Math.max(0, Number(modelOffset || 0)), models.length);
+    const count = Math.min(
+      models.length - offset,
+      Math.max(
+        0,
+        Math.floor(remainingWriteUnits / LLMSchedulerDO.MIGRATION_MODEL_INDEX_WRITE_UNITS)
+      )
+    );
+    if (count > 0) {
+      this._indexQueuedJobModels(
+        job,
+        job.priority,
+        job.created_at,
+        models.slice(offset, offset + count)
+      );
+    }
+    return {
+      modelOffset: offset + count,
+      writeUnits: count * LLMSchedulerDO.MIGRATION_MODEL_INDEX_WRITE_UNITS,
+    };
+  }
+
   /**
    * Walk every job present at rollout exactly once by rowid. A fixed high-water mark excludes
    * post-rollout jobs, which are indexed synchronously on enqueue. This avoids repeatedly
    * restarting a NOT EXISTS scan at the queue head as earlier repaired rows accumulate there.
    */
-  _backfillQueuedJobModels({ limit, highWatermark, cursor, remainingRows, remainingWriteUnits }) {
+  _backfillQueuedJobModels({
+    limit,
+    highWatermark,
+    cursor,
+    pendingRowid,
+    modelOffset,
+    remainingRows,
+    remainingWriteUnits,
+  }) {
     const sql = this._getSql();
     let scanned = 0;
     let writeUnits = 0;
     let nextHighWatermark = highWatermark;
     let nextCursor = Number(cursor || 0);
+    let nextPendingRowid = pendingRowid == null ? null : Number(pendingRowid);
+    let nextModelOffset = Number(modelOffset || 0);
 
     if (remainingRows <= 0 || remainingWriteUnits <= 0) {
-      return { scanned, writeUnits, highWatermark, cursor: nextCursor, complete: false };
+      return {
+        scanned,
+        writeUnits,
+        highWatermark,
+        cursor: nextCursor,
+        pendingRowid: nextPendingRowid,
+        modelOffset: nextModelOffset,
+        complete: false,
+      };
     }
     if (nextHighWatermark == null) {
       const rows = [...sql.exec("SELECT COALESCE(MAX(rowid), 0) AS high_watermark FROM jobs")];
@@ -728,7 +795,59 @@ export class LLMSchedulerDO extends DurableObjectBase {
         writeUnits,
         highWatermark: nextHighWatermark,
         cursor: nextCursor,
-        complete: nextCursor >= nextHighWatermark,
+        pendingRowid: nextPendingRowid,
+        modelOffset: nextModelOffset,
+        complete: nextPendingRowid == null && nextCursor >= nextHighWatermark,
+      };
+    }
+
+    const indexJob = (job, offset) => {
+      if (job.state !== "queued") {
+        nextCursor = job.migration_rowid;
+        nextPendingRowid = null;
+        nextModelOffset = 0;
+        return true;
+      }
+      const models = this._modelsToIndex(job);
+      const chunk = this._indexMigrationModelChunk(
+        job,
+        models,
+        offset,
+        remainingWriteUnits - writeUnits
+      );
+      writeUnits += chunk.writeUnits;
+      if (chunk.modelOffset < models.length) {
+        nextPendingRowid = job.migration_rowid;
+        nextModelOffset = chunk.modelOffset;
+        return false;
+      }
+      nextCursor = job.migration_rowid;
+      nextPendingRowid = null;
+      nextModelOffset = 0;
+      return true;
+    };
+
+    if (nextPendingRowid != null) {
+      const rows = [...sql.exec(
+        "SELECT rowid AS migration_rowid, * FROM jobs WHERE rowid = ?",
+        nextPendingRowid
+      )];
+      scanned += rows.length;
+      if (rows.length === 0) {
+        nextCursor = Math.max(nextCursor, nextPendingRowid);
+        nextPendingRowid = null;
+        nextModelOffset = 0;
+      } else {
+        indexJob(rows[0], nextModelOffset);
+      }
+      return {
+        scanned,
+        writeUnits,
+        highWatermark: nextHighWatermark,
+        cursor: nextCursor,
+        pendingRowid: nextPendingRowid,
+        modelOffset: nextModelOffset,
+        complete: nextPendingRowid == null && nextCursor >= nextHighWatermark,
       };
     }
 
@@ -744,21 +863,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
     )];
     scanned += rows.length;
     for (const job of rows) {
-      if (job.state === "queued") {
-        const models = this._modelsToIndex(job);
-        const units = this._migrationIndexWriteUnits(models);
-        if (writeUnits + units > remainingWriteUnits) break;
-        this._indexQueuedJobModels(job, job.priority, job.created_at, models);
-        writeUnits += units;
-      }
-      nextCursor = job.migration_rowid;
+      if (!indexJob(job, 0)) break;
     }
     return {
       scanned,
       writeUnits,
       highWatermark: nextHighWatermark,
       cursor: nextCursor,
-      complete: nextCursor >= nextHighWatermark,
+      pendingRowid: nextPendingRowid,
+      modelOffset: nextModelOffset,
+      complete: nextPendingRowid == null && nextCursor >= nextHighWatermark,
     };
   }
 
@@ -768,28 +882,54 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * without a manual SQLite edit. They receive one post-Gateway recovery execution: initialize
    * their outer-retry counter at the cap so another final 5xx is surfaced as failed, never cycled.
    */
-  _recoverLegacyRetryableJobs(now, { limit, remainingRows, remainingWriteUnits }) {
+  _recoverLegacyRetryableJobs(
+    now,
+    { limit, pendingJobId, modelOffset, remainingRows, remainingWriteUnits }
+  ) {
     const sql = this._getSql();
     if (limit <= 0 || remainingRows <= 0 || remainingWriteUnits <= 0) {
-      return { scanned: 0, writeUnits: 0, complete: false };
+      return { scanned: 0, writeUnits: 0, pendingJobId, modelOffset, complete: false };
     }
-    const batchLimit = Math.min(limit, remainingRows);
-    const legacy = [...sql.exec(
-      `SELECT * FROM jobs
-       WHERE state='retryable'
-       ORDER BY priority ASC, created_at ASC
-       LIMIT ?`,
-      batchLimit
-    )];
+    let pendingId = pendingJobId || null;
+    let nextModelOffset = Number(modelOffset || 0);
     let writeUnits = 0;
-    let stoppedForWriteBudget = false;
-    for (const job of legacy) {
+    const recover = (job, offset) => {
       const models = this._modelsToIndex(job);
-      const units = LLMSchedulerDO.MIGRATION_RECOVERY_JOB_WRITE_UNITS +
-        this._migrationIndexWriteUnits(models);
-      if (writeUnits + units > remainingWriteUnits) {
-        stoppedForWriteBudget = true;
-        break;
+      const normalizedOffset = Math.min(Math.max(0, offset), models.length);
+      let mappingCount = Math.min(
+        models.length - normalizedOffset,
+        Math.floor(
+          (remainingWriteUnits - writeUnits) / LLMSchedulerDO.MIGRATION_MODEL_INDEX_WRITE_UNITS
+        )
+      );
+      // Hold two units for the state change when this chunk could finish the model list. Otherwise
+      // a final mapping would be persisted but the retryable job could never afford its transition.
+      if (
+        mappingCount === models.length - normalizedOffset &&
+        remainingWriteUnits - writeUnits - this._migrationIndexWriteUnits(models.slice(
+          normalizedOffset,
+          normalizedOffset + mappingCount
+        )) < LLMSchedulerDO.MIGRATION_RECOVERY_JOB_WRITE_UNITS
+      ) {
+        mappingCount -= 1;
+      }
+      if (mappingCount > 0) {
+        const chunk = models.slice(normalizedOffset, normalizedOffset + mappingCount);
+        this._indexQueuedJobModels(job, job.priority, job.created_at, chunk);
+        writeUnits += this._migrationIndexWriteUnits(chunk);
+      }
+      const nextOffset = normalizedOffset + mappingCount;
+      if (nextOffset < models.length) {
+        pendingId = job.id;
+        nextModelOffset = nextOffset;
+        return false;
+      }
+      if (
+        remainingWriteUnits - writeUnits < LLMSchedulerDO.MIGRATION_RECOVERY_JOB_WRITE_UNITS
+      ) {
+        pendingId = job.id;
+        nextModelOffset = nextOffset;
+        return false;
       }
       sql.exec(
         `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
@@ -799,13 +939,44 @@ export class LLMSchedulerDO extends DurableObjectBase {
         now,
         job.id
       );
-      this._indexQueuedJobModels(job, job.priority, job.created_at, models);
-      writeUnits += units;
+      writeUnits += LLMSchedulerDO.MIGRATION_RECOVERY_JOB_WRITE_UNITS;
+      pendingId = null;
+      nextModelOffset = 0;
+      return true;
+    };
+
+    if (pendingId != null) {
+      const rows = [...sql.exec("SELECT * FROM jobs WHERE id=? AND state='retryable'", pendingId)];
+      if (rows.length === 0) {
+        return { scanned: 0, writeUnits, pendingJobId: null, modelOffset: 0, complete: false };
+      }
+      recover(rows[0], nextModelOffset);
+      return {
+        scanned: 1,
+        writeUnits,
+        pendingJobId: pendingId,
+        modelOffset: nextModelOffset,
+        complete: false,
+      };
+    }
+
+    const batchLimit = Math.min(limit, remainingRows);
+    const legacy = [...sql.exec(
+      `SELECT * FROM jobs
+       WHERE state='retryable'
+       ORDER BY priority ASC, created_at ASC
+       LIMIT ?`,
+      batchLimit
+    )];
+    for (const job of legacy) {
+      if (!recover(job, 0)) break;
     }
     return {
       scanned: legacy.length,
       writeUnits,
-      complete: !stoppedForWriteBudget && legacy.length < batchLimit,
+      pendingJobId: pendingId,
+      modelOffset: nextModelOffset,
+      complete: pendingId == null && legacy.length < batchLimit,
     };
   }
 
@@ -1043,6 +1214,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       let jobModelsBackfillComplete = Boolean(sched.job_models_backfill_complete);
       let jobModelsBackfillHighWatermark = sched.job_models_backfill_high_watermark;
       let jobModelsBackfillCursor = Number(sched.job_models_backfill_cursor || 0);
+      let jobModelsBackfillPendingRowid = sched.job_models_backfill_pending_rowid;
+      let jobModelsBackfillModelOffset = Number(sched.job_models_backfill_model_offset || 0);
+      let legacyRetryableRecoveryJobId = sched.legacy_retryable_recovery_job_id;
+      let legacyRetryableRecoveryModelOffset = Number(
+        sched.legacy_retryable_recovery_model_offset || 0
+      );
       const initialMigrationState = {
         rows: migrationRowsScanned,
         writeUnits: migrationWriteUnits,
@@ -1050,6 +1227,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         backfillComplete: jobModelsBackfillComplete,
         highWatermark: jobModelsBackfillHighWatermark,
         cursor: jobModelsBackfillCursor,
+        pendingRowid: jobModelsBackfillPendingRowid,
+        backfillModelOffset: jobModelsBackfillModelOffset,
+        recoveryJobId: legacyRetryableRecoveryJobId,
+        recoveryModelOffset: legacyRetryableRecoveryModelOffset,
       };
       const persistMigrationState = () => {
         if (
@@ -1058,7 +1239,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           legacyRetryableRecoveryComplete === initialMigrationState.legacyComplete &&
           jobModelsBackfillComplete === initialMigrationState.backfillComplete &&
           jobModelsBackfillHighWatermark === initialMigrationState.highWatermark &&
-          jobModelsBackfillCursor === initialMigrationState.cursor
+          jobModelsBackfillCursor === initialMigrationState.cursor &&
+          jobModelsBackfillPendingRowid === initialMigrationState.pendingRowid &&
+          jobModelsBackfillModelOffset === initialMigrationState.backfillModelOffset &&
+          legacyRetryableRecoveryJobId === initialMigrationState.recoveryJobId &&
+          legacyRetryableRecoveryModelOffset === initialMigrationState.recoveryModelOffset
         ) {
           return;
         }
@@ -1066,12 +1251,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
           `UPDATE scheduler
            SET legacy_retryable_recovery_complete = ?, job_models_backfill_complete = ?,
                job_models_backfill_high_watermark = ?, job_models_backfill_cursor = ?,
-               migration_rows_scanned_today = ?, migration_write_units_today = ?
+               job_models_backfill_pending_rowid = ?, job_models_backfill_model_offset = ?,
+               legacy_retryable_recovery_job_id = ?,
+               legacy_retryable_recovery_model_offset = ?, migration_rows_scanned_today = ?,
+               migration_write_units_today = ?
            WHERE id = 1`,
           Number(legacyRetryableRecoveryComplete),
           Number(jobModelsBackfillComplete),
           jobModelsBackfillHighWatermark,
           jobModelsBackfillCursor,
+          jobModelsBackfillPendingRowid,
+          jobModelsBackfillModelOffset,
+          legacyRetryableRecoveryJobId,
+          legacyRetryableRecoveryModelOffset,
           migrationRowsScanned,
           migrationWriteUnits
         );
@@ -1081,6 +1273,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         initialMigrationState.backfillComplete = jobModelsBackfillComplete;
         initialMigrationState.highWatermark = jobModelsBackfillHighWatermark;
         initialMigrationState.cursor = jobModelsBackfillCursor;
+        initialMigrationState.pendingRowid = jobModelsBackfillPendingRowid;
+        initialMigrationState.backfillModelOffset = jobModelsBackfillModelOffset;
+        initialMigrationState.recoveryJobId = legacyRetryableRecoveryJobId;
+        initialMigrationState.recoveryModelOffset = legacyRetryableRecoveryModelOffset;
       };
       const remainingMigrationRows = () => Math.max(0, migrationRowsLimit - migrationRowsScanned);
       const remainingMigrationWriteUnits = () =>
@@ -1093,11 +1289,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
       if (!legacyRetryableRecoveryComplete && legacyRetryableRecoveryLimit > 0) {
         const result = this._recoverLegacyRetryableJobs(now, {
           limit: legacyRetryableRecoveryLimit,
+          pendingJobId: legacyRetryableRecoveryJobId,
+          modelOffset: legacyRetryableRecoveryModelOffset,
           remainingRows: remainingMigrationRows(),
           remainingWriteUnits: remainingMigrationWriteUnits(),
         });
         migrationRowsScanned += result.scanned;
         migrationWriteUnits += result.writeUnits;
+        legacyRetryableRecoveryJobId = result.pendingJobId;
+        legacyRetryableRecoveryModelOffset = result.modelOffset;
         legacyRetryableRecoveryComplete ||= result.complete;
         // This migration runs before the active-bundle early return, so persist its counters now.
         persistMigrationState();
@@ -1157,6 +1357,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           limit: queuedJobModelBackfillLimit,
           highWatermark: jobModelsBackfillHighWatermark,
           cursor: jobModelsBackfillCursor,
+          pendingRowid: jobModelsBackfillPendingRowid,
+          modelOffset: jobModelsBackfillModelOffset,
           remainingRows: remainingMigrationRows(),
           remainingWriteUnits: remainingMigrationWriteUnits(),
         });
@@ -1164,6 +1366,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         migrationWriteUnits += result.writeUnits;
         jobModelsBackfillHighWatermark = result.highWatermark;
         jobModelsBackfillCursor = result.cursor;
+        jobModelsBackfillPendingRowid = result.pendingRowid;
+        jobModelsBackfillModelOffset = result.modelOffset;
         jobModelsBackfillComplete ||= result.complete;
         persistMigrationState();
       }
@@ -1175,10 +1379,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const candidates = [...sql.exec(
           `SELECT jobs.* FROM job_models
            JOIN jobs ON jobs.id = job_models.job_id
-           WHERE job_models.model = ? AND jobs.state = 'queued'
+           WHERE job_models.model = ? AND jobs.state = 'queued' AND jobs.rowid != ?
            ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
            LIMIT ?`,
           modelPlan.model,
+          jobModelsBackfillPendingRowid || 0,
           maxJobsPerModelClaim
         )];
 

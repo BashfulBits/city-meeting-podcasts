@@ -116,11 +116,12 @@ fixed before merge:
   otherwise silently never change admission order, since the index row already exists and backfill
   never revisits an already-indexed job.
 - *Repeated queue-head migration work.* `claimDispatchWindow` captures the maximum SQLite
-  `jobs.rowid`
-  at rollout, then advances `scheduler.job_models_backfill_cursor` only through that finite range.
-  Jobs created later are indexed synchronously at enqueue and are outside the high-water mark. This
-  replaces the former `NOT EXISTS` queue-head scan, which could repeatedly revisit repaired rows as
-  a large historical backlog drained.
+  `jobs.rowid` at rollout, then advances `scheduler.job_models_backfill_cursor` only through that
+  finite range. If one job's allowed-model list exceeds the remaining daily write budget, a durable
+  row-id/model-offset continuation indexes it across days; it remains excluded from admission until
+  complete. Jobs created later are indexed synchronously at enqueue and are outside the high-water
+  mark. This replaces the former `NOT EXISTS` queue-head scan, which could repeatedly revisit
+  repaired rows as a large historical backlog drained.
 
 ## Why cron pull, not Queue or a queue object
 
@@ -296,6 +297,9 @@ Each model-index mapping costs three conservative write units. Recovering a job 
 its mappings. These budgets do not cap a job's allowed-model list, and ordinary capacity-ranked
 admission is not charged to the migration-read budget.
 
+A nonzero migration write budget must be at least five units, enough to index and atomically requeue
+a one-model recovered job. Larger jobs retain a durable model offset and resume on a future UTC day.
+
 **`POLL_BATCH_MAX` covers two different traffic shapes; size it for the larger one.** There are two
 distinct poll use cases, not one: (a) the automated `JobHandle` reconciliation sweep that runs as
 part of normal pipeline operation — review/43 measured this at ~2.5 polls/job in v1's current
@@ -415,9 +419,9 @@ The DO creates SQLite-backed tables in its constructor. Payload bytes are exclud
 - **`estimates`:** route/model/prompt-family conservative margin, sample count, and bounded recent
   observed usage summary; it cannot lower a reservation below `ESTIMATE_MARGIN`.
 - **`scheduler`:** UTC bundle count, cleanup cursor, next maintenance alarm, one-time completion
-  flags, a fixed backfill high-water mark/cursor, and UTC migration read/write counters; small
-  singleton state. Each compatibility migration has a separately configurable zero-cap emergency
-  pause and they share conservative daily budgets.
+  flags, a fixed backfill high-water mark/cursor, per-job model-offset continuations, and UTC
+  migration read/write counters; small singleton state. Each compatibility migration has a
+  separately configurable zero-cap emergency pause and they share conservative daily budgets.
 
 Job states are `queued`, `leased`, `unknown_attempt`, `completed`, `retryable`, `failed`, and
 `purge_pending`. `retryable` is retained only as a migration compatibility state: each claim
@@ -1108,6 +1112,10 @@ CREATE TABLE IF NOT EXISTS scheduler (
   legacy_retryable_recovery_complete INTEGER NOT NULL DEFAULT 0,
   job_models_backfill_high_watermark INTEGER,
   job_models_backfill_cursor   INTEGER NOT NULL DEFAULT 0,
+  job_models_backfill_pending_rowid INTEGER,
+  job_models_backfill_model_offset INTEGER NOT NULL DEFAULT 0,
+  legacy_retryable_recovery_job_id TEXT,
+  legacy_retryable_recovery_model_offset INTEGER NOT NULL DEFAULT 0,
   migration_rows_scanned_today INTEGER NOT NULL DEFAULT 0,
   migration_write_units_today  INTEGER NOT NULL DEFAULT 0
 );
@@ -1233,8 +1241,9 @@ function claimDispatchWindow(now, windowSeconds):
   # Each enqueue writes one job_models row per canonical allowed model, including one with no route
   # yet. A later route-catalog addition then makes the existing job searchable without a migration.
   # At rollout, historical rows up to a fixed rowid high-water mark are backfilled in forward-only
-  # configured batches. New enqueues are already indexed. The two migrations share daily read/
-  # write-unit budgets; zero for a cap or budget is an emergency pause.
+  # configured batches. A large model list continues from its stored model offset and cannot enter
+  # admission until its mappings are complete. New enqueues are already indexed. The two migrations
+  # share daily read/write-unit budgets; zero for a cap or budget is an emergency pause.
   model_pools = rankModelsByCapacity(routes ledger, catalog, now, windowSeconds)
   chosen = []
   seen_routes = {}

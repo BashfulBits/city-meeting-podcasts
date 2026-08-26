@@ -23,7 +23,9 @@ Phase R (Research-Tool Surface)._
   `retryable` recovery follows the existing state/priority/created index. The migrations share
   conservative daily row-read and write-unit budgets (`250,000` and `5,000`) and cautious per-cron
   caps (four backfill rows, one recovery row); a zero cap or daily budget remains an emergency
-  pause. Each job retains every explicitly allowed model -- there is no allowed-model cap. This is
+  pause. A job whose mappings exceed a daily budget resumes from a durable model offset; partial
+  backfill jobs remain out of admission and a `retryable` job is queued only after all mappings
+  exist. Each job retains every explicitly allowed model -- there is no allowed-model cap. This is
   scheduler-only: no model fallback, pipeline version, stored artifact, or record format changes.
 
 - **LLM dispatch final-5xx recovery.** AI Gateway now performs the configured short retry series
