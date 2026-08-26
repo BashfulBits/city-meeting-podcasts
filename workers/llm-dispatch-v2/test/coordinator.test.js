@@ -74,6 +74,36 @@ test("enqueueBatch admits new jobs and updates scheduler counter", async () => {
   assert.equal(rows[1].priority, 0);
 });
 
+test("enqueueBatch indexes every canonical allowed model without model_routing", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([
+    {
+      id: "multi",
+      idempotency_key: "multi-key",
+      request_digest: "multi-digest",
+      policy_json: JSON.stringify({
+        allowed_models: [
+          "gemini/gemini-3.1-flash-lite",
+          "mistral/mistral-small-2603",
+          "future/provider-model",
+        ],
+        allow_paid: false,
+      }),
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/multi/request.json",
+    },
+  ]);
+
+  const models = [...sql.exec("SELECT model FROM job_models WHERE job_id='multi' ORDER BY model")];
+  assert.deepEqual(models.map((row) => row.model), [
+    "future/provider-model",
+    "gemini/gemini-3.1-flash-lite",
+    "mistral/mistral-small-2603",
+  ]);
+});
+
 test("enqueueBatch handles idempotent replays and detects conflicts", async () => {
   const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
 

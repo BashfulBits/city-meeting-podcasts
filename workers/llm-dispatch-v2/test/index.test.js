@@ -22,7 +22,7 @@ function createMockEnv(overrides = {}) {
     CRON_TICK_SECONDS: "60",
     MAX_BUNDLES_PER_UTC_DAY: "1000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
-    MAX_JOBS_PER_UTC_DAY: "20000",
+    MAX_JOBS_PER_UTC_DAY: "5000",
     ENQUEUE_BATCH_MAX: "1000",
     POLL_BATCH_MAX: "1000",
     ...overrides,
@@ -51,11 +51,21 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     )
   );
 
-  // MAX_JOBS_PER_UTC_DAY > 75,000 (75% limit)
+  // MAX_JOBS_PER_MODEL_CLAIM > MAX_BUNDLE_JOBS
   assert.throws(() =>
     validateConfig(
       createMockEnv({
-        MAX_JOBS_PER_UTC_DAY: "80000",
+        MAX_BUNDLE_JOBS: "4",
+        MAX_JOBS_PER_MODEL_CLAIM: "5",
+      })
+    )
+  );
+
+  // MAX_JOBS_PER_UTC_DAY > 5,000 (model-index write headroom)
+  assert.throws(() =>
+    validateConfig(
+      createMockEnv({
+        MAX_JOBS_PER_UTC_DAY: "5001",
       })
     )
   );

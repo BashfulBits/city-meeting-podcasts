@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **V2 dispatch admission is capacity-ranked, rather than globally FIFO.** The scheduler DO keeps
+  an indexed queued-model membership for every explicitly allowed model on each job, ranks model
+  pools by their routes' live free capacity, treats 402-blocked, paused, and capacity-exhausted
+  routes as zero, and reads only four
+  candidates from a model before trying the next pool. The exact per-job token and lane gate
+  remains authoritative. This improves use of independent free-tier capacity without adding V2
+  model routing: V2 still does not use the V1 Mistral → Gemini 3.5 Flash Lite overflow fallback.
+
 - **Pipeline and GitHub Actions reliability hardening.**
   - **Runner timeout bounds:** Reduced `chapter-locator.yml` timeout to 45 minutes to prevent
     hung runner orphan processes from holding runner quota.

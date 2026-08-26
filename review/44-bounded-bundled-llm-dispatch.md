@@ -85,6 +85,17 @@ then choose Paid Workers or a DO" sequence. It does not accelerate or alter the 
 It creates an independently deployable v2 path, allowing selected GitHub workflows to migrate and
 to roll back future submissions without losing accepted v2 jobs.
 
+**2026-08-26 maintainer-directed admission correction.** Cross-model FIFO and an arbitrary queue
+lookahead optimize fairness, not useful Free-tier throughput: a Mistral backlog can hide work for
+an independent, healthy model pool. V2 therefore materializes each job's canonical allowed-model
+membership (including an explicit model with no configured route yet), ranks model pools from the
+small live route ledger, and probes only a bundle-sized candidate set from each. The benefit is that
+the DO's expensive exact token/lane calculation runs
+only where capacity is likely available; the cost is one or more small SQLite index writes per job
+at enqueue and their removal at lease. The configured 5,000-job/day ingress cap retains write
+headroom for that trade-off. This does **not** adopt V1's `model_routing` fallback: model membership
+comes only from the caller's own `allowed_models` after aliases are resolved.
+
 ## Why cron pull, not Queue or a queue object
 
 The initial v2 design used a Queue for a durable DO-to-Worker handoff. That is unnecessary when the
@@ -96,8 +107,9 @@ Worker reads a manifest but before it invalidates it could discard a newer ready
 lost-work shape as the earlier agenda race. The DO's SQLite transaction is the sole claim point.
 
 There is therefore no B2 queue-manifest read or write. A Worker performs one `claimDispatchWindow`
-RPC; B2 is only prompt/result storage. The DO selects across all ready routes rather than exposing
-the first objects in a storage prefix, eliminating route head-of-line blocking.
+RPC; B2 is only prompt/result storage. The DO ranks the small set of model pools by live free
+capacity and asks an indexed model queue for only a bundle-sized candidate set, so a blocked route
+prefix cannot hide later eligible work or force an unbounded read of the global queue.
 
 ### Cron pull vs. a Cloudflare Queue push, reasoned from the actual bottleneck
 
@@ -238,6 +250,7 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | Setting | Initial value | Purpose |
 | --- | ---: | --- |
 | `MAX_BUNDLE_JOBS` | 4 | Maximum LLM calls claimed by one Worker cron |
+| `MAX_JOBS_PER_MODEL_CLAIM` | 4 | Maximum indexed candidates read for one capacity-ranked model; equal to one bundle, so exact token/lane admission never evaluates an arbitrary global-queue prefix |
 | `MAX_JOBS_PER_ROUTE_PER_BUNDLE` | 4 | Allows a paced same-route sequence when it fits |
 | `MAX_CONCURRENT_ROUTE_LANES` | 5 | Hard cap on distinct routes (concurrent lanes) per bundle — stays under Cloudflare's 6-simultaneous-connection-per-invocation ceiling (identical on Free and Paid; see "Cloudflare connection and subrequest limits" below) |
 | `DISPATCH_WINDOW_SECONDS` | 25 | Latest planned provider-call start after a cron tick |
@@ -245,7 +258,7 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_ACTIVE_BUNDLES` | 2 | Bound for partially completed or abandoned dispatch plans |
 | `MAX_IN_FLIGHT_LLM_CALLS` | 8 | Separate global cap; avoids one slow bundle serializing all work |
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
-| `MAX_JOBS_PER_UTC_DAY` | 20,000–50,000 (profiled gate) | Hard ingestion admission cap, independent of dispatch — bounds `enqueueBatch` inserts so a backfill-scale ingest can't itself exhaust the shared DO SQLite row-write budget (see Demand model and the split budget below) |
+| `MAX_JOBS_PER_UTC_DAY` | 5,000 | Hard ingestion admission cap. This matches the ~4,000 daily dispatch ceiling while reserving Free-tier SQLite write headroom for each job's model-index rows and lease-time index removal |
 | `ENQUEUE_BATCH_MAX` | profiled gate (target: low hundreds to low thousands of jobs/call) | Jobs accepted per single `enqueue-batch` RPC — sized so reaching `MAX_JOBS_PER_UTC_DAY` takes tens of calls, not thousands |
 | `POLL_BATCH_MAX` | profiled gate (target: enough to cover the largest single reconciliation sweep in one call — see note below) | Statuses/results returned per single `poll-batch` RPC |
 
@@ -263,7 +276,6 @@ enqueue/poll split for today's incident (Verification) before finalizing this va
 | `MAX_429_RETRIES` | 1 | Bounded same-route retry attempts inside one executor bundle |
 | `MAX_429_BACKOFF_SECONDS` | 60 | Upper bound for in-Worker `Retry-After` sleep |
 | `UNKNOWN_ATTEMPT_POLICY` | hold | Unsupported-provider crash after send; never silently reissue |
-| `MAX_QUEUE_WAIT_SECONDS` | 3,600 | Aging escape hatch before size-based ordering |
 | `ESTIMATE_MARGIN` | profiled gate | Conservative route/model/prompt-family reservation floor |
 | `MAX_BUNDLE_PAYLOAD_BYTES` | profiled gate | Required cap before v2 deployment |
 | `MAX_BUNDLE_RESULT_BYTES` | profiled gate | Required cap before v2 deployment |
@@ -279,8 +291,8 @@ there is work, so their fixed daily cost is accounted for separately:
 | Cron/executor Worker requests | 1,440 ticks | 100,000 |
 | Scheduler DO requests | 1,440 claim + <=4k start + 1k finish + <=4k retry | 100,000 |
 | DO SQLite row writes — dispatch-lifecycle | under 45,000 plus bounded cleanup (lease + `attemptStarted` + `completeBatch` + cleanup; profiled gate — scales with `MAX_BUNDLE_JOBS`/`MAX_BUNDLES_PER_UTC_DAY`) | shares the 100,000 total below with ingestion |
-| DO SQLite row writes — ingestion | one insert per `enqueueBatch`-admitted job, up to `MAX_JOBS_PER_UTC_DAY` (profiled gate) | shares the 100,000 total below with dispatch-lifecycle |
-| DO SQLite row writes — combined total | dispatch-lifecycle + ingestion, held under the 75% admission-rejection threshold | 100,000 |
+| DO SQLite row writes — ingestion/index | one job insert plus one or more canonical-model index inserts per admitted job; the selected job's index rows are removed at lease time. `MAX_JOBS_PER_UTC_DAY=5,000` protects dispatch headroom | shares the 100,000 total below with dispatch-lifecycle |
+| DO SQLite row writes — combined total | dispatch-lifecycle + ingestion/index, held under the 75% admission-rejection threshold | 100,000 |
 | Queue operations | 0 | 10,000 |
 | R2 operations from v2 | 0 | shared R2 allowance |
 | LLM calls | up to 4,000 (see Demand model — this is the Free-tier-budget-driven ceiling, not a provider-capacity one; real aggregate route capacity is ~66,620+/day) | provider- and Gateway-limited |
@@ -420,14 +432,17 @@ rather than corrupting an earlier job.
 2. At each one-minute cron tick, the executor calls `claimDispatchWindow(now, 25 seconds)`. The DO
    limits the plan by remaining bundle and in-flight-call capacity; it may return a partial plan. If
    a cap prevents admission, it returns an empty plan promptly.
-3. In one transaction, the DO considers each candidate route's RPM gap, rolling TPM reservation,
-   configured buffer, and repeated-429 `blocked_until`. `priority=0` jobs are ordered ahead of
-   `priority=1` jobs within an otherwise-eligible set — a simple binary tie-breaker, not a
-   scheduling class of its own. It first fills slots from distinct eligible routes. A job that has
-   waited `MAX_QUEUE_WAIT_SECONDS` wins its eligible ordering bucket. For all other jobs, when more
-   routes are eligible than slots and when filling remaining slots, it prefers larger conservative
-   token estimates, then stable FIFO order. Only after that first pass may a second job from a route
-   fill a slot. `priority` is set once, at `enqueueBatch` time (see the ingress API above); an
+3. In one transaction, the DO reads the live ledger for its small static model catalog and scores
+   each model pool by the RPD-weighted mean of its routes' free-capacity fractions. A route's
+   fraction is the minimum of its RPM, RPD, and refillable-TPM fractions; a paused `rpd: 0`, an
+   in-window buffer, or any live `blocked_until` (including 402 backoff) is zero. It visits nonzero model pools from
+   highest score to lowest, reads at most `MAX_JOBS_PER_MODEL_CLAIM` jobs from that model's indexed
+   queue, and runs the exact per-job RPM/RPD/TPM/lane check only for those candidates. Thus the
+   coarse score chooses where to look, never overrides the final safety gate. This deliberately
+   favors maximum current dispatch throughput over cross-model FIFO: a later Gemini job may run
+   before an earlier Mistral job when Gemini has more free capacity. `priority=0` remains ahead of
+   `priority=1` and `created_at` remains the ordering inside a model pool. The existing distinct
+   route-lane and per-route bundle caps still apply. `priority` is set once, at `enqueueBatch` time (see the ingress API above); an
    operator changing it on an already-`queued` job for recovery/testing is a direct edit through
    Cloudflare's dashboard Data Studio or `wrangler dev`'s Local Explorer SQL Studio (both support
    browsing and writing SQLite-backed DO storage — [Access Durable Objects
@@ -683,15 +698,18 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
 > complete and before v2 carries any real dispatch traffic.**
 
 - Fenced admission (`claimDispatchWindow`): enforce bundle, per-route, active-bundle, in-flight-call,
-  and UTC daily caps. Choose `priority=0` jobs first, then distinct eligible routes, then larger
-  conservative token estimates, with FIFO only as the final tie-breaker; use aging once
-  `MAX_QUEUE_WAIT_SECONDS` elapses. Calculate route-lane waits from RPM, rolling TPM estimates,
-  full-bucket recovery, route buffer, and 429 state; reserve the maximum of input/max-output,
-  calibrated margin, and configured floor. Test normal, late, and late-429 timing before returning a
-  bundle. Reserve only the initial call before returning a bundle — `authorizeRetry` makes a
-  separate, fenced reservation only after an actual 429; retain admitted reservations after an
-  ambiguous executor loss. Return an empty plan rather than a future plan when the first safe start
-  is outside the dispatch window.
+  and UTC daily caps. Materialize canonical allowed-model membership at enqueue, rank those model
+  pools by live aggregate free capacity, and read at most one bundle's worth of indexed candidates
+  from each nonzero pool. Treat a 402 block, paused route, or exhausted route capacity as zero, but
+  retain RPM/RPD/TPM/lane computation as the exact per-job final gate. This maintainer-directed
+  correction explicitly favors useful current dispatch over cross-model FIFO; priority and
+  submission time remain ordering only within a model pool. Calculate route-lane waits from RPM,
+  rolling TPM estimates, full-bucket recovery, route buffer, and 429 state; reserve the maximum of
+  input/max-output, calibrated margin, and configured floor. Test normal, late, and late-429 timing
+  before returning a bundle. Reserve only the initial call before returning a bundle —
+  `authorizeRetry` makes a separate, fenced reservation only after an actual 429; retain admitted
+  reservations after an ambiguous executor loss. Return an empty plan rather than a future plan when
+  the first safe start is outside the dispatch window.
 - Executor and 429 adaptation: implement the cron handler as one bounded paced `Promise.allSettled`
   operation. Ask the DO for one plan and return immediately for no work. Run route lanes
   independently; honor relative `wait_ms`, actual predecessor start, retry barriers, and the
@@ -1154,47 +1172,28 @@ function claimDispatchWindow(now, windowSeconds):
   if sum(bundles.active_call_count WHERE state='active') >= MAX_IN_FLIGHT_LLM_CALLS:
     return empty ClaimResult
 
-  candidates = SELECT * FROM jobs WHERE state='queued'
-               ORDER BY priority ASC, created_at ASC   -- priority=0 first, then FIFO within a class
-               LIMIT (some generous multiple of MAX_BUNDLE_JOBS, e.g. 4x, to give the route-fill
-                      pass below enough to choose from without a full table scan)
-
-  # Pass 1: fill from distinct eligible routes, capped at MAX_CONCURRENT_ROUTE_LANES lanes total —
-  # the executor (Unit 6) runs one lane per distinct route concurrently, and Cloudflare allows at
-  # most 6 simultaneous outbound connections per invocation (Free and Paid alike); this cap must
-  # never be exceeded regardless of how many distinct routes are eligible.
+  # Each enqueue writes one job_models row per canonical allowed model, including one with no route
+  # yet. A later route-catalog addition then makes the existing job searchable without a migration.
+  # Existing queued rows are backfilled in capped 1,000-job batches during rollout.
+  model_pools = rankModelsByCapacity(routes ledger, catalog, now, windowSeconds)
   chosen = []
   seen_routes = {}
-  for job in candidates:
+  for model_pool in model_pools ordered by capacity_fraction DESC:
     if len(chosen) >= MAX_BUNDLE_JOBS: break
-    if len(seen_routes) >= MAX_CONCURRENT_ROUTE_LANES: break   # never open another new lane
-    eligible_routes = routesEligibleFor(job)   # policy_json.allowed_models -> route catalog lookup
-    for route in eligible_routes:
-      if route.route_id in seen_routes: continue   # distinct-routes-first: skip on pass 1
-      if not routeHasCapacityFor(route, job, now, windowSeconds): continue
-      chosen.append({job, route})
-      seen_routes[route.route_id] = true
-      break
-
-  # Pass 2: fill remaining slots — aged jobs win their bucket, then larger token estimate, then FIFO.
-  # May still open a NEW lane if pass 1 left room under MAX_CONCURRENT_ROUTE_LANES (e.g. pass 1's
-  # scan found fewer distinct eligible routes among the earliest candidates than the cap allows);
-  # once the lane cap is reached, pass 2 may only add jobs to an already-open lane, sequenced behind
-  # it via MAX_JOBS_PER_ROUTE_PER_BUNDLE — never opens lane number MAX_CONCURRENT_ROUTE_LANES+1.
-  remaining_candidates = [c for c in candidates if c.job not in chosen]
-  # split into aged (waited >= MAX_QUEUE_WAIT_SECONDS) and not-aged; aged bucket sorts first,
-  # each bucket internally sorted by input_token_estimate + max_output_token_estimate DESC,
-  # created_at ASC as the final tiebreaker
-  for job in orderedByAgingThenSize(remaining_candidates, now):
-    if len(chosen) >= MAX_BUNDLE_JOBS: break
-    for route in routesEligibleFor(job):
-      is_new_lane = route.route_id not in seen_routes
-      if is_new_lane and len(seen_routes) >= MAX_CONCURRENT_ROUTE_LANES: continue  # lane cap; skip
-      if routeAlreadyHasNJobsInThisBundle(route, chosen) >= MAX_JOBS_PER_ROUTE_PER_BUNDLE: continue
-      if not routeHasCapacityFor(route, job, now, windowSeconds): continue
-      chosen.append({job, route})
-      seen_routes[route.route_id] = true
-      break
+    candidates = SELECT jobs.* FROM job_models JOIN jobs
+                 WHERE model=model_pool.model AND jobs.state='queued'
+                 ORDER BY priority ASC, created_at ASC LIMIT MAX_JOBS_PER_MODEL_CLAIM
+    for job in candidates:
+      if job already chosen: continue       # a multi-model policy appears in one pool per model
+      # Prefer the highest-score route of this model, opening a new route lane before reusing one.
+      for route in routesEligibleFor(job, model=model_pool.model) ordered by route_fraction DESC:
+        is_new_lane = route.route_id not in seen_routes
+        if is_new_lane and len(seen_routes) >= MAX_CONCURRENT_ROUTE_LANES: continue
+        if routeAlreadyHasNJobsInThisBundle(route, chosen) >= MAX_JOBS_PER_ROUTE_PER_BUNDLE: continue
+        if not routeHasCapacityFor(route, job, now, windowSeconds): continue  # exact final gate
+        chosen.append({job, route})
+        seen_routes[route.route_id] = true
+        break
 
   if chosen is empty: return empty ClaimResult
 
@@ -1445,11 +1444,13 @@ Unit and Miniflare tests must cover:
 - `priority=0` jobs are ordered ahead of `priority=1` jobs within an otherwise-eligible admission
   set; a `priority=0` job never bypasses a route's real capacity/pacing constraints — priority only
   breaks ties among otherwise-eligible jobs;
-- admission fills distinct eligible routes first, then prefers larger conservative estimates, with
-  stable FIFO ties; a smaller job wins after the configured aging deadline;
+- admission ranks model pools by aggregate live capacity, reads only
+  `MAX_JOBS_PER_MODEL_CLAIM` indexed candidates per nonzero pool, and applies the exact per-job
+  capacity calculation only to that bounded candidate set; 402-blocked, paused, and exhausted
+  routes score zero, and a higher-capacity model may run ahead of an older lower-capacity model;
 - `claimDispatchWindow` never selects more than `MAX_CONCURRENT_ROUTE_LANES` distinct routes into one
-  bundle, across both the distinct-routes-first pass and the aging/size pass, even when more distinct
-  eligible routes exist in the candidate set — extra jobs land on an already-open lane instead;
+  bundle; it prefers opening an eligible route lane before reusing one, while extra jobs can land on
+  an already-open lane up to the per-route bundle cap;
 - `enqueue-batch` and `poll-batch` HTTP handlers make zero B2 subrequests regardless of batch size —
   a Miniflare test asserts subrequest count stays constant (not O(batch size)) across a 1-job and a
   `ENQUEUE_BATCH_MAX`/`POLL_BATCH_MAX`-sized batch, catching a regression back to per-job B2 I/O in

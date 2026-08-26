@@ -4,8 +4,9 @@
  */
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
-import { routesEligibleFor } from "./routes.js";
+import { canonicalModelName, routesEligibleFor } from "./routes.js";
 import {
+  availableTokenBudget,
   computeRouteLaneWait,
   routeHasCapacityFor,
   FULL_TOKEN_BUDGET_WINDOWS,
@@ -82,6 +83,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
       );
       CREATE INDEX IF NOT EXISTS idx_jobs_state_priority_created
         ON jobs (state, priority, created_at);
+
+      -- A queued job can be compatible with more than one model. This small index is the
+      -- scheduler's route-independent work index: admission asks for a few jobs belonging to a
+      -- capacity-ranked model rather than reading an arbitrary prefix of the whole queue.
+      CREATE TABLE IF NOT EXISTS job_models (
+        job_id      TEXT NOT NULL,
+        model       TEXT NOT NULL,
+        priority    INTEGER NOT NULL,
+        created_at  INTEGER NOT NULL,
+        PRIMARY KEY (job_id, model)
+      );
+      CREATE INDEX IF NOT EXISTS idx_job_models_model_priority_created
+        ON job_models (model, priority, created_at, job_id);
 
       CREATE TABLE IF NOT EXISTS routes (
         route_id                TEXT PRIMARY KEY,
@@ -186,7 +200,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _maxJobsPerUtcDay() {
     const configured = Number(this.env.MAX_JOBS_PER_UTC_DAY);
-    return Number.isFinite(configured) && configured > 0 ? configured : 20000;
+    return Number.isFinite(configured) && configured > 0 ? configured : 5000;
   }
 
   _envInt(name, fallback) {
@@ -196,6 +210,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _maxBundleJobs() {
     return this._envInt("MAX_BUNDLE_JOBS", 4);
+  }
+
+  _maxJobsPerModelClaim() {
+    const configured = Number(this.env.MAX_JOBS_PER_MODEL_CLAIM);
+    // A model is only allowed to contribute one bundle's worth of candidates. Exact token and
+    // lane checks still run below, but never over an arbitrary global-queue prefix.
+    return Number.isInteger(configured) && configured > 0 ? configured : this._maxBundleJobs();
   }
 
   _maxJobsPerRoutePerBundle() {
@@ -216,10 +237,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _maxBundlesPerUtcDay() {
     return this._envInt("MAX_BUNDLES_PER_UTC_DAY", 1000);
-  }
-
-  _maxQueueWaitSeconds() {
-    return this._envInt("MAX_QUEUE_WAIT_SECONDS", 3600);
   }
 
   _leaseDurationMs() {
@@ -371,6 +388,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           now,
           now
         );
+        this._indexQueuedJobModels(
+          { ...job, policy_json: policyJson, priority, created_at: now },
+          priority,
+          now
+        );
 
         newlyInsertedCount++;
         accepted.push({ id: job.id, submitted_id: job.id });
@@ -485,6 +507,168 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
+  /** Canonical model groups a job may use. Persist every explicit allowed model, even when it has
+   * no configured route yet, so a later catalog addition makes an already-queued job searchable
+   * without rewriting it. This follows aliases only: v2 does not expand config/model_routing. */
+  _modelsForQueuedJob(job, dispatchLimits = this._dispatchLimits()) {
+    let policy;
+    try {
+      policy = typeof job.policy_json === "string" ? JSON.parse(job.policy_json) : job.policy_json;
+    } catch {
+      return [];
+    }
+    const allowedModels = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
+    const models = new Set();
+    for (const rawModel of allowedModels) {
+      if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
+      models.add(canonicalModelName(rawModel.trim(), dispatchLimits));
+    }
+    return [...models];
+  }
+
+  _indexQueuedJobModels(job, priority = job.priority, createdAt = job.created_at) {
+    const sql = this._getSql();
+    // Preserve one sentinel for an unrouteable policy so rollout backfill does not reconsider the
+    // same malformed/unknown job on every cron tick. It is never present in model_routes_map.
+    const models = this._modelsForQueuedJob(job);
+    for (const model of models.length > 0 ? models : ["__unroutable__"]) {
+      sql.exec(
+        `INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at)
+         VALUES (?, ?, ?, ?)`,
+        job.id,
+        model,
+        priority,
+        createdAt
+      );
+    }
+  }
+
+  /**
+   * Existing v2 jobs predate job_models. Repair a bounded batch as part of normal serialized
+   * claim work, then every later claim uses the model index. The cap makes deployment migration
+   * finite and prevents a deep historical queue from turning one cron tick into a bulk rewrite.
+   */
+  _backfillQueuedJobModels(limit = 1000) {
+    const sql = this._getSql();
+    const missing = [...sql.exec(
+      `SELECT jobs.* FROM jobs
+       WHERE state='queued'
+         AND NOT EXISTS (SELECT 1 FROM job_models WHERE job_models.job_id = jobs.id)
+       ORDER BY priority ASC, created_at ASC
+       LIMIT ?`,
+      limit
+    )];
+    for (const job of missing) this._indexQueuedJobModels(job);
+  }
+
+  _freshRouteLedger(catalogRoute, now) {
+    const tpm = Number(catalogRoute?.tpm) || 0;
+    return {
+      rpm_window_start: 0,
+      rpm_count: 0,
+      rpd_window_start: 0,
+      rpd_count: 0,
+      tpm_window_start: 0,
+      tpm_reserved: 0,
+      full_token_budget: tpm * FULL_TOKEN_BUDGET_WINDOWS,
+      token_budget_updated_at: now,
+      blocked_until: null,
+      buffer_seconds: 0,
+    };
+  }
+
+  _capacityFraction(route, now, windowSeconds) {
+    if (Number(route.blocked_until) > now) return 0;
+    if (Number(route.buffer_seconds || 0) * 1000 >= windowSeconds * 1000) return 0;
+
+    const windowFraction = (limit, windowStart, count, durationMs) => {
+      // rpd: 0 is the repository's explicit "paused/exhausted" convention, not an unlimited
+      // route. Other absent limits do not constrain this coarse, route-ranking score.
+      if (limit === 0) return 0;
+      if (!Number.isFinite(limit) || limit < 0) return 1;
+      if (!Number.isFinite(windowStart) || now - windowStart >= durationMs) return 1;
+      return Math.max(0, Math.min(1, (limit - Math.max(0, count || 0)) / limit));
+    };
+
+    const rpmFraction = windowFraction(
+      Number(route.rpm),
+      route.rpm_window_start,
+      route.rpm_count,
+      60_000
+    );
+    const rpdFraction = windowFraction(
+      Number(route.rpd),
+      route.rpd_window_start,
+      route.rpd_count,
+      86_400_000
+    );
+    const tpm = Number(route.tpm);
+    const tokenFraction =
+      Number.isFinite(tpm) && tpm > 0
+        ? Math.max(
+            0,
+            Math.min(1, availableTokenBudget(route, now) / (tpm * FULL_TOKEN_BUDGET_WINDOWS))
+          )
+        : 1;
+    return Math.min(rpmFraction, rpdFraction, tokenFraction);
+  }
+
+  /** Read the small route ledger once, rank model pools by their aggregate free fraction, and
+   * retain a route-level score for preferring the best account inside the chosen model. */
+  _rankModelsByCapacity(now, windowSeconds, dispatchLimits) {
+    const sql = this._getSql();
+    const ledgers = new Map(
+      [...sql.exec("SELECT * FROM routes")].map((row) => [row.route_id, row])
+    );
+    const catalog = dispatchLimits?.routes_by_id || {};
+    return Object.entries(dispatchLimits?.model_routes_map || {})
+      .map(([model, routeIds]) => {
+        const routes = routeIds
+          .map((routeId) => {
+            const catalogRoute = catalog[routeId];
+            if (!catalogRoute) return null;
+            const route = {
+              ...catalogRoute,
+              ...(ledgers.get(routeId) || this._freshRouteLedger(catalogRoute, now)),
+              route_id: routeId,
+              model,
+            };
+            return { route, score: this._capacityFraction(route, now, windowSeconds) };
+          })
+          .filter(Boolean)
+          .sort(
+            (left, right) =>
+              right.score - left.score || left.route.route_id.localeCompare(right.route.route_id)
+          );
+        // Daily request capacity is the common unit across providers. Weighting avoids a tiny
+        // fallback account counting as much as a high-volume primary account; a paused rpd: 0
+        // route has no configured capacity weight at all, while a 402-blocked normal route keeps
+        // its weight and therefore correctly pulls the model's available percentage down.
+        const totalWeight = routes.reduce((sum, entry) => {
+          const rpd = Number(entry.route.rpd);
+          const rpm = Number(entry.route.rpm);
+          const weight = Number.isFinite(rpd) ? Math.max(0, rpd) : Math.max(0, rpm) * 1440;
+          return sum + weight;
+        }, 0);
+        const score =
+          totalWeight === 0
+            ? 0
+            : routes.reduce((sum, entry) => {
+                const rpd = Number(entry.route.rpd);
+                const rpm = Number(entry.route.rpm);
+                const weight = Number.isFinite(rpd) ? Math.max(0, rpd) : Math.max(0, rpm) * 1440;
+                return sum + entry.score * weight;
+              }, 0) / totalWeight;
+        return {
+          model,
+          score,
+          routeScores: new Map(routes.map((entry) => [entry.route.route_id, entry.score])),
+        };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score || left.model.localeCompare(right.model));
+  }
+
   /**
    * Advance a route's ledger forward to account for one newly-admitted reservation taking effect
    * at `notBeforeAt`, mirroring pacing.js's earliestSafeStart read-side logic on the write side.
@@ -580,30 +764,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return rows.length > 0 ? rows[0].margin_tokens : 0;
   }
 
-  /** Aged-first, then larger-conservative-estimate-first, then FIFO -- see Unit 4 pass 2. */
-  _orderByAgingThenSize(jobs, now, maxQueueWaitSeconds) {
-    const agedThresholdMs = maxQueueWaitSeconds * 1000;
-    const aged = [];
-    const notAged = [];
-    for (const job of jobs) {
-      const waitedMs = now - job.created_at;
-      (waitedMs >= agedThresholdMs ? aged : notAged).push(job);
-    }
-    const bySizeThenFifo = (a, b) => {
-      const sizeA = (a.input_token_estimate || 0) + (a.max_output_token_estimate || 0);
-      const sizeB = (b.input_token_estimate || 0) + (b.max_output_token_estimate || 0);
-      if (sizeB !== sizeA) return sizeB - sizeA;
-      return a.created_at - b.created_at;
-    };
-    aged.sort(bySizeThenFifo);
-    notAged.sort(bySizeThenFifo);
-    return [...aged, ...notAged];
-  }
-
   static EMPTY_CLAIM_RESULT = { bundle_id: null, execution_token: null, jobs: [] };
 
-  /** review/44 Unit 4: fenced admission, ordering, and pacing. One SQLite transaction for the
-   * whole call -- see the unit's own pseudocode for the exact two-pass selection this mirrors. */
+  /** review/44 Unit 4: fenced, capacity-ranked admission and pacing in one SQLite transaction. */
   async claimDispatchWindow(now, windowSeconds) {
     const sql = this._getSql();
     const dispatchLimits = this._dispatchLimits();
@@ -613,9 +776,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const maxActiveBundles = this._maxActiveBundles();
       const maxInFlightCalls = this._maxInFlightLlmCalls();
       const maxBundleJobs = this._maxBundleJobs();
+      const maxJobsPerModelClaim = this._maxJobsPerModelClaim();
       const maxConcurrentLanes = this._maxConcurrentRouteLanes();
       const maxJobsPerRoutePerBundle = this._maxJobsPerRoutePerBundle();
-      const maxQueueWaitSeconds = this._maxQueueWaitSeconds();
       const estimateFloor = this._estimateFloor();
       const callDurationCeilingMs = this._callDurationCeilingMs();
       const leaseDurationMs = this._leaseDurationMs();
@@ -635,24 +798,25 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // completeBatch outcome, just applied at the bundle level, before that outcome can ever
       // be reported.
       sql.exec(`UPDATE bundles SET state='expired' WHERE state='active' AND lease_expires_at < ?`, now);
-      sql.exec(
-        `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
-                          lease_expires_at=NULL, bundle_id=NULL, updated_at=?
-         WHERE state='leased' AND lease_expires_at < ?`,
-        now,
+      const expiredJobs = [...sql.exec(
+        "SELECT * FROM jobs WHERE state='leased' AND lease_expires_at < ?",
         now
-      );
+      )];
+      if (expiredJobs.length > 0) {
+        sql.exec(
+          `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
+                            lease_expires_at=NULL, bundle_id=NULL, updated_at=?
+           WHERE state='leased' AND lease_expires_at < ?`,
+          now,
+          now
+        );
+        for (const job of expiredJobs) this._indexQueuedJobModels(job);
+      }
 
       const activeBundles = [...sql.exec("SELECT active_call_count FROM bundles WHERE state='active'")];
       if (activeBundles.length >= maxActiveBundles) return EMPTY;
       const inFlightCalls = activeBundles.reduce((sum, b) => sum + b.active_call_count, 0);
       if (inFlightCalls >= maxInFlightCalls) return EMPTY;
-
-      const candidates = [...sql.exec(
-        "SELECT * FROM jobs WHERE state='queued' ORDER BY priority ASC, created_at ASC LIMIT ?",
-        maxBundleJobs * 4
-      )];
-      if (candidates.length === 0) return EMPTY;
 
       const ledgerCache = new Map();
       const getMergedRoute = (route) => {
@@ -668,40 +832,57 @@ export class LLMSchedulerDO extends DurableObjectBase {
         callDurationCeilingMs,
       });
 
-      const chosen = []; // { job, route }
+      // One bounded migration pass makes pre-index rollout jobs visible. Every normal claim below
+      // then reads only the top few jobs for each capacity-ranked model, never a global queue head.
+      this._backfillQueuedJobModels();
+      const chosen = [];
+      const chosenJobIds = new Set();
       const seenRoutes = new Set();
-
-      // Pass 1: distinct eligible routes, capped at maxConcurrentLanes lanes total.
-      for (const job of candidates) {
+      for (const modelPlan of this._rankModelsByCapacity(now, windowSeconds, dispatchLimits)) {
         if (chosen.length >= maxBundleJobs) break;
-        if (seenRoutes.size >= maxConcurrentLanes) break;
-        for (const route of routesEligibleFor(job, dispatchLimits)) {
-          if (seenRoutes.has(route.route_id)) continue;
-          const merged = getMergedRoute(route);
-          if (!routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))) continue;
-          chosen.push({ job, route });
-          seenRoutes.add(route.route_id);
-          break;
-        }
-      }
+        const candidates = [...sql.exec(
+          `SELECT jobs.* FROM job_models
+           JOIN jobs ON jobs.id = job_models.job_id
+           WHERE job_models.model = ? AND jobs.state = 'queued'
+           ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
+           LIMIT ?`,
+          modelPlan.model,
+          maxJobsPerModelClaim
+        )];
 
-      // Pass 2: aged-then-larger-then-FIFO fill, may still open a new lane under the cap, or add
-      // to an already-open one up to maxJobsPerRoutePerBundle.
-      const chosenJobIds = new Set(chosen.map((c) => c.job.id));
-      const remaining = candidates.filter((c) => !chosenJobIds.has(c.id));
-      const ordered = this._orderByAgingThenSize(remaining, now, maxQueueWaitSeconds);
-      for (const job of ordered) {
-        if (chosen.length >= maxBundleJobs) break;
-        for (const route of routesEligibleFor(job, dispatchLimits)) {
-          const isNewLane = !seenRoutes.has(route.route_id);
-          if (isNewLane && seenRoutes.size >= maxConcurrentLanes) continue;
-          const countInBundle = chosen.filter((c) => c.route.route_id === route.route_id).length;
-          if (countInBundle >= maxJobsPerRoutePerBundle) continue;
-          const merged = getMergedRoute(route);
-          if (!routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))) continue;
-          chosen.push({ job, route });
-          seenRoutes.add(route.route_id);
-          break;
+        for (const job of candidates) {
+          if (chosen.length >= maxBundleJobs) break;
+          if (chosenJobIds.has(job.id)) continue;
+          const eligibleRoutes = routesEligibleFor(job, dispatchLimits)
+            .filter((route) => route.model === modelPlan.model)
+            .sort(
+              (left, right) =>
+                (modelPlan.routeScores.get(right.route_id) || 0) -
+                  (modelPlan.routeScores.get(left.route_id) || 0) ||
+                left.route_id.localeCompare(right.route_id)
+            );
+          const routeOrder = [
+            ...eligibleRoutes.filter((route) => !seenRoutes.has(route.route_id)),
+            ...eligibleRoutes.filter((route) => seenRoutes.has(route.route_id)),
+          ];
+          for (const route of routeOrder) {
+            const isNewLane = !seenRoutes.has(route.route_id);
+            if (isNewLane && seenRoutes.size >= maxConcurrentLanes) continue;
+            const countInBundle = chosen.filter(
+              (entry) => entry.route.route_id === route.route_id
+            ).length;
+            if (countInBundle >= maxJobsPerRoutePerBundle) continue;
+            const merged = getMergedRoute(route);
+            if (
+              !routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))
+            ) {
+              continue;
+            }
+            chosen.push({ job, route });
+            chosenJobIds.add(job.id);
+            seenRoutes.add(route.route_id);
+            break;
+          }
         }
       }
 
@@ -745,6 +926,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             now,
             job.id
           );
+          // Keep the model index queue-only: a completed historical backlog must never make a
+          // later model lookup walk terminal rows before it reaches current work.
+          sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
 
           workingRoute = this._applyProvisionalReservation(workingRoute, waitResult.reservation, waitResult.not_before_at);
           ledgerCache.set(route.route_id, workingRoute);
@@ -897,10 +1081,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // `(SELECT ... FROM jobs WHERE id=?)` subquery evaluates to NULL for a bogus/unknown
         // job_id, which would throw on attempts.route_id's NOT NULL constraint and abort the
         // whole batch's completion, not just skip this one stale/unrecognized result.
-        const jobRows = [...sql.exec(
-          "SELECT lease_token, state, lease_route_id, prompt_family FROM jobs WHERE id = ?",
-          result.job_id
-        )];
+        const jobRows = [...sql.exec("SELECT * FROM jobs WHERE id = ?", result.job_id)];
         const routeIdForAttempt = jobRows.length > 0 ? jobRows[0].lease_route_id : "unknown";
 
         // attemptStarted (fencing, before the provider call -- see that method) already inserted
@@ -969,6 +1150,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             now,
             result.job_id
           );
+          this._indexQueuedJobModels(job);
         } else if (result.outcome === "success") {
           sql.exec(
             "UPDATE jobs SET state=?, result_key=?, updated_at=? WHERE id=?",
@@ -1144,6 +1326,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       let purged = 0;
       for (const chunk of this._chunks(jobIds)) {
         const placeholders = chunk.map(() => "?").join(",");
+        sql.exec(`DELETE FROM job_models WHERE job_id IN (${placeholders})`, ...chunk);
         sql.exec(
           `DELETE FROM jobs WHERE id IN (${placeholders}) AND state = 'purge_pending'`,
           ...chunk

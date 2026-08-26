@@ -379,6 +379,113 @@ test("claimDispatchWindow will not select a route still inside its 402 blocked_u
   assert.equal(second.jobs.length, 0); // route-c is blocked until tomorrow; no other route serves this model
 });
 
+test("claimDispatchWindow skips a 402-blocked model without reading its queued prefix", async () => {
+  const { coordinator } = makeCoordinator();
+  const mistralPolicy = JSON.stringify({
+    allowed_models: ["mistral/mistral-small"],
+    allow_paid: false,
+  });
+
+  // Create route-c's durable ledger, then give it the same 402 block the production incident
+  // writes. Twenty Mistral jobs precede Gemini work, but the model score is now zero.
+  await coordinator.enqueueBatch([makeJob("seed", { policy_json: mistralPolicy })]);
+  const seedPlan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  await coordinator.completeBatch(seedPlan.bundle_id, seedPlan.execution_token, [
+    {
+      job_id: seedPlan.jobs[0].id,
+      lease_token: seedPlan.jobs[0].lease_token,
+      attempt_id: "seed-402",
+      planned_at: seedPlan.jobs[0].not_before_at,
+      outcome: "terminal_error",
+      provider_status_code: 402,
+    },
+  ]);
+
+  await coordinator.enqueueBatch([
+    ...Array.from({ length: 20 }, (_, index) =>
+      makeJob(`blocked-${index}`, { policy_json: mistralPolicy })
+    ),
+    ...Array.from({ length: 4 }, (_, index) => makeJob(`gemini-${index}`)),
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.deepEqual(
+    new Set(plan.jobs.map((job) => job.id)),
+    new Set(["gemini-0", "gemini-1", "gemini-2", "gemini-3"])
+  );
+  assert.ok(plan.jobs.every((job) => ["route-a", "route-b"].includes(job.route_id)));
+});
+
+test("claimDispatchWindow skips a model whose live RPM capacity is exhausted", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const mistralPolicy = JSON.stringify({
+    allowed_models: ["mistral/mistral-small"],
+    allow_paid: false,
+  });
+
+  // Seed route-c, complete its bundle, then make its RPM window full. This is intentionally not
+  // a 402: capacity-based deferrals must not hide later Gemini work either.
+  await coordinator.enqueueBatch([makeJob("seed", { policy_json: mistralPolicy })]);
+  const seedPlan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  await coordinator.completeBatch(seedPlan.bundle_id, seedPlan.execution_token, [
+    {
+      job_id: seedPlan.jobs[0].id,
+      lease_token: seedPlan.jobs[0].lease_token,
+      attempt_id: "seed-success",
+      planned_at: seedPlan.jobs[0].not_before_at,
+      outcome: "success",
+      provider_status_code: 200,
+    },
+  ]);
+  sql.exec("UPDATE routes SET rpm_window_start=?, rpm_count=60 WHERE route_id='route-c'", Date.now());
+
+  await coordinator.enqueueBatch([
+    ...Array.from({ length: 20 }, (_, index) =>
+      makeJob(`limited-${index}`, { policy_json: mistralPolicy })
+    ),
+    ...Array.from({ length: 4 }, (_, index) => makeJob(`gemini-${index}`)),
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.deepEqual(
+    new Set(plan.jobs.map((job) => job.id)),
+    new Set(["gemini-0", "gemini-1", "gemini-2", "gemini-3"])
+  );
+});
+
+test("claimDispatchWindow prefers a higher-capacity model over older queued work", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_BUNDLE_JOBS: "1" });
+  const mistralPolicy = JSON.stringify({
+    allowed_models: ["mistral/mistral-small"],
+    allow_paid: false,
+  });
+
+  // Establish a live Mistral ledger, then leave it with only 1% of its daily capacity. Gemini's
+  // routes remain at 100%, so this must outrank an older Mistral job without a global queue scan.
+  await coordinator.enqueueBatch([makeJob("seed", { policy_json: mistralPolicy })]);
+  const seedPlan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  await coordinator.completeBatch(seedPlan.bundle_id, seedPlan.execution_token, [
+    {
+      job_id: seedPlan.jobs[0].id,
+      lease_token: seedPlan.jobs[0].lease_token,
+      attempt_id: "seed-success",
+      planned_at: seedPlan.jobs[0].not_before_at,
+      outcome: "success",
+      provider_status_code: 200,
+    },
+  ]);
+  sql.exec("UPDATE routes SET rpd_window_start=?, rpd_count=9900 WHERE route_id='route-c'", Date.now());
+
+  await coordinator.enqueueBatch([
+    makeJob("mistral-first", { policy_json: mistralPolicy }),
+    makeJob("gemini-later"),
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs[0].id, "gemini-later");
+  assert.ok(["route-a", "route-b"].includes(plan.jobs[0].route_id));
+});
+
 test("completeBatch calibration only ever raises margin_tokens, never lowers it", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);

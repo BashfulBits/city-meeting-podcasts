@@ -61,8 +61,10 @@ export function validateConfig(env) {
   const cronLimit = Number(env.CRON_EXECUTION_LIMIT_SECONDS || 900);
   const cronTick = Number(env.CRON_TICK_SECONDS || 60);
   const maxBundlesPerDay = Number(env.MAX_BUNDLES_PER_UTC_DAY || 1000);
+  const maxBundleJobs = Number(env.MAX_BUNDLE_JOBS || 4);
+  const maxJobsPerModelClaim = Number(env.MAX_JOBS_PER_MODEL_CLAIM || maxBundleJobs);
   const maxConcurrentLanes = Number(env.MAX_CONCURRENT_ROUTE_LANES || 5);
-  const maxJobsPerDay = Number(env.MAX_JOBS_PER_UTC_DAY || 20000);
+  const maxJobsPerDay = Number(env.MAX_JOBS_PER_UTC_DAY || 5000);
 
   if (dispatchWindow + maxResponse + finalizationReserve > leaseDuration) {
     throw new Error(
@@ -84,6 +86,17 @@ export function validateConfig(env) {
     );
   }
 
+  if (
+    !Number.isInteger(maxJobsPerModelClaim) ||
+    maxJobsPerModelClaim < 1 ||
+    maxJobsPerModelClaim > maxBundleJobs
+  ) {
+    throw new Error(
+      `Invalid config: MAX_JOBS_PER_MODEL_CLAIM (${maxJobsPerModelClaim}) must be an integer ` +
+      `from 1 to MAX_BUNDLE_JOBS (${maxBundleJobs})`
+    );
+  }
+
   if (maxConcurrentLanes > 5) {
     throw new Error(
       `Invalid config: MAX_CONCURRENT_ROUTE_LANES (${maxConcurrentLanes}) must leave headroom under Cloudflare's ` +
@@ -92,7 +105,9 @@ export function validateConfig(env) {
   }
 
   // Check projected Free resource usage stays below 75% threshold
-  const maxJobsBudget = 75000; // 75% of 100,000 DO row-writes/day
+  // A queued job writes its job row plus one or more model-index rows, and a claimed job removes
+  // those index rows. The 5k ceiling leaves room for the documented dispatch lifecycle writes.
+  const maxJobsBudget = 5000;
   if (maxJobsPerDay > maxJobsBudget) {
     throw new Error(
       `Invalid config: MAX_JOBS_PER_UTC_DAY (${maxJobsPerDay}) exceeds 75% of included daily limit (${maxJobsBudget})`
