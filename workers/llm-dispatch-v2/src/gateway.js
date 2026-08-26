@@ -7,15 +7,51 @@
  * re-keyed off v2's own route/job shapes instead of v1's queue record.
  */
 
-/** Remaps the stored payload's logical model (e.g. "gemini/gemini-flash-lite") to the route's
- * actual upstream_model string, exactly as v1's upstreamRequestForRoute does -- the payload was
- * written by the Python client with the logical name (see citypods/compute/llm.py's _payload). */
+// Every real, provider-facing chat-completions field this Worker forwards -- everything else on
+// the stored payload is dropped, not spread. Mirrors workers/llm-dispatch-proxy/src/index.js's
+// own COPY_FIELDS exactly (that Worker's normalizeChatRequest() rebuilds its request object this
+// same way, field-by-field, from the raw incoming HTTP body -- this module's own header comment
+// claimed to share that logic without actually including this step, which is how the 2026-08-26
+// incident below happened). `messages` is handled separately below since it's required, not
+// optional like these.
+const COPY_FIELDS = [
+  "temperature",
+  "top_p",
+  "max_tokens",
+  "max_completion_tokens",
+  "response_format",
+  "tools",
+  "tool_choice",
+  "seed",
+  "presence_penalty",
+  "frequency_penalty",
+];
+
+/** Builds the actual provider request from a stored payload: remaps the logical model (e.g.
+ * "gemini/gemini-flash-lite") to the route's real upstream_model string, and forwards only
+ * COPY_FIELDS plus `messages` -- never the raw payload via a blind spread.
+ *
+ * Deliberately an allowlist, not a blocklist: citypods/compute/llm.py's `_payload()` builder is
+ * shared with v1's synchronous transport, where policy fields (allow_paid, allow_batch,
+ * submit_next, timeout_class, allowed_models, output_token_budget, deadline_at, ...) are expected
+ * to ride alongside model/messages in the same dict -- v1's own ingress (normalizeChatRequest)
+ * strips them back out before ever building an upstream request. v2 had no equivalent step: this
+ * function used to spread the stored payload verbatim into the literal HTTP body sent to the
+ * provider, so any policy field that ended up in a stored payload (as one call site did until
+ * fixed in citypods/compute/llm.py) became a literal field in that body -- Mistral and Groq both
+ * correctly rejected it as an unrecognized field, a 100% dispatch failure invisible until AI
+ * Gateway logging surfaced it. An allowlist here means that class of bug can only ever produce an
+ * inert extra key that gets silently dropped, not a live incident -- and it retroactively repairs
+ * every payload already sitting in B2 from before the write-side fix, since this reads fresh at
+ * dispatch time rather than a cached copy: nothing needs to be re-enqueued or backfilled. */
 export function upstreamRequestForRoute(payload, route) {
-  return {
-    ...payload,
-    model: route.upstream_model,
-    stream: false,
-  };
+  const request = { model: route.upstream_model, messages: payload?.messages, stream: false };
+  for (const field of COPY_FIELDS) {
+    if (payload && payload[field] !== undefined) {
+      request[field] = payload[field];
+    }
+  }
+  return request;
 }
 
 /** Resolves which account/API key to use, and whether this call goes through AI Gateway or

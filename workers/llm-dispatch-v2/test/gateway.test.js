@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveProviderCredentials } from "../src/gateway.js";
+import { resolveProviderCredentials, upstreamRequestForRoute } from "../src/gateway.js";
 
 const DISPATCH_LIMITS = {
   providers: {
@@ -65,4 +65,58 @@ test("resolveProviderCredentials prefers an explicit AI_GATEWAY_BASE_URL over AI
     creds.url,
     "https://gateway.example.com/v1/acct/gw/google-ai-studio/v1beta/openai/chat/completions"
   );
+});
+
+test("upstreamRequestForRoute strips policy-only fields instead of spreading the stored payload", () => {
+  // Regression for the 2026-08-26 incident: citypods/compute/llm.py's enqueue_batch() stored a
+  // payload carrying policy/router-only fields alongside model/messages (fixed there separately),
+  // and this function's old blind `...payload` spread forwarded them straight to the provider --
+  // Mistral and Groq both rejected the request outright as a result. This must stay an allowlist
+  // so a bad stored payload (already in B2 from before that fix, or any future one) can only ever
+  // produce a silently-dropped extra key, never a live 100%-failure incident again.
+  const payload = {
+    model: "gemini/gemini-flash-lite", // the logical name -- must be overridden by route below
+    messages: [{ role: "user", content: "hi" }],
+    stream: true, // must always be forced to false regardless of what the stored payload says
+    allow_paid: true,
+    allow_batch: true,
+    submit_next: false,
+    timeout_class: "long",
+    allowed_models: ["gemini/gemini-flash-lite"],
+    input_tokens_estimate: 500,
+    output_token_budget: 1024,
+    deadline_at: "2026-08-26T00:00:00Z",
+  };
+  const request = upstreamRequestForRoute(payload, ROUTE);
+  assert.deepEqual(request, {
+    model: "gemini-flash", // ROUTE.upstream_model, not the payload's logical model
+    messages: payload.messages,
+    stream: false,
+  });
+});
+
+test("upstreamRequestForRoute forwards only recognized provider-tuning fields", () => {
+  const payload = {
+    messages: [{ role: "user", content: "hi" }],
+    temperature: 0.2,
+    top_p: 0.9,
+    max_tokens: 512,
+    tools: [{ type: "function", function: { name: "noop" } }],
+    tool_choice: "auto",
+    response_format: { type: "json_object" },
+    // Not a recognized field -- must be dropped, same as any policy field would be.
+    some_unrecognized_field: "should not appear",
+  };
+  const request = upstreamRequestForRoute(payload, ROUTE);
+  assert.deepEqual(request, {
+    model: "gemini-flash",
+    messages: payload.messages,
+    stream: false,
+    temperature: 0.2,
+    top_p: 0.9,
+    max_tokens: 512,
+    tools: payload.tools,
+    tool_choice: "auto",
+    response_format: payload.response_format,
+  });
 });
