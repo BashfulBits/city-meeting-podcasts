@@ -379,6 +379,193 @@ test("claimDispatchWindow will not select a route still inside its 402 blocked_u
   assert.equal(second.jobs.length, 0); // route-c is blocked until tomorrow; no other route serves this model
 });
 
+test("claimDispatchWindow skips a 402-blocked model without reading its queued prefix", async () => {
+  const { coordinator } = makeCoordinator();
+  const mistralPolicy = JSON.stringify({
+    allowed_models: ["mistral/mistral-small"],
+    allow_paid: false,
+  });
+
+  // Create route-c's durable ledger, then give it the same 402 block the production incident
+  // writes. Twenty Mistral jobs precede Gemini work, but the model score is now zero.
+  await coordinator.enqueueBatch([makeJob("seed", { policy_json: mistralPolicy })]);
+  const seedPlan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  await coordinator.completeBatch(seedPlan.bundle_id, seedPlan.execution_token, [
+    {
+      job_id: seedPlan.jobs[0].id,
+      lease_token: seedPlan.jobs[0].lease_token,
+      attempt_id: "seed-402",
+      planned_at: seedPlan.jobs[0].not_before_at,
+      outcome: "terminal_error",
+      provider_status_code: 402,
+    },
+  ]);
+
+  await coordinator.enqueueBatch([
+    ...Array.from({ length: 20 }, (_, index) =>
+      makeJob(`blocked-${index}`, { policy_json: mistralPolicy })
+    ),
+    ...Array.from({ length: 4 }, (_, index) => makeJob(`gemini-${index}`)),
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.deepEqual(
+    new Set(plan.jobs.map((job) => job.id)),
+    new Set(["gemini-0", "gemini-1", "gemini-2", "gemini-3"])
+  );
+  assert.ok(plan.jobs.every((job) => ["route-a", "route-b"].includes(job.route_id)));
+});
+
+test("claimDispatchWindow skips a model whose live RPM capacity is exhausted", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const mistralPolicy = JSON.stringify({
+    allowed_models: ["mistral/mistral-small"],
+    allow_paid: false,
+  });
+
+  // Seed route-c, complete its bundle, then make its RPM window full. This is intentionally not
+  // a 402: capacity-based deferrals must not hide later Gemini work either.
+  await coordinator.enqueueBatch([makeJob("seed", { policy_json: mistralPolicy })]);
+  const seedPlan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  await coordinator.completeBatch(seedPlan.bundle_id, seedPlan.execution_token, [
+    {
+      job_id: seedPlan.jobs[0].id,
+      lease_token: seedPlan.jobs[0].lease_token,
+      attempt_id: "seed-success",
+      planned_at: seedPlan.jobs[0].not_before_at,
+      outcome: "success",
+      provider_status_code: 200,
+    },
+  ]);
+  sql.exec("UPDATE routes SET rpm_window_start=?, rpm_count=60 WHERE route_id='route-c'", Date.now());
+
+  await coordinator.enqueueBatch([
+    ...Array.from({ length: 20 }, (_, index) =>
+      makeJob(`limited-${index}`, { policy_json: mistralPolicy })
+    ),
+    ...Array.from({ length: 4 }, (_, index) => makeJob(`gemini-${index}`)),
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.deepEqual(
+    new Set(plan.jobs.map((job) => job.id)),
+    new Set(["gemini-0", "gemini-1", "gemini-2", "gemini-3"])
+  );
+});
+
+test("claimDispatchWindow prefers a higher-capacity model over older queued work", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_BUNDLE_JOBS: "1" });
+  const mistralPolicy = JSON.stringify({
+    allowed_models: ["mistral/mistral-small"],
+    allow_paid: false,
+  });
+
+  // Establish a live Mistral ledger, then leave it with only 1% of its daily capacity. Gemini's
+  // routes remain at 100%, so this must outrank an older Mistral job without a global queue scan.
+  await coordinator.enqueueBatch([makeJob("seed", { policy_json: mistralPolicy })]);
+  const seedPlan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  await coordinator.completeBatch(seedPlan.bundle_id, seedPlan.execution_token, [
+    {
+      job_id: seedPlan.jobs[0].id,
+      lease_token: seedPlan.jobs[0].lease_token,
+      attempt_id: "seed-success",
+      planned_at: seedPlan.jobs[0].not_before_at,
+      outcome: "success",
+      provider_status_code: 200,
+    },
+  ]);
+  sql.exec("UPDATE routes SET rpd_window_start=?, rpd_count=9900 WHERE route_id='route-c'", Date.now());
+
+  await coordinator.enqueueBatch([
+    makeJob("mistral-first", { policy_json: mistralPolicy }),
+    makeJob("gemini-later"),
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs[0].id, "gemini-later");
+  assert.ok(["route-a", "route-b"].includes(plan.jobs[0].route_id));
+});
+
+test("claimDispatchWindow does not let oversized jobs permanently block a fit job behind them", async () => {
+  const { coordinator } = makeCoordinator();
+  const mistralPolicy = JSON.stringify({
+    allowed_models: ["mistral/mistral-small"],
+    allow_paid: false,
+  });
+
+  // Four jobs whose input_token_estimate exceeds route-c's own configured 32,000
+  // input_context_limit -- no currently configured Mistral route could ever serve them --
+  // followed by one ordinary job for the same model. Before the fix, indexing the oversized jobs
+  // under "mistral/mistral-small" meant the bounded MAX_JOBS_PER_MODEL_CLAIM=4 read returned the
+  // same four ineligible rows on every claim, and the fifth (perfectly dispatchable) job was
+  // never even read, let alone claimed.
+  await coordinator.enqueueBatch([
+    ...Array.from({ length: 4 }, (_, i) =>
+      makeJob(`hog-${i}`, { policy_json: mistralPolicy, input_token_estimate: 40000 })
+    ),
+    makeJob("zzz-fits", { policy_json: mistralPolicy }),
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.deepEqual(plan.jobs.map((job) => job.id), ["zzz-fits"]);
+  assert.equal(plan.jobs[0].route_id, "route-c");
+
+  // The oversized jobs themselves stay queued -- nothing configured could ever serve them -- but
+  // are never wrongly claimed, on this tick or a later one.
+  const second = await coordinator.claimDispatchWindow(Date.now() + 1000, 25);
+  assert.deepEqual(second.jobs, []);
+});
+
+test("claimDispatchWindow honors a direct jobs.priority recovery edit on an already-queued job", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_BUNDLE_JOBS: "1" });
+
+  // Both default to priority=1; "old-normal" is enqueued first, so plain FIFO would pick it.
+  await coordinator.enqueueBatch([makeJob("old-normal")]);
+  await coordinator.enqueueBatch([makeJob("urgent-but-late")]);
+
+  // review/44's documented recovery/testing path: an operator promotes an already-queued job with
+  // a direct SQLite edit (Cloudflare's dashboard Data Studio, or wrangler dev's Local Explorer SQL
+  // Studio) rather than through enqueueBatch. The trg_jobs_priority_sync trigger must propagate
+  // this into job_models.priority, or admission order silently never reflects the promotion.
+  sql.exec("UPDATE jobs SET priority = 0 WHERE id = 'urgent-but-late'");
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs[0]?.id, "urgent-but-late");
+});
+
+test("claimDispatchWindow backfills a legacy pre-index row on the first claim, then latches the scan off", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1")]);
+
+  // Simulate a job row written before job_models existed: present in `jobs` but with no
+  // corresponding job_models row, the way an older deployed version would have left it.
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, state, priority, policy_json, prompt_family,
+      input_token_estimate, max_output_token_estimate, payload_key, attempts, created_at, updated_at
+    ) VALUES ('legacy', 'legacy-key', 'legacy-digest', 'queued', 1, ?, 'tags', 100, 50,
+              'payloads/legacy/request.json', 0, ?, ?)`,
+    JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false }),
+    Date.now(),
+    Date.now()
+  );
+
+  let sched = [...sql.exec("SELECT job_models_backfill_complete FROM scheduler WHERE id = 1")];
+  assert.equal(sched[0].job_models_backfill_complete, 0);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.ok(
+    plan.jobs.some((job) => job.id === "legacy"),
+    "the pre-index row must still be backfilled and dispatchable"
+  );
+
+  // Every job is now indexed, so the migration pass found nothing left to repair and latched --
+  // steady-state operation must not keep re-scanning the whole queued backlog on every cron tick
+  // forever (see the coordinator.js comment on _backfillQueuedJobModels).
+  sched = [...sql.exec("SELECT job_models_backfill_complete FROM scheduler WHERE id = 1")];
+  assert.equal(sched[0].job_models_backfill_complete, 1);
+});
+
 test("completeBatch calibration only ever raises margin_tokens, never lowers it", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
