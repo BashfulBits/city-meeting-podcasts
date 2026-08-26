@@ -104,6 +104,73 @@ test("enqueueBatch indexes every canonical allowed model without model_routing",
   ]);
 });
 
+test("enqueueBatch omits a model whose every configured route is too small for the job's own estimate", async () => {
+  // route-a fits this job; route-b (a different model) is structurally too small for it no matter
+  // its live capacity. Indexing the job under model-b anyway would let it sit unclaimed forever at
+  // the head of model-b's bounded per-claim candidate window, starving smaller model-b jobs queued
+  // behind it -- see the coordinator.js comment on _modelsForQueuedJob.
+  const CATALOG = {
+    model_aliases: {},
+    model_routes_map: { "model-a": ["route-a"], "model-b": ["route-b"] },
+    routes_by_id: {
+      "route-a": { free: true, input_context_limit: 100000, output_context_limit: 100000 },
+      "route-b": { free: true, input_context_limit: 100, output_context_limit: 100 },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    DISPATCH_LIMITS_OVERRIDE: CATALOG,
+  });
+  await coordinator.enqueueBatch([
+    {
+      id: "oversized-for-b",
+      idempotency_key: "oversized-for-b-key",
+      request_digest: "oversized-for-b-digest",
+      policy_json: JSON.stringify({ allowed_models: ["model-a", "model-b"], allow_paid: false }),
+      prompt_family: "tags",
+      input_token_estimate: 5000,
+      max_output_token_estimate: 500,
+      payload_key: "payloads/oversized-for-b/request.json",
+    },
+  ]);
+
+  const models = [
+    ...sql.exec("SELECT model FROM job_models WHERE job_id='oversized-for-b' ORDER BY model"),
+  ];
+  assert.deepEqual(models.map((row) => row.model), ["model-a"]);
+});
+
+test("enqueueBatch sends a job that fits no configured route under any allowed model to __unroutable__", async () => {
+  const CATALOG = {
+    model_aliases: {},
+    model_routes_map: { "model-a": ["route-a"] },
+    routes_by_id: {
+      "route-a": { free: true, input_context_limit: 100, output_context_limit: 100 },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    DISPATCH_LIMITS_OVERRIDE: CATALOG,
+  });
+  await coordinator.enqueueBatch([
+    {
+      id: "too-big-everywhere",
+      idempotency_key: "too-big-everywhere-key",
+      request_digest: "too-big-everywhere-digest",
+      policy_json: JSON.stringify({ allowed_models: ["model-a"], allow_paid: false }),
+      prompt_family: "tags",
+      input_token_estimate: 5000,
+      max_output_token_estimate: 500,
+      payload_key: "payloads/too-big-everywhere/request.json",
+    },
+  ]);
+
+  const models = [
+    ...sql.exec("SELECT model FROM job_models WHERE job_id='too-big-everywhere'"),
+  ];
+  assert.deepEqual(models.map((row) => row.model), ["__unroutable__"]);
+});
+
 test("enqueueBatch handles idempotent replays and detects conflicts", async () => {
   const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
 

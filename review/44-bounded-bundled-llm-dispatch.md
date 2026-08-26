@@ -96,6 +96,31 @@ at enqueue and their removal at lease. The configured 5,000-job/day ingress cap 
 headroom for that trade-off. This does **not** adopt V1's `model_routing` fallback: model membership
 comes only from the caller's own `allowed_models` after aliases are resolved.
 
+**2026-08-26 review fixes.** Code review of the admission correction above found three gaps,
+fixed before merge:
+
+- *Oversized-job starvation.* `_modelsForQueuedJob` now omits a canonical model from a job's index
+  membership when every one of that model's currently configured routes has a smaller
+  input/output context limit than the job's own token estimates (checked independent of live
+  RPM/RPD/TPM/`blocked_until` state, which fluctuates and must never exclude a job from the
+  index). Without this, a handful of oversized jobs land at the head of that model's bounded
+  `MAX_JOBS_PER_MODEL_CLAIM` candidate window and stay there forever — `routesEligibleFor`'s live
+  check always returns empty for them, so `claimDispatchWindow` re-reads the exact same unclaimed
+  rows every tick, and a smaller, perfectly dispatchable job queued behind them is never even
+  read. A job left with no fitting model at all falls through to the existing `__unroutable__`
+  sentinel, exactly like a malformed/unknown-model policy already does.
+- *Stale indexed priority.* A `trg_jobs_priority_sync` SQLite trigger now propagates a direct
+  `jobs.priority` edit into `job_models.priority`. `job_models.priority` was otherwise set once, at
+  enqueue/backfill time; the documented operator recovery/testing path above ("a direct edit
+  through Cloudflare's dashboard Data Studio or `wrangler dev`'s Local Explorer SQL Studio") would
+  otherwise silently never change admission order, since the index row already exists and backfill
+  never revisits an already-indexed job.
+- *Perpetual backfill scan.* `claimDispatchWindow` now runs `_backfillQueuedJobModels` only while
+  `scheduler.job_models_backfill_complete` is unset, latching it once a pass finds nothing left to
+  repair. Previously this `NOT EXISTS` migration scan over the entire `state='queued'` backlog ran
+  unconditionally on every claim, forever — a steady-state cost with nothing to repair, working
+  against this PR's own goal of minimizing DO resource usage.
+
 ## Why cron pull, not Queue or a queue object
 
 The initial v2 design used a Queue for a durable DO-to-Worker handoff. That is unnecessary when the

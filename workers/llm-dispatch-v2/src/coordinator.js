@@ -153,13 +153,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
       );
 
       CREATE TABLE IF NOT EXISTS scheduler (
-        id                         INTEGER PRIMARY KEY CHECK (id = 1),
-        utc_day                    TEXT NOT NULL,
-        bundle_count_today         INTEGER NOT NULL DEFAULT 0,
-        jobs_ingested_today        INTEGER NOT NULL DEFAULT 0,
-        cleanup_cursor             TEXT,
-        next_maintenance_alarm_at  INTEGER
+        id                             INTEGER PRIMARY KEY CHECK (id = 1),
+        utc_day                        TEXT NOT NULL,
+        bundle_count_today             INTEGER NOT NULL DEFAULT 0,
+        jobs_ingested_today            INTEGER NOT NULL DEFAULT 0,
+        cleanup_cursor                 TEXT,
+        next_maintenance_alarm_at      INTEGER,
+        job_models_backfill_complete   INTEGER NOT NULL DEFAULT 0
       );
+
+      -- Keeps the model-queue index's ordering priority synchronized with a direct jobs.priority
+      -- edit -- review/44 documents an operator promoting an already-queued job for
+      -- recovery/testing as a direct SQLite edit through Cloudflare's dashboard Data Studio or
+      -- wrangler dev's Local Explorer SQL Studio. job_models.priority is otherwise only ever set
+      -- once, at enqueue/backfill time, so without this trigger such a promotion would silently
+      -- never change admission order: the index row already exists, so backfill never revisits
+      -- it either. A no-op UPDATE (0 rows matched) when the job isn't currently indexed -- e.g.
+      -- already claimed -- is expected and harmless.
+      CREATE TRIGGER IF NOT EXISTS trg_jobs_priority_sync
+      AFTER UPDATE OF priority ON jobs
+      WHEN NEW.priority IS NOT OLD.priority
+      BEGIN
+        UPDATE job_models SET priority = NEW.priority WHERE job_id = NEW.id;
+      END;
     `);
 
     // CREATE TABLE IF NOT EXISTS only creates the table on its first-ever run for this DO
@@ -169,6 +185,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "job_models_backfill_complete", "INTEGER NOT NULL DEFAULT 0");
 
     const today = new Date().toISOString().slice(0, 10);
     const existing = [...sql.exec("SELECT id FROM scheduler WHERE id = 1")];
@@ -183,7 +200,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _ensureColumn(table, column, definition) {
     const ALLOWED_TABLES = new Set(["routes", "jobs", "bundles", "attempts", "estimates", "scheduler"]);
-    const ALLOWED_COLUMNS = new Set(["rpd_window_start", "rpd_count", "payment_required_streak"]);
+    const ALLOWED_COLUMNS = new Set([
+      "rpd_window_start",
+      "rpd_count",
+      "payment_required_streak",
+      "job_models_backfill_complete",
+    ]);
     const ALLOWED_DEFINITIONS = new Set(["INTEGER NOT NULL DEFAULT 0"]);
     if (!ALLOWED_TABLES.has(table) || !ALLOWED_COLUMNS.has(column) || !ALLOWED_DEFINITIONS.has(definition)) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
@@ -296,13 +318,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _rollUtcDayIfNeeded(now) {
     const sql = this._getSql();
     const today = this._currentUtcDay(now);
-    const rows = [...sql.exec("SELECT utc_day, bundle_count_today, jobs_ingested_today FROM scheduler WHERE id = 1")];
+    const rows = [...sql.exec(
+      `SELECT utc_day, bundle_count_today, jobs_ingested_today, job_models_backfill_complete
+       FROM scheduler WHERE id = 1`
+    )];
     if (rows.length === 0) {
       sql.exec(
         "INSERT INTO scheduler (id, utc_day, bundle_count_today, jobs_ingested_today) VALUES (1, ?, 0, 0)",
         today
       );
-      return { utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
+      return { utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0, job_models_backfill_complete: 0 };
     }
     const sched = rows[0];
     if (sched.utc_day !== today) {
@@ -310,7 +335,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         "UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0 WHERE id = 1",
         today
       );
-      return { utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
+      // job_models_backfill_complete is a one-time migration latch, not a daily counter --
+      // day-rollover must not reset it back to a re-scan.
+      return { ...sched, utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
     }
     return sched;
   }
@@ -507,9 +534,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
-  /** Canonical model groups a job may use. Persist every explicit allowed model, even when it has
+  /**
+   * Canonical model groups a job may use. Persist every explicit allowed model, even when it has
    * no configured route yet, so a later catalog addition makes an already-queued job searchable
-   * without rewriting it. This follows aliases only: v2 does not expand config/model_routing. */
+   * without rewriting it. This follows aliases only: v2 does not expand config/model_routing.
+   *
+   * Omits a model whose *every* currently configured route is structurally too small for this
+   * job's own token estimates (routesEligibleFor's input/output context-limit check, evaluated
+   * here independent of any live RPM/RPD/TPM/blocked_until state, which fluctuates and must never
+   * exclude a job from the index). Without this, a handful of oversized jobs land at the head of
+   * that model's bounded per-claim candidate window (MAX_JOBS_PER_MODEL_CLAIM) and stay there
+   * forever -- routesEligibleFor always returns empty for them, so claimDispatchWindow re-reads
+   * the exact same unclaimed rows every tick and a smaller, perfectly dispatchable job queued
+   * behind them is never even read, let alone claimed. A model with no configured route at all is
+   * kept (can't be size-checked against a limit that doesn't exist); a job with no route left
+   * under any of its allowed models falls through to _indexQueuedJobModels's own
+   * "__unroutable__" sentinel, exactly like a malformed/unknown-model policy already does.
+   */
   _modelsForQueuedJob(job, dispatchLimits = this._dispatchLimits()) {
     let policy;
     try {
@@ -518,10 +559,31 @@ export class LLMSchedulerDO extends DurableObjectBase {
       return [];
     }
     const allowedModels = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
+    const allowPaid = Boolean(policy?.allow_paid);
+    const inputTokens = job.input_token_estimate || 0;
+    const outputTokens = job.max_output_token_estimate || 0;
+    const routesByModel = dispatchLimits?.model_routes_map || {};
+    const catalog = dispatchLimits?.routes_by_id || {};
+
     const models = new Set();
     for (const rawModel of allowedModels) {
       if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
-      models.add(canonicalModelName(rawModel.trim(), dispatchLimits));
+      const canonical = canonicalModelName(rawModel.trim(), dispatchLimits);
+      const routeIds = routesByModel[canonical];
+      if (!Array.isArray(routeIds) || routeIds.length === 0) {
+        models.add(canonical);
+        continue;
+      }
+      const fitsSomeConfiguredRoute = routeIds.some((routeId) => {
+        const route = catalog[routeId];
+        if (!route) return false;
+        if (!allowPaid && !route.free) return false;
+        return (
+          inputTokens <= (route.input_context_limit || 32768) &&
+          outputTokens <= (route.output_context_limit || 1024)
+        );
+      });
+      if (fitsSomeConfiguredRoute) models.add(canonical);
     }
     return [...models];
   }
@@ -547,6 +609,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * Existing v2 jobs predate job_models. Repair a bounded batch as part of normal serialized
    * claim work, then every later claim uses the model index. The cap makes deployment migration
    * finite and prevents a deep historical queue from turning one cron tick into a bulk rewrite.
+   *
+   * Every job enqueued after this PR is indexed at insert time, so once a pass finds fewer than
+   * `limit` rows still missing an index, no queued job can ever be missing one again -- the caller
+   * latches scheduler.job_models_backfill_complete so steady-state claimDispatchWindow stops
+   * re-running this NOT EXISTS scan over the whole queued backlog on every single cron tick
+   * forever. Returns the number of rows repaired so the caller can decide whether to latch.
    */
   _backfillQueuedJobModels(limit = 1000) {
     const sql = this._getSql();
@@ -559,6 +627,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       limit
     )];
     for (const job of missing) this._indexQueuedJobModels(job);
+    return { repaired: missing.length, exhausted: missing.length < limit };
   }
 
   _freshRouteLedger(catalogRoute, now) {
@@ -834,7 +903,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       // One bounded migration pass makes pre-index rollout jobs visible. Every normal claim below
       // then reads only the top few jobs for each capacity-ranked model, never a global queue head.
-      this._backfillQueuedJobModels();
+      // Latches scheduler.job_models_backfill_complete once a pass finds nothing left to repair,
+      // so steady-state operation stops paying this queued-backlog scan on every cron tick.
+      if (!sched.job_models_backfill_complete) {
+        const { exhausted } = this._backfillQueuedJobModels();
+        if (exhausted) {
+          sql.exec("UPDATE scheduler SET job_models_backfill_complete = 1 WHERE id = 1");
+        }
+      }
       const chosen = [];
       const chosenJobIds = new Set();
       const seenRoutes = new Set();

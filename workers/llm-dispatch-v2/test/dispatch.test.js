@@ -486,6 +486,86 @@ test("claimDispatchWindow prefers a higher-capacity model over older queued work
   assert.ok(["route-a", "route-b"].includes(plan.jobs[0].route_id));
 });
 
+test("claimDispatchWindow does not let oversized jobs permanently block a fit job behind them", async () => {
+  const { coordinator } = makeCoordinator();
+  const mistralPolicy = JSON.stringify({
+    allowed_models: ["mistral/mistral-small"],
+    allow_paid: false,
+  });
+
+  // Four jobs whose input_token_estimate exceeds route-c's own configured 32,000
+  // input_context_limit -- no currently configured Mistral route could ever serve them --
+  // followed by one ordinary job for the same model. Before the fix, indexing the oversized jobs
+  // under "mistral/mistral-small" meant the bounded MAX_JOBS_PER_MODEL_CLAIM=4 read returned the
+  // same four ineligible rows on every claim, and the fifth (perfectly dispatchable) job was
+  // never even read, let alone claimed.
+  await coordinator.enqueueBatch([
+    ...Array.from({ length: 4 }, (_, i) =>
+      makeJob(`hog-${i}`, { policy_json: mistralPolicy, input_token_estimate: 40000 })
+    ),
+    makeJob("zzz-fits", { policy_json: mistralPolicy }),
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.deepEqual(plan.jobs.map((job) => job.id), ["zzz-fits"]);
+  assert.equal(plan.jobs[0].route_id, "route-c");
+
+  // The oversized jobs themselves stay queued -- nothing configured could ever serve them -- but
+  // are never wrongly claimed, on this tick or a later one.
+  const second = await coordinator.claimDispatchWindow(Date.now() + 1000, 25);
+  assert.deepEqual(second.jobs, []);
+});
+
+test("claimDispatchWindow honors a direct jobs.priority recovery edit on an already-queued job", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_BUNDLE_JOBS: "1" });
+
+  // Both default to priority=1; "old-normal" is enqueued first, so plain FIFO would pick it.
+  await coordinator.enqueueBatch([makeJob("old-normal")]);
+  await coordinator.enqueueBatch([makeJob("urgent-but-late")]);
+
+  // review/44's documented recovery/testing path: an operator promotes an already-queued job with
+  // a direct SQLite edit (Cloudflare's dashboard Data Studio, or wrangler dev's Local Explorer SQL
+  // Studio) rather than through enqueueBatch. The trg_jobs_priority_sync trigger must propagate
+  // this into job_models.priority, or admission order silently never reflects the promotion.
+  sql.exec("UPDATE jobs SET priority = 0 WHERE id = 'urgent-but-late'");
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs[0]?.id, "urgent-but-late");
+});
+
+test("claimDispatchWindow backfills a legacy pre-index row on the first claim, then latches the scan off", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1")]);
+
+  // Simulate a job row written before job_models existed: present in `jobs` but with no
+  // corresponding job_models row, the way an older deployed version would have left it.
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, state, priority, policy_json, prompt_family,
+      input_token_estimate, max_output_token_estimate, payload_key, attempts, created_at, updated_at
+    ) VALUES ('legacy', 'legacy-key', 'legacy-digest', 'queued', 1, ?, 'tags', 100, 50,
+              'payloads/legacy/request.json', 0, ?, ?)`,
+    JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false }),
+    Date.now(),
+    Date.now()
+  );
+
+  let sched = [...sql.exec("SELECT job_models_backfill_complete FROM scheduler WHERE id = 1")];
+  assert.equal(sched[0].job_models_backfill_complete, 0);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.ok(
+    plan.jobs.some((job) => job.id === "legacy"),
+    "the pre-index row must still be backfilled and dispatchable"
+  );
+
+  // Every job is now indexed, so the migration pass found nothing left to repair and latched --
+  // steady-state operation must not keep re-scanning the whole queued backlog on every cron tick
+  // forever (see the coordinator.js comment on _backfillQueuedJobModels).
+  sched = [...sql.exec("SELECT job_models_backfill_complete FROM scheduler WHERE id = 1")];
+  assert.equal(sched[0].job_models_backfill_complete, 1);
+});
+
 test("completeBatch calibration only ever raises margin_tokens, never lowers it", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
