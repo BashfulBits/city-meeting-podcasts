@@ -68,6 +68,14 @@ export function validateConfig(env) {
   const maxJobsPerDay = Number(env.MAX_JOBS_PER_UTC_DAY || 5000);
   const max5xxRetries = Number(env.MAX_5XX_RETRIES || 1);
   const max5xxBackoffSeconds = Number(env.MAX_5XX_BACKOFF_SECONDS || 300);
+  const queuedJobModelBackfillLimit =
+    env.MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM === undefined
+      ? 1000
+      : Number(env.MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM);
+  const legacyRetryableRecoveryLimit =
+    env.MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM === undefined
+      ? 100
+      : Number(env.MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM);
 
   if (dispatchWindow + maxResponse + finalizationReserve > leaseDuration) {
     throw new Error(
@@ -118,6 +126,19 @@ export function validateConfig(env) {
     max5xxBackoffSeconds > 300
   ) {
     throw new Error("Invalid config: MAX_5XX_BACKOFF_SECONDS must be an integer from 60 to 300");
+  }
+
+  // These compatibility migrations can be paused independently of normal dispatch when the
+  // SQLite row-write budget is tight. Zero is an intentional emergency brake, not a fallback.
+  if (!Number.isInteger(queuedJobModelBackfillLimit) || queuedJobModelBackfillLimit < 0) {
+    throw new Error(
+      "Invalid config: MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM must be a non-negative integer"
+    );
+  }
+  if (!Number.isInteger(legacyRetryableRecoveryLimit) || legacyRetryableRecoveryLimit < 0) {
+    throw new Error(
+      "Invalid config: MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM must be a non-negative integer"
+    );
   }
 
   // Check projected Free resource usage stays below 75% threshold

@@ -17,6 +17,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch V2 Durable Object write-emergency brake.** The two one-time historical repair
+  migrations — queued-job model indexing and legacy `retryable` recovery — now have independently
+  validated per-cron caps. Their production values are temporarily `0`, which performs neither
+  migration scan nor migration write while preserving regular dispatch of already-indexed jobs and
+  all new enqueues. This is a scheduler-only operational throttle: no model fallback, pipeline
+  version, stored artifact, or record format changes.
+
 - **LLM dispatch final-5xx recovery.** AI Gateway now performs the configured short retry series
   before either Worker sees a final response. V1 retains a final 500/502/503/504 as one durable
   pending retry (rather than failing on its former one-attempt production setting). V2 now returns

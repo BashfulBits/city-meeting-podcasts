@@ -307,6 +307,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_5XX_BACKOFF_SECONDS", 300) * 1000;
   }
 
+  /**
+   * Migration-only write cap. Zero deliberately pauses historical repair work without pausing
+   * normal dispatch: new jobs are indexed at enqueue time and already-indexed jobs stay eligible.
+   */
+  _maxQueuedJobModelBackfillPerClaim() {
+    return this._envInt("MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM", 1000);
+  }
+
+  /** Zero deliberately pauses recovery of legacy, pre-5xx-fix retryable rows. */
+  _maxLegacyRetryableRecoveryPerClaim() {
+    return this._envInt("MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM", 100);
+  }
+
   /** Return an exponential route cooldown, starting at one minute, for a final Gateway 5xx. */
   _5xxBlockedUntil(retryCount, now) {
     const baseMs = 60_000;
@@ -924,7 +937,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // A bounded compatibility migration prevents pre-recovery deployments from leaving jobs
       // in the unclaimable retryable state indefinitely. Once its final short batch is empty,
       // persist that fact so later cron ticks spend no read on a state new code never writes.
-      if (!sched.legacy_retryable_recovery_complete && this._recoverLegacyRetryableJobs(now)) {
+      const legacyRetryableRecoveryLimit = this._maxLegacyRetryableRecoveryPerClaim();
+      if (
+        !sched.legacy_retryable_recovery_complete &&
+        legacyRetryableRecoveryLimit > 0 &&
+        this._recoverLegacyRetryableJobs(now, legacyRetryableRecoveryLimit)
+      ) {
         sql.exec("UPDATE scheduler SET legacy_retryable_recovery_complete = 1 WHERE id = 1");
       }
 
@@ -977,8 +995,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // then reads only the top few jobs for each capacity-ranked model, never a global queue head.
       // Latches scheduler.job_models_backfill_complete once a pass finds nothing left to repair,
       // so steady-state operation stops paying this queued-backlog scan on every cron tick.
-      if (!sched.job_models_backfill_complete) {
-        const { exhausted } = this._backfillQueuedJobModels();
+      const queuedJobModelBackfillLimit = this._maxQueuedJobModelBackfillPerClaim();
+      if (!sched.job_models_backfill_complete && queuedJobModelBackfillLimit > 0) {
+        const { exhausted } = this._backfillQueuedJobModels(queuedJobModelBackfillLimit);
         if (exhausted) {
           sql.exec("UPDATE scheduler SET job_models_backfill_complete = 1 WHERE id = 1");
         }

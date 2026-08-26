@@ -361,6 +361,20 @@ test("claimDispatchWindow recovers legacy retryable rows in bounded normal claim
   assert.equal(scheduler.legacy_retryable_recovery_complete, 1);
 });
 
+test("zero legacy retryable recovery limit pauses only the compatibility migration", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM: "0" });
+  await coordinator.enqueueBatch([makeJob("legacy")]);
+  sql.exec("UPDATE jobs SET state='retryable' WHERE id='legacy'");
+  sql.exec("DELETE FROM job_models WHERE job_id='legacy'");
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.deepEqual(plan.jobs, []);
+  const row = [...sql.exec("SELECT state FROM jobs WHERE id='legacy'")][0];
+  assert.equal(row.state, "retryable");
+  const scheduler = [...sql.exec("SELECT legacy_retryable_recovery_complete FROM scheduler")][0];
+  assert.equal(scheduler.legacy_retryable_recovery_complete, 0);
+});
+
 test("completeBatch escalates blocked_until on consecutive 402s and clears it on the next success", async () => {
   const { coordinator, sql } = makeCoordinator();
   // Single-route model (see the next test's comment) so every claim below lands on route-c,
@@ -619,6 +633,38 @@ test("claimDispatchWindow backfills a legacy pre-index row on the first claim, t
   // forever (see the coordinator.js comment on _backfillQueuedJobModels).
   sched = [...sql.exec("SELECT job_models_backfill_complete FROM scheduler WHERE id = 1")];
   assert.equal(sched[0].job_models_backfill_complete, 1);
+});
+
+test("zero queued-model backfill limit pauses only the compatibility migration", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM: "0" });
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, state, priority, policy_json, prompt_family,
+      input_token_estimate, max_output_token_estimate, payload_key, attempts, created_at, updated_at
+    ) VALUES ('legacy', 'legacy-key', 'legacy-digest', 'queued', 1, ?, 'tags', 100, 50,
+              'payloads/legacy/request.json', 0, ?, ?)`,
+    JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false }),
+    Date.now(),
+    Date.now()
+  );
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.deepEqual(plan.jobs, []);
+  const index = [...sql.exec("SELECT * FROM job_models WHERE job_id='legacy'")];
+  assert.deepEqual(index, []);
+  const scheduler = [...sql.exec("SELECT job_models_backfill_complete FROM scheduler")][0];
+  assert.equal(scheduler.job_models_backfill_complete, 0);
+});
+
+test("zero migration limits leave new indexed jobs dispatchable", async () => {
+  const { coordinator } = makeCoordinator({
+    MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM: "0",
+    MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM: "0",
+  });
+  await coordinator.enqueueBatch([makeJob("new-job")]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.deepEqual(plan.jobs.map((job) => job.id), ["new-job"]);
 });
 
 test("completeBatch calibration only ever raises margin_tokens, never lowers it", async () => {

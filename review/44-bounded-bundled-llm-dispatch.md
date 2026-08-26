@@ -284,6 +284,8 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_IN_FLIGHT_LLM_CALLS` | 8 | Separate global cap; avoids one slow bundle serializing all work |
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
 | `MAX_JOBS_PER_UTC_DAY` | 5,000 | Hard ingestion admission cap. This matches the ~4,000 daily dispatch ceiling while reserving Free-tier SQLite write headroom for each job's model-index rows and lease-time index removal |
+| `MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM` | 0 (emergency pause) | Per-cron cap for indexing historical queued jobs that predate `job_models`; zero skips both this migration scan and its writes without affecting indexed or newly enqueued jobs |
+| `MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM` | 0 (emergency pause) | Per-cron cap for converting historical unclaimable `retryable` rows into queued/indexed jobs; zero skips this compatibility migration without affecting normal dispatch |
 | `ENQUEUE_BATCH_MAX` | profiled gate (target: low hundreds to low thousands of jobs/call) | Jobs accepted per single `enqueue-batch` RPC — sized so reaching `MAX_JOBS_PER_UTC_DAY` takes tens of calls, not thousands |
 | `POLL_BATCH_MAX` | profiled gate (target: enough to cover the largest single reconciliation sweep in one call — see note below) | Statuses/results returned per single `poll-batch` RPC |
 
@@ -407,14 +409,15 @@ The DO creates SQLite-backed tables in its constructor. Payload bytes are exclud
   observed usage summary; it cannot lower a reservation below `ESTIMATE_MARGIN`.
 - **`scheduler`:** UTC bundle count, cleanup cursor, next maintenance alarm, and one-time
   completion flags for model-index backfill and legacy-`retryable` recovery; small singleton
-  state.
+  state. Each compatibility migration has a separately configurable zero-cap emergency pause.
 
 Job states are `queued`, `leased`, `unknown_attempt`, `completed`, `retryable`, `failed`, and
-`purge_pending`. `retryable` is retained only as a migration compatibility state: every claim
-recovers a bounded batch into `queued`, rather than allowing it to become a dead-end state. A job
-lease carries an opaque `lease_token`; an executor must present that exact token to settle it. A
-bundle has a separate execution token, preventing overlapping cron invocations from issuing
-duplicate provider calls.
+`purge_pending`. `retryable` is retained only as a migration compatibility state: each claim
+recovers a bounded batch into `queued` while its recovery cap is nonzero, rather than allowing it
+to become a dead-end state. A zero cap is a temporary row-write emergency pause, not completion;
+raising the cap resumes recovery. A job lease carries an opaque `lease_token`; an executor must
+present that exact token to settle it. A bundle has a separate execution token, preventing
+overlapping cron invocations from issuing duplicate provider calls.
 
 ### Ingress and status APIs
 
@@ -1216,7 +1219,8 @@ function claimDispatchWindow(now, windowSeconds):
 
   # Each enqueue writes one job_models row per canonical allowed model, including one with no route
   # yet. A later route-catalog addition then makes the existing job searchable without a migration.
-  # Existing queued rows are backfilled in capped 1,000-job batches during rollout.
+  # Existing queued rows are backfilled in the configured capped batch during rollout. A limit of
+  # zero is an emergency pause that performs no migration scan or write.
   model_pools = rankModelsByCapacity(routes ledger, catalog, now, windowSeconds)
   chosen = []
   seen_routes = {}
