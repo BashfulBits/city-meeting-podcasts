@@ -1839,12 +1839,25 @@ class LiteLLMBackend(Backend):
             job_id = str(uuid.uuid4())
             payload_key = f"payloads/{job_id}/request.json"
 
+            # Deliberately NOT `policy=policy`/`output_token_budget=...` here, unlike v1's call
+            # sites: those two kwargs are what makes _payload() fold allow_paid/allow_batch/
+            # submit_next/timeout_class/allowed_models/output_token_budget/deadline_at into the
+            # SAME dict as model/messages -- v1's own ingress (normalizeChatRequest in
+            # workers/llm-dispatch-proxy/src/index.js) then strips those policy-only fields back
+            # out before ever building an upstream provider request, via its own field-by-field
+            # allowlist. v2 has no equivalent step: gateway.js's upstreamRequestForRoute() just
+            # spreads whatever this stored payload contains straight into the provider request
+            # body. v2's protocol already carries every one of those fields it actually needs
+            # (allowed_models/allow_paid) separately, in policy_json below -- so passing `policy`
+            # here just leaked router-only bookkeeping into the literal HTTP body sent to Gemini/
+            # Mistral/etc., which every provider correctly rejected as unrecognized fields
+            # (Mistral: "Extra inputs are not permitted"; Groq: "property 'allow_batch' is
+            # unsupported") -- a 100% dispatch failure rate invisible until AI Gateway routing was
+            # fixed and its request/response logging became the first thing to ever show it.
             payload = self._payload(
                 job,
                 model,
                 resolved_model=logical_model,
-                policy=policy,
-                output_token_budget=self._output_token_budget(job),
             )
             canonical_payload_str = json.dumps(payload, sort_keys=True)
             request_digest = hashlib.sha256(canonical_payload_str.encode("utf-8")).hexdigest()
