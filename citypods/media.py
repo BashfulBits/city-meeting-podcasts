@@ -907,12 +907,14 @@ def _download_audio(
                 log=log,
                 max_seconds=max_seconds,
             )
-            if worker_result is not None:
-                succeeded = worker_result
+            if worker_result:
+                succeeded = True
             elif direct_rate_limit_status is not None:
                 raise RateLimitedMediaFetchError(
                     f"ffmpeg source-cache hit provider throttle ({direct_rate_limit_status})"
                 )
+            else:
+                succeeded = False
         return succeeded
     finally:
         # A failed ffmpeg write leaves a partial destination behind. It is not added to

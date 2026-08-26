@@ -2804,6 +2804,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Execute H15 transcript quality sampling, review packaging, ingest, or calibration."""
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "sample":
