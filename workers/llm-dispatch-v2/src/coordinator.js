@@ -297,17 +297,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_429_BACKOFF_SECONDS", 60) * 1000;
   }
 
-  // AI Gateway exhausts its own short retry series before this Worker sees a final 5xx. This is
-  // therefore a deliberately small, durable outer retry budget rather than another immediate
-  // retry loop in the same invocation.
+  /** AI Gateway already made its own short retry series, so this is a small durable outer budget. */
   _max5xxRetries() {
     return this._envInt("MAX_5XX_RETRIES", 1);
   }
 
+  /** Maximum route-only cooldown applied after a final post-Gateway 5xx. */
   _max5xxBackoffMs() {
     return this._envInt("MAX_5XX_BACKOFF_SECONDS", 300) * 1000;
   }
 
+  /** Return an exponential route cooldown, starting at one minute, for a final Gateway 5xx. */
   _5xxBlockedUntil(retryCount, now) {
     const baseMs = 60_000;
     const delayMs = Math.min(baseMs * 2 ** Math.max(0, retryCount - 1), this._max5xxBackoffMs());
