@@ -43,8 +43,10 @@ def test_policy_and_route_dataclasses_and_token_estimate():
 
 
 def test_generated_catalog_deduplicates_logical_models_across_direct_routes():
+    # groq_llama_3_3_70b_versatile_primary removed 2026-08-26 (config/provider_limits.yml):
+    # Groq stopped serving llama-3.3-70b-versatile, so this pool is down to two providers.
     candidates = ROUTE_CANDIDATES["meta-llama/llama-3.3-70b-instruct"]
-    assert {candidate.provider for candidate in candidates} == {"groq", "sambanova", "openrouter"}
+    assert {candidate.provider for candidate in candidates} == {"sambanova", "openrouter"}
     assert all(set(candidate.transports) == {"direct", "llm-dispatch"} for candidate in candidates)
     assert all(candidate.route_id and candidate.direct_model for candidate in candidates)
 

@@ -118,10 +118,17 @@ def test_route_limits_cannot_fall_back_to_provider_defaults():
 
 
 def test_compiled_routes_materialize_structured_output_profiles():
+    # This used to also assert on groq_llama_3_3_70b_versatile_primary, whose route entry had no
+    # route-level structured_output_profile of its own and so exercised the provider-level
+    # fallback (`route.get("structured_output_profile", provider_cfg.get(...))`) for a non-default
+    # ("json_object") value. That route was removed 2026-08-26 (Groq stopped serving the model);
+    # every remaining json_object-profile route sets structured_output_profile explicitly at the
+    # route level (see deepseek below), so this fallback branch's non-default case is currently
+    # untested against the real config -- its default case (falling through to
+    # "standard_json_schema") is still exercised by every other route that sets nothing at all.
     compiled = compile_llm_limits.compile_limits()
     gemma = compiled["routes_by_id"]["gemma_4_31b_primary"]
     deepseek = compiled["routes_by_id"]["deepseek_v4_flash_primary"]
-    groq = compiled["routes_by_id"]["groq_llama_3_3_70b_versatile_primary"]
 
     assert gemma["structured_output_profile"] == "relaxed_json_schema"
     assert gemma["structured_output_response_format"] == "json_schema"
@@ -130,8 +137,6 @@ def test_compiled_routes_materialize_structured_output_profiles():
     assert deepseek["structured_output_profile"] == "json_object"
     assert deepseek["structured_output_response_format"] == "json_object"
     assert deepseek["structured_output_include_schema_in_prompt"] is True
-    assert groq["structured_output_profile"] == "json_object"
-    assert groq["structured_output_response_format"] == "json_object"
 
 
 def test_google_routes_use_live_model_identifiers():

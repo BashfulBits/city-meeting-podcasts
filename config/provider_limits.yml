@@ -351,20 +351,18 @@ routes:
     free: true
 
   # ==========================================
-  # LLAMA 3.3 70B MULTI-PROVIDER POOL (Groq + SambaNova + OpenRouter)
+  # LLAMA 3.3 70B MULTI-PROVIDER POOL (SambaNova + OpenRouter)
   # ==========================================
-  - route_id: groq_llama_3_3_70b_versatile_primary
-    model: meta-llama/llama-3.3-70b-instruct
-    provider: groq
-    upstream_model: llama-3.3-70b-versatile
-    input_context_limit: 131072
-    output_context_limit: 32768
-    account_id: primary
-    rpm: 30
-    rpd: 1000
-    tpm: 6000
-    free: true
-
+  # groq_llama_3_3_70b_versatile_primary removed 2026-08-26: Groq has stopped serving
+  # llama-3.3-70b-versatile -- every dispatch attempt against it errored with Groq's own
+  # "does not exist or you do not have access to it" (model_not_found), confirmed against Groq's
+  # current published rate-limit table, which no longer lists any llama-3.3-70b model at all.
+  # Groq's current chat-completions catalog (per that same table) is allam-2-7b, groq/compound,
+  # groq/compound-mini, meta-llama/llama-prompt-guard-2-{22m,86m}, openai/gpt-oss-{120b,20b,
+  # safeguard-20b}, and qwen/qwen3.6-27b -- none of which is a drop-in replacement for this pool's
+  # logical model, so this is a removal, not a swap. Re-adding Groq under one of its current
+  # models is a separate, deliberate decision (new logical model or route mapping), not a same-day
+  # follow-up to this fix.
   - route_id: sambanova_llama_3_3_70b_instruct_primary
     model: meta-llama/llama-3.3-70b-instruct
     provider: sambanova
