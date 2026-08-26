@@ -5,7 +5,12 @@
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 import { routesEligibleFor } from "./routes.js";
-import { computeRouteLaneWait, routeHasCapacityFor, FULL_TOKEN_BUDGET_WINDOWS } from "./pacing.js";
+import {
+  computeRouteLaneWait,
+  routeHasCapacityFor,
+  FULL_TOKEN_BUDGET_WINDOWS,
+  paymentRequiredBackoffUntil,
+} from "./pacing.js";
 
 /**
  * index.js's getCoordinator() reaches this class through env.LLM_SCHEDULER.getByName(), the
@@ -94,7 +99,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         throttle_streak          INTEGER NOT NULL DEFAULT 0,
         last_provider_status     INTEGER,
         blocked_until            INTEGER,
-        buffer_seconds           REAL NOT NULL DEFAULT 0
+        buffer_seconds           REAL NOT NULL DEFAULT 0,
+        payment_required_streak  INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS bundles (
@@ -148,6 +154,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
 
     const today = new Date().toISOString().slice(0, 10);
     const existing = [...sql.exec("SELECT id FROM scheduler WHERE id = 1")];
@@ -162,7 +169,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _ensureColumn(table, column, definition) {
     const ALLOWED_TABLES = new Set(["routes", "jobs", "bundles", "attempts", "estimates", "scheduler"]);
-    const ALLOWED_COLUMNS = new Set(["rpd_window_start", "rpd_count"]);
+    const ALLOWED_COLUMNS = new Set(["rpd_window_start", "rpd_count", "payment_required_streak"]);
     const ALLOWED_DEFINITIONS = new Set(["INTEGER NOT NULL DEFAULT 0"]);
     if (!ALLOWED_TABLES.has(table) || !ALLOWED_COLUMNS.has(column) || !ALLOWED_DEFINITIONS.has(definition)) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
@@ -450,8 +457,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         route_id, rpm_window_start, rpm_count, rpd_window_start, rpd_count,
         tpm_window_start, tpm_reserved, full_token_budget, token_budget_updated_at,
         provisional_reservation, settled_usage, cost_accumulated,
-        throttle_streak, last_provider_status, blocked_until, buffer_seconds
-      ) VALUES (?, 0, 0, 0, 0, 0, 0, ?, ?, 0, 0, 0, 0, NULL, NULL, 0)`,
+        throttle_streak, last_provider_status, blocked_until, buffer_seconds,
+        payment_required_streak
+      ) VALUES (?, 0, 0, 0, 0, 0, 0, ?, ?, 0, 0, 0, 0, NULL, NULL, 0, 0)`,
       routeId,
       seedBudget,
       now
@@ -473,6 +481,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       last_provider_status: null,
       blocked_until: null,
       buffer_seconds: 0,
+      payment_required_streak: 0,
     };
   }
 
@@ -997,9 +1006,27 @@ export class LLMSchedulerDO extends DurableObjectBase {
           );
 
           if (result.outcome === "success") {
+            // A successful call proves the route is healthy again -- clear every backoff signal,
+            // 402's included, not just the 429 ones already cleared here.
             sql.exec(
-              "UPDATE routes SET throttle_streak = 0, buffer_seconds = 0, last_provider_status = ? WHERE route_id = ?",
+              `UPDATE routes SET throttle_streak = 0, buffer_seconds = 0,
+                                  payment_required_streak = 0, blocked_until = NULL,
+                                  last_provider_status = ? WHERE route_id = ?`,
               result.provider_status_code ?? 200,
+              job.lease_route_id
+            );
+          } else if (result.provider_status_code === 402) {
+            // Payment required / provider quota exhausted -- a billing-layer signal no amount of
+            // rpm/rpd/tpm pacing fixes, so force the route unavailable via blocked_until (see
+            // pacing.js's paymentRequiredBackoffUntil) instead of letting every future tick keep
+            // re-attempting and re-failing against it.
+            const ledger = this._getOrCreateRouteLedger(job.lease_route_id, now, {});
+            const newStreak = (ledger.payment_required_streak || 0) + 1;
+            sql.exec(
+              `UPDATE routes SET payment_required_streak = ?, blocked_until = ?,
+                                  last_provider_status = 402 WHERE route_id = ?`,
+              newStreak,
+              paymentRequiredBackoffUntil(newStreak, now),
               job.lease_route_id
             );
           } else if (result.provider_status_code != null) {

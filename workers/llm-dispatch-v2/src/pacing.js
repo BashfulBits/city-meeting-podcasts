@@ -153,3 +153,33 @@ export function computeRouteLaneWait(route, job, laneTime, now, options = {}) {
     min_inter_request_gap_ms: minInterRequestGapMs(route),
   };
 }
+
+/**
+ * Escalating cooldown for a route whose most recent attempt came back HTTP 402 (payment
+ * required / provider-side quota exhausted at the billing layer) -- a distinct signal from 429:
+ * 429 means "too fast," handled above by buffer_seconds/throttle_streak; 402 means "no budget
+ * left until some future reset," which no amount of pacing fixes. Forces the route fully
+ * unavailable via `blocked_until` (the same "explicit block from a severe/repeated throttle"
+ * mechanism earliestSafeStart already applies above) until whichever calendar boundary the
+ * current streak has earned: first occurrence assumes a same-day quota reset might simply fix
+ * it, escalating through a week and then a month for a streak that keeps recurring after each
+ * cooldown expires -- i.e., a real billing problem, not a transient blip -- and stays pinned to
+ * "start of next month" for any further streak past that, rather than escalating indefinitely.
+ *
+ * `streak` is the count AFTER this occurrence (the caller increments before calling this); a
+ * success resets it back to 0 elsewhere (coordinator.js), so streak only ever grows across
+ * consecutive 402s with no successful call between them.
+ */
+export function paymentRequiredBackoffUntil(streak, now) {
+  const d = new Date(now);
+  if (streak <= 1) {
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+  }
+  if (streak === 2) {
+    // Next UTC Monday, at least 1 and at most 7 days out (today itself included, so a streak
+    // reached exactly on a Monday still gets a full week, not zero).
+    const daysUntilNextMonday = ((8 - d.getUTCDay()) % 7) || 7;
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + daysUntilNextMonday);
+  }
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+}
