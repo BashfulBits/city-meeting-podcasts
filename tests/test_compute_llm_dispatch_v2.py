@@ -136,6 +136,64 @@ def test_enqueue_batch_submits_jobs_and_persists_payloads_to_b2():
     assert len(stored_payload_keys) == 2
 
 
+def test_enqueue_batch_payload_carries_no_policy_fields_for_the_provider():
+    """Regression for the 2026-08-26 incident: enqueue_batch's stored B2 payload is forwarded
+    to the provider verbatim by gateway.js's upstreamRequestForRoute() (unlike v1's own ingress,
+    which strips these fields via its own allowlist before ever building an upstream request) --
+    so any policy/router-only field that leaks into this payload becomes a literal field in the
+    HTTP body sent to Gemini/Mistral/etc. Every one of these providers rejected the extra fields
+    outright (Mistral: "Extra inputs are not permitted"; Groq: "property 'allow_batch' is
+    unsupported"), producing a 100% dispatch failure rate that stayed invisible until AI Gateway
+    routing was fixed and its logging became the first thing to ever surface it. v2's protocol
+    already carries every field it actually needs (allowed_models/allow_paid) separately, in
+    policy_json -- so the stored payload must carry only what a real chat-completions request
+    needs."""
+    storage = MockStorage()
+    mock_session = MagicMock()
+    mock_session.post.side_effect = _accept_all
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+        dispatch_v2_auth_token="secret-v2",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    job = InferenceJob(
+        task="tag",
+        inputs={
+            "messages": [{"role": "user", "content": "hello"}],
+            "llm_policy": LLMRequestPolicy(
+                allow_paid=True,
+                allow_batch=True,
+                allowed_models=("gemini/gemini-3-flash-preview",),
+                timeout_class="long",
+            ),
+        },
+        recipe_hash="recipe-policy-leak",
+    )
+
+    backend.enqueue_batch([job])
+
+    stored_payload_key = next(k for k in storage.files if k.startswith("payloads/"))
+    stored_payload = json.loads(storage.files[stored_payload_key])
+    policy_only_fields = {
+        "allow_paid",
+        "allow_batch",
+        "submit_next",
+        "timeout_class",
+        "allowed_models",
+        "input_tokens_estimate",
+        "output_token_budget",
+        "deadline_at",
+    }
+    assert not policy_only_fields & stored_payload.keys(), (
+        f"stored payload leaked policy-only fields to the provider: "
+        f"{policy_only_fields & stored_payload.keys()}"
+    )
+    assert stored_payload.keys() <= {"model", "messages", "stream", "response_format"}
+
+
 def test_enqueue_batch_and_poll_batch_work_through_production_routing_storage():
     """Regression test for the 2026-08-18 incident: production wires LiteLLMBackend's storage=
     to citypods.storage.routing.RoutingStorage (B2 primary + R2 coordination), whose
