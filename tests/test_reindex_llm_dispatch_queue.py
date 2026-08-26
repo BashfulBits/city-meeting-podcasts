@@ -94,6 +94,24 @@ def test_migrate_writes_ready_markers_in_apply_mode():
     assert client.puts[0]["Metadata"]["status"] == "pending"
 
 
+def test_migrate_recovers_legacy_retryable_records_when_explicitly_requested():
+    record = {**_pending("retryable"), "status": "retryable"}
+    key = "requests/retryable.json"
+    client = _Client({key: json.dumps(record).encode()}, [_page(key)])
+
+    assert migrate(client, "dispatch", dry_run=False, recover_retryable=True, workers=1) == (
+        1,
+        1,
+        1,
+    )
+    assert len(client.puts) == 2
+    restored = json.loads(client.puts[0]["Body"])
+    assert client.puts[0]["Key"] == key
+    assert restored["status"] == "pending"
+    assert restored["available_at"]
+    assert client.puts[1]["Key"] == ready_key(restored)
+
+
 def test_transient_r2_errors_are_retried_with_backoff(monkeypatch, capsys):
     attempts = 0
 

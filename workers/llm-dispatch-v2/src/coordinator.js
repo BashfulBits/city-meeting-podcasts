@@ -78,6 +78,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         lease_expires_at            INTEGER,
         bundle_id                   TEXT,
         attempts                    INTEGER NOT NULL DEFAULT 0,
+        transient_retry_count       INTEGER NOT NULL DEFAULT 0,
         created_at                  INTEGER NOT NULL,
         updated_at                  INTEGER NOT NULL
       );
@@ -153,13 +154,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       );
 
       CREATE TABLE IF NOT EXISTS scheduler (
-        id                             INTEGER PRIMARY KEY CHECK (id = 1),
-        utc_day                        TEXT NOT NULL,
-        bundle_count_today             INTEGER NOT NULL DEFAULT 0,
-        jobs_ingested_today            INTEGER NOT NULL DEFAULT 0,
-        cleanup_cursor                 TEXT,
-        next_maintenance_alarm_at      INTEGER,
-        job_models_backfill_complete   INTEGER NOT NULL DEFAULT 0
+        id                                  INTEGER PRIMARY KEY CHECK (id = 1),
+        utc_day                             TEXT NOT NULL,
+        bundle_count_today                  INTEGER NOT NULL DEFAULT 0,
+        jobs_ingested_today                 INTEGER NOT NULL DEFAULT 0,
+        cleanup_cursor                      TEXT,
+        next_maintenance_alarm_at           INTEGER,
+        job_models_backfill_complete        INTEGER NOT NULL DEFAULT 0,
+        legacy_retryable_recovery_complete  INTEGER NOT NULL DEFAULT 0
       );
 
       -- Keeps the model-queue index's ordering priority synchronized with a direct jobs.priority
@@ -185,7 +187,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("jobs", "transient_retry_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "job_models_backfill_complete", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "legacy_retryable_recovery_complete", "INTEGER NOT NULL DEFAULT 0");
 
     const today = new Date().toISOString().slice(0, 10);
     const existing = [...sql.exec("SELECT id FROM scheduler WHERE id = 1")];
@@ -199,12 +203,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   _ensureColumn(table, column, definition) {
-    const ALLOWED_TABLES = new Set(["routes", "jobs", "bundles", "attempts", "estimates", "scheduler"]);
+    const ALLOWED_TABLES = new Set([
+      "routes",
+      "jobs",
+      "bundles",
+      "attempts",
+      "estimates",
+      "scheduler",
+    ]);
     const ALLOWED_COLUMNS = new Set([
       "rpd_window_start",
       "rpd_count",
       "payment_required_streak",
+      "transient_retry_count",
       "job_models_backfill_complete",
+      "legacy_retryable_recovery_complete",
     ]);
     const ALLOWED_DEFINITIONS = new Set(["INTEGER NOT NULL DEFAULT 0"]);
     if (!ALLOWED_TABLES.has(table) || !ALLOWED_COLUMNS.has(column) || !ALLOWED_DEFINITIONS.has(definition)) {
@@ -284,6 +297,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_429_BACKOFF_SECONDS", 60) * 1000;
   }
 
+  /** AI Gateway already made its own short retry series, so this is a small durable outer budget. */
+  _max5xxRetries() {
+    return this._envInt("MAX_5XX_RETRIES", 1);
+  }
+
+  /** Maximum route-only cooldown applied after a final post-Gateway 5xx. */
+  _max5xxBackoffMs() {
+    return this._envInt("MAX_5XX_BACKOFF_SECONDS", 300) * 1000;
+  }
+
+  /** Return an exponential route cooldown, starting at one minute, for a final Gateway 5xx. */
+  _5xxBlockedUntil(retryCount, now) {
+    const baseMs = 60_000;
+    const delayMs = Math.min(baseMs * 2 ** Math.max(0, retryCount - 1), this._max5xxBackoffMs());
+    return now + delayMs;
+  }
+
   _maxRouteBufferSeconds() {
     return this._envInt("MAX_ROUTE_BUFFER_SECONDS", 120);
   }
@@ -319,7 +349,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const today = this._currentUtcDay(now);
     const rows = [...sql.exec(
-      `SELECT utc_day, bundle_count_today, jobs_ingested_today, job_models_backfill_complete
+      `SELECT utc_day, bundle_count_today, jobs_ingested_today, job_models_backfill_complete,
+              legacy_retryable_recovery_complete
        FROM scheduler WHERE id = 1`
     )];
     if (rows.length === 0) {
@@ -327,7 +358,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
         "INSERT INTO scheduler (id, utc_day, bundle_count_today, jobs_ingested_today) VALUES (1, ?, 0, 0)",
         today
       );
-      return { utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0, job_models_backfill_complete: 0 };
+      return {
+        utc_day: today,
+        bundle_count_today: 0,
+        jobs_ingested_today: 0,
+        job_models_backfill_complete: 0,
+        legacy_retryable_recovery_complete: 0,
+      };
     }
     const sched = rows[0];
     if (sched.utc_day !== today) {
@@ -335,8 +372,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         "UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0 WHERE id = 1",
         today
       );
-      // job_models_backfill_complete is a one-time migration latch, not a daily counter --
-      // day-rollover must not reset it back to a re-scan.
+      // Both completion flags are one-time migration latches, not daily counters.
       return { ...sched, utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
     }
     return sched;
@@ -630,6 +666,35 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return { repaired: missing.length, exhausted: missing.length < limit };
   }
 
+  /**
+   * Prior deployments recorded a final 5xx as `retryable`, but claimDispatchWindow only reads
+   * `queued` jobs. Recover a small batch on every cron tick so those rows become dispatchable
+   * without a manual SQLite edit. They receive one post-Gateway recovery execution: initialize
+   * their outer-retry counter at the cap so another final 5xx is surfaced as failed, never cycled.
+   */
+  _recoverLegacyRetryableJobs(now, limit = 100) {
+    const sql = this._getSql();
+    const legacy = [...sql.exec(
+      `SELECT * FROM jobs
+       WHERE state='retryable'
+       ORDER BY updated_at ASC, id ASC
+       LIMIT ?`,
+      limit
+    )];
+    for (const job of legacy) {
+      sql.exec(
+        `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
+                         lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?, updated_at=?
+         WHERE id=?`,
+        this._max5xxRetries(),
+        now,
+        job.id
+      );
+      this._indexQueuedJobModels(job);
+    }
+    return legacy.length < limit;
+  }
+
   _freshRouteLedger(catalogRoute, now) {
     const tpm = Number(catalogRoute?.tpm) || 0;
     return {
@@ -855,6 +920,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       const sched = this._rollUtcDayIfNeeded(now);
       if (sched.bundle_count_today >= maxBundlesPerDay) return EMPTY;
+
+      // A bounded compatibility migration prevents pre-recovery deployments from leaving jobs
+      // in the unclaimable retryable state indefinitely. Once its final short batch is empty,
+      // persist that fact so later cron ticks spend no read on a state new code never writes.
+      if (!sched.legacy_retryable_recovery_complete && this._recoverLegacyRetryableJobs(now)) {
+        sql.exec("UPDATE scheduler SET legacy_retryable_recovery_complete = 1 WHERE id = 1");
+      }
 
       // Reap bundles whose lease expired without ever reaching completeBatch -- an executor
       // crash, a CPU/wall-clock eviction mid-tick, or an uncaught error before the final
@@ -1201,19 +1273,33 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         const job = jobRows[0];
 
+        const isFinal5xx =
+          result.outcome === "retryable_error" &&
+          Number.isInteger(result.provider_status_code) &&
+          result.provider_status_code >= 500 &&
+          result.provider_status_code <= 599;
+        const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
+        const blockedUntil = isFinal5xx
+          ? this._5xxBlockedUntil(nextTransientRetryCount, now)
+          : null;
+        const shouldRetry5xx = isFinal5xx && job.transient_retry_count < this._max5xxRetries();
+
         let newState;
         switch (result.outcome) {
           case "success":
             newState = "completed";
             break;
+          case "deferred_late":
+            newState = "queued";
+            break;
           case "retryable_error":
-            newState = "retryable";
+            // A final 5xx has already exhausted AI Gateway's short retry sequence. Give it one
+            // durable, minute-scale retry; ambiguous transport failures and B2-write failures
+            // must surface as failed instead of silently becoming an unclaimable state.
+            newState = shouldRetry5xx ? "queued" : "failed";
             break;
           case "terminal_error":
             newState = "failed";
-            break;
-          case "deferred_late":
-            newState = "queued";
             break;
           default:
             continue; // unrecognized outcome; leave the job's state untouched
@@ -1223,6 +1309,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                               lease_expires_at=NULL, bundle_id=NULL, updated_at=? WHERE id=?`,
+            now,
+            result.job_id
+          );
+          this._indexQueuedJobModels(job);
+        } else if (shouldRetry5xx) {
+          sql.exec(
+            `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
+                             lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,
+                             updated_at=? WHERE id=?`,
+            nextTransientRetryCount,
             now,
             result.job_id
           );
@@ -1285,6 +1381,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
                                   last_provider_status = 402 WHERE route_id = ?`,
               newStreak,
               paymentRequiredBackoffUntil(newStreak, now),
+              job.lease_route_id
+            );
+          } else if (isFinal5xx) {
+            // The Gateway has already retried this request. Temporarily remove only this route
+            // from the capacity ranking so other models/accounts can drain while it recovers.
+            sql.exec(
+              `UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?),
+                                 last_provider_status = ? WHERE route_id = ?`,
+              blockedUntil,
+              result.provider_status_code,
               job.lease_route_id
             );
           } else if (result.provider_status_code != null) {

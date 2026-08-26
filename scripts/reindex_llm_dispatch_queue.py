@@ -2,8 +2,11 @@
 """Build date-ordered ready markers for an existing LLM-dispatch R2 queue.
 
 The Worker deliberately never scans ``requests/`` during a cron invocation: on the Free plan,
-decoding hundreds of stored prompts can exceed its 10ms CPU allowance.  Run this once after
+decoding hundreds of stored prompts can exceed its 10ms CPU allowance. Run this once after
 deploying the ready-index Worker to make already-pending canonical records dispatchable again.
+With ``--recover-retryable``, it also converts legacy ``retryable`` records to ``pending`` and
+writes their ready markers; this is the bounded operator migration for records stranded by an
+older Worker version that did not requeue them.
 
 Required environment variables:
   CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
@@ -148,6 +151,7 @@ def _inspect_object(
     item: dict[str, Any],
     *,
     dry_run: bool,
+    recover_retryable: bool = False,
     r2_retries: int = DEFAULT_R2_RETRIES,
 ) -> str:
     """Read one canonical record and optionally write its ready marker."""
@@ -161,10 +165,34 @@ def _inspect_object(
         record = json.loads(body)
     except json.JSONDecodeError:
         return "invalid_json"
-    if not isinstance(record, dict) or record.get("status") != "pending":
+    if not isinstance(record, dict):
+        return "ignored"
+    recovered = record.get("status") == "retryable" and recover_retryable
+    if record.get("status") != "pending" and not recovered:
         return "ignored"
     if not isinstance(record.get("id"), str) or not record["id"]:
         return "missing_id"
+
+    if recovered:
+        now = datetime.now().astimezone().isoformat().replace("+00:00", "Z")
+        record = {
+            **record,
+            "status": "pending",
+            "available_at": now,
+            "updated_at": now,
+            "processing_started_at": None,
+        }
+        if not dry_run:
+            _r2_with_retry(
+                lambda: client.put_object(
+                    Bucket=bucket,
+                    Key=key,
+                    Body=json.dumps(record, separators=(",", ":")).encode(),
+                    ContentType="application/json",
+                ),
+                key=key,
+                retries=r2_retries,
+            )
 
     marker_key = ready_key(record)
     if not dry_run:
@@ -179,7 +207,7 @@ def _inspect_object(
             key=marker_key,
             retries=r2_retries,
         )
-    return "pending"
+    return "recovered" if recovered else "pending"
 
 
 def _log_progress(
@@ -206,6 +234,7 @@ def migrate(
     bucket: str,
     *,
     dry_run: bool,
+    recover_retryable: bool = False,
     workers: int = DEFAULT_WORKERS,
     progress_every: int = DEFAULT_PROGRESS_EVERY,
     progress_seconds: int = DEFAULT_PROGRESS_SECONDS,
@@ -240,6 +269,7 @@ def migrate(
                     bucket,
                     item,
                     dry_run=dry_run,
+                    recover_retryable=recover_retryable,
                     r2_retries=r2_retries,
                 ): item["Key"]
                 for item in items
@@ -268,7 +298,7 @@ def migrate(
                         )
                         raise
                     scanned += 1
-                    if result == "pending":
+                    if result in {"pending", "recovered"}:
                         pending += 1
                         written += 1
                     elif result == "invalid_json":
@@ -299,7 +329,12 @@ def main() -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="count pending records without writing markers",
+        help="count eligible records without writing canonical records or ready markers",
+    )
+    parser.add_argument(
+        "--recover-retryable",
+        action="store_true",
+        help="requeue legacy retryable records as pending before indexing them",
     )
     parser.add_argument(
         "--workers",
@@ -334,6 +369,7 @@ def main() -> int:
         _client(workers=args.workers),
         args.bucket,
         dry_run=args.dry_run,
+        recover_retryable=args.recover_retryable,
         workers=args.workers,
         progress_every=args.progress_every,
         progress_seconds=args.progress_seconds,

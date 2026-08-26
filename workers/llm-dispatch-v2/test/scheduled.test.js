@@ -175,7 +175,7 @@ test("scheduled() claims a job, calls the gateway, writes the result, and comple
   }
 });
 
-test("scheduled() reports a terminal_error and does not crash when the gateway returns 500", async () => {
+test("scheduled() durably requeues a final Gateway 500 instead of stranding the job", async () => {
   const store = new Map();
   const originalFetch = globalThis.fetch;
   globalThis.fetch = fakeFetch(store, { gatewayStatus: 500, gatewayBody: JSON.stringify({ error: "boom" }) });
@@ -189,7 +189,11 @@ test("scheduled() reports a terminal_error and does not crash when the gateway r
 
     const coordinator = env.LLM_SCHEDULER.getByName();
     const pollRes = await coordinator.pollBatch(["job-err"]);
-    assert.equal(pollRes.statuses[0].state, "retryable");
+    assert.equal(pollRes.statuses[0].state, "queued");
+    const rows = [...coordinator._getSql().exec(
+      "SELECT transient_retry_count FROM jobs WHERE id='job-err'"
+    )];
+    assert.equal(rows[0].transient_retry_count, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -25,9 +25,10 @@
     "MODEL_ID": "mistral/mistral-large-2512",
     "MAX_REQUEST_BYTES": "8388608",
     "MAX_RESPONSE_BYTES": "2097152",
-    // A dispatch request is one model attempt. Retries would make the caller's CAS-backed
-    // 20-attempt/day cap undercount real provider API calls during the cautious rollout.
-    "MAX_ATTEMPTS": "1",
+    // AI Gateway first exhausts its own short retry sequence. One final 5xx then gets one
+    // durable, minute-scale queue retry; the small cap avoids an unbounded multiplier on the
+    // caller's CAS-backed request accounting.
+    "MAX_ATTEMPTS": "2",
     "PROCESSING_TIMEOUT_SECONDS": "900",
     "RETRY_BASE_SECONDS": "60",
     "RETRY_MAX_SECONDS": "3600",

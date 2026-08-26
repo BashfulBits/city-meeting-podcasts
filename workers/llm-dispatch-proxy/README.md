@@ -273,6 +273,8 @@ workflow uses the existing R2 secrets and serializes reindex runs. The local equ
 ```bash
 python scripts/reindex_llm_dispatch_queue.py --bucket citypods-llm-dispatch --dry-run
 python scripts/reindex_llm_dispatch_queue.py --bucket citypods-llm-dispatch
+# One-time recovery for legacy records in the no-longer-used retryable state.
+python scripts/reindex_llm_dispatch_queue.py --bucket citypods-llm-dispatch --recover-retryable
 ```
 
 The command needs `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` (and
