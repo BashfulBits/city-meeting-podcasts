@@ -300,6 +300,8 @@ enqueue/poll split for today's incident (Verification) before finalizing this va
 | `LEASE_DURATION_SECONDS` | 840 | Covers deadline; stays below cron duration |
 | `MAX_429_RETRIES` | 1 | Bounded same-route retry attempts inside one executor bundle |
 | `MAX_429_BACKOFF_SECONDS` | 60 | Upper bound for in-Worker `Retry-After` sleep |
+| `MAX_5XX_RETRIES` | 1 | One durable outer retry after AI Gateway has exhausted its own fast retry series |
+| `MAX_5XX_BACKOFF_SECONDS` | 300 | Five-minute ceiling for the 60-second exponential durable 5xx delay |
 | `UNKNOWN_ATTEMPT_POLICY` | hold | Unsupported-provider crash after send; never silently reissue |
 | `ESTIMATE_MARGIN` | profiled gate | Conservative route/model/prompt-family reservation floor |
 | `MAX_BUNDLE_PAYLOAD_BYTES` | profiled gate | Required cap before v2 deployment |
@@ -393,8 +395,8 @@ The DO creates SQLite-backed tables in its constructor. Payload bytes are exclud
 
 - **`jobs`:** `id`, unique `idempotency_key`, stable provider idempotency key, state, policy
   metadata, prompt family, conservative input/max-output token estimates, `payload_key`,
-  `result_key`, and `priority` (`0` = admit/dispatch first, `1` = default); one compact control row
-  per LLM job.
+  `result_key`, `transient_retry_count`, and `priority` (`0` =
+  admit/dispatch first, `1` = default); one compact control row per LLM job.
 - **`routes`:** `route_id`, paced availability, full token-bucket budget, provisional reservations,
   settled usage, cost, and 429 state; the per-route/account ledger and adaptive buffer.
 - **`bundles`:** `bundle_id`, state, lease expiry, active-call count, and dispatch-window end; the
@@ -403,13 +405,16 @@ The DO creates SQLite-backed tables in its constructor. Payload bytes are exclud
   and outcome; compact audit rows used to settle a provisional reservation from actual execution.
 - **`estimates`:** route/model/prompt-family conservative margin, sample count, and bounded recent
   observed usage summary; it cannot lower a reservation below `ESTIMATE_MARGIN`.
-- **`scheduler`:** UTC bundle count, cleanup cursor, and next maintenance alarm; small singleton
+- **`scheduler`:** UTC bundle count, cleanup cursor, next maintenance alarm, and one-time
+  completion flags for model-index backfill and legacy-`retryable` recovery; small singleton
   state.
 
 Job states are `queued`, `leased`, `unknown_attempt`, `completed`, `retryable`, `failed`, and
-`purge_pending`. A job lease carries an opaque `lease_token`; an executor must present that exact
-token to settle it. A bundle has a separate execution token, preventing overlapping cron
-invocations from issuing duplicate provider calls.
+`purge_pending`. `retryable` is retained only as a migration compatibility state: every claim
+recovers a bounded batch into `queued`, rather than allowing it to become a dead-end state. A job
+lease carries an opaque `lease_token`; an executor must present that exact token to settle it. A
+bundle has a separate execution token, preventing overlapping cron invocations from issuing
+duplicate provider calls.
 
 ### Ingress and status APIs
 
@@ -530,20 +535,29 @@ DISPATCH_WINDOW_SECONDS + MAX_RESPONSE_SECONDS + FINALIZATION_RESERVE_SECONDS
 Thus a healthy Worker has time to persist results and settle its lease, while a stalled Worker is
 eventually reaped. The DO alarm is scheduled for that explicit lease expiry.
 
-### Timeout and 429 behavior
+### Gateway, timeout, 429, and 5xx behavior
 
 The executor owns bounded request-level waiting only:
 
 - It creates one abort controller per provider request and a shared bundle deadline.
+- AI Gateway's configured retry series happens *inside* that one outbound `fetch()`. The executor
+  receives only its eventual response after the Gateway has exhausted those short attempts, or a
+  transport/abort error; it does not see or independently account for individual Gateway tries.
 - A first `429` asks the DO for `authorizeRetry` before sleeping or retrying. This rare RPC records
   the actual first attempt and either returns a fenced retry time that fits the shared deadline or
   declines the retry. It does not pre-reserve every successful job's second request.
 - An authorized retry becomes a route-lane barrier. It postpones only not-yet-started jobs on that
   route; other route lanes continue. A job shifted past the bundle deadline is `deferred_late` and
   returns to the DO instead of violating the route's rate limit.
-- Any final 429, timeout, transport failure, or malformed upstream response is sent in the one
-  `completeBatch` RPC as a retryable or terminal result. A normal upstream 429 never causes an
-  uncontrolled Worker retry or a second cron admission.
+- A final Gateway 5xx gets at most one **durable** outer retry: `completeBatch` returns the job to
+  `queued`, restores its normal indexed model membership, and briefly sets the failed route's
+  `blocked_until` (60 seconds, capped at five minutes if the outer-retry budget is raised). The next
+  cron therefore uses the usual indexed claim and can select another healthy model/account while
+  this route recovers. The retry cap prevents a Gateway outage from multiplying requests indefinitely.
+- Timeout, transport, malformed-response, and result-write failures are ambiguous without a
+  provider idempotency guarantee. They are surfaced as `failed` after completion rather than being
+  silently left as `retryable`; operators/callers can make an explicit replay decision.
+- A normal upstream 429 never causes an uncontrolled Worker retry or a second cron admission.
 - The DO treats a missing executor after its lease expires conservatively: it does not refund an
   already-admitted provider request. It requeues with backoff and a new lease, preventing a crash
   from causing rate-limit oversubscription.
@@ -1076,7 +1090,9 @@ CREATE TABLE IF NOT EXISTS scheduler (
   bundle_count_today          INTEGER NOT NULL DEFAULT 0,
   jobs_ingested_today         INTEGER NOT NULL DEFAULT 0,
   cleanup_cursor               TEXT,
-  next_maintenance_alarm_at    INTEGER
+  next_maintenance_alarm_at    INTEGER,
+  job_models_backfill_complete INTEGER NOT NULL DEFAULT 0,
+  legacy_retryable_recovery_complete INTEGER NOT NULL DEFAULT 0
 );
 ```
 

@@ -2693,6 +2693,26 @@ test("upstream LLM timeout tags last_error with upstream_timeout, duration, and 
   assert.match(record.last_error?.message, /timed out/);
 });
 
+test("a final 503 remains pending for the configured durable outer retry", async () => {
+  const env = { ...isolatedEnv(), MAX_ATTEMPTS: "2" };
+  const queued = await handleRequest(chatRequest(undefined, "gateway-503-retry"), env);
+  const queuedBody = await queued.json();
+
+  const result = await dispatchOne(
+    env,
+    async () => new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }),
+    new Date()
+  );
+
+  assert.equal(result.status, "retrying");
+  assert.equal(result.upstreamStatus, 503);
+  const stored = await env.LLM_QUEUE.get(`requests/${queuedBody.id}.json`);
+  const record = await stored.json();
+  assert.equal(record.status, "pending");
+  assert.equal(record.attempts, 1);
+  assert.ok(Date.parse(record.available_at) > Date.now());
+});
+
 test("exhausting retry attempts on timeout fails permanently with upstream_timeout", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(chatRequest(undefined, "terminal-timeout-check"), env);

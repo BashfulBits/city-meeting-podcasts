@@ -306,6 +306,61 @@ test("completeBatch requeues a deferred_late job without touching its attempt co
   assert.equal(rows[0].attempts, 0);
 });
 
+test("completeBatch requeues one final 5xx after Gateway retries, then fails the next one", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_5XX_RETRIES: "1" });
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const now = Date.now();
+  const firstPlan = await coordinator.claimDispatchWindow(now, 25);
+  const first = firstPlan.jobs[0];
+
+  await coordinator.completeBatch(firstPlan.bundle_id, firstPlan.execution_token, [
+    {
+      job_id: first.id,
+      lease_token: first.lease_token,
+      attempt_id: "first-503",
+      planned_at: first.not_before_at,
+      outcome: "retryable_error",
+      provider_status_code: 503,
+    },
+  ]);
+
+  let row = [...sql.exec("SELECT state, transient_retry_count FROM jobs WHERE id='j1'")][0];
+  assert.equal(row.state, "queued");
+  assert.equal(row.transient_retry_count, 1);
+  const route = [...sql.exec("SELECT blocked_until FROM routes WHERE route_id=?", first.route_id)][0];
+  assert.ok(route.blocked_until >= now + 60_000);
+  const alternatePlan = await coordinator.claimDispatchWindow(now + 1_000, 25);
+  assert.equal(alternatePlan.jobs[0].id, "j1");
+  assert.notEqual(alternatePlan.jobs[0].route_id, first.route_id);
+
+  await coordinator.completeBatch(alternatePlan.bundle_id, alternatePlan.execution_token, [
+    {
+      job_id: "j1",
+      lease_token: alternatePlan.jobs[0].lease_token,
+      attempt_id: "second-503",
+      planned_at: alternatePlan.jobs[0].not_before_at,
+      outcome: "retryable_error",
+      provider_status_code: 503,
+    },
+  ]);
+  row = [...sql.exec("SELECT state FROM jobs WHERE id='j1'")][0];
+  assert.equal(row.state, "failed");
+});
+
+test("claimDispatchWindow recovers legacy retryable rows in bounded normal claim work", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("legacy")]);
+  sql.exec("UPDATE jobs SET state='retryable' WHERE id='legacy'");
+  sql.exec("DELETE FROM job_models WHERE job_id='legacy'");
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs[0].id, "legacy");
+  const row = [...sql.exec("SELECT transient_retry_count FROM jobs WHERE id='legacy'")][0];
+  assert.equal(row.transient_retry_count, 1);
+  const scheduler = [...sql.exec("SELECT legacy_retryable_recovery_complete FROM scheduler")][0];
+  assert.equal(scheduler.legacy_retryable_recovery_complete, 1);
+});
+
 test("completeBatch escalates blocked_until on consecutive 402s and clears it on the next success", async () => {
   const { coordinator, sql } = makeCoordinator();
   // Single-route model (see the next test's comment) so every claim below lands on route-c,

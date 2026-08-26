@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch final-5xx recovery.** AI Gateway now performs the configured short retry series
+  before either Worker sees a final response. V1 retains a final 500/502/503/504 as one durable
+  pending retry (rather than failing on its former one-attempt production setting). V2 now returns
+  a final 5xx to the indexed queue for a later cron, with one bounded outer retry and a short route
+  cooldown so other models/accounts can continue draining. A final 5xx can no longer leave
+  a V2 record forever in the previously unclaimable `retryable` state: each cron recovers a
+  bounded batch of such historical rows, while the V1 offline reindexer has an explicit
+  `--recover-retryable` recovery mode. Timeout, transport, and result-write ambiguity is surfaced
+  as `failed`, not silently parked. No model fallback, pipeline version, or stored artifact is
+  changed.
+
 - **V2 dispatch admission is capacity-ranked, rather than globally FIFO.** The scheduler DO keeps
   an indexed queued-model membership for every explicitly allowed model on each job, ranks model
   pools by their routes' live free capacity, treats 402-blocked, paused, and capacity-exhausted

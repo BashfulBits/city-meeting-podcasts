@@ -65,6 +65,7 @@ export function validateConfig(env) {
   const maxJobsPerModelClaim = Number(env.MAX_JOBS_PER_MODEL_CLAIM || maxBundleJobs);
   const maxConcurrentLanes = Number(env.MAX_CONCURRENT_ROUTE_LANES || 5);
   const maxJobsPerDay = Number(env.MAX_JOBS_PER_UTC_DAY || 5000);
+  const max5xxRetries = Number(env.MAX_5XX_RETRIES || 1);
 
   if (dispatchWindow + maxResponse + finalizationReserve > leaseDuration) {
     throw new Error(
@@ -102,6 +103,12 @@ export function validateConfig(env) {
       `Invalid config: MAX_CONCURRENT_ROUTE_LANES (${maxConcurrentLanes}) must leave headroom under Cloudflare's ` +
       "fixed 6-simultaneous-connection-per-invocation limit (same on Free and Paid)"
     );
+  }
+
+  // AI Gateway has already exhausted its own configured fast retry series before the scheduler
+  // sees a final 5xx. Keep the durable fallback intentionally small so it cannot multiply calls.
+  if (!Number.isInteger(max5xxRetries) || max5xxRetries < 0 || max5xxRetries > 2) {
+    throw new Error("Invalid config: MAX_5XX_RETRIES must be an integer from 0 to 2");
   }
 
   // Check projected Free resource usage stays below 75% threshold

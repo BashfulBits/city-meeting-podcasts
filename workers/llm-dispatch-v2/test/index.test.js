@@ -70,6 +70,8 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     )
   );
 
+  assert.throws(() => validateConfig(createMockEnv({ MAX_5XX_RETRIES: "3" })));
+
   // ESTIMATED_CALL_DURATION_CEILING_SECONDS >= DISPATCH_WINDOW_SECONDS
   assert.throws(() =>
     validateConfig(
