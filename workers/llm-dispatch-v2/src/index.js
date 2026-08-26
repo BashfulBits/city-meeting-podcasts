@@ -76,6 +76,14 @@ export function validateConfig(env) {
     env.MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM === undefined
       ? 100
       : Number(env.MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM);
+  const migrationWriteUnitsPerDay =
+    env.MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY === undefined
+      ? 5000
+      : Number(env.MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY);
+  const migrationRowsScannedPerDay =
+    env.MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY === undefined
+      ? 250000
+      : Number(env.MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY);
 
   if (dispatchWindow + maxResponse + finalizationReserve > leaseDuration) {
     throw new Error(
@@ -138,6 +146,20 @@ export function validateConfig(env) {
   if (!Number.isInteger(legacyRetryableRecoveryLimit) || legacyRetryableRecoveryLimit < 0) {
     throw new Error(
       "Invalid config: MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM must be a non-negative integer"
+    );
+  }
+  if (
+    !Number.isInteger(migrationWriteUnitsPerDay) ||
+    migrationWriteUnitsPerDay < 0 ||
+    (migrationWriteUnitsPerDay > 0 && migrationWriteUnitsPerDay < 5)
+  ) {
+    throw new Error(
+      "Invalid config: MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY must be 0 or an integer of at least 5"
+    );
+  }
+  if (!Number.isInteger(migrationRowsScannedPerDay) || migrationRowsScannedPerDay < 0) {
+    throw new Error(
+      "Invalid config: MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY must be a non-negative integer"
     );
   }
 

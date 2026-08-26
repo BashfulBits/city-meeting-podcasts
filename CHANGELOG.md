@@ -17,12 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
-- **LLM dispatch V2 Durable Object write-emergency brake.** The two one-time historical repair
-  migrations — queued-job model indexing and legacy `retryable` recovery — now have independently
-  validated per-cron caps. Their production values are temporarily `0`, which performs neither
-  migration scan nor migration write while preserving regular dispatch of already-indexed jobs and
-  all new enqueues. This is a scheduler-only operational throttle: no model fallback, pipeline
-  version, stored artifact, or record format changes.
+- **LLM dispatch V2 linear, budgeted compatibility migrations.** Historical queued-job model
+  indexing now captures a rollout-time SQLite row-id high-water mark and advances a durable cursor,
+  so it reads the finite old population once instead of repeatedly searching the queue head. Legacy
+  `retryable` recovery follows the existing state/priority/created index. The migrations share
+  conservative daily row-read and write-unit budgets (`250,000` and `5,000`) and cautious per-cron
+  caps (four backfill rows, one recovery row); a zero cap or daily budget remains an emergency
+  pause. A job whose mappings exceed a daily budget resumes from a durable model offset; partial
+  backfill jobs remain out of admission and a `retryable` job is queued only after all mappings
+  exist. Each job retains every explicitly allowed model -- there is no allowed-model cap. This is
+  scheduler-only: no model fallback, pipeline version, stored artifact, or record format changes.
 
 - **LLM dispatch final-5xx recovery.** AI Gateway now performs the configured short retry series
   before either Worker sees a final response. V1 retains a final 500/502/503/504 as one durable
@@ -45,9 +49,9 @@ Phase R (Research-Tool Surface)._
   configured route is structurally too small for its own token estimate, so a handful of
   oversized jobs can no longer occupy a model's bounded candidate window forever and starve
   smaller jobs behind them; a SQLite trigger keeps the index's admission-order priority in sync
-  with a direct `jobs.priority` recovery edit; and the one-time pre-index backfill scan now
-  latches off once nothing is left to repair, instead of re-scanning the queued backlog on every
-  cron tick.
+  with a direct `jobs.priority` recovery edit; and the one-time pre-index backfill cursor latches
+  off after its fixed rollout population, rather than re-scanning the queued backlog on every cron
+  tick.
 
 - **Pipeline and GitHub Actions reliability hardening.**
   - **Runner timeout bounds:** Reduced `chapter-locator.yml` timeout to 45 minutes to prevent

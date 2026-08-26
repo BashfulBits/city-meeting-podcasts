@@ -667,6 +667,221 @@ test("zero migration limits leave new indexed jobs dispatchable", async () => {
   assert.deepEqual(plan.jobs.map((job) => job.id), ["new-job"]);
 });
 
+const QUEUED_MODEL_BACKFILL_BUDGET_TEST =
+  "queued-model backfill advances a high-water cursor within its daily migration budget";
+
+test(QUEUED_MODEL_BACKFILL_BUDGET_TEST, async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM: "4",
+    MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM: "0",
+    MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "3",
+    MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY: "100",
+  });
+  const policy = JSON.stringify({ allowed_models: ["not-in-the-test-catalog"], allow_paid: false });
+  const now = Date.now();
+  for (const id of ["legacy-1", "legacy-2"]) {
+    sql.exec(
+      `INSERT INTO jobs (
+        id, idempotency_key, request_digest, state, priority, policy_json, prompt_family,
+        input_token_estimate, max_output_token_estimate, payload_key, attempts, created_at,
+        updated_at
+      ) VALUES (?, ?, ?, 'queued', 1, ?, 'tags', 100, 50, ?, 0, ?, ?)`,
+      id,
+      `${id}-key`,
+      `${id}-digest`,
+      policy,
+      `payloads/${id}/request.json`,
+      now,
+      now
+    );
+  }
+
+  await coordinator.claimDispatchWindow(now, 25);
+  let scheduler = [...sql.exec(
+    `SELECT job_models_backfill_high_watermark, job_models_backfill_cursor,
+            migration_rows_scanned_today, migration_write_units_today
+     FROM scheduler`
+  )][0];
+  assert.equal(scheduler.job_models_backfill_high_watermark, 2);
+  assert.equal(scheduler.job_models_backfill_cursor, 1);
+  assert.equal(scheduler.migration_write_units_today, 3);
+
+  // The daily write budget holds the cursor in place. On the next UTC day it resets, then the
+  // remaining historical row advances the same finite cursor rather than restarting at the head.
+  await coordinator.claimDispatchWindow(now + 1_000, 25);
+  scheduler = [...sql.exec("SELECT job_models_backfill_cursor FROM scheduler")][0];
+  assert.equal(scheduler.job_models_backfill_cursor, 1);
+  await coordinator.claimDispatchWindow(now + 86_400_000, 25);
+  scheduler = [...sql.exec(
+    "SELECT job_models_backfill_complete, job_models_backfill_cursor FROM scheduler"
+  )][0];
+  assert.equal(scheduler.job_models_backfill_cursor, 2);
+  assert.equal(scheduler.job_models_backfill_complete, 1);
+});
+
+test("queued-model backfill preserves every allowed model", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM: "1",
+    MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM: "0",
+    MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "15",
+  });
+  const models = ["model-a", "model-b", "model-c", "model-d", "model-e"];
+  const now = Date.now();
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, state, priority, policy_json, prompt_family,
+      input_token_estimate, max_output_token_estimate, payload_key, attempts, created_at,
+      updated_at
+    ) VALUES ('many-models', 'many-models-key', 'many-models-digest', 'queued', 1, ?, 'tags',
+              100, 50, 'payloads/many-models/request.json', 0, ?, ?)`,
+    JSON.stringify({ allowed_models: models, allow_paid: false }),
+    now,
+    now
+  );
+
+  await coordinator.claimDispatchWindow(now, 25);
+  const indexed = [...sql.exec("SELECT model FROM job_models WHERE job_id='many-models'")]
+    .map((row) => row.model)
+    .sort();
+  assert.deepEqual(indexed, models);
+});
+
+const OVERSIZED_BACKFILL_TEST =
+  "oversized model-index backfill resumes without exposing a partial job to admission";
+
+test(OVERSIZED_BACKFILL_TEST, async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM: "4",
+    MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM: "0",
+    MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "5",
+  });
+  const now = Date.now();
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, state, priority, policy_json, prompt_family,
+      input_token_estimate, max_output_token_estimate, payload_key, attempts, created_at,
+      updated_at
+    ) VALUES ('oversized-backfill', 'oversized-backfill-key', 'oversized-backfill-digest',
+              'queued', 1, ?, 'tags', 100, 50, 'payloads/oversized-backfill/request.json',
+              0, ?, ?)`,
+    JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite", "mistral/mistral-small"] }),
+    now,
+    now
+  );
+
+  const first = await coordinator.claimDispatchWindow(now, 25);
+  assert.deepEqual(first.jobs, []);
+  let scheduler = [...sql.exec(
+    `SELECT job_models_backfill_pending_rowid, job_models_backfill_model_offset
+     FROM scheduler`
+  )][0];
+  assert.equal(scheduler.job_models_backfill_pending_rowid, 1);
+  assert.equal(scheduler.job_models_backfill_model_offset, 1);
+  assert.equal([...sql.exec("SELECT COUNT(*) AS count FROM job_models")][0].count, 1);
+
+  const second = await coordinator.claimDispatchWindow(now + 86_400_000, 25);
+  scheduler = [...sql.exec(
+    `SELECT job_models_backfill_complete, job_models_backfill_pending_rowid,
+            job_models_backfill_model_offset
+     FROM scheduler`
+  )][0];
+  assert.equal(scheduler.job_models_backfill_complete, 1);
+  assert.equal(scheduler.job_models_backfill_pending_rowid, null);
+  assert.equal(scheduler.job_models_backfill_model_offset, 0);
+  assert.deepEqual(second.jobs.map((job) => job.id), ["oversized-backfill"]);
+});
+
+test("legacy retryable recovery shares the daily migration write budget", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM: "0",
+    MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM: "1",
+    MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "5",
+    MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY: "100",
+  });
+  const policy = JSON.stringify({ allowed_models: ["not-in-the-test-catalog"], allow_paid: false });
+  const now = Date.now();
+  for (const id of ["retryable-1", "retryable-2"]) {
+    sql.exec(
+      `INSERT INTO jobs (
+        id, idempotency_key, request_digest, state, priority, policy_json, prompt_family,
+        input_token_estimate, max_output_token_estimate, payload_key, attempts, created_at,
+        updated_at
+      ) VALUES (?, ?, ?, 'retryable', 1, ?, 'tags', 100, 50, ?, 0, ?, ?)`,
+      id,
+      `${id}-key`,
+      `${id}-digest`,
+      policy,
+      `payloads/${id}/request.json`,
+      now,
+      now
+    );
+  }
+
+  await coordinator.claimDispatchWindow(now, 25);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='retryable-1'")][0].state, "queued");
+  assert.equal(
+    [...sql.exec("SELECT state FROM jobs WHERE id='retryable-2'")][0].state,
+    "retryable"
+  );
+  assert.equal([...sql.exec("SELECT migration_write_units_today FROM scheduler")][0]
+    .migration_write_units_today, 5);
+
+  await coordinator.claimDispatchWindow(now + 1_000, 25);
+  assert.equal(
+    [...sql.exec("SELECT state FROM jobs WHERE id='retryable-2'")][0].state,
+    "retryable"
+  );
+  await coordinator.claimDispatchWindow(now + 86_400_000, 25);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='retryable-2'")][0].state, "queued");
+});
+
+test("oversized retryable recovery stays hidden until every model mapping is indexed", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM: "0",
+    MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM: "1",
+    MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "5",
+  });
+  const now = Date.now();
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, state, priority, policy_json, prompt_family,
+      input_token_estimate, max_output_token_estimate, payload_key, attempts, created_at,
+      updated_at
+    ) VALUES ('oversized-retryable', 'oversized-retryable-key', 'oversized-retryable-digest',
+              'retryable', 1, ?, 'tags', 100, 50, 'payloads/oversized-retryable/request.json',
+              0, ?, ?)`,
+    JSON.stringify({ allowed_models: ["unknown-model-a", "unknown-model-b"] }),
+    now,
+    now
+  );
+
+  const first = await coordinator.claimDispatchWindow(now, 25);
+  assert.deepEqual(first.jobs, []);
+  let scheduler = [...sql.exec(
+    `SELECT legacy_retryable_recovery_job_id, legacy_retryable_recovery_model_offset
+     FROM scheduler`
+  )][0];
+  assert.equal(scheduler.legacy_retryable_recovery_job_id, "oversized-retryable");
+  assert.equal(scheduler.legacy_retryable_recovery_model_offset, 1);
+  assert.equal(
+    [...sql.exec("SELECT state FROM jobs WHERE id='oversized-retryable'")][0].state,
+    "retryable"
+  );
+
+  await coordinator.claimDispatchWindow(now + 86_400_000, 25);
+  scheduler = [...sql.exec(
+    `SELECT legacy_retryable_recovery_job_id, legacy_retryable_recovery_model_offset
+     FROM scheduler`
+  )][0];
+  assert.equal(scheduler.legacy_retryable_recovery_job_id, null);
+  assert.equal(scheduler.legacy_retryable_recovery_model_offset, 0);
+  assert.equal(
+    [...sql.exec("SELECT state FROM jobs WHERE id='oversized-retryable'")][0].state,
+    "queued"
+  );
+  assert.equal([...sql.exec("SELECT COUNT(*) AS count FROM job_models")][0].count, 2);
+});
+
 test("completeBatch calibration only ever raises margin_tokens, never lowers it", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
