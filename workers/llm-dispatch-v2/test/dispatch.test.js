@@ -306,6 +306,79 @@ test("completeBatch requeues a deferred_late job without touching its attempt co
   assert.equal(rows[0].attempts, 0);
 });
 
+test("completeBatch escalates blocked_until on consecutive 402s and clears it on the next success", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  // Single-route model (see the next test's comment) so every claim below lands on route-c,
+  // never a sibling route masking the block.
+  const policy = JSON.stringify({ allowed_models: ["mistral/mistral-small"], allow_paid: false });
+
+  async function claimAndComplete(jobId, outcome, providerStatusCode) {
+    await coordinator.enqueueBatch([makeJob(jobId, { policy_json: policy })]);
+    const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+    const job = plan.jobs[0];
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: job.id,
+        lease_token: job.lease_token,
+        attempt_id: `attempt-${jobId}`,
+        planned_at: job.not_before_at,
+        outcome,
+        provider_status_code: providerStatusCode,
+      },
+    ]);
+    return job.route_id;
+  }
+
+  const routeId = await claimAndComplete("p1", "terminal_error", 402);
+  assert.equal(routeId, "route-c");
+  let row = [...sql.exec("SELECT payment_required_streak, blocked_until FROM routes WHERE route_id=?", routeId)][0];
+  assert.equal(row.payment_required_streak, 1);
+  const afterFirst = row.blocked_until;
+  assert.ok(afterFirst > Date.now()); // blocked into the future
+
+  // Real time obviously can't advance a day inside a test; clear the block directly to simulate
+  // it having already expired, exactly as it would in production once `now` passes blocked_until
+  // -- this test is about what completeBatch does with the streak across separate 402s, not
+  // about re-proving claimDispatchWindow's own blocked_until enforcement (see the next test).
+  sql.exec("UPDATE routes SET blocked_until = 0 WHERE route_id = ?", routeId);
+
+  await claimAndComplete("p2", "terminal_error", 402);
+  row = [...sql.exec("SELECT payment_required_streak, blocked_until FROM routes WHERE route_id=?", routeId)][0];
+  assert.equal(row.payment_required_streak, 2);
+  assert.ok(row.blocked_until > afterFirst); // escalated further out (day -> week)
+
+  sql.exec("UPDATE routes SET blocked_until = 0 WHERE route_id = ?", routeId);
+  await claimAndComplete("p3", "success", 200);
+  row = [...sql.exec("SELECT payment_required_streak, blocked_until FROM routes WHERE route_id=?", routeId)][0];
+  assert.equal(row.payment_required_streak, 0);
+  assert.equal(row.blocked_until, null);
+});
+
+test("claimDispatchWindow will not select a route still inside its 402 blocked_until window", async () => {
+  const { coordinator } = makeCoordinator();
+  // mistral/mistral-small has exactly one eligible route (route-c) in TEST_CATALOG, so blocking
+  // it can't be masked by a sibling route picking up the second job instead.
+  const policy = JSON.stringify({ allowed_models: ["mistral/mistral-small"], allow_paid: false });
+
+  await coordinator.enqueueBatch([makeJob("b1", { policy_json: policy })]);
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(first.jobs[0].route_id, "route-c");
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: first.jobs[0].id,
+      lease_token: first.jobs[0].lease_token,
+      attempt_id: "a-b1",
+      planned_at: first.jobs[0].not_before_at,
+      outcome: "terminal_error",
+      provider_status_code: 402,
+    },
+  ]);
+
+  await coordinator.enqueueBatch([makeJob("b2", { policy_json: policy })]);
+  const second = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(second.jobs.length, 0); // route-c is blocked until tomorrow; no other route serves this model
+});
+
 test("completeBatch calibration only ever raises margin_tokens, never lowers it", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
