@@ -115,11 +115,12 @@ fixed before merge:
   through Cloudflare's dashboard Data Studio or `wrangler dev`'s Local Explorer SQL Studio") would
   otherwise silently never change admission order, since the index row already exists and backfill
   never revisits an already-indexed job.
-- *Perpetual backfill scan.* `claimDispatchWindow` now runs `_backfillQueuedJobModels` only while
-  `scheduler.job_models_backfill_complete` is unset, latching it once a pass finds nothing left to
-  repair. Previously this `NOT EXISTS` migration scan over the entire `state='queued'` backlog ran
-  unconditionally on every claim, forever — a steady-state cost with nothing to repair, working
-  against this PR's own goal of minimizing DO resource usage.
+- *Repeated queue-head migration work.* `claimDispatchWindow` captures the maximum SQLite
+  `jobs.rowid`
+  at rollout, then advances `scheduler.job_models_backfill_cursor` only through that finite range.
+  Jobs created later are indexed synchronously at enqueue and are outside the high-water mark. This
+  replaces the former `NOT EXISTS` queue-head scan, which could repeatedly revisit repaired rows as
+  a large historical backlog drained.
 
 ## Why cron pull, not Queue or a queue object
 
@@ -284,10 +285,16 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_IN_FLIGHT_LLM_CALLS` | 8 | Separate global cap; avoids one slow bundle serializing all work |
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
 | `MAX_JOBS_PER_UTC_DAY` | 5,000 | Hard ingestion admission cap. This matches the ~4,000 daily dispatch ceiling while reserving Free-tier SQLite write headroom for each job's model-index rows and lease-time index removal |
-| `MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM` | 0 (emergency pause) | Per-cron cap for indexing historical queued jobs that predate `job_models`; zero skips both this migration scan and its writes without affecting indexed or newly enqueued jobs |
-| `MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM` | 0 (emergency pause) | Per-cron cap for converting historical unclaimable `retryable` rows into queued/indexed jobs; zero skips this compatibility migration without affecting normal dispatch |
+| `MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM` | 4 | Forward-only historical cursor; zero pauses it |
+| `MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM` | 1 | Indexed historical recovery; zero pauses it |
+| `MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY` | 5,000 | Shared conservative daily write budget |
+| `MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY` | 250,000 | Shared migration-query-row budget |
 | `ENQUEUE_BATCH_MAX` | profiled gate (target: low hundreds to low thousands of jobs/call) | Jobs accepted per single `enqueue-batch` RPC — sized so reaching `MAX_JOBS_PER_UTC_DAY` takes tens of calls, not thousands |
 | `POLL_BATCH_MAX` | profiled gate (target: enough to cover the largest single reconciliation sweep in one call — see note below) | Statuses/results returned per single `poll-batch` RPC |
+
+Each model-index mapping costs three conservative write units. Recovering a job costs two units plus
+its mappings. These budgets do not cap a job's allowed-model list, and ordinary capacity-ranked
+admission is not charged to the migration-read budget.
 
 **`POLL_BATCH_MAX` covers two different traffic shapes; size it for the larger one.** There are two
 distinct poll use cases, not one: (a) the automated `JobHandle` reconciliation sweep that runs as
@@ -407,17 +414,19 @@ The DO creates SQLite-backed tables in its constructor. Payload bytes are exclud
   and outcome; compact audit rows used to settle a provisional reservation from actual execution.
 - **`estimates`:** route/model/prompt-family conservative margin, sample count, and bounded recent
   observed usage summary; it cannot lower a reservation below `ESTIMATE_MARGIN`.
-- **`scheduler`:** UTC bundle count, cleanup cursor, next maintenance alarm, and one-time
-  completion flags for model-index backfill and legacy-`retryable` recovery; small singleton
-  state. Each compatibility migration has a separately configurable zero-cap emergency pause.
+- **`scheduler`:** UTC bundle count, cleanup cursor, next maintenance alarm, one-time completion
+  flags, a fixed backfill high-water mark/cursor, and UTC migration read/write counters; small
+  singleton state. Each compatibility migration has a separately configurable zero-cap emergency
+  pause and they share conservative daily budgets.
 
 Job states are `queued`, `leased`, `unknown_attempt`, `completed`, `retryable`, `failed`, and
 `purge_pending`. `retryable` is retained only as a migration compatibility state: each claim
-recovers a bounded batch into `queued` while its recovery cap is nonzero, rather than allowing it
-to become a dead-end state. A zero cap is a temporary row-write emergency pause, not completion;
-raising the cap resumes recovery. A job lease carries an opaque `lease_token`; an executor must
-present that exact token to settle it. A bundle has a separate execution token, preventing
-overlapping cron invocations from issuing duplicate provider calls.
+recovers an index-ordered bounded batch into `queued` while its recovery cap and shared daily
+budget permit, rather than allowing it to become a dead-end state. A zero cap or budget is a
+temporary row-write emergency pause, not completion; raising it resumes recovery. A job lease
+carries an opaque `lease_token`; an executor must present that exact token to settle it. A bundle
+has a separate execution token, preventing overlapping cron invocations from issuing duplicate
+provider calls.
 
 ### Ingress and status APIs
 
@@ -1096,7 +1105,11 @@ CREATE TABLE IF NOT EXISTS scheduler (
   cleanup_cursor               TEXT,
   next_maintenance_alarm_at    INTEGER,
   job_models_backfill_complete INTEGER NOT NULL DEFAULT 0,
-  legacy_retryable_recovery_complete INTEGER NOT NULL DEFAULT 0
+  legacy_retryable_recovery_complete INTEGER NOT NULL DEFAULT 0,
+  job_models_backfill_high_watermark INTEGER,
+  job_models_backfill_cursor   INTEGER NOT NULL DEFAULT 0,
+  migration_rows_scanned_today INTEGER NOT NULL DEFAULT 0,
+  migration_write_units_today  INTEGER NOT NULL DEFAULT 0
 );
 ```
 
@@ -1219,8 +1232,9 @@ function claimDispatchWindow(now, windowSeconds):
 
   # Each enqueue writes one job_models row per canonical allowed model, including one with no route
   # yet. A later route-catalog addition then makes the existing job searchable without a migration.
-  # Existing queued rows are backfilled in the configured capped batch during rollout. A limit of
-  # zero is an emergency pause that performs no migration scan or write.
+  # At rollout, historical rows up to a fixed rowid high-water mark are backfilled in forward-only
+  # configured batches. New enqueues are already indexed. The two migrations share daily read/
+  # write-unit budgets; zero for a cap or budget is an emergency pause.
   model_pools = rankModelsByCapacity(routes ledger, catalog, now, windowSeconds)
   chosen = []
   seen_routes = {}
