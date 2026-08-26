@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 54,
+    "routes_count": 55,
     "providers_count": 10,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 0.5
@@ -529,6 +529,24 @@
       "free": false,
       "input_per_token": 1e-07,
       "output_per_token": 4e-07,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "groq_gpt_oss_120b_primary": {
+      "route_id": "groq_gpt_oss_120b_primary",
+      "provider": "groq",
+      "upstream_model": "openai/gpt-oss-120b",
+      "input_context_limit": 131072,
+      "output_context_limit": 65536,
+      "account_id": "primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 3600,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
       "pricing": null,
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
@@ -1307,6 +1325,9 @@
       "sambanova_llama_3_3_70b_instruct_primary",
       "openrouter_meta_llama_llama_3_3_70b_instruct"
     ],
+    "openai/gpt-oss-120b": [
+      "groq_gpt_oss_120b_primary"
+    ],
     "qwen/qwen-2.5-72b-instruct": [
       "sambanova_qwen_2_5_72b_instruct_primary",
       "siliconflow_qwen_2_5_72b_primary"
@@ -1415,6 +1436,8 @@
     "sambanova/Meta-Llama-3.3-70B-Instruct": "meta-llama/llama-3.3-70b-instruct",
     "meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
     "openrouter/meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
+    "openai/gpt-oss-120b": "openai/gpt-oss-120b",
+    "groq/openai/gpt-oss-120b": "openai/gpt-oss-120b",
     "Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
     "sambanova/Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
     "Qwen/Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
