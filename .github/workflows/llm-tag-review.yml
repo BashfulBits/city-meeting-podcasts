@@ -79,16 +79,17 @@ jobs:
           truncate_body() {
             local file="$1"
             if [ -f "$file" ]; then
-              python3 -c "
-import sys
-from pathlib import Path
-p = Path(sys.argv[1])
-text = p.read_text(encoding='utf-8', errors='replace')
-if len(text.encode('utf-8')) > 60000:
-    b = text.encode('utf-8')[:60000].decode('utf-8', 'ignore')
-    cutoff = b.rfind('\n') if '\n' in b else len(b)
-    p.write_text(b[:cutoff] + '\n\n*(Truncated to stay within GitHub 64KB limit. Full artifact in workflow run.)*\n', encoding='utf-8')
-" "$file"
+              python3 -c '
+                import sys
+                from pathlib import Path
+                p = Path(sys.argv[1])
+                text = p.read_text(encoding="utf-8", errors="replace")
+                if len(text.encode("utf-8")) > 60000:
+                    b = text.encode("utf-8")[:60000].decode("utf-8", "ignore")
+                    cutoff = b.rfind("\n") if "\n" in b else len(b)
+                    msg = "\n\n*(Truncated to stay within GitHub 64KB limit. Full artifact in run.)*\n"
+                    p.write_text(b[:cutoff] + msg, encoding="utf-8")
+              ' "$file"
             fi
           }
           truncate_body llm-review/parent.md
