@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 55,
+    "routes_count": 54,
     "providers_count": 10,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 0.5
@@ -496,24 +496,6 @@
         "minItems",
         "maxItems"
       ]
-    },
-    "groq_llama_3_3_70b_versatile_primary": {
-      "route_id": "groq_llama_3_3_70b_versatile_primary",
-      "provider": "groq",
-      "upstream_model": "llama-3.3-70b-versatile",
-      "input_context_limit": 131072,
-      "output_context_limit": 32768,
-      "account_id": "primary",
-      "rpm": 15,
-      "rpd": 500,
-      "tpm": 2700,
-      "concurrency": null,
-      "free": true,
-      "input_per_token": null,
-      "output_per_token": null,
-      "pricing": null,
-      "reset_timezone": null,
-      "structured_output_schema_strip_keys": []
     },
     "sambanova_llama_3_3_70b_instruct_primary": {
       "route_id": "sambanova_llama_3_3_70b_instruct_primary",
@@ -1322,7 +1304,6 @@
       "gemini_3_5_flash_secondary"
     ],
     "meta-llama/llama-3.3-70b-instruct": [
-      "groq_llama_3_3_70b_versatile_primary",
       "sambanova_llama_3_3_70b_instruct_primary",
       "openrouter_meta_llama_llama_3_3_70b_instruct"
     ],
@@ -1430,8 +1411,6 @@
     "gemini/gemini-3.6-flash": "gemini/gemini-3.6-flash",
     "gemini-3.5-flash": "gemini/gemini-3.5-flash",
     "gemini/gemini-3.5-flash": "gemini/gemini-3.5-flash",
-    "llama-3.3-70b-versatile": "meta-llama/llama-3.3-70b-instruct",
-    "groq/llama-3.3-70b-versatile": "meta-llama/llama-3.3-70b-instruct",
     "Meta-Llama-3.3-70B-Instruct": "meta-llama/llama-3.3-70b-instruct",
     "sambanova/Meta-Llama-3.3-70B-Instruct": "meta-llama/llama-3.3-70b-instruct",
     "meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
