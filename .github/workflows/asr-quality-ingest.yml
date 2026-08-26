@@ -51,6 +51,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           ISSUE_NUMBER_INPUT: ${{ github.event.inputs.issue_number || '' }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number || '' }}
+          EVENT_ISSUE_TITLE: ${{ github.event.issue.title || '' }}
           EVENT_COMMENT_ISSUE_URL: ${{ github.event.comment.issue_url || '' }}
           EVENT_COMMENT_BODY: ${{ github.event.comment.body || '' }}
         run: |
@@ -58,7 +59,10 @@ jobs:
           if [ -n "$ISSUE_NUMBER_INPUT" ]; then
             numbers=$(jq -nc --arg n "$ISSUE_NUMBER_INPUT" '[$n | tonumber]')
           elif [ "$EVENT_NAME" = "issues" ] && [ -n "$EVENT_ISSUE_NUMBER" ]; then
-            numbers=$(jq -nc --arg n "$EVENT_ISSUE_NUMBER" '[$n | tonumber]')
+            # Filter to H15 review child issues so other issue edits (e.g. Renovate dashboard) are ignored
+            if [[ "$EVENT_ISSUE_TITLE" =~ ^"H15 sample " ]]; then
+              numbers=$(jq -nc --arg n "$EVENT_ISSUE_NUMBER" '[$n | tonumber]')
+            fi
           elif [ -n "$EVENT_COMMENT_ISSUE_URL" ] && printf '%s\n' "$EVENT_COMMENT_BODY" | grep -qiE '^/h15-ingest([[:space:]]|$)'; then
             n=$(printf '%s' "$EVENT_COMMENT_ISSUE_URL" | awk -F/ '{print $NF}')
             numbers=$(jq -nc --arg n "$n" '[$n | tonumber]')

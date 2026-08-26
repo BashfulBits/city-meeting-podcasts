@@ -2804,6 +2804,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Execute H15 transcript quality sampling, review packaging, ingest, or calibration."""
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "sample":
@@ -2880,6 +2881,9 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             if "no primary outcome checked" in str(exc):
                 print(json.dumps({"stored": False, "reason": "no_decision_checked"}, indent=2))
+                return 0
+            if "missing H15 metadata marker" in str(exc):
+                print(json.dumps({"stored": False, "reason": "missing_h15_metadata"}, indent=2))
                 return 0
             raise
     if args.command == "calibrate":

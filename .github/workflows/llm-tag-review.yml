@@ -75,6 +75,24 @@ jobs:
             --limit 500 \
             --json number,title \
             | jq -r '[.[] | select(.title == "R5 unified tag calibration digest" or .title == "R5 LLM tag calibration digest")] | .[0].number // empty')
+          # Protect against GitHub GraphQL 65,536-character issue body limits while preserving valid UTF-8
+          truncate_body() {
+            local file="$1"
+            if [ -f "$file" ]; then
+              python3 -c '
+                import sys
+                from pathlib import Path
+                p = Path(sys.argv[1])
+                text = p.read_text(encoding="utf-8", errors="replace")
+                if len(text.encode("utf-8")) > 60000:
+                    b = text.encode("utf-8")[:60000].decode("utf-8", "ignore")
+                    cutoff = b.rfind("\n") if "\n" in b else len(b)
+                    msg = "\n\n*(Truncated to stay within GitHub 64KB limit. Full artifact in run.)*\n"
+                    p.write_text(b[:cutoff] + msg, encoding="utf-8")
+              ' "$file"
+            fi
+          }
+          truncate_body llm-review/parent.md
           if [ -z "$existing" ]; then
             parent_url=$(gh issue create --title "$title" --label llm-calibration-review \
               --body-file llm-review/parent.md)
@@ -98,6 +116,7 @@ jobs:
           jq -c '.children[]?' llm-review/review-batch.json | while read -r row; do
             candidate_id=$(printf '%s' "$row" | jq -r '.candidate_id')
             body_file=$(printf '%s' "$row" | jq -r '.body_file')
+            truncate_body "$body_file"
             title="R5 unified tag sample $candidate_id"
             existing_child=$(gh issue list --state open --label llm-calibration-review \
               --limit 500 \

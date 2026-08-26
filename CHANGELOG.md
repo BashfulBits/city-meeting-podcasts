@@ -17,6 +17,25 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Pipeline and GitHub Actions reliability hardening.**
+  - **Runner timeout bounds:** Reduced `chapter-locator.yml` timeout to 45 minutes to prevent
+    hung runner orphan processes from holding runner quota.
+  - **Review issue overflow protection:** Added a 60,000-character ceiling guard in
+    `llm_evaluation.py` and `llm-tag-review.yml` before creating/updating GitHub review digest
+    issues, preventing GraphQL `Body is too long` failures.
+  - **Granicus media probe fallback:** Enabled Cloudflare Worker chunked fallback with an 8 MB
+    cap for truncated probe fetches in `media.py` when Granicus CDN returns HTTP 403 to ffmpeg.
+  - **Auxiliary discovery error handling:** Caught upstream LLM provider exceptions (quota, auth,
+    rate limits) in `scripts/city_discovery.py` to return `DEFERRED_EXIT` (75) and added fallback
+    provider secrets to `city-discovery.yml`.
+  - **ASR quality webhook filtering:** Filtered issue webhook events to `"H15 sample "` in
+    `asr-quality-ingest.yml` and gracefully handled missing metadata in `transcript_quality.py`.
+  - **Diarization setup ordering:** Placed FFmpeg shared library installation before python
+    dependencies in `r7-diarization.yml`.
+  - **LLM deferred sweep fault tolerance:** Wrapped individual record reads in `llm_deferred.py`
+    so transient storage retries don't abort entire snapshot sweeps.
+
+
 - **R7 diarization model-access diagnostics.** The preflight now verifies `HF_TOKEN` before
   loading pyannote and reports invalid credentials, unaccepted gated-model terms, unavailable
   configured models, Hub availability, and post-access pyannote runtime failures separately. This

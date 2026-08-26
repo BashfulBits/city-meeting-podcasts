@@ -461,13 +461,16 @@ def _write_json(storage, key: str, body: bytes) -> None:
 
 
 def _read_json(storage, key: str) -> Any | None:
+    """Read and parse a JSON object from storage, returning None on fetch or parse errors."""
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "record.json"
-        if not storage.get_file(key, path):
-            return None
         try:
+            if not storage.get_file(key, path):
+                return None
             return json.loads(path.read_text())
-        except (OSError, ValueError):
+        except Exception:  # noqa: BLE001
+            # Transient storage errors or corrupted JSON for an individual key must not abort the
+            # whole snapshot load / sweep.
             return None
 
 

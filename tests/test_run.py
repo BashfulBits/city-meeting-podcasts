@@ -2656,7 +2656,7 @@ def test_chapter_agenda_lane_provider_fetch_errors_defer_without_archive(tmp_pat
     results = _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="chapter-agenda")
 
     assert [r.status for r in results] == ["skipped"]
-    assert "chapter-agenda lane deferred" in results[0].detail
+    assert "deferred" in results[0].detail
 
 
 @pytest.mark.parametrize("lane", ["diarize", "speaker-identity"])

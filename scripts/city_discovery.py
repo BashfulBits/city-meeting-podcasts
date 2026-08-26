@@ -111,6 +111,7 @@ def _eligible_auxiliary(args: argparse.Namespace) -> dict[str, object]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run auxiliary or new-city discovery and write structured evidence artifacts."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["auxiliary", "new-city"], required=True)
     parser.add_argument("--city-slug")
@@ -158,6 +159,13 @@ def main(argv: list[str] | None = None) -> int:
         # (e.g. an unsupported LLM_MODEL) still raises ValueError, which is not caught here and
         # fails loudly as before.
         print(f"discovery deferred: {exc}", file=sys.stderr)
+        return DEFERRED_EXIT
+    except (ValueError, SystemExit, KeyboardInterrupt):
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # Upstream LLM provider quotas, network errors, or missing third-party keys during batch
+        # auxiliary discovery must defer the candidate rather than crashing the workflow.
+        print(f"discovery deferred (upstream provider error): {exc}", file=sys.stderr)
         return DEFERRED_EXIT
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
