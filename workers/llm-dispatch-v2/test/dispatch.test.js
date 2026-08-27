@@ -960,3 +960,90 @@ test("confirmNeverAccepted reports which preassigned ids the DO has no record of
   const result = await coordinator.confirmNeverAccepted(["accepted-1", "never-sent-2"]);
   assert.deepEqual(result.neverAccepted, ["never-sent-2"]);
 });
+
+// review/... row-read fix: _claimCandidatesForModel splits the old job_models-JOIN-jobs claim
+// query into two single-table lookups so each one's index usage is provable, not just intended.
+// These EXPLAIN QUERY PLAN assertions run the exact SQL text the coordinator executes (via the
+// same static fields it uses), so a future edit that reintroduces a join, drops the ORDER BY's
+// index match, or otherwise changes the query shape fails here instead of only showing up as a
+// production rows-read regression.
+test("_claimCandidatesForModel's job_models lookup plans an index seek on its own compound index, never a table scan", async () => {
+  const { coordinator, sql } = makeCoordinator();
+
+  // A big, multi-model backlog: if this ever planned as a scan (of either table), it would show
+  // up as a SCAN in the plan below regardless of which table it scanned.
+  await coordinator.enqueueBatch(
+    Array.from({ length: 200 }, (_, index) =>
+      makeJob(`seed-${index}`, {
+        policy_json: JSON.stringify({
+          allowed_models: [index % 2 === 0 ? "gemini/gemini-flash-lite" : "mistral/mistral-small"],
+          allow_paid: false,
+        }),
+      })
+    )
+  );
+  sql.exec("ANALYZE");
+
+  const plan = [
+    ...sql.exec(
+      `EXPLAIN QUERY PLAN ${LLMSchedulerDO.CLAIM_CANDIDATE_IDS_SQL}`,
+      "gemini/gemini-flash-lite",
+      4
+    ),
+  ];
+  const planText = plan.map((row) => row.detail).join("\n");
+
+  assert.match(
+    planText,
+    /SEARCH job_models USING (COVERING )?INDEX idx_job_models_model_priority_created \(model=\?\)/
+  );
+  assert.doesNotMatch(planText, /SCAN/);
+  // The old JOIN query's ambiguity was specifically about whether the plan would ever reference
+  // jobs at all for this step; this query's FROM clause has only job_models, so it structurally
+  // cannot.
+  assert.doesNotMatch(planText, /\bjobs\b/);
+
+  // Behavioral guard alongside the plan assertion: still returns the right count, all matching
+  // the queried model, in job_id order (every seed job lands in the same enqueueBatch call, so
+  // they share one created_at and job_id -- a plain string sort -- is the deciding tiebreaker).
+  const candidates = coordinator._claimCandidatesForModel("gemini/gemini-flash-lite", 4, 0);
+  assert.equal(candidates.length, 4);
+  assert.ok(candidates.every((job) => Number(job.id.slice("seed-".length)) % 2 === 0));
+  assert.deepEqual(
+    candidates.map((job) => job.id),
+    [...candidates.map((job) => job.id)].sort()
+  );
+});
+
+test("_claimCandidatesForModel's by-id job fetch plans a primary-key search, never a table scan", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch(
+    Array.from({ length: 200 }, (_, index) => makeJob(`seed-${index}`))
+  );
+  sql.exec("ANALYZE");
+
+  const plan = [
+    ...sql.exec(`EXPLAIN QUERY PLAN ${LLMSchedulerDO.CLAIM_CANDIDATE_JOBS_SQL_PREFIX}?,?,?,?)`, "seed-0", "seed-1", "seed-2", "seed-3"),
+  ];
+  const planText = plan.map((row) => row.detail).join("\n");
+
+  assert.match(planText, /SEARCH jobs USING (INTEGER PRIMARY KEY|INDEX sqlite_autoindex_jobs)/);
+  assert.doesNotMatch(planText, /SCAN/);
+});
+
+test("_claimCandidatesForModel skips a job_models entry whose job is no longer queued or is the excluded rowid", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("a"), makeJob("b"), makeJob("c")]);
+
+  // Simulate the defensive case this rewrite guards against: job_models briefly disagreeing with
+  // jobs (e.g. a lease claimed "b" without going through the paired job_models delete).
+  sql.exec("UPDATE jobs SET state='leased' WHERE id='b'");
+  const [{ row_id: excludedRowId }] = [...sql.exec("SELECT rowid AS row_id FROM jobs WHERE id='c'")];
+
+  const candidates = coordinator._claimCandidatesForModel(
+    "gemini/gemini-flash-lite",
+    10,
+    excludedRowId
+  );
+  assert.deepEqual(candidates.map((job) => job.id), ["a"]);
+});

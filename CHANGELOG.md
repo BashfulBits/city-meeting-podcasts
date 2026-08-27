@@ -17,6 +17,18 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch V2 claim query row-read ambiguity.** `claimDispatchWindow`'s per-model candidate
+  lookup was one query joining `job_models` to `jobs`, with a `LIMIT` intended to bound it to a
+  handful of rows -- but the query text didn't force which table SQLite's planner drove the join
+  from, so its cost was only *probably* bounded, not provably so. Investigated as the leading
+  theory for a 2026-08-27 incident where the Durable Object's daily SQLite rows-read budget
+  (Workers free tier) was exceeded, though reproduction against representative data never got the
+  planner to pick the expensive plan, so this is a hardening fix, not a confirmed root cause; the
+  incident's actual row-read source is still open. The lookup is now two single-table queries --
+  candidate ids from `job_models` alone, then those rows fetched from `jobs` by primary key --
+  each with only one index available to the planner, so the per-model cost is `O(limit)`
+  regardless of query-planner statistics. No behavior change to admission order or eligibility.
+
 - **LLM dispatch V2 linear, budgeted compatibility migrations.** Historical queued-job model
   indexing now captures a rollout-time SQLite row-id high-water mark and advances a durable cursor,
   so it reads the finite old population once instead of repeatedly searching the queue head. Legacy

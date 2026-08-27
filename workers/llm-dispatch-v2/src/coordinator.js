@@ -1183,6 +1183,70 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return rows.length > 0 ? rows[0].margin_tokens : 0;
   }
 
+  /**
+   * Read up to `limit` queue-ordered candidate job rows for one capacity-ranked model, as two
+   * single-table queries instead of one job_models-JOIN-jobs query.
+   *
+   * The prior single query -- `SELECT jobs.* FROM job_models JOIN jobs ... WHERE
+   * job_models.model = ? AND jobs.state = 'queued' ... ORDER BY job_models.priority, ... LIMIT ?`
+   * -- relied on SQLite driving the join from job_models via
+   * idx_job_models_model_priority_created (equality filter on model, ordering for free, stop at
+   * LIMIT). jobs.state = 'queued' is also satisfiable by idx_jobs_state_priority_created, so
+   * nothing in the query text *forced* that choice -- it depended on the planner's cost estimate
+   * picking the cheap side of the join.
+   *
+   * This was investigated as the leading theory for a live 2026-08-27 incident (claimDispatchWindow
+   * reading several thousand rows per cron tick and exceeding the Durable Objects free tier's
+   * daily rows-read budget), but reproducing it against node:sqlite -- uniform and skewed
+   * model/state distributions, up to 50k rows, with and without ANALYZE -- never got the planner
+   * to choose the jobs-driven plan; it consistently drove from job_models as intended. So this
+   * change should be read as removing a *theoretical* ambiguity and making the per-model cost
+   * provably O(limit) regardless of planner/statistics behavior, not as a confirmed fix for that
+   * incident's actual row-read source, which is still unexplained and needs production
+   * instrumentation (per-query row counts from a live tick) to pin down.
+   *
+   * Splitting the lookup removes the ambiguity instead of relying on the planner's choice: step
+   * one can only use job_models' compound index (it touches no other table), and step two is a
+   * plain by-id fetch against jobs' own primary key, bounded by the same `limit`. See
+   * test/dispatch.test.js's EXPLAIN QUERY PLAN assertions for the query shapes this depends on.
+   */
+  // Exposed as a static so test/dispatch.test.js's EXPLAIN QUERY PLAN assertions run the exact
+  // same SQL text this method executes, instead of a copy that could silently drift out of sync.
+  static CLAIM_CANDIDATE_IDS_SQL = `SELECT job_id FROM job_models
+       WHERE model = ?
+       ORDER BY priority ASC, created_at ASC, job_id ASC
+       LIMIT ?`;
+
+  static CLAIM_CANDIDATE_JOBS_SQL_PREFIX = "SELECT rowid AS row_id, * FROM jobs WHERE id IN (";
+
+  _claimCandidatesForModel(model, limit, excludeRowid) {
+    const sql = this._getSql();
+    const idRows = [...sql.exec(LLMSchedulerDO.CLAIM_CANDIDATE_IDS_SQL, model, limit)];
+    if (idRows.length === 0) return [];
+
+    const jobsById = new Map();
+    for (const chunk of this._chunks(idRows.map((row) => row.job_id))) {
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = [...sql.exec(
+        `${LLMSchedulerDO.CLAIM_CANDIDATE_JOBS_SQL_PREFIX}${placeholders})`,
+        ...chunk
+      )];
+      for (const row of rows) jobsById.set(row.id, row);
+    }
+
+    // job_models is meant to hold only currently-queued jobs (see the table's own comment and
+    // the DELETE at lease time below), so a miss or a state mismatch here should never happen in
+    // steady state -- but this lookup is no longer a single atomic JOIN, so guard it anyway
+    // rather than surface a leased/completed/missing job as a claim candidate.
+    const candidates = [];
+    for (const { job_id: jobId } of idRows) {
+      const job = jobsById.get(jobId);
+      if (!job || job.state !== "queued" || job.row_id === excludeRowid) continue;
+      candidates.push(job);
+    }
+    return candidates;
+  }
+
   static EMPTY_CLAIM_RESULT = { bundle_id: null, execution_token: null, jobs: [] };
 
   /** review/44 Unit 4: fenced, capacity-ranked admission and pacing in one SQLite transaction. */
@@ -1376,16 +1440,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const seenRoutes = new Set();
       for (const modelPlan of this._rankModelsByCapacity(now, windowSeconds, dispatchLimits)) {
         if (chosen.length >= maxBundleJobs) break;
-        const candidates = [...sql.exec(
-          `SELECT jobs.* FROM job_models
-           JOIN jobs ON jobs.id = job_models.job_id
-           WHERE job_models.model = ? AND jobs.state = 'queued' AND jobs.rowid != ?
-           ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
-           LIMIT ?`,
+        const candidates = this._claimCandidatesForModel(
           modelPlan.model,
-          jobModelsBackfillPendingRowid || 0,
-          maxJobsPerModelClaim
-        )];
+          maxJobsPerModelClaim,
+          jobModelsBackfillPendingRowid || 0
+        );
 
         for (const job of candidates) {
           if (chosen.length >= maxBundleJobs) break;
