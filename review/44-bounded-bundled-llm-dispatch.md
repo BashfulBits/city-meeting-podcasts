@@ -605,17 +605,26 @@ limits" and "Ingress and status APIs").
 
 - **`payloads/<job-id>/request.json`:** written by the caller; retained until terminal job cleanup.
 - **`results/<job-id>/<lease-token>.json`:** written by the executor Worker; retained for
-  `COMPLETED_RETENTION_DAYS`.
+  `COMPLETED_RETENTION_DAYS`, or until a consumption ack retires the job sooner (see below).
 
-The scheduler indexes terminal rows by `completed_at`. A daily bounded maintenance request (run from
-the executor Worker, which already holds B2 credentials) asks the DO for at most `CLEANUP_BATCH_SIZE`
-`purge_pending` jobs, deletes their B2 payload/result keys, and calls `confirmPurge` to remove the
-corresponding SQLite rows. The operation is idempotent: a crash after B2 deletion merely repeats a
-delete. It never performs an unbounded B2 or DO list. B2's existing version-retention backstop keeps
-accidental deletions recoverable for its configured window. Size `CLEANUP_BATCH_SIZE` (and
-`ORPHAN_SWEEP_LIMIT` below) well under the per-invocation subrequest ceiling (50 Free / 10,000 Paid;
-see "Cloudflare connection and subrequest limits") — each purged/swept key is its own B2 delete
-subrequest, same accounting as everywhere else in this design.
+The scheduler indexes terminal rows by `updated_at` (`idx_jobs_state_updated`). An hourly bounded
+maintenance request, gated by `CLEANUP_INTERVAL_MINUTES` (run from the executor Worker's own
+`scheduled()` handler, which already holds B2 credentials), asks the DO for at most
+`PURGE_BATCH_LIMIT` `purge_pending` jobs, deletes their B2 payload/result keys, and calls
+`confirmPurge` to remove the corresponding SQLite rows. The operation is idempotent: a crash after
+B2 deletion merely repeats a delete -- `purgePendingBatch` re-lists a row still stuck in
+`purge_pending` from an interrupted prior run before it lists any newly-eligible one, so nothing
+orphans permanently. It never performs an unbounded B2 or DO list. B2's existing version-retention
+backstop keeps accidental deletions recoverable for its configured window.
+
+`PURGE_BATCH_LIMIT` (and `ORPHAN_SWEEP_LIMIT` below) must stay well under the per-invocation
+subrequest ceiling (50 Free / 10,000 Paid; see "Cloudflare connection and subrequest limits") --
+each purged/swept job costs up to *two* B2 delete subrequests (payload and result keys), not one,
+and this cleanup shares its invocation's subrequest budget with `claimDispatchWindow`'s own
+concurrent dispatch traffic. `validateConfig` enforces this bound; see the 2026-08-27 retrospective
+for the incident this generalizes from (`bundles`/`attempts` retention hit the analogous DO
+rows-read budget, not the Worker subrequest one, but the "size every bounded knob against its real
+ceiling, not an assumed one" lesson is the same).
 
 A separate cursor-based orphan sweep examines at most `ORPHAN_SWEEP_LIMIT` old B2 payload keys per
 run. It deletes a key only after the DO confirms its preassigned job id was never accepted. This

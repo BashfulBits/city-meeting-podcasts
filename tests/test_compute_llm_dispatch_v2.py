@@ -1195,3 +1195,55 @@ def test_poll_batch_resolves_completed_results_concurrently():
     results = backend.poll_batch(handles)
     assert isinstance(results["a"], JobResult)
     assert isinstance(results["b"], JobResult)
+
+
+def test_poll_batch_one_malformed_result_does_not_lose_a_valid_sibling():
+    """A result body that isn't valid UTF-8/JSON must fail only its own job. Before this fix,
+    _resolve_completed's except clause only caught LLMBackendError, so an uncaught
+    JSONDecodeError inside list(pool.map(...)) would propagate and abort merging results for
+    every handle in the batch -- not just the malformed one."""
+    storage = MockStorage()
+    storage.put_cas(
+        "results/good.json",
+        json.dumps({"choices": [{"message": {"content": "fine"}}]}).encode("utf-8"),
+        "application/json",
+    )
+    # Not valid UTF-8: an isolated continuation byte.
+    storage.put_cas("results/bad.json", b"\xff\xfe not json", "application/json")
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": "good", "state": "completed", "result_key": "results/good.json"},
+                    {"id": "bad", "state": "completed", "result_key": "results/bad.json"},
+                ]
+            },
+        )
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(task="tag", recipe_hash="r-good", backend="llm-dispatch-v2", ref="good"),
+        JobHandle(task="tag", recipe_hash="r-bad", backend="llm-dispatch-v2", ref="bad"),
+    ]
+
+    with pytest.raises(LLMDispatchTerminalError) as excinfo:
+        backend.poll_batch(handles)
+
+    # The malformed job is reported as the failure...
+    assert "bad" in str(excinfo.value)
+    # ...but the good sibling's result must still have been resolved and persisted, not lost.
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    stored = look_up_deferred(storage, "r-good")
+    assert isinstance(stored, JobResult)

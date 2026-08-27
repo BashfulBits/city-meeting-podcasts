@@ -2091,6 +2091,17 @@ class LiteLLMBackend(Backend):
                 )
             except LLMBackendError as exc:
                 return "error", exc
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                # A stored result that isn't valid UTF-8/JSON must fail only THIS job. Before the
+                # parallel rewrite an uncaught exception here would abort the serial for-loop
+                # partway through, losing every handle after it in iteration order; under
+                # list(pool.map(...)) the blast radius is worse -- ALL results are collected
+                # before any are merged, so one bad body would silently lose every sibling's
+                # already-resolved outcome too. Wrap and return it exactly like a validation
+                # failure instead.
+                return "error", LLMBackendError(
+                    f"LLM dispatch v2 unreadable result body for job {h.ref}: {exc}"
+                )
             write_deferred(storage, h.recipe_hash, res)
             return "done", res
 

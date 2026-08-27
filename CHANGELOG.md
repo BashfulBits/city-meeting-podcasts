@@ -22,7 +22,9 @@ Phase R (Research-Tool Surface)._
   the client had fetched, validated and durably persisted the result minutes later --
   `delete_dispatched_ref` is a v1-only path and v2 had no equivalent, so nothing communicated
   consumption. `POST /v2/jobs:ack-batch` now does, called once per poll chunk (not per job) after
-  `write_deferred` succeeds, collapsing effective retention from 38 days to ~1 hour. Only a
+  `write_deferred` succeeds, reducing post-ack retention to roughly one hourly cleanup tick --
+  completion-to-release still spans the six-hour observation cadence for a job the sweep hasn't
+  yet polled. Only a
   validated success is acked: a result that failed structured-output validation is exactly what the
   sweep's schema-correction path re-reads. A failed ack is harmless -- the result is already durable
   client-side -- and never fails the poll.

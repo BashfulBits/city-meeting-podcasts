@@ -198,9 +198,39 @@ export function validateConfig(env) {
       throw new Error(`Invalid config: ${name} must be a non-negative integer`);
     }
   }
+  // Divisors of 60 only: getUTCMinutes() % intervalMinutes === 0 does not fire evenly spaced
+  // ticks for a non-divisor (e.g. 7 fires at :00,:07,...,:56, then :00 again -- a 4-minute gap,
+  // not 7). Every other value in [1, 60] repeats an identical, evenly-spaced pattern every hour.
   const cleanupInterval = Number(env.CLEANUP_INTERVAL_MINUTES ?? 60);
-  if (!Number.isInteger(cleanupInterval) || cleanupInterval < 1 || cleanupInterval > 60) {
-    throw new Error("Invalid config: CLEANUP_INTERVAL_MINUTES must be an integer from 1 to 60");
+  if (
+    !Number.isInteger(cleanupInterval) ||
+    cleanupInterval < 1 ||
+    cleanupInterval > 60 ||
+    60 % cleanupInterval !== 0
+  ) {
+    throw new Error(
+      "Invalid config: CLEANUP_INTERVAL_MINUTES must be a positive divisor of 60 (1-60)"
+    );
+  }
+
+  // Cleanup deletes up to two B2 keys (payload + result) per purged job, in the same Worker
+  // invocation as claimDispatchWindow's own dispatch traffic (see runScheduledDispatch, which
+  // costs up to MAX_BUNDLE_JOBS * 2 B2 subrequests: one payload GET and one result PUT per job).
+  // Both must fit Cloudflare's fixed 50-subrequest-per-invocation Free-plan ceiling (identical on
+  // Paid; see review/44's "Cloudflare connection and subrequest limits"). A PURGE_BATCH_LIMIT
+  // sized only against job count, with no regard for the two-keys-per-job cost or dispatch's own
+  // share of the same budget, is exactly the "size every bounded knob against its real ceiling,
+  // not an assumed one" mistake the 2026-08-27 rows-read incident was about, just against a
+  // different budget (Worker subrequests, not DO rows read).
+  const purgeBatchLimit = Number(env.PURGE_BATCH_LIMIT ?? 15);
+  const purgeSubrequests = purgeBatchLimit * 2;
+  const dispatchSubrequests = maxBundleJobs * 2;
+  if (purgeSubrequests + dispatchSubrequests > 40) {
+    throw new Error(
+      `Invalid config: PURGE_BATCH_LIMIT (${purgeBatchLimit}) costs up to ${purgeSubrequests} B2 ` +
+      `subrequests per cleanup tick, which together with MAX_BUNDLE_JOBS (${maxBundleJobs})'s own ` +
+      `up to ${dispatchSubrequests} leaves no headroom under Cloudflare's 50-subrequest-per-invocation ceiling`
+    );
   }
 
   // Fail closed at deploy time, not per-request: an unset BEARER_TOKEN must never silently
@@ -714,7 +744,8 @@ async function runScheduledCleanup(env, scheduledTime) {
   const b2 = b2ClientFromEnv(env);
   if (!b2) return;
   const coordinator = getCoordinator(env);
-  const limit = Number(env.PURGE_BATCH_LIMIT || 50);
+  // Matches validateConfig's default and its subrequest-budget bound (2 B2 deletes per job).
+  const limit = Number(env.PURGE_BATCH_LIMIT || 15);
 
   let pending;
   try {
