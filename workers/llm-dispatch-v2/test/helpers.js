@@ -12,7 +12,7 @@ export function createMockSqlStorage() {
     exec(query, ...params) {
       const trimmed = query.trim();
       const upper = trimmed.toUpperCase();
-      if (upper.startsWith("SELECT") || upper.startsWith("PRAGMA") || upper.startsWith("EXPLAIN")) {
+      if (upper.startsWith("SELECT") || upper.startsWith("PRAGMA")) {
         const stmt = db.prepare(query);
         return stmt.all(...params);
       }
