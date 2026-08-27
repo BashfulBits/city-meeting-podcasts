@@ -70,6 +70,19 @@
     "MAX_ROUTE_BUFFER_SECONDS": "120",
     "UNKNOWN_ATTEMPT_POLICY": "hold",
     "COMPLETED_RETENTION_DAYS": "38",
+    // Retention for the DO's two append-only bookkeeping tables. Neither has a B2 counterpart
+    // or a client-side reader, so both age out entirely inside the DO. Before this existed
+    // nothing ever deleted from either, and `bundles` was full-scanned twice per cron tick --
+    // the 2026-08-27 rows-read overage. Zero on either per-tick cap is an emergency pause.
+    "BUNDLE_RETENTION_DAYS": "7",
+    "ATTEMPT_RETENTION_DAYS": "7",
+    "MAX_BUNDLE_PRUNE_PER_TICK": "50",
+    "MAX_ATTEMPT_PRUNE_PER_TICK": "50",
+    // Terminal-job + B2 object cleanup (purgePendingBatch/confirmPurge). Runs on the cron tick
+    // whose UTC minute is a multiple of this, not every minute, since each purged job costs B2
+    // delete operations.
+    "CLEANUP_INTERVAL_MINUTES": "60",
+    "PURGE_BATCH_LIMIT": "50",
     // Conservative upper bound on one provider call's duration, used only to keep the DO from
     // admitting a job whose planned start technically fits before the dispatch window's end but
     // would still plausibly still be running past it -- see pacing.js and Unit 4's

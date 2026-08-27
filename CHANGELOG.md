@@ -17,6 +17,33 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch V2 Durable Object rows-read overage.** `claimDispatchWindow` full-scanned the
+  `bundles` table twice on every cron tick -- once for the lease-expiry sweep, once for the
+  active-bundle count -- because `bundles` carried only its `bundle_id` primary key and nothing in
+  the codebase ever deleted from it. Instrumenting the real coordinator measured **6,400 of a
+  tick's 6,424 rows read (99.6%)** from those two statements at 3,200 accumulated bundles, which
+  exhausted the Workers free tier's 5M daily Durable Objects rows-read budget on 2026-08-27; the
+  cost grew with every bundle ever claimed, which is why reads climbed steadily while writes
+  stayed flat. Adds `bundles (state, created_at)`, turning both into index seeks over the
+  `active` rows only -- a population `MAX_ACTIVE_BUNDLES` already bounds. Same tick, same table
+  sizes: **6,424 -> 30 rows read**.
+
+  Also adds retention for the two append-only bookkeeping tables that had none. `bundles` and
+  `attempts` have no B2 counterpart and no client-side reader, so both now age out inside the DO
+  (`BUNDLE_RETENTION_DAYS`/`ATTEMPT_RETENTION_DAYS`, default 7) on a bounded per-tick delete
+  budget; a bundle is only ever removed once terminal, past retention, and past its lease, so no
+  late `completeBatch` can lose one it could still settle. `attempts` gains a `created_at` index
+  so that pruning is itself a bounded seek rather than the scan it exists to prevent.
+
+  Finally, wires up `purgePendingBatch`/`confirmPurge`. Both shipped with Phase 2 with tests but
+  were called from nothing, so terminal `jobs` rows and their B2 payload/result objects were never
+  released. They now run from `scheduled()` on an hourly cadence (`CLEANUP_INTERVAL_MINUTES`),
+  deleting B2 objects before confirming the row drop so a crash mid-way simply retries. This
+  required a second new index, `jobs (state, updated_at)`: the existing
+  `(state, priority, created_at)` index could not serve the purge query's age filter, so wiring it
+  up naively would have read every completed job on each run (**60,189 -> 367** VDBE ops at 6,000
+  terminal jobs) -- reintroducing the same unbounded-scan shape.
+
 - **LLM dispatch V2 linear, budgeted compatibility migrations.** Historical queued-job model
   indexing now captures a rollout-time SQLite row-id high-water mark and advances a durable cursor,
   so it reads the finite old population once instead of repeatedly searching the queue head. Legacy

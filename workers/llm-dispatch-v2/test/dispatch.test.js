@@ -960,3 +960,122 @@ test("confirmNeverAccepted reports which preassigned ids the DO has no record of
   const result = await coordinator.confirmNeverAccepted(["accepted-1", "never-sent-2"]);
   assert.deepEqual(result.neverAccepted, ["never-sent-2"]);
 });
+
+// --------------------------------------------------------------------------------------------
+// Rows-read regression guards (2026-08-27 Durable Objects free-tier overage).
+//
+// The incident's cause was structural: `bundles` had no index on `state`, so claimDispatchWindow
+// full-scanned it twice per cron tick, and nothing ever deleted from it -- measured at 6,400 of a
+// tick's 6,424 rows read. These tests pin the query plans, so a dropped index or a reshaped
+// predicate fails here rather than as a silent production quota burn.
+// --------------------------------------------------------------------------------------------
+
+/** Plan details for `query`, as one string. */
+function planOf(sql, query, ...params) {
+  return [...sql.exec(`EXPLAIN QUERY PLAN ${query}`, ...params)].map((r) => r.detail).join("; ");
+}
+
+test("claimDispatchWindow's two per-tick bundles statements are index seeks, never table scans", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  // A large terminal-bundle history is exactly the production shape that made these scans fatal.
+  for (let i = 0; i < 500; i++) {
+    sql.exec(
+      "INSERT INTO bundles VALUES (?,?,'completed',?,0,?,?)",
+      `b${i}`, "tok", now - 9e8, now - 9e8, now - 9e8
+    );
+  }
+
+  const expireSweep = planOf(
+    sql,
+    "UPDATE bundles SET state='expired' WHERE state='active' AND lease_expires_at < ?",
+    now
+  );
+  const activeRead = planOf(sql, "SELECT active_call_count FROM bundles WHERE state='active'");
+
+  for (const plan of [expireSweep, activeRead]) {
+    assert.match(plan, /SEARCH bundles USING (COVERING )?INDEX idx_bundles_state_created/);
+    assert.doesNotMatch(plan, /SCAN/);
+  }
+
+  // And the claim still works with that history present.
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  assert.equal(plan.jobs.length, 1);
+});
+
+test("purgePendingBatch's terminal-job lookup is an index seek, never a scan of every completed job", async () => {
+  const { sql } = makeCoordinator();
+  const plan = planOf(
+    sql,
+    "SELECT id, payload_key, result_key FROM jobs WHERE state IN ('completed','failed')" +
+      " AND updated_at < ? ORDER BY updated_at ASC LIMIT ?",
+    Date.now(),
+    10
+  );
+  assert.match(plan, /SEARCH jobs USING INDEX idx_jobs_state_updated/);
+  assert.doesNotMatch(plan, /SCAN/);
+});
+
+test("_pruneTerminalRecords deletes aged-out terminal bundles and attempts, bounded per tick", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    BUNDLE_RETENTION_DAYS: "7",
+    ATTEMPT_RETENTION_DAYS: "7",
+    MAX_BUNDLE_PRUNE_PER_TICK: "10",
+    MAX_ATTEMPT_PRUNE_PER_TICK: "10",
+  });
+  const now = Date.now();
+  const old = now - 30 * 86_400_000;
+  for (let i = 0; i < 25; i++) {
+    sql.exec("INSERT INTO bundles VALUES (?,?,'completed',?,0,?,?)", `b${i}`, "t", old, old, old);
+    sql.exec(
+      "INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, start_state, created_at)" +
+        " VALUES (?,?,?,?,'started',?)",
+      `a${i}`, `j${i}`, "route-a", old, old
+    );
+  }
+
+  const first = coordinator._pruneTerminalRecords(now);
+  assert.deepEqual(first, { bundlesDeleted: 10, attemptsDeleted: 10 });
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 15);
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempts")][0].n, 15);
+
+  // Repeated ticks drain the backlog and then stop finding work.
+  coordinator._pruneTerminalRecords(now);
+  const third = coordinator._pruneTerminalRecords(now);
+  assert.deepEqual(third, { bundlesDeleted: 5, attemptsDeleted: 5 });
+  assert.deepEqual(coordinator._pruneTerminalRecords(now), { bundlesDeleted: 0, attemptsDeleted: 0 });
+});
+
+test("_pruneTerminalRecords never removes an active bundle, a recent one, or one whose lease could still be current", async () => {
+  const { coordinator, sql } = makeCoordinator({ BUNDLE_RETENTION_DAYS: "7" });
+  const now = Date.now();
+  const old = now - 30 * 86_400_000;
+  // (a) still active; (b) terminal but inside the retention window; (c) terminal and old, but its
+  // lease has not expired yet -- a late completeBatch could still legitimately settle it.
+  sql.exec("INSERT INTO bundles VALUES ('active-1','t','active',?,1,?,?)", now + 6e5, now, old);
+  sql.exec("INSERT INTO bundles VALUES ('recent-1','t','completed',?,0,?,?)", now, now, now - 1000);
+  sql.exec("INSERT INTO bundles VALUES ('leased-1','t','completed',?,0,?,?)", now + 6e5, now, old);
+  sql.exec("INSERT INTO bundles VALUES ('stale-1','t','completed',?,0,?,?)", old, old, old);
+
+  const result = coordinator._pruneTerminalRecords(now);
+  assert.equal(result.bundlesDeleted, 1);
+  const remaining = [...sql.exec("SELECT bundle_id FROM bundles ORDER BY bundle_id")].map((r) => r.bundle_id);
+  assert.deepEqual(remaining, ["active-1", "leased-1", "recent-1"]);
+});
+
+test("a zero per-tick prune cap pauses retention without affecting dispatch", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_BUNDLE_PRUNE_PER_TICK: "0",
+    MAX_ATTEMPT_PRUNE_PER_TICK: "0",
+  });
+  const now = Date.now();
+  const old = now - 30 * 86_400_000;
+  sql.exec("INSERT INTO bundles VALUES ('stale-1','t','completed',?,0,?,?)", old, old, old);
+
+  assert.deepEqual(coordinator._pruneTerminalRecords(now), { bundlesDeleted: 0, attemptsDeleted: 0 });
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 1);
+
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  assert.equal((await coordinator.claimDispatchWindow(now, 25)).jobs.length, 1);
+});

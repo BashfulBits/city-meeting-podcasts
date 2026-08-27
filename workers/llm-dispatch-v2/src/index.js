@@ -181,6 +181,28 @@ export function validateConfig(env) {
     );
   }
 
+  // Retention/cleanup bounds. A zero per-tick prune cap is a deliberate emergency pause, but a
+  // zero or negative retention window would delete records the moment they turn terminal --
+  // including a bundle a late completeBatch could still legitimately settle.
+  for (const name of ["BUNDLE_RETENTION_DAYS", "ATTEMPT_RETENTION_DAYS"]) {
+    if (env[name] === undefined) continue;
+    const days = Number(env[name]);
+    if (!Number.isInteger(days) || days < 1) {
+      throw new Error(`Invalid config: ${name} must be an integer of at least 1`);
+    }
+  }
+  for (const name of ["MAX_BUNDLE_PRUNE_PER_TICK", "MAX_ATTEMPT_PRUNE_PER_TICK", "PURGE_BATCH_LIMIT"]) {
+    if (env[name] === undefined) continue;
+    const value = Number(env[name]);
+    if (!Number.isInteger(value) || value < 0) {
+      throw new Error(`Invalid config: ${name} must be a non-negative integer`);
+    }
+  }
+  const cleanupInterval = Number(env.CLEANUP_INTERVAL_MINUTES ?? 60);
+  if (!Number.isInteger(cleanupInterval) || cleanupInterval < 1 || cleanupInterval > 60) {
+    throw new Error("Invalid config: CLEANUP_INTERVAL_MINUTES must be an integer from 1 to 60");
+  }
+
   // Fail closed at deploy time, not per-request: an unset BEARER_TOKEN must never silently
   // disable auth (see hasValidBearer below).
   if (!env.BEARER_TOKEN) {
@@ -642,6 +664,63 @@ async function runScheduledDispatch(env) {
 }
 
 
+/**
+ * review/44's B2-only payload lifecycle: the DO owns the job rows but holds no B2 credentials,
+ * so retiring a terminal job is a two-phase handshake -- purgePendingBatch moves a bounded batch
+ * to 'purge_pending' and hands back their keys, this Worker deletes those keys, then confirmPurge
+ * drops the rows. Both DO methods have existed (and been tested) since Phase 2 but nothing ever
+ * called them, so `jobs` and its B2 objects grew without bound.
+ *
+ * Crash-safe by construction: a failure after the B2 deletes but before confirmPurge simply
+ * repeats on the next run (confirmPurge is idempotent), and a key that is already gone deletes
+ * cleanly. A job is only ever eligible once it is terminal AND older than
+ * COMPLETED_RETENTION_DAYS, so this can never delete a result a client has not had the chance
+ * to read.
+ */
+async function runScheduledCleanup(env, scheduledTime) {
+  const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 60);
+  if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
+  // Cloudflare always supplies scheduledTime for a real cron firing. Without it we cannot know
+  // where in the cadence we are, so skip rather than run this on every single tick.
+  if (!Number.isFinite(scheduledTime)) return;
+  if (new Date(scheduledTime).getUTCMinutes() % intervalMinutes !== 0) return;
+
+  const b2 = b2ClientFromEnv(env);
+  if (!b2) return;
+  const coordinator = getCoordinator(env);
+  const limit = Number(env.PURGE_BATCH_LIMIT || 50);
+
+  let pending;
+  try {
+    pending = await coordinator.purgePendingBatch(limit);
+  } catch (err) {
+    console.error(`scheduled: purgePendingBatch failed: ${describeError(err)}`);
+    return;
+  }
+  const jobs = pending?.jobs || [];
+  if (jobs.length === 0) return;
+
+  const purgedIds = [];
+  for (const job of jobs) {
+    const keys = [job.payload_key, job.result_key].filter(Boolean);
+    try {
+      await Promise.all(keys.map((key) => b2.delete(key)));
+      purgedIds.push(job.id);
+    } catch (err) {
+      // Leave this job in 'purge_pending' and retry it next run rather than confirming a purge
+      // whose B2 objects are still present -- dropping the row is what would orphan them.
+      console.error(`scheduled: B2 delete failed for job ${job.id}: ${describeError(err)}`);
+    }
+  }
+  if (purgedIds.length === 0) return;
+  try {
+    await coordinator.confirmPurge(purgedIds);
+  } catch (err) {
+    console.error(`scheduled: confirmPurge failed: ${describeError(err)}`);
+  }
+}
+
+
 export default {
   async fetch(request, env, ctx) {
     try {
@@ -660,5 +739,6 @@ export default {
       return;
     }
     ctx.waitUntil(runScheduledDispatch(env));
+    ctx.waitUntil(runScheduledCleanup(env, event?.scheduledTime));
   },
 };

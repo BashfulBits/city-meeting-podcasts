@@ -269,3 +269,81 @@ test("scheduled() does nothing when B2 credentials are not configured", async ()
     globalThis.fetch = originalFetch;
   }
 });
+
+// --------------------------------------------------------------------------------------------
+// Terminal-job + B2 object cleanup. purgePendingBatch/confirmPurge shipped with Phase 2 and were
+// tested, but nothing ever called them, so `jobs` rows and their B2 payload/result objects grew
+// without bound. These pin the wiring and its cadence gate.
+// --------------------------------------------------------------------------------------------
+
+/** Drive one job all the way to `completed`, leaving its payload+result in the B2 store. */
+async function completeOneJob(env, store, jobId) {
+  await enqueueOneJob(env, jobId, store);
+  const waits = [];
+  await worker.scheduled({ scheduledTime: Date.now() }, env, { waitUntil: (p) => waits.push(p) });
+  await Promise.all(waits);
+  const coordinator = env.LLM_SCHEDULER.getByName();
+  const { statuses } = await coordinator.pollBatch([jobId]);
+  assert.equal(statuses[0].state, "completed");
+  return statuses[0].result_key;
+}
+
+test("scheduled() purges aged-out terminal jobs and deletes their B2 objects on a cleanup tick", async () => {
+  const store = new Map();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = fakeFetch(store);
+  try {
+    // makeEnv builds the coordinator's env separately from the Worker's, so age the row past
+    // the coordinator's own default COMPLETED_RETENTION_DAYS (38) rather than overriding it.
+    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60" });
+    const resultKey = await completeOneJob(env, store, "j1");
+    assert.ok(store.has("payloads/j1/request.json"));
+    assert.ok(store.has(resultKey));
+
+    // Age the completed job past its retention window.
+    const coordinator = env.LLM_SCHEDULER.getByName();
+    coordinator._getSql().exec("UPDATE jobs SET updated_at = ? WHERE id = 'j1'",
+      Date.now() - 40 * 86_400_000);
+
+    // A cron firing on a non-cleanup minute must leave everything alone...
+    const skipTime = Date.UTC(2026, 7, 27, 12, 31);
+    let waits = [];
+    await worker.scheduled({ scheduledTime: skipTime }, env, { waitUntil: (p) => waits.push(p) });
+    await Promise.all(waits);
+    assert.ok(store.has("payloads/j1/request.json"), "non-cleanup tick must not purge");
+
+    // ...and a firing on the top of the hour must purge the row and both B2 objects.
+    const cleanupTime = Date.UTC(2026, 7, 27, 13, 0);
+    waits = [];
+    await worker.scheduled({ scheduledTime: cleanupTime }, env, { waitUntil: (p) => waits.push(p) });
+    await Promise.all(waits);
+
+    assert.equal(store.has("payloads/j1/request.json"), false);
+    assert.equal(store.has(resultKey), false);
+    const rows = [...coordinator._getSql().exec("SELECT id FROM jobs WHERE id = 'j1'")];
+    assert.equal(rows.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("cleanup leaves a terminal job that is still inside its retention window untouched", async () => {
+  const store = new Map();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = fakeFetch(store);
+  try {
+    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60" });
+    const resultKey = await completeOneJob(env, store, "j1");
+
+    const waits = [];
+    await worker.scheduled({ scheduledTime: Date.UTC(2026, 7, 27, 13, 0) }, env,
+      { waitUntil: (p) => waits.push(p) });
+    await Promise.all(waits);
+
+    assert.ok(store.has(resultKey), "a freshly completed result must never be purged");
+    const coordinator = env.LLM_SCHEDULER.getByName();
+    assert.equal([...coordinator._getSql().exec("SELECT id FROM jobs WHERE id='j1'")].length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
