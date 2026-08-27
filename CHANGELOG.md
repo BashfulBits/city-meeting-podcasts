@@ -44,6 +44,15 @@ Phase R (Research-Tool Surface)._
   up naively would have read every completed job on each run (**60,189 -> 367** VDBE ops at 6,000
   terminal jobs) -- reintroducing the same unbounded-scan shape.
 
+  Adds `test/rows-read.test.js`, a standing guard against this whole bug class rather than
+  against these four queries. It exercises every RPC entry point and asserts two invariants: no
+  statement may full-scan a table that grows with traffic, and the same operations against 10x
+  the accumulated history must read about the same number of rows. The second catches what the
+  first cannot -- an index seek constrained only on a low-cardinality `state` column still walks
+  every row in that state, which is exactly how the purge-query trap above hides behind a plan
+  that reads as `SEARCH`. Verified by mutation testing: removing any of the four indexes, or
+  reverting the candidate lookup to a queue-head scan, fails at least one invariant.
+
 - **LLM dispatch V2 linear, budgeted compatibility migrations.** Historical queued-job model
   indexing now captures a rollout-time SQLite row-id high-water mark and advances a durable cursor,
   so it reads the finite old population once instead of repeatedly searching the queue head. Legacy
