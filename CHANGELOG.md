@@ -17,6 +17,30 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch V2 consumption ack, parallel result resolution, and a 6-hourly sweep.** A v2 job's
+  DO row and B2 objects were held for `COMPLETED_RETENTION_DAYS` (38) after completion even though
+  the client had fetched, validated and durably persisted the result minutes later --
+  `delete_dispatched_ref` is a v1-only path and v2 had no equivalent, so nothing communicated
+  consumption. `POST /v2/jobs:ack-batch` now does, called once per poll chunk (not per job) after
+  `write_deferred` succeeds, collapsing effective retention from 38 days to ~1 hour. Only a
+  validated success is acked: a result that failed structured-output validation is exactly what the
+  sweep's schema-correction path re-reads. A failed ack is harmless -- the result is already durable
+  client-side -- and never fails the poll.
+
+  Fixed a latent stranding bug found while wiring this up: `purgePendingBatch` selected only
+  `completed`/`failed`, so a row already in `purge_pending` was never re-listed. A cleanup run that
+  died between the B2 deletes and `confirmPurge` therefore orphaned its B2 objects permanently,
+  contradicting the method's own documented idempotency contract. It now re-lists carried-over rows
+  first, then tops up to the limit with newly-eligible ones.
+
+  `poll_batch` resolves completed results through a bounded thread pool instead of serially. Each
+  completion costs several sequential B2 round trips (the result GET plus `write_deferred`'s own
+  reads and writes) which are pure I/O wait, so the sweep's runtime scaled with the completion
+  count; measured ~7.9x faster at 16 completions. The deferred sweep moves from once daily to every
+  six hours, keeping the 17:30 UTC DeepSeek off-peak run exactly -- a job completed minutes after
+  dispatch was previously only *observed* up to ~23h later, which kept both the deferred registry
+  and the coordinator's `jobs` table near their maximum between runs.
+
 - **LLM dispatch V2 Durable Object rows-read overage.** `claimDispatchWindow` full-scanned the
   `bundles` table twice on every cron tick -- once for the lease-expiry sweep, once for the
   active-bundle count -- because `bundles` carried only its `bundle_id` primary key and nothing in

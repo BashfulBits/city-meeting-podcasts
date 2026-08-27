@@ -1983,22 +1983,91 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const retentionDays = this._envInt("COMPLETED_RETENTION_DAYS", 38);
     const cutoff = Date.now() - retentionDays * 86_400_000;
     return this.ctx.storage.transactionSync(() => {
-      const rows = [...sql.exec(
+      // Rows ALREADY in purge_pending come first, and are re-listed on every call until
+      // confirmPurge actually removes them. Two ways a job gets there without this pass having
+      // put it there: ackResults promoted it (the client consumed its result), or an earlier
+      // cleanup run marked it and then died before confirmPurge -- a crash this method's own
+      // idempotency contract promises to recover from. Selecting only completed/failed, as this
+      // did originally, stranded both cases in purge_pending forever with their B2 objects
+      // orphaned, because nothing else ever queries that state.
+      const carriedOver = [...sql.exec(
         `SELECT id, payload_key, result_key FROM jobs
-         WHERE state IN ('completed', 'failed') AND updated_at < ?
+         WHERE state = 'purge_pending'
          ORDER BY updated_at ASC LIMIT ?`,
-        cutoff,
         limit
       )];
-      if (rows.length === 0) return { jobs: [] };
-      const ids = rows.map((r) => r.id);
-      for (const chunk of this._chunks(ids)) {
-        const placeholders = chunk.map(() => "?").join(",");
-        sql.exec(`UPDATE jobs SET state='purge_pending' WHERE id IN (${placeholders})`, ...chunk);
+
+      const remaining = limit - carriedOver.length;
+      const newlyEligible = remaining > 0
+        ? [...sql.exec(
+            `SELECT id, payload_key, result_key FROM jobs
+             WHERE state IN ('completed', 'failed') AND updated_at < ?
+             ORDER BY updated_at ASC LIMIT ?`,
+            cutoff,
+            remaining
+          )]
+        : [];
+
+      if (newlyEligible.length > 0) {
+        const now = Date.now();
+        for (const chunk of this._chunks(newlyEligible.map((r) => r.id))) {
+          const placeholders = chunk.map(() => "?").join(",");
+          sql.exec(
+            `UPDATE jobs SET state='purge_pending', updated_at=? WHERE id IN (${placeholders})`,
+            now,
+            ...chunk
+          );
+        }
       }
+
+      const rows = [...carriedOver, ...newlyEligible];
+      if (rows.length === 0) return { jobs: [] };
       return {
         jobs: rows.map((r) => ({ id: r.id, payload_key: r.payload_key, result_key: r.result_key })),
       };
+    });
+  }
+
+  /**
+   * Consumption ack: the client has fetched these jobs' results, validated them, and durably
+   * written them to the deferred registry (see write_deferred in citypods/compute/llm_deferred.py),
+   * so neither the SQLite row nor the B2 payload/result objects are needed any more.
+   *
+   * Moves them straight to 'purge_pending', short-circuiting the COMPLETED_RETENTION_DAYS timer
+   * that would otherwise hold a consumed job for 38 days; the executor's existing cleanup pass
+   * then deletes the B2 keys and calls confirmPurge exactly as it does for aged-out jobs. This is
+   * the trigger review/44's "Consumption ack" section describes -- retention by age remains only
+   * as the backstop for a job that is never acked (a client that died between fetch and ack).
+   *
+   * Only a job in 'completed' is eligible. A 'failed' job is deliberately NOT ackable: the sweep's
+   * schema-correction path still reads it, and a client must never be able to retire a job whose
+   * result it could not validate. Unknown/ineligible ids are reported back rather than silently
+   * ignored, so a caller can tell an accepted ack from a no-op.
+   */
+  async ackResults(jobIds) {
+    if (!jobIds || jobIds.length === 0) return { acked: [], ignored: [] };
+    const sql = this._getSql();
+    return this.ctx.storage.transactionSync(() => {
+      const acked = [];
+      for (const chunk of this._chunks(jobIds)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        const eligible = [...sql.exec(
+          `SELECT id FROM jobs WHERE id IN (${placeholders}) AND state = 'completed'`,
+          ...chunk
+        )].map((row) => row.id);
+        if (eligible.length === 0) continue;
+        for (const eligibleChunk of this._chunks(eligible)) {
+          const marks = eligibleChunk.map(() => "?").join(",");
+          sql.exec(
+            `UPDATE jobs SET state='purge_pending', updated_at=? WHERE id IN (${marks})`,
+            Date.now(),
+            ...eligibleChunk
+          );
+          acked.push(...eligibleChunk);
+        }
+      }
+      const ackedSet = new Set(acked);
+      return { acked, ignored: jobIds.filter((id) => !ackedSet.has(id)) };
     });
   }
 

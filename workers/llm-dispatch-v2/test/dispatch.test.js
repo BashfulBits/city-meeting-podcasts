@@ -1079,3 +1079,136 @@ test("a zero per-tick prune cap pauses retention without affecting dispatch", as
   await coordinator.enqueueBatch([makeJob("j1")]);
   assert.equal((await coordinator.claimDispatchWindow(now, 25)).jobs.length, 1);
 });
+
+// --------------------------------------------------------------------------------------------
+// Consumption ack (review/44 "Consumption ack"). The client acks a job once its result is
+// fetched, validated and durably written to the deferred registry, which is the real moment the
+// DO row and its B2 objects stop being needed -- COMPLETED_RETENTION_DAYS is only the backstop.
+// --------------------------------------------------------------------------------------------
+
+/** Enqueue, claim and settle `jobId` with the given outcome, returning nothing. */
+async function settleJob(coordinator, jobId, outcome, extra = {}) {
+  await coordinator.enqueueBatch([makeJob(jobId)]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = plan.jobs.find((j) => j.id === jobId);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: `att-${jobId}`,
+      planned_at: claimed.not_before_at,
+      actual_start_at: Date.now(),
+      actual_end_at: Date.now(),
+      outcome,
+      ...extra,
+    },
+  ]);
+}
+
+test("ackResults retires a completed job immediately, without waiting out COMPLETED_RETENTION_DAYS", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await settleJob(coordinator, "j1", "success", {
+    provider_status_code: 200,
+    result_key: "results/j1.json",
+  });
+
+  // Not yet ackable-by-age: freshly completed, so the time-based purge finds nothing.
+  assert.deepEqual((await coordinator.purgePendingBatch(10)).jobs, []);
+
+  const result = await coordinator.ackResults(["j1"]);
+  assert.deepEqual(result, { acked: ["j1"], ignored: [] });
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='j1'")][0].state, "purge_pending");
+
+  // The existing cleanup handshake now picks it up and hands back both B2 keys to delete.
+  const pending = await coordinator.purgePendingBatch(10);
+  assert.deepEqual(pending.jobs.map((j) => j.id), ["j1"]);
+  assert.equal(pending.jobs[0].result_key, "results/j1.json");
+  await coordinator.confirmPurge(["j1"]);
+  assert.equal([...sql.exec("SELECT id FROM jobs WHERE id='j1'")].length, 0);
+});
+
+test("ackResults refuses a failed job so the sweep's schema-correction path keeps its row", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await settleJob(coordinator, "bad", "terminal_error", { provider_status_code: 400 });
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='bad'")][0].state, "failed");
+
+  const result = await coordinator.ackResults(["bad"]);
+  assert.deepEqual(result, { acked: [], ignored: ["bad"] });
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='bad'")][0].state, "failed");
+});
+
+test("ackResults never retires a job that is still queued or leased, and reports unknown ids", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("queued-1")]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const leasedId = plan.jobs[0].id;
+  await coordinator.enqueueBatch([makeJob("queued-2")]);
+
+  const result = await coordinator.ackResults([leasedId, "queued-2", "never-existed"]);
+  assert.deepEqual(result.acked, []);
+  assert.deepEqual(new Set(result.ignored), new Set([leasedId, "queued-2", "never-existed"]));
+  const states = [...sql.exec("SELECT id, state FROM jobs ORDER BY id")];
+  assert.deepEqual(states.find((r) => r.id === leasedId).state, "leased");
+  assert.deepEqual(states.find((r) => r.id === "queued-2").state, "queued");
+});
+
+test("ackResults is idempotent and chunks past the 100 bound-parameter ceiling", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_BUNDLE_JOBS: "4" });
+  const ids = Array.from({ length: 250 }, (_, i) => `bulk-${i}`);
+  await coordinator.enqueueBatch(ids.map((id) => makeJob(id)));
+  // Settle them all directly: this test is about ack chunking, not dispatch pacing.
+  sql.exec("UPDATE jobs SET state='completed', result_key='r.json' WHERE state='queued'");
+
+  const first = await coordinator.ackResults(ids);
+  assert.equal(first.acked.length, 250);
+  assert.deepEqual(first.ignored, []);
+  assert.equal(
+    [...sql.exec("SELECT COUNT(*) n FROM jobs WHERE state='purge_pending'")][0].n,
+    250
+  );
+
+  // A replayed ack (client retry) is a harmless no-op, not an error.
+  const second = await coordinator.ackResults(ids);
+  assert.deepEqual(second.acked, []);
+  assert.equal(second.ignored.length, 250);
+});
+
+test("purgePendingBatch re-lists a job stranded in purge_pending by a crashed cleanup run", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  sql.exec(
+    "UPDATE jobs SET state='completed', result_key='results/j1.json', updated_at=? WHERE id='j1'",
+    Date.now() - 60 * 86_400_000
+  );
+
+  // First run marks it and hands back its keys...
+  const first = await coordinator.purgePendingBatch(10);
+  assert.deepEqual(first.jobs.map((j) => j.id), ["j1"]);
+  // ...then the executor dies before confirmPurge. The row must not be stranded: the next run has
+  // to hand back the very same keys so the orphaned B2 objects still get deleted.
+  const second = await coordinator.purgePendingBatch(10);
+  assert.deepEqual(second.jobs.map((j) => j.id), ["j1"]);
+  assert.equal(second.jobs[0].payload_key, "payloads/j1/request.json");
+  assert.equal(second.jobs[0].result_key, "results/j1.json");
+
+  await coordinator.confirmPurge(["j1"]);
+  assert.deepEqual((await coordinator.purgePendingBatch(10)).jobs, []);
+});
+
+test("purgePendingBatch honors its limit across carried-over and newly-eligible rows together", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const ids = Array.from({ length: 8 }, (_, i) => `j${i}`);
+  await coordinator.enqueueBatch(ids.map((id) => makeJob(id)));
+  sql.exec("UPDATE jobs SET state='completed', updated_at=? WHERE state='queued'",
+    Date.now() - 60 * 86_400_000);
+
+  const first = await coordinator.purgePendingBatch(3);
+  assert.equal(first.jobs.length, 3); // 3 newly eligible, now purge_pending
+  const second = await coordinator.purgePendingBatch(5);
+  // 3 carried over + 2 newly eligible, never more than the limit.
+  assert.equal(second.jobs.length, 5);
+  assert.equal(
+    [...sql.exec("SELECT COUNT(*) n FROM jobs WHERE state='purge_pending'")][0].n,
+    5
+  );
+});

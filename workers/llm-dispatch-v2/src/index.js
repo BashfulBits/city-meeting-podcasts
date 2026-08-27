@@ -337,6 +337,32 @@ export async function handleRequest(request, env) {
     }
   }
 
+  if (request.method === "POST" && path === "/v2/jobs:ack-batch") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+
+    // Same {ids: [...]} shape and batch ceiling as poll-batch -- an ack always follows a poll, so
+    // it is never larger than the poll that produced it.
+    const maxBatch = Number(env.POLL_BATCH_MAX || 1000);
+    const validation = validatePollBatchRequest(body, maxBatch);
+    if (!validation.valid) {
+      return errorResponse(400, validation.error, validation.detail);
+    }
+
+    try {
+      const result = await coordinator.ackResults(body.ids);
+      return jsonResponse(result, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`ackResults failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
   if (request.method === "POST" && /^\/v2\/jobs\/[^/]+:schema-retry$/.test(path)) {
     let body;
     try {

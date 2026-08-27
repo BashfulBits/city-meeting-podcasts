@@ -2,6 +2,7 @@
 
 import json
 import json as _json_module  # alias for use inside mocks whose own `json=` kwarg shadows the name
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -706,8 +707,19 @@ def _router(routes: dict):
     """Route a mocked session's POST calls by URL suffix -- lets a single mock_session simulate
     both the enqueue-batch and poll-batch endpoints dispatch_job_batch calls in sequence."""
 
+    def _ack_default(url, json=None, **_kw):
+        # Every poll-batch that resolves a completed job now also emits a consumption ack
+        # (review/44 "Consumption ack"). It is a best-effort side channel, so default it here
+        # rather than making each unrelated test declare a route for it; a test that is actually
+        # about acking supplies its own ":ack-batch" handler, which replaces this one.
+        return _mock_response(
+            status_code=200, json_data={"acked": (json or {}).get("ids", []), "ignored": []}
+        )
+
+    resolved = {":ack-batch": _ack_default, **routes}
+
     def _post(url, json=None, headers=None, timeout=None):
-        for suffix, handler in routes.items():
+        for suffix, handler in resolved.items():
             if url.endswith(suffix):
                 return handler(url, json=json, headers=headers, timeout=timeout)
         raise AssertionError(f"unexpected POST to {url}")
@@ -1023,3 +1035,163 @@ def test_dispatch_job_batch_chunks_large_batch_over_one_thousand():
     assert len(results) == 1050
     assert enqueue_batch_sizes == [1000, 50]
     assert all(isinstance(r, JobHandle) for r in results)
+
+
+def test_poll_batch_acks_only_validated_successes_in_one_batched_call():
+    """review/44 "Consumption ack": once a result is durably in the deferred registry the
+    coordinator may retire that job immediately rather than holding it for
+    COMPLETED_RETENTION_DAYS. The ack must be one call per poll chunk (not per job), and must
+    cover ONLY jobs whose result was fetched, validated and persisted -- a job whose structured
+    output failed validation is exactly what the sweep's schema-correction path re-reads, so
+    acking it would delete the row out from under that recovery."""
+    storage = MockStorage()
+    ack_calls = []
+
+    storage.put_cas(
+        "results/good.json",
+        json.dumps({"choices": [{"message": {"content": '{"pong": true}'}}]}).encode("utf-8"),
+        "application/json",
+    )
+    storage.put_cas(
+        "results/bad.json",
+        json.dumps({"choices": [{"message": {"content": "not json at all"}}]}).encode("utf-8"),
+        "application/json",
+    )
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": "good", "state": "completed", "result_key": "results/good.json"},
+                    {"id": "bad", "state": "completed", "result_key": "results/bad.json"},
+                    {"id": "failed", "state": "failed", "error": "job_failed"},
+                    {"id": "pending", "state": "queued"},
+                ]
+            },
+        )
+
+    def _ack(_url, json=None, **_kw):
+        ack_calls.append(json["ids"])
+        return _mock_response(status_code=200, json_data={"acked": json["ids"], "ignored": []})
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll, ":ack-batch": _ack})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(task="tag", recipe_hash="r-good", backend="llm-dispatch-v2", ref="good"),
+        JobHandle(
+            task="tag",
+            recipe_hash="r-bad",
+            backend="llm-dispatch-v2",
+            ref="bad",
+            structured_output="dispatch-v2-test-pong",
+        ),
+        JobHandle(task="tag", recipe_hash="r-failed", backend="llm-dispatch-v2", ref="failed"),
+        JobHandle(task="tag", recipe_hash="r-pending", backend="llm-dispatch-v2", ref="pending"),
+    ]
+
+    with pytest.raises(LLMDispatchTerminalError):
+        backend.poll_batch(handles)
+
+    assert ack_calls == [["good"]], (
+        f"exactly one batched ack containing only the validated success; got {ack_calls}"
+    )
+
+
+def test_poll_batch_ack_failure_never_fails_an_otherwise_successful_poll():
+    """The result is already durable client-side before the ack is attempted, so a failed ack
+    costs nothing but a later purge -- it must not turn a good poll into an error."""
+    storage = MockStorage()
+    storage.put_cas(
+        "results/j1.json",
+        json.dumps({"choices": [{"message": {"content": "done"}}]}).encode("utf-8"),
+        "application/json",
+    )
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [{"id": "j1", "state": "completed", "result_key": "results/j1.json"}]
+            },
+        )
+
+    def _ack(_url, json=None, **_kw):
+        raise requests.RequestException("coordinator unreachable")
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll, ":ack-batch": _ack})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
+
+    results = backend.poll_batch([handle])
+    assert isinstance(results["j1"], JobResult)
+
+
+def test_poll_batch_resolves_completed_results_concurrently():
+    """Each completed job costs several sequential B2 round trips, and they are pure I/O wait --
+    resolving them serially made the daily sweep's runtime scale with the completion count. A
+    threading.Barrier is a deterministic check: it can only be cleared if two handles are in
+    get_bytes at the same time, so a regression back to a serial loop times out here."""
+    barrier = threading.Barrier(2, timeout=5)
+    storage = MockStorage()
+    for ref in ("a", "b"):
+        storage.put_cas(
+            f"results/{ref}.json",
+            json.dumps({"choices": [{"message": {"content": ref}}]}).encode("utf-8"),
+            "application/json",
+        )
+
+    real_get_bytes = storage.get_bytes
+
+    def _blocking_get_bytes(key):
+        if key.startswith("results/"):
+            barrier.wait()  # raises BrokenBarrierError on timeout if resolution is serial
+        return real_get_bytes(key)
+
+    storage.get_bytes = _blocking_get_bytes
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": "a", "state": "completed", "result_key": "results/a.json"},
+                    {"id": "b", "state": "completed", "result_key": "results/b.json"},
+                ]
+            },
+        )
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(task="tag", recipe_hash=f"r-{ref}", backend="llm-dispatch-v2", ref=ref)
+        for ref in ("a", "b")
+    ]
+
+    results = backend.poll_batch(handles)
+    assert isinstance(results["a"], JobResult)
+    assert isinstance(results["b"], JobResult)
