@@ -144,12 +144,12 @@ def test_xxe_vulnerability_prevented():
 
 
 def test_validate_build_rejects_xxe(tmp_path):
-    xxe_xml = b'''<?xml version="1.0"?>
+    xxe_xml = b"""<?xml version="1.0"?>
 <!DOCTYPE foo [
   <!ENTITY xxe SYSTEM "file:///etc/passwd">
 ]>
 <foo>&xxe;</foo>
-'''
+"""
     _write_feed(tmp_path / "malicious-city" / "audio_feed.xml", xxe_xml)
 
     fatals, warnings = validate_build(tmp_path)
