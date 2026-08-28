@@ -447,7 +447,8 @@ type the pipeline writes already live in the calling Python client
   job(s) it actually needs — not proactively for every completed job in a reconciliation sweep.
 - **`POST /v2/jobs/{id}:schema-retry`:** preserves schema-correction semantics with a new payload
   and idempotency namespace; the caller writes the corrected payload to B2 first, same as
-  `enqueue-batch`.
+  `enqueue-batch`, and supplies its digest and updated input estimate because the ingress cannot
+  read B2. The coordinator clones the completed source's policy and output budget transactionally.
 - **`POST /v2/jobs:resolve-unknown-batch`:** an authenticated, bounded operator/GitHub-worker
   action that acknowledges `unknown_attempt` records and creates explicit retry job identities.
 - **`GET /healthz`:** does no B2 or DO work; used only for routing health.
@@ -639,11 +640,12 @@ existing hourly cleanup releases the row and both B2 objects on its next run. Th
 effective retention from 38 days to ~1 hour, which keeps `jobs` small (smaller indexes, fewer rows
 read) and returns B2 storage 38x sooner.
 
-**Ack only a validated success.** A job whose result failed structured-output validation must *not*
-be acked: the sweep's schema-correction path (`retry_malformed_dispatched`) still needs the original,
-and `LLMDispatchTerminalError` handling depends on the row. The time-based purge remains the
-backstop for anything never acked — a client that crashed between fetch and ack, or a registry
-record pruned before its sweep.
+**Ack only after durable consumption.** A job whose result failed structured-output validation must
+not be acked until the sweep has staged and durably accepted its one schema-correction clone: the
+correction path (`retry_malformed_dispatched`) still needs the original while it builds the new
+payload. Once the clone and the replacement deferred record plus correction marker exist, the
+malformed source can be acked safely. The time-based purge remains the backstop for anything never
+acked — a client that crashed between fetch and ack, or a registry record pruned before its sweep.
 
 ### Bookkeeping-table retention
 
@@ -1644,7 +1646,11 @@ POST /v2/jobs:poll-batch
   400:      { error: 'batch_too_large' }
 
 POST /v2/jobs/{id}:schema-retry
-  body:     { corrected_payload_key: string }    // CALLER already wrote this to B2, directly
+  body:     {
+               corrected_payload_key: string,
+               corrected_request_digest: string,
+               corrected_input_token_estimate: number
+             }                                // CALLER already wrote this to B2, directly
   200 body: { id: string, idempotency_key: string }   // new job under the schema-retry namespace
   404:      { error: 'not_found' }
 

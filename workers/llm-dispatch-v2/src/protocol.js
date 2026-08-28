@@ -125,8 +125,35 @@ export function validatePollBatchRequest(body, maxBatchSize = 1000) {
 }
 
 export function validateSchemaRetryRequest(body) {
-  if (!body || typeof body !== "object" || typeof body.corrected_payload_key !== "string" || !body.corrected_payload_key.trim()) {
-    return { valid: false, error: "invalid_request", detail: "Body must contain 'corrected_payload_key'" };
+  if (
+    !body ||
+    typeof body !== "object" ||
+    typeof body.corrected_payload_key !== "string" ||
+    !body.corrected_payload_key.trim()
+  ) {
+    return {
+      valid: false,
+      error: "invalid_request",
+      detail: "Body must contain 'corrected_payload_key'",
+    };
+  }
+  if (
+    typeof body.corrected_request_digest !== "string" ||
+    !body.corrected_request_digest.trim()
+  ) {
+    return {
+      valid: false,
+      error: "invalid_request",
+      detail: "Body must contain 'corrected_request_digest'",
+    };
+  }
+  const inputTokens = body.corrected_input_token_estimate;
+  if (typeof inputTokens !== "number" || !Number.isFinite(inputTokens) || inputTokens < 0) {
+    return {
+      valid: false,
+      error: "invalid_request",
+      detail: "Body corrected_input_token_estimate must be >= 0",
+    };
   }
   return { valid: true };
 }
