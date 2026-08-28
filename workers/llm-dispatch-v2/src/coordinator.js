@@ -186,17 +186,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         bundle_count_today                  INTEGER NOT NULL DEFAULT 0,
         jobs_ingested_today                 INTEGER NOT NULL DEFAULT 0,
         cleanup_cursor                      TEXT,
-        next_maintenance_alarm_at           INTEGER,
-        job_models_backfill_complete        INTEGER NOT NULL DEFAULT 0,
-        legacy_retryable_recovery_complete  INTEGER NOT NULL DEFAULT 0,
-        job_models_backfill_high_watermark  INTEGER,
-        job_models_backfill_cursor          INTEGER NOT NULL DEFAULT 0,
-        job_models_backfill_pending_rowid   INTEGER,
-        job_models_backfill_model_offset    INTEGER NOT NULL DEFAULT 0,
-        legacy_retryable_recovery_job_id    TEXT,
-        legacy_retryable_recovery_model_offset INTEGER NOT NULL DEFAULT 0,
-        migration_rows_scanned_today        INTEGER NOT NULL DEFAULT 0,
-        migration_write_units_today         INTEGER NOT NULL DEFAULT 0
+        next_maintenance_alarm_at           INTEGER
       );
 
       -- Keeps the model-queue index's ordering priority synchronized with a direct jobs.priority
@@ -223,24 +213,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "transient_retry_count", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("scheduler", "job_models_backfill_complete", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("scheduler", "legacy_retryable_recovery_complete", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("scheduler", "job_models_backfill_high_watermark", "INTEGER");
-    this._ensureColumn("scheduler", "job_models_backfill_cursor", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("scheduler", "job_models_backfill_pending_rowid", "INTEGER");
-    this._ensureColumn(
-      "scheduler",
-      "job_models_backfill_model_offset",
-      "INTEGER NOT NULL DEFAULT 0"
-    );
-    this._ensureColumn("scheduler", "legacy_retryable_recovery_job_id", "TEXT");
-    this._ensureColumn(
-      "scheduler",
-      "legacy_retryable_recovery_model_offset",
-      "INTEGER NOT NULL DEFAULT 0"
-    );
-    this._ensureColumn("scheduler", "migration_rows_scanned_today", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("scheduler", "migration_write_units_today", "INTEGER NOT NULL DEFAULT 0");
+    // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
+    // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
+    // "Durable Objects rows-read overage retrospective"). Both migrations completed in production
+    // (confirmed 2026-08-28 via a Data Studio query showing both *_complete flags = 1) and their
+    // code was retired; the columns themselves are left in place on already-migrated `scheduler`
+    // rows rather than dropped -- an unused column on a single-row table costs nothing, and
+    // ALTER TABLE ... DROP COLUMN against live production data is an unnecessary risk for zero
+    // benefit.
 
     const today = new Date().toISOString().slice(0, 10);
     const existing = [...sql.exec("SELECT id FROM scheduler WHERE id = 1")];
@@ -267,16 +247,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["rpd_count", "INTEGER NOT NULL DEFAULT 0"],
       ["payment_required_streak", "INTEGER NOT NULL DEFAULT 0"],
       ["transient_retry_count", "INTEGER NOT NULL DEFAULT 0"],
-      ["job_models_backfill_complete", "INTEGER NOT NULL DEFAULT 0"],
-      ["legacy_retryable_recovery_complete", "INTEGER NOT NULL DEFAULT 0"],
-      ["job_models_backfill_high_watermark", "INTEGER"],
-      ["job_models_backfill_cursor", "INTEGER NOT NULL DEFAULT 0"],
-      ["job_models_backfill_pending_rowid", "INTEGER"],
-      ["job_models_backfill_model_offset", "INTEGER NOT NULL DEFAULT 0"],
-      ["legacy_retryable_recovery_job_id", "TEXT"],
-      ["legacy_retryable_recovery_model_offset", "INTEGER NOT NULL DEFAULT 0"],
-      ["migration_rows_scanned_today", "INTEGER NOT NULL DEFAULT 0"],
-      ["migration_write_units_today", "INTEGER NOT NULL DEFAULT 0"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
@@ -366,29 +336,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /**
-   * Migration-only write cap. Zero deliberately pauses historical repair work without pausing
-   * normal dispatch: new jobs are indexed at enqueue time and already-indexed jobs stay eligible.
-   */
-  _maxQueuedJobModelBackfillPerClaim() {
-    return this._envInt("MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM", 1000);
-  }
-
-  /** Zero deliberately pauses recovery of legacy, pre-5xx-fix retryable rows. */
-  _maxLegacyRetryableRecoveryPerClaim() {
-    return this._envInt("MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM", 100);
-  }
-
-  /** Conservative daily migration budget; zero is a complete migration pause. */
-  _maxMigrationWriteUnitsPerUtcDay() {
-    return this._envInt("MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY", 5000);
-  }
-
-  /** Bound migration reads independently of ordinary capacity-ranked dispatch reads. */
-  _maxMigrationRowsScannedPerUtcDay() {
-    return this._envInt("MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY", 250000);
-  }
-
-  /**
    * Retention for the DO's two append-only bookkeeping tables. Neither `bundles` nor `attempts`
    * has any B2 counterpart or client-side dependency -- they are internal scheduler history, so
    * unlike `jobs` (whose row must outlive the client's result fetch, see purgePendingBatch)
@@ -405,7 +352,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   /** Per-tick delete budget for each table. Deletes are row WRITES, so this bounds the drain of
    * an existing backlog (and steady-state upkeep needs only a row or two per tick). Zero on
-   * either is an emergency pause, matching the migration knobs' convention. */
+   * either is an emergency pause. */
   _maxBundlePrunePerTick() {
     return this._envInt("MAX_BUNDLE_PRUNE_PER_TICK", 50);
   }
@@ -456,52 +403,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const today = this._currentUtcDay(now);
     const rows = [...sql.exec(
-      `SELECT utc_day, bundle_count_today, jobs_ingested_today, job_models_backfill_complete,
-              legacy_retryable_recovery_complete, job_models_backfill_high_watermark,
-              job_models_backfill_cursor, job_models_backfill_pending_rowid,
-              job_models_backfill_model_offset, legacy_retryable_recovery_job_id,
-              legacy_retryable_recovery_model_offset, migration_rows_scanned_today,
-              migration_write_units_today
-       FROM scheduler WHERE id = 1`
+      "SELECT utc_day, bundle_count_today, jobs_ingested_today FROM scheduler WHERE id = 1"
     )];
     if (rows.length === 0) {
       sql.exec(
         "INSERT INTO scheduler (id, utc_day, bundle_count_today, jobs_ingested_today) VALUES (1, ?, 0, 0)",
         today
       );
-      return {
-        utc_day: today,
-        bundle_count_today: 0,
-        jobs_ingested_today: 0,
-        job_models_backfill_complete: 0,
-        legacy_retryable_recovery_complete: 0,
-        job_models_backfill_high_watermark: null,
-        job_models_backfill_cursor: 0,
-        job_models_backfill_pending_rowid: null,
-        job_models_backfill_model_offset: 0,
-        legacy_retryable_recovery_job_id: null,
-        legacy_retryable_recovery_model_offset: 0,
-        migration_rows_scanned_today: 0,
-        migration_write_units_today: 0,
-      };
+      return { utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
     }
     const sched = rows[0];
     if (sched.utc_day !== today) {
       sql.exec(
-        `UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0,
-                              migration_rows_scanned_today = 0, migration_write_units_today = 0
-         WHERE id = 1`,
+        "UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0 WHERE id = 1",
         today
       );
-      // Both completion flags are one-time migration latches, not daily counters.
-      return {
-        ...sched,
-        utc_day: today,
-        bundle_count_today: 0,
-        jobs_ingested_today: 0,
-        migration_rows_scanned_today: 0,
-        migration_write_units_today: 0,
-      };
+      return { ...sched, utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
     }
     return sched;
   }
@@ -771,266 +688,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
         createdAt
       );
     }
-  }
-
-  static MIGRATION_MODEL_INDEX_WRITE_UNITS = 3;
-
-  static MIGRATION_RECOVERY_JOB_WRITE_UNITS = 2;
-
-  _migrationIndexWriteUnits(models) {
-    return models.length * LLMSchedulerDO.MIGRATION_MODEL_INDEX_WRITE_UNITS;
-  }
-
-  _indexMigrationModelChunk(job, models, modelOffset, remainingWriteUnits) {
-    const offset = Math.min(Math.max(0, Number(modelOffset || 0)), models.length);
-    const count = Math.min(
-      models.length - offset,
-      Math.max(
-        0,
-        Math.floor(remainingWriteUnits / LLMSchedulerDO.MIGRATION_MODEL_INDEX_WRITE_UNITS)
-      )
-    );
-    if (count > 0) {
-      this._indexQueuedJobModels(
-        job,
-        job.priority,
-        job.created_at,
-        models.slice(offset, offset + count)
-      );
-    }
-    return {
-      modelOffset: offset + count,
-      writeUnits: count * LLMSchedulerDO.MIGRATION_MODEL_INDEX_WRITE_UNITS,
-    };
-  }
-
-  /**
-   * Walk every job present at rollout exactly once by rowid. A fixed high-water mark excludes
-   * post-rollout jobs, which are indexed synchronously on enqueue. This avoids repeatedly
-   * restarting a NOT EXISTS scan at the queue head as earlier repaired rows accumulate there.
-   */
-  _backfillQueuedJobModels({
-    limit,
-    highWatermark,
-    cursor,
-    pendingRowid,
-    modelOffset,
-    remainingRows,
-    remainingWriteUnits,
-  }) {
-    const sql = this._getSql();
-    let scanned = 0;
-    let writeUnits = 0;
-    let nextHighWatermark = highWatermark;
-    let nextCursor = Number(cursor || 0);
-    let nextPendingRowid = pendingRowid == null ? null : Number(pendingRowid);
-    let nextModelOffset = Number(modelOffset || 0);
-
-    if (remainingRows <= 0 || remainingWriteUnits <= 0) {
-      return {
-        scanned,
-        writeUnits,
-        highWatermark,
-        cursor: nextCursor,
-        pendingRowid: nextPendingRowid,
-        modelOffset: nextModelOffset,
-        complete: false,
-      };
-    }
-    if (nextHighWatermark == null) {
-      const rows = [...sql.exec("SELECT COALESCE(MAX(rowid), 0) AS high_watermark FROM jobs")];
-      scanned += 1;
-      nextHighWatermark = Number(rows[0]?.high_watermark || 0);
-    }
-    if (nextCursor >= nextHighWatermark || remainingRows <= scanned) {
-      return {
-        scanned,
-        writeUnits,
-        highWatermark: nextHighWatermark,
-        cursor: nextCursor,
-        pendingRowid: nextPendingRowid,
-        modelOffset: nextModelOffset,
-        complete: nextPendingRowid == null && nextCursor >= nextHighWatermark,
-      };
-    }
-
-    const indexJob = (job, offset) => {
-      if (job.state !== "queued") {
-        nextCursor = job.migration_rowid;
-        nextPendingRowid = null;
-        nextModelOffset = 0;
-        return true;
-      }
-      const models = this._modelsToIndex(job);
-      const chunk = this._indexMigrationModelChunk(
-        job,
-        models,
-        offset,
-        remainingWriteUnits - writeUnits
-      );
-      writeUnits += chunk.writeUnits;
-      if (chunk.modelOffset < models.length) {
-        nextPendingRowid = job.migration_rowid;
-        nextModelOffset = chunk.modelOffset;
-        return false;
-      }
-      nextCursor = job.migration_rowid;
-      nextPendingRowid = null;
-      nextModelOffset = 0;
-      return true;
-    };
-
-    if (nextPendingRowid != null) {
-      const rows = [...sql.exec(
-        "SELECT rowid AS migration_rowid, * FROM jobs WHERE rowid = ?",
-        nextPendingRowid
-      )];
-      scanned += rows.length;
-      if (rows.length === 0) {
-        nextCursor = Math.max(nextCursor, nextPendingRowid);
-        nextPendingRowid = null;
-        nextModelOffset = 0;
-      } else {
-        indexJob(rows[0], nextModelOffset);
-      }
-      return {
-        scanned,
-        writeUnits,
-        highWatermark: nextHighWatermark,
-        cursor: nextCursor,
-        pendingRowid: nextPendingRowid,
-        modelOffset: nextModelOffset,
-        complete: nextPendingRowid == null && nextCursor >= nextHighWatermark,
-      };
-    }
-
-    const batchLimit = Math.min(limit, remainingRows - scanned);
-    const rows = [...sql.exec(
-      `SELECT rowid AS migration_rowid, * FROM jobs
-       WHERE rowid > ? AND rowid <= ?
-       ORDER BY rowid ASC
-       LIMIT ?`,
-      nextCursor,
-      nextHighWatermark,
-      batchLimit
-    )];
-    scanned += rows.length;
-    for (const job of rows) {
-      if (!indexJob(job, 0)) break;
-    }
-    return {
-      scanned,
-      writeUnits,
-      highWatermark: nextHighWatermark,
-      cursor: nextCursor,
-      pendingRowid: nextPendingRowid,
-      modelOffset: nextModelOffset,
-      complete: nextPendingRowid == null && nextCursor >= nextHighWatermark,
-    };
-  }
-
-  /**
-   * Prior deployments recorded a final 5xx as `retryable`, but claimDispatchWindow only reads
-   * `queued` jobs. Recover a small batch on every cron tick so those rows become dispatchable
-   * without a manual SQLite edit. They receive one post-Gateway recovery execution: initialize
-   * their outer-retry counter at the cap so another final 5xx is surfaced as failed, never cycled.
-   */
-  _recoverLegacyRetryableJobs(
-    now,
-    { limit, pendingJobId, modelOffset, remainingRows, remainingWriteUnits }
-  ) {
-    const sql = this._getSql();
-    if (limit <= 0 || remainingRows <= 0 || remainingWriteUnits <= 0) {
-      return { scanned: 0, writeUnits: 0, pendingJobId, modelOffset, complete: false };
-    }
-    let pendingId = pendingJobId || null;
-    let nextModelOffset = Number(modelOffset || 0);
-    let writeUnits = 0;
-    const recover = (job, offset) => {
-      const models = this._modelsToIndex(job);
-      const normalizedOffset = Math.min(Math.max(0, offset), models.length);
-      let mappingCount = Math.min(
-        models.length - normalizedOffset,
-        Math.floor(
-          (remainingWriteUnits - writeUnits) / LLMSchedulerDO.MIGRATION_MODEL_INDEX_WRITE_UNITS
-        )
-      );
-      // Hold two units for the state change when this chunk could finish the model list. Otherwise
-      // a final mapping would be persisted but the retryable job could never afford its transition.
-      if (
-        mappingCount === models.length - normalizedOffset &&
-        remainingWriteUnits - writeUnits - this._migrationIndexWriteUnits(models.slice(
-          normalizedOffset,
-          normalizedOffset + mappingCount
-        )) < LLMSchedulerDO.MIGRATION_RECOVERY_JOB_WRITE_UNITS
-      ) {
-        mappingCount -= 1;
-      }
-      if (mappingCount > 0) {
-        const chunk = models.slice(normalizedOffset, normalizedOffset + mappingCount);
-        this._indexQueuedJobModels(job, job.priority, job.created_at, chunk);
-        writeUnits += this._migrationIndexWriteUnits(chunk);
-      }
-      const nextOffset = normalizedOffset + mappingCount;
-      if (nextOffset < models.length) {
-        pendingId = job.id;
-        nextModelOffset = nextOffset;
-        return false;
-      }
-      if (
-        remainingWriteUnits - writeUnits < LLMSchedulerDO.MIGRATION_RECOVERY_JOB_WRITE_UNITS
-      ) {
-        pendingId = job.id;
-        nextModelOffset = nextOffset;
-        return false;
-      }
-      sql.exec(
-        `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
-                         lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?, updated_at=?
-         WHERE id=?`,
-        this._max5xxRetries(),
-        now,
-        job.id
-      );
-      writeUnits += LLMSchedulerDO.MIGRATION_RECOVERY_JOB_WRITE_UNITS;
-      pendingId = null;
-      nextModelOffset = 0;
-      return true;
-    };
-
-    if (pendingId != null) {
-      const rows = [...sql.exec("SELECT * FROM jobs WHERE id=? AND state='retryable'", pendingId)];
-      if (rows.length === 0) {
-        return { scanned: 0, writeUnits, pendingJobId: null, modelOffset: 0, complete: false };
-      }
-      recover(rows[0], nextModelOffset);
-      return {
-        scanned: 1,
-        writeUnits,
-        pendingJobId: pendingId,
-        modelOffset: nextModelOffset,
-        complete: false,
-      };
-    }
-
-    const batchLimit = Math.min(limit, remainingRows);
-    const legacy = [...sql.exec(
-      `SELECT * FROM jobs
-       WHERE state='retryable'
-       ORDER BY priority ASC, created_at ASC
-       LIMIT ?`,
-      batchLimit
-    )];
-    for (const job of legacy) {
-      if (!recover(job, 0)) break;
-    }
-    return {
-      scanned: legacy.length,
-      writeUnits,
-      pendingJobId: pendingId,
-      modelOffset: nextModelOffset,
-      complete: pendingId == null && legacy.length < batchLimit,
-    };
   }
 
   /**
@@ -1315,103 +972,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const sched = this._rollUtcDayIfNeeded(now);
       if (sched.bundle_count_today >= maxBundlesPerDay) return EMPTY;
 
-      const migrationRowsLimit = this._maxMigrationRowsScannedPerUtcDay();
-      const migrationWriteUnitsLimit = this._maxMigrationWriteUnitsPerUtcDay();
-      let migrationRowsScanned = Number(sched.migration_rows_scanned_today || 0);
-      let migrationWriteUnits = Number(sched.migration_write_units_today || 0);
-      let legacyRetryableRecoveryComplete = Boolean(sched.legacy_retryable_recovery_complete);
-      let jobModelsBackfillComplete = Boolean(sched.job_models_backfill_complete);
-      let jobModelsBackfillHighWatermark = sched.job_models_backfill_high_watermark;
-      let jobModelsBackfillCursor = Number(sched.job_models_backfill_cursor || 0);
-      let jobModelsBackfillPendingRowid = sched.job_models_backfill_pending_rowid;
-      let jobModelsBackfillModelOffset = Number(sched.job_models_backfill_model_offset || 0);
-      let legacyRetryableRecoveryJobId = sched.legacy_retryable_recovery_job_id;
-      let legacyRetryableRecoveryModelOffset = Number(
-        sched.legacy_retryable_recovery_model_offset || 0
-      );
-      const initialMigrationState = {
-        rows: migrationRowsScanned,
-        writeUnits: migrationWriteUnits,
-        legacyComplete: legacyRetryableRecoveryComplete,
-        backfillComplete: jobModelsBackfillComplete,
-        highWatermark: jobModelsBackfillHighWatermark,
-        cursor: jobModelsBackfillCursor,
-        pendingRowid: jobModelsBackfillPendingRowid,
-        backfillModelOffset: jobModelsBackfillModelOffset,
-        recoveryJobId: legacyRetryableRecoveryJobId,
-        recoveryModelOffset: legacyRetryableRecoveryModelOffset,
-      };
-      const persistMigrationState = () => {
-        if (
-          migrationRowsScanned === initialMigrationState.rows &&
-          migrationWriteUnits === initialMigrationState.writeUnits &&
-          legacyRetryableRecoveryComplete === initialMigrationState.legacyComplete &&
-          jobModelsBackfillComplete === initialMigrationState.backfillComplete &&
-          jobModelsBackfillHighWatermark === initialMigrationState.highWatermark &&
-          jobModelsBackfillCursor === initialMigrationState.cursor &&
-          jobModelsBackfillPendingRowid === initialMigrationState.pendingRowid &&
-          jobModelsBackfillModelOffset === initialMigrationState.backfillModelOffset &&
-          legacyRetryableRecoveryJobId === initialMigrationState.recoveryJobId &&
-          legacyRetryableRecoveryModelOffset === initialMigrationState.recoveryModelOffset
-        ) {
-          return;
-        }
-        sql.exec(
-          `UPDATE scheduler
-           SET legacy_retryable_recovery_complete = ?, job_models_backfill_complete = ?,
-               job_models_backfill_high_watermark = ?, job_models_backfill_cursor = ?,
-               job_models_backfill_pending_rowid = ?, job_models_backfill_model_offset = ?,
-               legacy_retryable_recovery_job_id = ?,
-               legacy_retryable_recovery_model_offset = ?, migration_rows_scanned_today = ?,
-               migration_write_units_today = ?
-           WHERE id = 1`,
-          Number(legacyRetryableRecoveryComplete),
-          Number(jobModelsBackfillComplete),
-          jobModelsBackfillHighWatermark,
-          jobModelsBackfillCursor,
-          jobModelsBackfillPendingRowid,
-          jobModelsBackfillModelOffset,
-          legacyRetryableRecoveryJobId,
-          legacyRetryableRecoveryModelOffset,
-          migrationRowsScanned,
-          migrationWriteUnits
-        );
-        initialMigrationState.rows = migrationRowsScanned;
-        initialMigrationState.writeUnits = migrationWriteUnits;
-        initialMigrationState.legacyComplete = legacyRetryableRecoveryComplete;
-        initialMigrationState.backfillComplete = jobModelsBackfillComplete;
-        initialMigrationState.highWatermark = jobModelsBackfillHighWatermark;
-        initialMigrationState.cursor = jobModelsBackfillCursor;
-        initialMigrationState.pendingRowid = jobModelsBackfillPendingRowid;
-        initialMigrationState.backfillModelOffset = jobModelsBackfillModelOffset;
-        initialMigrationState.recoveryJobId = legacyRetryableRecoveryJobId;
-        initialMigrationState.recoveryModelOffset = legacyRetryableRecoveryModelOffset;
-      };
-      const remainingMigrationRows = () => Math.max(0, migrationRowsLimit - migrationRowsScanned);
-      const remainingMigrationWriteUnits = () =>
-        Math.max(0, migrationWriteUnitsLimit - migrationWriteUnits);
-
-      // A bounded compatibility migration prevents pre-recovery deployments from leaving jobs
-      // in the unclaimable retryable state indefinitely. Once its final short batch is empty,
-      // persist that fact so later cron ticks spend no read on a state new code never writes.
-      const legacyRetryableRecoveryLimit = this._maxLegacyRetryableRecoveryPerClaim();
-      if (!legacyRetryableRecoveryComplete && legacyRetryableRecoveryLimit > 0) {
-        const result = this._recoverLegacyRetryableJobs(now, {
-          limit: legacyRetryableRecoveryLimit,
-          pendingJobId: legacyRetryableRecoveryJobId,
-          modelOffset: legacyRetryableRecoveryModelOffset,
-          remainingRows: remainingMigrationRows(),
-          remainingWriteUnits: remainingMigrationWriteUnits(),
-        });
-        migrationRowsScanned += result.scanned;
-        migrationWriteUnits += result.writeUnits;
-        legacyRetryableRecoveryJobId = result.pendingJobId;
-        legacyRetryableRecoveryModelOffset = result.modelOffset;
-        legacyRetryableRecoveryComplete ||= result.complete;
-        // This migration runs before the active-bundle early return, so persist its counters now.
-        persistMigrationState();
-      }
-
       // Reap bundles whose lease expired without ever reaching completeBatch -- an executor
       // crash, a CPU/wall-clock eviction mid-tick, or an uncaught error before the final
       // completeBatch RPC all leave a bundle stuck 'active' forever otherwise, since nothing
@@ -1462,29 +1022,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
         callDurationCeilingMs,
       });
 
-      // One bounded, forward-only migration pass makes pre-index rollout jobs visible. Every normal
-      // claim below then reads only the top few jobs for each capacity-ranked model, never a global
-      // queue head. Its high-water cursor latches after the finite pre-rollout population is read.
-      const queuedJobModelBackfillLimit = this._maxQueuedJobModelBackfillPerClaim();
-      if (!jobModelsBackfillComplete && queuedJobModelBackfillLimit > 0) {
-        const result = this._backfillQueuedJobModels({
-          limit: queuedJobModelBackfillLimit,
-          highWatermark: jobModelsBackfillHighWatermark,
-          cursor: jobModelsBackfillCursor,
-          pendingRowid: jobModelsBackfillPendingRowid,
-          modelOffset: jobModelsBackfillModelOffset,
-          remainingRows: remainingMigrationRows(),
-          remainingWriteUnits: remainingMigrationWriteUnits(),
-        });
-        migrationRowsScanned += result.scanned;
-        migrationWriteUnits += result.writeUnits;
-        jobModelsBackfillHighWatermark = result.highWatermark;
-        jobModelsBackfillCursor = result.cursor;
-        jobModelsBackfillPendingRowid = result.pendingRowid;
-        jobModelsBackfillModelOffset = result.modelOffset;
-        jobModelsBackfillComplete ||= result.complete;
-        persistMigrationState();
-      }
       const chosen = [];
       const chosenJobIds = new Set();
       const seenRoutes = new Set();
@@ -1493,11 +1030,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const candidates = [...sql.exec(
           `SELECT jobs.* FROM job_models
            JOIN jobs ON jobs.id = job_models.job_id
-           WHERE job_models.model = ? AND jobs.state = 'queued' AND jobs.rowid != ?
+           WHERE job_models.model = ? AND jobs.state = 'queued'
            ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
            LIMIT ?`,
           modelPlan.model,
-          jobModelsBackfillPendingRowid || 0,
           maxJobsPerModelClaim
         )];
 

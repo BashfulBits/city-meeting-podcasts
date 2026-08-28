@@ -79,6 +79,19 @@ Phase R (Research-Tool Surface)._
   that reads as `SEARCH`. Verified by mutation testing: removing any of the four indexes, or
   reverting the candidate lookup to a queue-head scan, fails at least one invariant.
 
+- **LLM dispatch V2 rollout compatibility migrations retired.** Both the `job_models` backfill and
+  legacy `retryable` recovery migrations (below) completed in production -- confirmed 2026-08-28 via
+  a Data Studio query against the live coordinator showing both `scheduler.*_complete` flags at `1`
+  -- so their code, config knobs (`MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM`,
+  `MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM`, `MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY`,
+  `MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY`), and per-tick state threading were removed from
+  `coordinator.js`/`index.js`/`wrangler.jsonc`, along with the tests that only existed to exercise
+  them. The `scheduler` columns those migrations wrote are left in place on already-migrated
+  instances rather than dropped -- an unused column on a single-row table costs nothing, and
+  `ALTER TABLE ... DROP COLUMN` against live production data is an unnecessary risk for zero
+  benefit; a fresh DO instance's schema simply no longer declares them. See review/44's "Retired:
+  the rollout compatibility migrations".
+
 - **LLM dispatch V2 linear, budgeted compatibility migrations.** Historical queued-job model
   indexing now captures a rollout-time SQLite row-id high-water mark and advances a durable cursor,
   so it reads the finite old population once instead of repeatedly searching the queue head. Legacy

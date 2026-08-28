@@ -46,14 +46,6 @@
     "MAX_IN_FLIGHT_LLM_CALLS": "8",
     "MAX_BUNDLES_PER_UTC_DAY": "1000",
     "MAX_JOBS_PER_UTC_DAY": "5000",
-    // Historical migration throttles. The forward-only model-index cursor and index-ordered
-    // retry recovery share daily row-read/write-unit budgets, so their bounded work cannot
-    // consume the Free plan's daily DO allowance. Zero on either per-claim value remains an
-    // emergency pause; these values restart cautiously after the 2026-08-26 overage incident.
-    "MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM": "4",
-    "MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM": "1",
-    "MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY": "5000",
-    "MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY": "250000",
     "ENQUEUE_BATCH_MAX": "1000",
     "POLL_BATCH_MAX": "1000",
     "MAX_RESPONSE_SECONDS": "720",
