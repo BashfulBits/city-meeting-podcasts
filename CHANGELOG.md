@@ -28,6 +28,11 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Unexpected-body remediation evidence collection.** The remediation workflow now passes its
+  GitHub token to the audit's issue-reconciliation read and runs that collection in dry-run mode;
+  this prevents step 7 from failing with an unset `GH_TOKEN` and prevents evidence collection from
+  mutating issues or dispatching a second remediation run.
+
 - **Blank optional R2 endpoint handling.** Storage helpers and the R2 maintenance scripts now use
   the standard account endpoint when `R2_ENDPOINT` is unset, empty, or whitespace-only, while
   preserving explicit jurisdiction-specific endpoint overrides.
@@ -38,6 +43,7 @@ Phase R (Research-Tool Surface)._
   repair, leave migration incomplete until every canonical read succeeds, and continue reconciling
   independent records; downloads use unique per-call staging files; strict reads still surface
   authentication, configuration, and other non-transient errors.
+  
 - **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
   deferred sweep now registers the `moment-extraction` response contract. It also stages one
   corrected v2 payload and submits it through a durable schema-retry endpoint that clones the
