@@ -350,7 +350,8 @@ export async function handleRequest(request, env) {
     }
   }
 
-  if (request.method === "POST" && /^\/v2\/jobs\/[^/]+:schema-retry$/.test(path)) {
+  const schemaRetryMatch = path.match(/^\/v2\/jobs\/([^/]+):schema-retry$/);
+  if (request.method === "POST" && schemaRetryMatch) {
     let body;
     try {
       body = await request.json();
@@ -363,15 +364,37 @@ export async function handleRequest(request, env) {
       return errorResponse(400, validation.error, validation.detail);
     }
 
-    // Schema-retry semantics (a new payload/idempotency namespace persisted through the
-    // coordinator) land with Phase 2's dispatch/structured-output-validation machinery -- this
-    // endpoint must not fabricate an id and claim success for a job that was never actually
-    // written to the jobs table; a caller polling that id would wait forever.
-    return errorResponse(
-      501,
-      "not_implemented",
-      "schema-retry is not yet implemented (lands with Phase 2)"
-    );
+    let sourceId;
+    try {
+      sourceId = decodeURIComponent(schemaRetryMatch[1]);
+    } catch {
+      return errorResponse(400, "invalid_request", "Job id is not valid URL encoding");
+    }
+
+    try {
+      const result = await coordinator.schemaRetry(sourceId, {
+        corrected_payload_key: body.corrected_payload_key,
+        corrected_request_digest: body.corrected_request_digest,
+        corrected_input_token_estimate: Number(body.corrected_input_token_estimate),
+      });
+      if (result.status === "not_found") {
+        return errorResponse(404, "not_found", `Job not found: ${sourceId}`);
+      }
+      if (result.status === "invalid_state") {
+        return errorResponse(409, "invalid_state", `Job is not completed: ${result.state}`);
+      }
+      if (result.status === "conflict") {
+        return errorResponse(409, "idempotency_conflict", "Schema-retry key has a different payload");
+      }
+      if (result.status === "daily_cap_exceeded") {
+        return errorResponse(429, "daily_cap_exceeded", "Daily job admission cap exceeded");
+      }
+      return jsonResponse({ id: result.id, idempotency_key: result.idempotency_key }, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`schemaRetry failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
   }
 
   if (request.method === "POST" && path === "/v2/jobs:resolve-unknown-batch") {

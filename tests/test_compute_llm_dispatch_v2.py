@@ -137,6 +137,55 @@ def test_enqueue_batch_submits_jobs_and_persists_payloads_to_b2():
     assert len(stored_payload_keys) == 2
 
 
+def test_v2_schema_correction_stages_corrected_payload_and_acks_source():
+    storage = MockStorage()
+    storage.put_cas(
+        "payloads/job-v2/request.json",
+        json.dumps(
+            {
+                "model": "gemini/gemini-flash-lite",
+                "messages": [{"role": "user", "content": "hello"}],
+                "stream": False,
+            }
+        ).encode(),
+        "application/json",
+    )
+    mock_session = MagicMock()
+    mock_session.post.side_effect = [
+        _mock_response(
+            json_data={"id": "corrected-v2", "idempotency_key": "source:schema-correction-v2"}
+        ),
+        _mock_response(json_data={"acked": ["job-v2"], "ignored": []}),
+    ]
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+            dispatch_v2_auth_token="secret-v2",
+        ),
+        http_session=mock_session,
+        storage=storage,
+    )
+
+    corrected = backend.retry_malformed_dispatched(
+        JobHandle(
+            task="tag",
+            recipe_hash="source",
+            backend="llm-dispatch-v2",
+            ref="job-v2",
+            structured_output="dispatch-v2-test-pong",
+        )
+    )
+
+    assert corrected.backend == "llm-dispatch-v2"
+    assert corrected.ref == "corrected-v2"
+    retry_request = mock_session.post.call_args_list[0].kwargs["json"]
+    corrected_payload = json.loads(storage.files[retry_request["corrected_payload_key"]])
+    assert corrected_payload["messages"][-1]["role"] == "user"
+    assert "failed local schema validation" in corrected_payload["messages"][-1]["content"]
+    assert mock_session.post.call_args_list[1].kwargs["json"] == {"ids": ["job-v2"]}
+
+
 def test_enqueue_batch_payload_carries_no_policy_fields_for_the_provider():
     """Regression for the 2026-08-26 incident: enqueue_batch's stored B2 payload is forwarded
     to the provider verbatim by gateway.js's upstreamRequestForRoute() (unlike v1's own ingress,

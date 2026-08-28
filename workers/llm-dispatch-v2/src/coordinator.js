@@ -517,6 +517,92 @@ export class LLMSchedulerDO extends DurableObjectBase {
     });
   }
 
+  /**
+   * Clone a completed job into the v2 schema-correction namespace. The caller has already
+   * written the corrected payload to B2; this transaction only records the new queue row and
+   * copies the source job's routing policy and output budget. Keeping the source row untouched
+   * lets the caller retry this RPC idempotently and ack the original only after the clone exists.
+   */
+  async schemaRetry(sourceId, retry) {
+    const sql = this._getSql();
+    const now = Date.now();
+    const maxJobsToday = this._maxJobsPerUtcDay();
+
+    return this.ctx.storage.transactionSync(() => {
+      // Derive the correction namespace from the source id rather than the source row. That lets
+      // a response-loss retry return the existing correction even after cleanup purged the source.
+      const idempotencyKey = `schema-correction-v2:${sourceId}`;
+
+      // A repeated request after the first clone was accepted must return that canonical id,
+      // even if the source has since been acked and purged by the caller.
+      const existing = [...sql.exec(
+        "SELECT id, request_digest FROM jobs WHERE idempotency_key = ?",
+        idempotencyKey
+      )];
+      if (existing.length > 0) {
+        if (existing[0].request_digest === retry.corrected_request_digest) {
+          return {
+            status: "accepted",
+            id: existing[0].id,
+            idempotency_key: idempotencyKey,
+          };
+        }
+        return { status: "conflict" };
+      }
+
+      const sourceRows = [...sql.exec("SELECT * FROM jobs WHERE id = ?", sourceId)];
+      if (sourceRows.length === 0) return { status: "not_found" };
+      const source = sourceRows[0];
+
+      if (source.state !== "completed") {
+        return { status: "invalid_state", state: source.state };
+      }
+
+      const sched = this._rollUtcDayIfNeeded(now);
+      if (sched.jobs_ingested_today >= maxJobsToday) {
+        return { status: "daily_cap_exceeded" };
+      }
+
+      const id = crypto.randomUUID();
+      sql.exec(
+        `INSERT INTO jobs (
+          id, idempotency_key, request_digest, provider_idempotency_key,
+          state, priority, policy_json, prompt_family,
+          input_token_estimate, max_output_token_estimate,
+          payload_key, attempts, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        id,
+        idempotencyKey,
+        retry.corrected_request_digest,
+        source.provider_idempotency_key,
+        source.priority,
+        source.policy_json,
+        source.prompt_family,
+        retry.corrected_input_token_estimate,
+        source.max_output_token_estimate,
+        retry.corrected_payload_key,
+        now,
+        now
+      );
+      this._indexQueuedJobModels(
+        {
+          id,
+          policy_json: source.policy_json,
+          priority: source.priority,
+          input_token_estimate: retry.corrected_input_token_estimate,
+          max_output_token_estimate: source.max_output_token_estimate,
+          created_at: now,
+        },
+        source.priority,
+        now
+      );
+      sql.exec(
+        "UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + 1 WHERE id = 1"
+      );
+      return { status: "accepted", id, idempotency_key: idempotencyKey };
+    });
+  }
+
   async pollBatch(ids) {
     if (!ids || ids.length === 0) {
       return { statuses: [] };

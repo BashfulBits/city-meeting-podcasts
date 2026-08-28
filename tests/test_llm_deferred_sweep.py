@@ -30,7 +30,7 @@ def _snapshot(handles):
     )
 
 
-def test_sweep_registers_topic_tags_contract_before_reconciling():
+def test_sweep_registers_known_contracts_before_reconciling():
     """The sweep runs as its own process, separate from whatever Stage originally submitted a
     pending "tag" job -- citypods.compute.structured's registry is a plain in-memory dict, so
     response_model("topic-tags") only resolves if something in *this* process registered it.
@@ -41,6 +41,7 @@ def test_sweep_registers_topic_tags_contract_before_reconciling():
     llm_deferred_sweep._register_known_contracts()
 
     assert response_model("topic-tags") is not None
+    assert response_model("moment-extraction") is not None
 
 
 def test_sweep_reports_zero_when_storage_is_unavailable(monkeypatch, capsys):

@@ -17,6 +17,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
+  deferred sweep now registers the `moment-extraction` response contract. It also stages one
+  corrected v2 payload and submits it through a durable schema-retry endpoint that clones the
+  completed job's routing policy into a new idempotency namespace, then consumption-acks the
+  malformed source after the clone is accepted. This replaces the v1-only correction path that
+  produced schema-correction failures for v2 jobs and leaves failed corrections retryable.
+
 - **LLM dispatch V2 consumption ack, parallel result resolution, and a 6-hourly sweep.** A v2 job's
   DO row and B2 objects were held for `COMPLETED_RETENTION_DAYS` (38) after completion even though
   the client had fetched, validated and durably persisted the result minutes later --
@@ -24,10 +31,9 @@ Phase R (Research-Tool Surface)._
   consumption. `POST /v2/jobs:ack-batch` now does, called once per poll chunk (not per job) after
   `write_deferred` succeeds, reducing post-ack retention to roughly one hourly cleanup tick --
   completion-to-release still spans the six-hour observation cadence for a job the sweep hasn't
-  yet polled. Only a
-  validated success is acked: a result that failed structured-output validation is exactly what the
-  sweep's schema-correction path re-reads. A failed ack is harmless -- the result is already durable
-  client-side -- and never fails the poll.
+  yet polled. A result that failed structured-output validation remains unacked while the sweep's
+  schema-correction path re-reads it, then is acked after the corrective clone is accepted. A failed
+  ack is harmless -- the result is already durable client-side -- and never fails the poll.
 
   Fixed a latent stranding bug found while wiring this up: `purgePendingBatch` selected only
   `completed`/`failed`, so a row already in `purge_pending` was never re-listed. A cleanup run that

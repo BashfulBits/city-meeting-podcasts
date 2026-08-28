@@ -2,8 +2,9 @@
 
 Direct calls use Instructor for provider-mode selection, parsing, Pydantic validation, and one
 bounded corrective retry.  The R10 Worker remains an asynchronous transport: it durably stores the
-Pydantic-generated response format, and reconciliation validates the completed reply locally.  A
-future queue-owned corrective retry can be added without changing a task's response contract.
+Pydantic-generated response format, and reconciliation validates the completed reply locally.
+The v2 queue also supports one queue-owned corrective retry without changing a task's response
+contract.
 
 Every policy-bearing call that can't complete synchronously -- nothing eligible right now, a real
 429 from the provider, or a genuinely in-flight dispatch to the R10 Worker -- returns the same
@@ -2265,7 +2266,9 @@ class LiteLLMBackend(Backend):
             pass
 
     def retry_malformed_dispatched(self, handle: JobHandle) -> JobHandle:
-        """Ask the Worker to clone a completed request with one corrective schema instruction."""
+        """Clone a completed request with one corrective instruction."""
+        if handle.backend == "llm-dispatch-v2":
+            return self._retry_malformed_dispatched_v2(handle)
         if not self.config.dispatch_url:
             raise LLMBackendError("schema correction requires LLM_DISPATCH_URL")
         base = self.config.dispatch_url.rstrip("/") + "/"
@@ -2304,6 +2307,114 @@ class LiteLLMBackend(Backend):
             task=handle.task,
             recipe_hash=handle.recipe_hash,
             backend=self.name,
+            ref=ref,
+            structured_output=handle.structured_output,
+            model=handle.model,
+        )
+
+    def _retry_malformed_dispatched_v2(self, handle: JobHandle) -> JobHandle:
+        """Stage and enqueue one v2 schema-correction payload.
+
+        The v2 ingress cannot read B2, so the corrected request is written first and its digest
+        and token estimate are sent alongside the payload key. The coordinator clones the source
+        job's policy and output budget into a new idempotency namespace, then the malformed source
+        is consumption-acked because its result is no longer needed.
+        """
+        if not self.config.dispatch_v2_url:
+            raise LLMBackendError("schema correction requires LLM_DISPATCH_V2_URL")
+        if not re.fullmatch(r"[A-Za-z0-9-]{1,128}", handle.ref):
+            raise LLMBackendError(
+                "LLM schema-correction requires a valid dispatch v2 job reference"
+            )
+
+        storage = self._storage_client()
+        if storage is None:
+            raise LLMBackendError("LLM schema correction requires a storage backend")
+        original_key = f"payloads/{handle.ref}/request.json"
+        raw = storage.get_bytes(original_key)
+        body = raw[0] if raw else None
+        if body is None:
+            raise LLMBackendError("LLM schema-correction could not read the original v2 payload")
+        try:
+            payload = json.loads(body)
+        except (TypeError, ValueError) as exc:
+            raise LLMBackendError(
+                "LLM schema-correction found an invalid original v2 payload"
+            ) from exc
+        if not isinstance(payload, Mapping) or not isinstance(payload.get("messages"), list):
+            raise LLMBackendError("LLM schema-correction found no valid messages in the v2 payload")
+
+        corrected_messages = [dict(message) for message in payload["messages"]]
+        corrected_messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "Retry this task. Your previous response failed local schema validation. "
+                    "Return only one JSON object that exactly matches the requested response "
+                    "schema."
+                ),
+            }
+        )
+        corrected_payload = dict(payload)
+        corrected_payload["messages"] = corrected_messages
+        canonical_payload = json.dumps(corrected_payload, sort_keys=True)
+        # Keep this key stable across a lost HTTP response and a client retry. The corrected
+        # payload is deterministic, so overwriting this one source-specific object cannot change
+        # an already-accepted correction and avoids orphaning a fresh object on every retry.
+        corrected_key = f"payloads/{handle.ref}/schema-correction.json"
+        request_digest = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
+        input_token_estimate = estimate_tokens(corrected_messages)
+
+        try:
+            storage.put_cas(
+                corrected_key,
+                canonical_payload.encode("utf-8"),
+                "application/json",
+            )
+        except Exception as exc:
+            raise LLMBackendError("LLM schema-correction payload staging failed") from exc
+
+        headers = {"content-type": "application/json"}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        url = urljoin(
+            self.config.dispatch_v2_url.rstrip("/") + "/",
+            f"v2/jobs/{handle.ref}:schema-retry",
+        )
+        body = {
+            "corrected_payload_key": corrected_key,
+            "corrected_request_digest": request_digest,
+            "corrected_input_token_estimate": input_token_estimate,
+        }
+        try:
+            response = self._session.post(
+                url,
+                json=body,
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+            )
+            if response.status_code != 200:
+                raise LLMBackendError(
+                    f"LLM schema-correction enqueue returned HTTP {response.status_code}"
+                )
+            response_body = response.json()
+            ref = response_body.get("id") if isinstance(response_body, Mapping) else None
+            if not isinstance(ref, str) or not ref:
+                raise LLMBackendError("LLM schema-correction response omitted a v2 job reference")
+        except requests.RequestException as exc:
+            storage.delete(corrected_key)
+            raise LLMBackendError("LLM schema-correction enqueue failed") from exc
+        except (LLMBackendError, TypeError, ValueError):
+            storage.delete(corrected_key)
+            raise
+
+        # The corrective clone is now durable. Retire the malformed source so its B2 objects do
+        # not sit for the normal terminal-retention period; _ack_batch remains best effort.
+        self._ack_batch([handle.ref])
+        return JobHandle(
+            task=handle.task,
+            recipe_hash=handle.recipe_hash,
+            backend="llm-dispatch-v2",
             ref=ref,
             structured_output=handle.structured_output,
             model=handle.model,

@@ -166,6 +166,12 @@ def _register_known_contracts() -> None:
         ensure_locator_contract()
     except ImportError:
         pass
+    try:
+        from citypods.moments import ensure_moment_contract
+
+        ensure_moment_contract()
+    except ImportError:
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:
