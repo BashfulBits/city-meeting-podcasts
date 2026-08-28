@@ -15,6 +15,17 @@ Turns US city-meeting archives into subscribable **podcast feeds** (audio + vide
 **directory**, hosted free on GitHub Pages, with derived audio/transcripts on object storage behind a
 CDN. It is **provider-agnostic**: each meeting platform is a pluggable adapter behind one interface.
 
+## Weekly human-review infrastructure
+
+`citypods/review_issues.py` is the common control plane for H15 transcript quality, R5 tags, R6 moments,
+R7 speaker calibration, and H16 availability evidence. Feature adapters retain candidate selection and
+durable-state validation; the shared publisher adds a versioned hidden envelope, byte-safe bodies, a common
+trust label, idempotent native-child batches, and a scheduled resolver/finalizer. H16 children write
+availability overrides only after re-validating the persisted record. Tournament champion routing uses the
+same envelope's rolling-ticket surface: a trusted selection opens a configuration-only PR, and a merged
+retained-catalog selection creates a resumable tag-backfill request. Review plumbing has no output pipeline
+version; route changes are recipe-driven and refresh gradually or through the bounded backfill lane.
+
 ## Pipeline (data flow)
 
 ```

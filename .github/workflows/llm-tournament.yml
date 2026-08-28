@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: llm-tag-tournament
@@ -30,6 +31,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[storage,llm]" -c constraints/prod.txt
       - name: Run two bounded tag samples
         env:
@@ -55,3 +57,22 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: python -m citypods.tournament --samples 2
+      - name: Publish tournament champion ticket
+        env:
+          GH_TOKEN: ${{ github.token }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          python -m citypods.tournament ticket --out-dir tournament-ticket
+          python scripts/publish_review_ticket.py --family tournament-tag \
+            --label tournament-champion-ticket --title "Tournament champion ticket: tag" \
+            --body-file tournament-ticket/ticket.md

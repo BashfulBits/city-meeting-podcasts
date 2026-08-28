@@ -33,8 +33,8 @@ from citypods.availability_digest import (
     safe_stem,
     select_for_digest,
     sha256_file,
-    updated_digest_state,
 )
+from citypods.availability_review import mark_pending, package_evidence
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import record_to_episode, source_key
 from citypods.security import SecurityError, allowed_hosts_for_city, validate_source_url
@@ -188,6 +188,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pull", action="store_true", help="pull durable bucket state before scanning")
     ap.add_argument("--push", action="store_true", help="push the updated digest ledger back")
     ap.add_argument(
+        "--mark-pending",
+        action="store_true",
+        help="record children as pending after a successful shared-issue publish",
+    )
+    ap.add_argument(
         "--push-only",
         action="store_true",
         help=(
@@ -200,6 +205,19 @@ def main(argv: list[str] | None = None) -> int:
 
     site_config = load_site_config(args.site_config)
     state_dir = resolve_state_dir(site_config, Path(args.output_dir))
+
+    if args.mark_pending:
+        from citypods.statesync import push_state
+        from citypods.storage import make_storage
+
+        marked = mark_pending(out_dir=Path(args.out), state_dir=state_dir)
+        storage = make_storage(site_config, site_config.get("base_url", ""), Path(args.output_dir))
+        pushed = push_state(storage, state_dir, only_prefixes=[DIGEST_STATE_NAME])
+        if pushed == 0:
+            print("error: push_state pushed 0 file(s); pending review state was not persisted")
+            return 1
+        print(f"availability digest: marked {marked} child review(s) pending")
+        return 0
 
     if args.push_only:
         from citypods.statesync import push_state
@@ -234,8 +252,15 @@ def main(argv: list[str] | None = None) -> int:
 
     candidates = iter_candidates(state_dir)
     digest_state = load_digest_state(state_dir)
-    digested = set(digest_state.get("digested", []))
-    selected = select_for_digest(candidates, digested, limit=args.limit)
+    # v2 review state records human resolutions, not merely publication.  Legacy ``digested``
+    # entries deliberately re-enter review once so old rolling-digest rows cannot disappear
+    # without a durable human decision.
+    resolved = {
+        key
+        for key, value in (digest_state.get("reviews") or {}).items()
+        if isinstance(value, dict) and value.get("status") == "resolved"
+    }
+    selected = select_for_digest(candidates, resolved, limit=args.limit)
 
     if not selected:
         print(
@@ -272,14 +297,11 @@ def main(argv: list[str] | None = None) -> int:
 
     body = render_issue_body(evidence)
     (out_dir / "issue-body.md").write_text(body)
+    package_evidence(evidence=evidence, out_dir=out_dir, state_dir=state_dir)
     (out_dir / "has_candidates").write_text("true\n")
 
-    # Persist the ledger so the same candidates are not re-digested next week (the digest workflow
-    # commits/pushes state separately; here we just write the updated file under state_dir).
-    new_keys = [c.key() for c in selected]
-    digest_state_path(state_dir).write_text(
-        json.dumps(updated_digest_state(digest_state, new_keys), indent=2) + "\n"
-    )
+    # Do not mark rows resolved merely because they were published.  ``availability-review ingest``
+    # is the only path that writes a resolved review record.
     if args.push and storage is not None:
         from citypods.statesync import push_state
 

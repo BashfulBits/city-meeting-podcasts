@@ -43,9 +43,10 @@ review decisions in `state/llm_evaluation.json`, 90% required precision, 12 mini
 (lowered from an initial 95%/30, 2026-07-17). The
 weekly [`llm-tag-review.yml`](../.github/workflows/llm-tag-review.yml) workflow packages the digest and
 actionable child issues (bounded quoted transcript region with derived timestamps, or a bounded
-agenda/document quote with an allowlisted official document link); review decisions are ingested by
-[`llm-tag-review-ingest.yml`](../.github/workflows/llm-tag-review-ingest.yml), which refreshes the matrix
-and makes newly qualified tags visible on the next normal build without another LLM call. The current
+agenda/document quote with an allowlisted official document link); the shared
+[`review-issue-resolve.yml`](../.github/workflows/review-issue-resolve.yml) workflow ingests trusted
+decisions, refreshes the matrix, and makes newly qualified tags visible on the next normal build without
+another LLM call. The current
 rollout is chapter-only for LLM candidates: episode-level LLM suggestions are ignored, while
 deterministic episode/chapter rules remain unchanged. Deterministic candidates remain public until
 their pre-labeler overlay qualifies at 50 reviewed examples and 95% precision for both actionable

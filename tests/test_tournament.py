@@ -1,4 +1,9 @@
+import base64
+import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
+
+import pytest
 
 from citypods import tournament
 from citypods.compute.base import JobHandle, JobResult
@@ -11,11 +16,108 @@ from citypods.tournament import (
     pairwise_judge,
     persisted_r5_flash_output,
 )
+from scripts.tournament_route_proposal import parse_route_proposal, parse_ticket
 
 
 def test_round_robin_has_six_independent_judges():
     assert len(contest_plan()) == 6
     assert all(judge not in {left, right} for left, right, judge in contest_plan())
+
+
+def test_champion_ticket_requires_a_strictly_greater_than_sixty_percent_gate():
+    now = datetime(2026, 8, 28, tzinfo=UTC)
+    results = [
+        {
+            "at": now.isoformat(),
+            "decisions": [
+                {
+                    "left": "current",
+                    "right": "challenger",
+                    "first": "current",
+                    "winner": winner,
+                }
+                for winner in ("b", "b", "b", "a", "a")
+            ],
+        }
+    ]
+    stats = tournament.champion_stats(results, current_model="current", now=now)
+    body = tournament.render_champion_ticket(
+        task="tag", current_model="current", stats=stats, required_win_rate=0.60
+    )
+
+    assert stats["challenger"]["win_rate"] == 0.60
+    assert "FYI-only" in body
+    assert "- [ ] Switch" not in body
+
+
+def test_ticket_parser_accepts_only_one_registered_switch_choice():
+    body = tournament.render_champion_ticket(
+        task="tag",
+        current_model="current",
+        stats={
+            "challenger": {
+                "wins": 7,
+                "losses": 3,
+                "ties": 0,
+                "comparisons": 10,
+                "win_rate": 0.7,
+            }
+        },
+        required_win_rate=0.60,
+    ).replace("- [ ] Switch", "- [x] Switch", 1)
+
+    decision = parse_ticket(body)
+
+    assert decision["action"] == "switch"
+    assert decision["model"] == "challenger"
+    assert decision["backfill"] is False
+
+
+def test_ticket_uses_the_configured_rolling_window_and_counts_chapters_once(tmp_path):
+    body = tournament.render_champion_ticket(
+        task="tag",
+        current_model="current",
+        stats={},
+        required_win_rate=0.60,
+        window_days=14,
+    )
+    assert "Rolling window: 14 days." in body
+
+    episodes = tmp_path / "sources" / "city" / "episodes.json"
+    episodes.parent.mkdir(parents=True)
+    episodes.write_text(
+        '{"episodes":{"one":{"chapter_id":"chapter-a","llm_tag_candidates":'
+        '[{"provider_model":"old"},{"provider_model":"old"}]},'
+        '"two":{"chapter_id":"chapter-a","llm_tag_candidates":'
+        '[{"provider_model":"old"}]},'
+        '"three":{"chapter_id":"chapter-b","llm_tag_candidates":'
+        '[{"provider_model":"new"}]}}}'
+    )
+
+    estimates = tournament.ticket_estimates(tmp_path, {"old", "new"})
+    assert estimates["old"]["retained_chapters"] == 1
+    assert estimates["new"]["retained_chapters"] == 1
+
+
+def test_route_handoff_validates_the_immutable_ticket_challenger_metadata():
+    ticket = {"version": 1, "task": "tag", "challengers": ["challenger"]}
+    model = base64.urlsafe_b64encode(b"challenger").decode()
+    metadata = base64.urlsafe_b64encode(json.dumps(ticket).encode()).decode()
+    body = (
+        "<!-- citypods:tournament-route v=1 issue=123 model_b64="
+        f"{model} backfill=true ticket_b64={metadata} -->"
+    )
+
+    assert parse_route_proposal(body) == {
+        "issue_number": 123,
+        "model": "challenger",
+        "backfill": True,
+        "ticket": ticket,
+    }
+
+    bad_model = base64.urlsafe_b64encode(b"not-eligible").decode()
+    with pytest.raises(ValueError, match="eligible"):
+        parse_route_proposal(body.replace(model, bad_model))
 
 
 def test_reuses_only_provenanced_r5_flash_candidates():

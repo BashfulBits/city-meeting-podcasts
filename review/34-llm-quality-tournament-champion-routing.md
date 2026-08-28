@@ -300,10 +300,24 @@ the switch (and clears itself) via an Action, never automatically or silently. T
 R13's shipped adapter using the identical `LLMRequestPolicy` pattern every other caller uses, and composes
 with, rather than duplicates, review/35's ground-truth calibration matrix.
 
-## Remaining proposed GitHub issue (not filed — batch review pending)
+## §13. Completed review surface
 
-The reusable tournament engine and R5 runner are implemented in `citypods/tournament.py`; it remains
-human-approved and cannot change production routing. The remaining slice is:
+The reusable tournament engine and the initial `tag` weekly champion ticket are implemented in
+`citypods/tournament.py` and the shared review-issue adapter. The ticket remains human-approved and
+cannot change production routing directly.
 
-1. Weekly champion-stats GitHub issue + checkbox-approval Action (quality, cost, back-catalog-cost,
-   apply-and-clear).
+## §14. Implemented ticket and merge gate (2026-08-28)
+
+The initial `tag` tournament now packages its rolling result through the shared weekly-review adapter.
+`llm_tournament.json` supplies completed comparisons in a configurable 28-day window; a challenger is
+actionable only when its tie-adjusted win rate is **strictly greater than 60%**. The rolling ticket reports
+quality rows, settled `llm_budget.json` cost telemetry, and the retained chapter count whose recorded route
+differs from each challenger. A no-challenger run is FYI-only and has no checkboxes.
+
+**Maintainer-selected deviation from §5:** a trusted checked switch opens a narrowly scoped PR that changes
+only the registered route configuration. It links the PR from the ticket before clearing the choice; neither
+the Action nor the ticket changes production configuration or auto-merges. This merge gate puts a whole-verb
+route change through normal review/CI and makes an abandoned proposal a no-op. A merged retained-catalog
+choice writes a resumable request and starts the bounded tag-backfill workflow; it advances a durable source
+cursor and uses the ordinary tag dispatch/budget limits. It never bumps a stage pipeline version. An
+unmerged PR records that no route or backfill work changed.
