@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
 
-from citypods.storage import make_storage
+from citypods.storage import StorageReadUnavailable, make_storage
 from citypods.storage.local import LocalStorage
 from citypods.storage.routing import RoutingStorage
 from citypods.storage.s3 import CASConflict, S3CompatibleStorage
@@ -141,6 +142,51 @@ def test_r2_public_base_optional_for_routing_coordination(monkeypatch):
     assert s3_mod.r2_from_env(require_public_base_url=False) == captured
     assert captured["public_base_url"] == "https://acct.r2.cloudflarestorage.com"
     assert captured["cas_capable"] is True
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_r2_blank_endpoint_uses_account_default(monkeypatch, blank):
+    from citypods.storage import s3 as s3_mod
+
+    captured = {}
+
+    def fake_storage(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(s3_mod, "S3CompatibleStorage", fake_storage)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "key")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("R2_BUCKET", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://pub.example")
+    monkeypatch.setenv("R2_ENDPOINT", blank)
+
+    s3_mod.r2_from_env()
+
+    assert captured["endpoint_url"] == "https://acct.r2.cloudflarestorage.com"
+
+
+def test_r2_endpoint_override_is_preserved(monkeypatch):
+    from citypods.storage import s3 as s3_mod
+
+    captured = {}
+
+    def fake_storage(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(s3_mod, "S3CompatibleStorage", fake_storage)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "key")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("R2_BUCKET", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://pub.example")
+    monkeypatch.setenv("R2_ENDPOINT", " https://acct.eu.r2.cloudflarestorage.com ")
+
+    s3_mod.r2_from_env()
+
+    assert captured["endpoint_url"] == "https://acct.eu.r2.cloudflarestorage.com"
 
 
 def test_make_storage_unknown_backend(tmp_path, monkeypatch):
@@ -522,8 +568,10 @@ def test_exists_reraises_non_absent_client_errors():
             raise _client_error("SlowDown", 503)
 
     store._client = _ThrottledClient()
-    with pytest.raises(Exception, match="SlowDown"):
+    with pytest.raises(StorageReadUnavailable, match="SlowDown") as caught:
         store.exists("k.json")
+    assert caught.value.key == "k.json"
+    assert caught.value.cause.response["Error"]["Code"] == "SlowDown"
 
 
 def test_put_cas_create_if_absent_then_conflict():
@@ -712,9 +760,114 @@ def test_get_file_raises_after_exhausting_transfer_retries(tmp_path, monkeypatch
     store._client = client
     monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
 
-    with pytest.raises(ReadTimeoutError):
+    with pytest.raises(StorageReadUnavailable) as caught:
         store.get_file("state/k.json", tmp_path / "state.json")
     assert client.calls == 3
+    assert caught.value.key == "state/k.json"
+    assert isinstance(caught.value.cause, ReadTimeoutError)
+
+
+def test_get_file_preserves_existing_destination_after_exhausted_retry(tmp_path, monkeypatch):
+    from botocore.exceptions import ReadTimeoutError
+
+    store = _s3_with_fake_client()
+    destination = tmp_path / "state.json"
+    destination.write_text("known-good")
+
+    class _PartialDownloadClient(_FakeDownloadClient):
+        def download_file(self, bucket, key, path):
+            Path(path).write_text("partial")
+            super().download_file(bucket, key, path)
+
+    store._client = _PartialDownloadClient(
+        [ReadTimeoutError(endpoint_url="https://x", error="timeout") for _ in range(3)]
+    )
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(StorageReadUnavailable):
+        store.get_file("state/k.json", destination)
+
+    assert destination.read_text() == "known-good"
+    assert not (tmp_path / ".state.json.download").exists()
+
+
+def test_overlapping_get_file_calls_use_independent_staging_paths(tmp_path, monkeypatch):
+    from botocore.exceptions import ReadTimeoutError
+
+    store = _s3_with_fake_client()
+
+    class _OverlappingDownloadClient:
+        def __init__(self):
+            self.first_thread = None
+            self.first_path = None
+            self.paths = []
+            self.first_started = threading.Event()
+            self.second_started = threading.Event()
+            self._lock = threading.Lock()
+
+        def download_file(self, bucket, key, path):
+            thread_id = threading.get_ident()
+            with self._lock:
+                self.paths.append(Path(path))
+                if self.first_thread is None:
+                    self.first_thread = thread_id
+                    self.first_path = Path(path)
+                    first = True
+                else:
+                    first = thread_id == self.first_thread
+            if first and not self.first_started.is_set():
+                Path(path).write_text("failed-attempt")
+                self.first_started.set()
+                assert self.second_started.wait(5)
+                raise ReadTimeoutError(endpoint_url="https://x", error="timeout")
+            if not first:
+                Path(path).write_text("second-result")
+                self.second_started.set()
+                assert self.first_path is not None
+                while self.first_path.exists():
+                    threading.Event().wait(0.001)
+                return
+            raise ReadTimeoutError(endpoint_url="https://x", error="timeout")
+
+    client = _OverlappingDownloadClient()
+    store._client = client
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+    destination = tmp_path / "state.json"
+    first_result = []
+    first_error = []
+    second_result = []
+    second_error = []
+
+    def download_first():
+        try:
+            store.get_file("state/first.json", destination)
+        except StorageReadUnavailable:
+            first_result.append("unavailable")
+        except Exception as exc:  # pragma: no cover - protects the thread assertion below
+            first_error.append(exc)
+
+    def download_second():
+        try:
+            second_result.append(store.get_file("state/second.json", destination))
+        except Exception as exc:  # pragma: no cover - old fixed-path behavior fails here
+            second_error.append(exc)
+
+    first = threading.Thread(target=download_first)
+    first.start()
+    assert client.first_started.wait(5)
+    second = threading.Thread(target=download_second)
+    second.start()
+    first.join(5)
+    second.join(5)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert first_result == ["unavailable"]
+    assert first_error == []
+    assert second_error == []
+    assert second_result == [True]
+    assert destination.read_text() == "second-result"
+    assert len(set(client.paths)) == 2
 
 
 def test_get_file_returns_false_only_for_absent_objects(tmp_path):
@@ -730,9 +883,10 @@ def test_get_file_raises_non_absent_client_errors(tmp_path, monkeypatch):
     monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
 
     # Transient server errors are retried, but still surface after the bounded retry budget.
-    with pytest.raises(Exception, match="InternalError"):
+    with pytest.raises(StorageReadUnavailable, match="InternalError") as caught:
         store.get_file("state/k.json", tmp_path / "k.json")
     assert store._client.calls == 3
+    assert caught.value.key == "state/k.json"
 
 
 def test_get_file_retries_streaming_checksum_parser_failure_then_succeeds(tmp_path, monkeypatch):

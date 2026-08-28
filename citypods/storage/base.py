@@ -6,6 +6,23 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 
+class StorageReadUnavailable(RuntimeError):
+    """A transient object read exhausted its bounded retry budget.
+
+    ``key`` and ``cause`` let best-effort multi-object callers report the affected object without
+    confusing it with a missing object. The original exception is also chained by the adapter that
+    raises this error, so strict callers can inspect it when diagnosing a backend incident.
+    """
+
+    def __init__(self, key: str, cause: BaseException):
+        self.key = key
+        self.cause = cause
+        response = getattr(cause, "response", None)
+        error = response.get("Error", {}) if isinstance(response, dict) else {}
+        self.reason = str(error.get("Code") or type(cause).__name__)
+        super().__init__(f"storage read unavailable for {key!r} ({self.reason})")
+
+
 @runtime_checkable
 class StorageBackend(Protocol):
     """Stores audio objects under string keys and returns public URLs.
@@ -30,13 +47,19 @@ class StorageBackend(Protocol):
     # orphan GC. Not every backend implements them; callers must feature-detect via ``hasattr``.
 
     def get_file(self, key: str, local_path: Path) -> bool:
-        """Download ``key`` into ``local_path``. Return False if the object is absent."""
+        """Download ``key`` into ``local_path``. Return False if absent.
+
+        S3-compatible backends raise :class:`StorageReadUnavailable` when a transient read still
+        fails after bounded retries. Other backend errors propagate unchanged.
+        """
         ...
 
     def get_range(self, key: str, start: int, end: int) -> bytes | None:
         """Return bytes ``[start, end]`` of ``key`` (inclusive, HTTP Range semantics), or
-        ``None`` if the object is absent. ``end`` may exceed the object's actual size; the
-        returned bytes are then just shorter than requested (never an error).
+        ``None`` if the object is absent. S3-compatible backends raise
+        :class:`StorageReadUnavailable` after exhausted transient retries. ``end`` may exceed the
+        object's actual size; the returned bytes are then just shorter than requested (never an
+        error).
 
         Optional capability for partial reads (e.g. an MP4 header-only duration probe)
         without downloading the whole object. Callers feature-detect via ``hasattr``.
@@ -66,7 +89,11 @@ class StorageBackend(Protocol):
     # implement them; callers feature-detect via ``hasattr`` and raise ``CASConflict`` on 412.
 
     def get_bytes(self, key: str) -> tuple[bytes, str] | None:
-        """Return ``(data, etag)`` for ``key``, or None if absent (the CAS read half)."""
+        """Return ``(data, etag)`` for ``key``, or None if absent (the CAS read half).
+
+        S3-compatible backends raise :class:`StorageReadUnavailable` after exhausted transient
+        retries.
+        """
         ...
 
     def put_cas(

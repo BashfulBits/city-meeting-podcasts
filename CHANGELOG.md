@@ -33,6 +33,17 @@ Phase R (Research-Tool Surface)._
   this prevents step 7 from failing with an unset `GH_TOKEN` and prevents evidence collection from
   mutating issues or dispatching a second remediation run.
 
+- **Blank optional R2 endpoint handling.** Storage helpers and the R2 maintenance scripts now use
+  the standard account endpoint when `R2_ENDPOINT` is unset, empty, or whitespace-only, while
+  preserving explicit jurisdiction-specific endpoint overrides.
+
+- **Observable exhausted storage reads.** S3-compatible object reads now preserve the affected key
+  and original cause when bounded transient retries are exhausted. Deferred LLM snapshot and index
+  repair paths report and skip only unavailable objects, retain existing pointers during uncertain
+  repair, leave migration incomplete until every canonical read succeeds, and continue reconciling
+  independent records; downloads use unique per-call staging files; strict reads still surface
+  authentication, configuration, and other non-transient errors.
+  
 - **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
   deferred sweep now registers the `moment-extraction` response contract. It also stages one
   corrected v2 payload and submits it through a durable schema-retry endpoint that clones the
@@ -266,6 +277,21 @@ Phase R (Research-Tool Surface)._
   Flash Lite's independent free-tier pool as the first use, to help drain the queued-request
   backlog built up during Mistral's monthly-quota pause (see the secondary-capacity entry above)
   without touching the queued jobs themselves.
+
+- **Explicit LLM alternates now precede config-injected overflow routes.** The v1 dispatch Worker
+  now keeps every caller-supplied `allowed_models` entry ahead of models added by `model_routing`.
+  Previously, expansion interleaved Mistral Medium's Gemini overflow before its explicit Llama
+  3.3 70B peer, so queued agenda extraction always selected Gemini whenever it had capacity and
+  never reached SambaNova. This is a dispatch-selection fix only: no pipeline version changes and
+  already-queued durable requests pick up the corrected ordering dynamically on their next tick.
+
+- **V2 dispatch now separates job discovery from route choice.** Capacity-ranked model indexes
+  remain the bounded mechanism for finding queued work, but after a job is found the Durable
+  Object ranks every route explicitly allowed by that job. Previously the alphabetically first
+  tied model pool (commonly Gemini) both found and claimed the job, so later Llama/SambaNova peers
+  were never examined even when a cron tick returned fewer than four jobs. Equal-capacity routes
+  now retain the caller's `allowed_models` order. Existing queued jobs adopt the fix on their next
+  claim; there is no pipeline-version change or artifact backfill.
 
 - **Secondary Mistral dispatch capacity and deeper v1 queue lookahead.** Added independent
   secondary-account routes for every native Mistral model, using `MISTRAL_API_KEY_SECONDARY` and

@@ -1111,7 +1111,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const chosen = [];
       const chosenJobIds = new Set();
       const seenRoutes = new Set();
-      for (const modelPlan of this._rankModelsByCapacity(now, windowSeconds, dispatchLimits)) {
+      const modelPlans = this._rankModelsByCapacity(now, windowSeconds, dispatchLimits);
+      const modelPlansByModel = new Map(modelPlans.map((plan) => [plan.model, plan]));
+      for (const modelPlan of modelPlans) {
         if (chosen.length >= maxBundleJobs) break;
         const candidates = [...sql.exec(
           `SELECT jobs.* FROM job_models
@@ -1126,14 +1128,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
         for (const job of candidates) {
           if (chosen.length >= maxBundleJobs) break;
           if (chosenJobIds.has(job.id)) continue;
-          const eligibleRoutes = routesEligibleFor(job, dispatchLimits)
-            .filter((route) => route.model === modelPlan.model)
-            .sort(
-              (left, right) =>
-                (modelPlan.routeScores.get(right.route_id) || 0) -
-                  (modelPlan.routeScores.get(left.route_id) || 0) ||
-                left.route_id.localeCompare(right.route_id)
+          // The capacity-ranked model index is a bounded way to *find* work, not permission to
+          // force that discovery model onto the job. A job is indexed under every explicit
+          // alternate; once found, rank all of its eligible routes. Otherwise the first tied
+          // model alphabetically (usually Gemini) claims the whole bundle and a later Llama
+          // alternate is never considered, even when fewer than maxBundleJobs are available.
+          // Stable sort preserves the caller's allowed_models order when live capacity ties.
+          const eligibleRoutes = routesEligibleFor(job, dispatchLimits).sort((left, right) => {
+            const leftPlan = modelPlansByModel.get(left.model);
+            const rightPlan = modelPlansByModel.get(right.model);
+            return (
+              (rightPlan?.score || 0) - (leftPlan?.score || 0) ||
+              (rightPlan?.routeScores.get(right.route_id) || 0) -
+                (leftPlan?.routeScores.get(left.route_id) || 0)
             );
+          });
           const routeOrder = [
             ...eligibleRoutes.filter((route) => !seenRoutes.has(route.route_id)),
             ...eligibleRoutes.filter((route) => seenRoutes.has(route.route_id)),
