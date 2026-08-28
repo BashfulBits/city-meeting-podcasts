@@ -62,15 +62,13 @@ The set of original media a meeting is built from. One entry today; N for concat
 ```python
 @dataclass(frozen=True)
 class SourceMedia:
-    id: str  # stable within the episode, e.g. "s0", "s1" (or seq-derived)
-    provider: str  # "granicus" | "swagit" | ...
-    ref: str  # how the provider re-resolves playable media (page url / clip id / dfile)
-    media_kind: str  # "direct" | "hls"
-    duration: float | None  # source-clip seconds (moved off Episode.duration; see §4)
-    watch_url: str | None  # human watch page (canonical_video)
-    backup_key: str | None = (
-        None  # optional: our archived copy of this source media (see §7 "Future: video")
-    )
+    id: str            # stable within the episode, e.g. "s0", "s1" (or seq-derived)
+    provider: str      # "granicus" | "swagit" | ...
+    ref: str           # how the provider re-resolves playable media (page url / clip id / dfile)
+    media_kind: str    # "direct" | "hls"
+    duration: float | None     # source-clip seconds (moved off Episode.duration; see §4)
+    watch_url: str | None      # human watch page (canonical_video)
+    backup_key: str | None = None   # optional: our archived copy of this source media (see §7 "Future: video")
 ```
 
 `ref` is deliberately the *stable* handle (page URL / clip id), never the tokenized HLS URL —
@@ -87,7 +85,7 @@ source, or a synthetic insert. This is the whole model:
 class Segment:
     served_start: float
     served_end: float
-    kind: str  # "source" | "insert"
+    kind: str                  # "source" | "insert"
     # kind == "source":
     source_id: str | None = None
     source_start: float | None = None
@@ -97,12 +95,11 @@ class Segment:
     asset_id: str | None = None
     asset_version: str | None = None
 
-
 @dataclass(frozen=True)
 class Timeline:
-    version: str  # the planner/algorithm version that produced this EDL
+    version: str               # the planner/algorithm version that produced this EDL
     segments: tuple[Segment, ...]
-    basis: str = "served"  # served-time is canonical
+    basis: str = "served"      # served-time is canonical
 ```
 
 We do **not** time-stretch — every source segment is a constant-offset copy
@@ -189,13 +186,12 @@ Add to the record (and the `Episode` dataclass, round-tripped in `records.py`):
 Today: `{v, source_url, max_kbps, chapters}`. Generalize to:
 
 ```python
-{
-    "v": AUDIO_PIPELINE_VERSION,
-    "max_kbps": max_kbps,
-    "timeline": timeline_digest(tl),  # canonical hash of the EDL; "" for identity
-    "loudness": loudness_profile or "",  # e.g. "" today, "ebuR128:-16LUFS" once #21 ships
-    "chapters": served_chapters,  # now served-time
-    "sources": [s.ref for s in sources],  # replaces the single source_url
+{ "v": AUDIO_PIPELINE_VERSION,
+  "max_kbps": max_kbps,
+  "timeline": timeline_digest(tl),     # canonical hash of the EDL; "" for identity
+  "loudness": loudness_profile or "",  # e.g. "" today, "ebuR128:-16LUFS" once #21 ships
+  "chapters": served_chapters,         # now served-time
+  "sources": [s.ref for s in sources], # replaces the single source_url
 }
 ```
 

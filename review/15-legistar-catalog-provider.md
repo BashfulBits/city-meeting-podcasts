@@ -442,25 +442,25 @@ No new dependency. Use `re` (stdlib) for the narrow patterns the provider needs:
 
 3. **Body name** — first `<td>` text content in a row:
    ```python
-   re.search(r"<td[^>]*>\s*([^<]+?)\s*</td>", row_html)
+   re.search(r'<td[^>]*>\s*([^<]+?)\s*</td>', row_html)
    ```
 
 4. **clip_id and view_id from video link onclick**:
    ```python
-   re.search(r"ID1=(\d+)", row_html)
-   re.search(r"view_id=(\d+)", row_html)
+   re.search(r'ID1=(\d+)', row_html)
+   re.search(r'view_id=(\d+)', row_html)
    ```
 
 5. **Meeting date** — second `<td>` after the body name; parse with `datetime.strptime`.
 
 6. **Total record count** (for pagination):
    ```python
-   re.search(r"Records\s+\d+\s+-\s+\d+\s+of\s+(\d+)", html)
+   re.search(r'Records\s+\d+\s+-\s+\d+\s+of\s+(\d+)', html)
    ```
 
 7. **Next-page button absent/disabled** (pagination termination):
    ```python
-   re.search(r"ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl02_ctl00_ctl04[^>]*disabled", html)
+   re.search(r'ctl00_ContentPlaceHolder1_gridCalendar_ctl00_ctl02_ctl00_ctl04[^>]*disabled', html)
    ```
    Or: button element completely absent.
 
@@ -793,7 +793,9 @@ source only to enrich already-discovered episodes with agenda URLs — never to 
   directly), so it works identically whether the auxiliary source is a full `MeetingProvider`
   (Legistar/OneMeeting) or the lighter CivicClerk `AgendaRecord` path:
   ```python
-  def attach_auxiliary_agenda_links(episodes: list[Episode], aux_records: list[AgendaSource]) -> None:
+  def attach_auxiliary_agenda_links(
+      episodes: list[Episode], aux_records: list[AgendaSource]
+  ) -> None:
       """Enrich `episodes` in place with agenda links from `aux_records`, matched by uid.
       Never adds or removes episodes -- unmatched aux rows are dropped, not promoted."""
   ```

@@ -173,12 +173,12 @@ job = InferenceJob(
         "structured_output": CONTRACT_NAME,
         "llm_policy": LLMRequestPolicy(
             allowed_models=(candidate_model,),  # exact singleton for a tournament contest
-            allow_paid=True,  # tournament calls test paid routes too
-            purpose="tournament:tag",  # telemetry only, never branched on
+            allow_paid=True,                     # tournament calls test paid routes too
+            purpose="tournament:tag",             # telemetry only, never branched on
         ),
     },
     recipe_hash=recipe_hash,  # already folds in model_id (§7) -- differs per candidate model,
-    # so each contest's request is a distinct, non-colliding identity
+                              # so each contest's request is a distinct, non-colliding identity
 )
 result = backend.run_inference(job)
 ```

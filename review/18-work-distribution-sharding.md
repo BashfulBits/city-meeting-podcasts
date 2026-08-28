@@ -189,24 +189,21 @@ ownership-aware write path Stage 2 reuses. Audio/align unchanged.
 
 ```python
 def merge_preserving_foreign(
-    remote: dict,
-    local: dict,
-    protected: frozenset[str],
-    *,
-    owned_uids: frozenset[str] | None = None,
+    remote: dict, local: dict, protected: frozenset[str],
+    *, owned_uids: frozenset[str] | None = None,
 ) -> dict:
     merged = {uid: dict(rec) for uid, rec in remote.items()}
     for uid, local_rec in local.items():
         # uid this run does NOT own: never write our snapshot-stale artifact for it.
         if owned_uids is not None and uid not in owned_uids:
-            if uid not in remote:  # newly discovered, unowned (§2.2)
+            if uid not in remote:                       # newly discovered, unowned (§2.2)
                 merged[uid] = {k: v for k, v in local_rec.items() if k not in ARTIFACT_BLOCKS}
             # else: keep remote as-is (already copied above) — a sibling owns/writes it.
             continue
-        rec = dict(local_rec)  # owned: today's behavior
+        rec = dict(local_rec)                            # owned: today's behavior
         remote_rec = remote.get(uid)
         if remote_rec:
-            for block in protected:  # still preserve cross-lane foreign blocks
+            for block in protected:                      # still preserve cross-lane foreign blocks
                 if remote_rec.get(block):
                     rec[block] = remote_rec[block]
         merged[uid] = rec
