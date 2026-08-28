@@ -662,6 +662,8 @@ def repair_deferred_index(
 
     The pass is idempotent. It intentionally lists the canonical prefix only when invoked by an
     operator/maintenance run; ordinary sweeps use the narrow index listings.
+    Migration is marked complete only when every canonical read succeeds; an unavailable record
+    leaves the full-list fallback active for the next run.
     """
     current = now or datetime.now(UTC)
     repaired = 0
@@ -694,7 +696,8 @@ def repair_deferred_index(
                 except Exception:  # noqa: BLE001 -- cleanup remains best-effort
                     pass
     prune_expired_failure_markers(storage, now=current)
-    _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 1}\n')
+    if not had_unavailable:
+        _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 1}\n')
     return repaired
 
 

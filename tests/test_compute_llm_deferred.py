@@ -250,6 +250,30 @@ def test_repair_marks_migration_and_indexed_snapshot_rechecks_canonical_records(
     assert len(snapshot.entries) == 1
 
 
+def test_repair_does_not_mark_migration_when_a_canonical_read_is_unavailable():
+    class _UnavailableStorage(MemStorage):
+        unavailable_key = None
+
+        def get_file(self, key, local_path):
+            if key == self.unavailable_key:
+                raise StorageReadUnavailable(key, TimeoutError("connection reset"))
+            return super().get_file(key, local_path)
+
+    storage = _UnavailableStorage()
+    write_deferred(storage, "good", _pending_handle("good"), now=NOW)
+    write_deferred(storage, "unavailable", _pending_handle("unavailable"), now=NOW)
+    storage.unavailable_key = deferred_key("unavailable")
+    unavailable = []
+
+    assert repair_deferred_index(storage, now=NOW, unavailable=unavailable) == 1
+    assert not storage.exists(DEFERRED_INDEX_MIGRATION_KEY)
+    assert [error.key for error in unavailable] == [deferred_key("unavailable")]
+
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    assert [handle.recipe_hash for handle in snapshot.pending()] == ["good"]
+    assert [error.key for error in snapshot.unavailable_reads] == [deferred_key("unavailable")]
+
+
 def test_indexed_listing_skips_a_model_partition_that_is_out_of_capacity():
     storage = MemStorage()
     blocked_model, open_model = ("gemini/gemini-3.1-flash-lite", "gemini/gemini-3.5-flash-lite")

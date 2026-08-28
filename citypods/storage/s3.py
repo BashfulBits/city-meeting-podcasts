@@ -11,6 +11,7 @@ Requires ``boto3`` (extra: ``citypods[storage]``). Backends are built from env v
 from __future__ import annotations
 
 import os
+import tempfile
 import time
 from pathlib import Path
 
@@ -311,7 +312,11 @@ class S3CompatibleStorage:
 
         local_path = Path(local_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        staged_path = local_path.with_name(f".{local_path.name}.download")
+        staged_fd, staged_name = tempfile.mkstemp(
+            prefix=f".{local_path.name}.", suffix=".download", dir=local_path.parent
+        )
+        os.close(staged_fd)
+        staged_path = Path(staged_name)
         try:
             _retry_storage_read(
                 lambda: self._client.download_file(self.bucket, key, str(staged_path)), key=key
