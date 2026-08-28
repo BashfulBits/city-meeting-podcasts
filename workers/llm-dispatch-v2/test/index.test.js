@@ -114,6 +114,24 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
   assert.throws(() => validateConfig(noTokenEnv));
 });
 
+test("validateConfig rejects a CLEANUP_INTERVAL_MINUTES that does not evenly divide 60", () => {
+  // 7 fires at :00, :07, ..., :56, then wraps to :00 -- a 4-minute gap, not the claimed 7-minute
+  // cadence. Only divisors of 60 repeat an identical, evenly-spaced pattern every hour.
+  assert.throws(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "7" })));
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "20" })));
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "1" })));
+});
+
+test("validateConfig rejects a PURGE_BATCH_LIMIT that would exceed the 50-subrequest Free ceiling", () => {
+  // Each purged job costs up to 2 B2 deletes (payload + result); dispatch in the same invocation
+  // costs up to MAX_BUNDLE_JOBS * 2. Both must fit under 50 with headroom.
+  assert.throws(() => validateConfig(createMockEnv({ PURGE_BATCH_LIMIT: "50" })));
+  assert.throws(() =>
+    validateConfig(createMockEnv({ PURGE_BATCH_LIMIT: "15", MAX_BUNDLE_JOBS: "20" }))
+  );
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ PURGE_BATCH_LIMIT: "15" })));
+});
+
 test("GET and HEAD /healthz return 200 without auth", async () => {
   const env = createMockEnv();
   const getReq = new Request("http://localhost/healthz", { method: "GET" });

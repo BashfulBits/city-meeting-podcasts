@@ -17,6 +17,68 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch V2 consumption ack, parallel result resolution, and a 6-hourly sweep.** A v2 job's
+  DO row and B2 objects were held for `COMPLETED_RETENTION_DAYS` (38) after completion even though
+  the client had fetched, validated and durably persisted the result minutes later --
+  `delete_dispatched_ref` is a v1-only path and v2 had no equivalent, so nothing communicated
+  consumption. `POST /v2/jobs:ack-batch` now does, called once per poll chunk (not per job) after
+  `write_deferred` succeeds, reducing post-ack retention to roughly one hourly cleanup tick --
+  completion-to-release still spans the six-hour observation cadence for a job the sweep hasn't
+  yet polled. Only a
+  validated success is acked: a result that failed structured-output validation is exactly what the
+  sweep's schema-correction path re-reads. A failed ack is harmless -- the result is already durable
+  client-side -- and never fails the poll.
+
+  Fixed a latent stranding bug found while wiring this up: `purgePendingBatch` selected only
+  `completed`/`failed`, so a row already in `purge_pending` was never re-listed. A cleanup run that
+  died between the B2 deletes and `confirmPurge` therefore orphaned its B2 objects permanently,
+  contradicting the method's own documented idempotency contract. It now re-lists carried-over rows
+  first, then tops up to the limit with newly-eligible ones.
+
+  `poll_batch` resolves completed results through a bounded thread pool instead of serially. Each
+  completion costs several sequential B2 round trips (the result GET plus `write_deferred`'s own
+  reads and writes) which are pure I/O wait, so the sweep's runtime scaled with the completion
+  count; measured ~7.9x faster at 16 completions. The deferred sweep moves from once daily to every
+  six hours, keeping the 17:30 UTC DeepSeek off-peak run exactly -- a job completed minutes after
+  dispatch was previously only *observed* up to ~23h later, which kept both the deferred registry
+  and the coordinator's `jobs` table near their maximum between runs.
+
+- **LLM dispatch V2 Durable Object rows-read overage.** `claimDispatchWindow` full-scanned the
+  `bundles` table twice on every cron tick -- once for the lease-expiry sweep, once for the
+  active-bundle count -- because `bundles` carried only its `bundle_id` primary key and nothing in
+  the codebase ever deleted from it. Instrumenting the real coordinator measured **6,400 of a
+  tick's 6,424 rows read (99.6%)** from those two statements at 3,200 accumulated bundles, which
+  exhausted the Workers free tier's 5M daily Durable Objects rows-read budget on 2026-08-27; the
+  cost grew with every bundle ever claimed, which is why reads climbed steadily while writes
+  stayed flat. Adds `bundles (state, created_at)`, turning both into index seeks over the
+  `active` rows only -- a population `MAX_ACTIVE_BUNDLES` already bounds. Same tick, same table
+  sizes: **6,424 -> 30 rows read**.
+
+  Also adds retention for the two append-only bookkeeping tables that had none. `bundles` and
+  `attempts` have no B2 counterpart and no client-side reader, so both now age out inside the DO
+  (`BUNDLE_RETENTION_DAYS`/`ATTEMPT_RETENTION_DAYS`, default 7) on a bounded per-tick delete
+  budget; a bundle is only ever removed once terminal, past retention, and past its lease, so no
+  late `completeBatch` can lose one it could still settle. `attempts` gains a `created_at` index
+  so that pruning is itself a bounded seek rather than the scan it exists to prevent.
+
+  Finally, wires up `purgePendingBatch`/`confirmPurge`. Both shipped with Phase 2 with tests but
+  were called from nothing, so terminal `jobs` rows and their B2 payload/result objects were never
+  released. They now run from `scheduled()` on an hourly cadence (`CLEANUP_INTERVAL_MINUTES`),
+  deleting B2 objects before confirming the row drop so a crash mid-way simply retries. This
+  required a second new index, `jobs (state, updated_at)`: the existing
+  `(state, priority, created_at)` index could not serve the purge query's age filter, so wiring it
+  up naively would have read every completed job on each run (**60,189 -> 367** VDBE ops at 6,000
+  terminal jobs) -- reintroducing the same unbounded-scan shape.
+
+  Adds `test/rows-read.test.js`, a standing guard against this whole bug class rather than
+  against these four queries. It exercises every RPC entry point and asserts two invariants: no
+  statement may full-scan a table that grows with traffic, and the same operations against 10x
+  the accumulated history must read about the same number of rows. The second catches what the
+  first cannot -- an index seek constrained only on a low-cardinality `state` column still walks
+  every row in that state, which is exactly how the purge-query trap above hides behind a plan
+  that reads as `SEARCH`. Verified by mutation testing: removing any of the four indexes, or
+  reverting the candidate lookup to a queue-head scan, fails at least one invariant.
+
 - **LLM dispatch V2 linear, budgeted compatibility migrations.** Historical queued-job model
   indexing now captures a rollout-time SQLite row-id high-water mark and advances a durable cursor,
   so it reads the finite old population once instead of repeatedly searching the queue head. Legacy

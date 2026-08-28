@@ -25,6 +25,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
@@ -125,6 +126,11 @@ _PACING_POLL_CAP_SECONDS = 10.0
 _PACING_MIN_SLEEP_SECONDS = 0.2
 # The ingress Worker caps both enqueue and poll payloads at this many jobs.
 _WORKER_BATCH_LIMIT = 1000
+
+# Completed-result resolution is pure B2 I/O wait (one result GET plus write_deferred's own
+# round trips per job), so a small pool cuts the deferred sweep's runtime without adding
+# meaningful client CPU or risking provider-side rate limits -- no LLM call happens here.
+_POLL_RESULT_MAX_WORKERS = 8
 
 # --- Cloudflare AI Gateway (direct transport only) ---------------------------------------------
 # The gateway is an observability shim, not a routing decision: it proxies to the same upstream
@@ -2056,45 +2062,98 @@ class LiteLLMBackend(Backend):
         # schema-correction retry to catch) is re-raised as-is rather than a generic summary.
         terminal_errors: dict[str, LLMBackendError] = {}
 
+        def _resolve_completed(h: JobHandle, result_key: str):
+            """Fetch, validate and persist one completed job's result.
+
+            Runs on a worker thread. Each handle touches only keys derived from its own
+            ``recipe_hash`` (the result object, plus write_deferred's canonical record and index
+            pointers), so concurrent handles never write the same key. Returns one of
+            ``("pending", None)``, ``("error", exc)`` or ``("done", JobResult)`` rather than
+            mutating shared state, so the caller merges everything on the main thread.
+            """
+            raw = storage.get_bytes(result_key) if storage is not None else None
+            body = raw[0] if raw else None
+            if not body:
+                # Never persist an empty/unreadable result as completed: per
+                # citypods/compute/llm_deferred.py's write_deferred, a completed record is
+                # terminal and never downgraded back to pending, so caching {} here would be
+                # permanent. Treat it as still pending; a later poll (once B2
+                # read-after-write consistency catches up) can resolve it correctly.
+                return "pending", None
+            try:
+                output = json.loads(body.decode("utf-8"))
+                res = self._completed_dispatch_result(
+                    task=h.task,
+                    recipe_hash=h.recipe_hash,
+                    output=output,
+                    structured_output=h.structured_output,
+                    model=h.model,
+                )
+            except LLMBackendError as exc:
+                return "error", exc
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                # A stored result that isn't valid UTF-8/JSON must fail only THIS job. Before the
+                # parallel rewrite an uncaught exception here would abort the serial for-loop
+                # partway through, losing every handle after it in iteration order; under
+                # list(pool.map(...)) the blast radius is worse -- ALL results are collected
+                # before any are merged, so one bad body would silently lose every sibling's
+                # already-resolved outcome too. Wrap and return it exactly like a validation
+                # failure instead.
+                return "error", LLMBackendError(
+                    f"LLM dispatch v2 unreadable result body for job {h.ref}: {exc}"
+                )
+            write_deferred(storage, h.recipe_hash, res)
+            return "done", res
+
+        # Partition first, so the B2-bound work is a single parallel phase. Everything else here
+        # is pure bookkeeping over the already-fetched statuses.
+        completed: list[tuple[JobHandle, str]] = []
         for h in v2_handles:
             st = statuses.get(h.ref)
             if not st:
                 results[h.ref] = None
                 continue
-
             state = st.get("state")
             if state == "completed" and st.get("result_key"):
-                result_key = st["result_key"]
-                raw = storage.get_bytes(result_key) if storage is not None else None
-                body = raw[0] if raw else None
-                if not body:
-                    # Never persist an empty/unreadable result as completed: per
-                    # citypods/compute/llm_deferred.py's write_deferred, a completed record is
-                    # terminal and never downgraded back to pending, so caching {} here would be
-                    # permanent. Treat it as still pending; a later poll (once B2
-                    # read-after-write consistency catches up) can resolve it correctly.
-                    results[h.ref] = None
-                    continue
-                try:
-                    output = json.loads(body.decode("utf-8"))
-                    res = self._completed_dispatch_result(
-                        task=h.task,
-                        recipe_hash=h.recipe_hash,
-                        output=output,
-                        structured_output=h.structured_output,
-                        model=h.model,
-                    )
-                except LLMBackendError as exc:
-                    terminal_errors[h.ref] = exc
-                    continue
-                write_deferred(storage, h.recipe_hash, res)
-                results[h.ref] = res
+                completed.append((h, st["result_key"]))
             elif state == "failed":
                 terminal_errors[h.ref] = LLMDispatchTerminalError(
                     f"LLM dispatch v2 job {h.ref} failed permanently: {st.get('error')}"
                 )
             else:
                 results[h.ref] = None
+
+        # Each completed job costs several sequential B2 round trips (the result GET, plus
+        # write_deferred's own read/pointer/canonical writes), and they are pure I/O wait. Running
+        # them serially made the daily sweep's runtime scale with the number of completions; a
+        # small pool cuts that several-fold without changing any per-handle semantics. Ordering is
+        # irrelevant -- results are keyed by ref, and the handles are independent.
+        resolved: list[tuple[JobHandle, str, Any]] = []
+        if completed:
+            workers = min(_POLL_RESULT_MAX_WORKERS, len(completed))
+            if workers > 1:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    outcomes = list(pool.map(lambda item: _resolve_completed(*item), completed))
+            else:
+                outcomes = [_resolve_completed(*item) for item in completed]
+            for (h, _key), (kind, value) in zip(completed, outcomes, strict=True):
+                resolved.append((h, kind, value))
+
+        acked_refs: list[str] = []
+        for h, kind, value in resolved:
+            if kind == "done":
+                results[h.ref] = value
+                acked_refs.append(h.ref)
+            elif kind == "error":
+                terminal_errors[h.ref] = value
+            else:
+                results[h.ref] = None
+
+        # Only now, with each result durably in the deferred registry, tell the coordinator it may
+        # retire those jobs and their B2 objects. Deliberately excludes the "error" handles: a
+        # result that failed structured-output validation is exactly what the sweep's
+        # schema-correction path re-reads, so its row must survive.
+        self._ack_batch(acked_refs)
 
         if terminal_errors:
             if len(v2_handles) == 1:
@@ -2105,6 +2164,32 @@ class LiteLLMBackend(Backend):
             )
 
         return results
+
+    def _ack_batch(self, refs: Sequence[str]) -> None:
+        """Tell the v2 coordinator these jobs' results are durably persisted client-side.
+
+        The coordinator retires an acked job immediately instead of holding it for
+        ``COMPLETED_RETENTION_DAYS`` (38), which is what keeps its SQLite `jobs` table and the
+        matching B2 payload/result objects small -- see review/44 "Consumption ack". Call this
+        only after ``write_deferred`` has succeeded for every ref.
+
+        Best-effort by design: the result is already durable on our side, so a failed ack costs
+        nothing but a later purge. It must never turn a successful poll into an error.
+        """
+        if not refs or not self.config.dispatch_v2_url:
+            return
+        headers = {"content-type": "application/json"}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:ack-batch")
+        for start in range(0, len(refs), _WORKER_BATCH_LIMIT):
+            chunk = list(refs[start : start + _WORKER_BATCH_LIMIT])
+            try:
+                self._session.post(
+                    url, json={"ids": chunk}, headers=headers, timeout=self.config.timeout_seconds
+                )
+            except requests.RequestException:
+                return
 
     def _settle_dispatched_reservation(self, handle: JobHandle, output: Mapping[str, Any]) -> None:
         """Settle a Worker-owned reservation from its terminal raw response.

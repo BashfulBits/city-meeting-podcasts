@@ -85,6 +85,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       CREATE INDEX IF NOT EXISTS idx_jobs_state_priority_created
         ON jobs (state, priority, created_at);
 
+      -- purgePendingBatch selects terminal jobs by age. The index above is keyed
+      -- (state, priority, created_at), so that query could only seek on state and then had to
+      -- read EVERY completed/failed row to filter and sort on updated_at -- 60k+ rows once the
+      -- terminal backlog is large, the same unbounded-scan shape that caused the 2026-08-27
+      -- rows-read overage. Measured: 60,189 -> 367 VDBE ops at 6,000 terminal jobs.
+      CREATE INDEX IF NOT EXISTS idx_jobs_state_updated
+        ON jobs (state, updated_at);
+
       -- A queued job can be compatible with more than one model. This small index is the
       -- scheduler's route-independent work index: admission asks for a few jobs belonging to a
       -- capacity-ranked model rather than reading an arbitrary prefix of the whole queue.
@@ -128,6 +136,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
         created_at           INTEGER NOT NULL
       );
 
+      -- Without this, the bundles table has only its bundle_id primary key, so BOTH of
+      -- claimDispatchWindow's per-tick bundle statements (the expire-sweep UPDATE and the
+      -- active-bundle SELECT) degrade to full table scans -- and nothing ever deletes from
+      -- the bundles table, so that scan grew by one row per claimed bundle forever. Measured
+      -- against the
+      -- real coordinator at 3,200 bundles: 6,400 of a tick's 6,424 rows read (99.6%) came from
+      -- exactly those two statements, which is what exhausted the Durable Objects free tier's
+      -- 5M daily rows-read budget on 2026-08-27. With this index both become index seeks over
+      -- the 'active' rows only -- a population MAX_ACTIVE_BUNDLES already bounds -- so
+      -- lease_expires_at deliberately is NOT part of the key; created_at is, because it also
+      -- makes _pruneTerminalRecords's terminal-bundle lookup an ordered seek.
+      CREATE INDEX IF NOT EXISTS idx_bundles_state_created
+        ON bundles (state, created_at);
+
       CREATE TABLE IF NOT EXISTS attempts (
         attempt_id              TEXT PRIMARY KEY,
         job_id                  TEXT NOT NULL,
@@ -144,6 +166,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         gateway_correlation_id  TEXT,
         created_at              INTEGER NOT NULL
       );
+
+      -- attempts is otherwise keyed only by attempt_id, so _pruneTerminalRecords's age-based
+      -- lookup would have to scan the whole (unbounded, append-only) table to find its batch.
+      CREATE INDEX IF NOT EXISTS idx_attempts_created
+        ON attempts (created_at);
 
       CREATE TABLE IF NOT EXISTS estimates (
         key                     TEXT PRIMARY KEY,
@@ -359,6 +386,32 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** Bound migration reads independently of ordinary capacity-ranked dispatch reads. */
   _maxMigrationRowsScannedPerUtcDay() {
     return this._envInt("MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY", 250000);
+  }
+
+  /**
+   * Retention for the DO's two append-only bookkeeping tables. Neither `bundles` nor `attempts`
+   * has any B2 counterpart or client-side dependency -- they are internal scheduler history, so
+   * unlike `jobs` (whose row must outlive the client's result fetch, see purgePendingBatch)
+   * they can be aged out entirely inside the DO with no coordination. Kept long enough to stay
+   * useful for incident diagnosis, short enough that neither table grows without bound.
+   */
+  _bundleRetentionMs() {
+    return this._envInt("BUNDLE_RETENTION_DAYS", 7) * 86_400_000;
+  }
+
+  _attemptRetentionMs() {
+    return this._envInt("ATTEMPT_RETENTION_DAYS", 7) * 86_400_000;
+  }
+
+  /** Per-tick delete budget for each table. Deletes are row WRITES, so this bounds the drain of
+   * an existing backlog (and steady-state upkeep needs only a row or two per tick). Zero on
+   * either is an emergency pause, matching the migration knobs' convention. */
+  _maxBundlePrunePerTick() {
+    return this._envInt("MAX_BUNDLE_PRUNE_PER_TICK", 50);
+  }
+
+  _maxAttemptPrunePerTick() {
+    return this._envInt("MAX_ATTEMPT_PRUNE_PER_TICK", 50);
   }
 
   /** Return an exponential route cooldown, starting at one minute, for a final Gateway 5xx. */
@@ -980,6 +1033,62 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
+  /**
+   * Delete one bounded batch of aged-out terminal bundles and attempt records.
+   *
+   * A bundle is only ever removed once it is terminal ('completed'/'expired'), its lease can no
+   * longer be current, AND it is older than the retention window -- so a late completeBatch or
+   * authorizeRetry can never lose a bundle it might still legitimately settle. (Those two both
+   * already treat a missing bundle as a stale no-op, which is the correct outcome long after a
+   * lease expired, but the lease_expires_at guard means we never rely on that.)
+   *
+   * Both statements delete by primary key from an id list gathered by an indexed, LIMIT-ed
+   * subquery, rather than `DELETE ... LIMIT` (which requires a SQLite compile-time option that
+   * is not guaranteed to be enabled) or an unbounded `DELETE ... WHERE created_at < ?` (which
+   * would scan the very tables this retention exists to keep small).
+   */
+  _pruneTerminalRecords(now) {
+    const sql = this._getSql();
+    const bundleLimit = this._maxBundlePrunePerTick();
+    const attemptLimit = this._maxAttemptPrunePerTick();
+    let bundlesDeleted = 0;
+    let attemptsDeleted = 0;
+
+    if (bundleLimit > 0) {
+      const cutoff = now - this._bundleRetentionMs();
+      const ids = [...sql.exec(
+        `SELECT bundle_id FROM bundles
+         WHERE state IN ('completed','expired') AND created_at < ? AND lease_expires_at < ?
+         ORDER BY created_at ASC
+         LIMIT ?`,
+        cutoff,
+        now,
+        bundleLimit
+      )].map((row) => row.bundle_id);
+      for (const chunk of this._chunks(ids)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        sql.exec(`DELETE FROM bundles WHERE bundle_id IN (${placeholders})`, ...chunk);
+        bundlesDeleted += chunk.length;
+      }
+    }
+
+    if (attemptLimit > 0) {
+      const cutoff = now - this._attemptRetentionMs();
+      const ids = [...sql.exec(
+        `SELECT attempt_id FROM attempts WHERE created_at < ? ORDER BY created_at ASC LIMIT ?`,
+        cutoff,
+        attemptLimit
+      )].map((row) => row.attempt_id);
+      for (const chunk of this._chunks(ids)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        sql.exec(`DELETE FROM attempts WHERE attempt_id IN (${placeholders})`, ...chunk);
+        attemptsDeleted += chunk.length;
+      }
+    }
+
+    return { bundlesDeleted, attemptsDeleted };
+  }
+
   _freshRouteLedger(catalogRoute, now) {
     const tpm = Number(catalogRoute?.tpm) || 0;
     return {
@@ -1328,6 +1437,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         );
         for (const job of expiredJobs) this._indexQueuedJobModels(job);
       }
+
+      // Retention runs right after the expire-sweep, so a bundle this tick just marked
+      // 'expired' is eligible on a later tick once it ages out. Bounded per tick; see
+      // _pruneTerminalRecords.
+      this._pruneTerminalRecords(now);
 
       const activeBundles = [...sql.exec("SELECT active_call_count FROM bundles WHERE state='active'")];
       if (activeBundles.length >= maxActiveBundles) return EMPTY;
@@ -1869,22 +1983,91 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const retentionDays = this._envInt("COMPLETED_RETENTION_DAYS", 38);
     const cutoff = Date.now() - retentionDays * 86_400_000;
     return this.ctx.storage.transactionSync(() => {
-      const rows = [...sql.exec(
+      // Rows ALREADY in purge_pending come first, and are re-listed on every call until
+      // confirmPurge actually removes them. Two ways a job gets there without this pass having
+      // put it there: ackResults promoted it (the client consumed its result), or an earlier
+      // cleanup run marked it and then died before confirmPurge -- a crash this method's own
+      // idempotency contract promises to recover from. Selecting only completed/failed, as this
+      // did originally, stranded both cases in purge_pending forever with their B2 objects
+      // orphaned, because nothing else ever queries that state.
+      const carriedOver = [...sql.exec(
         `SELECT id, payload_key, result_key FROM jobs
-         WHERE state IN ('completed', 'failed') AND updated_at < ?
+         WHERE state = 'purge_pending'
          ORDER BY updated_at ASC LIMIT ?`,
-        cutoff,
         limit
       )];
-      if (rows.length === 0) return { jobs: [] };
-      const ids = rows.map((r) => r.id);
-      for (const chunk of this._chunks(ids)) {
-        const placeholders = chunk.map(() => "?").join(",");
-        sql.exec(`UPDATE jobs SET state='purge_pending' WHERE id IN (${placeholders})`, ...chunk);
+
+      const remaining = limit - carriedOver.length;
+      const newlyEligible = remaining > 0
+        ? [...sql.exec(
+            `SELECT id, payload_key, result_key FROM jobs
+             WHERE state IN ('completed', 'failed') AND updated_at < ?
+             ORDER BY updated_at ASC LIMIT ?`,
+            cutoff,
+            remaining
+          )]
+        : [];
+
+      if (newlyEligible.length > 0) {
+        const now = Date.now();
+        for (const chunk of this._chunks(newlyEligible.map((r) => r.id))) {
+          const placeholders = chunk.map(() => "?").join(",");
+          sql.exec(
+            `UPDATE jobs SET state='purge_pending', updated_at=? WHERE id IN (${placeholders})`,
+            now,
+            ...chunk
+          );
+        }
       }
+
+      const rows = [...carriedOver, ...newlyEligible];
+      if (rows.length === 0) return { jobs: [] };
       return {
         jobs: rows.map((r) => ({ id: r.id, payload_key: r.payload_key, result_key: r.result_key })),
       };
+    });
+  }
+
+  /**
+   * Consumption ack: the client has fetched these jobs' results, validated them, and durably
+   * written them to the deferred registry (see write_deferred in citypods/compute/llm_deferred.py),
+   * so neither the SQLite row nor the B2 payload/result objects are needed any more.
+   *
+   * Moves them straight to 'purge_pending', short-circuiting the COMPLETED_RETENTION_DAYS timer
+   * that would otherwise hold a consumed job for 38 days; the executor's existing cleanup pass
+   * then deletes the B2 keys and calls confirmPurge exactly as it does for aged-out jobs. This is
+   * the trigger review/44's "Consumption ack" section describes -- retention by age remains only
+   * as the backstop for a job that is never acked (a client that died between fetch and ack).
+   *
+   * Only a job in 'completed' is eligible. A 'failed' job is deliberately NOT ackable: the sweep's
+   * schema-correction path still reads it, and a client must never be able to retire a job whose
+   * result it could not validate. Unknown/ineligible ids are reported back rather than silently
+   * ignored, so a caller can tell an accepted ack from a no-op.
+   */
+  async ackResults(jobIds) {
+    if (!jobIds || jobIds.length === 0) return { acked: [], ignored: [] };
+    const sql = this._getSql();
+    return this.ctx.storage.transactionSync(() => {
+      const acked = [];
+      for (const chunk of this._chunks(jobIds)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        const eligible = [...sql.exec(
+          `SELECT id FROM jobs WHERE id IN (${placeholders}) AND state = 'completed'`,
+          ...chunk
+        )].map((row) => row.id);
+        if (eligible.length === 0) continue;
+        for (const eligibleChunk of this._chunks(eligible)) {
+          const marks = eligibleChunk.map(() => "?").join(",");
+          sql.exec(
+            `UPDATE jobs SET state='purge_pending', updated_at=? WHERE id IN (${marks})`,
+            Date.now(),
+            ...eligibleChunk
+          );
+          acked.push(...eligibleChunk);
+        }
+      }
+      const ackedSet = new Set(acked);
+      return { acked, ignored: jobIds.filter((id) => !ackedSet.has(id)) };
     });
   }
 

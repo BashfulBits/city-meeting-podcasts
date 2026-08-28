@@ -605,21 +605,59 @@ limits" and "Ingress and status APIs").
 
 - **`payloads/<job-id>/request.json`:** written by the caller; retained until terminal job cleanup.
 - **`results/<job-id>/<lease-token>.json`:** written by the executor Worker; retained for
-  `COMPLETED_RETENTION_DAYS`.
+  `COMPLETED_RETENTION_DAYS`, or until a consumption ack retires the job sooner (see below).
 
-The scheduler indexes terminal rows by `completed_at`. A daily bounded maintenance request (run from
-the executor Worker, which already holds B2 credentials) asks the DO for at most `CLEANUP_BATCH_SIZE`
-`purge_pending` jobs, deletes their B2 payload/result keys, and calls `confirmPurge` to remove the
-corresponding SQLite rows. The operation is idempotent: a crash after B2 deletion merely repeats a
-delete. It never performs an unbounded B2 or DO list. B2's existing version-retention backstop keeps
-accidental deletions recoverable for its configured window. Size `CLEANUP_BATCH_SIZE` (and
-`ORPHAN_SWEEP_LIMIT` below) well under the per-invocation subrequest ceiling (50 Free / 10,000 Paid;
-see "Cloudflare connection and subrequest limits") — each purged/swept key is its own B2 delete
-subrequest, same accounting as everywhere else in this design.
+The scheduler indexes terminal rows by `updated_at` (`idx_jobs_state_updated`). An hourly bounded
+maintenance request, gated by `CLEANUP_INTERVAL_MINUTES` (run from the executor Worker's own
+`scheduled()` handler, which already holds B2 credentials), asks the DO for at most
+`PURGE_BATCH_LIMIT` `purge_pending` jobs, deletes their B2 payload/result keys, and calls
+`confirmPurge` to remove the corresponding SQLite rows. The operation is idempotent: a crash after
+B2 deletion merely repeats a delete -- `purgePendingBatch` re-lists a row still stuck in
+`purge_pending` from an interrupted prior run before it lists any newly-eligible one, so nothing
+orphans permanently. It never performs an unbounded B2 or DO list. B2's existing version-retention
+backstop keeps accidental deletions recoverable for its configured window.
+
+`PURGE_BATCH_LIMIT` (and `ORPHAN_SWEEP_LIMIT` below) must stay well under the per-invocation
+subrequest ceiling (50 Free / 10,000 Paid; see "Cloudflare connection and subrequest limits") --
+each purged/swept job costs up to *two* B2 delete subrequests (payload and result keys), not one,
+and this cleanup shares its invocation's subrequest budget with `claimDispatchWindow`'s own
+concurrent dispatch traffic. `validateConfig` enforces this bound; see the 2026-08-27 retrospective
+for the incident this generalizes from (`bundles`/`attempts` retention hit the analogous DO
+rows-read budget, not the Worker subrequest one, but the "size every bounded knob against its real
+ceiling, not an assumed one" lesson is the same).
 
 A separate cursor-based orphan sweep examines at most `ORPHAN_SWEEP_LIMIT` old B2 payload keys per
 run. It deletes a key only after the DO confirms its preassigned job id was never accepted. This
 recovers ingress-before-DO failures without a catalog-wide B2 list.
+
+### Consumption ack (added 2026-08-27)
+
+The retention window above is a *backstop*, not the intended trigger. The precise moment a job's DO
+row and its B2 objects stop being needed is when the client has fetched the result, validated it,
+and durably written it to the deferred registry — `write_deferred` in
+`citypods/compute/llm_deferred.py`. Until 2026-08-27 nothing communicated that: `delete_dispatched_ref`
+is a **v1-only** path (it DELETEs `/v1/requests/{id}` against `dispatch_url`), and v2 had no
+equivalent, so a completed job sat in SQLite and B2 for the full `COMPLETED_RETENTION_DAYS` (38)
+regardless of having been consumed minutes after it completed.
+
+`POST /v2/jobs:ack-batch` closes that gap. The client calls it once per poll chunk — not per job —
+after `write_deferred` succeeds, and the DO moves those jobs straight to `purge_pending` so the
+existing hourly cleanup releases the row and both B2 objects on its next run. This collapses
+effective retention from 38 days to ~1 hour, which keeps `jobs` small (smaller indexes, fewer rows
+read) and returns B2 storage 38x sooner.
+
+**Ack only a validated success.** A job whose result failed structured-output validation must *not*
+be acked: the sweep's schema-correction path (`retry_malformed_dispatched`) still needs the original,
+and `LLMDispatchTerminalError` handling depends on the row. The time-based purge remains the
+backstop for anything never acked — a client that crashed between fetch and ack, or a registry
+record pruned before its sweep.
+
+### Bookkeeping-table retention
+
+`bundles` and `attempts` are the two tables with no B2 counterpart and no client-side reader, so
+they need no handshake at all and age out entirely inside the DO. See the 2026-08-27 retrospective
+below for why they must also be *indexed* for that pruning, and why nothing in this design may
+assume a per-tick statement is cheap without measuring it.
 
 ## Implementation plan
 
@@ -998,6 +1036,121 @@ object as free) and is the fastest unblock short of waiting out the TTL. This is
 property of the maintenance-lease mechanism itself, not something Phase 1/2 introduced — noted here
 only because it repeatedly interrupted testing this rollout and is easy to mistake for a v2 dispatch
 problem when it happens mid-incident.
+
+## Durable Objects rows-read overage retrospective (2026-08-27) — read before adding any DO query
+
+A second production incident, unrelated to the 2026-08-18 rollout bugs but sharing their defining
+property: it could not be found by reading the diff, every test in this repo passed throughout, and
+the code involved had been reviewed and shipped as correct.
+
+### What happened
+
+`LLMSchedulerDO` exhausted the Workers Free plan's **5,000,000 Durable Objects rows-read/day**
+budget. Once spent, every `jsrpc` call into the DO threw `Exceeded allowed rows read in Durable
+Objects free tier.` (153 of 2,000 sampled Workers Logs entries), so the cron dispatch tick,
+`enqueueBatch`, and `pollBatch` all failed until the daily reset.
+
+The metrics graph carried the diagnosis in plain sight: **rows read climbing steadily all day while
+rows written stayed flat at ~21k**. Reads that grow while writes do not means per-tick read cost is
+a function of *accumulated state*, not of workload — and a steadily rising line means the
+accumulation is still going.
+
+### Root cause
+
+`claimDispatchWindow` ran two statements against `bundles` on **every** cron tick — the
+lease-expiry sweep `UPDATE ... WHERE state='active' AND lease_expires_at < ?` and the
+`SELECT active_call_count ... WHERE state='active'` admission check. Two independent defects
+compounded:
+
+1. **`bundles` carried only its `bundle_id` primary key.** Both statements filter on `state`, so
+   both planned as `SCAN bundles`.
+2. **Nothing in the codebase ever deleted from `bundles`.** One row accumulated per claimed bundle,
+   forever, bounded only by `MAX_BUNDLES_PER_UTC_DAY` per day.
+
+So **rows read per tick = 2 x |bundles|**, growing without bound. Instrumenting the real coordinator
+(wrapping `sql.exec`, running an actual `claimDispatchWindow` against a seeded DB) attributed
+**6,400 of a tick's 6,424 rows read — 99.6% — to exactly those two statements** at 3,200 accumulated
+bundles. Back-solving from the observed ~6,667 rows/min at one tick per minute gives the same
+~3,200, consistent with ~355 bundles/day since Phase 2 went live on 2026-08-18.
+
+`attempts` had the same never-deleted property. It escaped the incident only because no query
+scans it — a latent storage problem, not a read problem.
+
+### Two wrong theories that cost a cycle each — and why
+
+Worth recording, because both were plausible, both were argued from the code, and both were wrong.
+
+1. **"The per-model candidate fan-out is reading the queue."** `claimDispatchWindow` queries up to
+   32 models per tick. But each query is `LIMIT MAX_JOBS_PER_MODEL_CLAIM` (4), so the ceiling is a
+   few hundred rows — an order of magnitude short of the observed number. **Arithmetic against the
+   configured bounds ruled this out before any code changed; it should have been the first step.**
+2. **"The `job_models JOIN jobs` claim query drives from the wrong table."** The theory was that
+   `jobs.state = 'queued'` is satisfiable by `idx_jobs_state_priority_created`, so the planner
+   *might* scan `jobs` and probe `job_models` per row. Reproducing it against `node:sqlite` —
+   uniform and skewed distributions, up to 50k rows, with and without `ANALYZE` — **never once
+   produced that plan**; SQLite consistently drove from `job_models` as intended. A rewrite based
+   on this theory was committed and then reverted. The real amplification risk in that query is
+   different and milder: the planner walks the *correct* index but must keep walking past rows
+   filtered out by `jobs.state`, which only bites if stale `job_models` rows accumulate — and they
+   do not, because they are deleted at lease time.
+
+**Guard:** a hypothesis about query cost is worth nothing until it is *measured*. Both wrong
+theories survived careful code reading and died within minutes of a real SQLite harness. Build the
+harness first.
+
+### Fix
+
+- **`bundles (state, created_at)`.** Both statements become index seeks over the `active` rows only
+  — a population `MAX_ACTIVE_BUNDLES` already bounds — so `lease_expires_at` is deliberately *not*
+  in the key. `created_at` is, because it also makes the terminal-bundle prune an ordered seek.
+  Same tick, same table sizes: **6,424 -> 30 rows read**.
+- **Retention for `bundles` and `attempts`** (`BUNDLE_RETENTION_DAYS`/`ATTEMPT_RETENTION_DAYS`,
+  default 7) on a bounded per-tick delete budget. Neither table has a B2 counterpart or a
+  client-side reader, so unlike `jobs` both age out entirely inside the DO with no coordination. A
+  bundle is removed only once terminal, past retention, **and** past its lease, so no late
+  `completeBatch` or `authorizeRetry` can lose one it could still legitimately settle. `attempts`
+  gains a `created_at` index so pruning is itself a bounded seek rather than the scan it exists to
+  prevent.
+- **`purgePendingBatch`/`confirmPurge` wired up.** Both shipped with Phase 2 *with tests* but were
+  called from nothing, so terminal `jobs` rows and their B2 payload/result objects were never
+  released. They now run from `scheduled()` on an hourly cadence.
+
+### The trap inside the fix
+
+Wiring up `purgePendingBatch` naively would have **reintroduced the same bug**. Its query filters
+`state IN ('completed','failed') AND updated_at < ?`, but the only index was
+`(state, priority, created_at)` — so it could seek on `state` and then had to read *every* terminal
+row to filter and sort on `updated_at`: **60,189 VDBE ops at 6,000 terminal jobs**, versus 367 with
+a `jobs (state, updated_at)` index.
+
+This is the subtle form of the bug class and the reason the guard below needs two invariants: the
+query plan says `SEARCH`, not `SCAN`, so it *reads* as correctly indexed while costing
+`O(history)`.
+
+### Standing guard: `workers/llm-dispatch-v2/test/rows-read.test.js`
+
+Per-query plan assertions only protect the queries someone thought to assert on. The guard asserts
+two invariants over the **whole RPC surface**, so a new method with the same defect fails without
+anyone remembering to extend the file:
+
+1. **No statement may `SCAN` a table that grows with traffic** (`jobs`, `job_models`, `bundles`,
+   `attempts`). `routes` and `scheduler` are exempt: both are bounded by static config.
+2. **Scale invariance** — the same operations against 10x the accumulated history must read about
+   the same number of rows. This catches what (1) cannot, including the `SEARCH`-shaped trap above.
+
+The estimator is a *scale-sensitivity probe, not a billing meter*: exact for the unbounded-scan
+class, conservative elsewhere. It attributes the real matching row count to any seek whose only
+constraint is `state=?` (however the predicate is written, `=` or `IN`), and assumes the whole table
+when it cannot parse the predicate.
+
+**It was validated by mutation testing, not assumed.** Dropping `bundles(state, created_at)`,
+`jobs(state, updated_at)`, `attempts(created_at)`, or
+`job_models(model, priority, created_at, job_id)`, or reverting the candidate lookup to a queue-head
+scan, each fails at least one invariant. Two gaps surfaced only because of that exercise: the
+estimator originally matched `state = 'x'` but not `state IN (...)` (so the purge trap escaped
+both invariants), and the fixture originally seeded only terminal history (so `job_models` never
+grew and its index was uncovered). **Any change to this guard must be re-validated the same way — a
+guard test that has never been seen to fail is not evidence of anything.**
 
 ## Implementation spec (build-unit handoff)
 
