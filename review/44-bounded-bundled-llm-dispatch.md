@@ -643,9 +643,9 @@ read) and returns B2 storage 38x sooner.
 **Ack only after durable consumption.** A job whose result failed structured-output validation must
 not be acked until the sweep has staged and durably accepted its one schema-correction clone: the
 correction path (`retry_malformed_dispatched`) still needs the original while it builds the new
-payload. Once the clone exists, the malformed source can be acked safely. The time-based purge
-remains the backstop for anything never acked — a client that crashed between fetch and ack, or a
-registry record pruned before its sweep.
+payload. Once the clone and the replacement deferred record plus correction marker exist, the
+malformed source can be acked safely. The time-based purge remains the backstop for anything never
+acked — a client that crashed between fetch and ack, or a registry record pruned before its sweep.
 
 ### Bookkeeping-table retention
 

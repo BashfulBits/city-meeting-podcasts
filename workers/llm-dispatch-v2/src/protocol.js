@@ -147,8 +147,8 @@ export function validateSchemaRetryRequest(body) {
       detail: "Body must contain 'corrected_request_digest'",
     };
   }
-  const inputTokens = Number(body.corrected_input_token_estimate);
-  if (!Number.isFinite(inputTokens) || inputTokens < 0) {
+  const inputTokens = body.corrected_input_token_estimate;
+  if (typeof inputTokens !== "number" || !Number.isFinite(inputTokens) || inputTokens < 0) {
     return {
       valid: false,
       error: "invalid_request",

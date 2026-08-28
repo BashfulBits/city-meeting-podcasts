@@ -306,8 +306,10 @@ def main(argv: list[str] | None = None) -> int:
                     # A marker-write failure must leave the original intact, not permit a second
                     # correction of the same malformed result on the next sweep.
                     record_schema_correction(storage, handle, exc)
-                    # The Worker clone is durable before the bad response is removed. If this
-                    # cleanup races, it leaves only harmless retained audit history.
+                    # Both replacement persistence steps are durable before the malformed source
+                    # is retired. If this cleanup races, it leaves only harmless retained audit
+                    # history.
+                    backend.ack_dispatched_ref(handle)
                     backend.delete_dispatched_ref(handle.ref)
                     print(
                         f"llm-deferred-sweep: {handle.recipe_hash} submitted one schema correction",

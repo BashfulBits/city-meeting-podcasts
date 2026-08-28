@@ -2318,7 +2318,8 @@ class LiteLLMBackend(Backend):
         The v2 ingress cannot read B2, so the corrected request is written first and its digest
         and token estimate are sent alongside the payload key. The coordinator clones the source
         job's policy and output budget into a new idempotency namespace, then the malformed source
-        is consumption-acked because its result is no longer needed.
+        is consumption-acked by the caller after the replacement handle and correction marker are
+        durable.
         """
         if not self.config.dispatch_v2_url:
             raise LLMBackendError("schema correction requires LLM_DISPATCH_V2_URL")
@@ -2402,15 +2403,12 @@ class LiteLLMBackend(Backend):
             if not isinstance(ref, str) or not ref:
                 raise LLMBackendError("LLM schema-correction response omitted a v2 job reference")
         except requests.RequestException as exc:
-            storage.delete(corrected_key)
+            # The request may have reached the Worker before the connection failed. Keep the
+            # deterministic payload so a retry can safely reuse it if the clone was accepted.
             raise LLMBackendError("LLM schema-correction enqueue failed") from exc
         except (LLMBackendError, TypeError, ValueError):
-            storage.delete(corrected_key)
             raise
 
-        # The corrective clone is now durable. Retire the malformed source so its B2 objects do
-        # not sit for the normal terminal-retention period; _ack_batch remains best effort.
-        self._ack_batch([handle.ref])
         return JobHandle(
             task=handle.task,
             recipe_hash=handle.recipe_hash,
@@ -2419,6 +2417,11 @@ class LiteLLMBackend(Backend):
             structured_output=handle.structured_output,
             model=handle.model,
         )
+
+    def ack_dispatched_ref(self, handle: JobHandle) -> None:
+        """Ack a corrected dispatch after its replacement handle is durably persisted."""
+        if handle.backend == "llm-dispatch-v2":
+            self._ack_batch([handle.ref])
 
     poll = reconcile
 

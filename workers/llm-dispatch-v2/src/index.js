@@ -375,7 +375,7 @@ export async function handleRequest(request, env) {
       const result = await coordinator.schemaRetry(sourceId, {
         corrected_payload_key: body.corrected_payload_key,
         corrected_request_digest: body.corrected_request_digest,
-        corrected_input_token_estimate: Number(body.corrected_input_token_estimate),
+        corrected_input_token_estimate: body.corrected_input_token_estimate,
       });
       if (result.status === "not_found") {
         return errorResponse(404, "not_found", `Job not found: ${sourceId}`);

@@ -125,16 +125,24 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
     )
     monkeypatch.setattr(llm_deferred_sweep, "schema_correction_attempted", lambda *_args: False)
     corrections = []
+    events = []
+
+    def _record_correction(_storage, handle, _error):
+        events.append("marker")
+        corrections.append(handle.recipe_hash)
+
     monkeypatch.setattr(
         llm_deferred_sweep,
         "record_schema_correction",
-        lambda _storage, handle, _error: corrections.append(handle.recipe_hash),
+        _record_correction,
     )
     rewritten = []
     monkeypatch.setattr(
         llm_deferred_sweep,
         "write_deferred",
-        lambda _storage, recipe_hash, handle: rewritten.append((recipe_hash, handle.ref)),
+        lambda _storage, recipe_hash, handle: (
+            events.append("write") or rewritten.append((recipe_hash, handle.ref))
+        ),
     )
 
     class FakeBackend:
@@ -159,7 +167,10 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
             )
 
         def delete_dispatched_ref(self, _ref):
-            pass
+            events.append("delete")
+
+        def ack_dispatched_ref(self, _handle):
+            events.append("ack")
 
     monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
 
@@ -168,6 +179,7 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
     assert recovered == [("recipe-502", "LLMDispatchTerminalError")]
     assert corrections == ["recipe-malformed"]
     assert rewritten == [("recipe-malformed", "corrected:recipe-malformed")]
+    assert events == ["write", "marker", "ack", "delete"]
     assert "2 failed (1 terminally recovered)" in out.out
     assert "submitted one schema correction" in out.err
 

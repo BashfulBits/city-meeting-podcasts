@@ -151,12 +151,9 @@ def test_v2_schema_correction_stages_corrected_payload_and_acks_source():
         "application/json",
     )
     mock_session = MagicMock()
-    mock_session.post.side_effect = [
-        _mock_response(
-            json_data={"id": "corrected-v2", "idempotency_key": "source:schema-correction-v2"}
-        ),
-        _mock_response(json_data={"acked": ["job-v2"], "ignored": []}),
-    ]
+    mock_session.post.return_value = _mock_response(
+        json_data={"id": "corrected-v2", "idempotency_key": "source:schema-correction-v2"}
+    )
     backend = LiteLLMBackend(
         LLMBackendConfig(
             model="gemini/gemini-3-flash-preview",
@@ -183,7 +180,7 @@ def test_v2_schema_correction_stages_corrected_payload_and_acks_source():
     corrected_payload = json.loads(storage.files[retry_request["corrected_payload_key"]])
     assert corrected_payload["messages"][-1]["role"] == "user"
     assert "failed local schema validation" in corrected_payload["messages"][-1]["content"]
-    assert mock_session.post.call_args_list[1].kwargs["json"] == {"ids": ["job-v2"]}
+    assert len(mock_session.post.call_args_list) == 1
 
 
 def test_enqueue_batch_payload_carries_no_policy_fields_for_the_provider():
