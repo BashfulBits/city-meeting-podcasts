@@ -17,6 +17,24 @@ def test_validator_flags_broken_feed():
     assert validate_feed(b"not xml")
 
 
+def test_validator_uses_the_first_enclosure():
+    xml = (
+        f'<rss version="2.0" xmlns:itunes="{ITUNES}"><channel>'
+        "<title>Test</title>"
+        "<link>http://example.com</link>"
+        "<description>desc</description>"
+        '<itunes:author>Author</itunes:author>'
+        '<itunes:category text="Society &amp; Culture"/>'
+        '<itunes:image href="http://example.com/art.jpg"/>'
+        "<item><title>Meeting</title><guid>guid</guid><pubDate>date</pubDate>"
+        '<enclosure url="" type="audio/mpeg"/>'
+        '<enclosure url="http://example.com/valid.mp3" type="audio/mpeg"/>'
+        "</item></channel></rss>"
+    )
+
+    assert validate_feed(xml) == ["item[0] enclosure missing url"]
+
+
 def _cities():
     site_config = load_site_config(ROOT / "config" / "site_config.yml")
     return {c.slug: c for c in load_city_configs(ROOT / "config", site_config.get("defaults", {}))}
