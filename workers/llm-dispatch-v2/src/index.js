@@ -795,7 +795,24 @@ export default {
       console.error("scheduled: configuration_error", err);
       return;
     }
-    ctx.waitUntil(runScheduledDispatch(env));
-    ctx.waitUntil(runScheduledCleanup(env, event?.scheduledTime));
+    // Both run detached via ctx.waitUntil with no caller left to catch a rejection -- an
+    // uncaught throw inside either (e.g. the claimDispatchWindow DO RPC, called unguarded below)
+    // becomes an unhandled rejection, which Cloudflare surfaces as a bare `outcome: "exception"`
+    // with the cron pattern as the message and no other detail (confirmed against production
+    // 2026-08-28: an occurrence of exactly this shape, right after this schema/retention work
+    // deployed, carried nothing beyond "* * * * *" -- the real cause was never recoverable from
+    // that log entry). Catch and log with full detail here, matching describeError's existing use
+    // everywhere else in this file, rather than adding yet another incident where the actual
+    // error was thrown away by the runtime's own reporting.
+    ctx.waitUntil(
+      runScheduledDispatch(env).catch((err) => {
+        console.error(`scheduled: runScheduledDispatch failed: ${describeError(err)}`);
+      })
+    );
+    ctx.waitUntil(
+      runScheduledCleanup(env, event?.scheduledTime).catch((err) => {
+        console.error(`scheduled: runScheduledCleanup failed: ${describeError(err)}`);
+      })
+    );
   },
 };
