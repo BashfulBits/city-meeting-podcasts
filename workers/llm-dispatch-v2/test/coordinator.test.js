@@ -104,6 +104,56 @@ test("enqueueBatch indexes every canonical allowed model without model_routing",
   ]);
 });
 
+test("claim uses an explicit peer route instead of the tied model that discovered the job", async () => {
+  const CATALOG = {
+    model_aliases: {},
+    model_routes_map: {
+      gemini: ["gemini-route"],
+      llama: ["llama-route"],
+    },
+    routes_by_id: {
+      "gemini-route": {
+        model: "gemini",
+        free: true,
+        rpm: 20,
+        rpd: 1000,
+        tpm: 100000,
+        input_context_limit: 10000,
+        output_context_limit: 10000,
+      },
+      "llama-route": {
+        model: "llama",
+        free: true,
+        rpm: 20,
+        rpd: 1000,
+        tpm: 100000,
+        input_context_limit: 10000,
+        output_context_limit: 10000,
+      },
+    },
+  };
+  const { coordinator } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    DISPATCH_LIMITS_OVERRIDE: CATALOG,
+  });
+  await coordinator.enqueueBatch([
+    {
+      id: "peer-before-discovery-model",
+      idempotency_key: "peer-before-discovery-model-key",
+      request_digest: "peer-before-discovery-model-digest",
+      policy_json: JSON.stringify({ allowed_models: ["llama", "gemini"], allow_paid: false }),
+      prompt_family: "agenda",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/peer-before-discovery-model/request.json",
+    },
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.jobs.length, 1);
+  assert.equal(plan.jobs[0].route_id, "llama-route");
+});
+
 test("enqueueBatch omits a model whose every configured route is too small for the job's own estimate", async () => {
   // route-a fits this job; route-b (a different model) is structurally too small for it no matter
   // its live capacity. Indexing the job under model-b anyway would let it sit unclaimed forever at

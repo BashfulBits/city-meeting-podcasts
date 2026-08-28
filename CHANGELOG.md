@@ -279,6 +279,14 @@ Phase R (Research-Tool Surface)._
   never reached SambaNova. This is a dispatch-selection fix only: no pipeline version changes and
   already-queued durable requests pick up the corrected ordering dynamically on their next tick.
 
+- **V2 dispatch now separates job discovery from route choice.** Capacity-ranked model indexes
+  remain the bounded mechanism for finding queued work, but after a job is found the Durable
+  Object ranks every route explicitly allowed by that job. Previously the alphabetically first
+  tied model pool (commonly Gemini) both found and claimed the job, so later Llama/SambaNova peers
+  were never examined even when a cron tick returned fewer than four jobs. Equal-capacity routes
+  now retain the caller's `allowed_models` order. Existing queued jobs adopt the fix on their next
+  claim; there is no pipeline-version change or artifact backfill.
+
 - **Secondary Mistral dispatch capacity and deeper v1 queue lookahead.** Added independent
   secondary-account routes for every native Mistral model, using `MISTRAL_API_KEY_SECONDARY` and
   the same RPM/TPM limits each primary route had before its temporary `rpd: 0` quota pause. The
