@@ -23,7 +23,7 @@ def test_validator_uses_the_first_enclosure():
         "<title>Test</title>"
         "<link>http://example.com</link>"
         "<description>desc</description>"
-        '<itunes:author>Author</itunes:author>'
+        "<itunes:author>Author</itunes:author>"
         '<itunes:category text="Society &amp; Culture"/>'
         '<itunes:image href="http://example.com/art.jpg"/>'
         "<item><title>Meeting</title><guid>guid</guid><pubDate>date</pubDate>"
