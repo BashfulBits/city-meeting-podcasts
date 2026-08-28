@@ -9,7 +9,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from citypods.review_issues import MANAGED_LABEL, append_envelope, bounded_body
+from citypods.review_issues import (
+    MANAGED_LABEL,
+    SAFE_BODY_LIMIT_BYTES,
+    append_bounded_envelope,
+)
 
 
 def _gh(*args: str) -> str:
@@ -46,10 +50,12 @@ def main(argv: list[str] | None = None) -> int:
         "--description",
         f"Bot-managed {args.family} review ticket",
     )
-    body = append_envelope(
-        args.body_file.read_text(encoding="utf-8"), family=args.family, surface="ticket"
+    body, _ = append_bounded_envelope(
+        args.body_file.read_text(encoding="utf-8"),
+        family=args.family,
+        surface="ticket",
+        limit=SAFE_BODY_LIMIT_BYTES,
     )
-    body, _ = bounded_body(body)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md") as temp:
         temp.write(body)
         temp.flush()

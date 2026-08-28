@@ -60,6 +60,8 @@ jobs:
           model=$(jq -r .model decision.json)
           backfill=$(jq -r .backfill decision.json)
           ticket_meta=$(jq -c .meta decision.json)
+          model_b64=$(printf '%s' "$model" | base64 | tr -d '\n' | tr '+/' '_-')
+          ticket_meta_b64=$(printf '%s' "$ticket_meta" | base64 | tr -d '\n' | tr '+/' '_-')
           branch="chore/tournament-route-tag-$ISSUE"
           python scripts/tournament_route_proposal.py --body-file issue.md --result /tmp/decision.json \
             --site-config config/site_config.yml
@@ -70,8 +72,8 @@ jobs:
           gh auth setup-git
           git push --force-with-lease origin "HEAD:$branch"
           body=$(mktemp)
-          printf 'Tournament-approved route proposal from issue #%s.\n\nModel: `%s`\nBackfill: `%s`\n\n<!-- citypods:tournament-route issue=%s backfill=%s ticket=%s -->\n' \
-            "$ISSUE" "$model" "$backfill" "$ISSUE" "$backfill" "$ticket_meta" > "$body"
+          printf 'Tournament-approved route proposal from issue #%s.\n\nModel: `%s`\nBackfill: `%s`\n\n<!-- citypods:tournament-route v=1 issue=%s model_b64=%s backfill=%s ticket_b64=%s -->\n' \
+            "$ISSUE" "$model" "$backfill" "$ISSUE" "$model_b64" "$backfill" "$ticket_meta_b64" > "$body"
           pr=$(gh pr list --head "$branch" --base main --state open --json url --jq '.[0].url')
           if [ -z "$pr" ]; then
             pr=$(gh pr create --head "$branch" --base main --title "Propose tournament route for tag" --body-file "$body")

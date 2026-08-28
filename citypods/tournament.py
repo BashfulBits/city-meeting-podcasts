@@ -26,6 +26,7 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import load_records, record_to_episode, source_key
+from citypods.review_issues import render_decision_block
 from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
 from citypods.tags import (
@@ -386,6 +387,7 @@ def render_champion_ticket(
     stats: dict[str, dict[str, float]],
     required_win_rate: float,
     estimates: dict[str, dict[str, float]] | None = None,
+    window_days: int = 28,
 ) -> str:
     eligible = [
         model
@@ -405,7 +407,7 @@ def render_champion_ticket(
         marker,
         f"# Tournament champion ticket: {task}",
         "",
-        f"Current route: `{current_model}`. Rolling window: 28 days.",
+        f"Current route: `{current_model}`. Rolling window: {window_days} days.",
         f"A challenger needs a strict win rate above {required_win_rate:.0%} to be actionable.",
         "",
         "| Challenger | Wins | Losses | Ties | Win rate | Settled monthly cost | "
@@ -426,10 +428,16 @@ def render_champion_ticket(
             "No challenger clears the configured gate this week; this ticket is FYI-only.",
         ]
     else:
-        lines += ["", "Choose exactly one routing decision:", "", "- [ ] Keep current route"]
+        choices = ["Keep current route"]
         for model in eligible:
-            lines.append(f"- [ ] Switch to `{model}` (normal gradual refresh)")
-            lines.append(f"- [ ] Switch to `{model}` (retained-catalog backfill)")
+            choices.append(f"Switch to `{model}` (normal gradual refresh)")
+            choices.append(f"Switch to `{model}` (retained-catalog backfill)")
+        lines += [
+            "",
+            "Choose exactly one routing decision:",
+            "",
+            render_decision_block(tuple(choices)),
+        ]
     lines += [
         "",
         "Cost and back-catalog estimates use settled telemetry when it is available; no issue "
@@ -454,16 +462,21 @@ def ticket_estimates(state_dir: Path, models: set[str]) -> dict[str, dict[str, f
             episodes = json.loads(path.read_text(encoding="utf-8")).get("episodes") or {}
         except (OSError, ValueError):
             continue
+        prior_by_chapter: dict[str, set[str]] = {}
         for record in episodes.values():
             candidates = record.get("llm_tag_candidates") if isinstance(record, dict) else None
+            chapter_id = str(record.get("chapter_id") or "") if isinstance(record, dict) else ""
             prior_models = {
                 str(candidate.get("provider_model") or "").removeprefix("litellm:")
                 for candidate in candidates or []
                 if isinstance(candidate, dict) and candidate.get("source_kind", "llm") != "rule"
             }
-            for model in estimates:
-                if prior_models and model not in prior_models:
-                    estimates[model]["retained_chapters"] += len(prior_models)
+            if chapter_id and prior_models:
+                prior_by_chapter.setdefault(chapter_id, set()).update(prior_models)
+        for model in estimates:
+            estimates[model]["retained_chapters"] += sum(
+                1 for prior_models in prior_by_chapter.values() if model not in prior_models
+            )
     return estimates
 
 
@@ -492,6 +505,7 @@ def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> i
             stats=stats,
             required_win_rate=required,
             estimates=estimates,
+            window_days=window,
         ),
         encoding="utf-8",
     )

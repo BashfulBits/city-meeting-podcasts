@@ -260,6 +260,7 @@ def updated_digest_state(prior: dict, newly_digested: list[str]) -> dict:
     return {
         "schema_version": DIGEST_STATE_SCHEMA_VERSION,
         "digested": sorted(keys),
+        "reviews": dict(prior.get("reviews") or {}),
         "updated_at": datetime.now(UTC).isoformat(),
     }
 

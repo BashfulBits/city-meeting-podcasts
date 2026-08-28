@@ -15,9 +15,9 @@ from pathlib import Path
 
 from citypods.review_issues import (
     MANAGED_LABEL,
+    SAFE_BODY_LIMIT_BYTES,
     PublicationStatus,
-    append_envelope,
-    bounded_body,
+    append_bounded_envelope,
     publication_summary,
 )
 
@@ -33,8 +33,13 @@ def _gh(*args: str, input_text: str | None = None) -> str:
 
 def _body_file(path: Path, *, family: str, candidate_id: str, surface: str) -> Path:
     text = path.read_text(encoding="utf-8")
-    text = append_envelope(text, family=family, candidate_id=candidate_id, surface=surface)
-    text, _ = bounded_body(text)
+    text, _ = append_bounded_envelope(
+        text,
+        family=family,
+        candidate_id=candidate_id,
+        surface=surface,
+        limit=SAFE_BODY_LIMIT_BYTES,
+    )
     handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False)
     with handle:
         handle.write(text)
@@ -90,10 +95,15 @@ def publish(args: argparse.Namespace) -> int:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     children = list(manifest.get("children") or [])
     reasons = list(manifest.get("reasons") or [])
+    declared_status = PublicationStatus(manifest.get("status", PublicationStatus.PUBLISHED))
+    if children and declared_status is not PublicationStatus.PUBLISHED:
+        raise ValueError("a review manifest with children must have published status")
     if not children:
-        status = PublicationStatus.BLOCKED if reasons else PublicationStatus.NO_CANDIDATES
+        status = declared_status
+        if status is PublicationStatus.PUBLISHED:
+            status = PublicationStatus.BLOCKED if reasons else PublicationStatus.NO_CANDIDATES
         print(publication_summary(status=status, selected=0, published=0, reasons=reasons))
-        return 0
+        return 1 if status is PublicationStatus.FAILED else 0
     family = args.family
     label = args.label
     _gh(
@@ -116,14 +126,9 @@ def publish(args: argparse.Namespace) -> int:
         "--description",
         f"Bot-managed {family} review issue",
     )
-    parent_body = _body_file(
-        _manifest_path(root, args.parent_body), family=family, candidate_id="", surface="parent"
-    )
-    parent = _upsert(args.parent_title, label, parent_body)
-    native = json.loads(
-        _gh("issue", "view", parent, "--json", "subIssues", "--jq", "[.subIssues.nodes[].number]")
-    )
-    published = 0
+    child_specs: list[tuple[str, str, Path]] = []
+    candidate_ids: set[str] = set()
+    titles: set[str] = set()
     for row in children:
         candidate_id = str(
             row.get(args.id_key) or row.get("candidate_id") or row.get("sample_id") or ""
@@ -131,19 +136,37 @@ def publish(args: argparse.Namespace) -> int:
         if not candidate_id:
             raise ValueError("review child is missing its candidate identity")
         title = str(row.get("title") or args.child_title.format(candidate_id=candidate_id))
+        if candidate_id in candidate_ids:
+            raise ValueError(f"review manifest repeats candidate identity {candidate_id!r}")
+        if title in titles:
+            raise ValueError(f"review manifest repeats child title {title!r}")
+        candidate_ids.add(candidate_id)
+        titles.add(title)
         body = _body_file(
             _manifest_path(root, str(row["body_file"])),
             family=family,
             candidate_id=candidate_id,
             surface="child",
         )
+        child_specs.append((candidate_id, title, body))
+    child_numbers: list[str] = []
+    for _candidate_id, title, body in child_specs:
         child = _upsert(title, label, body)
+        child_numbers.append(child)
+    if len(child_numbers) != len(children):
+        raise RuntimeError("selected review children were not all published")
+    parent_body = _body_file(
+        _manifest_path(root, args.parent_body), family=family, candidate_id="", surface="parent"
+    )
+    parent = _upsert(args.parent_title, label, parent_body)
+    native = json.loads(
+        _gh("issue", "view", parent, "--json", "subIssues", "--jq", "[.subIssues.nodes[].number]")
+    )
+    for child in child_numbers:
         if int(child) not in native:
             _gh("issue", "edit", parent, "--add-sub-issue", child)
             native.append(int(child))
-        published += 1
-    if published != len(children):
-        raise RuntimeError("selected review children were not all published")
+    published = len(child_numbers)
     print(
         publication_summary(
             status=PublicationStatus.PUBLISHED, selected=len(children), published=published

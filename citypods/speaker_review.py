@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from citypods.review_issues import render_decision_block, require_one_decision
 from citypods.speakers import (
     body_key,
     calibration_cell,
@@ -268,10 +269,9 @@ def _review_body(candidate: dict) -> str:
             f"Transcript cue: “{candidate.get('cue_text')}”\n\n"
             f"Proposed official: **{candidate.get('display_name')}**\n\n"
             f"Target speaker turn: {candidate.get('start')}–{candidate.get('end')} seconds\n\n"
-            "- [ ] Approve as a golden voice reference\n- [ ] Reject\n\n"
+            f"{render_decision_block(('Approve as a golden voice reference', 'Reject'))}\n\n"
             "Approve only when the cue clearly introduces the person who speaks in the target "
-            "turn. "
-            "Then comment `/speaker-ingest`. The issue omits voice embeddings and match scores.\n"
+            "turn. The issue omits voice embeddings and match scores.\n"
         )
     return (
         f"<!-- r7-shadow-candidate-b64: {encoded} -->\n"
@@ -280,8 +280,8 @@ def _review_body(candidate: dict) -> str:
         f"({candidate.get('city_slug')}, {candidate.get('start')}–"
         f"{candidate.get('end')} seconds)\n\n"
         f"Proposed recurring official: **{candidate.get('display_name')}**\n\n"
-        "- [ ] Correct\n- [ ] Incorrect\n\n"
-        "Check exactly one box, then comment `/speaker-ingest`. This issue intentionally omits "
+        f"{render_decision_block(('Correct', 'Incorrect'))}\n\n"
+        "Check exactly one box. This issue intentionally omits "
         "voice embeddings and numerical match scores.\n"
     )
 
@@ -421,9 +421,7 @@ def ingest(args: argparse.Namespace) -> int:
             "Incorrect",
         )
     )
-    checked = [label for label in outcomes if f"- [x] {label.lower()}" in body.lower()]
-    if len(checked) != 1:
-        raise ValueError("select exactly one R7 speaker review outcome")
+    label = require_one_decision(body, outcomes)
     site = load_site_config(args.site_config)
     state_dir = resolve_state_dir(site, Path(args.output_dir))
     storage = make_storage(site, site.get("base_url", ""), Path(args.output_dir))
@@ -472,7 +470,7 @@ def ingest(args: argparse.Namespace) -> int:
             registry,
             evidence,
             current,
-            approved=checked[0] == outcomes[0],
+            approved=label == outcomes[0],
             reviewer=args.actor,
             review_id=f"github-issue-{args.issue_number}",
         )
@@ -491,7 +489,7 @@ def ingest(args: argparse.Namespace) -> int:
         body=str(current.get("body") or ""),
         engine_recipe=str(current["engine_recipe"]),
         candidate_id=str(current["candidate_id"]),
-        correct=checked[0] == "Correct",
+        correct=label == "Correct",
         reviewer=args.actor,
         review_id=f"github-issue-{args.issue_number}",
         capture_context=str(current["capture_context"]),

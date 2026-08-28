@@ -48,6 +48,7 @@ jobs:
           EVENT_ISSUE: ${{ github.event.issue.number || '' }}
           EVENT_ACTOR: ${{ github.actor }}
         run: |
+          set -euo pipefail
           if [ "$EVENT_NAME" = "schedule" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             issues=$(gh issue list --state open --label agent:weekly-review --limit 500 --json number --jq '.[].number')
           else
@@ -68,6 +69,7 @@ jobs:
             if [ "$EVENT_NAME" = "schedule" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
               actor="github-actions"
             fi
+            rm -f result.log
             python scripts/resolve_review_issue.py --issue-number "$issue" \
               --issue-url "$(jq -r .url issue.json)" --actor "$actor" --body-file issue.md > result.log
             if tail -1 result.log | jq -e '.stored == true' >/dev/null; then

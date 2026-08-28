@@ -3,9 +3,8 @@
 Feature modules retain ownership of candidate selection and durable state.  This module owns the
 small contract shared by those features: versioned issue envelopes, bounded issue bodies,
 exactly-one checkbox parsing, and portable batch manifests.  Keeping model/provider output out of
-the control
-metadata is intentional: review issue bodies are untrusted and every adapter must still look a
-candidate up in its durable ledger before applying a decision.
+the control metadata is intentional: review issue bodies are untrusted and every adapter must look
+a candidate up in its durable ledger before applying a decision.
 """
 
 from __future__ import annotations
@@ -21,6 +20,8 @@ from typing import Protocol
 SCHEMA_VERSION = 1
 MANAGED_LABEL = "agent:weekly-review"
 ENVELOPE_RE = re.compile(r"<!-- citypods-review: ([A-Za-z0-9_=-]+) -->")
+DECISION_BLOCK_START = "<!-- citypods-review-decisions:start -->"
+DECISION_BLOCK_END = "<!-- citypods-review-decisions:end -->"
 GITHUB_BODY_LIMIT_BYTES = 65_536
 SAFE_BODY_LIMIT_BYTES = 60_000
 
@@ -129,6 +130,25 @@ def append_envelope(
     )
 
 
+def append_bounded_envelope(
+    body: str,
+    *,
+    family: str,
+    candidate_id: str = "",
+    surface: str = "child",
+    limit: int = SAFE_BODY_LIMIT_BYTES,
+) -> tuple[str, bool]:
+    """Bound feature content while reserving space for an authoritative trailing envelope."""
+    envelope_bytes = len(
+        encode_envelope(family=family, candidate_id=candidate_id, surface=surface).encode("utf-8")
+    )
+    bounded, truncated = bounded_body(body, limit=limit - envelope_bytes - 3)
+    rendered = append_envelope(bounded, family=family, candidate_id=candidate_id, surface=surface)
+    if len(rendered.encode("utf-8")) > limit:
+        raise ValueError("review envelope does not fit within the configured issue-body limit")
+    return rendered, truncated
+
+
 def bounded_body(body: str, *, limit: int = SAFE_BODY_LIMIT_BYTES) -> tuple[str, bool]:
     """Bound a body by UTF-8 bytes, preserving valid text and a visible artifact hint."""
     encoded = body.encode("utf-8")
@@ -145,10 +165,45 @@ def bounded_body(body: str, *, limit: int = SAFE_BODY_LIMIT_BYTES) -> tuple[str,
     return prefix.rstrip() + suffix, True
 
 
+def render_decision_block(choices: tuple[str, ...]) -> str:
+    """Render the fixed, publisher-owned task-list block for one review child."""
+    return "\n".join(
+        [DECISION_BLOCK_START, *(f"- [ ] {choice}" for choice in choices), DECISION_BLOCK_END]
+    )
+
+
+def _decision_block(body: str) -> str:
+    """Return the final fixed decision block, excluding any provider-rendered preamble."""
+    normalized = body.replace("\r\n", "\n")
+    start = normalized.rfind(DECISION_BLOCK_START)
+    if start == -1:
+        return ""
+    end = normalized.find(DECISION_BLOCK_END, start)
+    if end == -1:
+        return ""
+    return normalized[start + len(DECISION_BLOCK_START) : end]
+
+
 def checked_decisions(body: str, choices: tuple[str, ...]) -> tuple[str, ...]:
-    """Return exactly the checked decision labels using GitHub's task-list spelling."""
-    lowered = body.replace("\r\n", "\n").lower()
-    return tuple(choice for choice in choices if f"- [x] {choice.lower()}" in lowered)
+    """Return checked choices only from the fixed, publisher-owned task-list block."""
+    block = _decision_block(body)
+    return tuple(
+        choice for choice in choices if re.search(rf"(?mi)^- \[x\] {re.escape(choice)}\s*$", block)
+    )
+
+
+def clear_decision_block(body: str) -> str:
+    """Clear checked boxes in the final publisher-owned decision block only."""
+    normalized = body.replace("\r\n", "\n")
+    start = normalized.rfind(DECISION_BLOCK_START)
+    if start == -1:
+        return normalized
+    end = normalized.find(DECISION_BLOCK_END, start)
+    if end == -1:
+        return normalized
+    block_end = end + len(DECISION_BLOCK_END)
+    block = re.sub(r"(?m)^- \[x\] ", "- [ ] ", normalized[start:block_end], flags=re.I)
+    return normalized[:start] + block + normalized[block_end:]
 
 
 def require_one_decision(body: str, choices: tuple[str, ...]) -> str:

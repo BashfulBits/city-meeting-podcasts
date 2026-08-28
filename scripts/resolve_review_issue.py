@@ -62,11 +62,13 @@ def main(argv: list[str] | None = None) -> int:
         "--actor",
         args.actor,
     ]
-    if family in {"h15", "r5"}:
+    if family in {"h15", "r5", "h16"}:
         invocation.extend(("--issue-url", args.issue_url))
     completed = subprocess.run(invocation, text=True, capture_output=True, check=False)
     if completed.stdout:
         print(completed.stdout, end="")
+        if not completed.stdout.endswith("\n"):
+            print()
     if completed.returncode:
         combined = completed.stdout + completed.stderr
         if "select exactly one" in combined or "exactly one primary" in combined:

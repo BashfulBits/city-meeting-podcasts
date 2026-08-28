@@ -300,13 +300,11 @@ the switch (and clears itself) via an Action, never automatically or silently. T
 R13's shipped adapter using the identical `LLMRequestPolicy` pattern every other caller uses, and composes
 with, rather than duplicates, review/35's ground-truth calibration matrix.
 
-## Remaining proposed GitHub issue (not filed — batch review pending)
+## §13. Completed review surface
 
-The reusable tournament engine and R5 runner are implemented in `citypods/tournament.py`; it remains
-human-approved and cannot change production routing. The remaining slice is:
-
-1. Weekly champion-stats GitHub issue + checkbox-approval Action (quality, cost, back-catalog-cost,
-   apply-and-clear).
+The reusable tournament engine and the initial `tag` weekly champion ticket are implemented in
+`citypods/tournament.py` and the shared review-issue adapter. The ticket remains human-approved and
+cannot change production routing directly.
 
 ## §14. Implemented ticket and merge gate (2026-08-28)
 

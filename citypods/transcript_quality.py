@@ -33,6 +33,7 @@ from citypods.bodies import canonical_body
 from citypods.config import load_city_configs, load_site_config
 from citypods.models import City
 from citypods.records import load_records, record_to_episode, source_key
+from citypods.review_issues import checked_decisions, render_decision_block
 from citypods.state import resolve_state_dir
 from citypods.statesync import (
     pull_state,
@@ -54,7 +55,6 @@ CALIBRATION_TREND_NAME = "transcript_quality_calibration_trend.json"
 LEDGER_STATE_KEY = "state/transcript_quality_ledger.json"
 DEFAULT_REVIEW_DIR = "transcript-eval"
 _METADATA_RE = re.compile(r"<!--\s*citypods:h15\s*(\{.*\})\s*-->", re.DOTALL)
-_TASK_RE = re.compile(r"^- \[(?P<checked>[xX ])\] (?P<label>.+?)\s*$", re.MULTILINE)
 # H15 Layer 3 (review/12 §H15): the optional "what did you actually hear" correction box for a
 # "Neither usable" verdict, pre-filled with a draft (see _correction_draft_text) rather than
 # blank — reviewers edit down from a starting point instead of transcribing cold.
@@ -71,6 +71,7 @@ _TIMING_FLAGS = {
     "Timing makes A hard to use": "timing_a_bad",
     "Timing makes B hard to use": "timing_b_bad",
 }
+_REVIEW_CHOICES = tuple(_PRIMARY_OUTCOMES) + tuple(_TIMING_FLAGS)
 
 
 @dataclass(frozen=True)
@@ -1918,15 +1919,8 @@ def render_issue_body(sample: dict) -> str:
         ),
         *coverage_note,
         "",
-        "Choose exactly one primary outcome:",
-        "- [ ] A is better",
-        "- [ ] B is better",
-        "- [ ] Both fully correct",
-        "- [ ] Neither usable",
-        "",
-        "Timing modifiers (optional):",
-        "- [ ] Timing makes A hard to use",
-        "- [ ] Timing makes B hard to use",
+        "Choose exactly one primary outcome; timing modifiers are optional:",
+        render_decision_block(_REVIEW_CHOICES),
         "",
         (
             "Optional — if neither is usable, help build the gold calibration set. Pre-filled "
@@ -2115,30 +2109,22 @@ def parse_issue_decision(body: str) -> dict:
     # correction gold-harvest path. Normalize once, up front, rather than making every regex in
     # this function individually CRLF-aware.
     body = body.replace("\r\n", "\n")
-    metadata_match = _METADATA_RE.search(body)
-    if not metadata_match:
+    metadata_matches = list(_METADATA_RE.finditer(body))
+    if not metadata_matches:
         raise ValueError("missing H15 metadata marker")
-    metadata = json.loads(metadata_match.group(1))
-    checked = [
-        (match.group("label").strip(), match.group("checked").lower() == "x")
-        for match in _TASK_RE.finditer(body)
-    ]
-    primaries = [
-        _PRIMARY_OUTCOMES[label]
-        for label, active in checked
-        if active and label in _PRIMARY_OUTCOMES
-    ]
+    metadata = json.loads(metadata_matches[-1].group(1))
+    checked = checked_decisions(body, _REVIEW_CHOICES)
+    primaries = [_PRIMARY_OUTCOMES[label] for label in checked if label in _PRIMARY_OUTCOMES]
     if not primaries:
         raise ValueError("no primary outcome checked")
     if len(primaries) > 1:
         raise ValueError("issue must have exactly one checked primary outcome")
-    timing_flags = [
-        _TIMING_FLAGS[label] for label, active in checked if active and label in _TIMING_FLAGS
-    ]
+    timing_flags = [_TIMING_FLAGS[label] for label in checked if label in _TIMING_FLAGS]
     # The correction box is pre-filled with a draft (render_issue_body/_correction_draft_text);
     # an untouched draft is not a real correction, so compare against what was originally shown
     # rather than trusting any non-empty content as reviewer-authored gold.
-    correction_match = _CORRECTION_RE.search(body)
+    correction_matches = list(_CORRECTION_RE.finditer(body))
+    correction_match = correction_matches[-1] if correction_matches else None
     submitted = correction_match.group("text") if correction_match else ""
     draft = metadata.get("correction_draft") or ""
     correction_text = (

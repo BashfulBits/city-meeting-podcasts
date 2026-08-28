@@ -44,6 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           python scripts/publish_review_batch.py \
             --manifest speaker-review/review-batch.json \
             --family r7 --label speaker-calibration-review \

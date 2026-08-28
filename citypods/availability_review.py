@@ -16,9 +16,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.availability import AVAILABLE, CONFIRMED_EMPTY, with_operator_override
-from citypods.availability_digest import DIGEST_STATE_NAME
+from citypods.availability_digest import DIGEST_STATE_NAME, safe_stem
 from citypods.records import ARTIFACT_BLOCKS, _availability_from_rec, load_records, save_records
-from citypods.review_issues import require_one_decision
+from citypods.review_issues import render_decision_block, require_one_decision
+from citypods.security import redact_subprocess_text
 
 DECISIONS = ("Confirm empty", "Restore media")
 _MARKER = re.compile(r"<!-- h16-candidate-b64: ([A-Za-z0-9_=-]+) -->")
@@ -33,8 +34,10 @@ def _candidate_body(evidence: dict) -> str:
         key: evidence.get(key)
         for key in ("uid", "source_key", "state", "detector_version", "source_fingerprint")
     }
-    title = str(evidence.get("title") or payload["uid"])
-    watch = str(evidence.get("canonical_source_url") or "—")
+    title = " ".join(str(evidence.get("title") or payload["uid"]).split())
+    watch = " ".join(
+        str(redact_subprocess_text(evidence.get("canonical_source_url")) or "—").split()
+    )
     return (
         f"<!-- h16-candidate-b64: {_encode(payload)} -->\n"
         f"# H16 availability review: {title}\n\n"
@@ -42,8 +45,7 @@ def _candidate_body(evidence: dict) -> str:
         f"Watch page: {watch}\n\n"
         "Listen to the matching evidence proxies from the parent batch artifact, then choose "
         "exactly one:\n\n"
-        "- [ ] Confirm empty\n"
-        "- [ ] Restore media\n"
+        f"{render_decision_block(DECISIONS)}\n"
         "\nRationale (optional): \n"
     )
 
@@ -69,7 +71,7 @@ def package_evidence(*, evidence: list[dict], out_dir: Path, state_dir: Path) ->
         key = review_key(row)
         if isinstance(reviews.get(key), dict) and reviews[key].get("status") == "resolved":
             continue
-        filename = f"{row['uid']}.md"
+        filename = f"{safe_stem(str(row.get('uid') or ''))}.md"
         (out_dir / filename).write_text(_candidate_body(row), encoding="utf-8")
         children.append({"candidate_id": key, "body_file": filename})
     parent = (

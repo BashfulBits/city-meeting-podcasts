@@ -71,6 +71,7 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: |
+          set -euo pipefail
           python -m citypods.tournament ticket --out-dir tournament-ticket
           python scripts/publish_review_ticket.py --family tournament-tag \
             --label tournament-champion-ticket --title "Tournament champion ticket: tag" \

@@ -11,7 +11,9 @@ permissions:
 
 jobs:
   handoff:
-    if: contains(github.event.pull_request.body, '<!-- citypods:tournament-route ')
+    if: >-
+      github.event.pull_request.user.login == 'github-actions[bot]' &&
+      contains(github.event.pull_request.body, '<!-- citypods:tournament-route v=1 ')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -23,8 +25,19 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[storage]" -c constraints/prod.txt
+      - name: Validate the bot-authored route proposal
+        id: proposal
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PR_BODY" > proposal.md
+          python scripts/tournament_route_proposal.py --route-pr-body proposal.md --result proposal.json
+          echo "issue=$(jq -r .issue_number proposal.json)" >> "$GITHUB_OUTPUT"
+          echo "model=$(jq -r .model proposal.json)" >> "$GITHUB_OUTPUT"
+          echo "backfill=$(jq -r .backfill proposal.json)" >> "$GITHUB_OUTPUT"
       - name: Record merged backfill selection
-        if: github.event.pull_request.merged == true && contains(github.event.pull_request.body, 'backfill=true')
+        if: github.event.pull_request.merged == true && steps.proposal.outputs.backfill == 'true'
         env:
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
@@ -35,18 +48,18 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-          PR_BODY: ${{ github.event.pull_request.body }}
           GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ steps.proposal.outputs.issue }}
+          MODEL: ${{ steps.proposal.outputs.model }}
         run: |
-          issue=$(printf '%s' "$PR_BODY" | sed -n 's/.*issue=\([0-9][0-9]*\).*/\1/p')
-          model=$(printf '%s' "$PR_BODY" | sed -n 's/.*Model: `\([^`]*\)`.*/\1/p')
-          python -m citypods.tournament_backfill request --issue-number "$issue" --model "$model"
-          gh workflow run tournament-tag-backfill.yml -f issue_number="$issue" -f model="$model"
+          set -euo pipefail
+          python -m citypods.tournament_backfill request --issue-number "$ISSUE" --model "$MODEL"
+          gh workflow run tournament-tag-backfill.yml -f issue_number="$ISSUE" -f model="$MODEL"
       - name: Record an unmerged proposal closure
         if: github.event.pull_request.merged != true
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          ISSUE: ${{ steps.proposal.outputs.issue }}
         run: |
-          issue=$(printf '%s' "$PR_BODY" | sed -n 's/.*issue=\([0-9][0-9]*\).*/\1/p')
-          gh issue comment "$issue" --body "The route-change PR closed without merging; no route or backfill work was changed."
+          set -euo pipefail
+          gh issue comment "$ISSUE" --body "The route-change PR closed without merging; no route or backfill work was changed."

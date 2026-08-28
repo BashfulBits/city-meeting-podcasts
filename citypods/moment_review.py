@@ -10,6 +10,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.moment_evaluation import load_state, record_review, save_state, state_lock
+from citypods.review_issues import render_decision_block, require_one_decision
+
+_REVIEW_CHOICES = ("Good", "Borderline", "Reject")
 
 
 def _record_parser(parser: argparse.ArgumentParser) -> None:
@@ -64,7 +67,7 @@ def _review_body(candidate: dict) -> str:
         f"<!-- r6-candidate-b64: {encoded} -->\n"
         f"# R6 moment review: `{candidate['candidate_id']}`\n\n"
         f"> {candidate.get('quote', '')}\n\n"
-        "- [ ] Good\n- [ ] Borderline\n- [ ] Reject\n\n"
+        f"{render_decision_block(_REVIEW_CHOICES)}\n\n"
         "Optional maintainer controls: `start`, `end`, `title`, `caption`, `crop_anchor`, and "
         "`output_profile` in a fenced `json` block. Caption wording must match the transcript.\n"
     )
@@ -75,20 +78,15 @@ def _decision(body: str) -> tuple[dict, str, dict]:
     if not match:
         raise ValueError("missing trusted R6 candidate payload")
     candidate = json.loads(base64.urlsafe_b64decode(match.group(1)).decode())
-    labels = [
-        label
-        for label in ("Good", "Borderline", "Reject")
-        if f"- [x] {label.lower()}" in body.lower()
-    ]
-    if len(labels) != 1:
-        raise ValueError("select exactly one R6 review label")
+    label = require_one_decision(body, _REVIEW_CHOICES)
     controls: dict = {}
-    json_match = re.search(r"```json\s*(\{.*?\})\s*```", body, flags=re.S)
+    json_matches = list(re.finditer(r"```json\s*(\{.*?\})\s*```", body, flags=re.S))
+    json_match = json_matches[-1] if json_matches else None
     if json_match:
         controls = json.loads(json_match.group(1))
         if not isinstance(controls, dict):
             raise ValueError("R6 review controls must be a JSON object")
-    return candidate, labels[0], controls
+    return candidate, label, controls
 
 
 def _validated_ledger_candidate(state_dir: Path, site: dict, candidate: dict) -> dict:

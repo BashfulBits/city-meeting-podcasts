@@ -124,6 +124,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           python scripts/publish_review_batch.py \
             --manifest availability-digest/review-batch.json \
             --family h16 --label h16-availability-review \

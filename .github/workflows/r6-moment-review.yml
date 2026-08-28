@@ -44,6 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           python scripts/publish_review_batch.py \
             --manifest r6-review/review-batch.json \
             --family r6 --label r6-calibration-review \

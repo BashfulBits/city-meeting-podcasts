@@ -212,7 +212,10 @@ def main(argv: list[str] | None = None) -> int:
 
         marked = mark_pending(out_dir=Path(args.out), state_dir=state_dir)
         storage = make_storage(site_config, site_config.get("base_url", ""), Path(args.output_dir))
-        push_state(storage, state_dir, only_prefixes=[DIGEST_STATE_NAME])
+        pushed = push_state(storage, state_dir, only_prefixes=[DIGEST_STATE_NAME])
+        if pushed == 0:
+            print("error: push_state pushed 0 file(s); pending review state was not persisted")
+            return 1
         print(f"availability digest: marked {marked} child review(s) pending")
         return 0
 

@@ -59,6 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           python scripts/publish_review_batch.py \
             --manifest llm-review/review-batch.json \
             --family r5 --label llm-calibration-review \
