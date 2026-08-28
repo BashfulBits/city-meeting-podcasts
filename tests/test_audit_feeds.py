@@ -286,6 +286,14 @@ def test_render_grouped_body_contains_marker_key_and_severity():
     assert "`cityA`" in body
 
 
+def test_unexpected_body_guidance_documents_manual_remedy_for_current_tables():
+    guidance = _mod._guidance_for("unexpected-body")
+    assert "comment `/remedy` on this issue" in guidance
+    assert "current evidence" in guidance
+    assert "tables below" in guidance
+    assert "zero unmatched rows" in guidance
+
+
 def test_render_grouped_body_timeline_repair_checks_link_to_workflow_dispatch():
     rows = {"cityA": _FeedRow(slug="cityA", count=1, severity=ERROR, example="ex")}
     first_seen = {"cityA": _NOW.isoformat()}
@@ -1371,7 +1379,7 @@ def test_pull_canonical_state_degrades_gracefully_when_bucket_unavailable(monkey
 
 
 # ---------------------------------------------------------------------------
-# Automated remedy dispatch: on_issue_created hook + _dispatch_remedy_workflow
+# Automated remedy dispatch: creation/new-row hooks + _dispatch_remedy_workflow
 # ---------------------------------------------------------------------------
 
 
@@ -1391,9 +1399,7 @@ def test_reconcile_grouped_create_fires_on_issue_created_with_the_new_number():
 
 
 def test_reconcile_grouped_update_does_not_fire_on_issue_created():
-    """A later run that only adds/changes rows on an already-open issue must not re-fire --
-    the whole point is "kick off remediation once per fresh finding", not once per day it's
-    still open."""
+    """A detail-only change on an existing table row is not a new remediation trigger."""
     existing = _grouped_issue(
         "unexpected-body", number=1231, first_seen={"testcity": _NOW.isoformat()}
     )
@@ -1407,6 +1413,45 @@ def test_reconcile_grouped_update_does_not_fire_on_issue_created():
     assert ("issue", "edit") in [c[:2] for c in calls]
     assert ("issue", "create") not in [c[:2] for c in calls]
     assert fired == []
+
+
+def test_reconcile_grouped_update_fires_on_new_unexpected_body_row():
+    existing = _grouped_issue(
+        "unexpected-body",
+        number=1231,
+        first_seen={"cityA": _NOW.isoformat()},
+    )
+    fired: list[tuple[str, int]] = []
+    calls = _run_reconcile(
+        [
+            _finding(slug="cityA", check="unexpected-body"),
+            _finding(slug="cityB", check="unexpected-body"),
+        ],
+        existing,
+        now=_NOW,
+        on_new_rows=lambda check, number: fired.append((check, number)),
+    )
+    assert ("issue", "edit") in [c[:2] for c in calls]
+    assert fired == [("unexpected-body", 1231)]
+
+
+def test_reconcile_grouped_new_row_hook_reports_other_checks_for_caller_filtering():
+    existing = _grouped_issue(
+        "drift",
+        number=1231,
+        first_seen={"cityA": _NOW.isoformat()},
+    )
+    fired: list[tuple[str, int]] = []
+    _run_reconcile(
+        [
+            _finding(slug="cityA", check="drift"),
+            _finding(slug="cityB", check="drift"),
+        ],
+        existing,
+        now=_NOW,
+        on_new_rows=lambda check, number: fired.append((check, number)),
+    )
+    assert fired == [("drift", 1231)]
 
 
 def test_reconcile_grouped_only_fires_for_the_check_that_was_created():
@@ -1440,6 +1485,7 @@ def test_reconcile_grouped_dry_run_never_fires_on_issue_created_or_calls_gh():
             existing={},
             now=_NOW,
             on_issue_created=lambda check, number: fired.append((check, number)),
+            on_new_rows=lambda check, number: fired.append((check, number)),
         )
     assert gh_calls == []
     assert fired == []

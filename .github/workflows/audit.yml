@@ -39,11 +39,11 @@ on:
 permissions:
   contents: read
   issues: write
-  # Scoped to exactly one use: `gh workflow run remedy-unexpected-bodies.yml` when this run
-  # creates a new consolidated unexpected-body issue (never on later updates to an already-open
-  # one). This is the whole reason that workflow doesn't need to listen for `issues: opened` --
-  # only a token already holding `actions: write` on this repo can dispatch it, so there is no
-  # externally reachable trigger surface to spoof.
+  # Scoped to exactly one use: `gh workflow run remedy-unexpected-bodies.yml` when this run creates
+  # a consolidated unexpected-body issue or adds a new affected-feed row to one. This is the whole
+  # reason that workflow doesn't need to listen for `issues: opened` -- only a token already
+  # holding `actions: write` on this repo can dispatch it, so there is no externally reachable
+  # trigger surface to spoof.
   actions: write
 
 concurrency:
