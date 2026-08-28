@@ -396,6 +396,25 @@ test("a request for a model_routing source model is also made eligible for its o
     "mistral/mistral-medium-2508",
     "gemini/gemini-3.5-flash-lite",
   ]);
+
+  const withPeerAlternate = await handleRequest(
+    chatRequest(undefined, "model-routing-peer-first", "mistral/mistral-medium-2508", {
+      allowed_models: [
+        "mistral/mistral-medium-2508",
+        "meta-llama/llama-3.3-70b-instruct",
+      ],
+    }),
+    env,
+  );
+  const peerBody = await withPeerAlternate.json();
+  const peerStored = await (
+    await env.LLM_QUEUE.get(`requests/${peerBody.id}.json`)
+  ).json();
+  assert.deepEqual(peerStored.policy.allowed_models, [
+    "mistral/mistral-medium-2508",
+    "meta-llama/llama-3.3-70b-instruct",
+    "gemini/gemini-3.5-flash-lite",
+  ]);
 });
 
 test("selectRoute and nextCapacityRetryAt dynamically expand model_routing for resident records", () => {
@@ -446,6 +465,54 @@ test("selectRoute and nextCapacityRetryAt dynamically expand model_routing for r
     dispatchLimits,
   );
   assert.ok(retryAt.getTime() >= now.getTime());
+});
+
+test("selectRoute tries an explicit alternate before an injected model_routing overflow", () => {
+  const dispatchLimits = {
+    model_routing: {
+      "mistral/mistral-medium-2508": ["gemini/gemini-3.5-flash-lite"],
+    },
+    model_routes_map: {
+      "mistral/mistral-medium-2508": ["mistral_paused"],
+      "meta-llama/llama-3.3-70b-instruct": ["sambanova_llama"],
+      "gemini/gemini-3.5-flash-lite": ["gemini_overflow"],
+    },
+    routes_by_id: {
+      mistral_paused: {
+        route_id: "mistral_paused",
+        provider: "mistral",
+        model: "mistral/mistral-medium-2508",
+        free: true,
+        rpd: 0,
+      },
+      sambanova_llama: {
+        route_id: "sambanova_llama",
+        provider: "sambanova",
+        model: "meta-llama/llama-3.3-70b-instruct",
+        free: true,
+        rpm: 20,
+        rpd: 1000,
+      },
+      gemini_overflow: {
+        route_id: "gemini_overflow",
+        provider: "gemini",
+        model: "gemini/gemini-3.5-flash-lite",
+        free: true,
+        rpm: 30,
+        rpd: 1500,
+      },
+    },
+  };
+
+  const selection = selectRoute(
+    { routes: {} },
+    ["mistral/mistral-medium-2508", "meta-llama/llama-3.3-70b-instruct"],
+    { allow_paid: false, estimated_tokens: 100 },
+    new Date("2026-08-28T12:00:00Z"),
+    dispatchLimits,
+  );
+
+  assert.equal(selection.chosenRoute?.route_id, "sambanova_llama");
 });
 
 test("dispatchBatch dispatches a resident job using dynamic model_routing overflow", async () => {
