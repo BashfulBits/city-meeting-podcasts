@@ -63,23 +63,16 @@ proves it with a test that re-derives the exact v1 formula and asserts equality
 ```python
 def _v1_hash(self, ep, max_kbps=96):
     """Reproduce the exact v1 formula to assert against."""
-    spec = {
-        "v": AUDIO_PIPELINE_VERSION,
-        "source": ep.video_url,
-        "max_kbps": max_kbps,
-        "chapters": ep.chapters,
-    }
+    spec = {"v": AUDIO_PIPELINE_VERSION, "source": ep.video_url,
+            "max_kbps": max_kbps, "chapters": ep.chapters}
     blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
-
 
 def test_plain_episode_matches_v1(self):
     assert audio_spec_hash(_ep(), max_kbps=96) == self._v1_hash(_ep())
 
-
 def test_episode_with_one_source_still_matches_v1(self):
-    ep = _ep()
-    ep.sources = [_src()]
+    ep = _ep(); ep.sources = [_src()]
     assert audio_spec_hash(ep, max_kbps=96) == self._v1_hash(ep)
 ```
 
@@ -101,7 +94,7 @@ This is the single most important assertion in the whole stack, and it's done ri
 ```python
 def timeline_digest(tl: Timeline) -> str:
     if _is_identity(tl):
-        return ""  # ← keeps audio_spec_hash v1-identical
+        return ""                                   # ← keeps audio_spec_hash v1-identical
     blob = json.dumps(dataclasses.asdict(tl), separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:12]
 ```
@@ -116,7 +109,7 @@ def timeline_digest(tl: Timeline) -> str:
 
    ```python
    # concat: s0 → served[0,100], s1 → served[100,150]
-   served_to_source(tl, 100)  # → ("s1", 0.0)   (seg0 is half-open, 100 ∉ [0,100))
+   served_to_source(tl, 100)        # → ("s1", 0.0)   (seg0 is half-open, 100 ∉ [0,100))
    source_to_served(tl, "s0", 100)  # → 100.0         (s0's only seg is "last" for s0 → closed)
    ```
 
@@ -152,22 +145,11 @@ generalize `audio_spec_hash` with the identity guarantee, and ship the surgical-
 
 ```python
 if not tl_digest and not rebuild and not loudness and len(ep.sources) <= 1:
-    spec = {
-        "v": AUDIO_PIPELINE_VERSION,
-        "source": ep.video_url,
-        "max_kbps": max_kbps,
-        "chapters": ep.chapters,
-    }  # v1-identical
+    spec = {"v": AUDIO_PIPELINE_VERSION, "source": ep.video_url,
+            "max_kbps": max_kbps, "chapters": ep.chapters}          # v1-identical
 else:
-    spec = {
-        "v": ...,
-        "max_kbps": ...,
-        "timeline": tl_digest,
-        "loudness": loudness,
-        "chapters": ep.chapters,
-        "sources": source_refs,
-        "rebuild": rebuild,
-    }
+    spec = {"v": ..., "max_kbps": ..., "timeline": tl_digest, "loudness": loudness,
+            "chapters": ep.chapters, "sources": source_refs, "rebuild": rebuild}
 ```
 
 - Lazy v1→v2 upgrade is handled in `record_to_episode` / `merge_persisted` by defaulting absent
@@ -189,8 +171,7 @@ else:
    ```python
    has_selector = bool(target_uids or target_source or target_body or after or before)
    if not drop and not has_selector and not args.all:
-       print("error: refusing to stamp every episode; pass a selector or --all")
-       return 1
+       print("error: refusing to stamp every episode; pass a selector or --all"); return 1
    ```
 
 5. **The identity hash keys off `ep.video_url`, but the source registry's `ref` is excluded
@@ -291,12 +272,11 @@ covered by an ordering test.
 
    ```python
    for ep in _materialize_set(episodes, city.max_episodes):
-       if ep.timeline is not None and not self.planners:  # only short-circuits when NO planners
-           stats.reused += 1
-           continue
+       if ep.timeline is not None and not self.planners:   # only short-circuits when NO planners
+           stats.reused += 1; continue
        current = ep.timeline
        for planner in self.planners:
-           result = planner.plan(provider, city, ep, ctx, current)  # ← re-runs every run
+           result = planner.plan(provider, city, ep, ctx, current)   # ← re-runs every run
            ...
    ```
 
@@ -447,13 +427,11 @@ lands (so nothing is ever mis-aligned); untimed → notes-only. The feed gate ma
 
     ```python
     for ep in _materialize_set(...):
-        if ctx.stop is not None and ctx.stop():  # ← gates EVERYTHING, including reuse
-            stats.skipped += 1
-            continue
-        if ep.transcript_key and _present(ep.transcript_key):  # reuse should run unconditionally
+        if ctx.stop is not None and ctx.stop():     # ← gates EVERYTHING, including reuse
+            stats.skipped += 1; continue
+        if ep.transcript_key and _present(ep.transcript_key):   # reuse should run unconditionally
             ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
-            stats.reused += 1
-            continue
+            stats.reused += 1; continue
     ```
 
     Consequence: once the wall-clock window closes, a yielded run won't re-attach hosted URLs for
@@ -497,14 +475,8 @@ bad EDLs.
 
     ```python
     if s.served_start > prev_end + _FRAME_TOLERANCE:
-        findings.append(
-            Finding(
-                slug,
-                "timeline-gap",
-                ERROR,
-                f"{uid}: gap before segment {i}: {prev_end:.3f}s → {s.served_start:.3f}s",
-            )
-        )
+        findings.append(Finding(slug, "timeline-gap", ERROR,
+            f"{uid}: gap before segment {i}: {prev_end:.3f}s → {s.served_start:.3f}s"))
     ...
     if served_dur is not None and abs(segs[-1].served_end - served_dur) > _FRAME_TOLERANCE:
         findings.append(Finding(slug, "timeline-short-coverage", ERROR, ...))
@@ -528,9 +500,8 @@ This spans INFRA-2/7/8 and is the one I'd block on before anyone runs the GC in 
 
 ```python
 for rec in (data.get("episodes") or {}).values():
-    key = (rec.get("audio") or {}).get("key")  # ← audio only; transcript.key / clip keys ignored
-    if key:
-        keys.add(key)
+    key = (rec.get("audio") or {}).get("key")     # ← audio only; transcript.key / clip keys ignored
+    if key: keys.add(key)
 ```
 
 `scripts/gc_audio.py` defaults to **`--prefix ""`** (every object) and deletes anything not in that
@@ -558,12 +529,9 @@ def referenced_keys(state_dir: Path) -> set[str]:
     keys: set[str] = set()
     for path in Path(state_dir).glob("sources/*/episodes.json"):
         for rec in (json.loads(path.read_text()).get("episodes") or {}).values():
-            for k in (
-                (rec.get("audio") or {}).get("key"),
-                (rec.get("transcript") or {}).get("key"),
-            ):
-                if k:
-                    keys.add(k)
+            for k in ((rec.get("audio") or {}).get("key"),
+                      (rec.get("transcript") or {}).get("key")):
+                if k: keys.add(k)
     return keys
 ```
 

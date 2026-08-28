@@ -47,14 +47,14 @@ candidate:
 
 ```python
 {
-    "feature": ...,  # e.g. "topic-tags" — which feature/verb this candidate belongs to
-    "provider_model": ...,  # exact candidate route, or deterministic rule version
-    "prompt_version": ...,  # this feature's own prompt/schema version
-    "taxonomy_version": ...,  # this feature's own content-version (taxonomy, classification schema, ...)
-    "label": ...,  # the specific tag ID / classification label this candidate proposes
-    "scope": ...,  # "chapter" or "episode" — R5's own scope; other features may use a
-    #   different discrete scope value, or omit the distinction
-    "source_kind": ...,  # rule or llm
+    "feature": ...,          # e.g. "topic-tags" — which feature/verb this candidate belongs to
+    "provider_model": ...,   # exact candidate route, or deterministic rule version
+    "prompt_version": ...,   # this feature's own prompt/schema version
+    "taxonomy_version": ..., # this feature's own content-version (taxonomy, classification schema, ...)
+    "label": ...,            # the specific tag ID / classification label this candidate proposes
+    "scope": ...,             # "chapter" or "episode" — R5's own scope; other features may use a
+                              #   different discrete scope value, or omit the distinction
+    "source_kind": ...,      # rule or llm
     "assessment_kind": ...,  # tagger admission or pre-labeler overlay
     "evaluator_model": ...,  # independent route for overlay rows
 }
