@@ -72,31 +72,6 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
 
   assert.throws(() => validateConfig(createMockEnv({ MAX_5XX_RETRIES: "3" })));
   assert.throws(() => validateConfig(createMockEnv({ MAX_5XX_BACKOFF_SECONDS: "0" })));
-  assert.doesNotThrow(() =>
-    validateConfig(
-      createMockEnv({
-        MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM: "0",
-        MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM: "0",
-        MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "0",
-        MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY: "0",
-      })
-    )
-  );
-  assert.throws(() =>
-    validateConfig(createMockEnv({ MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM: "-1" }))
-  );
-  assert.throws(() =>
-    validateConfig(createMockEnv({ MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM: "1.5" }))
-  );
-  assert.throws(() =>
-    validateConfig(createMockEnv({ MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "-1" }))
-  );
-  assert.throws(() =>
-    validateConfig(createMockEnv({ MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY: "4" }))
-  );
-  assert.throws(() =>
-    validateConfig(createMockEnv({ MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY: "1.5" }))
-  );
 
   // ESTIMATED_CALL_DURATION_CEILING_SECONDS >= DISPATCH_WINDOW_SECONDS
   assert.throws(() =>

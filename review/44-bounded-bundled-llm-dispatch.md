@@ -115,13 +115,12 @@ fixed before merge:
   through Cloudflare's dashboard Data Studio or `wrangler dev`'s Local Explorer SQL Studio") would
   otherwise silently never change admission order, since the index row already exists and backfill
   never revisits an already-indexed job.
-- *Repeated queue-head migration work.* `claimDispatchWindow` captures the maximum SQLite
-  `jobs.rowid` at rollout, then advances `scheduler.job_models_backfill_cursor` only through that
-  finite range. If one job's allowed-model list exceeds the remaining daily write budget, a durable
-  row-id/model-offset continuation indexes it across days; it remains excluded from admission until
-  complete. Jobs created later are indexed synchronously at enqueue and are outside the high-water
-  mark. This replaces the former `NOT EXISTS` queue-head scan, which could repeatedly revisit
-  repaired rows as a large historical backlog drained.
+- *Repeated queue-head migration work.* `claimDispatchWindow` captured the maximum SQLite
+  `jobs.rowid` at rollout, then advanced `scheduler.job_models_backfill_cursor` only through that
+  finite range, instead of the former `NOT EXISTS` queue-head scan, which could repeatedly revisit
+  repaired rows as a large historical backlog drained. Both this and the legacy `retryable`-state
+  recovery migration completed in production and their code was retired 2026-08-28 — see "Retired:
+  the rollout compatibility migrations" below.
 
 ## Why cron pull, not Queue or a queue object
 
@@ -286,19 +285,13 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_IN_FLIGHT_LLM_CALLS` | 8 | Separate global cap; avoids one slow bundle serializing all work |
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
 | `MAX_JOBS_PER_UTC_DAY` | 5,000 | Hard ingestion admission cap. This matches the ~4,000 daily dispatch ceiling while reserving Free-tier SQLite write headroom for each job's model-index rows and lease-time index removal |
-| `MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM` | 4 | Forward-only historical cursor; zero pauses it |
-| `MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM` | 1 | Indexed historical recovery; zero pauses it |
-| `MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY` | 5,000 | Shared conservative daily write budget |
-| `MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY` | 250,000 | Shared migration-query-row budget |
 | `ENQUEUE_BATCH_MAX` | profiled gate (target: low hundreds to low thousands of jobs/call) | Jobs accepted per single `enqueue-batch` RPC — sized so reaching `MAX_JOBS_PER_UTC_DAY` takes tens of calls, not thousands |
 | `POLL_BATCH_MAX` | profiled gate (target: enough to cover the largest single reconciliation sweep in one call — see note below) | Statuses/results returned per single `poll-batch` RPC |
 
-Each model-index mapping costs three conservative write units. Recovering a job costs two units plus
-its mappings. These budgets do not cap a job's allowed-model list, and ordinary capacity-ranked
-admission is not charged to the migration-read budget.
-
-A nonzero migration write budget must be at least five units, enough to index and atomically requeue
-a one-model recovered job. Larger jobs retain a durable model offset and resume on a future UTC day.
+The `MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM`/`MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM`/
+`MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY`/`MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY` knobs that used to be
+documented here governed the two rollout compatibility migrations; both completed in production and
+their code was retired — see "Retired: the rollout compatibility migrations" below.
 
 **`POLL_BATCH_MAX` covers two different traffic shapes; size it for the larger one.** There are two
 distinct poll use cases, not one: (a) the automated `JobHandle` reconciliation sweep that runs as
@@ -418,16 +411,16 @@ The DO creates SQLite-backed tables in its constructor. Payload bytes are exclud
   and outcome; compact audit rows used to settle a provisional reservation from actual execution.
 - **`estimates`:** route/model/prompt-family conservative margin, sample count, and bounded recent
   observed usage summary; it cannot lower a reservation below `ESTIMATE_MARGIN`.
-- **`scheduler`:** UTC bundle count, cleanup cursor, next maintenance alarm, one-time completion
+- **`scheduler`:** UTC bundle count, cleanup cursor, next maintenance alarm; small singleton state.
+  The table retains the columns the two rollout compatibility migrations wrote (one-time completion
   flags, a fixed backfill high-water mark/cursor, per-job model-offset continuations, and UTC
-  migration read/write counters; small singleton state. Each compatibility migration has a
-  separately configurable zero-cap emergency pause and they share conservative daily budgets.
+  migration read/write counters) on already-migrated instances, but no code reads or writes them
+  any more — see "Retired: the rollout compatibility migrations" below.
 
 Job states are `queued`, `leased`, `unknown_attempt`, `completed`, `retryable`, `failed`, and
-`purge_pending`. `retryable` is retained only as a migration compatibility state: each claim
-recovers an index-ordered bounded batch into `queued` while its recovery cap and shared daily
-budget permit, rather than allowing it to become a dead-end state. A zero cap or budget is a
-temporary row-write emergency pause, not completion; raising it resumes recovery. A job lease
+`purge_pending`. `retryable` was only ever written by pre-fix deployments and is no longer produced
+by current code; nothing recovers a row already stuck in it (the migration that did so completed
+and was retired). A job lease
 carries an opaque `lease_token`; an executor must present that exact token to settle it. A bundle
 has a separate execution token, preventing overlapping cron invocations from issuing duplicate
 provider calls.
@@ -1152,6 +1145,44 @@ both invariants), and the fixture originally seeded only terminal history (so `j
 grew and its index was uncovered). **Any change to this guard must be re-validated the same way — a
 guard test that has never been seen to fail is not evidence of anything.**
 
+### Retired: the rollout compatibility migrations (2026-08-28)
+
+Phase 2's `claimDispatchWindow` shipped with two bounded, cron-tick-throttled compatibility
+migrations, both now retired from the codebase:
+
+- **`job_models` backfill.** Historical `jobs` rows written before `job_models` existed had no
+  index entry, so a forward-only cursor walked a fixed rowid high-water mark set at rollout,
+  indexing each one's allowed models in bounded per-tick batches (`_backfillQueuedJobModels`,
+  `MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM`).
+- **Legacy `retryable` recovery.** Deployments before the final-5xx durable-retry fix left some
+  jobs stuck in a `retryable` state that current code never reads. A second bounded pass
+  (`_recoverLegacyRetryableJobs`, `MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM`) recovered them into
+  `queued`, sharing a daily read/write-unit budget with the backfill above
+  (`MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY`/`MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY`).
+
+Both completions latch permanently in `scheduler.job_models_backfill_complete` and
+`scheduler.legacy_retryable_recovery_complete`, so once set they short-circuit their own migration
+on every later tick regardless of the throttle knobs' values. A 2026-08-28 Data Studio query against
+the live production instance (`f1bb60c9b364...`) confirmed both flags read `1` — both migrations had
+already finished — so the migration methods, their static write-unit constants, their config knobs
+(`_maxQueuedJobModelBackfillPerClaim`, `_maxLegacyRetryableRecoveryPerClaim`,
+`_maxMigrationWriteUnitsPerUtcDay`, `_maxMigrationRowsScannedPerUtcDay` and the matching
+`validateConfig`/`wrangler.jsonc` entries), and their per-tick state threading through
+`claimDispatchWindow` and `_rollUtcDayIfNeeded` were all removed as dead code, along with the tests
+that only existed to exercise them.
+
+The `scheduler` columns those migrations wrote (`job_models_backfill_complete` and its siblings,
+listed in "Data model" above) were deliberately **not** dropped from the live table — an unused
+column on a single-row table costs nothing, and `ALTER TABLE ... DROP COLUMN` against production
+data is an unnecessary risk for zero benefit. `_initSchema()`'s `CREATE TABLE IF NOT EXISTS` no
+longer declares them, so a genuinely fresh DO instance is created without them; `_ensureColumn` no
+longer retrofits them either, since every instance that needed the retrofit already has it.
+
+`jobs.state`'s `retryable` value and the `job_models` index-only-queue behavior it depended on
+(`claimDispatchWindow` deletes a job's `job_models` rows the moment it is leased, so a completed
+historical backlog can never make a later model lookup walk terminal rows) are both unaffected by
+this removal — current code simply never writes `retryable` any more.
+
 ## Implementation spec (build-unit handoff)
 
 The sections above establish *what* and *why*; this section adds the *how* at a level literal
@@ -1260,19 +1291,19 @@ CREATE TABLE IF NOT EXISTS scheduler (
   bundle_count_today          INTEGER NOT NULL DEFAULT 0,
   jobs_ingested_today         INTEGER NOT NULL DEFAULT 0,
   cleanup_cursor               TEXT,
-  next_maintenance_alarm_at    INTEGER,
-  job_models_backfill_complete INTEGER NOT NULL DEFAULT 0,
-  legacy_retryable_recovery_complete INTEGER NOT NULL DEFAULT 0,
-  job_models_backfill_high_watermark INTEGER,
-  job_models_backfill_cursor   INTEGER NOT NULL DEFAULT 0,
-  job_models_backfill_pending_rowid INTEGER,
-  job_models_backfill_model_offset INTEGER NOT NULL DEFAULT 0,
-  legacy_retryable_recovery_job_id TEXT,
-  legacy_retryable_recovery_model_offset INTEGER NOT NULL DEFAULT 0,
-  migration_rows_scanned_today INTEGER NOT NULL DEFAULT 0,
-  migration_write_units_today  INTEGER NOT NULL DEFAULT 0
+  next_maintenance_alarm_at    INTEGER
 );
 ```
+
+An already-migrated instance's `scheduler` row also still carries the columns the two rollout
+compatibility migrations wrote (`job_models_backfill_complete`, `job_models_backfill_high_watermark`,
+`job_models_backfill_cursor`, `job_models_backfill_pending_rowid`, `job_models_backfill_model_offset`,
+`legacy_retryable_recovery_complete`, `legacy_retryable_recovery_job_id`,
+`legacy_retryable_recovery_model_offset`, `migration_rows_scanned_today`,
+`migration_write_units_today`) — left in place rather than dropped, since an unused column on a
+single-row table costs nothing and `ALTER TABLE ... DROP COLUMN` against live production data is an
+unnecessary risk for zero benefit. `_initSchema()`'s `CREATE TABLE IF NOT EXISTS` above is what a
+brand-new instance actually creates today; see "Retired: the rollout compatibility migrations" below.
 
 **Do not** add a `payload` or `response` column to any table above — B2 is the sole store for those
 (see "B2-only payload storage"). **Do not** use `AUTOINCREMENT` ids — every id (`jobs.id`,
@@ -1393,10 +1424,8 @@ function claimDispatchWindow(now, windowSeconds):
 
   # Each enqueue writes one job_models row per canonical allowed model, including one with no route
   # yet. A later route-catalog addition then makes the existing job searchable without a migration.
-  # At rollout, historical rows up to a fixed rowid high-water mark are backfilled in forward-only
-  # configured batches. A large model list continues from its stored model offset and cannot enter
-  # admission until its mappings are complete. New enqueues are already indexed. The two migrations
-  # share daily read/write-unit budgets; zero for a cap or budget is an emergency pause.
+  # (The one-time rollout backfill that indexed pre-index historical rows into job_models completed
+  # and was retired -- see "Retired: the rollout compatibility migrations" below.)
   model_pools = rankModelsByCapacity(routes ledger, catalog, now, windowSeconds)
   chosen = []
   seen_routes = {}
