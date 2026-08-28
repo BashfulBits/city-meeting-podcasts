@@ -20,6 +20,7 @@ permissions:
 jobs:
   evaluate:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       # H15 sample/evaluate clips candidate audio with ffmpeg before scoring -- without this the
       # job silently "succeeds" while every sample fails with FileNotFoundError: 'ffmpeg' and

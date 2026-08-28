@@ -153,7 +153,13 @@ _GUIDANCE: dict[str, str] = {
         "**Resolution:** inspect the title, date, and provider GUID in the finding. If the label "
         "is a recurring body, add or update its feed YAML and adapter mapping. If it is a true "
         "one-off, add only that exact provider GUID under `source.body_includes`. The audit will "
-        "continue to flag later rows with the same one-off label."
+        "continue to flag later rows with the same one-off label.\n\n"
+        "**Need a fresh automated pass?** A merged PR does not close this issue by itself; a "
+        "later feed-health audit must observe zero unmatched rows. If this issue has gained new "
+        "rows since its first remediation pass, comment `/remedy` on this issue. That re-fetches "
+        "the current evidence, re-classifies the labels in the tables below, and posts the "
+        "accepted/rejected results with a pull-request link when applicable. Only repository "
+        "write, maintain, or admin users may invoke the command."
     ),
     "dormant-resumed": (
         "**What this means:** a feed committed as `dormant` has published recently.\n\n"
@@ -483,7 +489,7 @@ def _issue_number_from_url(url: str) -> int | None:
 
 
 def _dispatch_remedy_workflow(issue_number: int, *, github_repo: str | None) -> None:
-    """Kick off ``remedy-unexpected-bodies.yml`` for a freshly-created unexpected-body issue.
+    """Kick off ``remedy-unexpected-bodies.yml`` for a new or newly-expanded unexpected-body issue.
 
     Uses this job's own ``actions: write`` permission to trigger the remedy workflow's ordinary
     ``workflow_dispatch`` entrypoint -- the same one a human uses from the Actions tab -- rather
@@ -1113,13 +1119,15 @@ def _reconcile_grouped(
     existing: dict[str, dict],
     now: datetime,
     on_issue_created: Callable[[str, int], None] | None = None,
+    on_new_rows: Callable[[str, int], None] | None = None,
 ) -> tuple[int, int, int]:
     """Reconcile the consolidated (one-issue-per-check) model.
 
     ``on_issue_created(check, issue_number)`` fires only when this run *creates* a new issue for
-    ``check`` -- never on a later run that merely updates an already-open one with new/changed
-    rows. Automated remediation (``_dispatch_remedy_workflow``) hooks this to kick off exactly
-    once per fresh finding, not once per day it stays open.
+    ``check``. ``on_new_rows(check, issue_number)`` fires when an existing issue gains one or
+    more newly affected feed rows. Neither callback fires for cosmetic refreshes or changed
+    detail on an existing row. Automated remediation uses both hooks so a fresh finding and a
+    later table expansion each get one dispatch, not one dispatch per day the issue stays open.
 
     Returns ``(created, updated, closed)``."""
     wanted = {
@@ -1276,6 +1284,10 @@ def _reconcile_grouped(
                 for lbl in sorted(to_remove):
                     label_args += ["--remove-label", lbl]
                 _gh("issue", "edit", num, *label_args)
+            if on_new_rows is not None and stable_changed:
+                newly = set(keep_slugs) - set(prior_slugs)
+                if newly:
+                    on_new_rows(check, int(issue["number"]))
         updated += 1
 
     return created, updated, closed
@@ -1741,6 +1753,7 @@ def reconcile(
     github_repo: str | None = None,
     now: datetime | None = None,
     on_issue_created: Callable[[str, int], None] | None = None,
+    on_new_rows: Callable[[str, int], None] | None = None,
 ) -> int:
     """Reconcile the current findings against open GitHub issues.
 
@@ -1748,8 +1761,8 @@ def reconcile(
     per-city count and display column); feeds absent from the mapping display under their own
     slug. ``audited_slugs`` restricts which feeds this run may create/update/close rows or
     issues for (``None`` = every feed was evaluated, e.g. an unscoped run). ``on_issue_created``
-    only fires for the consolidated (grouped) model; per-slug and stale-cohort checks have no
-    remediation hook (yet)."""
+    and ``on_new_rows`` only apply to the consolidated (grouped) model; per-slug and stale-cohort
+    checks have no remediation hook."""
     now = now or datetime.now(UTC)
     city_of = city_of or {}
     github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
@@ -1781,6 +1794,7 @@ def reconcile(
         existing=existing,
         now=now,
         on_issue_created=on_issue_created,
+        on_new_rows=on_new_rows,
     )
     c2, u2, cl2 = _reconcile_per_slug(
         findings,
@@ -1913,6 +1927,7 @@ def main(argv: list[str] | None = None) -> int:
     github_repo = site_config.get("github_repo")
     feed_context = {c.slug: _feed_context(c, github_repo=github_repo, now=now) for c in cities}
     newly_created: dict[str, int] = {}
+    newly_affected: dict[str, int] = {}
     reconcile(
         findings,
         dry_run=args.dry_run,
@@ -1922,10 +1937,15 @@ def main(argv: list[str] | None = None) -> int:
         github_repo=github_repo,
         now=now,
         on_issue_created=newly_created.__setitem__,
+        on_new_rows=newly_affected.__setitem__,
     )
-    unexpected_body_issue = newly_created.get("unexpected-body")
-    if unexpected_body_issue is not None:
-        _dispatch_remedy_workflow(unexpected_body_issue, github_repo=github_repo)
+    remedy_issues = {
+        issue_number
+        for check, issue_number in (*newly_created.items(), *newly_affected.items())
+        if check == "unexpected-body"
+    }
+    for issue_number in sorted(remedy_issues):
+        _dispatch_remedy_workflow(issue_number, github_repo=github_repo)
     return 0
 
 

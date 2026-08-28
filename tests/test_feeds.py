@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from xml.etree import ElementTree as ET
 
+import defusedxml.ElementTree as DET
 import pytest
 
 from citypods.availability import (
@@ -19,7 +19,7 @@ from citypods.models import Episode
 
 
 def _items(xml: str):
-    return ET.fromstring(xml).find("channel").findall("item")
+    return DET.fromstring(xml).find("channel").findall("item")
 
 
 def test_ordered_links_drops_non_http_schemes():
@@ -137,7 +137,7 @@ def test_xml_escaping(sample_city, sample_episodes):
     xml = build_rss(sample_city, sample_episodes, "video", "https://x")
     assert "&lt;Meeting&gt;" in xml and "&amp;" in xml
     # And it still parses.
-    ET.fromstring(xml)
+    DET.fromstring(xml)
 
 
 def test_invalid_kind_raises(sample_city, sample_episodes):

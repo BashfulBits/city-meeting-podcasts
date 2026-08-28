@@ -255,22 +255,66 @@ test("POST /v2/jobs:poll-batch polls coordinator and returns result_key without 
   assert.equal(data.statuses[0].result_key, null);
 });
 
-test("POST /v2/jobs/{id}:schema-retry reports not_implemented rather than a fake success", async () => {
-  // schema-retry semantics land with Phase 2's dispatch machinery -- until then this endpoint
-  // must not return a 200 with an id nothing was ever written for (a caller polling that id
-  // would wait forever). See the note in index.js's schema-retry handler.
+test("POST /v2/jobs/{id}:schema-retry persists a corrected queued job", async () => {
   const env = createMockEnv();
+  const { getByName } = env.LLM_SCHEDULER;
+  const coordinator = getByName();
+  await coordinator.enqueueBatch([
+    {
+      id: "j1",
+      idempotency_key: "k1",
+      request_digest: "d1",
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/j1/request.json",
+    },
+  ]);
+  coordinator.sql.exec(
+    "UPDATE jobs SET state='completed', result_key='results/j1.json' WHERE id='j1'"
+  );
   const req = new Request("http://localhost/v2/jobs/j1:schema-retry", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: "Bearer secret-token",
     },
-    body: JSON.stringify({ corrected_payload_key: "payloads/j1/retry.json" }),
+    body: JSON.stringify({
+      corrected_payload_key: "payloads/retry-j1/request.json",
+      corrected_request_digest: "d2",
+      corrected_input_token_estimate: 123,
+    }),
   });
 
   const res = await worker.fetch(req, env);
-  assert.equal(res.status, 501);
+  assert.equal(res.status, 200);
   const data = await res.json();
-  assert.equal(data.error, "not_implemented");
+  assert.match(data.id, /^[0-9a-f-]{36}$/);
+  assert.equal(data.idempotency_key, "schema-correction-v2:j1");
+  const row = [...coordinator.sql.exec("SELECT * FROM jobs WHERE id = ?", data.id)][0];
+  assert.equal(row.state, "queued");
+  assert.equal(row.payload_key, "payloads/retry-j1/request.json");
+  assert.equal(row.request_digest, "d2");
+  assert.equal(row.input_token_estimate, 123);
+  assert.equal(row.max_output_token_estimate, 50);
+});
+
+test("POST /v2/jobs/{id}:schema-retry rejects a non-completed source", async () => {
+  const env = createMockEnv();
+  const req = new Request("http://localhost/v2/jobs/missing:schema-retry", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer secret-token",
+    },
+    body: JSON.stringify({
+      corrected_payload_key: "payloads/retry/request.json",
+      corrected_request_digest: "d2",
+      corrected_input_token_estimate: 1,
+    }),
+  });
+
+  const res = await worker.fetch(req, env);
+  assert.equal(res.status, 404);
+  assert.equal((await res.json()).error, "not_found");
 });

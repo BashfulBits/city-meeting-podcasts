@@ -55,80 +55,13 @@ jobs:
           path: llm-review
           retention-days: 90
 
-      - name: Ensure the calibration-review label exists
+      - name: Publish R5 review batch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh label create llm-calibration-review --color 5319e7 --force \
-            --description "Bot-managed R5 unified tag calibration review issue (do not apply manually)"
-
-      - name: Open or update digest issue
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # The label -- not the title -- is this workflow's trust boundary: applying a label
-          # requires triage-or-above repo permission, so an arbitrary public issue can never be
-          # picked up here or by llm-tag-review-ingest.yml's scheduled sweep merely by matching a
-          # guessable title string.
-          title="R5 unified tag calibration digest"
-          existing=$(gh issue list --state open --label llm-calibration-review \
-            --limit 500 \
-            --json number,title \
-            | jq -r '[.[] | select(.title == "R5 unified tag calibration digest" or .title == "R5 LLM tag calibration digest")] | .[0].number // empty')
-          # Protect against GitHub GraphQL 65,536-character issue body limits while preserving valid UTF-8
-          truncate_body() {
-            local file="$1"
-            if [ -f "$file" ]; then
-              python3 -c '
-                import sys
-                from pathlib import Path
-                p = Path(sys.argv[1])
-                text = p.read_text(encoding="utf-8", errors="replace")
-                if len(text.encode("utf-8")) > 60000:
-                    b = text.encode("utf-8")[:60000].decode("utf-8", "ignore")
-                    cutoff = b.rfind("\n") if "\n" in b else len(b)
-                    msg = "\n\n*(Truncated to stay within GitHub 64KB limit. Full artifact in run.)*\n"
-                    p.write_text(b[:cutoff] + msg, encoding="utf-8")
-              ' "$file"
-            fi
-          }
-          truncate_body llm-review/parent.md
-          if [ -z "$existing" ]; then
-            parent_url=$(gh issue create --title "$title" --label llm-calibration-review \
-              --body-file llm-review/parent.md)
-            parent=$(printf '%s' "$parent_url" | awk -F/ '{print $NF}')
-          else
-            parent="$existing"
-            gh issue edit "$parent" --body-file llm-review/parent.md
-          fi
-          # Native sub-issues (rather than a body-text convention) make the review batch
-          # visible in GitHub's issue hierarchy and Project progress fields.  Keep this
-          # idempotent because the same unreviewed candidate is re-packaged weekly.
-          native_children=$(gh issue view "$parent" --json subIssues --jq '[.subIssues.nodes[].number]')
-          attach_child() {
-            child="$1"
-            if ! jq -e --argjson child "$child" 'index($child) != null' \
-              <<<"$native_children" >/dev/null; then
-              gh issue edit "$parent" --add-sub-issue "$child"
-              native_children=$(jq --argjson child "$child" '. + [$child]' <<<"$native_children")
-            fi
-          }
-          jq -c '.children[]?' llm-review/review-batch.json | while read -r row; do
-            candidate_id=$(printf '%s' "$row" | jq -r '.candidate_id')
-            body_file=$(printf '%s' "$row" | jq -r '.body_file')
-            truncate_body "$body_file"
-            title="R5 unified tag sample $candidate_id"
-            existing_child=$(gh issue list --state open --label llm-calibration-review \
-              --limit 500 \
-              --json number,title \
-              | jq -r --arg candidate_id "$candidate_id" '[.[] | select(.title == ("R5 unified tag sample " + $candidate_id) or .title == ("R5 LLM tag sample " + $candidate_id))] | .[0].number // empty')
-            if [ -n "$existing_child" ]; then
-              child="$existing_child"
-              gh issue edit "$existing_child" --body-file "$body_file"
-            else
-              child_url=$(gh issue create --title "$title" --label llm-calibration-review \
-                --body-file "$body_file")
-              child=$(printf '%s' "$child_url" | awk -F/ '{print $NF}')
-            fi
-            attach_child "$child"
-          done
+          set -euo pipefail
+          python scripts/publish_review_batch.py \
+            --manifest llm-review/review-batch.json \
+            --family r5 --label llm-calibration-review \
+            --parent-title "R5 unified tag calibration digest" \
+            --child-title "R5 unified tag sample {candidate_id}" | tee -a "$GITHUB_STEP_SUMMARY"

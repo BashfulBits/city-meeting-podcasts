@@ -15,6 +15,17 @@ Turns US city-meeting archives into subscribable **podcast feeds** (audio + vide
 **directory**, hosted free on GitHub Pages, with derived audio/transcripts on object storage behind a
 CDN. It is **provider-agnostic**: each meeting platform is a pluggable adapter behind one interface.
 
+## Weekly human-review infrastructure
+
+`citypods/review_issues.py` is the common control plane for H15 transcript quality, R5 tags, R6 moments,
+R7 speaker calibration, and H16 availability evidence. Feature adapters retain candidate selection and
+durable-state validation; the shared publisher adds a versioned hidden envelope, byte-safe bodies, a common
+trust label, idempotent native-child batches, and a scheduled resolver/finalizer. H16 children write
+availability overrides only after re-validating the persisted record. Tournament champion routing uses the
+same envelope's rolling-ticket surface: a trusted selection opens a configuration-only PR, and a merged
+retained-catalog selection creates a resumable tag-backfill request. Review plumbing has no output pipeline
+version; route changes are recipe-driven and refresh gradually or through the bounded backfill lane.
+
 ## Pipeline (data flow)
 
 ```
@@ -495,10 +506,12 @@ a failure reverts the working tree instead of leaving it dirty.
 #### Trigger: dispatched by the audit run, not by watching for the issue
 
 `remedy-unexpected-bodies.yml` runs whenever `audit.yml`'s `reconcile()` *creates* a new
-consolidated `unexpected-body` issue — never on a later run that only adds rows to one still
-open, so remediation kicks off once per fresh finding rather than once per day it stays open.
-`_reconcile_grouped`'s `on_issue_created(check, issue_number)` hook fires only on that create
-branch; `scripts/audit_feeds.py`'s `main()` wires it to `_dispatch_remedy_workflow`, which runs
+consolidated `unexpected-body` issue or adds one or more newly affected feed rows to an existing
+one. It does not run for cosmetic refreshes or changed detail on an existing row, so remediation
+is not restarted once per day the issue stays open. `_reconcile_grouped`'s `on_issue_created` and
+`on_new_rows` hooks notify `scripts/audit_feeds.py`'s `main()`, which wires both to
+the remedy dispatch collection and sends only `unexpected-body` events to
+`_dispatch_remedy_workflow`, which runs
 `gh workflow run remedy-unexpected-bodies.yml -f issue=N -f apply=true` — the same
 `workflow_dispatch` entrypoint a human uses from the Actions tab, invoked with `audit.yml`'s own
 narrowly-scoped `actions: write` permission. A dispatch failure only warns; the issue itself is
@@ -513,17 +526,21 @@ job sidesteps that class of problem rather than defending against it: `workflow_
 externally reachable surface at all — only something already holding `actions: write` on the
 repo can invoke it.
 
-**Catching up an issue that grew new rows.** The once-per-creation rule above means a later audit
-run that adds rows to an already-open `unexpected-body` issue does not re-trigger anything —
-those newer findings just sit there until someone acts. `remedy-commands.yml` covers that gap:
-commenting `/remedy` on the issue re-dispatches `remedy-unexpected-bodies.yml` the same way
-`audit.yml` does. It follows `stale-commands.yml`'s established slash-command shape exactly,
+**Manually re-running an issue.** New rows on an already-open `unexpected-body` issue are now
+automatically dispatched, but `remedy-commands.yml` remains available when a maintainer wants to
+re-dispatch `remedy-unexpected-bodies.yml` after a no-op/rejected pass or for an issue that
+predates this automation. It follows `stale-commands.yml`'s established slash-command shape
+exactly,
 including its permission gate — `scripts/remedy_commands.py` calls the shared
 `citypods.github_permissions.require_repository_write`, the same policy `stale-commands.yml` and
 the R12 issue-command flow use, rather than trusting the comment's `author_association` alone —
 and additionally confirms the commented-on issue actually carries the audit's own
 `<!-- citypods:feed-health:key=unexpected-body -->` marker before dispatching, so `/remedy` does
 nothing but explain itself when typed on an unrelated issue or by a non-collaborator.
+
+Newly rendered issue bodies include this catch-up command and explain that a merged PR does not
+close the incident until a later audit observes zero unmatched rows; this keeps the action visible
+alongside the affected-row tables when a consolidated issue grows after its first pass.
 
 #### Cloudflare AI Gateway (direct transport only)
 

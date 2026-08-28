@@ -4,8 +4,6 @@ on:
   schedule:
     - cron: "0 12 * * 1"
   workflow_dispatch:
-  issue_comment:
-    types: [created]
 
 concurrency:
   group: r6-moment-evaluation-state
@@ -17,7 +15,6 @@ permissions:
 
 jobs:
   package:
-    if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -43,61 +40,13 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: python -m citypods.cli r6-review package --config-dir config --out-dir r6-review
-      - name: Open R6 review issues
+      - name: Publish R6 review batch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh label create r6-calibration-review --color 5319e7 --force \
-            --description "Bot-managed R6 moment calibration review issue (do not apply manually)"
-          jq -c '.children[]?' r6-review/review-batch.json | while read -r row; do
-            candidate_id=$(jq -r '.candidate_id' <<<"$row")
-            body_file=$(jq -r '.body_file' <<<"$row")
-            title="R6 moment sample $candidate_id"
-            existing=$(gh issue list --state open --label r6-calibration-review --limit 500 \
-              --json number,title --jq --arg title "$title" '[.[] | select(.title == $title)][0].number // empty')
-            if [ -n "$existing" ]; then
-              gh issue edit "$existing" --body-file "r6-review/$body_file"
-            else
-              gh issue create --title "$title" --label r6-calibration-review \
-                --body-file "r6-review/$body_file"
-            fi
-          done
-
-  ingest:
-    if: >-
-      github.event_name == 'issue_comment' &&
-      startsWith(github.event.comment.body, '/r6-ingest') &&
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
-      contains(github.event.issue.labels.*.name, 'r6-calibration-review')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          persist-credentials: false
-      - name: Install pinned gh CLI
-        uses: ./.github/actions/setup-gh-cli
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install
-        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
-      - name: Ingest trusted R6 decision
-        env:
-          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
-          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
-          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
-          B2_BUCKET: ${{ secrets.B2_BUCKET }}
-          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-          GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
-          ACTOR: ${{ github.event.comment.user.login }}
-        run: |
-          gh issue view "$ISSUE" --json body --jq .body > issue.md
-          python -m citypods.cli r6-review ingest --issue-number "$ISSUE" \
-            --issue-body-file issue.md --actor "$ACTOR"
-          gh issue close "$ISSUE" --comment "Stored R6 calibration decision from @$ACTOR."
+          set -euo pipefail
+          python scripts/publish_review_batch.py \
+            --manifest r6-review/review-batch.json \
+            --family r6 --label r6-calibration-review \
+            --parent-title "R6 moment calibration digest" \
+            --child-title "R6 moment sample {candidate_id}" | tee -a "$GITHUB_STEP_SUMMARY"

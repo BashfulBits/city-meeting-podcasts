@@ -94,7 +94,25 @@ test("validatePollBatchRequest validates IDs array and bounds", () => {
 
 test("validateSchemaRetryRequest and validateResolveUnknownBatchRequest", () => {
   assert.equal(validateSchemaRetryRequest(null).valid, false);
-  assert.equal(validateSchemaRetryRequest({ corrected_payload_key: "k1" }).valid, true);
+  assert.equal(
+    validateSchemaRetryRequest({
+      corrected_payload_key: "k1",
+      corrected_request_digest: "d2",
+      corrected_input_token_estimate: 10,
+    }).valid,
+    true
+  );
+  // These values are not JSON numbers and must not be accepted through JavaScript coercion.
+  for (const invalid of [null, "", false]) {
+    assert.equal(
+      validateSchemaRetryRequest({
+        corrected_payload_key: "k1",
+        corrected_request_digest: "d2",
+        corrected_input_token_estimate: invalid,
+      }).valid,
+      false
+    );
+  }
   assert.equal(validateResolveUnknownBatchRequest({ attempt_ids: ["a1"] }).valid, true);
   assert.equal(validateResolveUnknownBatchRequest({ attempt_ids: [] }).valid, false);
 });
