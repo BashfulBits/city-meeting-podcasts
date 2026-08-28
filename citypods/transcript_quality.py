@@ -1858,7 +1858,12 @@ def evaluate_samples(
             storage,
             lambda rows: rows + pending_rows,
         )
-    return {"version": 1, "evaluated": evaluated, "errors": errors}
+    return {
+        "version": 1,
+        "evaluated": evaluated,
+        "errors": errors,
+        "all_failed": bool(manifest.get("samples")) and not evaluated and bool(errors),
+    }
 
 
 def _correction_draft_text(metrics: dict) -> str:
@@ -2848,6 +2853,9 @@ def main(argv: list[str] | None = None) -> int:
             f"evaluated {len(result['evaluated'])} H15 sample(s), "
             f"{len(result.get('errors', []))} error(s)"
         )
+        if result["all_failed"]:
+            print("H15 evaluation failed: every selected sample errored", flush=True)
+            return 2
         return 0
     if args.command == "package-review":
         manifest = package_reviews(

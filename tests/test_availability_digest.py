@@ -20,6 +20,7 @@ from citypods.availability_digest import (
     select_for_digest,
     updated_digest_state,
 )
+from citypods.availability_review import mark_pending, package_evidence
 
 
 def test_evidence_and_digest_state_use_independent_schema_version_constants():
@@ -48,6 +49,33 @@ def test_evidence_and_digest_state_use_independent_schema_version_constants():
     assert ev["schema_version"] == EVIDENCE_SCHEMA_VERSION
     state = updated_digest_state({}, ["u1"])
     assert state["schema_version"] == DIGEST_STATE_SCHEMA_VERSION
+
+
+def test_h16_children_become_pending_then_resolved_rows_reenter_nothing(tmp_path):
+    evidence = [
+        {
+            "uid": "u1",
+            "source_key": "src",
+            "state": "confirmed_empty",
+            "detector_version": "1",
+            "source_fingerprint": "fp",
+            "title": "Council",
+        }
+    ]
+    out_dir = tmp_path / "out"
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+
+    package_evidence(evidence=evidence, out_dir=out_dir, state_dir=state_dir)
+    assert mark_pending(out_dir=out_dir, state_dir=state_dir) == 1
+    state = json.loads((state_dir / "availability_digest.json").read_text())
+    key = "u1:fp:1:confirmed_empty"
+    assert state["reviews"][key]["status"] == "pending"
+
+    state["reviews"][key]["status"] = "resolved"
+    (state_dir / "availability_digest.json").write_text(json.dumps(state))
+    packaged = package_evidence(evidence=evidence, out_dir=out_dir, state_dir=state_dir)
+    assert packaged["children"] == []
 
 
 def _write_source(state_dir, key, episodes):

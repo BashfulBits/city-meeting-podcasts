@@ -2764,3 +2764,13 @@ H2 (incl. the C2 telemetry record) → H3 → H4 (incl. per-provider error rates
 Each lands as its own PR with tests; on merge, follow the lifecycle contract (flip review/11 catalog
 entry + add timestamp, add CHANGELOG, stamp this doc "Implemented in PR #N" per item). Self-hosted
 Mac-mini + AWS GPU remain post-1.0 adapters; the first **LLM API adapter** lands with R3/R4.
+
+### H16 review-action migration (2026-08-28)
+
+The former H16 rolling digest is now evidence-only. The weekly batch uses native candidate children with one
+resolving choice each: **Confirm empty** records a `confirmed_empty` operator override and **Restore media**
+records `available`. Ingestion validates durable source/fingerprint/detector state before mutation and
+records actor, issue URL, rationale, and idempotent issue identity in `availability_digest.json`. Its schema
+now distinguishes `pending` from `resolved`; unresolved rows re-surface, while the legacy rolling digest is
+linked and closed after its first bounded native-child migration. This changes review control flow only, not
+audio output or an audio pipeline version.

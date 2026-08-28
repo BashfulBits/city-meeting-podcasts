@@ -68,56 +68,13 @@ jobs:
             h15-review/calibration.md
           retention-days: 90
 
-      - name: Open or update H15 calibration report issue
+      - name: Publish H15 review batch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          title="H15 L3 calibration report"
-          existing=$(gh issue list --state open --search "in:title $title" --json number,title \
-            | jq -r --arg title "$title" '[.[] | select(.title == $title)] | .[0].number // empty')
-          if [ -z "$existing" ]; then
-            gh issue create --title "$title" --body-file h15-review/calibration.md
-          else
-            gh issue edit "$existing" --body-file h15-review/calibration.md
-          fi
-
-      - name: Open or update H15 review issues
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          parent_title="H15 transcript quality review"
-          parent=$(gh issue list --state open --search "in:title $parent_title" --json number,title \
-            | jq -r --arg title "$parent_title" '[.[] | select(.title == $title)] | .[0].number // empty')
-          if [ -z "$parent" ]; then
-            parent_url=$(gh issue create --title "$parent_title" --body-file h15-review/parent.md)
-            parent=$(printf '%s' "$parent_url" | awk -F/ '{print $NF}')
-          else
-            gh issue edit "$parent" --body-file h15-review/parent.md
-          fi
-          # GitHub's native parent/child relationship is the source of truth for this batch.
-          # Keep a local number list so a weekly re-run never tries to attach an already-linked
-          # child (and so an unexpected existing parent is surfaced rather than silently replaced).
-          native_children=$(gh issue view "$parent" --json subIssues --jq '[.subIssues.nodes[].number]')
-          attach_child() {
-            child="$1"
-            if ! jq -e --argjson child "$child" 'index($child) != null' \
-              <<<"$native_children" >/dev/null; then
-              gh issue edit "$parent" --add-sub-issue "$child"
-              native_children=$(jq --argjson child "$child" '. + [$child]' <<<"$native_children")
-            fi
-          }
-          jq -c '.children[]?' h15-review/review-batch.json | while read -r row; do
-            sample_id=$(printf '%s' "$row" | jq -r '.sample_id')
-            body_file=$(printf '%s' "$row" | jq -r '.body_file')
-            title="H15 sample $sample_id"
-            existing=$(gh issue list --state open --search "in:title $title" --json number,title \
-              | jq -r --arg title "$title" '[.[] | select(.title == $title)] | .[0].number // empty')
-            if [ -n "$existing" ]; then
-              child="$existing"
-              gh issue edit "$existing" --body-file "$body_file"
-            else
-              child_url=$(gh issue create --title "$title" --body-file "$body_file")
-              child=$(printf '%s' "$child_url" | awk -F/ '{print $NF}')
-            fi
-            attach_child "$child"
-          done
+          python scripts/publish_review_batch.py \
+            --manifest h15-review/review-batch.json \
+            --family h15 --label h15-calibration-review \
+            --parent-title "H15 transcript quality review" \
+            --child-title "H15 sample {candidate_id}" --id-key sample_id | tee -a "$GITHUB_STEP_SUMMARY"
+          cat h15-review/calibration.md >> "$GITHUB_STEP_SUMMARY"

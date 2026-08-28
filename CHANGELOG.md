@@ -15,6 +15,17 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Shared weekly review adapter and merge-gated tournament tickets.** H15, R5, R6, R7, and H16 now use
+  one typed issue envelope, publisher, native-child batch surface, trust-gated resolver, and scheduled
+  finalizer. Empty batches are not published; blocked capacity is distinct from no candidates; bodies are
+  UTF-8 byte bounded with their full workflow artifact retained. H16 evidence children now record durable
+  Confirm empty / Restore media overrides and unresolved evidence re-surface. The weekly tag tournament
+  publishes one rolling ticket per verb at a strict `>60%` gate. A checked route selection opens a
+  configuration-only PR; merge is the maintainer-selected approval gate, and retained-catalog selection
+  starts a resumable bounded tag backfill. No output pipeline-version bump is introduced.
+
 ### Fixed
 
 - **LLM dispatch V2 consumption ack, parallel result resolution, and a 6-hourly sweep.** A v2 job's

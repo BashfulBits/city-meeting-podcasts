@@ -1,0 +1,52 @@
+name: Tournament route merge handoff
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  handoff:
+    if: contains(github.event.pull_request.body, '<!-- citypods:tournament-route ')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-gh-cli
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[storage]" -c constraints/prod.txt
+      - name: Record merged backfill selection
+        if: github.event.pull_request.merged == true && contains(github.event.pull_request.body, 'backfill=true')
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          issue=$(printf '%s' "$PR_BODY" | sed -n 's/.*issue=\([0-9][0-9]*\).*/\1/p')
+          model=$(printf '%s' "$PR_BODY" | sed -n 's/.*Model: `\([^`]*\)`.*/\1/p')
+          python -m citypods.tournament_backfill request --issue-number "$issue" --model "$model"
+          gh workflow run tournament-tag-backfill.yml -f issue_number="$issue" -f model="$model"
+      - name: Record an unmerged proposal closure
+        if: github.event.pull_request.merged != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          issue=$(printf '%s' "$PR_BODY" | sed -n 's/.*issue=\([0-9][0-9]*\).*/\1/p')
+          gh issue comment "$issue" --body "The route-change PR closed without merging; no route or backfill work was changed."

@@ -6,6 +6,7 @@ import argparse
 import base64
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.moment_evaluation import load_state, record_review, save_state, state_lock
@@ -124,6 +125,30 @@ def _validated_ledger_candidate(state_dir: Path, site: dict, candidate: dict) ->
     raise ValueError("R6 review candidate is no longer present in the durable ledger")
 
 
+def _dispatch_blocked_reason(state_dir: Path, models: list[object]) -> str | None:
+    """Report an all-route capacity pause instead of falsely calling it an empty review set."""
+    try:
+        ledger = json.loads((state_dir / "llm_budget.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    now = datetime.now(UTC)
+    blocked = []
+    for value in models:
+        model = str(value)
+        route = (ledger.get("routes") or {}).get(model) or (ledger.get("routes") or {}).get(
+            f"litellm:{model}"
+        )
+        until = route.get("blocked_until") if isinstance(route, dict) else None
+        try:
+            if until and datetime.fromisoformat(str(until)).astimezone(UTC) > now:
+                blocked.append(str(until))
+        except ValueError:
+            continue
+    if models and len(blocked) == len(models):
+        return f"LLM dispatch capacity blocked until {min(blocked)}"
+    return None
+
+
 def package(args: argparse.Namespace) -> int:
     from citypods.config import load_city_configs, load_site_config
     from citypods.records import load_records, record_to_episode, source_key
@@ -160,8 +185,20 @@ def package(args: argparse.Namespace) -> int:
         name = f"{candidate['candidate_id']}.md"
         (out_dir / name).write_text(_review_body(candidate), encoding="utf-8")
         children.append({"candidate_id": candidate["candidate_id"], "body_file": name})
+    (out_dir / "parent.md").write_text(
+        "# R6 moment calibration review batch\n\n"
+        "Review each child issue with exactly one outcome. "
+        "Optional JSON controls remain available on each child.\n",
+        encoding="utf-8",
+    )
+    manifest: dict[str, object] = {"version": 1, "children": children}
+    if not children:
+        models = list((site.get("moments") or {}).get("llm_models") or [])
+        reason = _dispatch_blocked_reason(state_dir, models)
+        if reason:
+            manifest["reasons"] = [reason]
     (out_dir / "review-batch.json").write_text(
-        json.dumps({"version": 1, "children": children}, indent=2) + "\n", encoding="utf-8"
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
     print(f"packaged {len(children)} R6 review issue(s)")
     return 0

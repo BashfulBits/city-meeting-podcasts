@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from citypods import tournament
@@ -11,11 +12,61 @@ from citypods.tournament import (
     pairwise_judge,
     persisted_r5_flash_output,
 )
+from scripts.tournament_route_proposal import parse_ticket
 
 
 def test_round_robin_has_six_independent_judges():
     assert len(contest_plan()) == 6
     assert all(judge not in {left, right} for left, right, judge in contest_plan())
+
+
+def test_champion_ticket_requires_a_strictly_greater_than_sixty_percent_gate():
+    now = datetime(2026, 8, 28, tzinfo=UTC)
+    results = [
+        {
+            "at": now.isoformat(),
+            "decisions": [
+                {
+                    "left": "current",
+                    "right": "challenger",
+                    "first": "current",
+                    "winner": winner,
+                }
+                for winner in ("b", "b", "b", "a", "a")
+            ],
+        }
+    ]
+    stats = tournament.champion_stats(results, current_model="current", now=now)
+    body = tournament.render_champion_ticket(
+        task="tag", current_model="current", stats=stats, required_win_rate=0.60
+    )
+
+    assert stats["challenger"]["win_rate"] == 0.60
+    assert "FYI-only" in body
+    assert "- [ ] Switch" not in body
+
+
+def test_ticket_parser_accepts_only_one_registered_switch_choice():
+    body = tournament.render_champion_ticket(
+        task="tag",
+        current_model="current",
+        stats={
+            "challenger": {
+                "wins": 7,
+                "losses": 3,
+                "ties": 0,
+                "comparisons": 10,
+                "win_rate": 0.7,
+            }
+        },
+        required_win_rate=0.60,
+    ).replace("- [ ] Switch", "- [x] Switch", 1)
+
+    decision = parse_ticket(body)
+
+    assert decision["action"] == "switch"
+    assert decision["model"] == "challenger"
+    assert decision["backfill"] is False
 
 
 def test_reuses_only_provenanced_r5_flash_candidates():

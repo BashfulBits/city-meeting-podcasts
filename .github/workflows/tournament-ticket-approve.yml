@@ -1,0 +1,80 @@
+name: Tournament champion ticket approval
+
+on:
+  issues:
+    types: [edited]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  propose:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'tournament-champion-ticket')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-gh-cli
+      - name: Require a trusted editor
+        id: trust
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ACTOR/permission" --jq .permission)
+          case "$permission" in
+            admin|maintain|write) echo "trusted=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "trusted=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - name: Parse trusted decision
+        id: decision
+        if: steps.trust.outputs.trusted == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue view "$ISSUE" --json body > issue.json
+          jq -r .body issue.json > issue.md
+          if python scripts/tournament_route_proposal.py --body-file issue.md --result decision.json \
+            --cleared-body cleared.md; then
+            echo "has_decision=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_decision=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open route-change PR
+        if: steps.trust.outputs.trusted == 'true' && steps.decision.outputs.has_decision == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          action=$(jq -r .action decision.json)
+          if [ "$action" = keep ]; then
+            gh issue edit "$ISSUE" --body-file cleared.md
+            gh issue comment "$ISSUE" --body "Recorded decision to keep the current route."
+            exit 0
+          fi
+          model=$(jq -r .model decision.json)
+          backfill=$(jq -r .backfill decision.json)
+          ticket_meta=$(jq -c .meta decision.json)
+          branch="chore/tournament-route-tag-$ISSUE"
+          python scripts/tournament_route_proposal.py --body-file issue.md --result /tmp/decision.json \
+            --site-config config/site_config.yml
+          git switch -C "$branch"
+          git add config/site_config.yml
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "chore: propose tournament route for tag"
+          gh auth setup-git
+          git push --force-with-lease origin "HEAD:$branch"
+          body=$(mktemp)
+          printf 'Tournament-approved route proposal from issue #%s.\n\nModel: `%s`\nBackfill: `%s`\n\n<!-- citypods:tournament-route issue=%s backfill=%s ticket=%s -->\n' \
+            "$ISSUE" "$model" "$backfill" "$ISSUE" "$backfill" "$ticket_meta" > "$body"
+          pr=$(gh pr list --head "$branch" --base main --state open --json url --jq '.[0].url')
+          if [ -z "$pr" ]; then
+            pr=$(gh pr create --head "$branch" --base main --title "Propose tournament route for tag" --body-file "$body")
+          fi
+          gh issue comment "$ISSUE" --body "Opened route-change PR $pr. Production routing remains unchanged until it merges."
+          gh issue edit "$ISSUE" --body-file cleared.md

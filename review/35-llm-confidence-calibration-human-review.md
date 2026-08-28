@@ -312,3 +312,11 @@ weekly, evidence-rich review digest and per-candidate child issues let a maintai
 hours/week driving calibration; ingested decisions take effect on the next normal build with no additional
 LLM call; and the whole mechanism is provably feature-independent in its core module, even though its
 current wiring (§9) has not yet been exercised by a second feature.
+
+## §16. Shared weekly review adapter (2026-08-28)
+
+The R5-specific publisher and ingest workflow are replaced by the common `citypods.review_issues` envelope,
+publisher, resolver, and native-child finalizer. R5 keeps Correct/Incorrect/Ambiguous parsing and its
+evaluation ledger; the shared layer owns GitHub body limits, labels, idempotent upsert, trust-gated
+resolution, and scheduled recovery. H15, R6, R7, and H16 use the same batch surface; review/34's champion
+ticket uses the rolling-ticket surface. This infrastructure change has no output pipeline-version bump.

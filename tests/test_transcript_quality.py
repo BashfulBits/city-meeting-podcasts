@@ -269,6 +269,24 @@ def test_evaluate_generates_review_page_and_rollup(tmp_path):
     assert evidence["l2_used"] is False  # no audio.m4a on disk in this fixture
 
 
+def test_evaluate_marks_an_entire_failed_batch_visible(tmp_path, monkeypatch):
+    import citypods.transcript_quality as tq
+
+    def fail_sample(*_args, **_kwargs):
+        raise PermissionError("403")
+
+    monkeypatch.setattr(tq, "_evaluate_one_sample", fail_sample)
+    result = evaluate_samples(
+        _manifest(tmp_path),
+        out_dir=tmp_path / "artifacts",
+        state_dir=tmp_path / "state",
+        config=QualityConfig(),
+    )
+
+    assert result["evaluated"] == []
+    assert result["all_failed"] is True
+
+
 def test_candidate_metrics_l2_fit_dominates_the_blended_score():
     """When present, L2's independent fit dominates auto_score (80%); L1 stays a 20%
     smoothing term rather than being dropped outright."""

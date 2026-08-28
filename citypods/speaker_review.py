@@ -15,6 +15,7 @@ from citypods.speakers import (
     calibration_cell,
     load_registry,
     load_turn_evidence,
+    pilot_selected,
     refresh_membership_status,
     save_evaluation,
     save_registry,
@@ -334,16 +335,17 @@ def package(args: argparse.Namespace) -> int:
         for row in state.get("reference_reviews", [])
         if isinstance(row, dict)
     )
-    candidates = [
-        value
-        for key, value in (state.get("candidates") or {}).items()
-        if key not in reviewed and isinstance(value, dict)
+    candidate_pool = [
+        value for key, value in (state.get("candidates") or {}).items() if isinstance(value, dict)
     ]
-    candidates.extend(
+    candidate_pool.extend(
         value
         for key, value in (state.get("reference_candidates") or {}).items()
-        if key not in reviewed and isinstance(value, dict)
+        if isinstance(value, dict)
     )
+    candidates = [
+        row for row in candidate_pool if str(row.get("candidate_id") or "") not in reviewed
+    ]
     candidates.sort(key=lambda row: str(row.get("candidate_id")))
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -376,15 +378,24 @@ def package(args: argparse.Namespace) -> int:
         "# R7 speaker calibration review batch\n\n"
         "Review each child issue and check exactly one outcome. Shadow matches use **Correct** or "
         "**Incorrect**. Chair/title-led introductions use **Approve as a golden voice reference** "
-        "or **Reject**. Comment `/speaker-ingest` after checking a box.\n\n"
+        "or **Reject**.\n\n"
         f"This batch contains {counts['shadow_matches']} shadow match(es) and "
         f"{counts['chair_references']} chair/title reference candidate(s).\n\n"
         "Reference approval adds only the diarizer's private embedding to the city/body registry; "
         "it does not publish a name or expose voice data.\n",
         encoding="utf-8",
     )
+    speakers = site.get("speakers") or {}
+    pilot_configured = bool(speakers.get("pilot_bodies"))
+    saw_pilot = any(
+        pilot_selected(site.get("speakers") or {}, str(row.get("city_slug") or ""), row.get("body"))
+        for row in candidate_pool
+    )
+    manifest: dict[str, object] = {"version": 1, "children": children}
+    if pilot_configured and not saw_pilot:
+        manifest["reasons"] = ["configured pilot body not processed"]
     (out_dir / "review-batch.json").write_text(
-        json.dumps({"version": 1, "children": children}, indent=2) + "\n", encoding="utf-8"
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
     print(f"packaged {len(children)} R7 speaker review issue(s)")
     return 0
