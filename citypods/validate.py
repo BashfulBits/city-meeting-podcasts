@@ -61,9 +61,7 @@ def validate_feed(xml: str | bytes) -> list[str]:
             elif tag == "pubDate":
                 has_pubdate = True
             elif tag == "enclosure":
-                # Preserve ElementTree.find() semantics: validate the first enclosure.
-                if enc is None:
-                    enc = child
+                enc = child
 
         if not has_title:
             if label is None:
