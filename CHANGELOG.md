@@ -28,6 +28,11 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Unexpected-body remediation evidence collection.** The remediation workflow now passes its
+  GitHub token to the audit's issue-reconciliation read and runs that collection in dry-run mode;
+  this prevents step 7 from failing with an unset `GH_TOKEN` and prevents evidence collection from
+  mutating issues or dispatching a second remediation run.
+
 - **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
   deferred sweep now registers the `moment-extraction` response contract. It also stages one
   corrected v2 payload and submits it through a durable schema-retry endpoint that clones the
