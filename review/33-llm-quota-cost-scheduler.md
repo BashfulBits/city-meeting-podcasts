@@ -168,10 +168,11 @@ and never overwrite the canonical feature output.
 ```python
 @dataclass(frozen=True)
 class PeakWindow:
-    tz: str                  # IANA zone the provider publishes the window in
-    start: time               # local wall-clock time in `tz`
-    end: time                  # local wall-clock time in `tz`; may be < start (window crosses midnight)
-    multiplier: float          # 0.5 = 50% off during this window; >1.0 = a surcharge
+    tz: str  # IANA zone the provider publishes the window in
+    start: time  # local wall-clock time in `tz`
+    end: time  # local wall-clock time in `tz`; may be < start (window crosses midnight)
+    multiplier: float  # 0.5 = 50% off during this window; >1.0 = a surcharge
+
 
 @dataclass(frozen=True)
 class PricingPolicy:
@@ -179,7 +180,10 @@ class PricingPolicy:
     output_per_token: float = 0.0
     windows: tuple[PeakWindow, ...] = ()
     periods: tuple[PricingPeriod, ...] = ()
-    cost_cap: float | None = None   # soft $ cap per cycle (review/27 §8.1); None = untracked/uncapped
+    cost_cap: float | None = (
+        None  # soft $ cap per cycle (review/27 §8.1); None = untracked/uncapped
+    )
+
 
 @dataclass(frozen=True)
 class QuotaPolicy:
@@ -187,8 +191,9 @@ class QuotaPolicy:
     rpd: int | None = None
     tpm: int | None = None
     concurrency: int | None = None
-    reset_timezone: str = "UTC"       # IANA zone; only meaningful when `rpd` is set
+    reset_timezone: str = "UTC"  # IANA zone; only meaningful when `rpd` is set
     # rpm/tpm are always per-minute by definition and need no separate period field.
+
 
 @dataclass(frozen=True)
 class LLMRoute:
@@ -298,13 +303,15 @@ plus the CAS ledger it reads (§10), no independent process, no "control-plane t
 ```python
 # citypods/compute/llm_scheduler.py
 
+
 @dataclass(frozen=True)
 class SelectionResult:
     model: str | None
     route: LLMRoute | None
-    reason: str                                   # always populated, human-readable
-    rejected: tuple[tuple[str, str], ...] = ()     # (model, reason) for every non-winner
-    owner: str | None = None                       # the ledger reservation owner, once selected
+    reason: str  # always populated, human-readable
+    rejected: tuple[tuple[str, str], ...] = ()  # (model, reason) for every non-winner
+    owner: str | None = None  # the ledger reservation owner, once selected
+
 
 def select_route(
     policy: LLMRequestPolicy,
@@ -390,7 +397,8 @@ real 429 either; before this revision, a rate-limit response just surfaced as a 
 ```python
 class RouteLedger:
     ...
-    blocked_until: str = ""   # ISO datetime, UTC; "" means not blocked
+    blocked_until: str = ""  # ISO datetime, UTC; "" means not blocked
+
 
 def block(self, model: str, until: datetime, *, route: LLMRoute, now: datetime) -> None:
     """Never moves an existing block earlier -- the longer of the two wins."""
@@ -486,6 +494,7 @@ class LLMReservation:
     reserved_at: str = ""
     expires_at: str = ""
 
+
 @dataclass
 class RouteLedger:
     cost_used: float = 0.0
@@ -493,22 +502,24 @@ class RouteLedger:
     cost_day_used: float = 0.0
     cost_day_key: str = ""
     requests_minute: int = 0
-    requests_minute_key: str = ""      # minute_key(now), UTC "YYYY-MM-DDTHH:MM"
+    requests_minute_key: str = ""  # minute_key(now), UTC "YYYY-MM-DDTHH:MM"
     requests_day: int = 0
-    requests_day_key: str = ""         # daily_reset_key(now, route.quota.reset_timezone)
+    requests_day_key: str = ""  # daily_reset_key(now, route.quota.reset_timezone)
     tokens_minute: int = 0
-    tokens_available_at: str = ""       # end of the persisted average-TPM schedule
-    requests_available_at: str = ""     # end of the persisted continuous route-RPM schedule
+    tokens_available_at: str = ""  # end of the persisted average-TPM schedule
+    requests_available_at: str = ""  # end of the persisted continuous route-RPM schedule
     inflight: dict[str, LLMReservation] = field(default_factory=dict)
-    blocked_until: str = ""            # ISO datetime, UTC; set by a real 429 (§7.1)
+    blocked_until: str = ""  # ISO datetime, UTC; set by a real 429 (§7.1)
 
     @property
     def inflight_count(self) -> int:
         return len(self.inflight)
 
+
 @dataclass
 class ProviderLedger:
-    requests_available_at: str = ""     # shared provider-wide RPM schedule
+    requests_available_at: str = ""  # shared provider-wide RPM schedule
+
 
 @dataclass
 class LLMBudget:
@@ -569,14 +580,32 @@ already-inflight owner, and `settle`/`release` take `route`/`now` now that they 
 before correcting it — see the boxed warning after §10.2):
 
 ```python
-def available(self, model: str, *, route: LLMRoute, requests: int, tokens: int, cost: float,
-              now: datetime) -> bool: ...   # also checks blocked_until (§7.1) first
+def available(
+    self, model: str, *, route: LLMRoute, requests: int, tokens: int, cost: float, now: datetime
+) -> bool: ...  # also checks blocked_until (§7.1) first
 def block(self, model: str, until: datetime, *, route: LLMRoute, now: datetime) -> None: ...
-def reserve(self, owner: str, model: str, *, route: LLMRoute, requests: int, tokens: int,
-            cost: float, now: datetime) -> None: ...
-def settle(self, owner: str, model: str, *, route: LLMRoute, now: datetime,
-           actual_requests: int | None = None, actual_tokens: int | None = None,
-           actual_cost: float | None = None) -> None: ...
+def reserve(
+    self,
+    owner: str,
+    model: str,
+    *,
+    route: LLMRoute,
+    requests: int,
+    tokens: int,
+    cost: float,
+    now: datetime,
+) -> None: ...
+def settle(
+    self,
+    owner: str,
+    model: str,
+    *,
+    route: LLMRoute,
+    now: datetime,
+    actual_requests: int | None = None,
+    actual_tokens: int | None = None,
+    actual_cost: float | None = None,
+) -> None: ...
 def release(self, owner: str, model: str, *, route: LLMRoute, now: datetime) -> None: ...
 ```
 
@@ -635,16 +664,38 @@ provides the split (`_priced_actual` in `llm.py`), and is what any real reportin
 ```python
 LLM_BUDGET_STATE_KEY = "state/llm_budget.json"
 
-def load_llm_budget_cas(storage) -> tuple[LLMBudget, str | None]: ...
-def mutate_llm_budget(storage, mutate, *, now=None, max_attempts=8, base_sleep=0.05,
-                       max_sleep=1.0, sleep=time.sleep, rng=None) -> LLMBudget: ...
 
-def settle_route_reservation(storage, owner: str, model: str, *, route: LLMRoute, now=None,
-                              actual_tokens=None, actual_cost=None, **retry) -> LLMBudget: ...
-def release_route_reservation(storage, owner: str, model: str, *, route: LLMRoute,
-                               now=None, **retry) -> LLMBudget: ...
-def block_route_until(storage, model: str, until: datetime, *, route: LLMRoute,
-                       now=None, **retry) -> LLMBudget: ...
+def load_llm_budget_cas(storage) -> tuple[LLMBudget, str | None]: ...
+def mutate_llm_budget(
+    storage,
+    mutate,
+    *,
+    now=None,
+    max_attempts=8,
+    base_sleep=0.05,
+    max_sleep=1.0,
+    sleep=time.sleep,
+    rng=None,
+) -> LLMBudget: ...
+
+
+def settle_route_reservation(
+    storage,
+    owner: str,
+    model: str,
+    *,
+    route: LLMRoute,
+    now=None,
+    actual_tokens=None,
+    actual_cost=None,
+    **retry,
+) -> LLMBudget: ...
+def release_route_reservation(
+    storage, owner: str, model: str, *, route: LLMRoute, now=None, **retry
+) -> LLMBudget: ...
+def block_route_until(
+    storage, model: str, until: datetime, *, route: LLMRoute, now=None, **retry
+) -> LLMBudget: ...
 ```
 
 These mirror `load_budget_cas`/`mutate_budget`/`settle_reservation`/`release_reservation` (same
@@ -656,6 +707,7 @@ one-way: `llm_scheduler.py` imports `llm_budget.py`, never the reverse):
 
 ```python
 # citypods/compute/llm_scheduler.py
+
 
 def select_and_reserve(
     storage,
@@ -758,7 +810,9 @@ a "pending" record for a given `recipe_hash`; only the sweep, or a later call fo
 `created_at`:
 
 ```python
-def write_deferred(storage, recipe_hash: str, result: JobResult | JobHandle, *, now=None) -> None: ...
+def write_deferred(
+    storage, recipe_hash: str, result: JobResult | JobHandle, *, now=None
+) -> None: ...
 def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None: ...
 def list_pending_deferred(storage) -> list[JobHandle]: ...
 def prune_expired_deferred(storage, *, now=None, ttl_days: float = 38) -> int: ...

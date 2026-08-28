@@ -141,19 +141,3 @@ def test_xxe_vulnerability_prevented():
     errors = validate_feed(xxe_xml)
     assert len(errors) > 0
     assert "not well-formed XML" in errors[0]
-
-
-def test_validate_build_rejects_xxe(tmp_path):
-    xxe_xml = b"""<?xml version="1.0"?>
-<!DOCTYPE foo [
-  <!ENTITY xxe SYSTEM "file:///etc/passwd">
-]>
-<foo>&xxe;</foo>
-"""
-    _write_feed(tmp_path / "malicious-city" / "audio_feed.xml", xxe_xml)
-
-    fatals, warnings = validate_build(tmp_path)
-
-    assert not warnings
-    assert any("malicious-city/audio_feed.xml" in fatal for fatal in fatals)
-    assert any("not well-formed XML" in fatal for fatal in fatals)

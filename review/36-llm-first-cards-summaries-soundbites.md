@@ -94,11 +94,13 @@ class SummaryPoint(BaseModel):
     chapter_id: str
     text: str = Field(min_length=1, max_length=400)
 
+
 class PullQuoteCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     quote: str = Field(min_length=3, max_length=400)
     chapter_id: str | None = None
     why: str = Field(min_length=1, max_length=300)
+
 
 class DecisionCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -106,6 +108,7 @@ class DecisionCandidate(BaseModel):
     decision_type: Literal["approved", "denied", "deferred", "tabled", "no_decision", "unclear"]
     quote: str = Field(min_length=3, max_length=400)
     explanation: str = Field(min_length=1, max_length=300)
+
 
 class MomentExtractionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
