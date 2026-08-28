@@ -272,6 +272,13 @@ Phase R (Research-Tool Surface)._
   backlog built up during Mistral's monthly-quota pause (see the secondary-capacity entry above)
   without touching the queued jobs themselves.
 
+- **Explicit LLM alternates now precede config-injected overflow routes.** The v1 dispatch Worker
+  now keeps every caller-supplied `allowed_models` entry ahead of models added by `model_routing`.
+  Previously, expansion interleaved Mistral Medium's Gemini overflow before its explicit Llama
+  3.3 70B peer, so queued agenda extraction always selected Gemini whenever it had capacity and
+  never reached SambaNova. This is a dispatch-selection fix only: no pipeline version changes and
+  already-queued durable requests pick up the corrected ordering dynamically on their next tick.
+
 - **Secondary Mistral dispatch capacity and deeper v1 queue lookahead.** Added independent
   secondary-account routes for every native Mistral model, using `MISTRAL_API_KEY_SECONDARY` and
   the same RPM/TPM limits each primary route had before its temporary `rpd: 0` quota pause. The

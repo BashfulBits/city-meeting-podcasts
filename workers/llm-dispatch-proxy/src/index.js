@@ -898,12 +898,11 @@ function normalizeChatRequest(body, cfg, dispatchLimits = DISPATCH_LIMITS) {
   // `selectRoute` below already tries `policy.allowed_models` in order and falls through past a
   // merely-full earlier model, so appending here is enough -- no other call site needs to know.
   const allowedModelsBase = policy.allowed_models || [canonicalModel];
-  const expandedAllowedModels = allowedModelsBase.flatMap((model) => [
-    model,
-    ...(dispatchLimits.model_routing?.[model] || [])
-      .map((target) => canonicalModelName(target, dispatchLimits))
-      .filter((target) => configuredModels.includes(target)),
-  ]);
+  const expandedAllowedModels = expandModelsWithRouting(
+    allowedModelsBase,
+    dispatchLimits,
+    configuredModels,
+  );
   if (expandedAllowedModels.length > allowedModelsBase.length) {
     policy.allowed_models = [...new Set(expandedAllowedModels)];
   }
@@ -1931,6 +1930,21 @@ function eligibleRoutesForModel(canonicalModel, policy, now, dispatchLimits = DI
   };
 }
 
+function expandModelsWithRouting(models, dispatchLimits, configuredModels = null) {
+  const configured = configuredModels || Object.keys(dispatchLimits.model_routes_map || {});
+  const requested = models.map((model) => canonicalModelName(model, dispatchLimits));
+  const overflow = requested.flatMap((model) =>
+    (dispatchLimits.model_routing?.[model] || [])
+      .map((target) => canonicalModelName(target, dispatchLimits))
+      .filter((target) => configured.includes(target)),
+  );
+  // Explicit alternates are peer choices supplied by the caller. Keep all of them ahead of
+  // config-injected overflow routes, which are only fallbacks after every requested model is
+  // unavailable. Interleaving each source with its overflow made Mistral -> Gemini hide a later
+  // explicit Llama alternate indefinitely whenever Gemini retained capacity.
+  return [...new Set([...requested, ...overflow])];
+}
+
 function selectRouteForModel(
   budget,
   canonicalModel,
@@ -2032,15 +2046,10 @@ function selectRoute(
   // Dynamically expand model_routing (compiled from config/provider_limits.yml's `model_routing`)
   // so existing resident R2 records and unexpanded policy.allowed_models can drain onto overflow
   // routes (e.g. Mistral Medium -> Gemini 3.5 Flash Lite) without requiring canonical record migration.
-  const models = baseModels.flatMap((model) => [
-    model,
-    ...(dispatchLimits.model_routing?.[model] || [])
-      .map((target) => canonicalModelName(target, dispatchLimits))
-      .filter((target) => configuredModels.includes(target)),
-  ]);
+  const models = expandModelsWithRouting(baseModels, dispatchLimits, configuredModels);
   let lastSelection = { chosenRoute: null, reason: "no_configured_route" };
   let retryableSelection = null;
-  for (const model of [...new Set(models)]) {
+  for (const model of models) {
     const selection = selectRouteForModel(
       budget,
       model,
@@ -2065,12 +2074,7 @@ function selectRoute(
 function nextCapacityRetryAt(budget, canonicalModels, policy, now, dispatchLimits = DISPATCH_LIMITS) {
   const baseModels = Array.isArray(canonicalModels) ? canonicalModels : [canonicalModels];
   const configuredModels = Object.keys(dispatchLimits.model_routes_map || {});
-  const models = baseModels.flatMap((model) => [
-    model,
-    ...(dispatchLimits.model_routing?.[model] || [])
-      .map((target) => canonicalModelName(target, dispatchLimits))
-      .filter((target) => configuredModels.includes(target)),
-  ]);
+  const models = expandModelsWithRouting(baseModels, dispatchLimits, configuredModels);
   const allowPaid = Boolean(policy?.allow_paid);
   const deadlineAt = policy?.deadline_at ? parseTime(policy.deadline_at) : null;
   const resets = [];
