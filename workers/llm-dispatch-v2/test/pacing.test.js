@@ -7,6 +7,7 @@ import {
   earliestSafeStart,
   routeHasCapacityFor,
   computeRouteLaneWait,
+  paymentRequiredBackoffUntil,
   FULL_TOKEN_BUDGET_WINDOWS,
 } from "../src/pacing.js";
 
@@ -152,4 +153,30 @@ test("computeRouteLaneWait returns null for a permanently-oversized reservation"
   const route = freshRoute({ tpm: 100 });
   const hugeJob = job({ input_token_estimate: 10_000, max_output_token_estimate: 10_000 });
   assert.equal(computeRouteLaneWait(route, hugeJob, NOW, NOW), null);
+});
+
+test("paymentRequiredBackoffUntil blocks until the start of the next UTC day on the first 402", () => {
+  const now = Date.UTC(2024, 0, 3, 15, 0, 0); // Wed 2024-01-03 15:00 UTC
+  assert.equal(paymentRequiredBackoffUntil(1, now), Date.UTC(2024, 0, 4));
+});
+
+test("paymentRequiredBackoffUntil blocks until next UTC Monday on the second consecutive 402", () => {
+  const wednesday = Date.UTC(2024, 0, 3); // 2024-01-03 is a Wednesday
+  assert.equal(paymentRequiredBackoffUntil(2, wednesday), Date.UTC(2024, 0, 8)); // next Monday
+
+  // A streak reached exactly on a Monday still gets a full week out, not zero.
+  const monday = Date.UTC(2024, 0, 1); // 2024-01-01 is a Monday
+  assert.equal(paymentRequiredBackoffUntil(2, monday), Date.UTC(2024, 0, 8));
+});
+
+test("paymentRequiredBackoffUntil blocks until the start of next UTC month on the third+ consecutive 402", () => {
+  const now = Date.UTC(2024, 0, 20);
+  assert.equal(paymentRequiredBackoffUntil(3, now), Date.UTC(2024, 1, 1));
+  // Stays pinned to "next month," not escalating indefinitely past this point.
+  assert.equal(paymentRequiredBackoffUntil(5, now), Date.UTC(2024, 1, 1));
+});
+
+test("paymentRequiredBackoffUntil rolls the year over correctly for a December streak", () => {
+  const december = Date.UTC(2024, 11, 15);
+  assert.equal(paymentRequiredBackoffUntil(3, december), Date.UTC(2025, 0, 1));
 });

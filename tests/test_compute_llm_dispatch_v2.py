@@ -2,6 +2,7 @@
 
 import json
 import json as _json_module  # alias for use inside mocks whose own `json=` kwarg shadows the name
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -134,6 +135,64 @@ def test_enqueue_batch_submits_jobs_and_persists_payloads_to_b2():
     # Check that payloads were written to storage via put_cas (the real storage API)
     stored_payload_keys = [k for k in storage.files if k.startswith("payloads/")]
     assert len(stored_payload_keys) == 2
+
+
+def test_enqueue_batch_payload_carries_no_policy_fields_for_the_provider():
+    """Regression for the 2026-08-26 incident: enqueue_batch's stored B2 payload is forwarded
+    to the provider verbatim by gateway.js's upstreamRequestForRoute() (unlike v1's own ingress,
+    which strips these fields via its own allowlist before ever building an upstream request) --
+    so any policy/router-only field that leaks into this payload becomes a literal field in the
+    HTTP body sent to Gemini/Mistral/etc. Every one of these providers rejected the extra fields
+    outright (Mistral: "Extra inputs are not permitted"; Groq: "property 'allow_batch' is
+    unsupported"), producing a 100% dispatch failure rate that stayed invisible until AI Gateway
+    routing was fixed and its logging became the first thing to ever surface it. v2's protocol
+    already carries every field it actually needs (allowed_models/allow_paid) separately, in
+    policy_json -- so the stored payload must carry only what a real chat-completions request
+    needs."""
+    storage = MockStorage()
+    mock_session = MagicMock()
+    mock_session.post.side_effect = _accept_all
+
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+        dispatch_v2_auth_token="secret-v2",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    job = InferenceJob(
+        task="tag",
+        inputs={
+            "messages": [{"role": "user", "content": "hello"}],
+            "llm_policy": LLMRequestPolicy(
+                allow_paid=True,
+                allow_batch=True,
+                allowed_models=("gemini/gemini-3-flash-preview",),
+                timeout_class="long",
+            ),
+        },
+        recipe_hash="recipe-policy-leak",
+    )
+
+    backend.enqueue_batch([job])
+
+    stored_payload_key = next(k for k in storage.files if k.startswith("payloads/"))
+    stored_payload = json.loads(storage.files[stored_payload_key])
+    policy_only_fields = {
+        "allow_paid",
+        "allow_batch",
+        "submit_next",
+        "timeout_class",
+        "allowed_models",
+        "input_tokens_estimate",
+        "output_token_budget",
+        "deadline_at",
+    }
+    assert not policy_only_fields & stored_payload.keys(), (
+        f"stored payload leaked policy-only fields to the provider: "
+        f"{policy_only_fields & stored_payload.keys()}"
+    )
+    assert stored_payload.keys() <= {"model", "messages", "stream", "response_format"}
 
 
 def test_enqueue_batch_and_poll_batch_work_through_production_routing_storage():
@@ -648,8 +707,19 @@ def _router(routes: dict):
     """Route a mocked session's POST calls by URL suffix -- lets a single mock_session simulate
     both the enqueue-batch and poll-batch endpoints dispatch_job_batch calls in sequence."""
 
+    def _ack_default(url, json=None, **_kw):
+        # Every poll-batch that resolves a completed job now also emits a consumption ack
+        # (review/44 "Consumption ack"). It is a best-effort side channel, so default it here
+        # rather than making each unrelated test declare a route for it; a test that is actually
+        # about acking supplies its own ":ack-batch" handler, which replaces this one.
+        return _mock_response(
+            status_code=200, json_data={"acked": (json or {}).get("ids", []), "ignored": []}
+        )
+
+    resolved = {":ack-batch": _ack_default, **routes}
+
     def _post(url, json=None, headers=None, timeout=None):
-        for suffix, handler in routes.items():
+        for suffix, handler in resolved.items():
             if url.endswith(suffix):
                 return handler(url, json=json, headers=headers, timeout=timeout)
         raise AssertionError(f"unexpected POST to {url}")
@@ -965,3 +1035,215 @@ def test_dispatch_job_batch_chunks_large_batch_over_one_thousand():
     assert len(results) == 1050
     assert enqueue_batch_sizes == [1000, 50]
     assert all(isinstance(r, JobHandle) for r in results)
+
+
+def test_poll_batch_acks_only_validated_successes_in_one_batched_call():
+    """review/44 "Consumption ack": once a result is durably in the deferred registry the
+    coordinator may retire that job immediately rather than holding it for
+    COMPLETED_RETENTION_DAYS. The ack must be one call per poll chunk (not per job), and must
+    cover ONLY jobs whose result was fetched, validated and persisted -- a job whose structured
+    output failed validation is exactly what the sweep's schema-correction path re-reads, so
+    acking it would delete the row out from under that recovery."""
+    storage = MockStorage()
+    ack_calls = []
+
+    storage.put_cas(
+        "results/good.json",
+        json.dumps({"choices": [{"message": {"content": '{"pong": true}'}}]}).encode("utf-8"),
+        "application/json",
+    )
+    storage.put_cas(
+        "results/bad.json",
+        json.dumps({"choices": [{"message": {"content": "not json at all"}}]}).encode("utf-8"),
+        "application/json",
+    )
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": "good", "state": "completed", "result_key": "results/good.json"},
+                    {"id": "bad", "state": "completed", "result_key": "results/bad.json"},
+                    {"id": "failed", "state": "failed", "error": "job_failed"},
+                    {"id": "pending", "state": "queued"},
+                ]
+            },
+        )
+
+    def _ack(_url, json=None, **_kw):
+        ack_calls.append(json["ids"])
+        return _mock_response(status_code=200, json_data={"acked": json["ids"], "ignored": []})
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll, ":ack-batch": _ack})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(task="tag", recipe_hash="r-good", backend="llm-dispatch-v2", ref="good"),
+        JobHandle(
+            task="tag",
+            recipe_hash="r-bad",
+            backend="llm-dispatch-v2",
+            ref="bad",
+            structured_output="dispatch-v2-test-pong",
+        ),
+        JobHandle(task="tag", recipe_hash="r-failed", backend="llm-dispatch-v2", ref="failed"),
+        JobHandle(task="tag", recipe_hash="r-pending", backend="llm-dispatch-v2", ref="pending"),
+    ]
+
+    with pytest.raises(LLMDispatchTerminalError):
+        backend.poll_batch(handles)
+
+    assert ack_calls == [["good"]], (
+        f"exactly one batched ack containing only the validated success; got {ack_calls}"
+    )
+
+
+def test_poll_batch_ack_failure_never_fails_an_otherwise_successful_poll():
+    """The result is already durable client-side before the ack is attempted, so a failed ack
+    costs nothing but a later purge -- it must not turn a good poll into an error."""
+    storage = MockStorage()
+    storage.put_cas(
+        "results/j1.json",
+        json.dumps({"choices": [{"message": {"content": "done"}}]}).encode("utf-8"),
+        "application/json",
+    )
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [{"id": "j1", "state": "completed", "result_key": "results/j1.json"}]
+            },
+        )
+
+    def _ack(_url, json=None, **_kw):
+        raise requests.RequestException("coordinator unreachable")
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll, ":ack-batch": _ack})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
+
+    results = backend.poll_batch([handle])
+    assert isinstance(results["j1"], JobResult)
+
+
+def test_poll_batch_resolves_completed_results_concurrently():
+    """Each completed job costs several sequential B2 round trips, and they are pure I/O wait --
+    resolving them serially made the daily sweep's runtime scale with the completion count. A
+    threading.Barrier is a deterministic check: it can only be cleared if two handles are in
+    get_bytes at the same time, so a regression back to a serial loop times out here."""
+    barrier = threading.Barrier(2, timeout=5)
+    storage = MockStorage()
+    for ref in ("a", "b"):
+        storage.put_cas(
+            f"results/{ref}.json",
+            json.dumps({"choices": [{"message": {"content": ref}}]}).encode("utf-8"),
+            "application/json",
+        )
+
+    real_get_bytes = storage.get_bytes
+
+    def _blocking_get_bytes(key):
+        if key.startswith("results/"):
+            barrier.wait()  # raises BrokenBarrierError on timeout if resolution is serial
+        return real_get_bytes(key)
+
+    storage.get_bytes = _blocking_get_bytes
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": "a", "state": "completed", "result_key": "results/a.json"},
+                    {"id": "b", "state": "completed", "result_key": "results/b.json"},
+                ]
+            },
+        )
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(task="tag", recipe_hash=f"r-{ref}", backend="llm-dispatch-v2", ref=ref)
+        for ref in ("a", "b")
+    ]
+
+    results = backend.poll_batch(handles)
+    assert isinstance(results["a"], JobResult)
+    assert isinstance(results["b"], JobResult)
+
+
+def test_poll_batch_one_malformed_result_does_not_lose_a_valid_sibling():
+    """A result body that isn't valid UTF-8/JSON must fail only its own job. Before this fix,
+    _resolve_completed's except clause only caught LLMBackendError, so an uncaught
+    JSONDecodeError inside list(pool.map(...)) would propagate and abort merging results for
+    every handle in the batch -- not just the malformed one."""
+    storage = MockStorage()
+    storage.put_cas(
+        "results/good.json",
+        json.dumps({"choices": [{"message": {"content": "fine"}}]}).encode("utf-8"),
+        "application/json",
+    )
+    # Not valid UTF-8: an isolated continuation byte.
+    storage.put_cas("results/bad.json", b"\xff\xfe not json", "application/json")
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": "good", "state": "completed", "result_key": "results/good.json"},
+                    {"id": "bad", "state": "completed", "result_key": "results/bad.json"},
+                ]
+            },
+        )
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(task="tag", recipe_hash="r-good", backend="llm-dispatch-v2", ref="good"),
+        JobHandle(task="tag", recipe_hash="r-bad", backend="llm-dispatch-v2", ref="bad"),
+    ]
+
+    with pytest.raises(LLMDispatchTerminalError) as excinfo:
+        backend.poll_batch(handles)
+
+    # The malformed job is reported as the failure...
+    assert "bad" in str(excinfo.value)
+    # ...but the good sibling's result must still have been resolved and persisted, not lost.
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    stored = look_up_deferred(storage, "r-good")
+    assert isinstance(stored, JobResult)

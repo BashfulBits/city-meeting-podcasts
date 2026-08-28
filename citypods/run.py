@@ -1819,7 +1819,8 @@ def _run_enrich_global_queue(
         ctx.audio_artifact_cache.register(prepared[key]["city"].provider, key, ep.uid or ep.guid)
     print(
         f"[enrich] global queue: {len(prepared)} source(s), {len(candidates)} candidate episode(s)"
-        f"{f', {len(errors)} fetch error(s)' if errors else ''}",
+        f"{f', {len(errors)} fetch error(s)' if errors else ''}"
+        f"{f', {len(deferred)} fetch deferred' if deferred else ''}",
         flush=True,
     )
 

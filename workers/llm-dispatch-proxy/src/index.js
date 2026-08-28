@@ -1380,6 +1380,35 @@ function nextLocalMidnightUTC(date, timeZone = "UTC") {
   return res;
 }
 
+/**
+ * Escalating cooldown for a route whose most recent attempt came back HTTP 402 (payment
+ * required / provider-side quota exhausted at the billing layer) -- a distinct signal from 429:
+ * 429 means "too fast," already handled by requests_available_at/Retry-After above; 402 means
+ * "no budget left until some future reset," which no amount of pacing fixes. Returns epoch ms;
+ * callers store it as an ISO string in entry.blocked_until, same as every other ledger timestamp
+ * here (see parseTime). Mirrors workers/llm-dispatch-v2/src/pacing.js's function of the same
+ * name exactly -- kept as a duplicate, not a shared import, per this repo's existing convention
+ * of each Worker directory being self-contained (review/44 Phase 1).
+ *
+ * `streak` is the count AFTER this occurrence; a success resets it to 0 elsewhere (ledgerEntry
+ * callers, on the completed-response path), so streak only grows across consecutive 402s with no
+ * successful call on that route between them. First occurrence assumes a same-day quota reset
+ * might simply fix it, escalating through a week and then a month for a streak that keeps
+ * recurring after each cooldown expires -- i.e., a real billing problem -- and stays pinned to
+ * "start of next month" for any further streak past that, rather than escalating indefinitely.
+ */
+function paymentRequiredBackoffUntil(streak, now) {
+  const d = new Date(now);
+  if (streak <= 1) {
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+  }
+  if (streak === 2) {
+    const daysUntilNextMonday = ((8 - d.getUTCDay()) % 7) || 7;
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + daysUntilNextMonday);
+  }
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+}
+
 function ledgerEntry(budget, routeId) {
   if (!budget.routes) {
     budget.routes = {};
@@ -1399,10 +1428,16 @@ function ledgerEntry(budget, routeId) {
       cost_day_used: 0,
       cost_day_key: "",
       inflight: {},
+      payment_required_streak: 0,
     };
-  } else if (!budget.routes[routeId].inflight) {
-    // Preserve ledgers written by older Worker versions and by the Python CAS ledger.
-    budget.routes[routeId].inflight = {};
+  } else {
+    if (!budget.routes[routeId].inflight) {
+      // Preserve ledgers written by older Worker versions and by the Python CAS ledger.
+      budget.routes[routeId].inflight = {};
+    }
+    if (budget.routes[routeId].payment_required_streak === undefined) {
+      budget.routes[routeId].payment_required_streak = 0;
+    }
   }
   return budget.routes[routeId];
 }
@@ -2600,6 +2635,13 @@ async function dispatchBatch(
       };
     }
 
+    // Set by a 402/success response below (see paymentRequiredBackoffUntil) mutating `coordinator`
+    // in place after this batch's admission reservations were already committed to R2 -- those two
+    // writes happen at genuinely different times (admission before dispatch, response after), so a
+    // 402 needs its own best-effort flush once every task below has finished; see its use after
+    // the `Promise.all` further down.
+    let ledgerMutatedAfterDispatch = false;
+
     // Execute batch concurrently with in-batch stagger pacing, retaining every sibling outcome.
     const upstreamTasks = candidatesToDispatch.map(
       async ({
@@ -2715,6 +2757,20 @@ async function dispatchBatch(
         }
 
         if (!response.ok) {
+          if (response.status === 402) {
+            // Payment required / provider quota exhausted -- a billing-layer signal no amount of
+            // rpm/rpd/tpm pacing fixes, so force the whole route unavailable via blocked_until
+            // instead of letting every future tick keep re-admitting jobs onto it and repeating
+            // this same failure. The individual job below still fails normally (402 is not in
+            // retryableStatus); this only stops OTHER jobs from being admitted onto this route
+            // until the cooldown passes.
+            const entry = ledgerEntry(coordinator, chosenRoute.route_id);
+            entry.payment_required_streak = (entry.payment_required_streak || 0) + 1;
+            entry.blocked_until = new Date(
+              paymentRequiredBackoffUntil(entry.payment_required_streak, now.getTime()),
+            ).toISOString();
+            ledgerMutatedAfterDispatch = true;
+          }
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
           const willRetry =
             retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts;
@@ -2870,6 +2926,15 @@ async function dispatchBatch(
 
         profile.response_read_ms = profileElapsed(responseReadStartedAt);
 
+        // A successful call proves the route is healthy again -- clear any 402 backoff state,
+        // matching the branch above that sets it.
+        const successEntry = ledgerEntry(coordinator, chosenRoute.route_id);
+        if (successEntry.payment_required_streak || successEntry.blocked_until) {
+          successEntry.payment_required_streak = 0;
+          successEntry.blocked_until = null;
+          ledgerMutatedAfterDispatch = true;
+        }
+
         const completed = {
           ...claimed.record,
           status: "completed",
@@ -2937,6 +3002,29 @@ async function dispatchBatch(
         }
       }),
     );
+
+    // Best-effort flush of any 402/success ledger mutations made above (see
+    // paymentRequiredBackoffUntil): those happened after this batch's admission reservations were
+    // already durably committed to R2, so they need their own write. Single CAS attempt, silently
+    // dropped on conflict -- same risk tolerance as the pre-dispatch "reaped" flush above: a lost
+    // write here just means blocked_until doesn't take effect until this same branch is reached
+    // again on a future tick, not a correctness hazard.
+    if (ledgerMutatedAfterDispatch && coordinatorHandle.etag) {
+      try {
+        const putRes = await putJson(bucket, DISPATCH_COORDINATOR_KEY, coordinator, {
+          onlyIf: { etagMatches: coordinatorHandle.etag },
+          customMetadata: coordinatorLeaseMetadata(coordinator.lease),
+        });
+        if (putRes) {
+          coordinatorHandle.etag = putRes.etag;
+          coordinatorHandle.coordinator = coordinator;
+        }
+      } catch {
+        // A sibling may have committed fresher ledger state; this route's 402 backoff is picked
+        // up again the next time this branch runs, same as the pre-dispatch reaped flush above.
+      }
+    }
+
     const markerDeleteStartedAt = profileNow();
     try {
       await unmarkReadyBatch(bucket, pendingMarkerDeletes);
@@ -3306,7 +3394,9 @@ export {
   nextCapacityRetryAt,
   nextLocalMidnightUTC,
   nextRouteReset,
+  ledgerEntry,
   normalizeChatRequest,
+  paymentRequiredBackoffUntil,
   rankRoutes,
   releaseCoordinator,
   releaseCronLease,

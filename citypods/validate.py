@@ -49,20 +49,49 @@ def validate_feed(xml: str | bytes) -> list[str]:
         errors.append(_EMPTY_ERROR)
 
     for i, item in enumerate(items):
-        label = f"item[{i}]"
-        if item.find("title") is None:
+        label = None
+        has_title = False
+        has_guid = False
+        has_pubdate = False
+        enc = None
+
+        for child in item:
+            tag = child.tag
+            if tag == "title":
+                has_title = True
+            elif tag == "guid":
+                has_guid = True
+            elif tag == "pubDate":
+                has_pubdate = True
+            elif tag == "enclosure":
+                # Preserve ElementTree.find() semantics: validate the first enclosure.
+                if enc is None:
+                    enc = child
+
+        if not has_title:
+            if label is None:
+                label = f"item[{i}]"
             errors.append(f"{label} missing <title>")
-        if item.find("guid") is None:
+        if not has_guid:
+            if label is None:
+                label = f"item[{i}]"
             errors.append(f"{label} missing <guid>")
-        if item.find("pubDate") is None:
+        if not has_pubdate:
+            if label is None:
+                label = f"item[{i}]"
             errors.append(f"{label} missing <pubDate>")
-        enc = item.find("enclosure")
         if enc is None:
+            if label is None:
+                label = f"item[{i}]"
             errors.append(f"{label} missing <enclosure>")
         else:
             if not enc.get("url"):
+                if label is None:
+                    label = f"item[{i}]"
                 errors.append(f"{label} enclosure missing url")
             if not enc.get("type"):
+                if label is None:
+                    label = f"item[{i}]"
                 errors.append(f"{label} enclosure missing type")
 
     return errors

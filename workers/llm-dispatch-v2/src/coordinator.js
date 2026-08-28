@@ -4,8 +4,14 @@
  */
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
-import { routesEligibleFor } from "./routes.js";
-import { computeRouteLaneWait, routeHasCapacityFor, FULL_TOKEN_BUDGET_WINDOWS } from "./pacing.js";
+import { canonicalModelName, routesEligibleFor } from "./routes.js";
+import {
+  availableTokenBudget,
+  computeRouteLaneWait,
+  routeHasCapacityFor,
+  FULL_TOKEN_BUDGET_WINDOWS,
+  paymentRequiredBackoffUntil,
+} from "./pacing.js";
 
 /**
  * index.js's getCoordinator() reaches this class through env.LLM_SCHEDULER.getByName(), the
@@ -72,11 +78,33 @@ export class LLMSchedulerDO extends DurableObjectBase {
         lease_expires_at            INTEGER,
         bundle_id                   TEXT,
         attempts                    INTEGER NOT NULL DEFAULT 0,
+        transient_retry_count       INTEGER NOT NULL DEFAULT 0,
         created_at                  INTEGER NOT NULL,
         updated_at                  INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_jobs_state_priority_created
         ON jobs (state, priority, created_at);
+
+      -- purgePendingBatch selects terminal jobs by age. The index above is keyed
+      -- (state, priority, created_at), so that query could only seek on state and then had to
+      -- read EVERY completed/failed row to filter and sort on updated_at -- 60k+ rows once the
+      -- terminal backlog is large, the same unbounded-scan shape that caused the 2026-08-27
+      -- rows-read overage. Measured: 60,189 -> 367 VDBE ops at 6,000 terminal jobs.
+      CREATE INDEX IF NOT EXISTS idx_jobs_state_updated
+        ON jobs (state, updated_at);
+
+      -- A queued job can be compatible with more than one model. This small index is the
+      -- scheduler's route-independent work index: admission asks for a few jobs belonging to a
+      -- capacity-ranked model rather than reading an arbitrary prefix of the whole queue.
+      CREATE TABLE IF NOT EXISTS job_models (
+        job_id      TEXT NOT NULL,
+        model       TEXT NOT NULL,
+        priority    INTEGER NOT NULL,
+        created_at  INTEGER NOT NULL,
+        PRIMARY KEY (job_id, model)
+      );
+      CREATE INDEX IF NOT EXISTS idx_job_models_model_priority_created
+        ON job_models (model, priority, created_at, job_id);
 
       CREATE TABLE IF NOT EXISTS routes (
         route_id                TEXT PRIMARY KEY,
@@ -94,7 +122,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         throttle_streak          INTEGER NOT NULL DEFAULT 0,
         last_provider_status     INTEGER,
         blocked_until            INTEGER,
-        buffer_seconds           REAL NOT NULL DEFAULT 0
+        buffer_seconds           REAL NOT NULL DEFAULT 0,
+        payment_required_streak  INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS bundles (
@@ -106,6 +135,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
         dispatch_window_end  INTEGER NOT NULL,
         created_at           INTEGER NOT NULL
       );
+
+      -- Without this, the bundles table has only its bundle_id primary key, so BOTH of
+      -- claimDispatchWindow's per-tick bundle statements (the expire-sweep UPDATE and the
+      -- active-bundle SELECT) degrade to full table scans -- and nothing ever deletes from
+      -- the bundles table, so that scan grew by one row per claimed bundle forever. Measured
+      -- against the
+      -- real coordinator at 3,200 bundles: 6,400 of a tick's 6,424 rows read (99.6%) came from
+      -- exactly those two statements, which is what exhausted the Durable Objects free tier's
+      -- 5M daily rows-read budget on 2026-08-27. With this index both become index seeks over
+      -- the 'active' rows only -- a population MAX_ACTIVE_BUNDLES already bounds -- so
+      -- lease_expires_at deliberately is NOT part of the key; created_at is, because it also
+      -- makes _pruneTerminalRecords's terminal-bundle lookup an ordered seek.
+      CREATE INDEX IF NOT EXISTS idx_bundles_state_created
+        ON bundles (state, created_at);
 
       CREATE TABLE IF NOT EXISTS attempts (
         attempt_id              TEXT PRIMARY KEY,
@@ -124,6 +167,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         created_at              INTEGER NOT NULL
       );
 
+      -- attempts is otherwise keyed only by attempt_id, so _pruneTerminalRecords's age-based
+      -- lookup would have to scan the whole (unbounded, append-only) table to find its batch.
+      CREATE INDEX IF NOT EXISTS idx_attempts_created
+        ON attempts (created_at);
+
       CREATE TABLE IF NOT EXISTS estimates (
         key                     TEXT PRIMARY KEY,
         margin_tokens           INTEGER NOT NULL,
@@ -133,13 +181,28 @@ export class LLMSchedulerDO extends DurableObjectBase {
       );
 
       CREATE TABLE IF NOT EXISTS scheduler (
-        id                         INTEGER PRIMARY KEY CHECK (id = 1),
-        utc_day                    TEXT NOT NULL,
-        bundle_count_today         INTEGER NOT NULL DEFAULT 0,
-        jobs_ingested_today        INTEGER NOT NULL DEFAULT 0,
-        cleanup_cursor             TEXT,
-        next_maintenance_alarm_at  INTEGER
+        id                                  INTEGER PRIMARY KEY CHECK (id = 1),
+        utc_day                             TEXT NOT NULL,
+        bundle_count_today                  INTEGER NOT NULL DEFAULT 0,
+        jobs_ingested_today                 INTEGER NOT NULL DEFAULT 0,
+        cleanup_cursor                      TEXT,
+        next_maintenance_alarm_at           INTEGER
       );
+
+      -- Keeps the model-queue index's ordering priority synchronized with a direct jobs.priority
+      -- edit -- review/44 documents an operator promoting an already-queued job for
+      -- recovery/testing as a direct SQLite edit through Cloudflare's dashboard Data Studio or
+      -- wrangler dev's Local Explorer SQL Studio. job_models.priority is otherwise only ever set
+      -- once, at enqueue/backfill time, so without this trigger such a promotion would silently
+      -- never change admission order: the index row already exists, so backfill never revisits
+      -- it either. A no-op UPDATE (0 rows matched) when the job isn't currently indexed -- e.g.
+      -- already claimed -- is expected and harmless.
+      CREATE TRIGGER IF NOT EXISTS trg_jobs_priority_sync
+      AFTER UPDATE OF priority ON jobs
+      WHEN NEW.priority IS NOT OLD.priority
+      BEGIN
+        UPDATE job_models SET priority = NEW.priority WHERE job_id = NEW.id;
+      END;
     `);
 
     // CREATE TABLE IF NOT EXISTS only creates the table on its first-ever run for this DO
@@ -148,6 +211,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("jobs", "transient_retry_count", "INTEGER NOT NULL DEFAULT 0");
+    // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
+    // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
+    // "Durable Objects rows-read overage retrospective"). Both migrations completed in production
+    // (confirmed 2026-08-28 via a Data Studio query showing both *_complete flags = 1) and their
+    // code was retired; the columns themselves are left in place on already-migrated `scheduler`
+    // rows rather than dropped -- an unused column on a single-row table costs nothing, and
+    // ALTER TABLE ... DROP COLUMN against live production data is an unnecessary risk for zero
+    // benefit.
 
     const today = new Date().toISOString().slice(0, 10);
     const existing = [...sql.exec("SELECT id FROM scheduler WHERE id = 1")];
@@ -161,10 +234,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   _ensureColumn(table, column, definition) {
-    const ALLOWED_TABLES = new Set(["routes", "jobs", "bundles", "attempts", "estimates", "scheduler"]);
-    const ALLOWED_COLUMNS = new Set(["rpd_window_start", "rpd_count"]);
-    const ALLOWED_DEFINITIONS = new Set(["INTEGER NOT NULL DEFAULT 0"]);
-    if (!ALLOWED_TABLES.has(table) || !ALLOWED_COLUMNS.has(column) || !ALLOWED_DEFINITIONS.has(definition)) {
+    const ALLOWED_TABLES = new Set([
+      "routes",
+      "jobs",
+      "bundles",
+      "attempts",
+      "estimates",
+      "scheduler",
+    ]);
+    const ALLOWED_COLUMNS = new Map([
+      ["rpd_window_start", "INTEGER NOT NULL DEFAULT 0"],
+      ["rpd_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["payment_required_streak", "INTEGER NOT NULL DEFAULT 0"],
+      ["transient_retry_count", "INTEGER NOT NULL DEFAULT 0"],
+    ]);
+    if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
     }
     const sql = this._getSql();
@@ -179,7 +263,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _maxJobsPerUtcDay() {
     const configured = Number(this.env.MAX_JOBS_PER_UTC_DAY);
-    return Number.isFinite(configured) && configured > 0 ? configured : 20000;
+    return Number.isFinite(configured) && configured > 0 ? configured : 5000;
   }
 
   _envInt(name, fallback) {
@@ -189,6 +273,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _maxBundleJobs() {
     return this._envInt("MAX_BUNDLE_JOBS", 4);
+  }
+
+  _maxJobsPerModelClaim() {
+    const configured = Number(this.env.MAX_JOBS_PER_MODEL_CLAIM);
+    // A model is only allowed to contribute one bundle's worth of candidates. Exact token and
+    // lane checks still run below, but never over an arbitrary global-queue prefix.
+    return Number.isInteger(configured) && configured > 0 ? configured : this._maxBundleJobs();
   }
 
   _maxJobsPerRoutePerBundle() {
@@ -209,10 +300,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _maxBundlesPerUtcDay() {
     return this._envInt("MAX_BUNDLES_PER_UTC_DAY", 1000);
-  }
-
-  _maxQueueWaitSeconds() {
-    return this._envInt("MAX_QUEUE_WAIT_SECONDS", 3600);
   }
 
   _leaseDurationMs() {
@@ -236,6 +323,49 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _max429BackoffMs() {
     return this._envInt("MAX_429_BACKOFF_SECONDS", 60) * 1000;
+  }
+
+  /** AI Gateway already made its own short retry series, so this is a small durable outer budget. */
+  _max5xxRetries() {
+    return this._envInt("MAX_5XX_RETRIES", 1);
+  }
+
+  /** Maximum route-only cooldown applied after a final post-Gateway 5xx. */
+  _max5xxBackoffMs() {
+    return this._envInt("MAX_5XX_BACKOFF_SECONDS", 300) * 1000;
+  }
+
+  /**
+   * Retention for the DO's two append-only bookkeeping tables. Neither `bundles` nor `attempts`
+   * has any B2 counterpart or client-side dependency -- they are internal scheduler history, so
+   * unlike `jobs` (whose row must outlive the client's result fetch, see purgePendingBatch)
+   * they can be aged out entirely inside the DO with no coordination. Kept long enough to stay
+   * useful for incident diagnosis, short enough that neither table grows without bound.
+   */
+  _bundleRetentionMs() {
+    return this._envInt("BUNDLE_RETENTION_DAYS", 7) * 86_400_000;
+  }
+
+  _attemptRetentionMs() {
+    return this._envInt("ATTEMPT_RETENTION_DAYS", 7) * 86_400_000;
+  }
+
+  /** Per-tick delete budget for each table. Deletes are row WRITES, so this bounds the drain of
+   * an existing backlog (and steady-state upkeep needs only a row or two per tick). Zero on
+   * either is an emergency pause. */
+  _maxBundlePrunePerTick() {
+    return this._envInt("MAX_BUNDLE_PRUNE_PER_TICK", 50);
+  }
+
+  _maxAttemptPrunePerTick() {
+    return this._envInt("MAX_ATTEMPT_PRUNE_PER_TICK", 50);
+  }
+
+  /** Return an exponential route cooldown, starting at one minute, for a final Gateway 5xx. */
+  _5xxBlockedUntil(retryCount, now) {
+    const baseMs = 60_000;
+    const delayMs = Math.min(baseMs * 2 ** Math.max(0, retryCount - 1), this._max5xxBackoffMs());
+    return now + delayMs;
   }
 
   _maxRouteBufferSeconds() {
@@ -272,7 +402,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _rollUtcDayIfNeeded(now) {
     const sql = this._getSql();
     const today = this._currentUtcDay(now);
-    const rows = [...sql.exec("SELECT utc_day, bundle_count_today, jobs_ingested_today FROM scheduler WHERE id = 1")];
+    const rows = [...sql.exec(
+      "SELECT utc_day, bundle_count_today, jobs_ingested_today FROM scheduler WHERE id = 1"
+    )];
     if (rows.length === 0) {
       sql.exec(
         "INSERT INTO scheduler (id, utc_day, bundle_count_today, jobs_ingested_today) VALUES (1, ?, 0, 0)",
@@ -286,7 +418,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         "UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0 WHERE id = 1",
         today
       );
-      return { utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
+      return { ...sched, utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
     }
     return sched;
   }
@@ -362,6 +494,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           job.max_output_token_estimate,
           job.payload_key,
           now,
+          now
+        );
+        this._indexQueuedJobModels(
+          { ...job, policy_json: policyJson, priority, created_at: now },
+          priority,
           now
         );
 
@@ -450,8 +587,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         route_id, rpm_window_start, rpm_count, rpd_window_start, rpd_count,
         tpm_window_start, tpm_reserved, full_token_budget, token_budget_updated_at,
         provisional_reservation, settled_usage, cost_accumulated,
-        throttle_streak, last_provider_status, blocked_until, buffer_seconds
-      ) VALUES (?, 0, 0, 0, 0, 0, 0, ?, ?, 0, 0, 0, 0, NULL, NULL, 0)`,
+        throttle_streak, last_provider_status, blocked_until, buffer_seconds,
+        payment_required_streak
+      ) VALUES (?, 0, 0, 0, 0, 0, 0, ?, ?, 0, 0, 0, 0, NULL, NULL, 0, 0)`,
       routeId,
       seedBudget,
       now
@@ -473,7 +611,247 @@ export class LLMSchedulerDO extends DurableObjectBase {
       last_provider_status: null,
       blocked_until: null,
       buffer_seconds: 0,
+      payment_required_streak: 0,
     };
+  }
+
+  /**
+   * Canonical model groups a job may use. Persist every explicit allowed model, even when it has
+   * no configured route yet, so a later catalog addition makes an already-queued job searchable
+   * without rewriting it. This follows aliases only: v2 does not expand config/model_routing.
+   *
+   * Omits a model whose *every* currently configured route is structurally too small for this
+   * job's own token estimates (routesEligibleFor's input/output context-limit check, evaluated
+   * here independent of any live RPM/RPD/TPM/blocked_until state, which fluctuates and must never
+   * exclude a job from the index). Without this, a handful of oversized jobs land at the head of
+   * that model's bounded per-claim candidate window (MAX_JOBS_PER_MODEL_CLAIM) and stay there
+   * forever -- routesEligibleFor always returns empty for them, so claimDispatchWindow re-reads
+   * the exact same unclaimed rows every tick and a smaller, perfectly dispatchable job queued
+   * behind them is never even read, let alone claimed. A model with no configured route at all is
+   * kept (can't be size-checked against a limit that doesn't exist); a job with no route left
+   * under any of its allowed models falls through to _indexQueuedJobModels's own
+   * "__unroutable__" sentinel, exactly like a malformed/unknown-model policy already does.
+   */
+  _modelsForQueuedJob(job, dispatchLimits = this._dispatchLimits()) {
+    let policy;
+    try {
+      policy = typeof job.policy_json === "string" ? JSON.parse(job.policy_json) : job.policy_json;
+    } catch {
+      return [];
+    }
+    const allowedModels = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
+    const allowPaid = Boolean(policy?.allow_paid);
+    const inputTokens = job.input_token_estimate || 0;
+    const outputTokens = job.max_output_token_estimate || 0;
+    const routesByModel = dispatchLimits?.model_routes_map || {};
+    const catalog = dispatchLimits?.routes_by_id || {};
+
+    const models = new Set();
+    for (const rawModel of allowedModels) {
+      if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
+      const canonical = canonicalModelName(rawModel.trim(), dispatchLimits);
+      const routeIds = routesByModel[canonical];
+      if (!Array.isArray(routeIds) || routeIds.length === 0) {
+        models.add(canonical);
+        continue;
+      }
+      const fitsSomeConfiguredRoute = routeIds.some((routeId) => {
+        const route = catalog[routeId];
+        if (!route) return false;
+        if (!allowPaid && !route.free) return false;
+        return (
+          inputTokens <= (route.input_context_limit || 32768) &&
+          outputTokens <= (route.output_context_limit || 1024)
+        );
+      });
+      if (fitsSomeConfiguredRoute) models.add(canonical);
+    }
+    return [...models];
+  }
+
+  _modelsToIndex(job) {
+    const models = this._modelsForQueuedJob(job);
+    return models.length > 0 ? models : ["__unroutable__"];
+  }
+
+  _indexQueuedJobModels(job, priority = job.priority, createdAt = job.created_at, models) {
+    const sql = this._getSql();
+    // Preserve one sentinel for an unrouteable policy so rollout backfill does not reconsider the
+    // same malformed/unknown job on every cron tick. It is never present in model_routes_map.
+    for (const model of models || this._modelsToIndex(job)) {
+      sql.exec(
+        `INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at)
+         VALUES (?, ?, ?, ?)`,
+        job.id,
+        model,
+        priority,
+        createdAt
+      );
+    }
+  }
+
+  /**
+   * Delete one bounded batch of aged-out terminal bundles and attempt records.
+   *
+   * A bundle is only ever removed once it is terminal ('completed'/'expired'), its lease can no
+   * longer be current, AND it is older than the retention window -- so a late completeBatch or
+   * authorizeRetry can never lose a bundle it might still legitimately settle. (Those two both
+   * already treat a missing bundle as a stale no-op, which is the correct outcome long after a
+   * lease expired, but the lease_expires_at guard means we never rely on that.)
+   *
+   * Both statements delete by primary key from an id list gathered by an indexed, LIMIT-ed
+   * subquery, rather than `DELETE ... LIMIT` (which requires a SQLite compile-time option that
+   * is not guaranteed to be enabled) or an unbounded `DELETE ... WHERE created_at < ?` (which
+   * would scan the very tables this retention exists to keep small).
+   */
+  _pruneTerminalRecords(now) {
+    const sql = this._getSql();
+    const bundleLimit = this._maxBundlePrunePerTick();
+    const attemptLimit = this._maxAttemptPrunePerTick();
+    let bundlesDeleted = 0;
+    let attemptsDeleted = 0;
+
+    if (bundleLimit > 0) {
+      const cutoff = now - this._bundleRetentionMs();
+      const ids = [...sql.exec(
+        `SELECT bundle_id FROM bundles
+         WHERE state IN ('completed','expired') AND created_at < ? AND lease_expires_at < ?
+         ORDER BY created_at ASC
+         LIMIT ?`,
+        cutoff,
+        now,
+        bundleLimit
+      )].map((row) => row.bundle_id);
+      for (const chunk of this._chunks(ids)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        sql.exec(`DELETE FROM bundles WHERE bundle_id IN (${placeholders})`, ...chunk);
+        bundlesDeleted += chunk.length;
+      }
+    }
+
+    if (attemptLimit > 0) {
+      const cutoff = now - this._attemptRetentionMs();
+      const ids = [...sql.exec(
+        `SELECT attempt_id FROM attempts WHERE created_at < ? ORDER BY created_at ASC LIMIT ?`,
+        cutoff,
+        attemptLimit
+      )].map((row) => row.attempt_id);
+      for (const chunk of this._chunks(ids)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        sql.exec(`DELETE FROM attempts WHERE attempt_id IN (${placeholders})`, ...chunk);
+        attemptsDeleted += chunk.length;
+      }
+    }
+
+    return { bundlesDeleted, attemptsDeleted };
+  }
+
+  _freshRouteLedger(catalogRoute, now) {
+    const tpm = Number(catalogRoute?.tpm) || 0;
+    return {
+      rpm_window_start: 0,
+      rpm_count: 0,
+      rpd_window_start: 0,
+      rpd_count: 0,
+      tpm_window_start: 0,
+      tpm_reserved: 0,
+      full_token_budget: tpm * FULL_TOKEN_BUDGET_WINDOWS,
+      token_budget_updated_at: now,
+      blocked_until: null,
+      buffer_seconds: 0,
+    };
+  }
+
+  _capacityFraction(route, now, windowSeconds) {
+    if (Number(route.blocked_until) > now) return 0;
+    if (Number(route.buffer_seconds || 0) * 1000 >= windowSeconds * 1000) return 0;
+
+    const windowFraction = (limit, windowStart, count, durationMs) => {
+      // rpd: 0 is the repository's explicit "paused/exhausted" convention, not an unlimited
+      // route. Other absent limits do not constrain this coarse, route-ranking score.
+      if (limit === 0) return 0;
+      if (!Number.isFinite(limit) || limit < 0) return 1;
+      if (!Number.isFinite(windowStart) || now - windowStart >= durationMs) return 1;
+      return Math.max(0, Math.min(1, (limit - Math.max(0, count || 0)) / limit));
+    };
+
+    const rpmFraction = windowFraction(
+      Number(route.rpm),
+      route.rpm_window_start,
+      route.rpm_count,
+      60_000
+    );
+    const rpdFraction = windowFraction(
+      Number(route.rpd),
+      route.rpd_window_start,
+      route.rpd_count,
+      86_400_000
+    );
+    const tpm = Number(route.tpm);
+    const tokenFraction =
+      Number.isFinite(tpm) && tpm > 0
+        ? Math.max(
+            0,
+            Math.min(1, availableTokenBudget(route, now) / (tpm * FULL_TOKEN_BUDGET_WINDOWS))
+          )
+        : 1;
+    return Math.min(rpmFraction, rpdFraction, tokenFraction);
+  }
+
+  /** Read the small route ledger once, rank model pools by their aggregate free fraction, and
+   * retain a route-level score for preferring the best account inside the chosen model. */
+  _rankModelsByCapacity(now, windowSeconds, dispatchLimits) {
+    const sql = this._getSql();
+    const ledgers = new Map(
+      [...sql.exec("SELECT * FROM routes")].map((row) => [row.route_id, row])
+    );
+    const catalog = dispatchLimits?.routes_by_id || {};
+    return Object.entries(dispatchLimits?.model_routes_map || {})
+      .map(([model, routeIds]) => {
+        const routes = routeIds
+          .map((routeId) => {
+            const catalogRoute = catalog[routeId];
+            if (!catalogRoute) return null;
+            const route = {
+              ...catalogRoute,
+              ...(ledgers.get(routeId) || this._freshRouteLedger(catalogRoute, now)),
+              route_id: routeId,
+              model,
+            };
+            return { route, score: this._capacityFraction(route, now, windowSeconds) };
+          })
+          .filter(Boolean)
+          .sort(
+            (left, right) =>
+              right.score - left.score || left.route.route_id.localeCompare(right.route.route_id)
+          );
+        // Daily request capacity is the common unit across providers. Weighting avoids a tiny
+        // fallback account counting as much as a high-volume primary account; a paused rpd: 0
+        // route has no configured capacity weight at all, while a 402-blocked normal route keeps
+        // its weight and therefore correctly pulls the model's available percentage down.
+        const totalWeight = routes.reduce((sum, entry) => {
+          const rpd = Number(entry.route.rpd);
+          const rpm = Number(entry.route.rpm);
+          const weight = Number.isFinite(rpd) ? Math.max(0, rpd) : Math.max(0, rpm) * 1440;
+          return sum + weight;
+        }, 0);
+        const score =
+          totalWeight === 0
+            ? 0
+            : routes.reduce((sum, entry) => {
+                const rpd = Number(entry.route.rpd);
+                const rpm = Number(entry.route.rpm);
+                const weight = Number.isFinite(rpd) ? Math.max(0, rpd) : Math.max(0, rpm) * 1440;
+                return sum + entry.score * weight;
+              }, 0) / totalWeight;
+        return {
+          model,
+          score,
+          routeScores: new Map(routes.map((entry) => [entry.route.route_id, entry.score])),
+        };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score || left.model.localeCompare(right.model));
   }
 
   /**
@@ -571,30 +949,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return rows.length > 0 ? rows[0].margin_tokens : 0;
   }
 
-  /** Aged-first, then larger-conservative-estimate-first, then FIFO -- see Unit 4 pass 2. */
-  _orderByAgingThenSize(jobs, now, maxQueueWaitSeconds) {
-    const agedThresholdMs = maxQueueWaitSeconds * 1000;
-    const aged = [];
-    const notAged = [];
-    for (const job of jobs) {
-      const waitedMs = now - job.created_at;
-      (waitedMs >= agedThresholdMs ? aged : notAged).push(job);
-    }
-    const bySizeThenFifo = (a, b) => {
-      const sizeA = (a.input_token_estimate || 0) + (a.max_output_token_estimate || 0);
-      const sizeB = (b.input_token_estimate || 0) + (b.max_output_token_estimate || 0);
-      if (sizeB !== sizeA) return sizeB - sizeA;
-      return a.created_at - b.created_at;
-    };
-    aged.sort(bySizeThenFifo);
-    notAged.sort(bySizeThenFifo);
-    return [...aged, ...notAged];
-  }
-
   static EMPTY_CLAIM_RESULT = { bundle_id: null, execution_token: null, jobs: [] };
 
-  /** review/44 Unit 4: fenced admission, ordering, and pacing. One SQLite transaction for the
-   * whole call -- see the unit's own pseudocode for the exact two-pass selection this mirrors. */
+  /** review/44 Unit 4: fenced, capacity-ranked admission and pacing in one SQLite transaction. */
   async claimDispatchWindow(now, windowSeconds) {
     const sql = this._getSql();
     const dispatchLimits = this._dispatchLimits();
@@ -604,9 +961,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const maxActiveBundles = this._maxActiveBundles();
       const maxInFlightCalls = this._maxInFlightLlmCalls();
       const maxBundleJobs = this._maxBundleJobs();
+      const maxJobsPerModelClaim = this._maxJobsPerModelClaim();
       const maxConcurrentLanes = this._maxConcurrentRouteLanes();
       const maxJobsPerRoutePerBundle = this._maxJobsPerRoutePerBundle();
-      const maxQueueWaitSeconds = this._maxQueueWaitSeconds();
       const estimateFloor = this._estimateFloor();
       const callDurationCeilingMs = this._callDurationCeilingMs();
       const leaseDurationMs = this._leaseDurationMs();
@@ -615,16 +972,41 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const sched = this._rollUtcDayIfNeeded(now);
       if (sched.bundle_count_today >= maxBundlesPerDay) return EMPTY;
 
+      // Reap bundles whose lease expired without ever reaching completeBatch -- an executor
+      // crash, a CPU/wall-clock eviction mid-tick, or an uncaught error before the final
+      // completeBatch RPC all leave a bundle stuck 'active' forever otherwise, since nothing
+      // else in this file ever moves a bundle out of 'active'. Left unreaped, each one
+      // permanently consumes one of MAX_ACTIVE_BUNDLES's slots -- once that many accumulate,
+      // every future claimDispatchWindow call returns EMPTY at the very next check below,
+      // regardless of how many jobs are queued, with no error anywhere to signal why. Mirrors
+      // the same lease-timeout requeue this DO already does per-job on a `deferred_late`
+      // completeBatch outcome, just applied at the bundle level, before that outcome can ever
+      // be reported.
+      sql.exec(`UPDATE bundles SET state='expired' WHERE state='active' AND lease_expires_at < ?`, now);
+      const expiredJobs = [...sql.exec(
+        "SELECT * FROM jobs WHERE state='leased' AND lease_expires_at < ?",
+        now
+      )];
+      if (expiredJobs.length > 0) {
+        sql.exec(
+          `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
+                            lease_expires_at=NULL, bundle_id=NULL, updated_at=?
+           WHERE state='leased' AND lease_expires_at < ?`,
+          now,
+          now
+        );
+        for (const job of expiredJobs) this._indexQueuedJobModels(job);
+      }
+
+      // Retention runs right after the expire-sweep, so a bundle this tick just marked
+      // 'expired' is eligible on a later tick once it ages out. Bounded per tick; see
+      // _pruneTerminalRecords.
+      this._pruneTerminalRecords(now);
+
       const activeBundles = [...sql.exec("SELECT active_call_count FROM bundles WHERE state='active'")];
       if (activeBundles.length >= maxActiveBundles) return EMPTY;
       const inFlightCalls = activeBundles.reduce((sum, b) => sum + b.active_call_count, 0);
       if (inFlightCalls >= maxInFlightCalls) return EMPTY;
-
-      const candidates = [...sql.exec(
-        "SELECT * FROM jobs WHERE state='queued' ORDER BY priority ASC, created_at ASC LIMIT ?",
-        maxBundleJobs * 4
-      )];
-      if (candidates.length === 0) return EMPTY;
 
       const ledgerCache = new Map();
       const getMergedRoute = (route) => {
@@ -640,40 +1022,54 @@ export class LLMSchedulerDO extends DurableObjectBase {
         callDurationCeilingMs,
       });
 
-      const chosen = []; // { job, route }
+      const chosen = [];
+      const chosenJobIds = new Set();
       const seenRoutes = new Set();
-
-      // Pass 1: distinct eligible routes, capped at maxConcurrentLanes lanes total.
-      for (const job of candidates) {
+      for (const modelPlan of this._rankModelsByCapacity(now, windowSeconds, dispatchLimits)) {
         if (chosen.length >= maxBundleJobs) break;
-        if (seenRoutes.size >= maxConcurrentLanes) break;
-        for (const route of routesEligibleFor(job, dispatchLimits)) {
-          if (seenRoutes.has(route.route_id)) continue;
-          const merged = getMergedRoute(route);
-          if (!routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))) continue;
-          chosen.push({ job, route });
-          seenRoutes.add(route.route_id);
-          break;
-        }
-      }
+        const candidates = [...sql.exec(
+          `SELECT jobs.* FROM job_models
+           JOIN jobs ON jobs.id = job_models.job_id
+           WHERE job_models.model = ? AND jobs.state = 'queued'
+           ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
+           LIMIT ?`,
+          modelPlan.model,
+          maxJobsPerModelClaim
+        )];
 
-      // Pass 2: aged-then-larger-then-FIFO fill, may still open a new lane under the cap, or add
-      // to an already-open one up to maxJobsPerRoutePerBundle.
-      const chosenJobIds = new Set(chosen.map((c) => c.job.id));
-      const remaining = candidates.filter((c) => !chosenJobIds.has(c.id));
-      const ordered = this._orderByAgingThenSize(remaining, now, maxQueueWaitSeconds);
-      for (const job of ordered) {
-        if (chosen.length >= maxBundleJobs) break;
-        for (const route of routesEligibleFor(job, dispatchLimits)) {
-          const isNewLane = !seenRoutes.has(route.route_id);
-          if (isNewLane && seenRoutes.size >= maxConcurrentLanes) continue;
-          const countInBundle = chosen.filter((c) => c.route.route_id === route.route_id).length;
-          if (countInBundle >= maxJobsPerRoutePerBundle) continue;
-          const merged = getMergedRoute(route);
-          if (!routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))) continue;
-          chosen.push({ job, route });
-          seenRoutes.add(route.route_id);
-          break;
+        for (const job of candidates) {
+          if (chosen.length >= maxBundleJobs) break;
+          if (chosenJobIds.has(job.id)) continue;
+          const eligibleRoutes = routesEligibleFor(job, dispatchLimits)
+            .filter((route) => route.model === modelPlan.model)
+            .sort(
+              (left, right) =>
+                (modelPlan.routeScores.get(right.route_id) || 0) -
+                  (modelPlan.routeScores.get(left.route_id) || 0) ||
+                left.route_id.localeCompare(right.route_id)
+            );
+          const routeOrder = [
+            ...eligibleRoutes.filter((route) => !seenRoutes.has(route.route_id)),
+            ...eligibleRoutes.filter((route) => seenRoutes.has(route.route_id)),
+          ];
+          for (const route of routeOrder) {
+            const isNewLane = !seenRoutes.has(route.route_id);
+            if (isNewLane && seenRoutes.size >= maxConcurrentLanes) continue;
+            const countInBundle = chosen.filter(
+              (entry) => entry.route.route_id === route.route_id
+            ).length;
+            if (countInBundle >= maxJobsPerRoutePerBundle) continue;
+            const merged = getMergedRoute(route);
+            if (
+              !routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))
+            ) {
+              continue;
+            }
+            chosen.push({ job, route });
+            chosenJobIds.add(job.id);
+            seenRoutes.add(route.route_id);
+            break;
+          }
         }
       }
 
@@ -717,6 +1113,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             now,
             job.id
           );
+          // Keep the model index queue-only: a completed historical backlog must never make a
+          // later model lookup walk terminal rows before it reaches current work.
+          sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
 
           workingRoute = this._applyProvisionalReservation(workingRoute, waitResult.reservation, waitResult.not_before_at);
           ledgerCache.set(route.route_id, workingRoute);
@@ -869,10 +1268,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // `(SELECT ... FROM jobs WHERE id=?)` subquery evaluates to NULL for a bogus/unknown
         // job_id, which would throw on attempts.route_id's NOT NULL constraint and abort the
         // whole batch's completion, not just skip this one stale/unrecognized result.
-        const jobRows = [...sql.exec(
-          "SELECT lease_token, state, lease_route_id, prompt_family FROM jobs WHERE id = ?",
-          result.job_id
-        )];
+        const jobRows = [...sql.exec("SELECT * FROM jobs WHERE id = ?", result.job_id)];
         const routeIdForAttempt = jobRows.length > 0 ? jobRows[0].lease_route_id : "unknown";
 
         // attemptStarted (fencing, before the provider call -- see that method) already inserted
@@ -916,19 +1312,33 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         const job = jobRows[0];
 
+        const isFinal5xx =
+          result.outcome === "retryable_error" &&
+          Number.isInteger(result.provider_status_code) &&
+          result.provider_status_code >= 500 &&
+          result.provider_status_code <= 599;
+        const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
+        const blockedUntil = isFinal5xx
+          ? this._5xxBlockedUntil(nextTransientRetryCount, now)
+          : null;
+        const shouldRetry5xx = isFinal5xx && job.transient_retry_count < this._max5xxRetries();
+
         let newState;
         switch (result.outcome) {
           case "success":
             newState = "completed";
             break;
+          case "deferred_late":
+            newState = "queued";
+            break;
           case "retryable_error":
-            newState = "retryable";
+            // A final 5xx has already exhausted AI Gateway's short retry sequence. Give it one
+            // durable, minute-scale retry; ambiguous transport failures and B2-write failures
+            // must surface as failed instead of silently becoming an unclaimable state.
+            newState = shouldRetry5xx ? "queued" : "failed";
             break;
           case "terminal_error":
             newState = "failed";
-            break;
-          case "deferred_late":
-            newState = "queued";
             break;
           default:
             continue; // unrecognized outcome; leave the job's state untouched
@@ -941,6 +1351,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
             now,
             result.job_id
           );
+          this._indexQueuedJobModels(job);
+        } else if (shouldRetry5xx) {
+          sql.exec(
+            `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
+                             lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,
+                             updated_at=? WHERE id=?`,
+            nextTransientRetryCount,
+            now,
+            result.job_id
+          );
+          this._indexQueuedJobModels(job);
         } else if (result.outcome === "success") {
           sql.exec(
             "UPDATE jobs SET state=?, result_key=?, updated_at=? WHERE id=?",
@@ -978,9 +1399,37 @@ export class LLMSchedulerDO extends DurableObjectBase {
           );
 
           if (result.outcome === "success") {
+            // A successful call proves the route is healthy again -- clear every backoff signal,
+            // 402's included, not just the 429 ones already cleared here.
             sql.exec(
-              "UPDATE routes SET throttle_streak = 0, buffer_seconds = 0, last_provider_status = ? WHERE route_id = ?",
+              `UPDATE routes SET throttle_streak = 0, buffer_seconds = 0,
+                                  payment_required_streak = 0, blocked_until = NULL,
+                                  last_provider_status = ? WHERE route_id = ?`,
               result.provider_status_code ?? 200,
+              job.lease_route_id
+            );
+          } else if (result.provider_status_code === 402) {
+            // Payment required / provider quota exhausted -- a billing-layer signal no amount of
+            // rpm/rpd/tpm pacing fixes, so force the route unavailable via blocked_until (see
+            // pacing.js's paymentRequiredBackoffUntil) instead of letting every future tick keep
+            // re-attempting and re-failing against it.
+            const ledger = this._getOrCreateRouteLedger(job.lease_route_id, now, {});
+            const newStreak = (ledger.payment_required_streak || 0) + 1;
+            sql.exec(
+              `UPDATE routes SET payment_required_streak = ?, blocked_until = ?,
+                                  last_provider_status = 402 WHERE route_id = ?`,
+              newStreak,
+              paymentRequiredBackoffUntil(newStreak, now),
+              job.lease_route_id
+            );
+          } else if (isFinal5xx) {
+            // The Gateway has already retried this request. Temporarily remove only this route
+            // from the capacity ranking so other models/accounts can drain while it recovers.
+            sql.exec(
+              `UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?),
+                                 last_provider_status = ? WHERE route_id = ?`,
+              blockedUntil,
+              result.provider_status_code,
               job.lease_route_id
             );
           } else if (result.provider_status_code != null) {
@@ -1070,22 +1519,91 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const retentionDays = this._envInt("COMPLETED_RETENTION_DAYS", 38);
     const cutoff = Date.now() - retentionDays * 86_400_000;
     return this.ctx.storage.transactionSync(() => {
-      const rows = [...sql.exec(
+      // Rows ALREADY in purge_pending come first, and are re-listed on every call until
+      // confirmPurge actually removes them. Two ways a job gets there without this pass having
+      // put it there: ackResults promoted it (the client consumed its result), or an earlier
+      // cleanup run marked it and then died before confirmPurge -- a crash this method's own
+      // idempotency contract promises to recover from. Selecting only completed/failed, as this
+      // did originally, stranded both cases in purge_pending forever with their B2 objects
+      // orphaned, because nothing else ever queries that state.
+      const carriedOver = [...sql.exec(
         `SELECT id, payload_key, result_key FROM jobs
-         WHERE state IN ('completed', 'failed') AND updated_at < ?
+         WHERE state = 'purge_pending'
          ORDER BY updated_at ASC LIMIT ?`,
-        cutoff,
         limit
       )];
-      if (rows.length === 0) return { jobs: [] };
-      const ids = rows.map((r) => r.id);
-      for (const chunk of this._chunks(ids)) {
-        const placeholders = chunk.map(() => "?").join(",");
-        sql.exec(`UPDATE jobs SET state='purge_pending' WHERE id IN (${placeholders})`, ...chunk);
+
+      const remaining = limit - carriedOver.length;
+      const newlyEligible = remaining > 0
+        ? [...sql.exec(
+            `SELECT id, payload_key, result_key FROM jobs
+             WHERE state IN ('completed', 'failed') AND updated_at < ?
+             ORDER BY updated_at ASC LIMIT ?`,
+            cutoff,
+            remaining
+          )]
+        : [];
+
+      if (newlyEligible.length > 0) {
+        const now = Date.now();
+        for (const chunk of this._chunks(newlyEligible.map((r) => r.id))) {
+          const placeholders = chunk.map(() => "?").join(",");
+          sql.exec(
+            `UPDATE jobs SET state='purge_pending', updated_at=? WHERE id IN (${placeholders})`,
+            now,
+            ...chunk
+          );
+        }
       }
+
+      const rows = [...carriedOver, ...newlyEligible];
+      if (rows.length === 0) return { jobs: [] };
       return {
         jobs: rows.map((r) => ({ id: r.id, payload_key: r.payload_key, result_key: r.result_key })),
       };
+    });
+  }
+
+  /**
+   * Consumption ack: the client has fetched these jobs' results, validated them, and durably
+   * written them to the deferred registry (see write_deferred in citypods/compute/llm_deferred.py),
+   * so neither the SQLite row nor the B2 payload/result objects are needed any more.
+   *
+   * Moves them straight to 'purge_pending', short-circuiting the COMPLETED_RETENTION_DAYS timer
+   * that would otherwise hold a consumed job for 38 days; the executor's existing cleanup pass
+   * then deletes the B2 keys and calls confirmPurge exactly as it does for aged-out jobs. This is
+   * the trigger review/44's "Consumption ack" section describes -- retention by age remains only
+   * as the backstop for a job that is never acked (a client that died between fetch and ack).
+   *
+   * Only a job in 'completed' is eligible. A 'failed' job is deliberately NOT ackable: the sweep's
+   * schema-correction path still reads it, and a client must never be able to retire a job whose
+   * result it could not validate. Unknown/ineligible ids are reported back rather than silently
+   * ignored, so a caller can tell an accepted ack from a no-op.
+   */
+  async ackResults(jobIds) {
+    if (!jobIds || jobIds.length === 0) return { acked: [], ignored: [] };
+    const sql = this._getSql();
+    return this.ctx.storage.transactionSync(() => {
+      const acked = [];
+      for (const chunk of this._chunks(jobIds)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        const eligible = [...sql.exec(
+          `SELECT id FROM jobs WHERE id IN (${placeholders}) AND state = 'completed'`,
+          ...chunk
+        )].map((row) => row.id);
+        if (eligible.length === 0) continue;
+        for (const eligibleChunk of this._chunks(eligible)) {
+          const marks = eligibleChunk.map(() => "?").join(",");
+          sql.exec(
+            `UPDATE jobs SET state='purge_pending', updated_at=? WHERE id IN (${marks})`,
+            Date.now(),
+            ...eligibleChunk
+          );
+          acked.push(...eligibleChunk);
+        }
+      }
+      const ackedSet = new Set(acked);
+      return { acked, ignored: jobIds.filter((id) => !ackedSet.has(id)) };
     });
   }
 
@@ -1098,6 +1616,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       let purged = 0;
       for (const chunk of this._chunks(jobIds)) {
         const placeholders = chunk.map(() => "?").join(",");
+        sql.exec(`DELETE FROM job_models WHERE job_id IN (${placeholders})`, ...chunk);
         sql.exec(
           `DELETE FROM jobs WHERE id IN (${placeholders}) AND state = 'purge_pending'`,
           ...chunk

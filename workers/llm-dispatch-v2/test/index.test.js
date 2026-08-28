@@ -22,7 +22,7 @@ function createMockEnv(overrides = {}) {
     CRON_TICK_SECONDS: "60",
     MAX_BUNDLES_PER_UTC_DAY: "1000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
-    MAX_JOBS_PER_UTC_DAY: "20000",
+    MAX_JOBS_PER_UTC_DAY: "5000",
     ENQUEUE_BATCH_MAX: "1000",
     POLL_BATCH_MAX: "1000",
     ...overrides,
@@ -51,14 +51,27 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     )
   );
 
-  // MAX_JOBS_PER_UTC_DAY > 75,000 (75% limit)
+  // MAX_JOBS_PER_MODEL_CLAIM > MAX_BUNDLE_JOBS
   assert.throws(() =>
     validateConfig(
       createMockEnv({
-        MAX_JOBS_PER_UTC_DAY: "80000",
+        MAX_BUNDLE_JOBS: "4",
+        MAX_JOBS_PER_MODEL_CLAIM: "5",
       })
     )
   );
+
+  // MAX_JOBS_PER_UTC_DAY > 5,000 (model-index write headroom)
+  assert.throws(() =>
+    validateConfig(
+      createMockEnv({
+        MAX_JOBS_PER_UTC_DAY: "5001",
+      })
+    )
+  );
+
+  assert.throws(() => validateConfig(createMockEnv({ MAX_5XX_RETRIES: "3" })));
+  assert.throws(() => validateConfig(createMockEnv({ MAX_5XX_BACKOFF_SECONDS: "0" })));
 
   // ESTIMATED_CALL_DURATION_CEILING_SECONDS >= DISPATCH_WINDOW_SECONDS
   assert.throws(() =>
@@ -74,6 +87,24 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
   const noTokenEnv = createMockEnv();
   delete noTokenEnv.BEARER_TOKEN;
   assert.throws(() => validateConfig(noTokenEnv));
+});
+
+test("validateConfig rejects a CLEANUP_INTERVAL_MINUTES that does not evenly divide 60", () => {
+  // 7 fires at :00, :07, ..., :56, then wraps to :00 -- a 4-minute gap, not the claimed 7-minute
+  // cadence. Only divisors of 60 repeat an identical, evenly-spaced pattern every hour.
+  assert.throws(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "7" })));
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "20" })));
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "1" })));
+});
+
+test("validateConfig rejects a PURGE_BATCH_LIMIT that would exceed the 50-subrequest Free ceiling", () => {
+  // Each purged job costs up to 2 B2 deletes (payload + result); dispatch in the same invocation
+  // costs up to MAX_BUNDLE_JOBS * 2. Both must fit under 50 with headroom.
+  assert.throws(() => validateConfig(createMockEnv({ PURGE_BATCH_LIMIT: "50" })));
+  assert.throws(() =>
+    validateConfig(createMockEnv({ PURGE_BATCH_LIMIT: "15", MAX_BUNDLE_JOBS: "20" }))
+  );
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ PURGE_BATCH_LIMIT: "15" })));
 });
 
 test("GET and HEAD /healthz return 200 without auth", async () => {

@@ -17,6 +17,136 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch V2 consumption ack, parallel result resolution, and a 6-hourly sweep.** A v2 job's
+  DO row and B2 objects were held for `COMPLETED_RETENTION_DAYS` (38) after completion even though
+  the client had fetched, validated and durably persisted the result minutes later --
+  `delete_dispatched_ref` is a v1-only path and v2 had no equivalent, so nothing communicated
+  consumption. `POST /v2/jobs:ack-batch` now does, called once per poll chunk (not per job) after
+  `write_deferred` succeeds, reducing post-ack retention to roughly one hourly cleanup tick --
+  completion-to-release still spans the six-hour observation cadence for a job the sweep hasn't
+  yet polled. Only a
+  validated success is acked: a result that failed structured-output validation is exactly what the
+  sweep's schema-correction path re-reads. A failed ack is harmless -- the result is already durable
+  client-side -- and never fails the poll.
+
+  Fixed a latent stranding bug found while wiring this up: `purgePendingBatch` selected only
+  `completed`/`failed`, so a row already in `purge_pending` was never re-listed. A cleanup run that
+  died between the B2 deletes and `confirmPurge` therefore orphaned its B2 objects permanently,
+  contradicting the method's own documented idempotency contract. It now re-lists carried-over rows
+  first, then tops up to the limit with newly-eligible ones.
+
+  `poll_batch` resolves completed results through a bounded thread pool instead of serially. Each
+  completion costs several sequential B2 round trips (the result GET plus `write_deferred`'s own
+  reads and writes) which are pure I/O wait, so the sweep's runtime scaled with the completion
+  count; measured ~7.9x faster at 16 completions. The deferred sweep moves from once daily to every
+  six hours, keeping the 17:30 UTC DeepSeek off-peak run exactly -- a job completed minutes after
+  dispatch was previously only *observed* up to ~23h later, which kept both the deferred registry
+  and the coordinator's `jobs` table near their maximum between runs.
+
+- **LLM dispatch V2 Durable Object rows-read overage.** `claimDispatchWindow` full-scanned the
+  `bundles` table twice on every cron tick -- once for the lease-expiry sweep, once for the
+  active-bundle count -- because `bundles` carried only its `bundle_id` primary key and nothing in
+  the codebase ever deleted from it. Instrumenting the real coordinator measured **6,400 of a
+  tick's 6,424 rows read (99.6%)** from those two statements at 3,200 accumulated bundles, which
+  exhausted the Workers free tier's 5M daily Durable Objects rows-read budget on 2026-08-27; the
+  cost grew with every bundle ever claimed, which is why reads climbed steadily while writes
+  stayed flat. Adds `bundles (state, created_at)`, turning both into index seeks over the
+  `active` rows only -- a population `MAX_ACTIVE_BUNDLES` already bounds. Same tick, same table
+  sizes: **6,424 -> 30 rows read**.
+
+  Also adds retention for the two append-only bookkeeping tables that had none. `bundles` and
+  `attempts` have no B2 counterpart and no client-side reader, so both now age out inside the DO
+  (`BUNDLE_RETENTION_DAYS`/`ATTEMPT_RETENTION_DAYS`, default 7) on a bounded per-tick delete
+  budget; a bundle is only ever removed once terminal, past retention, and past its lease, so no
+  late `completeBatch` can lose one it could still settle. `attempts` gains a `created_at` index
+  so that pruning is itself a bounded seek rather than the scan it exists to prevent.
+
+  Finally, wires up `purgePendingBatch`/`confirmPurge`. Both shipped with Phase 2 with tests but
+  were called from nothing, so terminal `jobs` rows and their B2 payload/result objects were never
+  released. They now run from `scheduled()` on an hourly cadence (`CLEANUP_INTERVAL_MINUTES`),
+  deleting B2 objects before confirming the row drop so a crash mid-way simply retries. This
+  required a second new index, `jobs (state, updated_at)`: the existing
+  `(state, priority, created_at)` index could not serve the purge query's age filter, so wiring it
+  up naively would have read every completed job on each run (**60,189 -> 367** VDBE ops at 6,000
+  terminal jobs) -- reintroducing the same unbounded-scan shape.
+
+  Adds `test/rows-read.test.js`, a standing guard against this whole bug class rather than
+  against these four queries. It exercises every RPC entry point and asserts two invariants: no
+  statement may full-scan a table that grows with traffic, and the same operations against 10x
+  the accumulated history must read about the same number of rows. The second catches what the
+  first cannot -- an index seek constrained only on a low-cardinality `state` column still walks
+  every row in that state, which is exactly how the purge-query trap above hides behind a plan
+  that reads as `SEARCH`. Verified by mutation testing: removing any of the four indexes, or
+  reverting the candidate lookup to a queue-head scan, fails at least one invariant.
+
+- **LLM dispatch V2 rollout compatibility migrations retired.** Both the `job_models` backfill and
+  legacy `retryable` recovery migrations (below) completed in production -- confirmed 2026-08-28 via
+  a Data Studio query against the live coordinator showing both `scheduler.*_complete` flags at `1`
+  -- so their code, config knobs (`MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM`,
+  `MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM`, `MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY`,
+  `MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY`), and per-tick state threading were removed from
+  `coordinator.js`/`index.js`/`wrangler.jsonc`, along with the tests that only existed to exercise
+  them. The `scheduler` columns those migrations wrote are left in place on already-migrated
+  instances rather than dropped -- an unused column on a single-row table costs nothing, and
+  `ALTER TABLE ... DROP COLUMN` against live production data is an unnecessary risk for zero
+  benefit; a fresh DO instance's schema simply no longer declares them. See review/44's "Retired:
+  the rollout compatibility migrations".
+
+- **LLM dispatch V2 linear, budgeted compatibility migrations.** Historical queued-job model
+  indexing now captures a rollout-time SQLite row-id high-water mark and advances a durable cursor,
+  so it reads the finite old population once instead of repeatedly searching the queue head. Legacy
+  `retryable` recovery follows the existing state/priority/created index. The migrations share
+  conservative daily row-read and write-unit budgets (`250,000` and `5,000`) and cautious per-cron
+  caps (four backfill rows, one recovery row); a zero cap or daily budget remains an emergency
+  pause. A job whose mappings exceed a daily budget resumes from a durable model offset; partial
+  backfill jobs remain out of admission and a `retryable` job is queued only after all mappings
+  exist. Each job retains every explicitly allowed model -- there is no allowed-model cap. This is
+  scheduler-only: no model fallback, pipeline version, stored artifact, or record format changes.
+
+- **LLM dispatch final-5xx recovery.** AI Gateway now performs the configured short retry series
+  before either Worker sees a final response. V1 retains a final 500/502/503/504 as one durable
+  pending retry (rather than failing on its former one-attempt production setting). V2 now returns
+  a final 5xx to the indexed queue for a later cron, with one bounded outer retry and a short route
+  cooldown so other models/accounts can continue draining. A final 5xx can no longer leave
+  a V2 record forever in the previously unclaimable `retryable` state: each cron recovers a
+  bounded batch of such historical rows, while the V1 offline reindexer has an explicit
+  `--recover-retryable` recovery mode. Timeout, transport, and result-write ambiguity is surfaced
+  as `failed`, not silently parked. No model fallback, pipeline version, or stored artifact is
+  changed.
+
+- **V2 dispatch admission is capacity-ranked, rather than globally FIFO.** The scheduler DO keeps
+  an indexed queued-model membership for every explicitly allowed model on each job, ranks model
+  pools by their routes' live free capacity, treats 402-blocked, paused, and capacity-exhausted
+  routes as zero, and reads only four candidates from a model before trying the next pool. The
+  exact per-job token and lane gate remains authoritative. This improves use of independent
+  free-tier capacity without adding V2 model routing: V2 still does not use the V1 Mistral →
+  Gemini 3.5 Flash Lite overflow fallback. A job's index membership omits any model whose every
+  configured route is structurally too small for its own token estimate, so a handful of
+  oversized jobs can no longer occupy a model's bounded candidate window forever and starve
+  smaller jobs behind them; a SQLite trigger keeps the index's admission-order priority in sync
+  with a direct `jobs.priority` recovery edit; and the one-time pre-index backfill cursor latches
+  off after its fixed rollout population, rather than re-scanning the queued backlog on every cron
+  tick.
+
+- **Pipeline and GitHub Actions reliability hardening.**
+  - **Runner timeout bounds:** Reduced `chapter-locator.yml` timeout to 45 minutes to prevent
+    hung runner orphan processes from holding runner quota.
+  - **Review issue overflow protection:** Added a 60,000-character ceiling guard in
+    `llm_evaluation.py` and `llm-tag-review.yml` before creating/updating GitHub review digest
+    issues, preventing GraphQL `Body is too long` failures.
+  - **Granicus media probe fallback:** Enabled Cloudflare Worker chunked fallback with an 8 MB
+    cap for truncated probe fetches in `media.py` when Granicus CDN returns HTTP 403 to ffmpeg.
+  - **Auxiliary discovery error handling:** Caught upstream LLM provider exceptions (quota, auth,
+    rate limits) in `scripts/city_discovery.py` to return `DEFERRED_EXIT` (75) and added fallback
+    provider secrets to `city-discovery.yml`.
+  - **ASR quality webhook filtering:** Filtered issue webhook events to `"H15 sample "` in
+    `asr-quality-ingest.yml` and gracefully handled missing metadata in `transcript_quality.py`.
+  - **Diarization setup ordering:** Placed FFmpeg shared library installation before python
+    dependencies in `r7-diarization.yml`.
+  - **LLM deferred sweep fault tolerance:** Wrapped individual record reads in `llm_deferred.py`
+    so transient storage retries don't abort entire snapshot sweeps.
+
+
 - **R7 diarization model-access diagnostics.** The preflight now verifies `HF_TOKEN` before
   loading pyannote and reports invalid credentials, unaccepted gated-model terms, unavailable
   configured models, Hub availability, and post-access pyannote runtime failures separately. This
@@ -195,6 +325,13 @@ Phase R (Research-Tool Surface)._
   zero-runtime-overhead calibration knob against token estimation drift and rate limit 429s.
 
 ### Fixed
+
+- **Transient provider HTTP error handling in sharded enrich lanes.** Updated
+  `is_transient_provider_error` and `ProviderError` to recognize retryable HTTP status codes
+  (`500..599`, `429`, `408`, `425`) across exception attributes, responses, causes, and status
+  messages. Prevents transient upstream provider 5xx outages (e.g. Granicus archive index 500s)
+  from failing sharded matrix jobs when all other assigned sources and audio materialization work
+  succeeded.
 
 - **Downstream enrich lane error recovery and thread-safe contract registration (run #313 fix).**
   Fixed two issues that caused Chapter Agenda extraction (workflow run 313) to exit with code 1.

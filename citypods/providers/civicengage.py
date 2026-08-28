@@ -131,7 +131,10 @@ class CivicEngageProvider:
                 except requests.RequestException as exc:
                     raise ProviderError(f"GET {url} failed: {exc}") from exc
                 if response.status_code >= 400:
-                    raise ProviderError(f"GET {url} returned {response.status_code}")
+                    raise ProviderError(
+                        f"GET {url} returned {response.status_code}",
+                        status_code=response.status_code,
+                    )
                 for record in parse_civicengage_archive(
                     response.content, archive_url=url, kind=kind, body=body
                 ):

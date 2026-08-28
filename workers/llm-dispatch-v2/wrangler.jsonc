@@ -35,6 +35,9 @@
   },
   "vars": {
     "MAX_BUNDLE_JOBS": "4",
+    // Read at most this many indexed queue entries for one capacity-ranked model before moving
+    // to the next model. Exact token/lane checks still run only on these small candidate sets.
+    "MAX_JOBS_PER_MODEL_CLAIM": "4",
     "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "4",
     "MAX_CONCURRENT_ROUTE_LANES": "5",
     "DISPATCH_WINDOW_SECONDS": "25",
@@ -42,7 +45,7 @@
     "MAX_ACTIVE_BUNDLES": "2",
     "MAX_IN_FLIGHT_LLM_CALLS": "8",
     "MAX_BUNDLES_PER_UTC_DAY": "1000",
-    "MAX_JOBS_PER_UTC_DAY": "20000",
+    "MAX_JOBS_PER_UTC_DAY": "5000",
     "ENQUEUE_BATCH_MAX": "1000",
     "POLL_BATCH_MAX": "1000",
     "MAX_RESPONSE_SECONDS": "720",
@@ -51,26 +54,54 @@
     "CRON_EXECUTION_LIMIT_SECONDS": "900",
     "MAX_429_RETRIES": "1",
     "MAX_429_BACKOFF_SECONDS": "60",
+    // AI Gateway handles the fast five-attempt retry series. A final 5xx gets one durable
+    // fallback attempt on a later cron tick. The failed route is unavailable for 60 seconds,
+    // growing to at most five minutes if this outer retry budget is raised.
+    "MAX_5XX_RETRIES": "1",
+    "MAX_5XX_BACKOFF_SECONDS": "300",
     "MAX_ROUTE_BUFFER_SECONDS": "120",
     "UNKNOWN_ATTEMPT_POLICY": "hold",
-    "MAX_QUEUE_WAIT_SECONDS": "3600",
     "COMPLETED_RETENTION_DAYS": "38",
+    // Retention for the DO's two append-only bookkeeping tables. Neither has a B2 counterpart
+    // or a client-side reader, so both age out entirely inside the DO. Before this existed
+    // nothing ever deleted from either, and `bundles` was full-scanned twice per cron tick --
+    // the 2026-08-27 rows-read overage. Zero on either per-tick cap is an emergency pause.
+    "BUNDLE_RETENTION_DAYS": "7",
+    "ATTEMPT_RETENTION_DAYS": "7",
+    "MAX_BUNDLE_PRUNE_PER_TICK": "50",
+    "MAX_ATTEMPT_PRUNE_PER_TICK": "50",
+    // Terminal-job + B2 object cleanup (purgePendingBatch/confirmPurge). Runs on the cron tick
+    // whose UTC minute is a multiple of this, not every minute, since each purged job costs up to
+    // two B2 delete subrequests (payload + result keys). 15 costs up to 30, leaving headroom
+    // under the 50-subrequest-per-invocation Free ceiling alongside dispatch's own B2 traffic in
+    // the same invocation -- validateConfig enforces this bound against both knobs together.
+    "CLEANUP_INTERVAL_MINUTES": "60",
+    "PURGE_BATCH_LIMIT": "15",
     // Conservative upper bound on one provider call's duration, used only to keep the DO from
     // admitting a job whose planned start technically fits before the dispatch window's end but
     // would still plausibly still be running past it -- see pacing.js and Unit 4's
     // routeHasCapacityFor. Deliberately well under MAX_RESPONSE_SECONDS, which is the executor's
     // actual per-call abort deadline, not an admission-time estimate.
-    "ESTIMATED_CALL_DURATION_CEILING_SECONDS": "20"
+    "ESTIMATED_CALL_DURATION_CEILING_SECONDS": "20",
+    // Not secret -- a gateway slug, not a credential. Matches workers/llm-dispatch-proxy's own
+    // wrangler.jsonc exactly. gateway.js's resolveProviderCredentials() only routes a call through
+    // AI Gateway when both this and the CLOUDFLARE_ACCOUNT_ID secret are present; omitted, it
+    // falls back to calling each provider directly with no error, no log line, and no other
+    // visible symptom -- confirmed as this deployment's actual state until now: every call landed
+    // straight on the provider, never through the gateway, so nothing showed up in the AI Gateway
+    // dashboard even though dispatch itself was working (see "Why cron pull, not Queue" for why
+    // going through the gateway isn't optional here).
+    "AI_GATEWAY_ID": "citypods-dispatch",
+    "AI_GATEWAY_BASE_URL": ""
   }
   // Secrets (never plain vars -- set with `wrangler secret put <NAME>`, one time, matching
   // workers/llm-dispatch-proxy's existing pattern): BEARER_TOKEN (ingress auth), every provider's
   // API_KEY_ENV from config/provider_limits.yml (e.g. GEMINI_API_KEY, MISTRAL_API_KEY --
   // whichever routes this deployment actually dispatches to), AI_GATEWAY_AUTH_TOKEN (Cloudflare
-  // AI Gateway's own "Authenticated Gateway" token, independent of provider keys), and the
+  // AI Gateway's own "Authenticated Gateway" token, independent of provider keys), CLOUDFLARE_
+  // ACCOUNT_ID (needed alongside the AI_GATEWAY_ID var above to build the gateway URL), and the
   // executor's B2 credentials -- B2_ENDPOINT, B2_KEY_ID, B2_APP_KEY, B2_BUCKET (a dedicated
   // least-privilege application key scoped to this design's own B2 prefix, e.g.
   // "llm-dispatch-v2/", per "B2-only payload storage and bounded cleanup" -- never the ingress
-  // Worker's credentials, which does not and must not hold any). CLOUDFLARE_ACCOUNT_ID and
-  // AI_GATEWAY_ID (or AI_GATEWAY_BASE_URL directly) route calls through AI Gateway rather than
-  // straight to each provider; see "Why cron pull, not Queue" for why that's not optional.
+  // Worker's credentials, which does not and must not hold any).
 }

@@ -76,7 +76,9 @@ def _iter_year_pages(session, calendar_url: str, year: int):
     except requests.RequestException as exc:
         raise ProviderError(f"GET {url} failed: {exc}") from exc
     if response.status_code >= 300:
-        raise ProviderError(f"GET {url} returned {response.status_code}")
+        raise ProviderError(
+            f"GET {url} returned {response.status_code}", status_code=response.status_code
+        )
 
     current_page = 1
     html = response.text
@@ -94,7 +96,9 @@ def _iter_year_pages(session, calendar_url: str, year: int):
         except requests.RequestException as exc:
             raise ProviderError(f"POST {url} failed: {exc}") from exc
         if response.status_code >= 300:
-            raise ProviderError(f"POST {url} returned {response.status_code}")
+            raise ProviderError(
+                f"POST {url} returned {response.status_code}", status_code=response.status_code
+            )
         html = response.text
         current_page += 1
 

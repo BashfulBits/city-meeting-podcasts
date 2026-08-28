@@ -297,7 +297,9 @@ class SwagitProvider:
                 # get_with_worker_fallback refuses redirects outright (allow_redirects=False), so
                 # a 3xx is a real failure here too, not something requests already followed.
                 if not (200 <= first.status_code < 300):
-                    raise ProviderError(f"GET {url} returned {first.status_code}")
+                    raise ProviderError(
+                        f"GET {url} returned {first.status_code}", status_code=first.status_code
+                    )
                 pages = [first.content]
                 for page in range(2, _page_count(first.content) + 1):
                     page_url = _page_url(url, page)
@@ -308,7 +310,10 @@ class SwagitProvider:
                     except requests.RequestException as exc:
                         raise ProviderError(f"GET {page_url} failed: {exc}") from exc
                     if not (200 <= response.status_code < 300):
-                        raise ProviderError(f"GET {page_url} returned {response.status_code}")
+                        raise ProviderError(
+                            f"GET {page_url} returned {response.status_code}",
+                            status_code=response.status_code,
+                        )
                     pages.append(response.content)
                 for content in pages:
                     for ep in parse_list(content, _origin(url)):
@@ -338,7 +343,9 @@ class SwagitProvider:
             except requests.RequestException as exc:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
         if not 200 <= resp.status_code < 300:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
+            raise ProviderError(
+                f"GET {url} returned {resp.status_code}", status_code=resp.status_code
+            )
         chapters = parse_chapters(resp.content)
         transcript_path = f"/videos/{episode.guid}/transcript"
         transcript = f"{_origin(url)}{transcript_path}" if transcript_path in resp.text else None
@@ -460,7 +467,9 @@ class SwagitProvider:
         except requests.RequestException as exc:
             raise ProviderError(f"GET {url} failed: {exc}") from exc
         if not 200 <= resp.status_code < 300:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
+            raise ProviderError(
+                f"GET {url} returned {resp.status_code}", status_code=resp.status_code
+            )
         segments = parse_segment_objects(resp.content)
         # dfile URLs are scraped from page HTML, not implicitly trusted; validate each before
         # any caller (resolve_media_url, SwagitConcatPlanner) can hand it to ffmpeg.

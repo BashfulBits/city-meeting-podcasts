@@ -39,10 +39,12 @@ import {
   dispatchBatch,
   dispatchOne,
   handleRequest,
+  ledgerEntry,
   localDateTimeToUTC,
   nextCapacityRetryAt,
   nextLocalMidnightUTC,
   nextRouteReset,
+  paymentRequiredBackoffUntil,
   rankRoutes,
   releaseCronLease,
   readyKey,
@@ -2691,6 +2693,26 @@ test("upstream LLM timeout tags last_error with upstream_timeout, duration, and 
   assert.match(record.last_error?.message, /timed out/);
 });
 
+test("a final 503 remains pending for the configured durable outer retry", async () => {
+  const env = { ...isolatedEnv(), MAX_ATTEMPTS: "2" };
+  const queued = await handleRequest(chatRequest(undefined, "gateway-503-retry"), env);
+  const queuedBody = await queued.json();
+
+  const result = await dispatchOne(
+    env,
+    async () => new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }),
+    new Date()
+  );
+
+  assert.equal(result.status, "retrying");
+  assert.equal(result.upstreamStatus, 503);
+  const stored = await env.LLM_QUEUE.get(`requests/${queuedBody.id}.json`);
+  const record = await stored.json();
+  assert.equal(record.status, "pending");
+  assert.equal(record.attempts, 1);
+  assert.ok(Date.parse(record.available_at) > Date.now());
+});
+
 test("exhausting retry attempts on timeout fails permanently with upstream_timeout", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(chatRequest(undefined, "terminal-timeout-check"), env);
@@ -2721,6 +2743,95 @@ test("exhausting retry attempts on timeout fails permanently with upstream_timeo
   assert.equal(record.error?.code, "upstream_timeout");
   assert.equal(record.error?.route_id, "mistral_large_2512_primary");
   assert.match(record.error?.message, /timed out/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// 402 (payment required) backoff.
+// ---------------------------------------------------------------------------------------------
+
+test("paymentRequiredBackoffUntil escalates day -> week -> month, pinned at month past streak 3", () => {
+  const wednesday = Date.UTC(2024, 0, 3, 15, 0, 0); // Wed 2024-01-03 15:00 UTC
+  assert.equal(paymentRequiredBackoffUntil(1, wednesday), Date.UTC(2024, 0, 4));
+
+  const monday = Date.UTC(2024, 0, 1); // 2024-01-01 is a Monday
+  assert.equal(paymentRequiredBackoffUntil(2, Date.UTC(2024, 0, 3)), Date.UTC(2024, 0, 8));
+  // A streak reached exactly on a Monday still gets a full week out, not zero.
+  assert.equal(paymentRequiredBackoffUntil(2, monday), Date.UTC(2024, 0, 8));
+
+  const midMonth = Date.UTC(2024, 0, 20);
+  assert.equal(paymentRequiredBackoffUntil(3, midMonth), Date.UTC(2024, 1, 1));
+  assert.equal(paymentRequiredBackoffUntil(5, midMonth), Date.UTC(2024, 1, 1)); // pinned, not escalating further
+
+  assert.equal(paymentRequiredBackoffUntil(3, Date.UTC(2024, 11, 15)), Date.UTC(2025, 0, 1)); // year rollover
+});
+
+test("dispatchOne blocks a route after a 402 response, and clears the block on the next success", async () => {
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+
+  const queued1 = await handleRequest(chatRequest(undefined, "402-check-1"), env);
+  const body1 = await queued1.json();
+
+  const paymentRequired = async () =>
+    new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
+
+  const now = new Date();
+  const result1 = await dispatchOne(env, paymentRequired, now);
+  assert.equal(result1.status, "failed");
+  assert.equal(result1.routeId, routeId);
+
+  const record1 = await (await env.LLM_QUEUE.get(`requests/${body1.id}.json`)).json();
+  assert.equal(record1.status, "failed"); // the individual job still fails normally
+
+  let coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  let entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.payment_required_streak, 1);
+  assert.ok(entry.blocked_until && Date.parse(entry.blocked_until) > now.getTime());
+
+  // Real time obviously can't advance a day inside a test; clear the block directly to simulate
+  // it having already expired, exactly as it would in production once `now` passes blocked_until.
+  entry.blocked_until = null;
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
+
+  const queued2 = await handleRequest(chatRequest(undefined, "402-check-2"), env);
+  await queued2.json();
+  const ok = async () =>
+    new Response(JSON.stringify({ id: "recovered-after-402", choices: [] }), { status: 200 });
+  // A fresh `now`, well past this route's own RPM pacing gap from the first attempt (rpm=4 ->
+  // ~15s) -- the point of this test is the 402 streak/blocked_until reset, not RPM pacing.
+  const later = new Date(now.getTime() + 10 * 60_000);
+  const result2 = await dispatchOne(env, ok, later);
+  assert.equal(result2.status, "completed");
+
+  coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.payment_required_streak, 0);
+  assert.equal(entry.blocked_until, null);
+});
+
+test("the blocked_until a real 402 writes is one routeAvailable actually honors", async () => {
+  // routeAvailable's own blocked_until handling already has direct coverage ("routeAvailable
+  // respects rpm/rpd/tpm/blocked_until independently", above) against a hand-seeded fixture.
+  // mistral/mistral-large-2512 pools two routes (primary + secondary), so a true end-to-end
+  // dispatchOne re-check here would legitimately fall through to the secondary account rather
+  // than proving anything about the primary's block -- that's correct pooling behavior, not a
+  // gap. This test instead ties the write side directly to that already-trusted read side: the
+  // exact entry a real 402 response produces must be one routeAvailable rejects.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const route = DISPATCH_LIMITS.routes_by_id[routeId];
+
+  const queued = await handleRequest(chatRequest(undefined, "402-blocked-until-shape"), env);
+  await queued.json();
+  const paymentRequired = async () =>
+    new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
+  const now = new Date();
+  const result = await dispatchOne(env, paymentRequired, now);
+  assert.equal(result.status, "failed");
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  assert.equal(routeAvailable(entry, route, { requests: 1, tokens: 0 }, now), false);
 });
 
 // ---------------------------------------------------------------------------------------------

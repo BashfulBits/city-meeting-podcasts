@@ -6,15 +6,23 @@ name: LLM deferred sweep
 # reconcile() on every pending record and persists whatever completes; it also prunes registry
 # records past their TTL.
 #
-# Scheduled once daily, one hour after DeepSeek's 16:30 UTC off-peak window opens (review/27 §5.3),
-# not on a tighter cron -- nothing configured today needs a finer-grained wake-up than that, and a
-# once-daily run comfortably lands inside an ~8-hour-wide window even with GitHub's own cron jitter.
-# If a future route's discount/quota window can't be reasonably caught this way, add another cron
-# entry timed to that window rather than tightening this one for everything.
+# Scheduled every six hours, anchored so one run still lands at 17:30 UTC -- an hour after
+# DeepSeek's 16:30 off-peak window opens (review/27 §5.3), which the previous once-daily cron
+# existed to catch. That off-peak run is preserved exactly; the other three are what shortened the
+# observation lag.
+#
+# Raised from once daily on 2026-08-27. A v2 job completes within minutes of dispatch but was only
+# *observed* by this sweep, so a daily cadence left completions pending for up to ~23h. That is a
+# compounding cost, not just latency: the deferred registry this sweep must list, and the
+# coordinator's `jobs` table, both stay near their maximum between runs. Six-hourly keeps both
+# small, which makes each run cheaper -- and it compounds with the consumption ack (review/44),
+# since a job's DO row and B2 objects are only released once a sweep has actually observed it.
+# If a future route's discount/quota window can't be caught on this cadence, add another cron entry
+# timed to that window rather than tightening this one for everything.
 
 on:
   schedule:
-    - cron: "30 17 * * *" # 17:30 UTC, 1h after DeepSeek's off-peak window opens
+    - cron: "30 5,11,17,23 * * *" # every 6h; the 17:30 run is 1h into DeepSeek's off-peak window
   workflow_dispatch: {}
 
 permissions:

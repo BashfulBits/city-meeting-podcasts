@@ -110,7 +110,10 @@ class CivicPlusProvider:
                     raise ProviderError(f"GET fallback failed for {url}: {exc}") from exc
                 try:
                     if resp.status_code >= 400:
-                        raise ProviderError(f"GET fallback {url} returned {resp.status_code}")
+                        raise ProviderError(
+                            f"GET fallback {url} returned {resp.status_code}",
+                            status_code=resp.status_code,
+                        )
                     return ChangeToken(
                         etag=resp.headers.get("ETag"),
                         last_modified=resp.headers.get("Last-Modified"),
@@ -118,7 +121,9 @@ class CivicPlusProvider:
                 finally:
                     resp.close()
         if resp.status_code >= 400:
-            raise ProviderError(f"HEAD {url} returned {resp.status_code}")
+            raise ProviderError(
+                f"HEAD {url} returned {resp.status_code}", status_code=resp.status_code
+            )
         return ChangeToken(
             etag=resp.headers.get("ETag"),
             last_modified=resp.headers.get("Last-Modified"),
@@ -132,7 +137,9 @@ class CivicPlusProvider:
             except requests.RequestException as exc:
                 raise ProviderError(f"GET {url} failed: {exc}") from exc
         if resp.status_code >= 400:
-            raise ProviderError(f"GET {url} returned {resp.status_code}")
+            raise ProviderError(
+                f"GET {url} returned {resp.status_code}", status_code=resp.status_code
+            )
         return parse_civicmedia_feed(resp.content)
 
     def resolve_media_url(self, episode: Episode, source: dict) -> str:
@@ -146,7 +153,10 @@ class CivicPlusProvider:
         except requests.RequestException as exc:
             raise ProviderError(f"GET watch page {page_url} failed: {exc}") from exc
         if resp.status_code >= 400:
-            raise ProviderError(f"GET watch page {page_url} returned {resp.status_code}")
+            raise ProviderError(
+                f"GET watch page {page_url} returned {resp.status_code}",
+                status_code=resp.status_code,
+            )
         m = EMBED_RE.search(resp.text)
         if not m:
             raise ProviderError(f"no TikiLive embed URL found on {page_url}")
@@ -162,7 +172,10 @@ class CivicPlusProvider:
         except requests.RequestException as exc:
             raise ProviderError(f"GET embed {embed_url} failed: {exc}") from exc
         if resp.status_code >= 400:
-            raise ProviderError(f"GET embed {embed_url} returned {resp.status_code}")
+            raise ProviderError(
+                f"GET embed {embed_url} returned {resp.status_code}",
+                status_code=resp.status_code,
+            )
         m = M3U8_RE.search(resp.text)
         if not m:
             raise ProviderError(f"no HLS (.m3u8) URL found in embed {embed_url}")

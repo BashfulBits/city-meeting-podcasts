@@ -351,20 +351,18 @@ routes:
     free: true
 
   # ==========================================
-  # LLAMA 3.3 70B MULTI-PROVIDER POOL (Groq + SambaNova + OpenRouter)
+  # LLAMA 3.3 70B MULTI-PROVIDER POOL (SambaNova + OpenRouter)
   # ==========================================
-  - route_id: groq_llama_3_3_70b_versatile_primary
-    model: meta-llama/llama-3.3-70b-instruct
-    provider: groq
-    upstream_model: llama-3.3-70b-versatile
-    input_context_limit: 131072
-    output_context_limit: 32768
-    account_id: primary
-    rpm: 30
-    rpd: 1000
-    tpm: 6000
-    free: true
-
+  # groq_llama_3_3_70b_versatile_primary removed 2026-08-26: Groq has stopped serving
+  # llama-3.3-70b-versatile -- every dispatch attempt against it errored with Groq's own
+  # "does not exist or you do not have access to it" (model_not_found), confirmed against Groq's
+  # current published rate-limit table, which no longer lists any llama-3.3-70b model at all.
+  # Groq's current chat-completions catalog (per that same table) is allam-2-7b, groq/compound,
+  # groq/compound-mini, meta-llama/llama-prompt-guard-2-{22m,86m}, openai/gpt-oss-{120b,20b,
+  # safeguard-20b}, and qwen/qwen3.6-27b -- none of which is a drop-in replacement for this pool's
+  # logical model, so this is a removal, not a swap. (openai/gpt-oss-120b, one of those current
+  # models, is added as its own route below -- it was already a referenced judge model with no
+  # route at all, unrelated to this pool.)
   - route_id: sambanova_llama_3_3_70b_instruct_primary
     model: meta-llama/llama-3.3-70b-instruct
     provider: sambanova
@@ -388,6 +386,25 @@ routes:
     free: false
     input_per_token: 0.00000010
     output_per_token: 0.00000040
+
+  # ==========================================
+  # GPT-OSS 120B (Groq) -- was already referenced as an R6 moment-judges model
+  # (config/site_config.yml, citypods/moment_judging.py) with no route to reach it at all.
+  # rpm/rpd/tpm and context limits are Groq's own current published values (2026-08-26); Groq's
+  # limits table has no daily-token-cap column analogue this schema tracks (routes here pace on
+  # rpm/rpd/tpm only), so its "200K tokens/day" isn't separately represented.
+  # ==========================================
+  - route_id: groq_gpt_oss_120b_primary
+    model: openai/gpt-oss-120b
+    provider: groq
+    upstream_model: openai/gpt-oss-120b
+    input_context_limit: 131072
+    output_context_limit: 65536
+    account_id: primary
+    rpm: 30
+    rpd: 1000
+    tpm: 8000
+    free: true
 
   # ==========================================
   # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
@@ -563,7 +580,6 @@ routes:
     output_context_limit: 256000
     account_id: primary
     rpm: 124
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 625000
     free: true
 
@@ -576,7 +592,6 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 49
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 1000000
     free: true
 
@@ -589,7 +604,6 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 49
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 50000
     free: true
 
@@ -602,7 +616,6 @@ routes:
     output_context_limit: 131072
     account_id: primary
     rpm: 22
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 356250
     free: true
 
@@ -615,7 +628,6 @@ routes:
     output_context_limit: 131072
     account_id: primary
     rpm: 25
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 375000
     free: true
 
@@ -628,7 +640,6 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 4
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -641,7 +652,6 @@ routes:
     output_context_limit: 262144
     account_id: primary
     rpm: 4
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -654,7 +664,6 @@ routes:
     output_context_limit: 131072
     account_id: primary
     rpm: 37
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 5000000
     free: true
 
@@ -667,7 +676,6 @@ routes:
     output_context_limit: 256000
     account_id: secondary
     rpm: 124
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 625000
     free: true
 
@@ -679,7 +687,6 @@ routes:
     output_context_limit: 262144
     account_id: secondary
     rpm: 49
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 1000000
     free: true
 
@@ -691,7 +698,6 @@ routes:
     output_context_limit: 262144
     account_id: secondary
     rpm: 49
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 50000
     free: true
 
@@ -703,7 +709,6 @@ routes:
     output_context_limit: 131072
     account_id: secondary
     rpm: 22
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 356250
     free: true
 
@@ -715,7 +720,6 @@ routes:
     output_context_limit: 131072
     account_id: secondary
     rpm: 25
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 375000
     free: true
 
@@ -727,7 +731,6 @@ routes:
     output_context_limit: 262144
     account_id: secondary
     rpm: 4
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -739,7 +742,6 @@ routes:
     output_context_limit: 262144
     account_id: secondary
     rpm: 4
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 250000
     free: true
 
@@ -751,7 +753,6 @@ routes:
     output_context_limit: 131072
     account_id: secondary
     rpm: 37
-    rpd: 0 # HOTFIX: monthly budget exhausted; was unset (no daily cap)
     tpm: 5000000
     free: true
 

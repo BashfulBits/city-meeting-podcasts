@@ -1031,16 +1031,33 @@ def minutes_links(links: list[DocumentLink]) -> list[DocumentLink]:
     ]
 
 
+_ATTENDANCE_STATUS_RE = re.compile(r"^\s*(present|absent|excused|recused)\s*:\s*(.+)$", re.I | re.M)
+_ATTENDANCE_SPLIT_RE = re.compile(r",|;|\s{2,}|\s+and\s+")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
 def parse_roster(text: str) -> list[dict]:
     """Conservative member extraction from attendance lines; never invents names."""
     result: list[dict] = []
-    for match in re.finditer(r"(?im)^\s*(present|absent|excused|recused)\s*:\s*(.+)$", text):
+    for match in _ATTENDANCE_STATUS_RE.finditer(text):
         status = match.group(1).lower()
-        for name in re.split(r",|;|\s{2,}|\s+and\s+", match.group(2).strip()):
-            name = re.sub(r"\s+", " ", name).strip(" .")
+        for name in _ATTENDANCE_SPLIT_RE.split(match.group(2).strip()):
+            name = _WHITESPACE_RE.sub(" ", name).strip(" .")
             if name and len(name) > 1:
                 result.append({"name": name, "status": status, "evidence": match.group(0)[:500]})
     return result
+
+
+_VOTE_HEADING_RE = re.compile(r"\s*(?:item\s+)?(\d+[A-Za-z.]*)[.)\-:]\s*(.+)$", re.I)
+_VOTE_KEYWORD_RE = re.compile(r"\b(vote|ayes?|nays?|motion|approved|opposed)\b", re.I)
+_VOTE_MEMBER_FIRST_RE = re.compile(
+    r"([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){1,3})\s*[-:–]\s*(yes|no|absent|recused|abstain(?:ed)?)\b",
+    re.I,
+)
+_VOTE_VALUE_FIRST_RE = re.compile(
+    r"\b(yes|no|absent|recused|abstain(?:ed)?)\s*[:=-]\s*([^;]+)", re.I
+)
+_VOTE_SPLIT_RE = re.compile(r",|\band\b")
 
 
 def parse_votes(text: str, *, roster: list[dict] | None = None) -> list[dict]:
@@ -1063,16 +1080,12 @@ def parse_votes(text: str, *, roster: list[dict] | None = None) -> list[dict]:
     votes: list[dict] = []
     current_item: str | None = None
     for line in text.splitlines():
-        heading = re.match(r"\s*(?:item\s+)?(\d+[A-Za-z.]*)[.)\-:]\s*(.+)$", line, re.I)
+        heading = _VOTE_HEADING_RE.match(line)
         if heading:
             current_item = heading.group(2).strip()
-        if not re.search(r"\b(vote|ayes?|nays?|motion|approved|opposed)\b", line, re.I):
+        if not _VOTE_KEYWORD_RE.search(line):
             continue
-        for name, value in re.findall(
-            r"([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){1,3})\s*[-:–]\s*(yes|no|absent|recused|abstain(?:ed)?)\b",
-            line,
-            re.I,
-        ):
+        for name, value in _VOTE_MEMBER_FIRST_RE.findall(line):
             member = canonical_member(name.strip())
             if member is None:
                 continue
@@ -1084,10 +1097,8 @@ def parse_votes(text: str, *, roster: list[dict] | None = None) -> list[dict]:
                     "evidence": line[:500],
                 }
             )
-        for value, names in re.findall(
-            r"\b(yes|no|absent|recused|abstain(?:ed)?)\s*[:=-]\s*([^;]+)", line, re.I
-        ):
-            for name in re.split(r",|\band\b", names):
+        for value, names in _VOTE_VALUE_FIRST_RE.findall(line):
+            for name in _VOTE_SPLIT_RE.split(names):
                 name = name.strip(" .")
                 if name and name.lower() not in allowed:
                     member = canonical_member(name)

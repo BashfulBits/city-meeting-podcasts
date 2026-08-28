@@ -1305,7 +1305,6 @@ def render_digest(
             lines.append(
                 f"| `{tag.id}` | {phrases} | {excludes} | {include_count} | {exclude_count} |"
             )
-    lines.extend(["", "## Review children", ""])
     if not selected:
         lines.append("No unreviewed candidates are currently eligible for a review child.")
     else:
@@ -1315,7 +1314,17 @@ def render_digest(
                 f"- [ ] `{cid}` — `{candidate.get('id') or candidate.get('label')}` "
                 f"at `{float(candidate.get('confidence', 0.0)):.3f}`"
             )
-    return "\n".join(lines) + "\n"
+    body = "\n".join(lines) + "\n"
+    max_chars = 60000
+    if len(body) > max_chars:
+        # Truncate at previous newline to preserve markdown layout and append artifact note
+        cutoff = body.rfind("\n", 0, max_chars - 200)
+        cutoff = cutoff if cutoff > 0 else (max_chars - 200)
+        body = (
+            body[:cutoff] + "\n\n*(Digest body truncated to stay within GitHub 64KB limit. "
+            "Full matrix in run artifacts.)*\n"
+        )
+    return body
 
 
 __all__ = [

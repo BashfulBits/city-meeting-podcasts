@@ -158,3 +158,18 @@ def test_validate_build_rejects_xxe(tmp_path):
     assert not warnings
     assert any("malicious-city/audio_feed.xml" in fatal for fatal in fatals)
     assert any("not well-formed XML" in fatal for fatal in fatals)
+
+
+def test_validator_uses_the_first_enclosure():
+    """The validator must keep the original first-enclosure behavior."""
+    xml = f'''<rss version="2.0" xmlns:itunes="{ITUNES}"><channel>
+    <title>Test</title><link>http://example.com</link><description>desc</description>
+    <itunes:author>Author</itunes:author>
+    <itunes:category text="Society &amp; Culture"/>
+    <itunes:image href="http://example.com/art.jpg"/>
+    <item><title>Episode</title><guid>1</guid><pubDate>today</pubDate>
+    <enclosure url="" type="audio/mpeg"/>
+    <enclosure url="https://example.com/episode.mp3" type="audio/mpeg"/>
+    </item></channel></rss>'''.encode()
+
+    assert validate_feed(xml) == ["item[0] enclosure missing url"]

@@ -44,9 +44,6 @@ jobs:
           restore-keys: |
             r7-pyannote-community-1-${{ runner.os }}-
 
-      - name: Install pinned diarization runtime
-        run: pip install -e ".[asr,storage]" -c constraints/asr.txt
-
       # pyannote.audio 4 decodes through torchcodec, which dynamically loads FFmpeg's shared
       # libav* libraries. A standalone/static ffmpeg binary is not sufficient, and ffmpeg is no
       # longer guaranteed to be present on the moving ubuntu-latest runner image.
@@ -56,6 +53,9 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends ffmpeg
           ffmpeg -version >/dev/null
           ldconfig -p | grep -q 'libavcodec.so'
+
+      - name: Install pinned diarization runtime
+        run: pip install -e ".[asr,storage]" -c constraints/asr.txt
 
       - name: Preflight pyannote model access
         env:

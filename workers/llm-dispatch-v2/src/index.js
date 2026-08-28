@@ -53,6 +53,7 @@ function describeError(err) {
   }
 }
 
+/** Fail fast when a deployment configuration would violate scheduler safety bounds. */
 export function validateConfig(env) {
   const dispatchWindow = Number(env.DISPATCH_WINDOW_SECONDS || 25);
   const maxResponse = Number(env.MAX_RESPONSE_SECONDS || 720);
@@ -61,8 +62,12 @@ export function validateConfig(env) {
   const cronLimit = Number(env.CRON_EXECUTION_LIMIT_SECONDS || 900);
   const cronTick = Number(env.CRON_TICK_SECONDS || 60);
   const maxBundlesPerDay = Number(env.MAX_BUNDLES_PER_UTC_DAY || 1000);
+  const maxBundleJobs = Number(env.MAX_BUNDLE_JOBS || 4);
+  const maxJobsPerModelClaim = Number(env.MAX_JOBS_PER_MODEL_CLAIM || maxBundleJobs);
   const maxConcurrentLanes = Number(env.MAX_CONCURRENT_ROUTE_LANES || 5);
-  const maxJobsPerDay = Number(env.MAX_JOBS_PER_UTC_DAY || 20000);
+  const maxJobsPerDay = Number(env.MAX_JOBS_PER_UTC_DAY || 5000);
+  const max5xxRetries = Number(env.MAX_5XX_RETRIES || 1);
+  const max5xxBackoffSeconds = Number(env.MAX_5XX_BACKOFF_SECONDS || 300);
 
   if (dispatchWindow + maxResponse + finalizationReserve > leaseDuration) {
     throw new Error(
@@ -84,6 +89,17 @@ export function validateConfig(env) {
     );
   }
 
+  if (
+    !Number.isInteger(maxJobsPerModelClaim) ||
+    maxJobsPerModelClaim < 1 ||
+    maxJobsPerModelClaim > maxBundleJobs
+  ) {
+    throw new Error(
+      `Invalid config: MAX_JOBS_PER_MODEL_CLAIM (${maxJobsPerModelClaim}) must be an integer ` +
+      `from 1 to MAX_BUNDLE_JOBS (${maxBundleJobs})`
+    );
+  }
+
   if (maxConcurrentLanes > 5) {
     throw new Error(
       `Invalid config: MAX_CONCURRENT_ROUTE_LANES (${maxConcurrentLanes}) must leave headroom under Cloudflare's ` +
@@ -91,8 +107,23 @@ export function validateConfig(env) {
     );
   }
 
+  // AI Gateway has already exhausted its own configured fast retry series before the scheduler
+  // sees a final 5xx. Keep the durable fallback intentionally small so it cannot multiply calls.
+  if (!Number.isInteger(max5xxRetries) || max5xxRetries < 0 || max5xxRetries > 2) {
+    throw new Error("Invalid config: MAX_5XX_RETRIES must be an integer from 0 to 2");
+  }
+  if (
+    !Number.isInteger(max5xxBackoffSeconds) ||
+    max5xxBackoffSeconds < 60 ||
+    max5xxBackoffSeconds > 300
+  ) {
+    throw new Error("Invalid config: MAX_5XX_BACKOFF_SECONDS must be an integer from 60 to 300");
+  }
+
   // Check projected Free resource usage stays below 75% threshold
-  const maxJobsBudget = 75000; // 75% of 100,000 DO row-writes/day
+  // A queued job writes its job row plus one or more model-index rows, and a claimed job removes
+  // those index rows. The 5k ceiling leaves room for the documented dispatch lifecycle writes.
+  const maxJobsBudget = 5000;
   if (maxJobsPerDay > maxJobsBudget) {
     throw new Error(
       `Invalid config: MAX_JOBS_PER_UTC_DAY (${maxJobsPerDay}) exceeds 75% of included daily limit (${maxJobsBudget})`
@@ -104,6 +135,58 @@ export function validateConfig(env) {
     throw new Error(
       `Invalid config: ESTIMATED_CALL_DURATION_CEILING_SECONDS (${estimatedCallDurationCeiling}) ` +
       `must be < DISPATCH_WINDOW_SECONDS (${dispatchWindow})`
+    );
+  }
+
+  // Retention/cleanup bounds. A zero per-tick prune cap is a deliberate emergency pause, but a
+  // zero or negative retention window would delete records the moment they turn terminal --
+  // including a bundle a late completeBatch could still legitimately settle.
+  for (const name of ["BUNDLE_RETENTION_DAYS", "ATTEMPT_RETENTION_DAYS"]) {
+    if (env[name] === undefined) continue;
+    const days = Number(env[name]);
+    if (!Number.isInteger(days) || days < 1) {
+      throw new Error(`Invalid config: ${name} must be an integer of at least 1`);
+    }
+  }
+  for (const name of ["MAX_BUNDLE_PRUNE_PER_TICK", "MAX_ATTEMPT_PRUNE_PER_TICK", "PURGE_BATCH_LIMIT"]) {
+    if (env[name] === undefined) continue;
+    const value = Number(env[name]);
+    if (!Number.isInteger(value) || value < 0) {
+      throw new Error(`Invalid config: ${name} must be a non-negative integer`);
+    }
+  }
+  // Divisors of 60 only: getUTCMinutes() % intervalMinutes === 0 does not fire evenly spaced
+  // ticks for a non-divisor (e.g. 7 fires at :00,:07,...,:56, then :00 again -- a 4-minute gap,
+  // not 7). Every other value in [1, 60] repeats an identical, evenly-spaced pattern every hour.
+  const cleanupInterval = Number(env.CLEANUP_INTERVAL_MINUTES ?? 60);
+  if (
+    !Number.isInteger(cleanupInterval) ||
+    cleanupInterval < 1 ||
+    cleanupInterval > 60 ||
+    60 % cleanupInterval !== 0
+  ) {
+    throw new Error(
+      "Invalid config: CLEANUP_INTERVAL_MINUTES must be a positive divisor of 60 (1-60)"
+    );
+  }
+
+  // Cleanup deletes up to two B2 keys (payload + result) per purged job, in the same Worker
+  // invocation as claimDispatchWindow's own dispatch traffic (see runScheduledDispatch, which
+  // costs up to MAX_BUNDLE_JOBS * 2 B2 subrequests: one payload GET and one result PUT per job).
+  // Both must fit Cloudflare's fixed 50-subrequest-per-invocation Free-plan ceiling (identical on
+  // Paid; see review/44's "Cloudflare connection and subrequest limits"). A PURGE_BATCH_LIMIT
+  // sized only against job count, with no regard for the two-keys-per-job cost or dispatch's own
+  // share of the same budget, is exactly the "size every bounded knob against its real ceiling,
+  // not an assumed one" mistake the 2026-08-27 rows-read incident was about, just against a
+  // different budget (Worker subrequests, not DO rows read).
+  const purgeBatchLimit = Number(env.PURGE_BATCH_LIMIT ?? 15);
+  const purgeSubrequests = purgeBatchLimit * 2;
+  const dispatchSubrequests = maxBundleJobs * 2;
+  if (purgeSubrequests + dispatchSubrequests > 40) {
+    throw new Error(
+      `Invalid config: PURGE_BATCH_LIMIT (${purgeBatchLimit}) costs up to ${purgeSubrequests} B2 ` +
+      `subrequests per cleanup tick, which together with MAX_BUNDLE_JOBS (${maxBundleJobs})'s own ` +
+      `up to ${dispatchSubrequests} leaves no headroom under Cloudflare's 50-subrequest-per-invocation ceiling`
     );
   }
 
@@ -237,6 +320,32 @@ export async function handleRequest(request, env) {
     } catch (err) {
       const detail = describeError(err);
       console.error(`pollBatch failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  if (request.method === "POST" && path === "/v2/jobs:ack-batch") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+
+    // Same {ids: [...]} shape and batch ceiling as poll-batch -- an ack always follows a poll, so
+    // it is never larger than the poll that produced it.
+    const maxBatch = Number(env.POLL_BATCH_MAX || 1000);
+    const validation = validatePollBatchRequest(body, maxBatch);
+    if (!validation.valid) {
+      return errorResponse(400, validation.error, validation.detail);
+    }
+
+    try {
+      const result = await coordinator.ackResults(body.ids);
+      return jsonResponse(result, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`ackResults failed: ${detail}`);
       return errorResponse(500, "coordinator_error", detail);
     }
   }
@@ -568,6 +677,64 @@ async function runScheduledDispatch(env) {
 }
 
 
+/**
+ * review/44's B2-only payload lifecycle: the DO owns the job rows but holds no B2 credentials,
+ * so retiring a terminal job is a two-phase handshake -- purgePendingBatch moves a bounded batch
+ * to 'purge_pending' and hands back their keys, this Worker deletes those keys, then confirmPurge
+ * drops the rows. Both DO methods have existed (and been tested) since Phase 2 but nothing ever
+ * called them, so `jobs` and its B2 objects grew without bound.
+ *
+ * Crash-safe by construction: a failure after the B2 deletes but before confirmPurge simply
+ * repeats on the next run (confirmPurge is idempotent), and a key that is already gone deletes
+ * cleanly. A job is only ever eligible once it is terminal AND older than
+ * COMPLETED_RETENTION_DAYS, so this can never delete a result a client has not had the chance
+ * to read.
+ */
+async function runScheduledCleanup(env, scheduledTime) {
+  const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 60);
+  if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
+  // Cloudflare always supplies scheduledTime for a real cron firing. Without it we cannot know
+  // where in the cadence we are, so skip rather than run this on every single tick.
+  if (!Number.isFinite(scheduledTime)) return;
+  if (new Date(scheduledTime).getUTCMinutes() % intervalMinutes !== 0) return;
+
+  const b2 = b2ClientFromEnv(env);
+  if (!b2) return;
+  const coordinator = getCoordinator(env);
+  // Matches validateConfig's default and its subrequest-budget bound (2 B2 deletes per job).
+  const limit = Number(env.PURGE_BATCH_LIMIT || 15);
+
+  let pending;
+  try {
+    pending = await coordinator.purgePendingBatch(limit);
+  } catch (err) {
+    console.error(`scheduled: purgePendingBatch failed: ${describeError(err)}`);
+    return;
+  }
+  const jobs = pending?.jobs || [];
+  if (jobs.length === 0) return;
+
+  const purgedIds = [];
+  for (const job of jobs) {
+    const keys = [job.payload_key, job.result_key].filter(Boolean);
+    try {
+      await Promise.all(keys.map((key) => b2.delete(key)));
+      purgedIds.push(job.id);
+    } catch (err) {
+      // Leave this job in 'purge_pending' and retry it next run rather than confirming a purge
+      // whose B2 objects are still present -- dropping the row is what would orphan them.
+      console.error(`scheduled: B2 delete failed for job ${job.id}: ${describeError(err)}`);
+    }
+  }
+  if (purgedIds.length === 0) return;
+  try {
+    await coordinator.confirmPurge(purgedIds);
+  } catch (err) {
+    console.error(`scheduled: confirmPurge failed: ${describeError(err)}`);
+  }
+}
+
+
 export default {
   async fetch(request, env, ctx) {
     try {
@@ -585,6 +752,24 @@ export default {
       console.error("scheduled: configuration_error", err);
       return;
     }
-    ctx.waitUntil(runScheduledDispatch(env));
+    // Both run detached via ctx.waitUntil with no caller left to catch a rejection -- an
+    // uncaught throw inside either (e.g. the claimDispatchWindow DO RPC, called unguarded below)
+    // becomes an unhandled rejection, which Cloudflare surfaces as a bare `outcome: "exception"`
+    // with the cron pattern as the message and no other detail (confirmed against production
+    // 2026-08-28: an occurrence of exactly this shape, right after this schema/retention work
+    // deployed, carried nothing beyond "* * * * *" -- the real cause was never recoverable from
+    // that log entry). Catch and log with full detail here, matching describeError's existing use
+    // everywhere else in this file, rather than adding yet another incident where the actual
+    // error was thrown away by the runtime's own reporting.
+    ctx.waitUntil(
+      runScheduledDispatch(env).catch((err) => {
+        console.error(`scheduled: runScheduledDispatch failed: ${describeError(err)}`);
+      })
+    );
+    ctx.waitUntil(
+      runScheduledCleanup(env, event?.scheduledTime).catch((err) => {
+        console.error(`scheduled: runScheduledCleanup failed: ${describeError(err)}`);
+      })
+    );
   },
 };

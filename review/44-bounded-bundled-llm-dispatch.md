@@ -85,6 +85,43 @@ then choose Paid Workers or a DO" sequence. It does not accelerate or alter the 
 It creates an independently deployable v2 path, allowing selected GitHub workflows to migrate and
 to roll back future submissions without losing accepted v2 jobs.
 
+**2026-08-26 maintainer-directed admission correction.** Cross-model FIFO and an arbitrary queue
+lookahead optimize fairness, not useful Free-tier throughput: a Mistral backlog can hide work for
+an independent, healthy model pool. V2 therefore materializes each job's canonical allowed-model
+membership (including an explicit model with no configured route yet), ranks model pools from the
+small live route ledger, and probes only a bundle-sized candidate set from each. The benefit is that
+the DO's expensive exact token/lane calculation runs
+only where capacity is likely available; the cost is one or more small SQLite index writes per job
+at enqueue and their removal at lease. The configured 5,000-job/day ingress cap retains write
+headroom for that trade-off. This does **not** adopt V1's `model_routing` fallback: model membership
+comes only from the caller's own `allowed_models` after aliases are resolved.
+
+**2026-08-26 review fixes.** Code review of the admission correction above found three gaps,
+fixed before merge:
+
+- *Oversized-job starvation.* `_modelsForQueuedJob` now omits a canonical model from a job's index
+  membership when every one of that model's currently configured routes has a smaller
+  input/output context limit than the job's own token estimates (checked independent of live
+  RPM/RPD/TPM/`blocked_until` state, which fluctuates and must never exclude a job from the
+  index). Without this, a handful of oversized jobs land at the head of that model's bounded
+  `MAX_JOBS_PER_MODEL_CLAIM` candidate window and stay there forever — `routesEligibleFor`'s live
+  check always returns empty for them, so `claimDispatchWindow` re-reads the exact same unclaimed
+  rows every tick, and a smaller, perfectly dispatchable job queued behind them is never even
+  read. A job left with no fitting model at all falls through to the existing `__unroutable__`
+  sentinel, exactly like a malformed/unknown-model policy already does.
+- *Stale indexed priority.* A `trg_jobs_priority_sync` SQLite trigger now propagates a direct
+  `jobs.priority` edit into `job_models.priority`. `job_models.priority` was otherwise set once, at
+  enqueue/backfill time; the documented operator recovery/testing path above ("a direct edit
+  through Cloudflare's dashboard Data Studio or `wrangler dev`'s Local Explorer SQL Studio") would
+  otherwise silently never change admission order, since the index row already exists and backfill
+  never revisits an already-indexed job.
+- *Repeated queue-head migration work.* `claimDispatchWindow` captured the maximum SQLite
+  `jobs.rowid` at rollout, then advanced `scheduler.job_models_backfill_cursor` only through that
+  finite range, instead of the former `NOT EXISTS` queue-head scan, which could repeatedly revisit
+  repaired rows as a large historical backlog drained. Both this and the legacy `retryable`-state
+  recovery migration completed in production and their code was retired 2026-08-28 — see "Retired:
+  the rollout compatibility migrations" below.
+
 ## Why cron pull, not Queue or a queue object
 
 The initial v2 design used a Queue for a durable DO-to-Worker handoff. That is unnecessary when the
@@ -96,8 +133,9 @@ Worker reads a manifest but before it invalidates it could discard a newer ready
 lost-work shape as the earlier agenda race. The DO's SQLite transaction is the sole claim point.
 
 There is therefore no B2 queue-manifest read or write. A Worker performs one `claimDispatchWindow`
-RPC; B2 is only prompt/result storage. The DO selects across all ready routes rather than exposing
-the first objects in a storage prefix, eliminating route head-of-line blocking.
+RPC; B2 is only prompt/result storage. The DO ranks the small set of model pools by live free
+capacity and asks an indexed model queue for only a bundle-sized candidate set, so a blocked route
+prefix cannot hide later eligible work or force an unbounded read of the global queue.
 
 ### Cron pull vs. a Cloudflare Queue push, reasoned from the actual bottleneck
 
@@ -238,6 +276,7 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | Setting | Initial value | Purpose |
 | --- | ---: | --- |
 | `MAX_BUNDLE_JOBS` | 4 | Maximum LLM calls claimed by one Worker cron |
+| `MAX_JOBS_PER_MODEL_CLAIM` | 4 | Maximum indexed candidates read for one capacity-ranked model; equal to one bundle, so exact token/lane admission never evaluates an arbitrary global-queue prefix |
 | `MAX_JOBS_PER_ROUTE_PER_BUNDLE` | 4 | Allows a paced same-route sequence when it fits |
 | `MAX_CONCURRENT_ROUTE_LANES` | 5 | Hard cap on distinct routes (concurrent lanes) per bundle — stays under Cloudflare's 6-simultaneous-connection-per-invocation ceiling (identical on Free and Paid; see "Cloudflare connection and subrequest limits" below) |
 | `DISPATCH_WINDOW_SECONDS` | 25 | Latest planned provider-call start after a cron tick |
@@ -245,9 +284,14 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_ACTIVE_BUNDLES` | 2 | Bound for partially completed or abandoned dispatch plans |
 | `MAX_IN_FLIGHT_LLM_CALLS` | 8 | Separate global cap; avoids one slow bundle serializing all work |
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
-| `MAX_JOBS_PER_UTC_DAY` | 20,000–50,000 (profiled gate) | Hard ingestion admission cap, independent of dispatch — bounds `enqueueBatch` inserts so a backfill-scale ingest can't itself exhaust the shared DO SQLite row-write budget (see Demand model and the split budget below) |
+| `MAX_JOBS_PER_UTC_DAY` | 5,000 | Hard ingestion admission cap. This matches the ~4,000 daily dispatch ceiling while reserving Free-tier SQLite write headroom for each job's model-index rows and lease-time index removal |
 | `ENQUEUE_BATCH_MAX` | profiled gate (target: low hundreds to low thousands of jobs/call) | Jobs accepted per single `enqueue-batch` RPC — sized so reaching `MAX_JOBS_PER_UTC_DAY` takes tens of calls, not thousands |
 | `POLL_BATCH_MAX` | profiled gate (target: enough to cover the largest single reconciliation sweep in one call — see note below) | Statuses/results returned per single `poll-batch` RPC |
+
+The `MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM`/`MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM`/
+`MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY`/`MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY` knobs that used to be
+documented here governed the two rollout compatibility migrations; both completed in production and
+their code was retired — see "Retired: the rollout compatibility migrations" below.
 
 **`POLL_BATCH_MAX` covers two different traffic shapes; size it for the larger one.** There are two
 distinct poll use cases, not one: (a) the automated `JobHandle` reconciliation sweep that runs as
@@ -262,8 +306,9 @@ enqueue/poll split for today's incident (Verification) before finalizing this va
 | `LEASE_DURATION_SECONDS` | 840 | Covers deadline; stays below cron duration |
 | `MAX_429_RETRIES` | 1 | Bounded same-route retry attempts inside one executor bundle |
 | `MAX_429_BACKOFF_SECONDS` | 60 | Upper bound for in-Worker `Retry-After` sleep |
+| `MAX_5XX_RETRIES` | 1 | One durable outer retry after AI Gateway has exhausted its own fast retry series |
+| `MAX_5XX_BACKOFF_SECONDS` | 300 | Five-minute ceiling for the 60-second exponential durable 5xx delay |
 | `UNKNOWN_ATTEMPT_POLICY` | hold | Unsupported-provider crash after send; never silently reissue |
-| `MAX_QUEUE_WAIT_SECONDS` | 3,600 | Aging escape hatch before size-based ordering |
 | `ESTIMATE_MARGIN` | profiled gate | Conservative route/model/prompt-family reservation floor |
 | `MAX_BUNDLE_PAYLOAD_BYTES` | profiled gate | Required cap before v2 deployment |
 | `MAX_BUNDLE_RESULT_BYTES` | profiled gate | Required cap before v2 deployment |
@@ -279,8 +324,8 @@ there is work, so their fixed daily cost is accounted for separately:
 | Cron/executor Worker requests | 1,440 ticks | 100,000 |
 | Scheduler DO requests | 1,440 claim + <=4k start + 1k finish + <=4k retry | 100,000 |
 | DO SQLite row writes — dispatch-lifecycle | under 45,000 plus bounded cleanup (lease + `attemptStarted` + `completeBatch` + cleanup; profiled gate — scales with `MAX_BUNDLE_JOBS`/`MAX_BUNDLES_PER_UTC_DAY`) | shares the 100,000 total below with ingestion |
-| DO SQLite row writes — ingestion | one insert per `enqueueBatch`-admitted job, up to `MAX_JOBS_PER_UTC_DAY` (profiled gate) | shares the 100,000 total below with dispatch-lifecycle |
-| DO SQLite row writes — combined total | dispatch-lifecycle + ingestion, held under the 75% admission-rejection threshold | 100,000 |
+| DO SQLite row writes — ingestion/index | one job insert plus one or more canonical-model index inserts per admitted job; the selected job's index rows are removed at lease time. `MAX_JOBS_PER_UTC_DAY=5,000` protects dispatch headroom | shares the 100,000 total below with dispatch-lifecycle |
+| DO SQLite row writes — combined total | dispatch-lifecycle + ingestion/index, held under the 75% admission-rejection threshold | 100,000 |
 | Queue operations | 0 | 10,000 |
 | R2 operations from v2 | 0 | shared R2 allowance |
 | LLM calls | up to 4,000 (see Demand model — this is the Free-tier-budget-driven ceiling, not a provider-capacity one; real aggregate route capacity is ~66,620+/day) | provider- and Gateway-limited |
@@ -356,8 +401,8 @@ The DO creates SQLite-backed tables in its constructor. Payload bytes are exclud
 
 - **`jobs`:** `id`, unique `idempotency_key`, stable provider idempotency key, state, policy
   metadata, prompt family, conservative input/max-output token estimates, `payload_key`,
-  `result_key`, and `priority` (`0` = admit/dispatch first, `1` = default); one compact control row
-  per LLM job.
+  `result_key`, `transient_retry_count`, and `priority` (`0` =
+  admit/dispatch first, `1` = default); one compact control row per LLM job.
 - **`routes`:** `route_id`, paced availability, full token-bucket budget, provisional reservations,
   settled usage, cost, and 429 state; the per-route/account ledger and adaptive buffer.
 - **`bundles`:** `bundle_id`, state, lease expiry, active-call count, and dispatch-window end; the
@@ -366,13 +411,19 @@ The DO creates SQLite-backed tables in its constructor. Payload bytes are exclud
   and outcome; compact audit rows used to settle a provisional reservation from actual execution.
 - **`estimates`:** route/model/prompt-family conservative margin, sample count, and bounded recent
   observed usage summary; it cannot lower a reservation below `ESTIMATE_MARGIN`.
-- **`scheduler`:** UTC bundle count, cleanup cursor, and next maintenance alarm; small singleton
-  state.
+- **`scheduler`:** UTC bundle count, cleanup cursor, next maintenance alarm; small singleton state.
+  The table retains the columns the two rollout compatibility migrations wrote (one-time completion
+  flags, a fixed backfill high-water mark/cursor, per-job model-offset continuations, and UTC
+  migration read/write counters) on already-migrated instances, but no code reads or writes them
+  any more — see "Retired: the rollout compatibility migrations" below.
 
 Job states are `queued`, `leased`, `unknown_attempt`, `completed`, `retryable`, `failed`, and
-`purge_pending`. A job lease carries an opaque `lease_token`; an executor must present that exact
-token to settle it. A bundle has a separate execution token, preventing overlapping cron
-invocations from issuing duplicate provider calls.
+`purge_pending`. `retryable` was only ever written by pre-fix deployments and is no longer produced
+by current code; nothing recovers a row already stuck in it (the migration that did so completed
+and was retired). A job lease
+carries an opaque `lease_token`; an executor must present that exact token to settle it. A bundle
+has a separate execution token, preventing overlapping cron invocations from issuing duplicate
+provider calls.
 
 ### Ingress and status APIs
 
@@ -420,14 +471,17 @@ rather than corrupting an earlier job.
 2. At each one-minute cron tick, the executor calls `claimDispatchWindow(now, 25 seconds)`. The DO
    limits the plan by remaining bundle and in-flight-call capacity; it may return a partial plan. If
    a cap prevents admission, it returns an empty plan promptly.
-3. In one transaction, the DO considers each candidate route's RPM gap, rolling TPM reservation,
-   configured buffer, and repeated-429 `blocked_until`. `priority=0` jobs are ordered ahead of
-   `priority=1` jobs within an otherwise-eligible set — a simple binary tie-breaker, not a
-   scheduling class of its own. It first fills slots from distinct eligible routes. A job that has
-   waited `MAX_QUEUE_WAIT_SECONDS` wins its eligible ordering bucket. For all other jobs, when more
-   routes are eligible than slots and when filling remaining slots, it prefers larger conservative
-   token estimates, then stable FIFO order. Only after that first pass may a second job from a route
-   fill a slot. `priority` is set once, at `enqueueBatch` time (see the ingress API above); an
+3. In one transaction, the DO reads the live ledger for its small static model catalog and scores
+   each model pool by the RPD-weighted mean of its routes' free-capacity fractions. A route's
+   fraction is the minimum of its RPM, RPD, and refillable-TPM fractions; a paused `rpd: 0`, an
+   in-window buffer, or any live `blocked_until` (including 402 backoff) is zero. It visits nonzero model pools from
+   highest score to lowest, reads at most `MAX_JOBS_PER_MODEL_CLAIM` jobs from that model's indexed
+   queue, and runs the exact per-job RPM/RPD/TPM/lane check only for those candidates. Thus the
+   coarse score chooses where to look, never overrides the final safety gate. This deliberately
+   favors maximum current dispatch throughput over cross-model FIFO: a later Gemini job may run
+   before an earlier Mistral job when Gemini has more free capacity. `priority=0` remains ahead of
+   `priority=1` and `created_at` remains the ordering inside a model pool. The existing distinct
+   route-lane and per-route bundle caps still apply. `priority` is set once, at `enqueueBatch` time (see the ingress API above); an
    operator changing it on an already-`queued` job for recovery/testing is a direct edit through
    Cloudflare's dashboard Data Studio or `wrangler dev`'s Local Explorer SQL Studio (both support
    browsing and writing SQLite-backed DO storage — [Access Durable Objects
@@ -490,20 +544,29 @@ DISPATCH_WINDOW_SECONDS + MAX_RESPONSE_SECONDS + FINALIZATION_RESERVE_SECONDS
 Thus a healthy Worker has time to persist results and settle its lease, while a stalled Worker is
 eventually reaped. The DO alarm is scheduled for that explicit lease expiry.
 
-### Timeout and 429 behavior
+### Gateway, timeout, 429, and 5xx behavior
 
 The executor owns bounded request-level waiting only:
 
 - It creates one abort controller per provider request and a shared bundle deadline.
+- AI Gateway's configured retry series happens *inside* that one outbound `fetch()`. The executor
+  receives only its eventual response after the Gateway has exhausted those short attempts, or a
+  transport/abort error; it does not see or independently account for individual Gateway tries.
 - A first `429` asks the DO for `authorizeRetry` before sleeping or retrying. This rare RPC records
   the actual first attempt and either returns a fenced retry time that fits the shared deadline or
   declines the retry. It does not pre-reserve every successful job's second request.
 - An authorized retry becomes a route-lane barrier. It postpones only not-yet-started jobs on that
   route; other route lanes continue. A job shifted past the bundle deadline is `deferred_late` and
   returns to the DO instead of violating the route's rate limit.
-- Any final 429, timeout, transport failure, or malformed upstream response is sent in the one
-  `completeBatch` RPC as a retryable or terminal result. A normal upstream 429 never causes an
-  uncontrolled Worker retry or a second cron admission.
+- A final Gateway 5xx gets at most one **durable** outer retry: `completeBatch` returns the job to
+  `queued`, restores its normal indexed model membership, and briefly sets the failed route's
+  `blocked_until` (60 seconds, capped at five minutes if the outer-retry budget is raised). The next
+  cron therefore uses the usual indexed claim and can select another healthy model/account while
+  this route recovers. The retry cap prevents a Gateway outage from multiplying requests indefinitely.
+- Timeout, transport, malformed-response, and result-write failures are ambiguous without a
+  provider idempotency guarantee. They are surfaced as `failed` after completion rather than being
+  silently left as `retryable`; operators/callers can make an explicit replay decision.
+- A normal upstream 429 never causes an uncontrolled Worker retry or a second cron admission.
 - The DO treats a missing executor after its lease expires conservatively: it does not refund an
   already-admitted provider request. It requeues with backoff and a new lease, preventing a crash
   from causing rate-limit oversubscription.
@@ -535,21 +598,59 @@ limits" and "Ingress and status APIs").
 
 - **`payloads/<job-id>/request.json`:** written by the caller; retained until terminal job cleanup.
 - **`results/<job-id>/<lease-token>.json`:** written by the executor Worker; retained for
-  `COMPLETED_RETENTION_DAYS`.
+  `COMPLETED_RETENTION_DAYS`, or until a consumption ack retires the job sooner (see below).
 
-The scheduler indexes terminal rows by `completed_at`. A daily bounded maintenance request (run from
-the executor Worker, which already holds B2 credentials) asks the DO for at most `CLEANUP_BATCH_SIZE`
-`purge_pending` jobs, deletes their B2 payload/result keys, and calls `confirmPurge` to remove the
-corresponding SQLite rows. The operation is idempotent: a crash after B2 deletion merely repeats a
-delete. It never performs an unbounded B2 or DO list. B2's existing version-retention backstop keeps
-accidental deletions recoverable for its configured window. Size `CLEANUP_BATCH_SIZE` (and
-`ORPHAN_SWEEP_LIMIT` below) well under the per-invocation subrequest ceiling (50 Free / 10,000 Paid;
-see "Cloudflare connection and subrequest limits") — each purged/swept key is its own B2 delete
-subrequest, same accounting as everywhere else in this design.
+The scheduler indexes terminal rows by `updated_at` (`idx_jobs_state_updated`). An hourly bounded
+maintenance request, gated by `CLEANUP_INTERVAL_MINUTES` (run from the executor Worker's own
+`scheduled()` handler, which already holds B2 credentials), asks the DO for at most
+`PURGE_BATCH_LIMIT` `purge_pending` jobs, deletes their B2 payload/result keys, and calls
+`confirmPurge` to remove the corresponding SQLite rows. The operation is idempotent: a crash after
+B2 deletion merely repeats a delete -- `purgePendingBatch` re-lists a row still stuck in
+`purge_pending` from an interrupted prior run before it lists any newly-eligible one, so nothing
+orphans permanently. It never performs an unbounded B2 or DO list. B2's existing version-retention
+backstop keeps accidental deletions recoverable for its configured window.
+
+`PURGE_BATCH_LIMIT` (and `ORPHAN_SWEEP_LIMIT` below) must stay well under the per-invocation
+subrequest ceiling (50 Free / 10,000 Paid; see "Cloudflare connection and subrequest limits") --
+each purged/swept job costs up to *two* B2 delete subrequests (payload and result keys), not one,
+and this cleanup shares its invocation's subrequest budget with `claimDispatchWindow`'s own
+concurrent dispatch traffic. `validateConfig` enforces this bound; see the 2026-08-27 retrospective
+for the incident this generalizes from (`bundles`/`attempts` retention hit the analogous DO
+rows-read budget, not the Worker subrequest one, but the "size every bounded knob against its real
+ceiling, not an assumed one" lesson is the same).
 
 A separate cursor-based orphan sweep examines at most `ORPHAN_SWEEP_LIMIT` old B2 payload keys per
 run. It deletes a key only after the DO confirms its preassigned job id was never accepted. This
 recovers ingress-before-DO failures without a catalog-wide B2 list.
+
+### Consumption ack (added 2026-08-27)
+
+The retention window above is a *backstop*, not the intended trigger. The precise moment a job's DO
+row and its B2 objects stop being needed is when the client has fetched the result, validated it,
+and durably written it to the deferred registry — `write_deferred` in
+`citypods/compute/llm_deferred.py`. Until 2026-08-27 nothing communicated that: `delete_dispatched_ref`
+is a **v1-only** path (it DELETEs `/v1/requests/{id}` against `dispatch_url`), and v2 had no
+equivalent, so a completed job sat in SQLite and B2 for the full `COMPLETED_RETENTION_DAYS` (38)
+regardless of having been consumed minutes after it completed.
+
+`POST /v2/jobs:ack-batch` closes that gap. The client calls it once per poll chunk — not per job —
+after `write_deferred` succeeds, and the DO moves those jobs straight to `purge_pending` so the
+existing hourly cleanup releases the row and both B2 objects on its next run. This collapses
+effective retention from 38 days to ~1 hour, which keeps `jobs` small (smaller indexes, fewer rows
+read) and returns B2 storage 38x sooner.
+
+**Ack only a validated success.** A job whose result failed structured-output validation must *not*
+be acked: the sweep's schema-correction path (`retry_malformed_dispatched`) still needs the original,
+and `LLMDispatchTerminalError` handling depends on the row. The time-based purge remains the
+backstop for anything never acked — a client that crashed between fetch and ack, or a registry
+record pruned before its sweep.
+
+### Bookkeeping-table retention
+
+`bundles` and `attempts` are the two tables with no B2 counterpart and no client-side reader, so
+they need no handshake at all and age out entirely inside the DO. See the 2026-08-27 retrospective
+below for why they must also be *indexed* for that pruning, and why nothing in this design may
+assume a per-tick statement is cheap without measuring it.
 
 ## Implementation plan
 
@@ -683,15 +784,18 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
 > complete and before v2 carries any real dispatch traffic.**
 
 - Fenced admission (`claimDispatchWindow`): enforce bundle, per-route, active-bundle, in-flight-call,
-  and UTC daily caps. Choose `priority=0` jobs first, then distinct eligible routes, then larger
-  conservative token estimates, with FIFO only as the final tie-breaker; use aging once
-  `MAX_QUEUE_WAIT_SECONDS` elapses. Calculate route-lane waits from RPM, rolling TPM estimates,
-  full-bucket recovery, route buffer, and 429 state; reserve the maximum of input/max-output,
-  calibrated margin, and configured floor. Test normal, late, and late-429 timing before returning a
-  bundle. Reserve only the initial call before returning a bundle — `authorizeRetry` makes a
-  separate, fenced reservation only after an actual 429; retain admitted reservations after an
-  ambiguous executor loss. Return an empty plan rather than a future plan when the first safe start
-  is outside the dispatch window.
+  and UTC daily caps. Materialize canonical allowed-model membership at enqueue, rank those model
+  pools by live aggregate free capacity, and read at most one bundle's worth of indexed candidates
+  from each nonzero pool. Treat a 402 block, paused route, or exhausted route capacity as zero, but
+  retain RPM/RPD/TPM/lane computation as the exact per-job final gate. This maintainer-directed
+  correction explicitly favors useful current dispatch over cross-model FIFO; priority and
+  submission time remain ordering only within a model pool. Calculate route-lane waits from RPM,
+  rolling TPM estimates, full-bucket recovery, route buffer, and 429 state; reserve the maximum of
+  input/max-output, calibrated margin, and configured floor. Test normal, late, and late-429 timing
+  before returning a bundle. Reserve only the initial call before returning a bundle —
+  `authorizeRetry` makes a separate, fenced reservation only after an actual 429; retain admitted
+  reservations after an ambiguous executor loss. Return an empty plan rather than a future plan when
+  the first safe start is outside the dispatch window.
 - Executor and 429 adaptation: implement the cron handler as one bounded paced `Promise.allSettled`
   operation. Ask the DO for one plan and return immediately for no work. Run route lanes
   independently; honor relative `wait_ms`, actual predecessor start, retry barriers, and the
@@ -926,6 +1030,159 @@ property of the maintenance-lease mechanism itself, not something Phase 1/2 intr
 only because it repeatedly interrupted testing this rollout and is easy to mistake for a v2 dispatch
 problem when it happens mid-incident.
 
+## Durable Objects rows-read overage retrospective (2026-08-27) — read before adding any DO query
+
+A second production incident, unrelated to the 2026-08-18 rollout bugs but sharing their defining
+property: it could not be found by reading the diff, every test in this repo passed throughout, and
+the code involved had been reviewed and shipped as correct.
+
+### What happened
+
+`LLMSchedulerDO` exhausted the Workers Free plan's **5,000,000 Durable Objects rows-read/day**
+budget. Once spent, every `jsrpc` call into the DO threw `Exceeded allowed rows read in Durable
+Objects free tier.` (153 of 2,000 sampled Workers Logs entries), so the cron dispatch tick,
+`enqueueBatch`, and `pollBatch` all failed until the daily reset.
+
+The metrics graph carried the diagnosis in plain sight: **rows read climbing steadily all day while
+rows written stayed flat at ~21k**. Reads that grow while writes do not means per-tick read cost is
+a function of *accumulated state*, not of workload — and a steadily rising line means the
+accumulation is still going.
+
+### Root cause
+
+`claimDispatchWindow` ran two statements against `bundles` on **every** cron tick — the
+lease-expiry sweep `UPDATE ... WHERE state='active' AND lease_expires_at < ?` and the
+`SELECT active_call_count ... WHERE state='active'` admission check. Two independent defects
+compounded:
+
+1. **`bundles` carried only its `bundle_id` primary key.** Both statements filter on `state`, so
+   both planned as `SCAN bundles`.
+2. **Nothing in the codebase ever deleted from `bundles`.** One row accumulated per claimed bundle,
+   forever, bounded only by `MAX_BUNDLES_PER_UTC_DAY` per day.
+
+So **rows read per tick = 2 x |bundles|**, growing without bound. Instrumenting the real coordinator
+(wrapping `sql.exec`, running an actual `claimDispatchWindow` against a seeded DB) attributed
+**6,400 of a tick's 6,424 rows read — 99.6% — to exactly those two statements** at 3,200 accumulated
+bundles. Back-solving from the observed ~6,667 rows/min at one tick per minute gives the same
+~3,200, consistent with ~355 bundles/day since Phase 2 went live on 2026-08-18.
+
+`attempts` had the same never-deleted property. It escaped the incident only because no query
+scans it — a latent storage problem, not a read problem.
+
+### Two wrong theories that cost a cycle each — and why
+
+Worth recording, because both were plausible, both were argued from the code, and both were wrong.
+
+1. **"The per-model candidate fan-out is reading the queue."** `claimDispatchWindow` queries up to
+   32 models per tick. But each query is `LIMIT MAX_JOBS_PER_MODEL_CLAIM` (4), so the ceiling is a
+   few hundred rows — an order of magnitude short of the observed number. **Arithmetic against the
+   configured bounds ruled this out before any code changed; it should have been the first step.**
+2. **"The `job_models JOIN jobs` claim query drives from the wrong table."** The theory was that
+   `jobs.state = 'queued'` is satisfiable by `idx_jobs_state_priority_created`, so the planner
+   *might* scan `jobs` and probe `job_models` per row. Reproducing it against `node:sqlite` —
+   uniform and skewed distributions, up to 50k rows, with and without `ANALYZE` — **never once
+   produced that plan**; SQLite consistently drove from `job_models` as intended. A rewrite based
+   on this theory was committed and then reverted. The real amplification risk in that query is
+   different and milder: the planner walks the *correct* index but must keep walking past rows
+   filtered out by `jobs.state`, which only bites if stale `job_models` rows accumulate — and they
+   do not, because they are deleted at lease time.
+
+**Guard:** a hypothesis about query cost is worth nothing until it is *measured*. Both wrong
+theories survived careful code reading and died within minutes of a real SQLite harness. Build the
+harness first.
+
+### Fix
+
+- **`bundles (state, created_at)`.** Both statements become index seeks over the `active` rows only
+  — a population `MAX_ACTIVE_BUNDLES` already bounds — so `lease_expires_at` is deliberately *not*
+  in the key. `created_at` is, because it also makes the terminal-bundle prune an ordered seek.
+  Same tick, same table sizes: **6,424 -> 30 rows read**.
+- **Retention for `bundles` and `attempts`** (`BUNDLE_RETENTION_DAYS`/`ATTEMPT_RETENTION_DAYS`,
+  default 7) on a bounded per-tick delete budget. Neither table has a B2 counterpart or a
+  client-side reader, so unlike `jobs` both age out entirely inside the DO with no coordination. A
+  bundle is removed only once terminal, past retention, **and** past its lease, so no late
+  `completeBatch` or `authorizeRetry` can lose one it could still legitimately settle. `attempts`
+  gains a `created_at` index so pruning is itself a bounded seek rather than the scan it exists to
+  prevent.
+- **`purgePendingBatch`/`confirmPurge` wired up.** Both shipped with Phase 2 *with tests* but were
+  called from nothing, so terminal `jobs` rows and their B2 payload/result objects were never
+  released. They now run from `scheduled()` on an hourly cadence.
+
+### The trap inside the fix
+
+Wiring up `purgePendingBatch` naively would have **reintroduced the same bug**. Its query filters
+`state IN ('completed','failed') AND updated_at < ?`, but the only index was
+`(state, priority, created_at)` — so it could seek on `state` and then had to read *every* terminal
+row to filter and sort on `updated_at`: **60,189 VDBE ops at 6,000 terminal jobs**, versus 367 with
+a `jobs (state, updated_at)` index.
+
+This is the subtle form of the bug class and the reason the guard below needs two invariants: the
+query plan says `SEARCH`, not `SCAN`, so it *reads* as correctly indexed while costing
+`O(history)`.
+
+### Standing guard: `workers/llm-dispatch-v2/test/rows-read.test.js`
+
+Per-query plan assertions only protect the queries someone thought to assert on. The guard asserts
+two invariants over the **whole RPC surface**, so a new method with the same defect fails without
+anyone remembering to extend the file:
+
+1. **No statement may `SCAN` a table that grows with traffic** (`jobs`, `job_models`, `bundles`,
+   `attempts`). `routes` and `scheduler` are exempt: both are bounded by static config.
+2. **Scale invariance** — the same operations against 10x the accumulated history must read about
+   the same number of rows. This catches what (1) cannot, including the `SEARCH`-shaped trap above.
+
+The estimator is a *scale-sensitivity probe, not a billing meter*: exact for the unbounded-scan
+class, conservative elsewhere. It attributes the real matching row count to any seek whose only
+constraint is `state=?` (however the predicate is written, `=` or `IN`), and assumes the whole table
+when it cannot parse the predicate.
+
+**It was validated by mutation testing, not assumed.** Dropping `bundles(state, created_at)`,
+`jobs(state, updated_at)`, `attempts(created_at)`, or
+`job_models(model, priority, created_at, job_id)`, or reverting the candidate lookup to a queue-head
+scan, each fails at least one invariant. Two gaps surfaced only because of that exercise: the
+estimator originally matched `state = 'x'` but not `state IN (...)` (so the purge trap escaped
+both invariants), and the fixture originally seeded only terminal history (so `job_models` never
+grew and its index was uncovered). **Any change to this guard must be re-validated the same way — a
+guard test that has never been seen to fail is not evidence of anything.**
+
+### Retired: the rollout compatibility migrations (2026-08-28)
+
+Phase 2's `claimDispatchWindow` shipped with two bounded, cron-tick-throttled compatibility
+migrations, both now retired from the codebase:
+
+- **`job_models` backfill.** Historical `jobs` rows written before `job_models` existed had no
+  index entry, so a forward-only cursor walked a fixed rowid high-water mark set at rollout,
+  indexing each one's allowed models in bounded per-tick batches (`_backfillQueuedJobModels`,
+  `MAX_QUEUED_JOB_MODEL_BACKFILL_PER_CLAIM`).
+- **Legacy `retryable` recovery.** Deployments before the final-5xx durable-retry fix left some
+  jobs stuck in a `retryable` state that current code never reads. A second bounded pass
+  (`_recoverLegacyRetryableJobs`, `MAX_LEGACY_RETRYABLE_RECOVERY_PER_CLAIM`) recovered them into
+  `queued`, sharing a daily read/write-unit budget with the backfill above
+  (`MAX_MIGRATION_WRITE_UNITS_PER_UTC_DAY`/`MAX_MIGRATION_ROWS_SCANNED_PER_UTC_DAY`).
+
+Both completions latch permanently in `scheduler.job_models_backfill_complete` and
+`scheduler.legacy_retryable_recovery_complete`, so once set they short-circuit their own migration
+on every later tick regardless of the throttle knobs' values. A 2026-08-28 Data Studio query against
+the live production instance (`f1bb60c9b364...`) confirmed both flags read `1` — both migrations had
+already finished — so the migration methods, their static write-unit constants, their config knobs
+(`_maxQueuedJobModelBackfillPerClaim`, `_maxLegacyRetryableRecoveryPerClaim`,
+`_maxMigrationWriteUnitsPerUtcDay`, `_maxMigrationRowsScannedPerUtcDay` and the matching
+`validateConfig`/`wrangler.jsonc` entries), and their per-tick state threading through
+`claimDispatchWindow` and `_rollUtcDayIfNeeded` were all removed as dead code, along with the tests
+that only existed to exercise them.
+
+The `scheduler` columns those migrations wrote (`job_models_backfill_complete` and its siblings,
+listed in "Data model" above) were deliberately **not** dropped from the live table — an unused
+column on a single-row table costs nothing, and `ALTER TABLE ... DROP COLUMN` against production
+data is an unnecessary risk for zero benefit. `_initSchema()`'s `CREATE TABLE IF NOT EXISTS` no
+longer declares them, so a genuinely fresh DO instance is created without them; `_ensureColumn` no
+longer retrofits them either, since every instance that needed the retrofit already has it.
+
+`jobs.state`'s `retryable` value and the `job_models` index-only-queue behavior it depended on
+(`claimDispatchWindow` deletes a job's `job_models` rows the moment it is leased, so a completed
+historical backlog can never make a later model lookup walk terminal rows) are both unaffected by
+this removal — current code simply never writes `retryable` any more.
+
 ## Implementation spec (build-unit handoff)
 
 The sections above establish *what* and *why*; this section adds the *how* at a level literal
@@ -969,6 +1226,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   lease_expires_at            INTEGER,
   bundle_id                   TEXT,
   attempts                    INTEGER NOT NULL DEFAULT 0,
+  transient_retry_count       INTEGER NOT NULL DEFAULT 0,
   created_at                  INTEGER NOT NULL,
   updated_at                  INTEGER NOT NULL
 );
@@ -1036,6 +1294,16 @@ CREATE TABLE IF NOT EXISTS scheduler (
   next_maintenance_alarm_at    INTEGER
 );
 ```
+
+An already-migrated instance's `scheduler` row also still carries the columns the two rollout
+compatibility migrations wrote (`job_models_backfill_complete`, `job_models_backfill_high_watermark`,
+`job_models_backfill_cursor`, `job_models_backfill_pending_rowid`, `job_models_backfill_model_offset`,
+`legacy_retryable_recovery_complete`, `legacy_retryable_recovery_job_id`,
+`legacy_retryable_recovery_model_offset`, `migration_rows_scanned_today`,
+`migration_write_units_today`) — left in place rather than dropped, since an unused column on a
+single-row table costs nothing and `ALTER TABLE ... DROP COLUMN` against live production data is an
+unnecessary risk for zero benefit. `_initSchema()`'s `CREATE TABLE IF NOT EXISTS` above is what a
+brand-new instance actually creates today; see "Retired: the rollout compatibility migrations" below.
 
 **Do not** add a `payload` or `response` column to any table above — B2 is the sole store for those
 (see "B2-only payload storage"). **Do not** use `AUTOINCREMENT` ids — every id (`jobs.id`,
@@ -1154,47 +1422,29 @@ function claimDispatchWindow(now, windowSeconds):
   if sum(bundles.active_call_count WHERE state='active') >= MAX_IN_FLIGHT_LLM_CALLS:
     return empty ClaimResult
 
-  candidates = SELECT * FROM jobs WHERE state='queued'
-               ORDER BY priority ASC, created_at ASC   -- priority=0 first, then FIFO within a class
-               LIMIT (some generous multiple of MAX_BUNDLE_JOBS, e.g. 4x, to give the route-fill
-                      pass below enough to choose from without a full table scan)
-
-  # Pass 1: fill from distinct eligible routes, capped at MAX_CONCURRENT_ROUTE_LANES lanes total —
-  # the executor (Unit 6) runs one lane per distinct route concurrently, and Cloudflare allows at
-  # most 6 simultaneous outbound connections per invocation (Free and Paid alike); this cap must
-  # never be exceeded regardless of how many distinct routes are eligible.
+  # Each enqueue writes one job_models row per canonical allowed model, including one with no route
+  # yet. A later route-catalog addition then makes the existing job searchable without a migration.
+  # (The one-time rollout backfill that indexed pre-index historical rows into job_models completed
+  # and was retired -- see "Retired: the rollout compatibility migrations" below.)
+  model_pools = rankModelsByCapacity(routes ledger, catalog, now, windowSeconds)
   chosen = []
   seen_routes = {}
-  for job in candidates:
+  for model_pool in model_pools ordered by capacity_fraction DESC:
     if len(chosen) >= MAX_BUNDLE_JOBS: break
-    if len(seen_routes) >= MAX_CONCURRENT_ROUTE_LANES: break   # never open another new lane
-    eligible_routes = routesEligibleFor(job)   # policy_json.allowed_models -> route catalog lookup
-    for route in eligible_routes:
-      if route.route_id in seen_routes: continue   # distinct-routes-first: skip on pass 1
-      if not routeHasCapacityFor(route, job, now, windowSeconds): continue
-      chosen.append({job, route})
-      seen_routes[route.route_id] = true
-      break
-
-  # Pass 2: fill remaining slots — aged jobs win their bucket, then larger token estimate, then FIFO.
-  # May still open a NEW lane if pass 1 left room under MAX_CONCURRENT_ROUTE_LANES (e.g. pass 1's
-  # scan found fewer distinct eligible routes among the earliest candidates than the cap allows);
-  # once the lane cap is reached, pass 2 may only add jobs to an already-open lane, sequenced behind
-  # it via MAX_JOBS_PER_ROUTE_PER_BUNDLE — never opens lane number MAX_CONCURRENT_ROUTE_LANES+1.
-  remaining_candidates = [c for c in candidates if c.job not in chosen]
-  # split into aged (waited >= MAX_QUEUE_WAIT_SECONDS) and not-aged; aged bucket sorts first,
-  # each bucket internally sorted by input_token_estimate + max_output_token_estimate DESC,
-  # created_at ASC as the final tiebreaker
-  for job in orderedByAgingThenSize(remaining_candidates, now):
-    if len(chosen) >= MAX_BUNDLE_JOBS: break
-    for route in routesEligibleFor(job):
-      is_new_lane = route.route_id not in seen_routes
-      if is_new_lane and len(seen_routes) >= MAX_CONCURRENT_ROUTE_LANES: continue  # lane cap; skip
-      if routeAlreadyHasNJobsInThisBundle(route, chosen) >= MAX_JOBS_PER_ROUTE_PER_BUNDLE: continue
-      if not routeHasCapacityFor(route, job, now, windowSeconds): continue
-      chosen.append({job, route})
-      seen_routes[route.route_id] = true
-      break
+    candidates = SELECT jobs.* FROM job_models JOIN jobs
+                 WHERE model=model_pool.model AND jobs.state='queued'
+                 ORDER BY priority ASC, created_at ASC LIMIT MAX_JOBS_PER_MODEL_CLAIM
+    for job in candidates:
+      if job already chosen: continue       # a multi-model policy appears in one pool per model
+      # Prefer the highest-score route of this model, opening a new route lane before reusing one.
+      for route in routesEligibleFor(job, model=model_pool.model) ordered by route_fraction DESC:
+        is_new_lane = route.route_id not in seen_routes
+        if is_new_lane and len(seen_routes) >= MAX_CONCURRENT_ROUTE_LANES: continue
+        if routeAlreadyHasNJobsInThisBundle(route, chosen) >= MAX_JOBS_PER_ROUTE_PER_BUNDLE: continue
+        if not routeHasCapacityFor(route, job, now, windowSeconds): continue  # exact final gate
+        chosen.append({job, route})
+        seen_routes[route.route_id] = true
+        break
 
   if chosen is empty: return empty ClaimResult
 
@@ -1445,11 +1695,13 @@ Unit and Miniflare tests must cover:
 - `priority=0` jobs are ordered ahead of `priority=1` jobs within an otherwise-eligible admission
   set; a `priority=0` job never bypasses a route's real capacity/pacing constraints — priority only
   breaks ties among otherwise-eligible jobs;
-- admission fills distinct eligible routes first, then prefers larger conservative estimates, with
-  stable FIFO ties; a smaller job wins after the configured aging deadline;
+- admission ranks model pools by aggregate live capacity, reads only
+  `MAX_JOBS_PER_MODEL_CLAIM` indexed candidates per nonzero pool, and applies the exact per-job
+  capacity calculation only to that bounded candidate set; 402-blocked, paused, and exhausted
+  routes score zero, and a higher-capacity model may run ahead of an older lower-capacity model;
 - `claimDispatchWindow` never selects more than `MAX_CONCURRENT_ROUTE_LANES` distinct routes into one
-  bundle, across both the distinct-routes-first pass and the aging/size pass, even when more distinct
-  eligible routes exist in the candidate set — extra jobs land on an already-open lane instead;
+  bundle; it prefers opening an eligible route lane before reusing one, while extra jobs can land on
+  an already-open lane up to the per-route bundle cap;
 - `enqueue-batch` and `poll-batch` HTTP handlers make zero B2 subrequests regardless of batch size —
   a Miniflare test asserts subrequest count stays constant (not O(batch size)) across a 1-job and a
   `ENQUEUE_BATCH_MAX`/`POLL_BATCH_MAX`-sized batch, catching a regression back to per-job B2 I/O in
