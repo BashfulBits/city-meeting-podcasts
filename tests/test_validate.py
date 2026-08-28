@@ -127,3 +127,18 @@ def test_validate_build_mixed(tmp_path):
     assert any("bad-city" in f for f in fatals)
     assert any("ok-city" in w for w in warnings)
     assert not any("ok-city" in f for f in fatals)
+
+
+def test_validator_uses_the_first_enclosure():
+    """The validator must keep the original first-enclosure behavior."""
+    xml = f'''<rss version="2.0" xmlns:itunes="{ITUNES}"><channel>
+    <title>Test</title><link>http://example.com</link><description>desc</description>
+    <itunes:author>Author</itunes:author>
+    <itunes:category text="Society &amp; Culture"/>
+    <itunes:image href="http://example.com/art.jpg"/>
+    <item><title>Episode</title><guid>1</guid><pubDate>today</pubDate>
+    <enclosure url="" type="audio/mpeg"/>
+    <enclosure url="https://example.com/episode.mp3" type="audio/mpeg"/>
+    </item></channel></rss>'''.encode()
+
+    assert validate_feed(xml) == ["item[0] enclosure missing url"]
