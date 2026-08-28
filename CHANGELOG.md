@@ -17,6 +17,10 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Blank optional R2 endpoint handling.** Storage helpers and the R2 maintenance scripts now use
+  the standard account endpoint when `R2_ENDPOINT` is unset, empty, or whitespace-only, while
+  preserving explicit jurisdiction-specific endpoint overrides.
+
 - **LLM dispatch V2 consumption ack, parallel result resolution, and a 6-hourly sweep.** A v2 job's
   DO row and B2 objects were held for `COMPLETED_RETENTION_DAYS` (38) after completion even though
   the client had fetched, validated and durably persisted the result minutes later --

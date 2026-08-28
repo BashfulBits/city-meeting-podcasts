@@ -143,6 +143,51 @@ def test_r2_public_base_optional_for_routing_coordination(monkeypatch):
     assert captured["cas_capable"] is True
 
 
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_r2_blank_endpoint_uses_account_default(monkeypatch, blank):
+    from citypods.storage import s3 as s3_mod
+
+    captured = {}
+
+    def fake_storage(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(s3_mod, "S3CompatibleStorage", fake_storage)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "key")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("R2_BUCKET", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://pub.example")
+    monkeypatch.setenv("R2_ENDPOINT", blank)
+
+    s3_mod.r2_from_env()
+
+    assert captured["endpoint_url"] == "https://acct.r2.cloudflarestorage.com"
+
+
+def test_r2_endpoint_override_is_preserved(monkeypatch):
+    from citypods.storage import s3 as s3_mod
+
+    captured = {}
+
+    def fake_storage(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(s3_mod, "S3CompatibleStorage", fake_storage)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "key")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("R2_BUCKET", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://pub.example")
+    monkeypatch.setenv("R2_ENDPOINT", " https://acct.eu.r2.cloudflarestorage.com ")
+
+    s3_mod.r2_from_env()
+
+    assert captured["endpoint_url"] == "https://acct.eu.r2.cloudflarestorage.com"
+
+
 def test_make_storage_unknown_backend(tmp_path, monkeypatch):
     monkeypatch.delenv("AUDIO_STORAGE_BACKEND", raising=False)
     with pytest.raises(ValueError, match="unknown audio_storage_backend"):
