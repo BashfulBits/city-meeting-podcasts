@@ -166,8 +166,9 @@ parses a checked box plus the embedded metadata marker back into a `record_revie
 Once every native child in a batch is resolved, the ingest workflow closes its parent; the next weekly
 digest opens a fresh parent, keeping each batch bounded below GitHub's 100-sub-issue limit.
 
-**Wired today as** `.github/workflows/llm-tag-review.yml` (weekly digest packaging + issue open/update) and
-`llm-tag-review-ingest.yml` (scheduled + comment-triggered ingestion). The candidate ledger now carries
+**Wired today as** `.github/workflows/llm-tag-review.yml` (weekly digest packaging) and the shared
+`.github/workflows/review-issue-resolve.yml` (scheduled + event-triggered trusted ingestion and batch
+finalization). The candidate ledger now carries
 `source_kind: rule|llm`, `assessment_kind: tagger-admission|prelabeler-overlay`, display state, and raw
 pre-labeler provenance. A qualified pre-labeler suppresses only likely-incorrect display projections;
 human audit decisions are recorded as overrides and never replace the raw evaluator result.
@@ -239,8 +240,8 @@ every integration point around it is still R5-specific, despite the module's own
   `citypods/llm_tag_review.py` — a **tag-specific** packaging module (its digest/issue titles literally say
   "R5 LLM tag calibration" / "R5 LLM tag sample `<id>`"). A second feature could not reuse this CLI entry
   point or these workflows without either forking them or generalizing the title/routing logic first.
-- `.github/workflows/llm-tag-review.yml`/`llm-tag-review-ingest.yml` are themselves R5-named and R5-scoped
-  (issue titles, the `citypods llm-evaluation package` invocation).
+- The R5 package command remains tag-specific, but publishing, trust-gated ingestion, and batch finalization
+  now use the common weekly review adapter rather than a separate R5 GitHub workflow.
 
 **This is the next open item** (flagged by the maintainer, 2026-07-17, to be picked up after this doc):
 aligning the calling convention so a second LLM-assisted feature (most likely R6's `summarize`-adjacent
@@ -266,7 +267,8 @@ value, for the matrix key to stay meaningful.
 - `citypods/llm_evaluation.py` — implemented, feature-independent (§1–§7).
 - `citypods/llm_tag_review.py` — implemented, but R5-specific (§9) — the concrete thing a generalization pass
   would need to either parameterize or replace with a per-feature equivalent.
-- `.github/workflows/llm-tag-review.yml` / `llm-tag-review-ingest.yml` — implemented, R5-named (§9).
+- `.github/workflows/llm-tag-review.yml` / `.github/workflows/review-issue-resolve.yml` — implemented;
+  R5 owns package selection while the latter owns common publish-resolution mechanics (§9).
 - `citypods/cli.py`'s `llm-evaluation` subcommand — implemented, hardwired to the R5 script (§9).
 
 ## §12. Tests
@@ -312,3 +314,11 @@ weekly, evidence-rich review digest and per-candidate child issues let a maintai
 hours/week driving calibration; ingested decisions take effect on the next normal build with no additional
 LLM call; and the whole mechanism is provably feature-independent in its core module, even though its
 current wiring (§9) has not yet been exercised by a second feature.
+
+## §16. Shared weekly review adapter (2026-08-28)
+
+The R5-specific publisher and ingest workflow are replaced by the common `citypods.review_issues` envelope,
+publisher, resolver, and native-child finalizer. R5 keeps Correct/Incorrect/Ambiguous parsing and its
+evaluation ledger; the shared layer owns GitHub body limits, labels, idempotent upsert, trust-gated
+resolution, and scheduled recovery. H15, R6, R7, and H16 use the same batch surface; review/34's champion
+ticket uses the rolling-ticket surface. This infrastructure change has no output pipeline-version bump.

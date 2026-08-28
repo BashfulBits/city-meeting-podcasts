@@ -119,31 +119,24 @@ jobs:
           path: availability-digest/availability-evidence.zip
           if-no-files-found: warn
 
-      # Open or update ONE rolling digest issue. The artifact URL is appended so reviewers can grab
-      # the proxies; the body itself never contains a signed/credential-bearing URL (the evidence
-      # only carries the redacted source identity + the public canonical watch page).
-      - name: Open or update digest issue
+      - name: Publish H16 review batch
         if: steps.digest.outputs.has_candidates == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TITLE="H16 empty-recording review digest"
-          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          printf '\n\n> Evidence artifact: %s\n' "$ARTIFACT_URL" >> availability-digest/issue-body.md
-          EXISTING=$(gh issue list --state open --search "in:title $TITLE" --json number,title 2>/dev/null \
-            | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)] | .[0].number // empty')
-          if [ -n "$EXISTING" ]; then
-            gh issue edit "$EXISTING" --body-file availability-digest/issue-body.md
-            echo "Updated digest issue #$EXISTING"
-          else
-            gh issue create --title "$TITLE" --body-file availability-digest/issue-body.md
-            echo "Opened a new digest issue"
+          set -euo pipefail
+          python scripts/publish_review_batch.py \
+            --manifest availability-digest/review-batch.json \
+            --family h16 --label h16-availability-review \
+            --parent-title "H16 empty-recording review batch" \
+            --child-title "H16 availability sample {candidate_id}" | tee -a "$GITHUB_STEP_SUMMARY"
+          legacy=$(gh issue list --state open --search 'in:title "H16 empty-recording review digest"' \
+            --json number,title --jq '[.[] | select(.title == "H16 empty-recording review digest")][0].number // empty')
+          if [ -n "$legacy" ]; then
+            gh issue comment "$legacy" --body "Migrated to native H16 review children; closing this legacy rolling digest."
+            gh issue close "$legacy"
           fi
-
-      # Only mark candidates as digested once the issue publish above has actually succeeded
-      # (this step doesn't run at all if it failed), so a publish failure can't silently mark
-      # evidence as digested with nothing published for reviewers to see.
-      - name: Push digest state
+      - name: Persist published H16 children as pending
         if: steps.digest.outputs.has_candidates == 'true'
         env:
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
@@ -151,9 +144,8 @@ jobs:
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
           B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        run: python scripts/availability_digest.py --push-only --out availability-digest
+        run: python scripts/availability_digest.py --mark-pending --out availability-digest

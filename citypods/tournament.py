@@ -7,6 +7,7 @@ champion; a later human-review ticket is the sole routing authority (review/34).
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import load_records, record_to_episode, source_key
+from citypods.review_issues import render_decision_block
 from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
 from citypods.tags import (
@@ -53,6 +55,7 @@ CONTESTS = (
     ("zai/glm-4.7-flash", "google/gemma-4-26b-a4b-it", JUDGE_MODEL),
 )
 STATE = "llm_tournament.json"
+TICKET_STATE = "llm_tournament_tickets.json"
 JUDGE_CONTRACT = "tournament-tag-judge"
 R5_FLASH_MODEL = "litellm:gemini/gemini-3.1-flash-lite"
 
@@ -330,6 +333,194 @@ def _persist_state(state: dict[str, Any], state_path: Path, storage: Any, state_
     push_state(storage, state_dir, only_paths=[STATE])
 
 
+def champion_stats(
+    results: list[dict[str, Any]], *, current_model: str, now: datetime, window_days: int = 28
+) -> dict[str, dict[str, float]]:
+    """Aggregate order-swapped wins against the configured champion over a rolling window."""
+    cutoff = now - timedelta(days=window_days)
+    rows: dict[str, dict[str, float]] = {}
+    for result in results:
+        try:
+            at = datetime.fromisoformat(str(result.get("at", "")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if at < cutoff:
+            continue
+        for decision in result.get("decisions") or []:
+            if not isinstance(decision, dict):
+                continue
+            left, right = str(decision.get("left", "")), str(decision.get("right", ""))
+            if current_model not in {left, right}:
+                continue
+            challenger = right if left == current_model else left
+            stats = rows.setdefault(challenger, {"wins": 0.0, "losses": 0.0, "ties": 0.0})
+            winner = str(decision.get("winner", "tie"))
+            first = str(decision.get("first", left))
+            if winner == "a":
+                winner_model = first
+            elif winner == "b":
+                winner_model = right if first == left else left
+            else:
+                winner_model = ""
+            if winner in {"tie", "both_poor"}:
+                stats["ties"] += 1
+            elif winner_model == challenger:
+                stats["wins"] += 1
+            else:
+                stats["losses"] += 1
+    for stats in rows.values():
+        total = stats["wins"] + stats["losses"] + stats["ties"]
+        stats["win_rate"] = (stats["wins"] + stats["ties"] * 0.5) / total if total else 0.0
+        stats["comparisons"] = total
+    return rows
+
+
+def _ticket_marker(value: dict[str, Any]) -> str:
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return "<!-- citypods:tournament-ticket " + base64.urlsafe_b64encode(raw).decode() + " -->"
+
+
+def render_champion_ticket(
+    *,
+    task: str,
+    current_model: str,
+    stats: dict[str, dict[str, float]],
+    required_win_rate: float,
+    estimates: dict[str, dict[str, float]] | None = None,
+    window_days: int = 28,
+) -> str:
+    eligible = [
+        model
+        for model, value in sorted(stats.items())
+        if value["comparisons"] and value["win_rate"] > required_win_rate
+    ]
+    marker = _ticket_marker(
+        {
+            "version": 1,
+            "task": task,
+            "current_model": current_model,
+            "challengers": eligible,
+            "required_win_rate": required_win_rate,
+        }
+    )
+    lines = [
+        marker,
+        f"# Tournament champion ticket: {task}",
+        "",
+        f"Current route: `{current_model}`. Rolling window: {window_days} days.",
+        f"A challenger needs a strict win rate above {required_win_rate:.0%} to be actionable.",
+        "",
+        "| Challenger | Wins | Losses | Ties | Win rate | Settled monthly cost | "
+        "Retained chapters |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for model, value in sorted(stats.items()):
+        estimate = (estimates or {}).get(model, {})
+        lines.append(
+            f"| `{model}` | {value['wins']:.0f} | {value['losses']:.0f} | "
+            f"{value['ties']:.0f} | {value['win_rate']:.1%} | "
+            f"${estimate.get('monthly_cost_usd', 0.0):.2f} | "
+            f"{estimate.get('retained_chapters', 0.0):.0f} |"
+        )
+    if not eligible:
+        lines += [
+            "",
+            "No challenger clears the configured gate this week; this ticket is FYI-only.",
+        ]
+    else:
+        choices = ["Keep current route"]
+        for model in eligible:
+            choices.append(f"Switch to `{model}` (normal gradual refresh)")
+            choices.append(f"Switch to `{model}` (retained-catalog backfill)")
+        lines += [
+            "",
+            "Choose exactly one routing decision:",
+            "",
+            render_decision_block(tuple(choices)),
+        ]
+    lines += [
+        "",
+        "Cost and back-catalog estimates use settled telemetry when it is available; no issue "
+        "decision changes production directly. A checked switch opens a scoped configuration PR.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def ticket_estimates(state_dir: Path, models: set[str]) -> dict[str, dict[str, float]]:
+    """Return settled ledger cost and recipe-different retained chapter counts per route."""
+    estimates = {model: {"monthly_cost_usd": 0.0, "retained_chapters": 0.0} for model in models}
+    try:
+        budget = json.loads((state_dir / "llm_budget.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        budget = {}
+    for model, value in (budget.get("routes") or {}).items():
+        normalized = str(model).removeprefix("litellm:")
+        if normalized in estimates and isinstance(value, dict):
+            estimates[normalized]["monthly_cost_usd"] = float(value.get("cost_used") or 0.0)
+    for path in state_dir.glob("sources/*/episodes.json"):
+        try:
+            episodes = json.loads(path.read_text(encoding="utf-8")).get("episodes") or {}
+        except (OSError, ValueError):
+            continue
+        prior_by_chapter: dict[str, set[str]] = {}
+        for record in episodes.values():
+            candidates = record.get("llm_tag_candidates") if isinstance(record, dict) else None
+            chapter_id = str(record.get("chapter_id") or "") if isinstance(record, dict) else ""
+            prior_models = {
+                str(candidate.get("provider_model") or "").removeprefix("litellm:")
+                for candidate in candidates or []
+                if isinstance(candidate, dict) and candidate.get("source_kind", "llm") != "rule"
+            }
+            if chapter_id and prior_models:
+                prior_by_chapter.setdefault(chapter_id, set()).update(prior_models)
+        for model in estimates:
+            estimates[model]["retained_chapters"] += sum(
+                1 for prior_models in prior_by_chapter.values() if model not in prior_models
+            )
+    return estimates
+
+
+def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> int:
+    site = load_site_config(site_config_path)
+    storage = make_storage(site, "", Path(output_dir))
+    if storage is None:
+        raise RuntimeError("tournament ticket requires configured storage")
+    state_dir = Path(".citypods-state")
+    pull_state(storage, state_dir)
+    state = _state(state_dir / STATE)
+    config = site.get("tournament") or {}
+    required = float(config.get("challenger_win_rate", 0.60))
+    window = int(config.get("window_days", 28))
+    current = str((site.get("tagging") or {}).get("llm_model") or "")
+    stats = champion_stats(
+        state["results"], current_model=current, now=datetime.now(UTC), window_days=window
+    )
+    target = Path(out_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    estimates = ticket_estimates(state_dir, set(stats))
+    (target / "ticket.md").write_text(
+        render_champion_ticket(
+            task="tag",
+            current_model=current,
+            stats=stats,
+            required_win_rate=required,
+            estimates=estimates,
+            window_days=window,
+        ),
+        encoding="utf-8",
+    )
+    print(
+        json.dumps(
+            {
+                "task": "tag",
+                "challengers": sorted(stats),
+                "eligible": sum(value["win_rate"] > required for value in stats.values()),
+            }
+        )
+    )
+    return 0
+
+
 def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int) -> int:
     site = load_site_config(site_config_path)
     storage = make_storage(site, "", Path(output_dir))
@@ -559,11 +750,17 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", nargs="?", choices=("ticket",))
     parser.add_argument("--site-config", default="config/site_config.yml")
     parser.add_argument("--config-dir", default="config")
     parser.add_argument("--output-dir", default="docs")
     parser.add_argument("--samples", type=int, default=2)
+    parser.add_argument("--out-dir", default="tournament-ticket")
     args = parser.parse_args(argv)
+    if args.command == "ticket":
+        return package_ticket(
+            site_config_path=args.site_config, output_dir=args.output_dir, out_dir=args.out_dir
+        )
     return run(
         site_config_path=args.site_config,
         config_dir=args.config_dir,

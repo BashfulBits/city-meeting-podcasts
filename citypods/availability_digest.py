@@ -34,7 +34,7 @@ EVIDENCE_SCHEMA_VERSION = 1
 # Independent from EVIDENCE_SCHEMA_VERSION (CR2-CP-05): one stamps the per-candidate evidence
 # record (build_evidence), the other the unrelated digest-ledger state (load/updated_digest_state)
 # — a schema bump for one must not silently "version" the other.
-DIGEST_STATE_SCHEMA_VERSION = 1
+DIGEST_STATE_SCHEMA_VERSION = 2
 DIGEST_STATE_NAME = "availability_digest.json"
 DIGEST_ISSUE_MARKER = "<!-- h16-availability-digest -->"
 
@@ -245,10 +245,12 @@ def load_digest_state(state_dir: Path) -> dict:
     try:
         data = json.loads(path.read_text())
     except (OSError, ValueError):
-        return {"schema_version": DIGEST_STATE_SCHEMA_VERSION, "digested": []}
+        return {"schema_version": DIGEST_STATE_SCHEMA_VERSION, "digested": [], "reviews": {}}
     if not isinstance(data, dict):
-        return {"schema_version": DIGEST_STATE_SCHEMA_VERSION, "digested": []}
+        return {"schema_version": DIGEST_STATE_SCHEMA_VERSION, "digested": [], "reviews": {}}
     data.setdefault("digested", [])
+    data.setdefault("reviews", {})
+    data["schema_version"] = DIGEST_STATE_SCHEMA_VERSION
     return data
 
 
@@ -258,6 +260,7 @@ def updated_digest_state(prior: dict, newly_digested: list[str]) -> dict:
     return {
         "schema_version": DIGEST_STATE_SCHEMA_VERSION,
         "digested": sorted(keys),
+        "reviews": dict(prior.get("reviews") or {}),
         "updated_at": datetime.now(UTC).isoformat(),
     }
 

@@ -61,6 +61,11 @@ tagging:
     # Version the serialized response contract independently of task instructions. Bumping this
     # schedules fresh work for every active candidate whose stored assessment predates it.
     llm_schema_version: "2"
+# Tournament routing is deliberately human-approved. A weekly ticket may propose a challenger only
+# above this strict rolling win-rate gate; a checked switch opens a configuration PR.
+tournament:
+  window_days: 28
+  challenger_win_rate: 0.60
 # R6 grounded moments. Candidate calls are free-only and shadow/manual by default. Council feeds
 # use the two lower-quota long-context Gemini routes; the stage filters this allowlist by family.
 moments:

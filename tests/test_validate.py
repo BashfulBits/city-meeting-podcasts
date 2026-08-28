@@ -127,3 +127,49 @@ def test_validate_build_mixed(tmp_path):
     assert any("bad-city" in f for f in fatals)
     assert any("ok-city" in w for w in warnings)
     assert not any("ok-city" in f for f in fatals)
+
+
+def test_xxe_vulnerability_prevented():
+    # A simple XXE payload
+    xxe_xml = """<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE foo [
+  <!ELEMENT foo ANY >
+  <!ENTITY xxe SYSTEM "file:///etc/passwd" >]><foo>&xxe;</foo>
+"""
+
+    # defusedxml should return an error list with the exception in it
+    errors = validate_feed(xxe_xml)
+    assert len(errors) > 0
+    assert "not well-formed XML" in errors[0]
+
+
+def test_validate_build_rejects_xxe(tmp_path):
+    """The build-wide validator must reject XML entity declarations too."""
+    xxe_xml = b"""<?xml version="1.0"?>
+<!DOCTYPE foo [
+  <!ENTITY xxe SYSTEM "file:///etc/passwd">
+]>
+<foo>&xxe;</foo>
+"""
+    _write_feed(tmp_path / "malicious-city" / "audio_feed.xml", xxe_xml)
+
+    fatals, warnings = validate_build(tmp_path)
+
+    assert not warnings
+    assert any("malicious-city/audio_feed.xml" in fatal for fatal in fatals)
+    assert any("not well-formed XML" in fatal for fatal in fatals)
+
+
+def test_validator_uses_the_first_enclosure():
+    """The validator must keep the original first-enclosure behavior."""
+    xml = f'''<rss version="2.0" xmlns:itunes="{ITUNES}"><channel>
+    <title>Test</title><link>http://example.com</link><description>desc</description>
+    <itunes:author>Author</itunes:author>
+    <itunes:category text="Society &amp; Culture"/>
+    <itunes:image href="http://example.com/art.jpg"/>
+    <item><title>Episode</title><guid>1</guid><pubDate>today</pubDate>
+    <enclosure url="" type="audio/mpeg"/>
+    <enclosure url="https://example.com/episode.mp3" type="audio/mpeg"/>
+    </item></channel></rss>'''.encode()
+
+    assert validate_feed(xml) == ["item[0] enclosure missing url"]

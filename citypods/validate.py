@@ -9,6 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import defusedxml.ElementTree as DET
+from defusedxml.common import DefusedXmlException
+
 ITUNES = "http://www.itunes.com/dtds/podcast-1.0.dtd"
 _REDIRECT_TAG = f"{{{ITUNES}}}new-feed-url"
 _EMPTY_ERROR = "channel has no <item> entries"
@@ -27,8 +30,8 @@ def validate_feed(xml: str | bytes) -> list[str]:
     """Return a list of problems; empty means the feed is valid."""
     errors: list[str] = []
     try:
-        root = ET.fromstring(xml.encode() if isinstance(xml, str) else xml)
-    except ET.ParseError as exc:
+        root = DET.fromstring(xml.encode() if isinstance(xml, str) else xml)
+    except (ET.ParseError, DefusedXmlException) as exc:
         return [f"not well-formed XML: {exc}"]
 
     if root.tag != "rss":
@@ -46,20 +49,49 @@ def validate_feed(xml: str | bytes) -> list[str]:
         errors.append(_EMPTY_ERROR)
 
     for i, item in enumerate(items):
-        label = f"item[{i}]"
-        if item.find("title") is None:
+        label = None
+        has_title = False
+        has_guid = False
+        has_pubdate = False
+        enc = None
+
+        for child in item:
+            tag = child.tag
+            if tag == "title":
+                has_title = True
+            elif tag == "guid":
+                has_guid = True
+            elif tag == "pubDate":
+                has_pubdate = True
+            elif tag == "enclosure":
+                # Preserve ElementTree.find() semantics: validate the first enclosure.
+                if enc is None:
+                    enc = child
+
+        if not has_title:
+            if label is None:
+                label = f"item[{i}]"
             errors.append(f"{label} missing <title>")
-        if item.find("guid") is None:
+        if not has_guid:
+            if label is None:
+                label = f"item[{i}]"
             errors.append(f"{label} missing <guid>")
-        if item.find("pubDate") is None:
+        if not has_pubdate:
+            if label is None:
+                label = f"item[{i}]"
             errors.append(f"{label} missing <pubDate>")
-        enc = item.find("enclosure")
         if enc is None:
+            if label is None:
+                label = f"item[{i}]"
             errors.append(f"{label} missing <enclosure>")
         else:
             if not enc.get("url"):
+                if label is None:
+                    label = f"item[{i}]"
                 errors.append(f"{label} enclosure missing url")
             if not enc.get("type"):
+                if label is None:
+                    label = f"item[{i}]"
                 errors.append(f"{label} enclosure missing type")
 
     return errors
@@ -98,11 +130,11 @@ def validate_build(
         # Redirect feeds carry itunes:new-feed-url and intentionally omit items
         # and most channel elements — skip them.
         try:
-            root = ET.fromstring(content)
+            root = DET.fromstring(content)
             channel = root.find("channel")
             if channel is not None and channel.find(_REDIRECT_TAG) is not None:
                 continue
-        except ET.ParseError:
+        except (ET.ParseError, DefusedXmlException):
             pass  # fall through; validate_feed will report the parse error
 
         for problem in validate_feed(content):

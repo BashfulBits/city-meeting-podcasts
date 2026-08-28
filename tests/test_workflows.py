@@ -202,18 +202,30 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
 
 
 def test_speaker_calibration_review_gate_matches_packaged_titles():
-    workflow, ingest = _job("speaker-calibration-review.yml", "ingest")
-    condition = ingest["if"]
-    assert "R7 speaker shadow sample " in condition
-    assert "R7 chair reference " in condition
-    for role in ("OWNER", "MEMBER", "COLLABORATOR"):
-        assert role in condition
+    workflow, package = _job("speaker-calibration-review.yml", "package")
     assert workflow["permissions"] == {"contents": "read", "issues": "write"}
-    finalize = workflow["jobs"]["finalize"]
-    assert finalize["if"] == (
-        "github.event_name == 'issue_comment' && needs.ingest.result == 'success'"
+    publish = next(
+        step for step in package["steps"] if step.get("name") == "Publish R7 review batch"
     )
-    assert finalize["permissions"] == {"contents": "read", "issues": "write"}
+    assert "scripts/publish_review_batch.py" in publish["run"]
+    assert '--child-title "R7 speaker review {candidate_id}"' in publish["run"]
+    assert "set -euo pipefail" in publish["run"]
+
+
+def test_shared_review_resolver_is_event_driven_and_scans_open_managed_children():
+    wf, job = _job("review-issue-resolve.yml", job_name="resolve")
+    triggers = _on(wf)
+    assert set(triggers) >= {"issues", "issue_comment", "schedule", "workflow_dispatch"}
+    assert wf["permissions"] == {"contents": "read", "issues": "write"}
+    resolve = next(
+        step for step in job["steps"] if step.get("name") == "Resolve managed review children"
+    )
+    assert "agent:weekly-review" in resolve["run"]
+    assert "scripts/resolve_review_issue.py" in resolve["run"]
+    assert "result.log" in resolve["run"]
+    assert "set -euo pipefail" in resolve["run"]
+    finalize = next(step for step in job["steps"] if step.get("name") == "Finalize cleared batches")
+    assert "scripts/finalize_review_batches.py" in finalize["run"]
 
 
 def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
@@ -469,113 +481,9 @@ def test_asr_quality_review_workflow_is_weekly_issue_packaging():
         if "transcript-quality package-review" in str(step.get("run", ""))
     )
     assert "package-review" in package["run"]
-    publish = next(
-        step for step in job["steps"] if step.get("name") == "Open or update H15 review issues"
-    )
-    assert "gh issue create" in publish["run"]
-    assert "gh issue edit" in publish["run"]
-
-
-def test_asr_quality_ingest_workflow_is_event_driven():
-    wf, resolve_job = _job("asr-quality-ingest.yml", job_name="resolve")
-    triggers = _on(wf)
-    assert set(triggers) >= {"issues", "issue_comment", "schedule", "workflow_dispatch"}
-    # Deny-all at the workflow level; each job grants only what it actually needs (resolve only
-    # ever reads issues — no checkout, no writes).
-    assert wf["permissions"] == {}
-    assert resolve_job["permissions"] == {"issues": "read"}
-    resolve = next(
-        step for step in resolve_job["steps"] if step.get("name") == "Resolve candidate issue(s)"
-    )
-    assert "EVENT_COMMENT_BODY" in resolve.get("env", {})
-    assert "/h15-ingest" in resolve["run"]
-
-    ingest_job = wf["jobs"]["ingest"]
-    assert ingest_job["needs"] == "resolve"
-    assert ingest_job["permissions"] == {"contents": "read", "issues": "write"}
-    # A single job processing the full resolved list sequentially -- not a matrix leg per issue.
-    # A matrix here previously gave each leg the *complete* NUMBERS list (every leg reran the
-    # whole loop), duplicating comments/closes/record writes across N concurrent legs for N
-    # resolved issues.
-    assert "strategy" not in ingest_job
-    ingest = next(
-        step
-        for step in ingest_job["steps"]
-        if "transcript-quality ingest-review" in str(step.get("run", ""))
-    )
-    assert "--issue-body-file" in ingest["run"]
-    assert "gh issue view" in ingest["run"]
-    assert ".stored == true" in ingest["run"]
-    stored_branch = ingest["run"].split(".stored == true")[1].split("else")[0]
-    assert "<!-- h15-ingest:" in stored_branch
-    assert "state,comments" in stored_branch
-    assert "--body-file" in stored_branch
-    assert '.state == "OPEN"' in stored_branch
-    assert "gh issue comment" in stored_branch
-    assert "gh issue close" in stored_branch
-
-
-def test_llm_tag_review_ingest_workflow_is_event_driven_and_guards_stored():
-    wf, resolve_job = _job("llm-tag-review-ingest.yml", job_name="resolve")
-    triggers = _on(wf)
-    assert set(triggers) >= {"issues", "issue_comment", "schedule", "workflow_dispatch"}
-    assert wf["permissions"] == {}
-    assert resolve_job["permissions"] == {"issues": "read"}
-    resolve = next(
-        step for step in resolve_job["steps"] if step.get("name") == "Resolve review issues"
-    )
-    assert "EVENT_COMMENT_BODY" in resolve.get("env", {})
-    assert "/llm-ingest" in resolve["run"]
-
-    ingest_job = wf["jobs"]["ingest"]
-    assert ingest_job["needs"] == "resolve"
-    assert ingest_job["permissions"] == {"contents": "read", "issues": "write"}
-    assert "strategy" not in ingest_job
-    ingest = next(
-        step for step in ingest_job["steps"] if "llm-evaluation ingest" in str(step.get("run", ""))
-    )
-    assert "--issue-body-file" in ingest["run"]
-    assert "gh issue view" in ingest["run"]
-    assert ".stored == true" in ingest["run"]
-    stored_branch = ingest["run"].split(".stored == true")[1].split("else")[0]
-    assert "<!-- llm-ingest:" in stored_branch
-    assert "state,comments" in stored_branch
-    assert "--body-file" in stored_branch
-    assert '.state == "OPEN"' in stored_branch
-    assert "gh issue comment" in stored_branch
-    assert "gh issue close" in stored_branch
-
-
-def test_asr_quality_ingest_schedule_fallback_scans_open_children():
-    """The safety-net cron for missed issues.edited/issue_comment webhooks must actually scan
-    open H15 child issues, not just resolve to an empty issue list and skip everything."""
-    wf, resolve_job = _job("asr-quality-ingest.yml", job_name="resolve")
-    resolve = next(
-        step for step in resolve_job["steps"] if step.get("name") == "Resolve candidate issue(s)"
-    )
-    assert 'EVENT_NAME" = "schedule"' in resolve["run"]
-    assert "gh issue list" in resolve["run"]
-    assert "H15 sample" in resolve["run"]
-
-    finalize_job = wf["jobs"]["finalize"]
-    assert set(finalize_job["needs"]) == {"resolve", "ingest"}
-    assert finalize_job["if"] == (
-        "always() && needs.resolve.result != 'failure' && needs.resolve.outputs.numbers != '[]'"
-    )
-    assert finalize_job["permissions"] == {"issues": "write"}  # never checks out code
-    close_parent = next(
-        step
-        for step in finalize_job["steps"]
-        if step.get("name") == "Close parent issues when their batch is clear"
-    )
-    assert close_parent["env"]["GH_REPO"] == "${{ github.repository }}"
-    # Native GitHub hierarchy, rather than the retired body-text convention. The query comes
-    # directly from each parent, so issue numbers such as #5/#50 cannot collide.
-    assert "--json subIssues" in close_parent["run"]
-    # gh's --json subIssues returns a GraphQL connection object ({nodes, totalCount}), not a
-    # flat array -- see constraints/gh-cli.txt for the 2026-07-27 incident this was fixed from.
-    assert ".subIssues.nodes[]" in close_parent["run"]
-    assert "Parent issue: #" not in close_parent["run"]
+    publish = next(step for step in job["steps"] if step.get("name") == "Publish H15 review batch")
+    assert "scripts/publish_review_batch.py" in publish["run"]
+    assert "set -euo pipefail" in publish["run"]
 
 
 def test_audio_lane_needs_no_whisper():
@@ -1448,7 +1356,9 @@ def test_availability_digest_scopes_secrets_to_steps_that_need_them():
     digest_step = next(s for s in job["steps"] if s.get("name") == "Build availability digest")
     for var in ("B2_ENDPOINT", "R2_ACCESS_KEY_ID", "GRANICUS_PROXY_TOKEN"):
         assert var in digest_step.get("env", {})
-    push_step = next(s for s in job["steps"] if s.get("name") == "Push digest state")
+    push_step = next(
+        s for s in job["steps"] if s.get("name") == "Persist published H16 children as pending"
+    )
     assert "B2_ENDPOINT" in push_step.get("env", {})
     storage_steps = {id(digest_step), id(push_step)}
     for step in job["steps"]:

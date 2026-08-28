@@ -15,11 +15,42 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Shared weekly review adapter and merge-gated tournament tickets.** H15, R5, R6, R7, and H16 now use
+  one typed issue envelope, publisher, native-child batch surface, trust-gated resolver, and scheduled
+  finalizer. Empty batches are not published; blocked capacity is distinct from no candidates; bodies are
+  UTF-8 byte bounded with their full workflow artifact retained. H16 evidence children now record durable
+  Confirm empty / Restore media overrides and unresolved evidence re-surface. The weekly tag tournament
+  publishes one rolling ticket per verb at a strict `>60%` gate. A checked route selection opens a
+  configuration-only PR; merge is the maintainer-selected approval gate, and retained-catalog selection
+  starts a resumable bounded tag backfill. No output pipeline-version bump is introduced.
+
 ### Fixed
 
 - **Blank optional R2 endpoint handling.** Storage helpers and the R2 maintenance scripts now use
   the standard account endpoint when `R2_ENDPOINT` is unset, empty, or whitespace-only, while
   preserving explicit jurisdiction-specific endpoint overrides.
+
+- **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
+  deferred sweep now registers the `moment-extraction` response contract. It also stages one
+  corrected v2 payload and submits it through a durable schema-retry endpoint that clones the
+  completed job's routing policy into a new idempotency namespace, then consumption-acks the
+  malformed source after the replacement record and correction marker are persisted. This replaces
+  the v1-only correction path that produced schema-correction failures for v2 jobs and leaves failed
+  corrections retryable; uncertain HTTP failures retain the deterministic staged payload for a
+  safe idempotent retry.
+
+- **Unexpected-body remediation now catches new table rows automatically.** An audit run dispatches
+  the remediation workflow when it creates the consolidated issue or adds a newly affected feed
+  row to an existing one. Cosmetic refreshes and changed detail on an existing row do not re-run
+  it; `/remedy` remains available for an explicit retry. The rolling consolidated issue is
+  preserved, avoiding duplicate tickets for the same feed-health check.
+
+- **Unexpected-body issue guidance now exposes the catch-up command.** Consolidated issues explain
+  that a merged feed-config PR does not close the issue until a later audit observes zero current
+  unmatched rows. The existing `/remedy` command is documented for explicit retries, and the
+  recovery path is discoverable in the affected-row tables.
 
 - **LLM dispatch V2 consumption ack, parallel result resolution, and a 6-hourly sweep.** A v2 job's
   DO row and B2 objects were held for `COMPLETED_RETENTION_DAYS` (38) after completion even though
@@ -28,10 +59,9 @@ Phase R (Research-Tool Surface)._
   consumption. `POST /v2/jobs:ack-batch` now does, called once per poll chunk (not per job) after
   `write_deferred` succeeds, reducing post-ack retention to roughly one hourly cleanup tick --
   completion-to-release still spans the six-hour observation cadence for a job the sweep hasn't
-  yet polled. Only a
-  validated success is acked: a result that failed structured-output validation is exactly what the
-  sweep's schema-correction path re-reads. A failed ack is harmless -- the result is already durable
-  client-side -- and never fails the poll.
+  yet polled. A result that failed structured-output validation remains unacked while the sweep's
+  schema-correction path re-reads it, then is acked after the corrective clone is accepted. A failed
+  ack is harmless -- the result is already durable client-side -- and never fails the poll.
 
   Fixed a latent stranding bug found while wiring this up: `purgePendingBatch` selected only
   `completed`/`failed`, so a row already in `purge_pending` was never re-listed. A cleanup run that
