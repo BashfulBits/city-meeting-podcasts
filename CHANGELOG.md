@@ -37,6 +37,17 @@ Phase R (Research-Tool Surface)._
   corrections retryable; uncertain HTTP failures retain the deterministic staged payload for a
   safe idempotent retry.
 
+- **Unexpected-body remediation now catches new table rows automatically.** An audit run dispatches
+  the remediation workflow when it creates the consolidated issue or adds a newly affected feed
+  row to an existing one. Cosmetic refreshes and changed detail on an existing row do not re-run
+  it; `/remedy` remains available for an explicit retry. The rolling consolidated issue is
+  preserved, avoiding duplicate tickets for the same feed-health check.
+
+- **Unexpected-body issue guidance now exposes the catch-up command.** Consolidated issues explain
+  that a merged feed-config PR does not close the issue until a later audit observes zero current
+  unmatched rows. The existing `/remedy` command is documented for explicit retries, and the
+  recovery path is discoverable in the affected-row tables.
+
 - **LLM dispatch V2 consumption ack, parallel result resolution, and a 6-hourly sweep.** A v2 job's
   DO row and B2 objects were held for `COMPLETED_RETENTION_DAYS` (38) after completion even though
   the client had fetched, validated and durably persisted the result minutes later --

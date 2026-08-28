@@ -2,11 +2,10 @@ name: Remedy-unexpected-bodies commands
 
 # `/remedy`, commented on the feed-health audit's own consolidated `unexpected-body` issue,
 # re-dispatches remedy-unexpected-bodies.yml for it. audit.yml already dispatches that workflow
-# automatically the moment it *creates* the issue -- see `on_issue_created` in
-# scripts/audit_feeds.py -- but deliberately not again while it stays open and later runs add or
-# change rows on it (ARCHITECTURE.md's "Trigger" note explains why: once per fresh finding, not
-# once per day it's open). This command covers exactly that gap: a maintainer who sees the issue
-# grew new rows types `/remedy` to run it again.
+# automatically when it creates the issue or adds a new affected-feed row -- see the creation and
+# new-row hooks in scripts/audit_feeds.py. It deliberately does not run again for cosmetic refreshes
+# or changed detail on an existing row. This command remains available when a maintainer wants to
+# force another pass.
 #
 # Mirrors stale-commands.yml's shape and its permission gate (`citypods.github_permissions`,
 # not the possibly-stale `author_association` alone). No pip install needed here --
