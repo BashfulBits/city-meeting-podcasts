@@ -1543,13 +1543,10 @@ capped-deque pattern from PR #324):
 - A separate weekly **packaging** workflow (`asr-quality-review.yml`) opens/updates a native GitHub
 parent/sub-issue review batch from whatever close-call samples accumulated; its finalizer queries that
 native relationship before closing a cleared parent.
-- A near-real-time **decision ingester** workflow (`asr-quality-ingest.yml`) reacts to issue edits and
+- The shared **decision ingester** workflow (`review-issue-resolve.yml`) reacts to trusted issue edits and
   comments, records exactly-one-primary task-box decisions, comments with the stored result, and closes
-  the child issue. The low-frequency cron safety net **scans every open `H15 sample *` issue** (via a
-  `resolve` → matrix `ingest` job split) rather than resolving to an empty issue list and skipping —
-  the original PR shipped this as a no-op that always exited green. A separate `finalize` job closes
-  cleared parent issues exactly once per run, after the matrix, so N children closing in the same run
-  can't race each other into double-closing the same parent.
+  the child issue. Its scheduled safety net scans every open `agent:weekly-review` child, so H15 cannot
+  silently miss an event; the common finalizer closes a parent only after all its native children resolve.
 - **Routing payoff (implemented both directions):** `TranscriptQualityRoute.route_mode` is a
   source/body policy, not an episode-level review gate. `provider-align` selects an existing
   provider-aligned artifact or schedules provider wording through stable-ts; `fresh-asr` selects
