@@ -7,6 +7,7 @@ from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm import LLMDispatchTerminalError, LLMStructuredOutputError
 from citypods.compute.llm_deferred import DeferredSnapshot, DeferredSnapshotEntry
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
+from citypods.storage import StorageReadUnavailable
 from scripts import llm_deferred_sweep
 
 
@@ -99,6 +100,45 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     # Verify the active backend was propagated to prune_expired_deferred_snapshot.
     assert "backend" in prune_kwargs
     assert isinstance(prune_kwargs["backend"], FakeBackend)
+
+
+def test_sweep_reports_unavailable_snapshot_records(monkeypatch, capsys):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    error = StorageReadUnavailable(
+        "state/llm_deferred/blocked.json", TimeoutError("connection reset")
+    )
+    snapshot = DeferredSnapshot(
+        [
+            DeferredSnapshotEntry(
+                key=error.key,
+                last_modified=None,
+                data=None,
+                decoded=None,
+                unavailable=error,
+            )
+        ]
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: snapshot)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot, **_kw: 0,
+    )
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    out = capsys.readouterr()
+    assert "0 pending seen" in out.out
+    assert "1 unavailable" in out.out
+    assert f"key={error.key}" in out.err
+    assert "reason=TimeoutError" in out.err
 
 
 def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, capsys):

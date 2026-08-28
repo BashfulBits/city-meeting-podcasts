@@ -21,6 +21,12 @@ Phase R (Research-Tool Surface)._
   the standard account endpoint when `R2_ENDPOINT` is unset, empty, or whitespace-only, while
   preserving explicit jurisdiction-specific endpoint overrides.
 
+- **Observable exhausted storage reads.** S3-compatible object reads now preserve the affected key
+  and original cause when bounded transient retries are exhausted. Deferred LLM snapshot and index
+  repair paths report and skip only unavailable objects, retain existing pointers during uncertain
+  repair, and continue reconciling independent records; strict reads still surface authentication,
+  configuration, and other non-transient errors.
+
 - **LLM dispatch V2 consumption ack, parallel result resolution, and a 6-hourly sweep.** A v2 job's
   DO row and B2 objects were held for `COMPLETED_RETENTION_DAYS` (38) after completion even though
   the client had fetched, validated and durably persisted the result minutes later --

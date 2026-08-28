@@ -25,6 +25,7 @@ from typing import Any
 
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
+from citypods.storage.base import StorageReadUnavailable
 
 DEFERRED_PREFIX = "state/llm_deferred/"
 DEFERRED_INDEX_PREFIX = "state/llm_deferred_index/"
@@ -61,6 +62,7 @@ class DeferredSnapshotEntry:
     data: Mapping[str, Any] | None
     decoded: JobResult | JobHandle | None
     deleted: bool = False
+    unavailable: StorageReadUnavailable | None = None
 
 
 @dataclass
@@ -73,6 +75,11 @@ class DeferredSnapshot:
     """
 
     entries: list[DeferredSnapshotEntry]
+
+    @property
+    def unavailable_reads(self) -> tuple[StorageReadUnavailable, ...]:
+        """Object reads skipped because a transient backend failure exhausted its retries."""
+        return tuple(entry.unavailable for entry in self.entries if entry.unavailable is not None)
 
     def pending(self):
         for entry in self.entries:
@@ -222,7 +229,10 @@ def prune_expired_failure_markers(storage, *, now: datetime | None = None) -> in
     except Exception:  # noqa: BLE001 -- audit cleanup must never block a sweep
         return 0
     for key, _ in listing:
-        data = _read_json(storage, key)
+        try:
+            data = _read_json(storage, key)
+        except StorageReadUnavailable:
+            continue
         if not isinstance(data, Mapping):
             continue
         raw = data.get("last_failed_at")
@@ -461,16 +471,19 @@ def _write_json(storage, key: str, body: bytes) -> None:
 
 
 def _read_json(storage, key: str) -> Any | None:
-    """Read and parse a JSON object from storage, returning None on fetch or parse errors."""
+    """Read and parse a JSON object from storage.
+
+    Missing or malformed objects return ``None``. A transient read that exhausted the storage
+    adapter's retry budget, or any other backend error, propagates so callers can distinguish an
+    unavailable object from an absent/corrupt one.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "record.json"
+        if not storage.get_file(key, path):
+            return None
         try:
-            if not storage.get_file(key, path):
-                return None
             return json.loads(path.read_text())
-        except Exception:  # noqa: BLE001
-            # Transient storage errors or corrupted JSON for an individual key must not abort the
-            # whole snapshot load / sweep.
+        except (OSError, TypeError, ValueError):
             return None
 
 
@@ -522,7 +535,7 @@ def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
     return _decode_record(_read_json(storage, deferred_key(recipe_hash)))
 
 
-def iter_pending_deferred(storage):
+def iter_pending_deferred(storage, *, unavailable: list[StorageReadUnavailable] | None = None):
     """Yield currently-pending records one at a time, oldest-first.
 
     The sweep may stop early -- its own wall-clock deadline passes, or a signal requests a
@@ -546,7 +559,12 @@ def iter_pending_deferred(storage):
         key=lambda item: (item[1] is None, item[1]),
     )
     for key, _ in listing:
-        data = _read_json(storage, key)
+        try:
+            data = _read_json(storage, key)
+        except StorageReadUnavailable as exc:
+            if unavailable is not None:
+                unavailable.append(exc)
+            continue
         if not isinstance(data, Mapping) or data.get("status") != "pending":
             continue
         decoded = _decode_record(data)
@@ -562,13 +580,19 @@ def _load_snapshot_from_keys(storage, listing) -> DeferredSnapshot:
         if key in seen:
             continue
         seen.add(key)
-        data = _read_json(storage, key)
+        unavailable = None
+        try:
+            data = _read_json(storage, key)
+        except StorageReadUnavailable as exc:
+            data = None
+            unavailable = exc
         entries.append(
             DeferredSnapshotEntry(
                 key=key,
                 last_modified=last_modified,
                 data=data if isinstance(data, Mapping) else None,
                 decoded=_decode_record(data),
+                unavailable=unavailable,
             )
         )
     return DeferredSnapshot(entries)
@@ -593,7 +617,7 @@ def _indexed_listing(storage, *, now: datetime) -> list[tuple[str, Any]]:
 
     try:
         budget, _ = load_llm_budget_cas(storage)
-    except Exception:  # noqa: BLE001 -- a transient ledger read must not sink the whole sweep
+    except StorageReadUnavailable:
         budget = None
     listing: list[tuple[str, Any]] = []
     for model, route in ROUTES.items():
@@ -601,10 +625,7 @@ def _indexed_listing(storage, *, now: datetime) -> list[tuple[str, Any]]:
             model, route=route, requests=1, tokens=0, cost=0.0, now=now
         ):
             continue
-        try:
-            listing.extend(storage.list_objects(f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/"))
-        except Exception:  # noqa: BLE001 -- one bad partition must not sink the whole sweep
-            continue
+        listing.extend(storage.list_objects(f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/"))
     return listing
 
 
@@ -613,6 +634,8 @@ def load_deferred_snapshot(storage, *, now: datetime | None = None) -> DeferredS
 
     Before the repair pass marks migration complete, the old full listing remains active. This
     makes rollout safe for existing records and for a repair that is interrupted halfway through.
+    A transiently unavailable canonical object is retained as an unavailable snapshot entry so
+    independent records can still be reconciled; callers should inspect ``unavailable_reads``.
     """
     if now is not None:
         current = now
@@ -629,7 +652,12 @@ def load_deferred_snapshot(storage, *, now: datetime | None = None) -> DeferredS
     return _load_snapshot_from_keys(storage, storage.list_objects(DEFERRED_PREFIX))
 
 
-def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
+def repair_deferred_index(
+    storage,
+    *,
+    now: datetime | None = None,
+    unavailable: list[StorageReadUnavailable] | None = None,
+) -> int:
     """Rebuild pending pointers from canonical B2 records and atomically finish migration.
 
     The pass is idempotent. It intentionally lists the canonical prefix only when invoked by an
@@ -638,8 +666,15 @@ def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
     current = now or datetime.now(UTC)
     repaired = 0
     desired: set[str] = set()
+    had_unavailable = False
     for key, _ in storage.list_objects(DEFERRED_PREFIX):
-        data = _read_json(storage, key)
+        try:
+            data = _read_json(storage, key)
+        except StorageReadUnavailable as exc:
+            had_unavailable = True
+            if unavailable is not None:
+                unavailable.append(exc)
+            continue
         if not isinstance(data, Mapping):
             continue
         recipe_hash = key[len(DEFERRED_PREFIX) : -len(".json")]
@@ -649,12 +684,15 @@ def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
         repaired += 1
     # Compaction is safe after the canonical listing: every valid pointer for the current
     # registry is in ``desired``. Orphans are only advisory, so deleting them cannot lose work.
-    for key, _ in storage.list_objects(DEFERRED_INDEX_PENDING_PREFIX):
-        if key not in desired:
-            try:
-                storage.delete(key)
-            except Exception:  # noqa: BLE001 -- cleanup remains best-effort
-                pass
+    # Do not compact while any canonical record was unavailable: its existing pointer may be the
+    # only route by which the next sweep can rediscover that record.
+    if not had_unavailable:
+        for key, _ in storage.list_objects(DEFERRED_INDEX_PENDING_PREFIX):
+            if key not in desired:
+                try:
+                    storage.delete(key)
+                except Exception:  # noqa: BLE001 -- cleanup remains best-effort
+                    pass
     prune_expired_failure_markers(storage, now=current)
     _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 1}\n')
     return repaired

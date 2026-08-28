@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_budget import mutate_llm_budget
 from citypods.compute.llm_deferred import (
@@ -10,6 +12,7 @@ from citypods.compute.llm_deferred import (
     DEFERRED_INDEX_PENDING_PREFIX,
     DEFERRED_PREFIX,
     _indexed_listing,
+    _read_json,
     _write_json,
     deferred_failure_key,
     deferred_key,
@@ -27,6 +30,7 @@ from citypods.compute.llm_deferred import (
     write_deferred,
 )
 from citypods.compute.llm_policy import ROUTES, DeferredLLMRequest, LLMRequestPolicy
+from citypods.storage import StorageReadUnavailable
 from tests._cas_fake import MemStorage
 
 NOW = datetime(2026, 7, 16, 12, tzinfo=UTC)
@@ -311,6 +315,15 @@ def test_look_up_missing_recipe_hash_returns_none():
     assert look_up_deferred(storage, "never-written") is None
 
 
+def test_read_json_propagates_non_transient_storage_errors():
+    class _BrokenStorage(MemStorage):
+        def get_file(self, key, local_path):
+            raise PermissionError(f"permission denied for {key}")
+
+    with pytest.raises(PermissionError, match="permission denied"):
+        _read_json(_BrokenStorage(), deferred_key("forbidden"))
+
+
 def test_a_completed_record_is_never_downgraded_back_to_pending():
     storage = MemStorage()
     write_deferred(
@@ -403,6 +416,47 @@ def test_snapshot_reads_each_registry_record_once_and_prune_reuses_it():
     # compare, never listing the registry or downloading non-expired records again.
     assert storage.list_calls == 1
     assert storage.class_b == 6
+
+
+def test_snapshot_skips_unavailable_record_and_reports_its_key():
+    class _UnavailableStorage(MemStorage):
+        unavailable_key = None
+
+        def get_file(self, key, local_path):
+            if key == self.unavailable_key:
+                raise StorageReadUnavailable(key, TimeoutError("connection reset"))
+            return super().get_file(key, local_path)
+
+    storage = _UnavailableStorage()
+    write_deferred(storage, "good", _pending_handle("good"), now=NOW)
+    write_deferred(storage, "unavailable", _pending_handle("unavailable"), now=NOW)
+    storage.unavailable_key = deferred_key("unavailable")
+
+    snapshot = load_deferred_snapshot(storage)
+
+    assert [handle.recipe_hash for handle in snapshot.pending()] == ["good"]
+    assert [error.key for error in snapshot.unavailable_reads] == [deferred_key("unavailable")]
+
+
+def test_iter_pending_deferred_skips_unavailable_record_and_collects_error():
+    class _UnavailableStorage(MemStorage):
+        blocked = False
+
+        def get_file(self, key, local_path):
+            if self.blocked and key == deferred_key("unavailable"):
+                raise StorageReadUnavailable(key, TimeoutError("connection reset"))
+            return super().get_file(key, local_path)
+
+    storage = _UnavailableStorage()
+    write_deferred(storage, "good", _pending_handle("good"), now=NOW)
+    write_deferred(storage, "unavailable", _pending_handle("unavailable"), now=NOW)
+    storage.blocked = True
+    unavailable = []
+
+    found = list(iter_pending_deferred(storage, unavailable=unavailable))
+
+    assert [handle.recipe_hash for handle in found] == ["good"]
+    assert [error.key for error in unavailable] == [deferred_key("unavailable")]
 
 
 def test_snapshot_prune_does_not_delete_a_record_changed_after_snapshot():

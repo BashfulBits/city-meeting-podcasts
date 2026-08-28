@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from citypods.storage import make_storage
+from citypods.storage import StorageReadUnavailable, make_storage
 from citypods.storage.local import LocalStorage
 from citypods.storage.routing import RoutingStorage
 from citypods.storage.s3 import CASConflict, S3CompatibleStorage
@@ -567,8 +567,10 @@ def test_exists_reraises_non_absent_client_errors():
             raise _client_error("SlowDown", 503)
 
     store._client = _ThrottledClient()
-    with pytest.raises(Exception, match="SlowDown"):
+    with pytest.raises(StorageReadUnavailable, match="SlowDown") as caught:
         store.exists("k.json")
+    assert caught.value.key == "k.json"
+    assert caught.value.cause.response["Error"]["Code"] == "SlowDown"
 
 
 def test_put_cas_create_if_absent_then_conflict():
@@ -757,9 +759,35 @@ def test_get_file_raises_after_exhausting_transfer_retries(tmp_path, monkeypatch
     store._client = client
     monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
 
-    with pytest.raises(ReadTimeoutError):
+    with pytest.raises(StorageReadUnavailable) as caught:
         store.get_file("state/k.json", tmp_path / "state.json")
     assert client.calls == 3
+    assert caught.value.key == "state/k.json"
+    assert isinstance(caught.value.cause, ReadTimeoutError)
+
+
+def test_get_file_preserves_existing_destination_after_exhausted_retry(tmp_path, monkeypatch):
+    from botocore.exceptions import ReadTimeoutError
+
+    store = _s3_with_fake_client()
+    destination = tmp_path / "state.json"
+    destination.write_text("known-good")
+
+    class _PartialDownloadClient(_FakeDownloadClient):
+        def download_file(self, bucket, key, path):
+            Path(path).write_text("partial")
+            super().download_file(bucket, key, path)
+
+    store._client = _PartialDownloadClient(
+        [ReadTimeoutError(endpoint_url="https://x", error="timeout") for _ in range(3)]
+    )
+    monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(StorageReadUnavailable):
+        store.get_file("state/k.json", destination)
+
+    assert destination.read_text() == "known-good"
+    assert not (tmp_path / ".state.json.download").exists()
 
 
 def test_get_file_returns_false_only_for_absent_objects(tmp_path):
@@ -775,9 +803,10 @@ def test_get_file_raises_non_absent_client_errors(tmp_path, monkeypatch):
     monkeypatch.setattr("citypods.storage.s3.time.sleep", lambda _seconds: None)
 
     # Transient server errors are retried, but still surface after the bounded retry budget.
-    with pytest.raises(Exception, match="InternalError"):
+    with pytest.raises(StorageReadUnavailable, match="InternalError") as caught:
         store.get_file("state/k.json", tmp_path / "k.json")
     assert store._client.calls == 3
+    assert caught.value.key == "state/k.json"
 
 
 def test_get_file_retries_streaming_checksum_parser_failure_then_succeeds(tmp_path, monkeypatch):
