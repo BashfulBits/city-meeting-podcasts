@@ -401,7 +401,9 @@ def r2_from_env(*, require_public_base_url: bool = True) -> S3CompatibleStorage 
     """
     try:
         account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-        endpoint = os.environ.get("R2_ENDPOINT", f"https://{account}.r2.cloudflarestorage.com")
+        endpoint = os.environ.get("R2_ENDPOINT", "").strip() or (
+            f"https://{account}.r2.cloudflarestorage.com"
+        )
         public_base_url = os.environ.get("R2_PUBLIC_BASE_URL")
         if require_public_base_url and not public_base_url:
             raise KeyError("R2_PUBLIC_BASE_URL")

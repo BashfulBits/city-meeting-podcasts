@@ -46,7 +46,9 @@ def _client(*, workers: int = DEFAULT_WORKERS):
     from botocore.config import Config
 
     account_id = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-    endpoint = os.environ.get("R2_ENDPOINT", f"https://{account_id}.r2.cloudflarestorage.com")
+    endpoint = os.environ.get("R2_ENDPOINT", "").strip() or (
+        f"https://{account_id}.r2.cloudflarestorage.com"
+    )
     return boto3.client(
         "s3",
         endpoint_url=endpoint,

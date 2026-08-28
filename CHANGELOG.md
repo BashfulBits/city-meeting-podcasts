@@ -28,6 +28,10 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Blank optional R2 endpoint handling.** Storage helpers and the R2 maintenance scripts now use
+  the standard account endpoint when `R2_ENDPOINT` is unset, empty, or whitespace-only, while
+  preserving explicit jurisdiction-specific endpoint overrides.
+
 - **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
   deferred sweep now registers the `moment-extraction` response contract. It also stages one
   corrected v2 payload and submits it through a durable schema-retry endpoint that clones the
