@@ -1,0 +1,48 @@
+name: Deploy LLM provider shim Worker
+
+# The shim restores the upstream path prefix for custom providers that Cloudflare AI Gateway
+# cannot address (see workers/llm-provider-shim/README.md). Its SHIM_TOKEN is a Worker secret set
+# once out of band with `wrangler secret put`; `wrangler deploy` leaves existing secrets in place,
+# so this workflow never needs it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workers/llm-provider-shim/src/**"
+      - "workers/llm-provider-shim/wrangler.jsonc"
+      - "workers/llm-provider-shim/package.json"
+      - ".github/workflows/llm-provider-shim-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-provider-shim-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24"
+
+      - name: Test Worker
+        working-directory: workers/llm-provider-shim
+        run: npm test
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/llm-provider-shim
+          wranglerVersion: "4"
