@@ -96,7 +96,7 @@
     "zai": {
       "api_base": "https://api.z.ai/api/paas/v4",
       "ai_gateway_slug": "custom-zai",
-      "ai_gateway_chat_path": "/api/paas/v4/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -122,7 +122,7 @@
     "kilo": {
       "api_base": "https://api.kilo.ai/api/gateway",
       "ai_gateway_slug": "custom-kilo",
-      "ai_gateway_chat_path": "/api/gateway/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -135,7 +135,7 @@
     "opencode": {
       "api_base": "https://opencode.ai/zen/v1",
       "ai_gateway_slug": "custom-opencode",
-      "ai_gateway_chat_path": "/zen/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [

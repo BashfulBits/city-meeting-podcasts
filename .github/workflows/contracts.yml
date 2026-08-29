@@ -105,6 +105,25 @@ jobs:
       # the Cloudflare Worker proxy when these are set (citypods.media._worker_fallback_for_403).
       # Wire them in here so the media-fetch check exercises the same path a real audio run uses —
       # a failure then means upstream *or* the proxy genuinely broke, not the known direct-fetch 403.
+      # Cloudflare AI Gateway's Custom Provider URL join is undocumented and does not match its
+      # docs: it rewrites a Base URL's last path segment to a hardcoded `v1` (see
+      # workers/llm-provider-shim/README.md). Every custom provider's config compensates for that,
+      # so a silent change on Cloudflare's side would 404 those routes with no failover -- 404 is
+      # not in either dispatch Worker's retryableStatus set. Nothing offline can catch it, so probe
+      # the real gateway here. Self-skips when the secrets are absent.
+      - name: Probe AI Gateway custom-provider routing
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AI_GATEWAY_ID: ${{ secrets.AI_GATEWAY_ID || 'citypods-dispatch' }}
+          AI_GATEWAY_AUTH_TOKEN: ${{ secrets.AI_GATEWAY_AUTH_TOKEN }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: python -m pytest tests/live/test_ai_gateway_contract.py -m live -v
+
       - name: Probe endpoints + reconcile issues
         env:
           GH_TOKEN: ${{ github.token }}

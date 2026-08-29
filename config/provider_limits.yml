@@ -158,12 +158,13 @@ providers:
   zai:
     api_base: https://api.z.ai/api/paas/v4
     ai_gateway_slug: custom-zai
-    # Full path from the origin root (see the `nvidia` block). NOTE: z.ai is currently broken
-    # THROUGH the gateway for a separate, unresolved reason -- verified 2026-08-29, both this
-    # path and the old `/chat/completions` return upstream 404s, while a direct call to
-    # `https://api.z.ai/api/paas/v4/chat/completions` reaches the real API. Path corrected here
-    # so it is no longer a confounder; the remaining failure needs a Cloudflare-side answer.
-    ai_gateway_chat_path: /api/paas/v4/chat/completions
+    # Routed through `workers/llm-provider-shim`, not straight at api_base: AI Gateway rewrites the
+    # last segment of a Custom Provider's Base URL to a hardcoded `v1`, which turns z.ai's
+    # `/api/paas/v4` into `/api/paas/v1` (a real 404). No Base URL can express `/api/paas/v4`, so
+    # the shim restores it. The registered Base URL is
+    # `https://citypods-llm-provider-shim.citypods.workers.dev/<SHIM_TOKEN>/zai/x` -- the trailing
+    # `x` is sacrificial (the gateway eats it and substitutes `v1`). Verified 2026-08-29: HTTP 200.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -183,10 +184,11 @@ providers:
   kilo:
     api_base: https://api.kilo.ai/api/gateway
     ai_gateway_slug: custom-kilo
-    # Full path from the origin root (see the `nvidia` block). NOTE: like z.ai, Kilo is broken
-    # THROUGH the gateway for a separate, unresolved reason -- verified 2026-08-29, both paths
-    # return the kilo.ai marketing site's HTML 404 while a direct call returns HTTP 200.
-    ai_gateway_chat_path: /api/gateway/chat/completions
+    # The registered Base URL is `https://api.kilo.ai/api/gateway/v1`, not api_base: AI Gateway
+    # rewrites a Custom Provider Base URL's last segment to a hardcoded `v1`, so registering
+    # `/api/gateway` dispatched to `/api/v1` (a real 404). Kilo also serves `/api/gateway/v1`, so
+    # registering that lands correctly and no shim is needed. Verified 2026-08-29: HTTP 200.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -195,10 +197,14 @@ providers:
   opencode:
     api_base: https://opencode.ai/zen/v1
     ai_gateway_slug: custom-opencode
-    # Full path from the origin root (see the `nvidia` block). NOTE: like z.ai and Kilo, broken
-    # THROUGH the gateway for a separate, unresolved reason -- verified 2026-08-29, both paths
-    # return opencode.ai's HTML 404 while a direct call reaches the real API.
-    ai_gateway_chat_path: /zen/v1/chat/completions
+    # Routed through `workers/llm-provider-shim` alongside z.ai. OpenCode's own prefix (`/zen/v1`)
+    # survives the gateway's `v1` substitution unchanged, yet direct gateway calls still 404'd for a
+    # cause never identified from outside -- replaying the gateway's full header set on a direct
+    # call would not reproduce it. Going through the shim resolves it, which also ruled out the
+    # leading theory that opencode.ai rejects Cloudflare-edge traffic (the shim is a Worker too).
+    # Registered Base URL: `https://.../<SHIM_TOKEN>/opencode/x`. Verified 2026-08-29: a genuine
+    # upstream 429 (free-tier quota) in place of the routing 404.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:

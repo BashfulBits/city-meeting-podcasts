@@ -22,6 +22,12 @@ z.ai's `/api/paas/v4` becomes `/api/paas/v1`, which 404s; no `v1`-containing pat
 so no Base URL can express it. Registering this Worker instead — and letting it restore the real
 prefix — keeps such providers inside AI Gateway's logging rather than bypassing the gateway.
 
+OpenCode is routed here too, for a cause never identified from outside: its own prefix (`/zen/v1`)
+survives the `v1` substitution unchanged, so its gateway URL was already correct, yet direct gateway
+calls still 404'd — and replaying the gateway's full header set on a direct call would not
+reproduce it. Going through the shim resolves it. That also disproved the leading theory that
+opencode.ai rejects Cloudflare-edge traffic, since this shim is itself a Worker.
+
 Providers that *can* be expressed directly should be, and are not routed here. NVIDIA and SambaNova
 only needed their `ai_gateway_chat_path` to carry the base path; Kilo only needs its Base URL
 registered as `https://api.kilo.ai/api/gateway/v1`, because Kilo genuinely serves that path.

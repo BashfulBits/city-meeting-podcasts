@@ -1312,7 +1312,7 @@
       "direct_model": "zai/glm-4.7-flash",
       "api_base": "https://api.z.ai/api/paas/v4",
       "ai_gateway_slug": "custom-zai",
-      "ai_gateway_chat_path": "/api/paas/v4/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "ZAI_API_KEY",
       "reset_timezone": "UTC"
@@ -1343,7 +1343,7 @@
       "direct_model": "zai/glm-4.5-flash",
       "api_base": "https://api.z.ai/api/paas/v4",
       "ai_gateway_slug": "custom-zai",
-      "ai_gateway_chat_path": "/api/paas/v4/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "ZAI_API_KEY",
       "reset_timezone": "UTC"
@@ -1372,7 +1372,7 @@
       "direct_model": "zai/glm-4.7-flashx",
       "api_base": "https://api.z.ai/api/paas/v4",
       "ai_gateway_slug": "custom-zai",
-      "ai_gateway_chat_path": "/api/paas/v4/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "ZAI_API_KEY",
       "reset_timezone": "UTC"
@@ -1401,7 +1401,7 @@
       "direct_model": "zai/glm-4.7",
       "api_base": "https://api.z.ai/api/paas/v4",
       "ai_gateway_slug": "custom-zai",
-      "ai_gateway_chat_path": "/api/paas/v4/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "ZAI_API_KEY",
       "reset_timezone": "UTC"
@@ -1430,7 +1430,7 @@
       "direct_model": "zai/glm-5",
       "api_base": "https://api.z.ai/api/paas/v4",
       "ai_gateway_slug": "custom-zai",
-      "ai_gateway_chat_path": "/api/paas/v4/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "ZAI_API_KEY",
       "reset_timezone": "UTC"
@@ -1672,7 +1672,7 @@
       "direct_model": "openai/stepfun/step-3.7-flash:free",
       "api_base": "https://api.kilo.ai/api/gateway",
       "ai_gateway_slug": "custom-kilo",
-      "ai_gateway_chat_path": "/api/gateway/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "KILO_API_KEY",
       "reset_timezone": "UTC"
@@ -1703,7 +1703,7 @@
       "direct_model": "openai/nvidia/nemotron-3-ultra-550b-a55b:free",
       "api_base": "https://api.kilo.ai/api/gateway",
       "ai_gateway_slug": "custom-kilo",
-      "ai_gateway_chat_path": "/api/gateway/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "KILO_API_KEY",
       "reset_timezone": "UTC"
@@ -1734,7 +1734,7 @@
       "direct_model": "openai/deepseek-v4-flash-free",
       "api_base": "https://opencode.ai/zen/v1",
       "ai_gateway_slug": "custom-opencode",
-      "ai_gateway_chat_path": "/zen/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "OPENCODE_API_KEY",
       "reset_timezone": "UTC"
@@ -1765,7 +1765,7 @@
       "direct_model": "openai/mimo-v2.5-free",
       "api_base": "https://opencode.ai/zen/v1",
       "ai_gateway_slug": "custom-opencode",
-      "ai_gateway_chat_path": "/zen/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "OPENCODE_API_KEY",
       "reset_timezone": "UTC"
@@ -1796,7 +1796,7 @@
       "direct_model": "openai/nemotron-3-ultra-free",
       "api_base": "https://opencode.ai/zen/v1",
       "ai_gateway_slug": "custom-opencode",
-      "ai_gateway_chat_path": "/zen/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "OPENCODE_API_KEY",
       "reset_timezone": "UTC"

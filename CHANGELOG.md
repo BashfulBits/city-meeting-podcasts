@@ -54,9 +54,20 @@ Phase R (Research-Tool Surface)._
   at all, so the shim restores its real prefix and keeps it inside AI Gateway's logging instead of
   bypassing the gateway. The shim pins its destinations to an allowlist, fails closed without its
   secret, and forwards only `authorization`/`content-type`/`accept`, because it relays third-party
-  API keys. OpenCode is routed through it as well pending an empirical answer: its gateway URL is
-  already correct and returns a real 400 on a direct call, yet 404s through the gateway, and
-  replaying the gateway's full header set directly does not reproduce it.
+  API keys. OpenCode is routed through it as well, for a cause never identified from outside: its gateway
+  URL was already correct and returned a real 400 directly, yet 404'd through the gateway, and
+  replaying the gateway's full header set directly did not reproduce it. The shim resolves it,
+  which also disproved the leading theory that opencode.ai rejects Cloudflare-edge traffic.
+  Verified 2026-08-29 end to end through the gateway: z.ai 200, Kilo 200, OpenCode a genuine
+  upstream 429 (free-tier quota) in place of the routing 404 — and unlike 404, 429 *is* in
+  `retryableStatus`, so it fails over properly.
+- **Live contract tests for the gateway's undocumented URL join** (`tests/live/`, `pytest -m live`,
+  wired into the weekly `contracts.yml`). The deviation lives in Cloudflare's edge, so no offline
+  test can see it: these assert every custom provider's configured URL actually reaches its
+  provider API (rejecting routing-404 fingerprints, empty-body 404s, and Cloudflare edge blocks
+  that would otherwise pass as ordinary 4xx), plus a canary asserting NVIDIA's bare path still
+  fails — if it ever starts working, Cloudflare changed the join and the compensating prefixes
+  have become double-prefixes.
 
 - **Cloudflare AI Gateway dropped the Base URL path for Custom Providers, 404-ing every NVIDIA and
   SambaNova route.** The gateway joins the caller-supplied path at the provider's *origin root*,
