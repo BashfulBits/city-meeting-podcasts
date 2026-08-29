@@ -11,8 +11,11 @@ Requires ``boto3`` (extra: ``citypods[storage]``). Backends are built from env v
 from __future__ import annotations
 
 import os
+import tempfile
 import time
 from pathlib import Path
+
+from citypods.storage.base import StorageReadUnavailable
 
 
 class CASConflict(Exception):
@@ -106,6 +109,8 @@ def is_transient_storage_error(
     ``AttributeError``: 403s, bad requests, missing credentials, and programming errors must still
     fail loudly.
     """
+    if isinstance(exc, StorageReadUnavailable):
+        return True
     if isinstance(exc, AttributeError):
         return "StreamingChecksumBody" in str(exc) and "strip" in str(exc)
     sdk_errors = (
@@ -137,7 +142,7 @@ def is_transient_storage_error(
     return code in _TRANSIENT_S3_CODES or status in _TRANSIENT_S3_STATUS
 
 
-def _retry_storage_read(operation):
+def _retry_storage_read(operation, *, key: str):
     """Run one idempotent S3 read with bounded retries for transient backend failures."""
     last_error = None
     for attempt in range(3):
@@ -148,7 +153,7 @@ def _retry_storage_read(operation):
                 raise
             last_error = exc
             if attempt == 2:
-                raise
+                raise StorageReadUnavailable(key, exc) from exc
             time.sleep(2**attempt)
     raise AssertionError(f"unreachable: {last_error!r}")
 
@@ -214,7 +219,9 @@ class S3CompatibleStorage:
         from botocore.exceptions import ClientError
 
         try:
-            _retry_storage_read(lambda: self._client.head_object(Bucket=self.bucket, Key=key))
+            _retry_storage_read(
+                lambda: self._client.head_object(Bucket=self.bucket, Key=key), key=key
+            )
             return True
         except ClientError as exc:
             # CR2-CP-52: distinguish genuine absence from a throttling/permission/transient
@@ -256,7 +263,7 @@ class S3CompatibleStorage:
                 body.close()
 
         try:
-            return _retry_storage_read(read_object)
+            return _retry_storage_read(read_object, key=key)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code")
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
@@ -305,17 +312,27 @@ class S3CompatibleStorage:
 
         local_path = Path(local_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
+        staged_fd, staged_name = tempfile.mkstemp(
+            prefix=f".{local_path.name}.", suffix=".download", dir=local_path.parent
+        )
+        os.close(staged_fd)
+        staged_path = Path(staged_name)
         try:
             _retry_storage_read(
-                lambda: self._client.download_file(self.bucket, key, str(local_path))
+                lambda: self._client.download_file(self.bucket, key, str(staged_path)), key=key
             )
-            return True
         except ClientError as exc:
+            staged_path.unlink(missing_ok=True)
             code = exc.response.get("Error", {}).get("Code")
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             if code in ("NoSuchKey", "404") or status == 404:
                 return False
             raise
+        except Exception:
+            staged_path.unlink(missing_ok=True)
+            raise
+        staged_path.replace(local_path)
+        return True
 
     def get_range(self, key: str, start: int, end: int) -> bytes | None:
         """Partial GET via the standard HTTP ``Range`` header — a Class-B op, far cheaper than
@@ -333,7 +350,7 @@ class S3CompatibleStorage:
                 body.close()
 
         try:
-            return _retry_storage_read(read_range)
+            return _retry_storage_read(read_range, key=key)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code")
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
@@ -401,7 +418,9 @@ def r2_from_env(*, require_public_base_url: bool = True) -> S3CompatibleStorage 
     """
     try:
         account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-        endpoint = os.environ.get("R2_ENDPOINT", f"https://{account}.r2.cloudflarestorage.com")
+        endpoint = os.environ.get("R2_ENDPOINT", "").strip() or (
+            f"https://{account}.r2.cloudflarestorage.com"
+        )
         public_base_url = os.environ.get("R2_PUBLIC_BASE_URL")
         if require_public_base_url and not public_base_url:
             raise KeyError("R2_PUBLIC_BASE_URL")

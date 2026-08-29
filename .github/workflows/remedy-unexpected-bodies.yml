@@ -84,6 +84,7 @@ jobs:
       # behind each unexpected-body finding written out instead of discarded.
       - name: Collect unexpected-body evidence
         env:
+          GH_TOKEN: ${{ github.token }}
           GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
           GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
           SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
@@ -95,6 +96,7 @@ jobs:
           B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
         run: |
           PYTHONPATH=. python scripts/audit_feeds.py \
+            --dry-run \
             --unexpected-body-evidence unexpected-body-evidence.json
 
       - name: Classify and report

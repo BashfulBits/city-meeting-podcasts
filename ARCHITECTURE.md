@@ -288,6 +288,12 @@ total on `/admin/status`.
 - **Fail-soft durable restore** — `pull_state()` retries recognized transient per-object download
   failures, keeps successfully restored objects, and retains the failed object's existing local or
   cache copy for later self-healing instead of aborting the Audio run.
+- **Observable exhausted storage reads** — S3-compatible object reads raise a typed
+  `StorageReadUnavailable` error after bounded transient retries, preserving the object key and
+  original cause. Multi-object recovery reports and skips only unavailable objects; strict callers
+  still propagate authentication, configuration, and other non-transient errors. Failed downloads
+  use unique per-call staging files, so a concurrent transfer cannot remove another transfer's
+  partial file; deferred index repair leaves migration incomplete when any canonical read fails.
 - **Wall-clock budget + graceful yield** — heavy work runs until a time window closes or a newer run
   queues; cheap idempotent bookkeeping always finishes (see `stages.py` "stop convention").
 - **Graceful SIGTERM + mid-run checkpoint** — the CLI entry installs a SIGTERM handler
