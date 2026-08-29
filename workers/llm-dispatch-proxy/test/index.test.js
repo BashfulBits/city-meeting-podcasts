@@ -590,11 +590,11 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
   assert.equal(batchResult.count, 1);
   assert.equal(batchResult.results[0].status, "completed");
   // Mistral Medium's model_routing overflow (config/provider_limits.yml) lists DeepSeek V4 Pro via
-  // NVIDIA build first, then Nemotron 3 Super, then Gemini 3.5 Flash Lite. The DeepSeek leg is
-  // currently commented out (NVIDIA-side 404, unconfirmed root cause -- see that route's comment),
-  // so Nemotron 3 Super wins here instead. Re-check this once DeepSeek's leg is restored.
-  assert.equal(batchResult.results[0].routeId, "nvidia_nemotron_3_super_120b_a12b_free");
-  assert.ok(dispatchedPayload.model.includes("nemotron"));
+  // NVIDIA build first, then Nemotron 3 Super, then Gemini 3.5 Flash Lite. Re-enabled 2026-08-29
+  // (root-caused: NVIDIA's "Public API Endpoints" per-key entitlement, fixed with a correctly
+  // scoped key -- see that route's comment), so DeepSeek V4 Pro wins here again.
+  assert.equal(batchResult.results[0].routeId, "nvidia_deepseek_v4_pro_0813_free");
+  assert.ok(dispatchedPayload.model.includes("deepseek"));
 
   // The finished request is saved as completed and ready marker removed:
   const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();

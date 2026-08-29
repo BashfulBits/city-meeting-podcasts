@@ -45,6 +45,22 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **NVIDIA `deepseek-v4-pro` route re-enabled: root cause was a per-key entitlement gap, now fixed.**
+  Confirmed the two disabled NVIDIA DeepSeek routes' 404s were NVIDIA's "Public API Endpoints"
+  per-key entitlement gate -- a personal-organization NVIDIA account's key doesn't get this
+  entitlement by default and has no self-service way to grant it (see NVIDIA Developer Forum
+  threads on requesting it for a personal organization). Fixed by generating a new key with only
+  the "Public API Endpoints" scope selected. Verified live: `openai/gpt-oss-120b` (control) and
+  `deepseek-ai/deepseek-v4-pro-0813` both return real 200 responses on the new key.
+  `nvidia_deepseek_v4_pro_0813_free` is re-enabled. Note for the raw JSON API (not the OpenAI SDK):
+  `chat_template_kwargs` must be a top-level request field, not nested under a literal
+  `"extra_body"` key -- `extra_body=` is an OpenAI-Python-SDK-only wrapper the SDK unpacks before
+  sending; sending it literally gets a 400 "Unsupported parameter(s): extra_body". Latency on this
+  route is highly variable (cold-start scaling observed: as fast as ~34s, as slow as >90s on the
+  same key/model) -- both dispatch Workers' real per-call timeout is 720s (well above the observed
+  range), so no timeout config change was needed. `nvidia_deepseek_v4_flash_0731_free` stays
+  disabled pending the same entitlement fix being confirmed for that specific model.
+
 - **NVIDIA build DeepSeek routes disabled: both 404, root cause not a naming bug.** Both
   `nvidia_deepseek_v4_pro_0813_free` and `nvidia_deepseek_v4_flash_0731_free` return 404 with no
   JSON body. An initial fix changed the pro route's `upstream_model` from

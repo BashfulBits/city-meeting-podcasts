@@ -1110,43 +1110,40 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
-  # DISABLED (found 2026-08-29, corrected same day, cause still open): route_id
-  # nvidia_deepseek_v4_pro_0813_free -- upstream_model "deepseek-ai/deepseek-v4-pro-0813" IS the
-  # correct API model string. An earlier version of this comment claimed the "-0813" suffix was
-  # wrong (a marketing-label-only string) based on a secondhand blog synthesis; that was incorrect
-  # -- NVIDIA's own official sample code for this model (the "Sample Python" snippet on this
-  # model's build.nvidia.com page) uses "deepseek-ai/deepseek-v4-pro-0813" verbatim, confirmed by
-  # inspecting the actual submitted request payload that still 404s with that exact string. So the
-  # 404 here is NOT a naming bug on our end, same as nvidia_deepseek_v4_flash_0731_free below (and
-  # a forum post covering both models together -- "Function ... returns DEGRADED error when
-  # calling deepseek-ai/deepseek-v4-flash，deepseek-v4-pro" -- suggests they may share one root
-  # cause). Most likely explanation (2026-08-29): NVIDIA gates some models behind a "Public API
-  # Endpoints" entitlement that must be explicitly requested/granted per API key, separate from
-  # just holding a valid key -- see NVIDIA Developer Forum threads "Request Public API Endpoints
-  # access for my API key" and "Request for access to DeepSeek V4 Pro NIM public API endpoint".
-  # This account's key likely hasn't had that entitlement granted for this model yet. Action: check
-  # the build.nvidia.com dashboard's API-key entitlements/permissions, or file an access request in
-  # the NVIDIA Developer Forums' Access/Accounts category the same way those threads did. Left
-  # commented out rather than guessed back into a "corrected" string: a 404 gets no automatic
-  # block/retry treatment in either dispatch Worker, so a live-but-gated route here would hard-fail
-  # every attempt with no circuit-break. `deepseek/deepseek-v4-pro`'s only route while this is
-  # disabled is DeepSeek Direct's paid leg ($0.435-0.66/M) -- so Mistral Medium's model_routing
-  # overflow onto this model (config's model_routing block above) is not free right now, only
-  # nominally cheap. Re-enable (uncomment, recompile) once the entitlement is granted and confirmed
-  # working with a manual curl.
-  #
-  # - route_id: nvidia_deepseek_v4_pro_0813_free
-  #   model: deepseek/deepseek-v4-pro
-  #   provider: nvidia
-  #   upstream_model: deepseek-ai/deepseek-v4-pro-0813
-  #   input_context_limit: 1000000
-  #   output_context_limit: 384000
-  #   account_id: primary
-  #   rpm: 12
-  #   tpm: 100000
-  #   free: true
-  #   input_per_token: 0.0
-  #   output_per_token: 0.0
+  - route_id: nvidia_deepseek_v4_pro_0813_free
+    model: deepseek/deepseek-v4-pro
+    # Pools with DeepSeek Direct's paid `deepseek_v4_pro_primary` route below -- this is the same
+    # model, free here, paid ($0.435-0.66/M) there. A job pinned to `deepseek/deepseek-v4-pro`
+    # becomes eligible for this free route first.
+    #
+    # RE-ENABLED 2026-08-29 (was disabled the same day over a 404, root-caused and fixed): the 404
+    # was NVIDIA's "Public API Endpoints" per-key entitlement gate -- a personal-organization NVIDIA
+    # account's key doesn't get this entitlement by default and has no self-service way to grant it
+    # (see NVIDIA Developer Forum threads "Request to enable Public API Endpoints for my personal
+    # organization"). Confirmed fixed by generating a new key with only the "Public API Endpoints"
+    # scope selected at creation (`org.ngc.nvidia.com/setup/personal-keys`); verified against the
+    # real endpoint with `chat_template_kwargs: {"thinking": false}` at the JSON top level (NOT
+    # nested under an "extra_body" key -- that's an OpenAI-Python-SDK-only wrapper, not a real wire
+    # field, and NVIDIA's gateway 400s "Unsupported parameter(s): extra_body" if you send it
+    # literally). Latency is highly variable on this route -- one real test took ~34s, another
+    # timed out past 90s on the same key/model, consistent with on-demand cold-start scaling of the
+    # underlying NIM serving container after idle. Both dispatch Workers' real per-call timeout
+    # (`timeout_class: "long"`, the LLMRequestPolicy default) is 720s in v1
+    # (`UPSTREAM_TIMEOUT_SECONDS`) and v2 (`MAX_RESPONSE_SECONDS`), comfortably above the observed
+    # range, so no timeout config change was needed. v2's `ESTIMATED_CALL_DURATION_CEILING_SECONDS`
+    # (default 20s, used only for scheduling-window admission, not a real timeout) may
+    # under-estimate this route's true call time and cause more "deferred_late" reclassifications
+    # here than on faster routes -- a minor scheduling-efficiency note, not a correctness issue.
+    provider: nvidia
+    upstream_model: deepseek-ai/deepseek-v4-pro-0813
+    input_context_limit: 1000000
+    output_context_limit: 384000
+    account_id: primary
+    rpm: 12
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
 
   # DISABLED (found 2026-08-29, cause identified): route_id nvidia_deepseek_v4_flash_0731_free --
   # upstream_model deepseek-ai/deepseek-v4-flash-0731 is the correct API model string per NVIDIA's
