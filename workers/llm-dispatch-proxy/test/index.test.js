@@ -161,6 +161,7 @@ const ENV = {
   OPENROUTER_API_KEY: "openrouter-secret",
   KILO_API_KEY: "kilo-secret",
   OPENCODE_API_KEY: "opencode-secret",
+  NVIDIA_API_KEY: "nvidia-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),
@@ -335,9 +336,11 @@ test("the stored record's model is the canonical requested model, not an upstrea
 });
 
 test("a request for a model_routing source model is also made eligible for its overflow target", async () => {
-  // config/provider_limits.yml's `model_routing` maps Mistral Medium to Gemini 3.5 Flash Lite so
-  // the backlog can drain onto Gemini's independent free-tier capacity without editing the jobs
-  // that dispatch Mistral Medium themselves (2026-08-21 hotfix). The Worker must expand
+  // config/provider_limits.yml's `model_routing` maps Mistral Medium to DeepSeek V4 Pro and
+  // Nemotron 3 Super (both free via NVIDIA build, added 2026-08-29) ahead of Gemini 3.5 Flash
+  // Lite, so the backlog can drain onto that independent free-tier capacity without editing the
+  // jobs that dispatch Mistral Medium themselves (2026-08-21 hotfix, updated 2026-08-29 once
+  // Mistral's own account moved to a $10/mo credit cap). The Worker must expand
   // `policy.allowed_models` the same way the Python scheduler does, whether or not the caller
   // passed its own `allowed_models`.
   const env = isolatedEnv();
@@ -351,6 +354,8 @@ test("a request for a model_routing source model is also made eligible for its o
   assert.equal(stored.model, "mistral/mistral-medium-2508");
   assert.deepEqual(stored.policy.allowed_models, [
     "mistral/mistral-medium-2508",
+    "deepseek/deepseek-v4-pro",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
   ]);
 
@@ -367,6 +372,8 @@ test("a request for a model_routing source model is also made eligible for its o
   ).json();
   assert.deepEqual(explicitStored.policy.allowed_models, [
     "mistral/mistral-medium-2508",
+    "deepseek/deepseek-v4-pro",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
   ]);
 
@@ -394,6 +401,8 @@ test("a request for a model_routing source model is also made eligible for its o
   assert.deepEqual(unrelatedStored.policy.allowed_models, [
     "mistral/mistral-large-2512",
     "mistral/mistral-medium-2508",
+    "deepseek/deepseek-v4-pro",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
   ]);
 
@@ -413,6 +422,8 @@ test("a request for a model_routing source model is also made eligible for its o
   assert.deepEqual(peerStored.policy.allowed_models, [
     "mistral/mistral-medium-2508",
     "meta-llama/llama-3.3-70b-instruct",
+    "deepseek/deepseek-v4-pro",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
   ]);
 });
@@ -520,7 +531,8 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
   const now = new Date("2026-08-22T12:00:00Z");
   const requestId = "chatcmpl-legacy-resident-job-1";
 
-  // Simulate an older resident canonical record created without gemini in allowed_models
+  // Simulate an older resident canonical record created without the model_routing overflow
+  // targets in allowed_models
   const record = {
     version: 1,
     id: requestId,
@@ -565,9 +577,9 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
     dispatchedPayload = JSON.parse(options.body);
     return new Response(
       JSON.stringify({
-        id: "chatcmpl-gemini-res",
+        id: "chatcmpl-overflow-res",
         object: "chat.completion",
-        choices: [{ message: { role: "assistant", content: "response from gemini" } }],
+        choices: [{ message: { role: "assistant", content: "response from overflow route" } }],
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
@@ -577,8 +589,10 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
   assert.equal(batchResult.status, "completed");
   assert.equal(batchResult.count, 1);
   assert.equal(batchResult.results[0].status, "completed");
-  assert.equal(batchResult.results[0].routeId, "gemini_3_5_flash_lite_primary");
-  assert.ok(dispatchedPayload.model.includes("gemini"));
+  // DeepSeek V4 Pro via NVIDIA build (free, added 2026-08-29) now outranks Gemini 3.5 Flash Lite
+  // as Mistral Medium's overflow target -- see config/provider_limits.yml's model_routing.
+  assert.equal(batchResult.results[0].routeId, "nvidia_deepseek_v4_pro_0813_free");
+  assert.ok(dispatchedPayload.model.includes("deepseek"));
 
   // The finished request is saved as completed and ready marker removed:
   const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
@@ -891,8 +905,11 @@ test("legacy DeepSeek aliases use the unified free candidate pool", async () => 
   const result = await dispatchOne(env, upstream, new Date());
   assert.equal(result.status, "completed");
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
-  assert.equal(calls[0].body.model, "deepseek-v4-flash-free");
+  // NVIDIA build (added 2026-08-29) joined this same free pool and now wins the tie-break over
+  // OpenCode's leg -- the point of this test is that the alias resolves into the shared pool at
+  // all, not which specific free member ends up serving it.
+  assert.equal(calls[0].url, "https://integrate.api.nvidia.com/v1/chat/completions");
+  assert.equal(calls[0].body.model, "deepseek-ai/deepseek-v4-flash-0731");
   const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
   const record = await stored.json();
   assert.equal(record.status, "completed");
@@ -1002,7 +1019,7 @@ test("ready-marker lookahead skips a blocked provider and dispatches a later pro
       return new Response(JSON.stringify({ id: "gemini-result", choices: [] }), { status: 200 });
     },
     now,
-    4,
+    8,
   );
 
   assert.equal(result.status, "completed");
@@ -2394,11 +2411,18 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
 
 test("dispatchBatch defers same-route candidates when TPM delay exceeds max stagger", async () => {
   const env = isolatedEnv();
-  // Request with 8000 tokens on 16000 TPM -> 30s token interval > 20s MAX_IN_BATCH_STAGGER_SECONDS.
-  // google/gemma-4-31b-it maps to 3 routes (primary, secondary, openrouter).
-  // With 4 requests, the first 3 take the 3 routes and the 4th is deferred because
-  // all matching routes are exhausted/paced beyond the 20s in-batch stagger ceiling.
-  for (let i = 0; i < 4; i += 1) {
+  // Request with 8000 tokens. google/gemma-4-31b-it now maps to 4 routes: two Gemini accounts
+  // (7200 compiled TPM each -> a 66.7s reuse interval, far past the 20s in-batch stagger ceiling),
+  // OpenRouter's free leg (no TPM cap, paced only by its 5 RPM -> 12s reuse interval), and NVIDIA
+  // build's leg (added 2026-08-29, 45000 compiled TPM, cheap enough to absorb several reuses
+  // before its accumulating token debt finally exceeds the 20s ceiling too). Empirically (this
+  // scenario is intentionally exact-number-pinned against the real compiled catalog, not
+  // hand-derived, since the ranking that decides which route absorbs each reuse is its own
+  // logic) 8 offered requests admit exactly 7 -- 2 Gemini + 1 OpenRouter fresh, plus NVIDIA
+  // serving 4 total via 3 in-batch paced waits -- and defer the 8th once every route's next reuse
+  // exceeds the 20s max stagger. More than 8 offered requests still admit only 7: re-run this
+  // probe (see the PR that added NVIDIA routing) if the provider catalog changes these numbers.
+  for (let i = 0; i < 8; i += 1) {
     await handleRequest(
       chatRequest(
         [{ role: "user", content: `gemma large ${i}` }],
@@ -2429,7 +2453,7 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
     env,
     parallelUpstream,
     now,
-    4,
+    8,
     null,
     null,
     null,
@@ -2439,17 +2463,18 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   );
 
   assert.equal(batchResult.status, "completed");
-  // 3 candidates admitted across the 3 routes. Candidate 3 deferred in place (30s > 20s max stagger).
-  assert.equal(batchResult.count, 3);
-  assert.equal(batchResult.completedCount, 3);
-  assert.equal(calls.length, 3);
-  assert.equal(slept.length, 0);
+  // 7 candidates admitted (NVIDIA's route absorbs 4 of them via 3 in-batch paced waits).
+  // Candidate 8 deferred in place (every route's next reuse exceeds the 20s max stagger).
+  assert.equal(batchResult.count, 7);
+  assert.equal(batchResult.completedCount, 7);
+  assert.equal(calls.length, 7);
+  assert.equal(slept.length, 3);
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 3);
+  assert.equal(completedObjects.length, 7);
   const pendingObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "pending",
   );

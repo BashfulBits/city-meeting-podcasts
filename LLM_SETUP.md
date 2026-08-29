@@ -15,6 +15,7 @@ LiteLLM and multi-provider routes:
 | **OpenRouter** | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) | Direct & Dispatch | Curated Gemma 4, Nemotron 550B/120B free endpoints and frontier models |
 | **Kilo Code** | `KILO_API_KEY` | [app.kilo.ai](https://app.kilo.ai) | Direct & Dispatch | StepFun Step-3.7-Flash & NVIDIA Nemotron-3-Ultra 550B (20 RPM / 200 Free RPD) |
 | **OpenCode Zen** | `OPENCODE_API_KEY` | [opencode.ai/auth](https://opencode.ai/auth) | Direct & Dispatch | DeepSeek-V4-Flash (1M Context), MiMo-V2.5, Nemotron 3 Ultra |
+| **NVIDIA build.nvidia.com** | `NVIDIA_API_KEY` | [build.nvidia.com](https://build.nvidia.com) | Direct & Dispatch | Kimi K3, DeepSeek V4 Pro/Flash, Gemma 4 31B, GPT-OSS 120B, Nemotron 3 Ultra/Super/Nano-Omni, Riva Translate 4B — **no published rate-limit table**; self-imposed 12 RPM (30% of the ~40 RPM community-reported baseline) and 100k TPM/route, see the `nvidia` provider block in `config/provider_limits.yml` |
 
 For the full model evaluation matrix, quality ratings, and recommended task mappings, see the canonical [LLM Model Catalog & Decision Matrix in ARCHITECTURE.md](ARCHITECTURE.md#llm-model-catalog--decision-matrix).
 
@@ -40,11 +41,15 @@ keys.
 
 Account and secret checklist (performed by the maintainer, never pasted into chat or committed):
 
-1. Create API keys in Google AI Studio, Groq, SambaNova, Mistral Console, Z.AI, SiliconFlow, DeepSeek, OpenRouter, Kilo Code, and/or OpenCode.
+1. Create API keys in Google AI Studio, Groq, SambaNova, Mistral Console, Z.AI, SiliconFlow, DeepSeek, OpenRouter, Kilo Code, OpenCode, and/or NVIDIA build.nvidia.com.
 2. For local testing, export the corresponding keys in your shell.
-3. For GitHub Actions, add the keys as repository/environment secrets (e.g., `gh secret set GROQ_API_KEY`).
+3. For GitHub Actions, add the keys as repository/environment secrets (e.g., `gh secret set GROQ_API_KEY`,
+   `gh secret set NVIDIA_API_KEY`).
 4. For the Cloudflare Worker, from `workers/llm-dispatch-proxy/`, run `npx wrangler secret put DISPATCH_AUTH_TOKEN`
    plus `npx wrangler secret put <NAME>` for every `api_key_env` declared in [`config/provider_limits.yml`](config/provider_limits.yml)
    (`GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY`, `GROQ_API_KEY`, `SAMBANOVA_API_KEY`,
    `MISTRAL_API_KEY`, `MISTRAL_API_KEY_SECONDARY`, `ZAI_API_KEY`,
-   `SILICONFLOW_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `KILO_API_KEY`, `OPENCODE_API_KEY`).
+   `SILICONFLOW_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `KILO_API_KEY`, `OPENCODE_API_KEY`,
+   `NVIDIA_API_KEY`). The same `npx wrangler secret put NVIDIA_API_KEY` must also be run from
+   `workers/llm-dispatch-v2/` (review/44's coexisting v2 executor Worker reads the same `api_key_env`
+   names from its own copy of the compiled catalog).

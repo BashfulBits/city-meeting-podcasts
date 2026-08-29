@@ -1,8 +1,8 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 55,
-    "providers_count": 10,
+    "routes_count": 64,
+    "providers_count": 11,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 0.5
   },
@@ -142,6 +142,20 @@
         {
           "id": "primary",
           "api_key_env": "OPENCODE_API_KEY"
+        }
+      ]
+    },
+    "nvidia": {
+      "api_base": "https://integrate.api.nvidia.com/v1",
+      "ai_gateway_slug": "custom-nvidia",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "rpm": 6,
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "NVIDIA_API_KEY"
         }
       ]
     }
@@ -1288,6 +1302,168 @@
       "pricing": null,
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
+    },
+    "nvidia_kimi_k3_free": {
+      "route_id": "nvidia_kimi_k3_free",
+      "provider": "nvidia",
+      "upstream_model": "moonshotai/kimi-k3",
+      "input_context_limit": 1048576,
+      "output_context_limit": 65536,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "nvidia_deepseek_v4_pro_0813_free": {
+      "route_id": "nvidia_deepseek_v4_pro_0813_free",
+      "provider": "nvidia",
+      "upstream_model": "deepseek-ai/deepseek-v4-pro-0813",
+      "input_context_limit": 1000000,
+      "output_context_limit": 384000,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "nvidia_deepseek_v4_flash_0731_free": {
+      "route_id": "nvidia_deepseek_v4_flash_0731_free",
+      "provider": "nvidia",
+      "upstream_model": "deepseek-ai/deepseek-v4-flash-0731",
+      "input_context_limit": 1000000,
+      "output_context_limit": 384000,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "nvidia_gemma_4_31b_it_free": {
+      "route_id": "nvidia_gemma_4_31b_it_free",
+      "provider": "nvidia",
+      "upstream_model": "google/gemma-4-31b-it",
+      "input_context_limit": 262144,
+      "output_context_limit": 32768,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "nvidia_gpt_oss_120b_free": {
+      "route_id": "nvidia_gpt_oss_120b_free",
+      "provider": "nvidia",
+      "upstream_model": "openai/gpt-oss-120b",
+      "input_context_limit": 131072,
+      "output_context_limit": 65536,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "nvidia_nemotron_3_ultra_550b_a55b_free": {
+      "route_id": "nvidia_nemotron_3_ultra_550b_a55b_free",
+      "provider": "nvidia",
+      "upstream_model": "nvidia/nemotron-3-ultra-550b-a55b",
+      "input_context_limit": 1000000,
+      "output_context_limit": 65536,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "nvidia_nemotron_3_super_120b_a12b_free": {
+      "route_id": "nvidia_nemotron_3_super_120b_a12b_free",
+      "provider": "nvidia",
+      "upstream_model": "nvidia/nemotron-3-super-120b-a12b",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free": {
+      "route_id": "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free",
+      "provider": "nvidia",
+      "upstream_model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      "input_context_limit": 256000,
+      "output_context_limit": 32768,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "nvidia_riva_translate_4b_instruct_v2_free": {
+      "route_id": "nvidia_riva_translate_4b_instruct_v2_free",
+      "provider": "nvidia",
+      "upstream_model": "nvidia/riva-translate-4b-instruct-v2",
+      "input_context_limit": 32768,
+      "output_context_limit": 8192,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
     }
   },
   "model_routes_map": {
@@ -1307,7 +1483,8 @@
     "google/gemma-4-31b-it": [
       "gemma_4_31b_primary",
       "gemma_4_31b_secondary",
-      "openrouter_google_gemma_4_31b_it_free"
+      "openrouter_google_gemma_4_31b_it_free",
+      "nvidia_gemma_4_31b_it_free"
     ],
     "gemini/gemini-3-flash-preview": [
       "gemini_3_flash_preview_primary",
@@ -1326,7 +1503,8 @@
       "openrouter_meta_llama_llama_3_3_70b_instruct"
     ],
     "openai/gpt-oss-120b": [
-      "groq_gpt_oss_120b_primary"
+      "groq_gpt_oss_120b_primary",
+      "nvidia_gpt_oss_120b_free"
     ],
     "qwen/qwen-2.5-72b-instruct": [
       "sambanova_qwen_2_5_72b_instruct_primary",
@@ -1335,10 +1513,12 @@
     "deepseek/deepseek-v4-flash": [
       "siliconflow_deepseek_v4_flash_primary",
       "deepseek_v4_flash_primary",
-      "opencode_deepseek_v4_flash_free"
+      "opencode_deepseek_v4_flash_free",
+      "nvidia_deepseek_v4_flash_0731_free"
     ],
     "deepseek/deepseek-v4-pro": [
-      "deepseek_v4_pro_primary"
+      "deepseek_v4_pro_primary",
+      "nvidia_deepseek_v4_pro_0813_free"
     ],
     "mistral/codestral-2508": [
       "mistral_codestral_2508_primary",
@@ -1390,10 +1570,12 @@
     "nvidia/nemotron-3-ultra-550b-a55b:free": [
       "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
       "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
-      "opencode_nemotron_3_ultra_free"
+      "opencode_nemotron_3_ultra_free",
+      "nvidia_nemotron_3_ultra_550b_a55b_free"
     ],
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free": [
-      "openrouter_nvidia_nemotron_3_super_120b_a12b_free"
+      "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
+      "nvidia_nemotron_3_super_120b_a12b_free"
     ],
     "openrouter/qwen/qwen3-235b-a22b-2507": [
       "openrouter_qwen_qwen3_235b_a22b_2507"
@@ -1409,6 +1591,15 @@
     ],
     "opencode/mimo-v2.5-free": [
       "opencode_mimo_v2_5_free"
+    ],
+    "moonshotai/kimi-k3": [
+      "nvidia_kimi_k3_free"
+    ],
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": [
+      "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free"
+    ],
+    "nvidia/riva-translate-4b-instruct-v2": [
+      "nvidia_riva_translate_4b_instruct_v2_free"
     ]
   },
   "model_aliases": {
@@ -1418,6 +1609,9 @@
     "opencode/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
     "opencode/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "opencode/nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
+    "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini/gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite": "gemini/gemini-3.1-flash-lite",
@@ -1492,13 +1686,32 @@
     "deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
     "mimo-v2.5-free": "opencode/mimo-v2.5-free",
     "opencode/mimo-v2.5-free": "opencode/mimo-v2.5-free",
-    "nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free"
+    "nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "moonshotai/kimi-k3": "moonshotai/kimi-k3",
+    "nvidia/moonshotai/kimi-k3": "moonshotai/kimi-k3",
+    "deepseek-ai/deepseek-v4-pro-0813": "deepseek/deepseek-v4-pro",
+    "nvidia/deepseek-ai/deepseek-v4-pro-0813": "deepseek/deepseek-v4-pro",
+    "deepseek-ai/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
+    "nvidia/deepseek-ai/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
+    "google/gemma-4-31b-it": "google/gemma-4-31b-it",
+    "nvidia/google/gemma-4-31b-it": "google/gemma-4-31b-it",
+    "nvidia/openai/gpt-oss-120b": "openai/gpt-oss-120b",
+    "nvidia/nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
+    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2"
   },
   "model_routing": {
     "mistral/mistral-medium-2508": [
+      "deepseek/deepseek-v4-pro",
+      "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
       "gemini/gemini-3.5-flash-lite"
     ],
     "mistral/mistral-medium-2505": [
+      "deepseek/deepseek-v4-pro",
+      "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
       "gemini/gemini-3.5-flash-lite"
     ]
   }

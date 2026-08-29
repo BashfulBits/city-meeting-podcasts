@@ -200,11 +200,11 @@ the `env.AI.run()` Workers AI binding, even though the binding needs no `cf-aig-
 Worker depends on rule the binding out: it is **BYOK-only** — every route uses an individually-owned
 provider API key (including two separate Gemini accounts specifically to rotate around one account's free-tier
 limits, review/41) rather than paying through Cloudflare's Unified Billing, and Cloudflare's own docs state
-BYOK is not supported for third-party models called through the AI binding; and five of this catalog's
-providers (`custom-siliconflow`, `custom-sambanova`, `custom-zai`, `custom-kilo`, `custom-opencode`) are
-outside Cloudflare's native model catalog and only reachable as gateway-configured Custom Providers on the
-HTTP endpoint, not through the binding. So the provider-native endpoint plus `AI_GATEWAY_AUTH_TOKEN` below
-is the correct shape for this Worker, not a stopgap.
+BYOK is not supported for third-party models called through the AI binding; and six of this catalog's
+providers (`custom-siliconflow`, `custom-sambanova`, `custom-zai`, `custom-kilo`, `custom-opencode`,
+`custom-nvidia`) are outside Cloudflare's native model catalog and only reachable as gateway-configured
+Custom Providers on the HTTP endpoint, not through the binding. So the provider-native endpoint plus
+`AI_GATEWAY_AUTH_TOKEN` below is the correct shape for this Worker, not a stopgap.
 
 To enable:
 1. In Cloudflare Dashboard, go to **AI** → **AI Gateway** → **Create Gateway** with name `citypods-dispatch`.
@@ -218,6 +218,7 @@ To enable:
    | `custom-zai` | `https://api.z.ai/api/paas/v4` |
    | `custom-kilo` | `https://api.kilo.ai/api/gateway` |
    | `custom-opencode` | `https://opencode.ai/zen/v1` |
+   | `custom-nvidia` | `https://integrate.api.nvidia.com/v1` |
 
 4. Set `CLOUDFLARE_ACCOUNT_ID` as a **one-time manual Worker secret** (see the `wrangler secret put` block
    above), the same way as every other credential here. It is deliberately *not* injected by the deploy

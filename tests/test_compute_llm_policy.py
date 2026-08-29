@@ -52,13 +52,27 @@ def test_generated_catalog_deduplicates_logical_models_across_direct_routes():
 
 
 def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
+    # NVIDIA build (added 2026-08-29) is a fourth independent free pool for this model -- see
+    # config/provider_limits.yml's nvidia_deepseek_v4_flash_0731_free route.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
-    assert {candidate.provider for candidate in deepseek} == {"deepseek", "siliconflow", "opencode"}
+    assert {candidate.provider for candidate in deepseek} == {
+        "deepseek",
+        "siliconflow",
+        "opencode",
+        "nvidia",
+    }
     assert canonical_model("opencode/deepseek-v4-flash-free") == "deepseek/deepseek-v4-flash"
     assert MODEL_ALIASES["deepseek/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
 
+    # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo/
+    # OpenCode broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
     nemotron = ROUTE_CANDIDATES["nvidia/nemotron-3-ultra-550b-a55b:free"]
-    assert {candidate.provider for candidate in nemotron} == {"openrouter", "kilo", "opencode"}
+    assert {candidate.provider for candidate in nemotron} == {
+        "openrouter",
+        "kilo",
+        "opencode",
+        "nvidia",
+    }
     assert (
         canonical_model("opencode/nemotron-3-ultra-free")
         == "nvidia/nemotron-3-ultra-550b-a55b:free"

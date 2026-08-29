@@ -53,16 +53,28 @@ structured_output_profiles:
 # scheduler (`select_route`) and the `llm-dispatch-proxy` Worker (`normalizeChatRequest`) expand a
 # request's allowed models with this map, so it takes effect for every transport uniformly.
 #
-# HOTFIX (2026-08-21): Mistral's account-wide monthly token allowance is exhausted (see the
-# MISTRAL ROUTES hotfix note below), leaving a backlog of queued Mistral Medium jobs with nowhere
-# to drain. Gemini 3.5 Flash Lite has its own independent free-tier quota pool, so routing Mistral
-# Medium's overflow there adds real daily capacity to clear the backlog without touching the jobs
-# themselves. Revisit once Mistral's monthly budget is re-sized (see AGENTS.md / review/11).
+# HOTFIX (2026-08-21, updated 2026-08-29): Mistral's account-wide monthly allowance is now a
+# $10/mo credit cap rather than a pure rate limit (see the MISTRAL ROUTES hotfix note below),
+# leaving a backlog of queued Mistral Medium jobs with nowhere to drain once that credit is spent.
+# NVIDIA build.nvidia.com now gives free direct access to DeepSeek V4 Pro and Nemotron 3 Super --
+# both a materially higher quality tier than Mistral Medium's "Enterprise Workhorse" slot, unlike
+# Gemini 3.5 Flash Lite (a "High-Throughput" tier fallback, kept below as a safety net since the
+# NVIDIA routes are new and their real capacity is unverified -- see the `nvidia` provider block).
+# `select_route`'s ranking already prefers whichever of these three is least-utilized right now
+# (see `citypods/compute/llm_scheduler.py`), so listing all three does not fix an order -- it lets
+# quota-exhaustion overflow drain into whichever pool has headroom. Revisit once Mistral's monthly
+# budget is re-sized (see AGENTS.md / review/11) or once NVIDIA's real-world reliability is known.
 model_routing:
   mistral/mistral-medium-2508:
+    - deepseek/deepseek-v4-pro
+    - openrouter/nvidia/nemotron-3-super-120b-a12b:free
     - gemini/gemini-3.5-flash-lite
+
   mistral/mistral-medium-2505:
+    - deepseek/deepseek-v4-pro
+    - openrouter/nvidia/nemotron-3-super-120b-a12b:free
     - gemini/gemini-3.5-flash-lite
+
 
 # `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
 # through -- required for every provider, not just Mistral.
@@ -175,6 +187,39 @@ providers:
     accounts:
       - id: primary
         api_key_env: OPENCODE_API_KEY
+  # NVIDIA build.nvidia.com (API Catalog / NIM hosted endpoints). Unlike every other provider
+  # above, NVIDIA publishes no rate-limit table at all -- the community-reported baseline is
+  # ~40 RPM, account-wide, "dependent on model, use-case, and current overall traffic" per
+  # NVIDIA's own developer-forum staff replies, and developers report 429s even under light load.
+  # Treat this whole provider as best-effort capacity, never a committed SLA:
+  #   - `rpm: 12` is a *self-imposed* 30% cap of the ~40 RPM community baseline (40 * 0.30 = 12),
+  #     not a limit NVIDIA documents. This is the one number this account actually enforces via
+  #     the shared `ProviderLedger` (see `citypods/compute/llm_budget.py`), pacing every model and
+  #     route below off one account-wide clock -- mirroring how the Mistral provider block already
+  #     paces every Mistral model off one shared account limit.
+  #   - Every route below also declares `tpm: 100000` as a second, independent self-imposed cap.
+  #     NOTE: this is an *approximation*, not a true provider-level TPM ledger -- the schema/code
+  #     (`LLMBudget`/`ProviderLedger`) only actually enforces a shared limit for `rpm`
+  #     (`route.provider_rpm`); there is no equivalent provider-wide token-rate ledger today, so
+  #     each route's 100k TPM is checked independently rather than summed across the account. If
+  #     several NVIDIA routes are dispatched concurrently at full token throughput, the account's
+  #     *aggregate* token rate could exceed 100k TPM even though no single route did. Adding a real
+  #     provider-level TPM ledger (parallel to `provider_rpm`) is a follow-up, not done here.
+  #   - No `rpd` is set anywhere below: NVIDIA publishes no daily cap, so encoding one would be
+  #     inventing a number we have no basis for.
+  # No native LiteLLM adapter is assumed for this gateway; routes compile through the same
+  # OpenAI-compatible direct-adapter path as Kilo/OpenCode/SiliconFlow (see `_direct_model` in
+  # `scripts/compile_llm_limits.py`).
+  nvidia:
+    api_base: https://integrate.api.nvidia.com/v1
+    ai_gateway_slug: custom-nvidia
+    ai_gateway_chat_path: /chat/completions
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    rpm: 12
+    accounts:
+      - id: primary
+        api_key_env: NVIDIA_API_KEY
 routes:
   # ==========================================
   # GEMINI & GEMMA ROUTES (Google AI Studio)
@@ -1017,6 +1062,181 @@ routes:
     account_id: primary
     rpm: 20
     rpd: 200
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  # ==========================================
+  # NVIDIA BUILD ROUTES (build.nvidia.com / NIM hosted API catalog)
+  # See the `nvidia` provider block above for the capacity caveats these routes share: a
+  # self-imposed 12 RPM provider-wide pace (30% of the ~40 RPM community-reported baseline) and a
+  # per-route 100k TPM self-imposed cap that is *not* summed across routes (no real provider-level
+  # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. `structured_output_profile`
+  # is left at the config default (`standard_json_schema`, via `instructor`) rather than guessing
+  # this gateway's native JSON-mode behavior, which is unverified.
+  #
+  # Each route ALSO declares its own `rpm: 12`, matching the provider-wide cap, even though
+  # Python's LLMBudget already enforces that cap correctly at the shared-provider level
+  # (`provider_rpm`/`ProviderLedger`) regardless of any route-level value. This is a defense-in-
+  # depth stopgap for `workers/llm-dispatch-v2`: unlike v1 (`llm-dispatch-proxy`, which ports
+  # `providerRpm`/`providerAvailable`/`reserveProviderCapacity`), v2's pacing engine
+  # (`workers/llm-dispatch-v2/src/pacing.js`) has no cross-route, provider-level concept at all --
+  # `earliestSafeStart`/`routeHasCapacityFor` only see one route's own rpm/rpd/tpm. Without a
+  # route-level rpm, v2 would treat these routes as unbounded, and v1/v2 are actively coexisting
+  # right now (`split_cap_multiplier: 0.50` above), not a future migration. This does not restore
+  # true shared pooling in v2 -- in the worst case (many different NVIDIA models dispatched
+  # concurrently) v2's aggregate could still exceed 12 RPM in total -- but it bounds each
+  # individual route rather than leaving it uncapped. A real fix ports provider-level pacing into
+  # v2's pacing.js/coordinator.js; that is a larger follow-up, not done here.
+  #
+  # Several of these pool with an existing route elsewhere in this file via `model_key`/`model` --
+  # NVIDIA becomes an additional, independent free capacity source for that same logical model
+  # rather than a new one, exactly like the existing SambaNova+SiliconFlow / OpenRouter+Kilo+
+  # OpenCode poolings above.
+  - route_id: nvidia_kimi_k3_free
+    model: moonshotai/kimi-k3
+    provider: nvidia
+    upstream_model: moonshotai/kimi-k3
+    # 2.8T MoE (104B active), 1,048,576-token context per NVIDIA's own model card
+    # (docs.api.nvidia.com/nim/reference/moonshotai-kimi-k3). No comparable free frontier model
+    # exists elsewhere in this pool.
+    input_context_limit: 1048576
+    output_context_limit: 65536
+    account_id: primary
+    rpm: 12
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: nvidia_deepseek_v4_pro_0813_free
+    model: deepseek/deepseek-v4-pro
+    # Pools with DeepSeek Direct's paid `deepseek_v4_pro_primary` route below -- this is the same
+    # model, free here, paid ($0.435-0.66/M) there. A job pinned to `deepseek/deepseek-v4-pro`
+    # becomes eligible for this free route first.
+    provider: nvidia
+    upstream_model: deepseek-ai/deepseek-v4-pro-0813
+    input_context_limit: 1000000
+    output_context_limit: 384000
+    account_id: primary
+    rpm: 12
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: nvidia_deepseek_v4_flash_0731_free
+    model: nvidia/deepseek-v4-flash-0731
+    model_key: deepseek/deepseek-v4-flash
+    # Pools with SiliconFlow's and DeepSeek Direct's paid legs and OpenCode's separate free leg --
+    # another independent free pool for the same logical model, not new model coverage.
+    provider: nvidia
+    upstream_model: deepseek-ai/deepseek-v4-flash-0731
+    input_context_limit: 1000000
+    output_context_limit: 384000
+    account_id: primary
+    rpm: 12
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: nvidia_gemma_4_31b_it_free
+    model: google/gemma-4-31b-it
+    # Pools with Google AI Studio's two direct accounts and OpenRouter's free leg -- a third
+    # independent pool for the same logical model.
+    provider: nvidia
+    upstream_model: google/gemma-4-31b-it
+    input_context_limit: 262144
+    output_context_limit: 32768
+    account_id: primary
+    rpm: 12
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: nvidia_gpt_oss_120b_free
+    model: openai/gpt-oss-120b
+    # Pools with Groq's `groq_gpt_oss_120b_primary` route -- a second, independent free pool for
+    # the same model rather than new capability.
+    provider: nvidia
+    upstream_model: openai/gpt-oss-120b
+    input_context_limit: 131072
+    output_context_limit: 65536
+    account_id: primary
+    rpm: 12
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: nvidia_nemotron_3_ultra_550b_a55b_free
+    model: nvidia/nemotron-3-ultra-550b-a55b
+    # Reuses the existing cross-provider canonical key (OpenRouter/Kilo/OpenCode) so a job pinned
+    # to this model can also land on this direct NVIDIA leg -- bypassing the broker hop entirely,
+    # which is the whole point of adding it (see the 2026-08-29 conversation: OpenRouter's free
+    # Nemotron slot returns 429/503 "upstream provider has no capacity" under load).
+    model_key: nvidia/nemotron-3-ultra-550b-a55b:free
+    provider: nvidia
+    upstream_model: nvidia/nemotron-3-ultra-550b-a55b
+    input_context_limit: 1000000
+    output_context_limit: 65536
+    account_id: primary
+    rpm: 12
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: nvidia_nemotron_3_super_120b_a12b_free
+    model: nvidia/nemotron-3-super-120b-a12b
+    # Reuses OpenRouter's existing canonical model string for this model family (see that route
+    # above -- note it keeps the ":free" suffix from OpenRouter's own naming even though this
+    # direct leg isn't OpenRouter) so the two pool together -- same broker-bypass rationale as
+    # Ultra above.
+    model_key: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+    provider: nvidia
+    upstream_model: nvidia/nemotron-3-super-120b-a12b
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: primary
+    rpm: 12
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free
+    model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    # Omni-modal (text/image/video/speech) reasoning model; used here as a plain text chat route.
+    # 256k-token context per public benchmarks (artificialanalysis.ai/models/
+    # nemotron-3-nano-omni-30b-a3b) -- NVIDIA's own model card was not independently confirmed for
+    # this exact figure, so treat it as reported-but-not-primary-sourced.
+    provider: nvidia
+    upstream_model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    input_context_limit: 256000
+    output_context_limit: 32768
+    account_id: primary
+    rpm: 12
+    tpm: 100000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: nvidia_riva_translate_4b_instruct_v2_free
+    model: nvidia/riva-translate-4b-instruct-v2
+    # Reserved for future translation work (bilingual/non-English meetings) -- not summarization,
+    # quote-finding, or tagging. Context window is UNVERIFIED: no public spec was found for this
+    # 4B translation model, so this uses a conservative placeholder pending a real model-card
+    # check before production use.
+    provider: nvidia
+    upstream_model: nvidia/riva-translate-4b-instruct-v2
+    input_context_limit: 32768
+    output_context_limit: 8192
+    account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0

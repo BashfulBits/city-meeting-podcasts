@@ -59,7 +59,9 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     deepseek_key = "deepseek/deepseek-v4-flash"
     deepseek_routes = compiled["model_routes_map"][deepseek_key]
-    assert len(deepseek_routes) == 3
+    # SiliconFlow (paid) + DeepSeek Direct (paid) + OpenCode (free) + NVIDIA build (free, added
+    # 2026-08-29) -- four independent physical pools for the same logical model.
+    assert len(deepseek_routes) == 4
     physical_routes = [compiled["routes_by_id"][route_id] for route_id in deepseek_routes]
     assert (
         len(
@@ -68,18 +70,27 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
                 for route in physical_routes
             }
         )
-        == 3
+        == 4
     )
     assert compiled["model_aliases"]["deepseek/deepseek-v4-flash-0731"] == deepseek_key
     assert compiled["model_aliases"]["opencode/deepseek-v4-flash-free"] == deepseek_key
+    assert compiled["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == deepseek_key
 
     nemotron_key = "nvidia/nemotron-3-ultra-550b-a55b:free"
-    assert len(compiled["model_routes_map"][nemotron_key]) == 3
+    # OpenRouter + Kilo + OpenCode (all broker legs) + NVIDIA build direct (added 2026-08-29).
+    assert len(compiled["model_routes_map"][nemotron_key]) == 4
     assert (
         compiled["model_aliases"]["openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"]
         == nemotron_key
     )
     assert compiled["model_aliases"]["opencode/nemotron-3-ultra-free"] == nemotron_key
+    assert compiled["model_aliases"]["nvidia/nemotron-3-ultra-550b-a55b"] == nemotron_key
+
+    nemotron_super_key = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    # OpenRouter's own canonical name for this model family, now also reachable via NVIDIA build
+    # direct (added 2026-08-29) -- unlike Ultra, Super had no shared model_key before this change.
+    assert len(compiled["model_routes_map"][nemotron_super_key]) == 2
+    assert compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_super_key
 
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():
@@ -184,10 +195,14 @@ def test_full_day_pricing_surcharge_is_rejected():
 def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
     compiled = compile_llm_limits.compile_limits()
     assert compiled["model_routing"]["mistral/mistral-medium-2508"] == [
-        "gemini/gemini-3.5-flash-lite"
+        "deepseek/deepseek-v4-pro",
+        "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "gemini/gemini-3.5-flash-lite",
     ]
     assert compiled["model_routing"]["mistral/mistral-medium-2505"] == [
-        "gemini/gemini-3.5-flash-lite"
+        "deepseek/deepseek-v4-pro",
+        "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "gemini/gemini-3.5-flash-lite",
     ]
     worker = compile_llm_limits._worker_catalog(compiled)
     python_catalog = compile_llm_limits._python_routes(compiled)

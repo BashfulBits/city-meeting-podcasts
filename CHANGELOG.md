@@ -17,6 +17,23 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **NVIDIA build.nvidia.com provider and free-capacity pooling for Mistral Medium overflow.** New
+  `nvidia` provider in `config/provider_limits.yml` (OpenAI-compatible NIM gateway, `NVIDIA_API_KEY`)
+  with a conservative, explicitly self-imposed cap: 12 RPM provider-wide (30% of the ~40 RPM
+  community-reported, unpublished baseline) and 100k TPM per route (not a true provider-level TPM
+  ledger — see the provider block's comment). Adds direct free routes for `moonshotai/kimi-k3`,
+  `deepseek-ai/deepseek-v4-pro-0813`, `google/gemma-4-31b-it`, `openai/gpt-oss-120b`,
+  `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`, and `nvidia/riva-translate-4b-instruct-v2`
+  (reserved for future translation work), and pools with existing routes for DeepSeek V4 Flash and
+  both Nemotron 3 Ultra and Super — the last two previously reachable only through OpenRouter/Kilo/
+  OpenCode brokers, whose free Nemotron slots return 429/503 "upstream provider has no capacity"
+  under load. Mistral Medium's quota-exhaustion overflow (`model_routing`, both 2508 and 2505) now
+  targets DeepSeek V4 Pro and Nemotron 3 Super ahead of Gemini 3.5 Flash Lite, reflecting Mistral's
+  own account moving from a rate limit to a $10/mo credit cap. NVIDIA's embedding
+  (`nemotron-3-embed-1b`) and TTS (`magpie-tts-zeroshot`) models, and Gemini's embedding
+  (`gemini-embedding-1/2`) and TTS (`gemini-3.1-flash-tts`) models, are intentionally **not** wired
+  in here — they need a distinct non-chat-completions request shape this schema doesn't support yet.
+
 - **Shared weekly review adapter and merge-gated tournament tickets.** H15, R5, R6, R7, and H16 now use
   one typed issue envelope, publisher, native-child batch surface, trust-gated resolver, and scheduled
   finalizer. Empty batches are not published; blocked capacity is distinct from no candidates; bodies are
