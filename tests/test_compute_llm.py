@@ -5,6 +5,8 @@ import traceback
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import urllib.parse
+
 import pytest
 import requests
 from pydantic import BaseModel, ConfigDict, Field
@@ -1798,6 +1800,33 @@ def test_every_catalog_route_builds_its_configured_gateway_url(route, gateway_en
     assert headers == {"cf-aig-authorization": "Bearer test-auth-token"}
 
 
+@pytest.mark.parametrize(
+    "route",
+    sorted(
+        (r for r in ROUTE_REGISTRY.values() if (r.ai_gateway_slug or "").startswith("custom-")),
+        key=lambda r: r.route_id or r.model,
+    ),
+    ids=lambda r: r.route_id or r.model,
+)
+def test_custom_provider_gateway_path_keeps_the_api_base_path(route):
+    """Cloudflare AI Gateway ignores a Custom Provider's registered Base URL *path*.
+
+    It joins the caller-supplied path at the origin root, so a provider whose ``api_base`` is
+    ``https://host/v1`` must carry that ``/v1`` in ``ai_gateway_chat_path`` or the dispatch lands
+    on ``https://host/chat/completions``. That cost us every NVIDIA route (empty-body 404 from
+    NVIDIA's load balancer) and every SambaNova route until 2026-08-29. Native Cloudflare provider
+    slugs are exempt -- Cloudflare knows those upstreams itself -- hence the ``custom-`` filter.
+    """
+    base_path = urllib.parse.urlparse(route.api_base).path.rstrip("/")
+    if not base_path:
+        pytest.skip(f"{route.api_base} has no path component to preserve")
+    assert route.ai_gateway_chat_path.startswith(base_path + "/"), (
+        f"{route.route_id}: ai_gateway_chat_path {route.ai_gateway_chat_path!r} drops the "
+        f"{base_path!r} prefix of api_base {route.api_base!r}; the gateway would dispatch to "
+        f"the origin root and 404"
+    )
+
+
 # Only single-provider models belong here. A logical model served by several providers (6 of 31 in
 # the catalog -- `deepseek/deepseek-v4-flash` spans deepseek, custom-siliconflow and
 # custom-opencode) has no fixed gateway slug: the scheduler picks whichever physical route has
@@ -1808,7 +1837,7 @@ def test_every_catalog_route_builds_its_configured_gateway_url(route, gateway_en
     [
         ("gemini/gemini-3.6-flash", f"{_GW}/google-ai-studio/v1beta/openai/chat/completions"),
         ("mistral/mistral-large-2512", f"{_GW}/mistral/v1/chat/completions"),
-        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/chat/completions"),
+        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/api/paas/v4/chat/completions"),
     ],
 )
 def test_direct_call_requests_the_gateway_url(model, expected_request_url, gateway_env):
