@@ -2884,11 +2884,14 @@ test("dispatchOne blocks a route after a 402 response, and clears the block on t
 
   const now = new Date();
   const result1 = await dispatchOne(env, paymentRequired, now);
-  assert.equal(result1.status, "failed");
+  // The job that discovers an exhausted budget is collateral, not defective: it is requeued, not
+  // failed. Failing it burned one recoverable job per cooldown lapse per route (2026-08-26).
+  assert.equal(result1.status, "retrying");
   assert.equal(result1.routeId, routeId);
 
   const record1 = await (await env.LLM_QUEUE.get(`requests/${body1.id}.json`)).json();
-  assert.equal(record1.status, "failed"); // the individual job still fails normally
+  assert.equal(record1.status, "pending");
+  assert.equal(record1.last_error.status, 402, "the 402 is still recorded on the record");
 
   let coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
   let entry = ledgerEntry(coordinator, routeId);
@@ -2916,6 +2919,27 @@ test("dispatchOne blocks a route after a 402 response, and clears the block on t
   assert.equal(entry.blocked_until, null);
 });
 
+test("a 402 does not consume the job that discovered the exhausted budget", async () => {
+  // Regression for the 2026-08-26 loss pattern: the 402 backoff blocks the route, but the job
+  // that triggered it used to be marked terminally failed. Every cooldown lapse therefore burned
+  // exactly one recoverable job per route -- 2 per route on 2026-08-26, matching the
+  // payment_required_streak of 2 observed in the production ledger. Those jobs then needed an
+  // operator requeue (scripts/requeue_failed_llm_dispatch.py) to come back at all.
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "402-preserves-job"), env);
+  const body = await queued.json();
+
+  const paymentRequired = async () =>
+    new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
+  const result = await dispatchOne(env, paymentRequired, new Date());
+
+  assert.equal(result.status, "retrying");
+  const record = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(record.status, "pending", "the job must survive to run on an overflow route");
+  assert.notEqual(record.status, "failed");
+  assert.equal(record.last_error.status, 402);
+});
+
 test("the blocked_until a real 402 writes is one routeAvailable actually honors", async () => {
   // routeAvailable's own blocked_until handling already has direct coverage ("routeAvailable
   // respects rpm/rpd/tpm/blocked_until independently", above) against a hand-seeded fixture.
@@ -2934,7 +2958,7 @@ test("the blocked_until a real 402 writes is one routeAvailable actually honors"
     new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
   const now = new Date();
   const result = await dispatchOne(env, paymentRequired, now);
-  assert.equal(result.status, "failed");
+  assert.equal(result.status, "retrying"); // the job is requeued; the route is what gets blocked
 
   const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
   const entry = ledgerEntry(coordinator, routeId);

@@ -2776,8 +2776,16 @@ async function dispatchBatch(
             ledgerMutatedAfterDispatch = true;
           }
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
+          // A 402 is a route-level budget signal, not a defect in this job. The branch above has
+          // already blocked the whole route, so the job that happened to discover the exhausted
+          // budget is collateral -- failing it burns one recoverable job per cooldown lapse, per
+          // route (observed 2026-08-26: exactly 2 per route, matching payment_required_streak=2).
+          // Requeue it instead: admission keeps it off the now-blocked route, so it runs on an
+          // overflow route or once the cooldown clears. `attempts` still bounds it, so a route
+          // that stays 402 across every cooldown cannot loop the job forever.
           const willRetry =
-            retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts;
+            (retryableStatus(response.status) || response.status === 402) &&
+            claimed.record.attempts < cfg.maxAttempts;
           const errorReadStartedAt = profileNow();
           const providerError = await readUpstreamError(response, {
             persistBodyPreview: !willRetry,

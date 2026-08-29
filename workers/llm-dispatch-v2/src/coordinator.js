@@ -1412,6 +1412,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           Number.isInteger(result.provider_status_code) &&
           result.provider_status_code >= 500 &&
           result.provider_status_code <= 599;
+        // A 402 requeues rather than failing: the route is blocked below, so the job cannot
+        // re-probe it, and it runs on an overflow route or once the cooldown clears.
+        const isPaymentRequired =
+          result.outcome === "retryable_error" && result.provider_status_code === 402;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
         const blockedUntil = isFinal5xx
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
@@ -1430,7 +1434,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // A final 5xx has already exhausted AI Gateway's short retry sequence. Give it one
             // durable, minute-scale retry; ambiguous transport failures and B2-write failures
             // must surface as failed instead of silently becoming an unclaimable state.
-            newState = shouldRetry5xx ? "queued" : "failed";
+            newState = shouldRetry5xx || isPaymentRequired ? "queued" : "failed";
             break;
           case "terminal_error":
             newState = "failed";

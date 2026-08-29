@@ -45,6 +45,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **A 402 no longer consumes the job that discovered the exhausted budget** (both dispatch
+  Workers). The escalating 402 backoff blocks the whole route, but the triggering job was still
+  marked terminally `failed` — so every cooldown lapse burned exactly one recoverable job per
+  route, recoverable only by an operator requeue. Production showed the pattern precisely: 2
+  failures per Mistral route on 2026-08-26, matching `payment_required_streak=2` in the ledger,
+  versus 1,260 on 2026-08-22 before the backoff existed. A 402 is a route-level budget signal, not
+  a defect in the job, and the dispatcher already has enough information to say so — it blocks the
+  route in the same branch. The job is now requeued instead: admission keeps it off the blocked
+  route, so it runs on an overflow route or once the cooldown clears, still bounded by `attempts`.
+
 - **Requeued 971 dispatch jobs stranded by the AI Gateway routing bug, and gave the recovery script
   an `--error-status` filter.** The gateway 404s left `mistral/mistral-medium-2508` jobs terminally
   `failed` — 404 is in neither dispatch Worker's `retryableStatus` set and gets no `blocked_until`,
