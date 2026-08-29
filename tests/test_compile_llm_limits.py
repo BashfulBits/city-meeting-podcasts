@@ -90,9 +90,7 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     # OpenRouter's own canonical name for this model family, now also reachable via NVIDIA build
     # direct (added 2026-08-29) -- unlike Ultra, Super had no shared model_key before this change.
     assert len(compiled["model_routes_map"][nemotron_super_key]) == 2
-    assert (
-        compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_super_key
-    )
+    assert compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_super_key
 
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():
