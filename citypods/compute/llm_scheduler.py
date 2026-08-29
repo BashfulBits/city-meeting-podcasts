@@ -213,7 +213,9 @@ def _next_quota_reset(
             request_ready_at = datetime.fromisoformat(ledger.requests_available_at)
             if request_ready_at > now.astimezone(UTC):
                 resets.append(request_ready_at)
-        elif ledger.requests_minute + requests > quota.rpm:
+        # Same per-minute bucket floor as llm_budget's admission check: a sub-1 rpm route is
+        # spaced by requests_available_at (the branch above), not by this minute-boundary reset.
+        elif ledger.requests_minute + requests > max(1, quota.rpm):
             current = now.astimezone(UTC)
             resets.append(current.replace(second=0, microsecond=0) + timedelta(minutes=1))
     if route.provider_rpm is not None and provider_ledger is not None:
