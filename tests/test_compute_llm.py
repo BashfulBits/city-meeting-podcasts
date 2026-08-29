@@ -5,8 +5,6 @@ import traceback
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-import urllib.parse
-
 import pytest
 import requests
 from pydantic import BaseModel, ConfigDict, Field
