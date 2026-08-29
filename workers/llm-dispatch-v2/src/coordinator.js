@@ -11,6 +11,9 @@ import {
   routeHasCapacityFor,
   FULL_TOKEN_BUDGET_WINDOWS,
   paymentRequiredBackoffUntil,
+  dailyQuotaReadyAt,
+  zonedDateKey,
+  routeResetTimezone,
 } from "./pacing.js";
 
 /**
@@ -112,6 +115,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         rpm_count               INTEGER NOT NULL DEFAULT 0,
         rpd_window_start        INTEGER NOT NULL DEFAULT 0,
         rpd_count               INTEGER NOT NULL DEFAULT 0,
+        rpd_day_key             TEXT NOT NULL DEFAULT '',
         tpm_window_start        INTEGER NOT NULL DEFAULT 0,
         tpm_reserved            INTEGER NOT NULL DEFAULT 0,
         full_token_budget       REAL NOT NULL DEFAULT 0,
@@ -211,6 +215,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
+    // Daily quotas reset on the provider's calendar day, not 24h after first use.
+    this._ensureColumn("routes", "rpd_day_key", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "transient_retry_count", "INTEGER NOT NULL DEFAULT 0");
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
@@ -245,6 +251,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const ALLOWED_COLUMNS = new Map([
       ["rpd_window_start", "INTEGER NOT NULL DEFAULT 0"],
       ["rpd_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
       ["payment_required_streak", "INTEGER NOT NULL DEFAULT 0"],
       ["transient_retry_count", "INTEGER NOT NULL DEFAULT 0"],
     ]);
@@ -670,12 +677,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const seedBudget = tpm * FULL_TOKEN_BUDGET_WINDOWS;
     sql.exec(
       `INSERT INTO routes (
-        route_id, rpm_window_start, rpm_count, rpd_window_start, rpd_count,
+        route_id, rpm_window_start, rpm_count, rpd_window_start, rpd_count, rpd_day_key,
         tpm_window_start, tpm_reserved, full_token_budget, token_budget_updated_at,
         provisional_reservation, settled_usage, cost_accumulated,
         throttle_streak, last_provider_status, blocked_until, buffer_seconds,
         payment_required_streak
-      ) VALUES (?, 0, 0, 0, 0, 0, 0, ?, ?, 0, 0, 0, 0, NULL, NULL, 0, 0)`,
+      ) VALUES (?, 0, 0, 0, 0, '', 0, 0, ?, ?, 0, 0, 0, 0, NULL, NULL, 0, 0)`,
       routeId,
       seedBudget,
       now
@@ -685,6 +692,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpm_window_start: 0,
       rpm_count: 0,
       rpd_window_start: 0,
+      rpd_day_key: "",
       rpd_count: 0,
       tpm_window_start: 0,
       tpm_reserved: 0,
@@ -838,6 +846,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpm_window_start: 0,
       rpm_count: 0,
       rpd_window_start: 0,
+      rpd_day_key: "",
       rpd_count: 0,
       tpm_window_start: 0,
       tpm_reserved: 0,
@@ -867,12 +876,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
       route.rpm_count,
       60_000
     );
-    const rpdFraction = windowFraction(
-      Number(route.rpd),
-      route.rpd_window_start,
-      route.rpd_count,
-      86_400_000
-    );
+    // rpd is keyed on the provider's calendar day: a stale key means the provider already reset,
+    // so the route is at full daily capacity regardless of how recently we last used it.
+    const rpdLimit = Number(route.rpd);
+    let rpdFraction;
+    if (rpdLimit === 0) rpdFraction = 0; // repository convention: paused/exhausted
+    else if (!Number.isFinite(rpdLimit) || rpdLimit < 0) rpdFraction = 1;
+    else if (route.rpd_day_key !== zonedDateKey(now, routeResetTimezone(route))) rpdFraction = 1;
+    else
+      rpdFraction = Math.max(
+        0,
+        Math.min(1, (rpdLimit - Math.max(0, route.rpd_count || 0)) / rpdLimit)
+      );
     const tpm = Number(route.tpm);
     const tokenFraction =
       Number.isFinite(tpm) && tpm > 0
@@ -903,6 +918,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
               ...(ledgers.get(routeId) || this._freshRouteLedger(catalogRoute, now)),
               route_id: routeId,
               model,
+              // Daily quotas roll on the provider's clock; the pure pacing helpers only see the
+              // route object, so carry the provider's reset timezone onto it.
+              reset_timezone:
+                dispatchLimits?.providers?.[catalogRoute.provider]?.reset_timezone || "UTC",
             };
             return { route, score: this._capacityFraction(route, now, windowSeconds) };
           })
@@ -960,9 +979,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpmCount += 1;
     }
 
+    // Daily quotas roll on the provider's own calendar day, not 24h after our first request.
+    // Anchoring on first use held a route exhausted well past the provider's actual reset --
+    // ~14 hours for Gemini's midnight-America/Los_Angeles rollover -- and because an exhausted
+    // route scores 0 in _capacityFraction, its whole model drops out of the ranking.
+    const rpdDayKey = zonedDateKey(notBeforeAt, routeResetTimezone(mergedRoute));
     let rpdWindowStart = mergedRoute.rpd_window_start;
     let rpdCount = mergedRoute.rpd_count;
-    if (!Number.isFinite(rpdWindowStart) || notBeforeAt - rpdWindowStart >= 86_400_000) {
+    if (mergedRoute.rpd_day_key !== rpdDayKey) {
       rpdWindowStart = notBeforeAt;
       rpdCount = 1;
     } else {
@@ -998,7 +1022,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     sql.exec(
       `UPDATE routes SET
-        rpm_window_start=?, rpm_count=?, rpd_window_start=?, rpd_count=?,
+        rpm_window_start=?, rpm_count=?, rpd_window_start=?, rpd_count=?, rpd_day_key=?,
         tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?,
         provisional_reservation=?
        WHERE route_id=?`,
@@ -1006,6 +1030,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpmCount,
       rpdWindowStart,
       rpdCount,
+      rpdDayKey,
       tpmWindowStart,
       tpmReserved,
       fullTokenBudget,
@@ -1019,6 +1044,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpm_window_start: rpmWindowStart,
       rpm_count: rpmCount,
       rpd_window_start: rpdWindowStart,
+      rpd_day_key: rpdDayKey,
       rpd_count: rpdCount,
       tpm_window_start: tpmWindowStart,
       tpm_reserved: tpmReserved,
@@ -1098,7 +1124,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const getMergedRoute = (route) => {
         if (!ledgerCache.has(route.route_id)) {
           const ledger = this._getOrCreateRouteLedger(route.route_id, now, route);
-          ledgerCache.set(route.route_id, { ...route, ...ledger });
+          ledgerCache.set(route.route_id, {
+            ...route,
+            ...ledger,
+            reset_timezone:
+              dispatchLimits?.providers?.[route.provider]?.reset_timezone || "UTC",
+          });
         }
         return ledgerCache.get(route.route_id);
       };

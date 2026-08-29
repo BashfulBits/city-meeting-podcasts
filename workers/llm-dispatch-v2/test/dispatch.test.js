@@ -1044,3 +1044,125 @@ test("a 402-requeued job is claimable again, not stranded queued-without-index",
   assert.equal(second.jobs.length, 1, "the 402-requeued job must be claimable again");
   assert.equal(second.jobs[0].id, "j-402");
 });
+
+// A provider whose daily quota rolls at midnight Pacific, probed at a moment when UTC and Pacific
+// disagree about the date: 2026-08-29T03:00Z is still 2026-08-28 20:00 in America/Los_Angeles.
+// Keying the daily window on UTC (or on a rolling 24h from first use) gets this backwards.
+const PACIFIC_CATALOG = {
+  model_aliases: {},
+  model_routes_map: { "gemini/flash-lite": ["gem-a"] },
+  providers: { gemini: { reset_timezone: "America/Los_Angeles" } },
+  routes_by_id: {
+    "gem-a": {
+      provider: "gemini",
+      upstream_model: "flash-lite",
+      rpm: 15,
+      rpd: 250,
+      tpm: 250000,
+      free: true,
+      input_context_limit: 1000000,
+      output_context_limit: 65536,
+    },
+  },
+};
+const PACIFIC_NOW = Date.parse("2026-08-29T03:00:00Z"); // 2026-08-28 20:00 Pacific
+
+function pacificCoordinator() {
+  const { sql, storage } = createMockSqlStorage();
+  const coordinator = new LLMSchedulerDO(
+    { storage },
+    {
+      MAX_JOBS_PER_UTC_DAY: "10000",
+      MAX_BUNDLE_JOBS: "1",
+      MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1",
+      MAX_CONCURRENT_ROUTE_LANES: "5",
+      MAX_ACTIVE_BUNDLES: "2",
+      MAX_IN_FLIGHT_LLM_CALLS: "8",
+      MAX_BUNDLES_PER_UTC_DAY: "1000",
+      MAX_QUEUE_WAIT_SECONDS: "86400",
+      LEASE_DURATION_SECONDS: "840",
+      MAX_429_RETRIES: "1",
+      MAX_429_BACKOFF_SECONDS: "5",
+      ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
+      DISPATCH_LIMITS_OVERRIDE: PACIFIC_CATALOG,
+    }
+  );
+  return { coordinator, sql };
+}
+
+function pacificJob(id) {
+  return {
+    id,
+    idempotency_key: `key-${id}`,
+    request_digest: `digest-${id}`,
+    policy_json: JSON.stringify({ allowed_models: ["gemini/flash-lite"], allow_paid: false }),
+    prompt_family: "tags",
+    input_token_estimate: 500,
+    max_output_token_estimate: 200,
+    payload_key: `payloads/${id}/request.json`,
+  };
+}
+
+test("a daily quota spent earlier the same Pacific day still blocks, even though UTC has rolled", async () => {
+  const { coordinator, sql } = pacificCoordinator();
+  await coordinator.enqueueBatch([pacificJob("j-pt-1")]);
+  coordinator._getOrCreateRouteLedger("gem-a", PACIFIC_NOW, PACIFIC_CATALOG.routes_by_id["gem-a"]);
+  // Exhausted earlier today in Pacific terms. UTC is already 2026-08-29, so a UTC-keyed (or
+  // rolling-window) implementation would wrongly consider this reset.
+  sql.exec("UPDATE routes SET rpd_count = 250, rpd_day_key = '2026-08-28' WHERE route_id = 'gem-a'");
+
+  const plan = await coordinator.claimDispatchWindow(PACIFIC_NOW, 25);
+  assert.equal(plan.jobs.length, 0, "the provider's day has not rolled yet, so nothing may dispatch");
+});
+
+test("once the Pacific day rolls, the quota resets even though under 24h has passed", async () => {
+  const { coordinator, sql } = pacificCoordinator();
+  await coordinator.enqueueBatch([pacificJob("j-pt-2")]);
+  coordinator._getOrCreateRouteLedger("gem-a", PACIFIC_NOW, PACIFIC_CATALOG.routes_by_id["gem-a"]);
+  // Exhausted yesterday in Pacific terms; the provider has since rolled over.
+  sql.exec("UPDATE routes SET rpd_count = 250, rpd_day_key = '2026-08-27' WHERE route_id = 'gem-a'");
+
+  const plan = await coordinator.claimDispatchWindow(PACIFIC_NOW, 25);
+  assert.equal(plan.jobs.length, 1, "a rolled-over daily quota must not keep the model out");
+  assert.equal(plan.jobs[0].route_id, "gem-a");
+});
+
+test("_capacityFraction reads the daily quota on the provider's calendar, not UTC", () => {
+  // Direct unit assertion: with one model the ranking order is unobservable end-to-end, so the
+  // score has to be checked here or a UTC-keyed regression slips through.
+  const { coordinator } = pacificCoordinator();
+  const route = {
+    ...PACIFIC_CATALOG.routes_by_id["gem-a"],
+    route_id: "gem-a",
+    reset_timezone: "America/Los_Angeles",
+    rpm_window_start: 0,
+    rpm_count: 0,
+    rpd_count: 250,
+    tpm_window_start: 0,
+    tpm_reserved: 0,
+    full_token_budget: 250000 * 5,
+    token_budget_updated_at: PACIFIC_NOW,
+    blocked_until: null,
+    buffer_seconds: 0,
+  };
+  // Spent earlier the same Pacific day -> no capacity, even though UTC has already rolled to 08-29.
+  assert.equal(
+    coordinator._capacityFraction({ ...route, rpd_day_key: "2026-08-28" }, PACIFIC_NOW, 60),
+    0,
+  );
+  // Spent the previous Pacific day -> the provider has reset, so full daily headroom.
+  assert.ok(
+    coordinator._capacityFraction({ ...route, rpd_day_key: "2026-08-27" }, PACIFIC_NOW, 60) > 0,
+  );
+});
+
+test("a reservation stamps the provider's calendar day, not a rolling-window anchor", async () => {
+  const { coordinator, sql } = pacificCoordinator();
+  await coordinator.enqueueBatch([pacificJob("j-pt-3")]);
+  const plan = await coordinator.claimDispatchWindow(PACIFIC_NOW, 25);
+  assert.equal(plan.jobs.length, 1);
+
+  const row = [...sql.exec("SELECT rpd_day_key, rpd_count FROM routes WHERE route_id='gem-a'")][0];
+  assert.equal(row.rpd_day_key, "2026-08-28", "must record the Pacific date, not UTC's 08-29");
+  assert.equal(row.rpd_count, 1);
+});

@@ -7,6 +7,8 @@ import {
   earliestSafeStart,
   routeHasCapacityFor,
   computeRouteLaneWait,
+  zonedDateKey,
+  nextZonedMidnightMs,
   paymentRequiredBackoffUntil,
   FULL_TOKEN_BUDGET_WINDOWS,
 } from "../src/pacing.js";
@@ -80,10 +82,43 @@ test("earliestSafeStart does not wait once the RPM window has rolled over", () =
   assert.equal(result.notBeforeAt, NOW);
 });
 
-test("earliestSafeStart waits for the next RPD window once the daily cap is full", () => {
-  const route = freshRoute({ rpd: 500, rpd_window_start: NOW, rpd_count: 500 });
+test("earliestSafeStart waits for the provider's next calendar day once the daily cap is full", () => {
+  // Daily quotas roll on the provider's clock, not 24h after our first request of the day. The
+  // route is exhausted only while its recorded day key is still today in that timezone.
+  const tz = "America/Los_Angeles";
+  const today = zonedDateKey(NOW, tz);
+  const route = freshRoute({ rpd: 500, rpd_day_key: today, rpd_count: 500, reset_timezone: tz });
   const result = earliestSafeStart(route, job(), NOW, NOW);
-  assert.equal(result.notBeforeAt, NOW + 86_400_000);
+  assert.equal(result.notBeforeAt, nextZonedMidnightMs(NOW, tz));
+  assert.ok(
+    result.notBeforeAt - NOW < 86_400_000,
+    "next local midnight must be sooner than a full rolling 24h from now",
+  );
+});
+
+test("a stale day key means the provider already reset, so the route is ready now", () => {
+  // The bug this covers: v2 anchored the daily window on first use, so a route exhausted at (say)
+  // 14:00 local stayed exhausted until 14:00 the NEXT day -- ~14 hours past Gemini's actual
+  // midnight-Pacific rollover. Because an exhausted route scores 0 in _capacityFraction, its whole
+  // model then drops out of the ranking and its jobs go unclaimed.
+  const tz = "America/Los_Angeles";
+  const route = freshRoute({
+    rpd: 500,
+    rpd_day_key: zonedDateKey(NOW - 86_400_000, tz), // yesterday, in the provider's timezone
+    rpd_count: 500,
+    reset_timezone: tz,
+  });
+  const result = earliestSafeStart(route, job(), NOW, NOW);
+  assert.equal(result.notBeforeAt, NOW, "a rolled-over daily quota must not hold the route");
+});
+
+test("rpd <= 0 keeps its pre-existing pacing meaning (unconstrained here)", () => {
+  // Pins the behaviour rather than endorsing it: fixedWindowReadyAt treated `limit <= 0` as
+  // unlimited while _capacityFraction reads `rpd: 0` as paused. That disagreement predates the
+  // timezone work and is left as-is; a paused route is dropped from the ranking before pacing
+  // is reached, so the inconsistency is not reachable in practice.
+  const route = freshRoute({ rpd: 0, rpd_count: 0 });
+  assert.equal(earliestSafeStart(route, job(), NOW, NOW).notBeforeAt, NOW);
 });
 
 test("earliestSafeStart waits for token budget to refill for an oversized job", () => {
