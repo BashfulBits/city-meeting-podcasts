@@ -45,6 +45,24 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Mistral Medium's overflow now prefers the model that was actually measured on the task.**
+  `review/40`'s frozen-gold scoring (2026-07-31, 322 source-backed positives over 24 agendas) is the
+  only evaluation of agenda-chapter extraction, and DeepSeek V4 **Flash** won it — F1 .734 against
+  Mistral Medium's .643. The overflow chain nonetheless led with DeepSeek V4 **Pro**, chosen on a
+  general "higher quality tier" argument that never referenced that evaluation; Pro has never been
+  scored on this task, and neither has Nemotron 3 Super or Gemini 3.5 Flash Lite. Measurement has
+  since undercut the tier argument as well: Pro runs ~42s median with multi-hour 429 lockouts, and
+  Nemotron spends ~10k completion tokens per job, mostly hidden reasoning. Flash now leads (two free
+  legs, OpenCode and NVIDIA), Pro drops to last, and the config records which orderings rest on
+  evidence and which are merely operational.
+- **The 429 route cooldown ceiling is four hours, up from thirty minutes.** NVIDIA's developer forum
+  reports that each request made while blocked extends the lockout, so a 30-minute ceiling meant ~48
+  probes a day, each potentially re-extending it — matching production, where `deepseek-v4-pro` sat
+  pinned at the cap and still 429'd 5.5 hours in. The change is also the cheap test of that theory:
+  if lockouts shorten once we probe roughly hourly, probing was the cause. Guessing high costs an
+  idle route until the next probe, and any success clears the streak immediately; guessing low, if
+  the theory holds, costs a lockout that never ends.
+
 - **`llm-dispatch-v2` reset daily quotas on a rolling 24-hour window instead of the provider's
   calendar day, hiding whole models from the scheduler.** `reset_timezone` appeared only in v2's
   compiled catalog and in no v2 source file — v1 has `zonedDateKey`/`routeResetTimezone`, v2 had
