@@ -33,6 +33,81 @@ export function minInterRequestGapMs(route) {
   return Math.ceil(MS_PER_MINUTE / rpm);
 }
 
+/**
+ * Calendar date in a provider's own reset timezone, as `YYYY-MM-DD`.
+ *
+ * A daily quota resets on the provider's clock, not 24 hours after we first used it. Gemini's free
+ * tier rolls at midnight America/Los_Angeles; treating it as a rolling 24h window anchored on our
+ * first request holds a route exhausted for up to a further ~14 hours after the provider has
+ * already refilled it. v1 (`llm-dispatch-proxy`'s zonedDateKey/routeResetTimezone) has always keyed
+ * on this; v2 shipped without it, which is the divergence this restores. Duplicated rather than
+ * shared, per this repo's convention of each Worker directory being self-contained.
+ */
+export function zonedDateKey(ms, timeZone = "UTC") {
+  const date = new Date(ms);
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const y = parts.find((p) => p.type === "year")?.value;
+    const m = parts.find((p) => p.type === "month")?.value;
+    const d = parts.find((p) => p.type === "day")?.value;
+    if (y && m && d) return `${y}-${m}-${d}`;
+  } catch {
+    // Invalid timezone string -- fall through to UTC rather than throwing inside the scheduler.
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+/** The provider's reset timezone for a route, defaulting to UTC. */
+export function routeResetTimezone(route) {
+  return route?.reset_timezone || "UTC";
+}
+
+/**
+ * When a route's daily quota next allows a request, keyed on the provider's calendar day.
+ *
+ * A stale day key means the provider has already rolled over, so the route is ready now.
+ *
+ * `limit <= 0` returns `now`, matching the fixedWindowReadyAt behaviour this replaces. Note that
+ * `_capacityFraction` reads `rpd: 0` as the repository's "paused" convention and scores it 0, so
+ * the two disagree -- that predates this change and is deliberately left alone rather than
+ * quietly altered while fixing timezones. In practice a paused route is dropped from the ranking
+ * before pacing is consulted.
+ */
+export function dailyQuotaReadyAt(route, now) {
+  const limit = Number(route?.rpd);
+  if (!Number.isFinite(limit) || limit <= 0) return now;
+  const tz = routeResetTimezone(route);
+  if (route?.rpd_day_key !== zonedDateKey(now, tz)) return now; // provider already reset
+  if ((Number(route?.rpd_count) || 0) < limit) return now;
+  return nextZonedMidnightMs(now, tz);
+}
+
+/** Epoch ms of the next midnight in `timeZone`, found by probing forward one hour at a time. */
+export function nextZonedMidnightMs(now, timeZone = "UTC") {
+  const today = zonedDateKey(now, timeZone);
+  // A day is at most 25 hours across a DST fall-back, so 26 probes always cross the boundary.
+  for (let hour = 1; hour <= 26; hour += 1) {
+    const probe = now + hour * 3_600_000;
+    if (zonedDateKey(probe, timeZone) !== today) {
+      // Narrow to the minute so the route is not held for up to an extra hour.
+      let lo = probe - 3_600_000;
+      let hi = probe;
+      while (hi - lo > 60_000) {
+        const mid = lo + Math.floor((hi - lo) / 2);
+        if (zonedDateKey(mid, timeZone) === today) lo = mid;
+        else hi = mid;
+      }
+      return hi;
+    }
+  }
+  return now + MS_PER_DAY;
+}
+
 function fixedWindowReadyAt(windowStart, count, limit, windowMs, now) {
   if (!Number.isFinite(limit) || limit <= 0) return now; // unlimited / unconfigured
   if (!Number.isFinite(windowStart) || now - windowStart >= windowMs) return now; // stale/fresh window
@@ -83,11 +158,8 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     fixedWindowReadyAt(route?.rpm_window_start, route?.rpm_count, route?.rpm, MS_PER_MINUTE, now)
   );
 
-  // RPD: fixed 24h window.
-  notBeforeAt = Math.max(
-    notBeforeAt,
-    fixedWindowReadyAt(route?.rpd_window_start, route?.rpd_count, route?.rpd, MS_PER_DAY, now)
-  );
+  // RPD: the provider's calendar day in its own reset timezone, not a rolling 24h window.
+  notBeforeAt = Math.max(notBeforeAt, dailyQuotaReadyAt(route, now));
 
   // TPM: refillable token bucket. Reservations at or under one window's tpm allowance are also
   // gated by the ordinary rolling reservation (tpm_reserved/tpm_window_start) so a burst of

@@ -45,6 +45,21 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`llm-dispatch-v2` reset daily quotas on a rolling 24-hour window instead of the provider's
+  calendar day, hiding whole models from the scheduler.** `reset_timezone` appeared only in v2's
+  compiled catalog and in no v2 source file — v1 has `zonedDateKey`/`routeResetTimezone`, v2 had
+  neither. v2 anchored `rpd` at the first request of a window and only refreshed 24 hours later, so
+  a route exhausted at (say) 14:00 local stayed exhausted until 14:00 the *next* day, well past the
+  provider's real reset. Gemini's free tier rolls at midnight `America/Los_Angeles`, giving up to
+  ~14 hours of needless starvation. The consequence is worse than slowness: `_capacityFraction`
+  scores an exhausted route 0, and `_rankModelsByCapacity` drops any model whose weighted score is
+  0, so an affected model disappears from the ranking entirely and its queued jobs go unclaimed.
+  **28 routes carry an `rpd`**, 14 of them Gemini/Gemma on Pacific time. Daily accounting is now
+  keyed on `zonedDateKey(now, reset_timezone)` across all three places that touch it — the
+  reservation stamp, the capacity score, and `earliestSafeStart`'s readiness — with a new
+  `rpd_day_key` column and the usual `_ensureColumn` migration. `rpd <= 0` keeps its pre-existing
+  pacing meaning rather than being quietly redefined while fixing timezones.
+
 - **Route rates below one request per minute are now expressible, and NVIDIA is paced to its actual
   per-model quota.** Three separate places clamped a fractional rate *up* to 1 — `_scale_rate_limit`
   (`0.25 x 0.5` became `1`, four times the configured rate), `routeAvailable`'s per-minute bucket,
