@@ -615,12 +615,22 @@ def test_pilot_selection_accepts_explicit_provider_body_prefix():
         "council-chamber-v1"
     )
     assert not pilot_selected(config, "denton-tx", "Planning and Zoning Commission")
+    assert not pilot_selected(config, "denton-tx", "City Council Joint Meeting")
+    assert not pilot_selected(config, "denton-tx", "City Council - Section 1")
 
 
 def test_timed_word_validation_rejects_empty_or_invalid_sidecars():
     assert not has_valid_timed_words(b'{"segments": [{"words": []}]}')
     assert not has_valid_timed_words(b'{"segments": [{"words": [{"w": "hello", "s": 1, "e": 1}]}]}')
     assert has_valid_timed_words(b'{"segments": [{"words": [{"w": "hello", "s": 1, "e": 1.5}]}]}')
+    assert not has_valid_timed_words(
+        b'{"segments": [{"words": [{"w": null, "s": false, "e": true}]}]}'
+    )
+    assert not has_valid_timed_words(
+        json.dumps(
+            {"segments": [{"words": [{"w": "hello", "s": 10**400, "e": 10**400 + 1}]}]}
+        ).encode()
+    )
 
 
 def test_speaker_pages_only_include_admitted_named_quotes():

@@ -92,6 +92,7 @@ from citypods.records import (
     record_to_episode,
     save_records,
     source_key,
+    transcript_invalid_words_backoff_until,
     transcript_timeout_backoff_until,
 )
 from citypods.security import redact_subprocess_text, validate_source_url
@@ -903,9 +904,13 @@ class ExternalTranscribeWorker:
         # instead of spending provider budget re-attempting it while it backs off. Reads the
         # deadline off ``metadata`` (``_telemetry_metadata`` already looked the episode up for this
         # same item) rather than re-fetching it.
-        backoff_until = metadata.get("timeout_backoff_until")
-        if backoff_until is not None and datetime.now(UTC) < backoff_until:
-            return False, f"timeout-backoff until={backoff_until.isoformat()}"
+        now = datetime.now(UTC)
+        for reason, backoff_until in (
+            ("timeout-backoff", metadata.get("timeout_backoff_until")),
+            ("invalid-word-sidecar-backoff", metadata.get("invalid_words_backoff_until")),
+        ):
+            if backoff_until is not None and now < backoff_until:
+                return False, f"{reason} until={backoff_until.isoformat()}"
         media_error = metadata.get("transcript_media_error")
         media_identity = metadata.get("transcript_media_error_audio_identity")
         if media_error and media_identity and media_identity == metadata.get("audio_identity"):
@@ -1030,8 +1035,10 @@ class ExternalTranscribeWorker:
             adopted = False
             try:
                 adopted = self._run_with_retry(item, tracker, owner=claim_owner)
-            except ClaimDeferred:
+            except ClaimDeferred as exc:
                 actual = max(0.0, time.monotonic() - started)
+                if str(exc) == "invalid-word-sidecar":
+                    self._record_invalid_words_backoff(item)
                 work_leases.abandon(
                     self.storage,
                     item.source_key,
@@ -1330,6 +1337,7 @@ class ExternalTranscribeWorker:
                 "model": None,
                 "compute_type": None,
                 "timeout_backoff_until": None,
+                "invalid_words_backoff_until": None,
                 "audio_identity": None,
                 "transcript_media_error": None,
                 "transcript_media_error_audio_identity": None,
@@ -1343,6 +1351,7 @@ class ExternalTranscribeWorker:
             # ``_admit_claim`` can gate on it without a second ``_episode_for``/``load_records``
             # round trip for the same item.
             "timeout_backoff_until": transcript_timeout_backoff_until(ep),
+            "invalid_words_backoff_until": transcript_invalid_words_backoff_until(ep),
             "audio_identity": getattr(ep, "audio_key", None)
             or getattr(ep, "hosted_audio_url", None),
             "transcript_media_error": getattr(ep, "transcript_media_error", None),
@@ -2184,6 +2193,21 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
             print(
                 f"[github-actions-worker] warning: failed to push timeout backoff for "
                 f"{item.source_key}/{item.episode_uid}: {exc}",
+                flush=True,
+            )
+
+    def _record_invalid_words_backoff(self, item: WorkItem) -> None:
+        """Persist a cooldown after fresh ASR returns no usable timed words."""
+        city, ep, records = self._episode_for(item)
+        del city
+        ep.transcript_invalid_words_attempts += 1
+        ep.transcript_invalid_words_last_attempt = datetime.now(UTC).isoformat()
+        try:
+            self._push_owned_transcript_record(item, ep, records, ref_uid=ep.uid or ep.guid)
+        except Exception as exc:  # noqa: BLE001 - preserve the retryable deferred outcome
+            print(
+                f"[{self.config.backend}-worker] warning: failed to push invalid-word-sidecar "
+                f"backoff for {item.source_key}/{item.episode_uid}: {exc}",
                 flush=True,
             )
 

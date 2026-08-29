@@ -717,6 +717,20 @@ def test_admit_claim_declines_item_still_in_timeout_backoff(tmp_path):
     assert "timeout-backoff" in str(reason)
 
 
+def test_admit_claim_declines_item_still_in_invalid_word_backoff(tmp_path):
+    worker = _loop_worker(tmp_path, ["a"])
+    future = datetime(2030, 1, 1, tzinfo=UTC)
+
+    admitted, reason = worker._admit_claim(
+        _queued("a"),
+        metadata={"duration_hours": 1.0, "invalid_words_backoff_until": future},
+        estimated_runtime_seconds=60.0,
+    )
+
+    assert admitted is False
+    assert "invalid-word-sidecar-backoff" in str(reason)
+
+
 def test_admit_claim_allows_item_once_backoff_window_has_lapsed(tmp_path):
     worker = _loop_worker(tmp_path, ["a"])
     past = datetime(2020, 1, 1, tzinfo=UTC)

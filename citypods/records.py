@@ -70,6 +70,8 @@ BACKOFF_BASE = timedelta(days=1)
 BACKOFF_MAX = timedelta(days=30)
 TRANSCRIPT_TIMEOUT_BACKOFF_BASE = timedelta(days=1)
 TRANSCRIPT_TIMEOUT_BACKOFF_MAX = timedelta(days=30)
+TRANSCRIPT_INVALID_WORDS_BACKOFF_BASE = timedelta(days=1)
+TRANSCRIPT_INVALID_WORDS_BACKOFF_MAX = timedelta(days=30)
 AGENDA_TEXT_BACKOFF_BASE = timedelta(days=1)
 AGENDA_TEXT_BACKOFF_MAX = timedelta(days=14)
 AGENDA_BACKUP_BACKOFF_BASE = timedelta(days=1)
@@ -189,6 +191,22 @@ def transcript_timeout_backoff_until(ep: Episode) -> datetime | None:
         TRANSCRIPT_TIMEOUT_BACKOFF_BASE,
         TRANSCRIPT_TIMEOUT_BACKOFF_MAX,
         ep.transcript_timeout_attempts,
+    )
+    return last + delay
+
+
+def transcript_invalid_words_backoff_until(ep: Episode) -> datetime | None:
+    """When invalid external-ASR word output may be retried, or ``None`` if not backing off."""
+    attempts = getattr(ep, "transcript_invalid_words_attempts", 0)
+    if attempts <= 0:
+        return None
+    last = _parse_iso_utc(getattr(ep, "transcript_invalid_words_last_attempt", None))
+    if last is None:
+        return None
+    delay = _capped_exponential_backoff(
+        TRANSCRIPT_INVALID_WORDS_BACKOFF_BASE,
+        TRANSCRIPT_INVALID_WORDS_BACKOFF_MAX,
+        attempts,
     )
     return last + delay
 
@@ -1275,6 +1293,8 @@ def episode_to_record(ep: Episode) -> dict:
             "pipeline_version": ep.transcript_pipeline_version,
             "timeout_attempts": ep.transcript_timeout_attempts,
             "timeout_last_attempt": ep.transcript_timeout_last_attempt,
+            "invalid_words_attempts": ep.transcript_invalid_words_attempts,
+            "invalid_words_last_attempt": ep.transcript_invalid_words_last_attempt,
             "media_error": ep.transcript_media_error,
             "media_error_last_attempt": ep.transcript_media_error_last_attempt,
             "media_error_audio_identity": ep.transcript_media_error_audio_identity,
@@ -1286,6 +1306,7 @@ def episode_to_record(ep: Episode) -> dict:
             or ep.transcript_words_key
             or ep.transcript_words_url
             or ep.transcript_timeout_attempts
+            or ep.transcript_invalid_words_attempts
             or ep.transcript_media_error
             or ep.transcript_asr_comparison
         )
@@ -1368,6 +1389,10 @@ def _transcript_fields_from_rec(rec: dict) -> dict:
         "transcript_pipeline_version": t.get("pipeline_version"),
         "transcript_timeout_attempts": _coerce_non_negative_int(t.get("timeout_attempts")),
         "transcript_timeout_last_attempt": t.get("timeout_last_attempt"),
+        "transcript_invalid_words_attempts": _coerce_non_negative_int(
+            t.get("invalid_words_attempts")
+        ),
+        "transcript_invalid_words_last_attempt": t.get("invalid_words_last_attempt"),
         "transcript_media_error": t.get("media_error"),
         "transcript_media_error_last_attempt": t.get("media_error_last_attempt"),
         "transcript_media_error_audio_identity": t.get("media_error_audio_identity"),
@@ -2113,6 +2138,12 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.transcript_timeout_attempts = transcript_fields.get("transcript_timeout_attempts", 0)
         ep.transcript_timeout_last_attempt = transcript_fields.get(
             "transcript_timeout_last_attempt"
+        )
+        ep.transcript_invalid_words_attempts = transcript_fields.get(
+            "transcript_invalid_words_attempts", 0
+        )
+        ep.transcript_invalid_words_last_attempt = transcript_fields.get(
+            "transcript_invalid_words_last_attempt"
         )
         ep.transcript_media_error = transcript_fields.get("transcript_media_error")
         ep.transcript_media_error_last_attempt = transcript_fields.get(

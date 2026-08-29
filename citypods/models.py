@@ -208,6 +208,11 @@ class Episode:
     # repeatedly consuming the full item timeout. Reset after successful local inference.
     transcript_timeout_attempts: int = 0
     transcript_timeout_last_attempt: str | None = None
+    # Consecutive external-ASR outputs without usable timed words and the ISO8601 timestamp of the
+    # latest one. Persisted separately from timeout telemetry so malformed/silent output gets its
+    # own retry cooldown and does not masquerade as an inference timeout.
+    transcript_invalid_words_attempts: int = 0
+    transcript_invalid_words_last_attempt: str | None = None
     # Deterministic media-decode failures are quarantined against the current hosted-audio
     # identity so a malformed recording does not consume every ASR run. A changed audio key or
     # URL clears the quarantine naturally on the next admission attempt.

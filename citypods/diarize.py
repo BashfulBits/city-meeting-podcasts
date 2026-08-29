@@ -125,13 +125,22 @@ def _timed_words(words: Mapping[str, Any]) -> Iterable[tuple[float, float, str]]
         start = row.get("start", row.get("s"))
         end = row.get("end", row.get("e"))
         text = row.get("word", row.get("w", row.get("text", "")))
-        if not isinstance(start, int | float) or not isinstance(end, int | float):
+        if (
+            isinstance(start, bool)
+            or isinstance(end, bool)
+            or not isinstance(start, int | float)
+            or not isinstance(end, int | float)
+            or not isinstance(text, str)
+            or not text.strip()
+        ):
             continue
-        start_value = float(start)
-        end_value = float(end)
+        try:
+            start_value = float(start)
+            end_value = float(end)
+        except OverflowError:
+            continue
         if math.isfinite(start_value) and math.isfinite(end_value) and end_value > start_value:
-            if str(text).strip():
-                yield start_value, end_value, str(text).strip()
+            yield start_value, end_value, text.strip()
 
 
 def _mark_overlap(turns: list[dict[str, Any]]) -> None:

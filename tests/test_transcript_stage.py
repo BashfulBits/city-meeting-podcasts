@@ -3013,6 +3013,30 @@ class TestTranscriptStageASR:
         assert ep.transcript_words_key
         assert (root / ep.transcript_words_key).read_bytes() == ASR_WORDS
 
+    def test_invalid_existing_word_sidecar_with_provider_link_regenerates(self, tmp_path):
+        ep = _ep_with_audio(links={"transcript": "https://provider/t.txt"})
+        city = _city()
+        src_key = source_key(city)
+        old_key = f"transcripts/{src_key}/{ep.uid}-asr-old.vtt"
+        old_words_key = f"transcripts/{src_key}/{ep.uid}-asr-old.words.json"
+        ep.transcript_key = old_key
+        ep.transcript_words_key = old_words_key
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+        ep.transcript_spec_hash = "old"
+        root = tmp_path / "audio"
+        (root / old_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / old_key).write_bytes(ASR_VTT)
+        (root / old_words_key).write_bytes(b'{"segments":[]}')
+
+        with patch("citypods.http.make_session", return_value=_fetch(PLAIN_CONTENT)):
+            ep, stats, fake_asr = _run_asr(tmp_path, ep)
+
+        assert fake_asr.align_calls
+        assert stats.aligned == 1
+        assert stats.reused == 0
+        assert (root / ep.transcript_words_key).read_bytes() == ASR_WORDS
+
     def test_concurrent_source_aliases_share_one_asr_inference(self, tmp_path):
         """Same stable meeting + recipe in two source views runs native ASR only once."""
 

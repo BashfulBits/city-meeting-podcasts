@@ -34,7 +34,9 @@ issues not yet cut**
 > a provider appends meeting type/date text to the configured body. The Denton row uses those selectors
 > for its `City Council` family. Any transcript word sidecar consumed by alignment, ASR adoption, or
 > native diarization must parse to at least one finite, positive-length timed word; an empty or malformed
-> sidecar is not a completion prerequisite and is routed back through alignment or fresh ASR. The
+> sidecar is not a completion prerequisite and is routed back through alignment or fresh ASR. Fresh
+> external-ASR outputs that still contain no usable timed words use a persisted, reason-specific
+> exponential retry cooldown rather than consuming inference budget every scheduled run. The
 > transcript/native validation fingerprints cause a gradual normal-run audit and reuse valid existing
 > artifacts; they do not invalidate the ASR output recipe or require a destructive bulk backfill.
 

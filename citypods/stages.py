@@ -2309,6 +2309,8 @@ def _record_asr_timeout(ep: Episode) -> None:
 def _reset_asr_timeout_backoff(ep: Episode) -> None:
     ep.transcript_timeout_attempts = 0
     ep.transcript_timeout_last_attempt = None
+    ep.transcript_invalid_words_attempts = 0
+    ep.transcript_invalid_words_last_attempt = None
 
 
 def _asr_default_ratio(ctx: StageContext) -> float:
@@ -5905,10 +5907,14 @@ class TranscriptStage:
                     _adopt_asr_keys(ep, ctx.storage, asr_key, words_key, recipe)
                     stats.reused += 1
                     continue
-                if provider_url and not align_sections:
+                if (
+                    provider_url
+                    and not align_sections
+                    and recheck_asr_words_key
+                    and _word_sidecar_present(recheck_asr_words_key)
+                ):
                     ep.transcript_hosted_url = ctx.storage.public_url(recheck_asr_key)
-                    if recheck_asr_words_key and _word_sidecar_present(recheck_asr_words_key):
-                        ep.transcript_words_url = ctx.storage.public_url(recheck_asr_words_key)
+                    ep.transcript_words_url = ctx.storage.public_url(recheck_asr_words_key)
                     _reset_asr_timeout_backoff(ep)
                     stats.reused += 1
                     continue

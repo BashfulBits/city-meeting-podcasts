@@ -121,6 +121,13 @@ Phase R (Research-Tool Surface)._
   validation fingerprint causes a gradual normal-run audit, and only recordings with missing or invalid
   word timing are regenerated. No output schema or ASR pipeline-version bump is introduced.
 
+- **R7 sidecar review hardening.** Malformed timed-word rows now reject boolean, null, and
+  overflowing timestamps without raising; joint and section-only City Council labels stay outside
+  the pilot; a provider-linked episode cannot reuse an invalid ASR sidecar; and repeated external
+  ASR outputs without usable timed words use a persisted exponential cooldown. The roadmap index and
+  regression coverage now record these completion semantics. No output schema or ASR pipeline-version
+  bump is introduced.
+
 - **LLM dispatch V2 mixed-result recovery (GH#1318).** Enqueue and poll batches now preserve
   accepted, replayed, pending, completed, rejected, and failed per-job outcomes instead of
   converting one item into a whole-batch failure. Unknown outcomes use one bounded recovery round:

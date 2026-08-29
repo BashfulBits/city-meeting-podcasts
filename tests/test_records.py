@@ -38,6 +38,7 @@ from citypods.records import (
     save_records,
     shard_assignment,
     source_key,
+    transcript_invalid_words_backoff_until,
     transcript_media_hash,
     transcript_timeout_backoff_until,
 )
@@ -1250,6 +1251,8 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
     ep.materialize_last_attempt = "2026-06-01T00:00:00+00:00"
     ep.transcript_timeout_attempts = 3
     ep.transcript_timeout_last_attempt = "2026-06-02T00:00:00+00:00"
+    ep.transcript_invalid_words_attempts = 2
+    ep.transcript_invalid_words_last_attempt = "2026-06-03T00:00:00+00:00"
     ep.provider_transcript = {
         "known_good": {
             "url": "https://city.example/transcript.pdf",
@@ -1296,6 +1299,8 @@ def test_record_to_episode_roundtrips_with_episode_to_record():
         "materialize_last_attempt",
         "transcript_timeout_attempts",
         "transcript_timeout_last_attempt",
+        "transcript_invalid_words_attempts",
+        "transcript_invalid_words_last_attempt",
         "provider_transcript",
         "speakers_key",
         "speakers_url",
@@ -1434,6 +1439,27 @@ def test_timeout_backoff_persists_without_a_transcript_artifact():
     assert back.transcript_key is None
     assert back.transcript_timeout_attempts == 1
     assert back.transcript_timeout_last_attempt == "2026-06-20T12:00:00+00:00"
+
+
+def test_invalid_words_backoff_persists_without_a_transcript_artifact():
+    ep = _ep("g-invalid-words")
+    ep.uid = "u-invalid-words"
+    ep.transcript_invalid_words_attempts = 2
+    ep.transcript_invalid_words_last_attempt = "2026-06-20T12:00:00+00:00"
+
+    rec = episode_to_record(ep)
+    assert rec["transcript"]["key"] is None
+    back = record_to_episode(rec)
+    assert back.transcript_invalid_words_attempts == 2
+    assert back.transcript_invalid_words_last_attempt == "2026-06-20T12:00:00+00:00"
+
+
+def test_invalid_words_backoff_caps_at_thirty_days():
+    ep = _ep("g-invalid-words-huge")
+    ep.transcript_invalid_words_attempts = 1 << 30
+    ep.transcript_invalid_words_last_attempt = "2026-06-20T12:00:00+00:00"
+
+    assert transcript_invalid_words_backoff_until(ep) == datetime(2026, 7, 20, 12, tzinfo=UTC)
 
 
 def test_media_decode_quarantine_persists_without_a_transcript_artifact():

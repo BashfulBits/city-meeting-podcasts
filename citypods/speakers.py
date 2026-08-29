@@ -115,7 +115,14 @@ def _pilot_row_matches(row: Mapping[str, Any], body: str | None) -> bool:
         return True
     prefixes = [_norm(row.get("body_prefix"))]
     prefixes.extend(_norm(value) for value in row.get("body_prefixes") or [])
-    return any(prefix and actual.startswith(prefix) for prefix in prefixes)
+    for prefix in prefixes:
+        if not prefix or not actual.startswith(prefix):
+            continue
+        suffix = actual[len(prefix) :].lstrip(" -:;,–—")
+        if suffix.split(" ", 1)[0] in {"joint", "section"}:
+            continue
+        return True
+    return False
 
 
 def pilot_capture_context(
