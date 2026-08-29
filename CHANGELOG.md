@@ -45,6 +45,19 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`workers/llm-provider-shim`: a thin shim for providers AI Gateway cannot address.** The gateway
+  rewrites the *last path segment* of a Custom Provider's Base URL to a hardcoded `v1` (undocumented;
+  established by registering a throwaway custom provider against an echo service). Kilo's
+  `/api/gateway` became `/api/v1` and z.ai's `/api/paas/**v4**` became `/api/paas/**v1**` — each
+  reproducing, on a direct curl, the exact 404 the gateway returned. Kilo is fixable by registering
+  `https://api.kilo.ai/api/gateway/v1` (it serves that path); z.ai is not expressible under the rule
+  at all, so the shim restores its real prefix and keeps it inside AI Gateway's logging instead of
+  bypassing the gateway. The shim pins its destinations to an allowlist, fails closed without its
+  secret, and forwards only `authorization`/`content-type`/`accept`, because it relays third-party
+  API keys. OpenCode is routed through it as well pending an empirical answer: its gateway URL is
+  already correct and returns a real 400 on a direct call, yet 404s through the gateway, and
+  replaying the gateway's full header set directly does not reproduce it.
+
 - **Cloudflare AI Gateway dropped the Base URL path for Custom Providers, 404-ing every NVIDIA and
   SambaNova route.** The gateway joins the caller-supplied path at the provider's *origin root*,
   discarding the path component of the registered Base URL — the opposite of what
