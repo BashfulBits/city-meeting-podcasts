@@ -1584,9 +1584,16 @@ function routeAvailable(entry, route, { requests, tokens }, now, batch = null, m
       : null;
     // Pacing allows delays within maxStaggerMs. The minute counter remains as a
     // compatibility fallback for ledgers written by older Worker versions.
+    //
+    // Use the requested size as the compatibility bucket floor because this is a per-MINUTE
+    // counter, while continuous pacing handles the actual fractional rate. A structured call
+    // reserves two attempts; without this floor, an empty legacy ledger at 0.25 rpm would reject
+    // 0 + 2 <= 0.25 before reserveRouteCapacity can write its requests_available_at timestamp.
+    // Real spacing comes from that timestamp (60000/rpm), which is exact for fractional rates.
+    const minuteBucket = Math.max(requests, route.rpm);
     if (
       (nextRequestAt != null && nextRequestAt - now.getTime() > maxStaggerMs) ||
-      (nextRequestAt == null && entry.requests_minute + requests > route.rpm)
+      (nextRequestAt == null && entry.requests_minute + requests > minuteBucket)
     ) {
       return false;
     }
@@ -1724,7 +1731,9 @@ function nextRouteReset(entry, route, now, dispatchLimits = DISPATCH_LIMITS, bud
     if (entry.requests_available_at) {
       const requestReadyMs = parseTime(entry.requests_available_at);
       if (requestReadyMs > now.getTime()) candidates.push(new Date(requestReadyMs));
-    } else if (entry.requests_minute >= route.rpm) {
+    } else if (entry.requests_minute >= Math.max(1, route.rpm)) {
+      // A sub-1 rpm route is spaced by requests_available_at (the branch above), not by this
+      // minute-boundary fallback.
       candidates.push(new Date(nextMinuteMs));
     }
   }
@@ -3043,8 +3052,13 @@ async function dispatchBatch(
         const blockedAtMs = successEntry.payment_required_at
           ? parseTime(successEntry.payment_required_at)
           : null;
-        // Only a call that began AFTER the most recent 402 proves the route recovered. One that
-        // was already in flight when the 402 landed proves nothing about the account's balance.
+        // Only a call that began STRICTLY AFTER the most recent 402 proves the route recovered.
+        // One already in flight when the 402 landed proves nothing about the account's balance.
+        // Equality is not proof of ordering -- `Date.now()` has millisecond granularity, so a
+        // request that genuinely started before the rejection can share its millisecond. Erring
+        // strict costs only an un-reset streak (the next cooldown starts a rung higher, and
+        // `blocked_until` still expires on its own); erring loose re-admits work to a route whose
+        // budget is actually exhausted, which is the whole thing this guard prevents.
         const provesRecovery = blockedAtMs == null || requestStartMs > blockedAtMs;
         if (
           provesRecovery &&

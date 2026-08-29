@@ -14,11 +14,19 @@ import DISPATCH_LIMITS from "../src/dispatch_limits.json" with { type: "json" };
 // deployed from it) keeps `rpd: 0` and 50% split-cap limits untouched. Quota-exhaustion behavior
 // itself, including `rpd`, already has its own dedicated coverage against synthetic route objects.
 const splitCap = DISPATCH_LIMITS._metadata?.split_cap_multiplier || 1.0;
+// Un-scaling must not round a sub-1 rate up to an integer: a route paced slower than one request
+// per minute (NVIDIA's 0.25 compiled rpm) would become 1 here -- `Math.round(0.25 / 0.5)` -- and
+// these tests would silently assert against a 4x faster route than production runs. Mirrors
+// _scale_rate_limit, which keeps fractions below 1 for the same reason.
+const unscale = (value) => {
+  const raw = value / splitCap;
+  return raw >= 1 ? Math.round(raw) : raw;
+};
 if (splitCap < 1.0) {
   for (const provider of Object.values(DISPATCH_LIMITS.providers)) {
-    if (provider.rpm) provider.rpm = Math.round(provider.rpm / splitCap);
-    if (provider.monthly_tpm) provider.monthly_tpm = Math.round(provider.monthly_tpm / splitCap);
-    if (provider.tpm) provider.tpm = Math.round(provider.tpm / splitCap);
+    if (provider.rpm) provider.rpm = unscale(provider.rpm);
+    if (provider.monthly_tpm) provider.monthly_tpm = unscale(provider.monthly_tpm);
+    if (provider.tpm) provider.tpm = unscale(provider.tpm);
   }
 }
 for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
@@ -26,9 +34,9 @@ for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
     route.rpd = null;
   }
   if (splitCap < 1.0) {
-    if (route.rpm) route.rpm = Math.round(route.rpm / splitCap);
-    if (route.rpd) route.rpd = Math.round(route.rpd / splitCap);
-    if (route.tpm) route.tpm = Math.round(route.tpm / splitCap);
+    if (route.rpm) route.rpm = unscale(route.rpm);
+    if (route.rpd) route.rpd = unscale(route.rpd);
+    if (route.tpm) route.tpm = unscale(route.tpm);
   }
 }
 
@@ -2904,6 +2912,9 @@ test("dispatchOne blocks a route after a 402 response, and clears the block on t
   // Real time obviously can't advance a day inside a test; clear the block directly to simulate
   // it having already expired, exactly as it would in production once `now` passes blocked_until.
   entry.blocked_until = null;
+  // Backdate the marker so this test proves the normal recovery path without relying on the next
+  // Date.now() call landing in a later millisecond than the 402 response.
+  entry.payment_required_at = new Date(now.getTime() - 60_000).toISOString();
   await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
 
   const queued2 = await handleRequest(chatRequest(undefined, "402-check-2"), env);
@@ -2941,6 +2952,51 @@ test("a 402 does not consume the job that discovered the exhausted budget", asyn
   assert.equal(record.status, "pending", "the job must survive to run on an overflow route");
   assert.notEqual(record.status, "failed");
   assert.equal(record.last_error.status, 402);
+});
+
+test("a sub-1-rpm route admits its first request from a fresh ledger", async () => {
+  // The deadlock this covers: the per-minute fallback compared `requests_minute + 1 > rpm`, so a
+  // route paced below one request per minute refused its first request (0 + 1 > 0.25). That
+  // refusal is also what prevents `requests_available_at` from ever being written, so the route
+  // could never admit anything again -- silently dead, not slow.
+  const routeId = "nvidia_kimi_k3_free";
+  const route = DISPATCH_LIMITS.routes_by_id[routeId];
+  assert.ok(route.rpm < 1, `precondition: ${routeId} must be paced below 1 rpm, got ${route.rpm}`);
+
+  const coordinator = {};
+  const entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.requests_available_at, "", "fresh ledger has no pacing timestamp yet");
+  assert.equal(
+    routeAvailable(entry, route, { requests: 1, tokens: 0 }, new Date()),
+    true,
+    "a fresh sub-1-rpm route must admit its first request",
+  );
+});
+
+test("a sub-1-rpm route then spaces requests at 60000/rpm", async () => {
+  const env = isolatedEnv();
+  const routeId = "nvidia_kimi_k3_free";
+  const route = DISPATCH_LIMITS.routes_by_id[routeId];
+  const queued = await handleRequest(
+    chatRequest([{ role: "user", content: "pace me" }], "sub-rpm-pace", "moonshotai/kimi-k3"),
+    env,
+  );
+  await queued.json();
+
+  const ok = async () =>
+    new Response(JSON.stringify({ id: "sub-rpm", choices: [] }), { status: 200 });
+  const now = new Date();
+  assert.equal((await dispatchOne(env, ok, now)).status, "completed");
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const spacingMs = Date.parse(entry.requests_available_at) - now.getTime();
+  const expected = 60_000 / route.rpm; // 0.25 rpm -> 240s
+  assert.ok(
+    Math.abs(spacingMs - expected) < 2_000,
+    `expected ~${expected / 1000}s spacing for ${route.rpm} rpm, got ${Math.round(spacingMs / 1000)}s`,
+  );
+  assert.ok(expected > 60_000, "sanity: this route is genuinely slower than one per minute");
 });
 
 test("a 429 stands the whole route down, not just the job that hit it", async () => {

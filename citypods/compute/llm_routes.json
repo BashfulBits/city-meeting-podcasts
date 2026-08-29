@@ -1809,7 +1809,7 @@
       "input_context_limit": 1048576,
       "output_context_limit": 65536,
       "account_id": "primary",
-      "rpm": 2,
+      "rpm": 0.25,
       "tpm": 18000,
       "concurrency": 1,
       "free": true,
@@ -1831,7 +1831,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 2
+      "provider_rpm": 3
     },
     {
       "route_id": "nvidia_deepseek_v4_pro_0813_free",
@@ -1841,7 +1841,7 @@
       "input_context_limit": 1000000,
       "output_context_limit": 384000,
       "account_id": "primary",
-      "rpm": 2,
+      "rpm": 0.25,
       "tpm": 18000,
       "concurrency": 1,
       "free": true,
@@ -1863,7 +1863,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 2
+      "provider_rpm": 3
     },
     {
       "route_id": "nvidia_deepseek_v4_flash_0731_free",
@@ -1873,7 +1873,7 @@
       "input_context_limit": 1000000,
       "output_context_limit": 384000,
       "account_id": "primary",
-      "rpm": 2,
+      "rpm": 0.25,
       "tpm": 18000,
       "concurrency": 1,
       "free": true,
@@ -1895,7 +1895,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 2
+      "provider_rpm": 3
     },
     {
       "route_id": "nvidia_gemma_4_31b_it_free",
@@ -1905,7 +1905,7 @@
       "input_context_limit": 262144,
       "output_context_limit": 32768,
       "account_id": "primary",
-      "rpm": 2,
+      "rpm": 0.25,
       "tpm": 18000,
       "concurrency": 1,
       "free": true,
@@ -1927,7 +1927,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 2
+      "provider_rpm": 3
     },
     {
       "route_id": "nvidia_gpt_oss_120b_free",
@@ -1937,7 +1937,7 @@
       "input_context_limit": 131072,
       "output_context_limit": 65536,
       "account_id": "primary",
-      "rpm": 2,
+      "rpm": 0.25,
       "tpm": 18000,
       "concurrency": 1,
       "free": true,
@@ -1959,7 +1959,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 2
+      "provider_rpm": 3
     },
     {
       "route_id": "nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -1969,7 +1969,7 @@
       "input_context_limit": 1000000,
       "output_context_limit": 65536,
       "account_id": "primary",
-      "rpm": 2,
+      "rpm": 0.25,
       "tpm": 18000,
       "concurrency": 1,
       "free": true,
@@ -1991,7 +1991,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 2
+      "provider_rpm": 3
     },
     {
       "route_id": "nvidia_nemotron_3_super_120b_a12b_free",
@@ -2001,7 +2001,7 @@
       "input_context_limit": 262144,
       "output_context_limit": 262144,
       "account_id": "primary",
-      "rpm": 2,
+      "rpm": 0.25,
       "tpm": 18000,
       "concurrency": 1,
       "free": true,
@@ -2023,7 +2023,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 2
+      "provider_rpm": 3
     },
     {
       "route_id": "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free",
@@ -2033,7 +2033,7 @@
       "input_context_limit": 256000,
       "output_context_limit": 32768,
       "account_id": "primary",
-      "rpm": 2,
+      "rpm": 0.25,
       "tpm": 18000,
       "concurrency": 1,
       "free": true,
@@ -2055,7 +2055,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 2
+      "provider_rpm": 3
     },
     {
       "route_id": "nvidia_riva_translate_4b_instruct_v2_free",
@@ -2065,7 +2065,7 @@
       "input_context_limit": 32768,
       "output_context_limit": 8192,
       "account_id": "primary",
-      "rpm": 2,
+      "rpm": 0.25,
       "tpm": 18000,
       "concurrency": 1,
       "free": true,
@@ -2087,7 +2087,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 2
+      "provider_rpm": 3
     }
   ]
 }

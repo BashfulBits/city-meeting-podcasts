@@ -254,12 +254,14 @@ providers:
     ai_gateway_chat_path: /v1/chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    # 4, not the earlier 12: the dispatchers never exercised more than 4/min anyway (v1 batches 2,
-    # v2 bundles up to 4 per route), and measurement on 2026-08-29 showed request *rate* was never
-    # the binding constraint -- we were averaging 1.15 req/min and still taking 57% 429s, ~35x under
-    # NVIDIA's ~40 RPM community-reported free baseline. See each route's `concurrency` for the
-    # constraint that actually binds.
-    rpm: 4
+    # Provider-wide safety net only -- the REAL limit is per route (0.5 rpm each). NVIDIA's quota
+    # is per MODEL, not per account: verified 2026-08-29 on one key, `deepseek-v4-pro` returned 429
+    # nine times out of nine while `nemotron-3-super` returned 200 three times, twice inside the
+    # same minute (16:58:14 ok / 16:58:50 429). A tight provider-wide cap would therefore be the
+    # wrong instrument -- it would make nine models share one model's budget. This only has to sit
+    # clear of the ~40 RPM community-reported account baseline while staying above the sum of the
+    # route rates (9 x 0.5 = 4.5), leaving per-route pacing as the binding constraint.
+    rpm: 6
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
@@ -1113,8 +1115,12 @@ routes:
   # ==========================================
   # NVIDIA BUILD ROUTES (build.nvidia.com / NIM hosted API catalog)
   # See the `nvidia` provider block above for the capacity caveats these routes share: a
-  # self-imposed 4 RPM provider-wide pace (lowered from 12 on 2026-08-29 -- rate was never the
-  # binding limit; see each route's `concurrency: 1`, which is) and a
+  # self-imposed 0.5 RPM provider-wide pace. Measured 2026-08-29: NVIDIA locks these endpoints
+  # out for ~22-49 minutes once roughly 30 successful requests land inside a rolling hour (three
+  # lockouts began at 28, 37 and 31 successes/hr), and the lockouts appear to lengthen when we keep
+  # exhausting it. 30/hr is 0.5/min, so that is the pace. It costs no throughput -- the hourly quota
+  # caps us either way -- it just spends the quota evenly instead of burning it in half an hour and
+  # then sitting locked out. Below 1 rpm is deliberate and supported; see _scale_rate_limit and
   # per-route 40k TPM self-imposed cap that is *not* summed across routes (no real provider-level
   # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. `structured_output_profile`
   # is left at the config default (`standard_json_schema`, via `instructor`) rather than guessing
@@ -1148,7 +1154,15 @@ routes:
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: primary
-    rpm: 4
+    # 0.5 rpm = 30/hr per MODEL, which is NVIDIA's actual quota grain (see the provider block).
+    # Measured 2026-08-29: `deepseek-v4-pro` locks out for 22+ minutes once ~30 successful calls
+    # for that model land inside a rolling hour (onsets at 28 and 37), and a lockout beginning at
+    # 15:54 was still running 66 minutes later -- the penalty appears to lengthen while we keep
+    # probing. Pacing to 30/hr costs no throughput, since the quota caps us either way; it spends
+    # the budget evenly instead of burning it in half an hour and then sitting locked out. Sub-1
+    # rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s minute bucket both used to
+    # clamp a fractional rate UP to 1, which is why this could not be expressed before.
+    rpm: 0.5
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1176,7 +1190,15 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
-    rpm: 4
+    # 0.5 rpm = 30/hr per MODEL, which is NVIDIA's actual quota grain (see the provider block).
+    # Measured 2026-08-29: `deepseek-v4-pro` locks out for 22+ minutes once ~30 successful calls
+    # for that model land inside a rolling hour (onsets at 28 and 37), and a lockout beginning at
+    # 15:54 was still running 66 minutes later -- the penalty appears to lengthen while we keep
+    # probing. Pacing to 30/hr costs no throughput, since the quota caps us either way; it spends
+    # the budget evenly instead of burning it in half an hour and then sitting locked out. Sub-1
+    # rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s minute bucket both used to
+    # clamp a fractional rate UP to 1, which is why this could not be expressed before.
+    rpm: 0.5
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1198,7 +1220,15 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
-    rpm: 4
+    # 0.5 rpm = 30/hr per MODEL, which is NVIDIA's actual quota grain (see the provider block).
+    # Measured 2026-08-29: `deepseek-v4-pro` locks out for 22+ minutes once ~30 successful calls
+    # for that model land inside a rolling hour (onsets at 28 and 37), and a lockout beginning at
+    # 15:54 was still running 66 minutes later -- the penalty appears to lengthen while we keep
+    # probing. Pacing to 30/hr costs no throughput, since the quota caps us either way; it spends
+    # the budget evenly instead of burning it in half an hour and then sitting locked out. Sub-1
+    # rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s minute bucket both used to
+    # clamp a fractional rate UP to 1, which is why this could not be expressed before.
+    rpm: 0.5
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1221,7 +1251,15 @@ routes:
     input_context_limit: 262144
     output_context_limit: 32768
     account_id: primary
-    rpm: 4
+    # 0.5 rpm = 30/hr per MODEL, which is NVIDIA's actual quota grain (see the provider block).
+    # Measured 2026-08-29: `deepseek-v4-pro` locks out for 22+ minutes once ~30 successful calls
+    # for that model land inside a rolling hour (onsets at 28 and 37), and a lockout beginning at
+    # 15:54 was still running 66 minutes later -- the penalty appears to lengthen while we keep
+    # probing. Pacing to 30/hr costs no throughput, since the quota caps us either way; it spends
+    # the budget evenly instead of burning it in half an hour and then sitting locked out. Sub-1
+    # rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s minute bucket both used to
+    # clamp a fractional rate UP to 1, which is why this could not be expressed before.
+    rpm: 0.5
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1244,7 +1282,15 @@ routes:
     input_context_limit: 131072
     output_context_limit: 65536
     account_id: primary
-    rpm: 4
+    # 0.5 rpm = 30/hr per MODEL, which is NVIDIA's actual quota grain (see the provider block).
+    # Measured 2026-08-29: `deepseek-v4-pro` locks out for 22+ minutes once ~30 successful calls
+    # for that model land inside a rolling hour (onsets at 28 and 37), and a lockout beginning at
+    # 15:54 was still running 66 minutes later -- the penalty appears to lengthen while we keep
+    # probing. Pacing to 30/hr costs no throughput, since the quota caps us either way; it spends
+    # the budget evenly instead of burning it in half an hour and then sitting locked out. Sub-1
+    # rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s minute bucket both used to
+    # clamp a fractional rate UP to 1, which is why this could not be expressed before.
+    rpm: 0.5
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1270,7 +1316,15 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 65536
     account_id: primary
-    rpm: 4
+    # 0.5 rpm = 30/hr per MODEL, which is NVIDIA's actual quota grain (see the provider block).
+    # Measured 2026-08-29: `deepseek-v4-pro` locks out for 22+ minutes once ~30 successful calls
+    # for that model land inside a rolling hour (onsets at 28 and 37), and a lockout beginning at
+    # 15:54 was still running 66 minutes later -- the penalty appears to lengthen while we keep
+    # probing. Pacing to 30/hr costs no throughput, since the quota caps us either way; it spends
+    # the budget evenly instead of burning it in half an hour and then sitting locked out. Sub-1
+    # rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s minute bucket both used to
+    # clamp a fractional rate UP to 1, which is why this could not be expressed before.
+    rpm: 0.5
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1296,7 +1350,15 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: primary
-    rpm: 4
+    # 0.5 rpm = 30/hr per MODEL, which is NVIDIA's actual quota grain (see the provider block).
+    # Measured 2026-08-29: `deepseek-v4-pro` locks out for 22+ minutes once ~30 successful calls
+    # for that model land inside a rolling hour (onsets at 28 and 37), and a lockout beginning at
+    # 15:54 was still running 66 minutes later -- the penalty appears to lengthen while we keep
+    # probing. Pacing to 30/hr costs no throughput, since the quota caps us either way; it spends
+    # the budget evenly instead of burning it in half an hour and then sitting locked out. Sub-1
+    # rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s minute bucket both used to
+    # clamp a fractional rate UP to 1, which is why this could not be expressed before.
+    rpm: 0.5
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1321,7 +1383,15 @@ routes:
     input_context_limit: 256000
     output_context_limit: 32768
     account_id: primary
-    rpm: 4
+    # 0.5 rpm = 30/hr per MODEL, which is NVIDIA's actual quota grain (see the provider block).
+    # Measured 2026-08-29: `deepseek-v4-pro` locks out for 22+ minutes once ~30 successful calls
+    # for that model land inside a rolling hour (onsets at 28 and 37), and a lockout beginning at
+    # 15:54 was still running 66 minutes later -- the penalty appears to lengthen while we keep
+    # probing. Pacing to 30/hr costs no throughput, since the quota caps us either way; it spends
+    # the budget evenly instead of burning it in half an hour and then sitting locked out. Sub-1
+    # rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s minute bucket both used to
+    # clamp a fractional rate UP to 1, which is why this could not be expressed before.
+    rpm: 0.5
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1346,7 +1416,15 @@ routes:
     input_context_limit: 32768
     output_context_limit: 8192
     account_id: primary
-    rpm: 4
+    # 0.5 rpm = 30/hr per MODEL, which is NVIDIA's actual quota grain (see the provider block).
+    # Measured 2026-08-29: `deepseek-v4-pro` locks out for 22+ minutes once ~30 successful calls
+    # for that model land inside a rolling hour (onsets at 28 and 37), and a lockout beginning at
+    # 15:54 was still running 66 minutes later -- the penalty appears to lengthen while we keep
+    # probing. Pacing to 30/hr costs no throughput, since the quota caps us either way; it spends
+    # the budget evenly instead of burning it in half an hour and then sitting locked out. Sub-1
+    # rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s minute bucket both used to
+    # clamp a fractional rate UP to 1, which is why this could not be expressed before.
+    rpm: 0.5
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
