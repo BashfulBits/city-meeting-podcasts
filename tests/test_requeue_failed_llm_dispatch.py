@@ -117,6 +117,85 @@ def test_dry_run_only_matches_failed_model_prefix_without_writing(capsys):
     assert "mode=dry-run" in capsys.readouterr().out
 
 
+def test_error_status_filter_leaves_unrecoverable_failures_alone(capsys):
+    """A model prefix alone cannot separate a routing outage from an unrecoverable failure.
+
+    Both populations can share one logical model. The 2026-08-29 AI Gateway incident left 971
+    `mistral/mistral-medium-2508` records failed with an upstream 404 -- a routing bug, recoverable
+    once fixed -- sitting alongside 1,264 of the same model failed with 402 payment-required, which
+    only clears when the provider's billing cycle does. Requeuing the second group early re-fails
+    every one of them and, since 2026-08-25, drives an escalating `blocked_until` on the route that
+    keeps *other* jobs off it too.
+    """
+    records = {
+        "requests/routing.json": _record("routing", model="mistral/mistral-medium-2508"),
+        "requests/payment.json": _record("payment", model="mistral/mistral-medium-2508"),
+    }
+    records["requests/routing.json"]["error"] = {"code": "upstream_error", "status": 404}
+    records["requests/payment.json"]["error"] = {"code": "upstream_error", "status": 402}
+    client = _Client({key: {"body": json.dumps(value).encode()} for key, value in records.items()})
+
+    summary = requeue_failed(
+        client,
+        "dispatch",
+        model_prefixes=("mistral/mistral-medium-",),
+        error_statuses=frozenset({404}),
+        dry_run=True,
+        workers=2,
+        progress_every=1,
+        progress_seconds=1,
+    )
+
+    assert summary["scanned"] == 2
+    assert summary["matched"] == 1, "only the 404 record is recoverable right now"
+    assert summary["skipped"] == 1
+    assert "error_statuses=404" in capsys.readouterr().out
+
+
+def test_error_status_filter_absent_keeps_matching_every_failure():
+    """Omitting the filter must not change behaviour for existing callers."""
+    records = {
+        "requests/a.json": _record("a", model="mistral/mistral-medium-2508"),
+        "requests/b.json": _record("b", model="mistral/mistral-medium-2508"),
+    }
+    records["requests/a.json"]["error"] = {"code": "upstream_error", "status": 404}
+    records["requests/b.json"]["error"] = {"code": "upstream_error", "status": 402}
+    client = _Client({key: {"body": json.dumps(value).encode()} for key, value in records.items()})
+
+    summary = requeue_failed(
+        client,
+        "dispatch",
+        model_prefixes=("mistral/mistral-medium-",),
+        dry_run=True,
+        workers=2,
+        progress_every=1,
+        progress_seconds=1,
+    )
+
+    assert summary["matched"] == 2
+
+
+def test_error_status_filter_skips_a_record_with_no_error_block():
+    """A failed record without a structured error must not be swept in by a status filter."""
+    record = _record("no-error", model="mistral/mistral-medium-2508")
+    record.pop("error")
+    client = _Client({"requests/no-error.json": {"body": json.dumps(record).encode()}})
+
+    summary = requeue_failed(
+        client,
+        "dispatch",
+        model_prefixes=("mistral/mistral-medium-",),
+        error_statuses=frozenset({404}),
+        dry_run=True,
+        workers=1,
+        progress_every=1,
+        progress_seconds=1,
+    )
+
+    assert summary["matched"] == 0
+    assert summary["skipped"] == 1
+
+
 def test_apply_resets_failure_and_writes_ready_marker():
     record = _record("gemma")
     key = "requests/gemma.json"

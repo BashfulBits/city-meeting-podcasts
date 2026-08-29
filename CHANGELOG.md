@@ -45,6 +45,64 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **A 402 requeue in `llm-dispatch-v2` would have stranded the job permanently.** Claiming a job
+  deletes its `job_models` index rows, and the requeue introduced above fell through to a generic
+  `UPDATE jobs SET state=...`, leaving the job `queued` while still holding a stale lease and with
+  no index row — `claimDispatchWindow` could never select it again, and v1's operator requeue
+  script only reads R2, so it would have been invisible there too. It now takes the same branch as
+  a durable 5xx retry (clearing the lease and re-indexing) and shares the 5xx retry budget, so a
+  route that stays 402 across every cooldown cannot requeue a job forever. Caught in review before
+  reaching production.
+- **A stale success could reopen a 402-blocked route.** Without a per-route concurrency cap a batch
+  runs several requests on one route, and a sibling that *started before* a 402 landed would clear
+  the block on completion, proving nothing about the account's balance. The block now records when
+  it was set, and only a call that began after that clears it.
+
+- **NVIDIA 429s were a concurrency problem, not a rate problem.** Roughly 57% of post-fix NVIDIA
+  calls came back 429 while we were averaging just **1.15 requests/min** — some 35x under NVIDIA's
+  ~40 RPM community-reported free baseline — and burning ~1,865 tokens/min against a 100,000 TPM
+  cap. Neither limit was binding. What binds is overlap: successful calls run **41s median, 77s
+  p90, 399s max**, while 429s return fast and tightly clustered at 8.3–9.1s, the signature of an
+  admission rejection rather than a rate window. With v1 at `BATCH_CONCURRENCY: 2` and v2 at
+  `MAX_JOBS_PER_ROUTE_PER_BUNDLE: 4`, up to six 41-second calls could pile onto one model. Every
+  NVIDIA route now sets `concurrency: 1` (the knob both Workers already honour, as OpenRouter's
+  free legs do), with `rpm` 12 → 4 and `tpm` 100000 → 40000 as secondary guards that align the
+  config with what the dispatchers could ever exercise. Note the ceiling is per-Worker-ledger, so
+  v1 and v2 each keep one in flight while both transports are live — the same coexistence caveat as
+  `split_cap_multiplier`.
+
+- **`llm-dispatch-v2` billed for work a free route could have taken.** Its route comparator ranked
+  purely by available capacity, with `free` appearing nowhere except the hard exclusion applied when
+  a job does *not* set `allow_paid`. So whenever a job did allow paid, a paid route with more
+  headroom outranked a partly-consumed free one — the opposite of v1, which tries every free route
+  first and elevates to paid only when no free route exists or waiting for one would miss the job's
+  deadline. Measured on a mixed pool, 3 of 4 jobs went to the paid route while a free route had
+  capacity. Free now sorts ahead of paid before any capacity signal, so paid is reached only once
+  every free route is exhausted. Rows read did not regress (35 → 31 on the same probe; the fix adds
+  no SQL, only reordering iteration over the already-cached per-window route ledger).
+
+- **A 402 no longer consumes the job that discovered the exhausted budget** (both dispatch
+  Workers). The escalating 402 backoff blocks the whole route, but the triggering job was still
+  marked terminally `failed` — so every cooldown lapse burned exactly one recoverable job per
+  route, recoverable only by an operator requeue. Production showed the pattern precisely: 2
+  failures per Mistral route on 2026-08-26, matching `payment_required_streak=2` in the ledger,
+  versus 1,260 on 2026-08-22 before the backoff existed. A 402 is a route-level budget signal, not
+  a defect in the job, and the dispatcher already has enough information to say so — it blocks the
+  route in the same branch. The job is now requeued instead: admission keeps it off the blocked
+  route, so it runs on an overflow route or once the cooldown clears, still bounded by `attempts`.
+
+- **Requeued 971 dispatch jobs stranded by the AI Gateway routing bug, and gave the recovery script
+  an `--error-status` filter.** The gateway 404s left `mistral/mistral-medium-2508` jobs terminally
+  `failed` — 404 is in neither dispatch Worker's `retryableStatus` set and gets no `blocked_until`,
+  so each one hard-failed on its first attempt with no failover and was never revisited. They sat
+  alongside 1,264 records of the *same logical model* failed with 402 payment-required, which
+  `requeue_failed_llm_dispatch.py` could not tell apart: it selected on model prefix alone, so
+  recovering the routing failures would have re-submitted the payment failures too — re-failing all
+  of them and, since the 2026-08-25 402 backoff, driving an escalating route-wide `blocked_until`
+  that keeps other jobs off Mistral as well. The new filter selects on the terminal error's upstream
+  status; a dry run and an independent classification pass agreed on 971 exactly, and the apply
+  moved `failed` 2,243 → 1,272 with zero conflicts.
+
 - **`workers/llm-provider-shim`: a thin shim for providers AI Gateway cannot address.** The gateway
   rewrites the *last path segment* of a Custom Provider's Base URL to a hardcoded `v1` (undocumented;
   established by registering a throwaway custom provider against an echo service). Kilo's

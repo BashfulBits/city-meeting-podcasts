@@ -2773,11 +2773,25 @@ async function dispatchBatch(
             entry.blocked_until = new Date(
               paymentRequiredBackoffUntil(entry.payment_required_streak, now.getTime()),
             ).toISOString();
+            // Stamped so a slower sibling that STARTED before this 402 cannot clear the block it
+            // knows nothing about. Without a concurrency cap a batch runs several requests on one
+            // route, and an in-flight success landing afterwards would otherwise reopen an
+            // exhausted route -- now that a 402 requeues its job rather than failing it, that job
+            // would come straight back and burn another attempt.
+            entry.payment_required_at = now.toISOString();
             ledgerMutatedAfterDispatch = true;
           }
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
+          // A 402 is a route-level budget signal, not a defect in this job. The branch above has
+          // already blocked the whole route, so the job that happened to discover the exhausted
+          // budget is collateral -- failing it burns one recoverable job per cooldown lapse, per
+          // route (observed 2026-08-26: exactly 2 per route, matching payment_required_streak=2).
+          // Requeue it instead: admission keeps it off the now-blocked route, so it runs on an
+          // overflow route or once the cooldown clears. `attempts` still bounds it, so a route
+          // that stays 402 across every cooldown cannot loop the job forever.
           const willRetry =
-            retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts;
+            (retryableStatus(response.status) || response.status === 402) &&
+            claimed.record.attempts < cfg.maxAttempts;
           const errorReadStartedAt = profileNow();
           const providerError = await readUpstreamError(response, {
             persistBodyPreview: !willRetry,
@@ -2933,9 +2947,21 @@ async function dispatchBatch(
         // A successful call proves the route is healthy again -- clear any 402 backoff state,
         // matching the branch above that sets it.
         const successEntry = ledgerEntry(coordinator, chosenRoute.route_id);
-        if (successEntry.payment_required_streak || successEntry.blocked_until) {
+        const blockedAtMs = successEntry.payment_required_at
+          ? parseTime(successEntry.payment_required_at)
+          : null;
+        // Only a call that began AFTER the most recent 402 proves the route recovered. One that
+        // was already in flight when the 402 landed proves nothing about the account's balance.
+        const provesRecovery = blockedAtMs == null || requestStartMs > blockedAtMs;
+        if (
+          provesRecovery &&
+          (successEntry.payment_required_streak ||
+            successEntry.blocked_until ||
+            successEntry.payment_required_at)
+        ) {
           successEntry.payment_required_streak = 0;
           successEntry.blocked_until = null;
+          successEntry.payment_required_at = null;
           ledgerMutatedAfterDispatch = true;
         }
 

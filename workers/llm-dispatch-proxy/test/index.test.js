@@ -2426,17 +2426,20 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
 
 test("dispatchBatch defers same-route candidates when TPM delay exceeds max stagger", async () => {
   const env = isolatedEnv();
-  // Request with 8000 tokens. google/gemma-4-31b-it now maps to 4 routes: two Gemini accounts
+  // Request with 8000 tokens. google/gemma-4-31b-it maps to 4 routes: two Gemini accounts
   // (7200 compiled TPM each -> a 66.7s reuse interval, far past the 20s in-batch stagger ceiling),
   // OpenRouter's free leg (no TPM cap, paced only by its 5 RPM -> 12s reuse interval), and NVIDIA
-  // build's leg (added 2026-08-29, 45000 compiled TPM, cheap enough to absorb several reuses
-  // before its accumulating token debt finally exceeds the 20s ceiling too). Empirically (this
-  // scenario is intentionally exact-number-pinned against the real compiled catalog, not
-  // hand-derived, since the ranking that decides which route absorbs each reuse is its own
-  // logic) 8 offered requests admit exactly 7 -- 2 Gemini + 1 OpenRouter fresh, plus NVIDIA
-  // serving 4 total via 3 in-batch paced waits -- and defer the 8th once every route's next reuse
-  // exceeds the 20s max stagger. More than 8 offered requests still admit only 7: re-run this
-  // probe (see the PR that added NVIDIA routing) if the provider catalog changes these numbers.
+  // build's leg. This scenario is intentionally exact-number-pinned against the real compiled
+  // catalog rather than hand-derived, since the ranking that decides which route absorbs each
+  // reuse is its own logic -- so it must be re-probed whenever those limits move.
+  //
+  // Re-probed 2026-08-29 after NVIDIA gained `concurrency: 1` and its TPM dropped 100000 -> 40000
+  // (18000 compiled): 8 offered requests now admit exactly 4 -- one per route, with NVIDIA no
+  // longer absorbing extra reuses because a concurrency of 1 admits a single in-flight call.
+  // Previously it admitted 7 (NVIDIA serving 4 via 3 in-batch paced waits). That drop is the
+  // point of the change, not a regression: NVIDIA answers an overlapping request with a fast
+  // ~8.3s 429, and its successful calls run 41s median, so in-batch reuse mostly manufactured
+  // rejections.
   for (let i = 0; i < 8; i += 1) {
     await handleRequest(
       chatRequest(
@@ -2478,22 +2481,22 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   );
 
   assert.equal(batchResult.status, "completed");
-  // 7 candidates admitted (NVIDIA's route absorbs 4 of them via 3 in-batch paced waits).
-  // Candidate 8 deferred in place (every route's next reuse exceeds the 20s max stagger).
-  assert.equal(batchResult.count, 7);
-  assert.equal(batchResult.completedCount, 7);
-  assert.equal(calls.length, 7);
-  assert.equal(slept.length, 3);
+  // 4 candidates admitted, one per eligible route; no in-batch reuse survives the 20s max
+  // stagger now that NVIDIA is capped at one in-flight call.
+  assert.equal(batchResult.count, 4);
+  assert.equal(batchResult.completedCount, 4);
+  assert.equal(calls.length, 4);
+  assert.equal(slept.length, 0, "no in-batch paced waits remain");
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 7);
+  assert.equal(completedObjects.length, 4);
   const pendingObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "pending",
   );
-  assert.equal(pendingObjects.length, 1);
+  assert.equal(pendingObjects.length, 4);
 });
 
 test("dispatchBatch runs four independently paced routes concurrently", async () => {
@@ -2884,11 +2887,14 @@ test("dispatchOne blocks a route after a 402 response, and clears the block on t
 
   const now = new Date();
   const result1 = await dispatchOne(env, paymentRequired, now);
-  assert.equal(result1.status, "failed");
+  // The job that discovers an exhausted budget is collateral, not defective: it is requeued, not
+  // failed. Failing it burned one recoverable job per cooldown lapse per route (2026-08-26).
+  assert.equal(result1.status, "retrying");
   assert.equal(result1.routeId, routeId);
 
   const record1 = await (await env.LLM_QUEUE.get(`requests/${body1.id}.json`)).json();
-  assert.equal(record1.status, "failed"); // the individual job still fails normally
+  assert.equal(record1.status, "pending");
+  assert.equal(record1.last_error.status, 402, "the 402 is still recorded on the record");
 
   let coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
   let entry = ledgerEntry(coordinator, routeId);
@@ -2916,6 +2922,72 @@ test("dispatchOne blocks a route after a 402 response, and clears the block on t
   assert.equal(entry.blocked_until, null);
 });
 
+test("a 402 does not consume the job that discovered the exhausted budget", async () => {
+  // Regression for the 2026-08-26 loss pattern: the 402 backoff blocks the route, but the job
+  // that triggered it used to be marked terminally failed. Every cooldown lapse therefore burned
+  // exactly one recoverable job per route -- 2 per route on 2026-08-26, matching the
+  // payment_required_streak of 2 observed in the production ledger. Those jobs then needed an
+  // operator requeue (scripts/requeue_failed_llm_dispatch.py) to come back at all.
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "402-preserves-job"), env);
+  const body = await queued.json();
+
+  const paymentRequired = async () =>
+    new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
+  const result = await dispatchOne(env, paymentRequired, new Date());
+
+  assert.equal(result.status, "retrying");
+  const record = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(record.status, "pending", "the job must survive to run on an overflow route");
+  assert.notEqual(record.status, "failed");
+  assert.equal(record.last_error.status, 402);
+});
+
+test("a success already in flight when a 402 landed does not reopen the blocked route", async () => {
+  // Without a per-route concurrency cap a batch runs several requests on one route. A sibling that
+  // STARTED before the 402 proves nothing about the account's balance, so it must not clear the
+  // block. It matters more now that a 402 requeues its job instead of failing it: the requeued job
+  // would come straight back to an exhausted route and burn another attempt.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+
+  const queued = await handleRequest(chatRequest(undefined, "402-then-stale-success"), env);
+  await queued.json();
+  const paymentRequired = async () =>
+    new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
+  const now = new Date();
+  await dispatchOne(env, paymentRequired, now);
+
+  let coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  let entry = ledgerEntry(coordinator, routeId);
+  const blockedUntil = entry.blocked_until;
+  assert.ok(blockedUntil, "the 402 must have blocked the route");
+  assert.ok(entry.payment_required_at, "and stamped when it did");
+
+  // Now let a success land whose request began before that 402 was recorded. Rewinding the stamp
+  // into the future is equivalent to the success having started earlier, without needing two real
+  // concurrent dispatches.
+  entry.payment_required_at = new Date(now.getTime() + 60_000).toISOString();
+  entry.blocked_until = null; // let the route be selectable so the success can dispatch at all
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
+
+  const queued2 = await handleRequest(chatRequest(undefined, "402-then-stale-success-2"), env);
+  await queued2.json();
+  const ok = async () =>
+    new Response(JSON.stringify({ id: "stale-success", choices: [] }), { status: 200 });
+  const later = new Date(now.getTime() + 10 * 60_000);
+  assert.equal((await dispatchOne(env, ok, later)).status, "completed");
+
+  coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  entry = ledgerEntry(coordinator, routeId);
+  assert.equal(
+    entry.payment_required_streak,
+    1,
+    "a success that predates the 402 must not reset the streak",
+  );
+  assert.ok(entry.payment_required_at, "nor clear the stamp");
+});
+
 test("the blocked_until a real 402 writes is one routeAvailable actually honors", async () => {
   // routeAvailable's own blocked_until handling already has direct coverage ("routeAvailable
   // respects rpm/rpd/tpm/blocked_until independently", above) against a hand-seeded fixture.
@@ -2934,7 +3006,7 @@ test("the blocked_until a real 402 writes is one routeAvailable actually honors"
     new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
   const now = new Date();
   const result = await dispatchOne(env, paymentRequired, now);
-  assert.equal(result.status, "failed");
+  assert.equal(result.status, "retrying"); // the job is requeued; the route is what gets blocked
 
   const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
   const entry = ledgerEntry(coordinator, routeId);

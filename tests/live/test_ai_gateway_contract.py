@@ -43,12 +43,36 @@ ROUTING_FAILURE_BODIES = (
 
 
 def _one_route_per_custom_provider():
-    seen = {}
+    """One route per custom provider, preferring a free one.
+
+    This runs weekly against real providers, so which route it picks is a spending decision, not
+    an implementation detail. Iteration order alone would leave it accidental -- reordering the
+    catalog could silently move a provider onto a paid route. Free wins wherever one exists.
+
+    SiliconFlow is the deliberate exception: it has no free route at all, so probing it through
+    the gateway is necessarily a paid call. It stays in the sweep because a provider that is
+    unreachable is exactly what these tests exist to catch, and the cost is a completion capped at
+    `max_tokens=8`. (Today it does not even reach billing -- the account balance is zero, so it
+    answers 402, which still proves routing works.)
+    """
+    seen: dict[str, object] = {}
     for route in ROUTE_REGISTRY.values():
         if not (route.ai_gateway_slug or "").startswith("custom-"):
             continue
-        seen.setdefault(route.provider, route)
+        current = seen.get(route.provider)
+        if current is None or (route.free and not current.free):
+            seen[route.provider] = route
     return sorted(seen.values(), key=lambda r: r.provider)
+
+
+def test_the_sweep_picks_a_free_route_wherever_one_exists():
+    """Guards the selection above: a paid probe must be a recorded choice, not an accident."""
+    paid = {r.provider for r in _one_route_per_custom_provider() if not r.free}
+    assert paid == {"siliconflow"}, (
+        f"custom providers probed on a paid route: {sorted(paid)}. SiliconFlow is the only one "
+        "with no free route; anything else here means a free route exists and should be used, or "
+        "the exception list needs updating deliberately."
+    )
 
 
 def _post(url: str, api_key: str, payload: dict, timeout: int = 60):

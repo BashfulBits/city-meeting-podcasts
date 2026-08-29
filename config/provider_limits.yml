@@ -122,6 +122,14 @@ providers:
       - id: primary
         api_key_env: DEEPSEEK_API_KEY
   siliconflow:
+    # The GLOBAL platform (`.com`), which is a different service from `siliconflow.cn` with its own
+    # accounts -- a `.com` key is rejected by `.cn` with 401 "Api key is invalid". Only `.cn` offers
+    # free models, gated behind Chinese real-name ID verification, so nothing here is free: every
+    # SiliconFlow route below is `free: false` and stops working at a zero account balance (402
+    # code 30001 on every model, verified 2026-08-29). SiliconFlow is carried as the *cheapest paid*
+    # leg of deepseek/deepseek-v4-flash ($0.049/M vs DeepSeek Direct's $0.14/M), not as capacity --
+    # route selection tries every free leg first, so these are reached only by a job that sets
+    # `allow_paid` once no free route has capacity.
     api_base: https://api.siliconflow.com/v1
     ai_gateway_slug: custom-siliconflow
     # Full path from the origin root (see the `nvidia` block). SiliconFlow serves the same
@@ -224,9 +232,9 @@ providers:
   #     NOTE: this is an *approximation*, not a true provider-level TPM ledger -- the schema/code
   #     (`LLMBudget`/`ProviderLedger`) only actually enforces a shared limit for `rpm`
   #     (`route.provider_rpm`); there is no equivalent provider-wide token-rate ledger today, so
-  #     each route's 100k TPM is checked independently rather than summed across the account. If
+  #     each route's 40k TPM is checked independently rather than summed across the account. If
   #     several NVIDIA routes are dispatched concurrently at full token throughput, the account's
-  #     *aggregate* token rate could exceed 100k TPM even though no single route did. Adding a real
+  #     *aggregate* token rate could exceed 40k TPM even though no single route did. Adding a real
   #     provider-level TPM ledger (parallel to `provider_rpm`) is a follow-up, not done here.
   #   - No `rpd` is set anywhere below: NVIDIA publishes no daily cap, so encoding one would be
   #     inventing a number we have no basis for.
@@ -246,7 +254,12 @@ providers:
     ai_gateway_chat_path: /v1/chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    rpm: 12
+    # 4, not the earlier 12: the dispatchers never exercised more than 4/min anyway (v1 batches 2,
+    # v2 bundles up to 4 per route), and measurement on 2026-08-29 showed request *rate* was never
+    # the binding constraint -- we were averaging 1.15 req/min and still taking 57% 429s, ~35x under
+    # NVIDIA's ~40 RPM community-reported free baseline. See each route's `concurrency` for the
+    # constraint that actually binds.
+    rpm: 4
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
@@ -1100,8 +1113,9 @@ routes:
   # ==========================================
   # NVIDIA BUILD ROUTES (build.nvidia.com / NIM hosted API catalog)
   # See the `nvidia` provider block above for the capacity caveats these routes share: a
-  # self-imposed 12 RPM provider-wide pace (30% of the ~40 RPM community-reported baseline) and a
-  # per-route 100k TPM self-imposed cap that is *not* summed across routes (no real provider-level
+  # self-imposed 4 RPM provider-wide pace (lowered from 12 on 2026-08-29 -- rate was never the
+  # binding limit; see each route's `concurrency: 1`, which is) and a
+  # per-route 40k TPM self-imposed cap that is *not* summed across routes (no real provider-level
   # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. `structured_output_profile`
   # is left at the config default (`standard_json_schema`, via `instructor`) rather than guessing
   # this gateway's native JSON-mode behavior, which is unverified.
@@ -1116,7 +1130,7 @@ routes:
   # route-level rpm, v2 would treat these routes as unbounded, and v1/v2 are actively coexisting
   # right now (`split_cap_multiplier: 0.50` above), not a future migration. This does not restore
   # true shared pooling in v2 -- in the worst case (many different NVIDIA models dispatched
-  # concurrently) v2's aggregate could still exceed 12 RPM in total -- but it bounds each
+  # concurrently) v2's aggregate could still exceed the provider-wide rpm in total -- but it bounds each
   # individual route rather than leaving it uncapped. A real fix ports provider-level pacing into
   # v2's pacing.js/coordinator.js; that is a larger follow-up, not done here.
   #
@@ -1134,8 +1148,16 @@ routes:
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1154,8 +1176,16 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1168,8 +1198,16 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1183,8 +1221,16 @@ routes:
     input_context_limit: 262144
     output_context_limit: 32768
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1198,8 +1244,16 @@ routes:
     input_context_limit: 131072
     output_context_limit: 65536
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1216,8 +1270,16 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 65536
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1234,8 +1296,16 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1251,8 +1321,16 @@ routes:
     input_context_limit: 256000
     output_context_limit: 32768
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1268,8 +1346,16 @@ routes:
     input_context_limit: 32768
     output_context_limit: 8192
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0

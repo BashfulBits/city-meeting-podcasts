@@ -1138,6 +1138,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
             const leftPlan = modelPlansByModel.get(left.model);
             const rightPlan = modelPlansByModel.get(right.model);
             return (
+              // Free before paid, ahead of any capacity signal. `allow_paid` is permission to
+              // spend when nothing free will do, not a preference for spending: without this
+              // term a paid route with more headroom outranks a partly-consumed free one and
+              // silently bills for work a free route could have taken. The loop below stops at
+              // the first route with capacity, so paid is reached only once every free route is
+              // exhausted. (v1's selectRouteForModel additionally waits for a free route to
+              // reset unless that would miss the job's deadline; v2 has no deadline concept
+              // here, so it elevates as soon as free capacity runs out.)
+              Number(Boolean(right.free)) - Number(Boolean(left.free)) ||
               (rightPlan?.score || 0) - (leftPlan?.score || 0) ||
               (rightPlan?.routeScores.get(right.route_id) || 0) -
                 (leftPlan?.routeScores.get(left.route_id) || 0)
@@ -1412,6 +1421,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
           Number.isInteger(result.provider_status_code) &&
           result.provider_status_code >= 500 &&
           result.provider_status_code <= 599;
+        // A 402 requeues rather than failing: the route is blocked below, so the job cannot
+        // re-probe it, and it runs on an overflow route or once the cooldown clears. It shares
+        // the 5xx retry budget so a route that stays 402 across every cooldown cannot requeue a
+        // job forever -- v1 bounds the same case with `attempts < maxAttempts`.
+        const isPaymentRequired =
+          result.outcome === "retryable_error" &&
+          result.provider_status_code === 402 &&
+          job.transient_retry_count < this._max5xxRetries();
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
         const blockedUntil = isFinal5xx
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
@@ -1430,7 +1447,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // A final 5xx has already exhausted AI Gateway's short retry sequence. Give it one
             // durable, minute-scale retry; ambiguous transport failures and B2-write failures
             // must surface as failed instead of silently becoming an unclaimable state.
-            newState = shouldRetry5xx ? "queued" : "failed";
+            newState = shouldRetry5xx || isPaymentRequired ? "queued" : "failed";
             break;
           case "terminal_error":
             newState = "failed";
@@ -1447,7 +1464,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
             result.job_id
           );
           this._indexQueuedJobModels(job);
-        } else if (shouldRetry5xx) {
+        } else if (shouldRetry5xx || isPaymentRequired) {
+          // Must go through this branch, not the generic UPDATE below: claiming a job deletes its
+          // job_models index rows, so a requeue that only rewrites `state` leaves the job queued
+          // with no index row and holding a stale lease -- claimDispatchWindow can never select it
+          // again, stranding it silently.
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                              lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,

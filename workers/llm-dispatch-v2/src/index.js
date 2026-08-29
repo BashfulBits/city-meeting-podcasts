@@ -537,7 +537,13 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         attemptId,
         actualStartAt,
         actualEndAt,
-        response.status >= 500 ? "retryable_error" : "terminal_error"
+        // 402 joins the 5xx band as retryable: it is a route-level budget signal, not a defect
+        // in this job, and the coordinator blocks the whole route on it (see completeBatch).
+        // Failing the job that happened to discover the exhausted budget burns one recoverable
+        // job per cooldown lapse; v1's dispatcher makes the same call for the same reason.
+        response.status >= 500 || response.status === 402
+          ? "retryable_error"
+          : "terminal_error"
       ),
       provider_status_code: response.status,
       gateway_correlation_id: response.correlationId,

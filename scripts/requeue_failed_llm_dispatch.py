@@ -176,6 +176,7 @@ def _requeue_object(
     item: dict[str, Any],
     *,
     model_prefixes: tuple[str, ...],
+    error_statuses: frozenset[int],
     dry_run: bool,
     available_at: str,
     r2_retries: int,
@@ -204,6 +205,11 @@ def _requeue_object(
     model = str(record.get("model") or "")
     if not any(model.startswith(prefix) for prefix in model_prefixes):
         return "model_mismatch"
+    if error_statuses:
+        error = record.get("error")
+        status = error.get("status") if isinstance(error, dict) else None
+        if status not in error_statuses:
+            return "error_status_mismatch"
 
     if dry_run:
         return "would_requeue"
@@ -277,6 +283,7 @@ def requeue_failed(
     *,
     model_prefixes: tuple[str, ...],
     dry_run: bool,
+    error_statuses: frozenset[int] = frozenset(),
     workers: int = DEFAULT_WORKERS,
     progress_every: int = DEFAULT_PROGRESS_EVERY,
     progress_seconds: int = DEFAULT_PROGRESS_SECONDS,
@@ -296,7 +303,9 @@ def requeue_failed(
     mode = "dry-run" if dry_run else "apply"
     print(
         f"starting failed dispatch requeue: bucket={bucket} mode={mode} "
-        f"model_prefixes={','.join(prefixes)} workers={workers}",
+        f"model_prefixes={','.join(prefixes)} "
+        f"error_statuses={','.join(str(x) for x in sorted(error_statuses)) or 'any'} "
+        f"workers={workers}",
         flush=True,
     )
 
@@ -325,6 +334,7 @@ def requeue_failed(
                     bucket,
                     item,
                     model_prefixes=prefixes,
+                    error_statuses=error_statuses,
                     dry_run=dry_run,
                     available_at=available_at,
                     r2_retries=r2_retries,
@@ -396,6 +406,17 @@ def main() -> int:
         help="logical model prefix to match; may be repeated or comma-separated",
     )
     parser.add_argument("--dry-run", action="store_true", help="inspect without writing")
+    parser.add_argument(
+        "--error-status",
+        action="append",
+        default=[],
+        help=(
+            "only requeue records whose terminal error carried this upstream HTTP status; "
+            "may be repeated or comma-separated. Without it every failed record matching the "
+            "model prefix is requeued, including ones that cannot succeed on a retry (a 402 "
+            "payment failure, say), which wastes provider quota."
+        ),
+    )
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     parser.add_argument("--progress-every", type=int, default=DEFAULT_PROGRESS_EVERY)
     parser.add_argument("--progress-seconds", type=int, default=DEFAULT_PROGRESS_SECONDS)
@@ -413,6 +434,12 @@ def main() -> int:
         _client(workers=args.workers),
         args.bucket,
         model_prefixes=tuple(args.model_prefix),
+        error_statuses=frozenset(
+            int(part)
+            for value in args.error_status
+            for part in str(value).split(",")
+            if part.strip()
+        ),
         dry_run=args.dry_run,
         workers=args.workers,
         progress_every=args.progress_every,
