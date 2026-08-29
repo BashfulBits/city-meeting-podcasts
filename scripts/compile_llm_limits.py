@@ -150,11 +150,12 @@ def _scale_rate_limit(value: Any, multiplier: float) -> Any:
 def _direct_model(provider: str, upstream_model: str) -> str:
     """Return the LiteLLM model selector for a compiled provider route.
 
-    Kilo, OpenCode, and SiliconFlow expose OpenAI-compatible gateways rather than stable
-    LiteLLM provider adapters. Selecting the OpenAI adapter and supplying the compiled ``api_base``
-    keeps those routes usable directly without teaching the scheduler provider-specific URL logic.
+    Kilo, OpenCode, SiliconFlow, and NVIDIA (build.nvidia.com) expose OpenAI-compatible gateways
+    rather than stable LiteLLM provider adapters. Selecting the OpenAI adapter and supplying the
+    compiled ``api_base`` keeps those routes usable directly without teaching the scheduler
+    provider-specific URL logic.
     """
-    if provider in {"kilo", "opencode", "siliconflow"}:
+    if provider in {"kilo", "opencode", "siliconflow", "nvidia"}:
         return f"openai/{upstream_model}"
     return f"{provider}/{upstream_model}"
 
