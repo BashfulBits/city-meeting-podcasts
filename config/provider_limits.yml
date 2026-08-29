@@ -1115,8 +1115,15 @@ routes:
     # Pools with DeepSeek Direct's paid `deepseek_v4_pro_primary` route below -- this is the same
     # model, free here, paid ($0.435-0.66/M) there. A job pinned to `deepseek/deepseek-v4-pro`
     # becomes eligible for this free route first.
+    #
+    # upstream_model is deliberately "deepseek-ai/deepseek-v4-pro", NOT "...-0813": "-0813" is the
+    # model-card/marketing label on the build.nvidia.com landing page, not the API's `model`
+    # field. NVIDIA's own documented curl example uses the bare "deepseek-ai/deepseek-v4-pro"
+    # string; sending the "-0813"-suffixed one 404s with no JSON body at the routing layer before
+    # it ever reaches a serving container (found 2026-08-29 -- a real 404 the route_id's own name
+    # doesn't need to change, since route_id is just our internal label).
     provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4-pro-0813
+    upstream_model: deepseek-ai/deepseek-v4-pro
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
@@ -1126,21 +1133,37 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
-  - route_id: nvidia_deepseek_v4_flash_0731_free
-    model: nvidia/deepseek-v4-flash-0731
-    model_key: deepseek/deepseek-v4-flash
-    # Pools with SiliconFlow's and DeepSeek Direct's paid legs and OpenCode's separate free leg --
-    # another independent free pool for the same logical model, not new model coverage.
-    provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4-flash-0731
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    rpm: 12
-    tpm: 100000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
+  # DISABLED (found 2026-08-29, NVIDIA-side outage, still open): route_id nvidia_deepseek_v4_flash
+  # _0731_free -- upstream_model deepseek-ai/deepseek-v4-flash-0731 is the correct API model string
+  # per NVIDIA's own docs (unlike deepseek-v4-pro above, which really was misconfigured), but
+  # multiple unrelated developers are reporting the same 404 "Function not found for account" (no
+  # JSON body) on this exact model: GET /v1/models lists it and it works in NVIDIA's own
+  # playground, but POST /v1/chat/completions is rejected at NVIDIA's routing layer before ever
+  # reaching a serving container. See NVIDIA Developer Forums: "Inference activation request for
+  # deepseek-v4-flash-0731 on NIM API" and "404 Function not found for account on
+  # deepseek-ai/deepseek-v4-flash-0731". Nothing to fix on our side.
+  #
+  # Left commented out rather than just documented: 404 is NOT in either dispatch Worker's
+  # retryable-status set (`retryableStatus` in llm-dispatch-proxy/src/index.js checks only
+  # 429/500/502/503/504) and gets no `blocked_until`/ProviderLedger.block treatment the way a real
+  # 429 does -- so a live route here would hard-fail every dispatch attempt with no automatic
+  # circuit-break, wasting real attempts against a pool (deepseek/deepseek-v4-flash) that has three
+  # other working legs. Re-enable (uncomment, recompile) once confirmed fixed on NVIDIA's end --
+  # try a manual curl against https://integrate.api.nvidia.com/v1/chat/completions first.
+  #
+  # - route_id: nvidia_deepseek_v4_flash_0731_free
+  #   model: nvidia/deepseek-v4-flash-0731
+  #   model_key: deepseek/deepseek-v4-flash
+  #   provider: nvidia
+  #   upstream_model: deepseek-ai/deepseek-v4-flash-0731
+  #   input_context_limit: 1000000
+  #   output_context_limit: 384000
+  #   account_id: primary
+  #   rpm: 12
+  #   tpm: 100000
+  #   free: true
+  #   input_per_token: 0.0
+  #   output_per_token: 0.0
 
   - route_id: nvidia_gemma_4_31b_it_free
     model: google/gemma-4-31b-it

@@ -45,6 +45,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **NVIDIA build DeepSeek routes: wrong model string, and a live NVIDIA-side outage.**
+  `nvidia_deepseek_v4_pro_0813_free`'s `upstream_model` was `deepseek-ai/deepseek-v4-pro-0813`,
+  which 404s with no JSON body -- NVIDIA's documented API `model` string for this model omits the
+  `-0813` suffix (that's the model-card/marketing label, not the API identifier). Fixed to
+  `deepseek-ai/deepseek-v4-pro`. Separately, `nvidia_deepseek_v4_flash_0731_free`'s model string
+  was already correct, but NVIDIA's own routing layer is 404ing this exact model account-wide for
+  multiple unrelated developers right now (an open NVIDIA-side access-gating bug, not a config
+  issue); since 404 gets no automatic block/retry treatment in either dispatch Worker the way a
+  real 429 does, this route is commented out until NVIDIA resolves it rather than left live to
+  hard-fail every attempt.
+
 - **LLM dispatch V2 mixed-result recovery (GH#1318).** Enqueue and poll batches now preserve
   accepted, replayed, pending, completed, rejected, and failed per-job outcomes instead of
   converting one item into a whole-batch failure. Unknown outcomes use one bounded recovery round:

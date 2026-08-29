@@ -59,9 +59,14 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     deepseek_key = "deepseek/deepseek-v4-flash"
     deepseek_routes = compiled["model_routes_map"][deepseek_key]
-    # SiliconFlow (paid) + DeepSeek Direct (paid) + OpenCode (free) + NVIDIA build (free, added
-    # 2026-08-29) -- four independent physical pools for the same logical model.
-    assert len(deepseek_routes) == 4
+    # SiliconFlow (paid) + DeepSeek Direct (paid) + OpenCode (free) -- three independent physical
+    # pools for the same logical model. A fourth, NVIDIA build (free), was added 2026-08-29 and
+    # then commented out the same day: NVIDIA's own routing layer 404s "Function not found for
+    # account" on this exact model account-wide (a live NVIDIA-side outage/access-gating bug
+    # affecting unrelated developers too, not a config mistake -- see the route's own comment in
+    # config/provider_limits.yml). Restore this to 4 and re-add the nvidia alias assertion below
+    # once that route is uncommented.
+    assert len(deepseek_routes) == 3
     physical_routes = [compiled["routes_by_id"][route_id] for route_id in deepseek_routes]
     assert (
         len(
@@ -70,11 +75,10 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
                 for route in physical_routes
             }
         )
-        == 4
+        == 3
     )
     assert compiled["model_aliases"]["deepseek/deepseek-v4-flash-0731"] == deepseek_key
     assert compiled["model_aliases"]["opencode/deepseek-v4-flash-free"] == deepseek_key
-    assert compiled["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == deepseek_key
 
     nemotron_key = "nvidia/nemotron-3-ultra-550b-a55b:free"
     # OpenRouter + Kilo + OpenCode (all broker legs) + NVIDIA build direct (added 2026-08-29).
