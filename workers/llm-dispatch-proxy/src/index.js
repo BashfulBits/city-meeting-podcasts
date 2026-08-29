@@ -1380,10 +1380,54 @@ function nextLocalMidnightUTC(date, timeZone = "UTC") {
 }
 
 /**
+ * `Retry-After` in either RFC 9110 form: delay-seconds, or an HTTP-date. Returns seconds relative
+ * to `nowMs`, or null when the header is absent or unparseable. A bare `Number()` silently yields
+ * NaN for the date form, which would discard a provider's own deadline in favour of our guess.
+ * `0` is a legitimate value meaning "retry immediately" and is preserved, not treated as absent.
+ */
+function parseRetryAfterSeconds(raw, nowMs) {
+  if (raw == null || raw === "") return null;
+  const asSeconds = Number(raw);
+  if (Number.isFinite(asSeconds)) return Math.max(0, asSeconds);
+  const asDate = Date.parse(raw);
+  if (Number.isFinite(asDate)) return Math.max(0, (asDate - nowMs) / 1000);
+  return null;
+}
+
+const RATE_LIMIT_BACKOFF_BASE_MS = 60_000;
+const RATE_LIMIT_BACKOFF_CAP_MS = 30 * 60_000;
+
+/**
+ * Escalating cooldown for a route whose most recent attempt came back HTTP 429.
+ *
+ * Retrying the *job* is not enough. A provider that enforces a quota window answers every request
+ * with 429 until the window rolls, so with only per-job backoff each remaining queued job is still
+ * admitted at the route's normal rpm and rejected in turn. Measured against NVIDIA on 2026-08-29:
+ * two lockouts of 26.1 and 27.0 minutes, each absorbing 54 and 47 consecutive 429s -- roughly 50
+ * wasted dispatches per cycle, none of which could have succeeded. Standing the whole route down
+ * turns that into about one probe per cooldown.
+ *
+ * `Retry-After` wins when the provider sends one, since it is authoritative. NVIDIA sends none, so
+ * the fallback doubles from a minute and caps at half an hour, converging on a ~26-minute lockout
+ * in about six occurrences instead of fifty.
+ *
+ * `streak` is the count AFTER this occurrence, reset to 0 by a later success on that route, so it
+ * only grows across consecutive 429s with no success between them. Returns epoch ms; callers store
+ * it as an ISO string, like every other ledger timestamp here.
+ */
+function rateLimitedBackoffUntil(streak, now, retryAfterSeconds = null) {
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+    return now + Math.min(retryAfterSeconds * 1000, RATE_LIMIT_BACKOFF_CAP_MS);
+  }
+  const exponential = RATE_LIMIT_BACKOFF_BASE_MS * Math.pow(2, Math.max(0, streak - 1));
+  return now + Math.min(exponential, RATE_LIMIT_BACKOFF_CAP_MS);
+}
+
+/**
  * Escalating cooldown for a route whose most recent attempt came back HTTP 402 (payment
- * required / provider-side quota exhausted at the billing layer) -- a distinct signal from 429:
- * 429 means "too fast," already handled by requests_available_at/Retry-After above; 402 means
- * "no budget left until some future reset," which no amount of pacing fixes. Returns epoch ms;
+ * required / provider-side quota exhausted at the billing layer) -- a distinct signal from 429,
+ * which gets its own route cooldown in rateLimitedBackoffUntil below. 402 means "no budget left
+ * until some future reset," which no amount of pacing fixes. Returns epoch ms;
  * callers store it as an ISO string in entry.blocked_until, same as every other ledger timestamp
  * here (see parseTime). Mirrors workers/llm-dispatch-v2/src/pacing.js's function of the same
  * name exactly -- kept as a duplicate, not a shared import, per this repo's existing convention
@@ -1422,6 +1466,7 @@ function ledgerEntry(budget, routeId) {
       requests_day: 0,
       requests_day_key: "",
       blocked_until: null,
+      throttled_until: null,
       cost_used: 0,
       cost_cycle_key: "",
       cost_day_used: 0,
@@ -1489,6 +1534,11 @@ function routePacingDelayMs(entry, route, nowMs) {
   if (entry.blocked_until && parseTime(entry.blocked_until) > nowMs) {
     return Infinity;
   }
+  // A 429 stands the whole route down, not just the job that hit it: a provider enforcing a quota
+  // window rejects every request until the window rolls.
+  if (entry.throttled_until && parseTime(entry.throttled_until) > nowMs) {
+    return Infinity;
+  }
   let delayMs = 0;
   if (route.rpm != null && entry.requests_available_at) {
     const readyMs = parseTime(entry.requests_available_at);
@@ -1523,6 +1573,9 @@ function routeAvailable(entry, route, { requests, tokens }, now, batch = null, m
     batch.reaped = true;
   }
   if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
+    return false;
+  }
+  if (entry.throttled_until && parseTime(entry.throttled_until) > now.getTime()) {
     return false;
   }
   if (route.rpm != null) {
@@ -2761,6 +2814,34 @@ async function dispatchBatch(
         }
 
         if (!response.ok) {
+          // The wall clock when THIS response arrived. `now` is the batch's start time, which is
+          // wrong twice over for cooldown bookkeeping: it shortens the cooldown by however long
+          // the upstream call took, and it stamps the guard early enough that a sibling which
+          // started after the batch began but before this rejection landed would look like it
+          // postdates the rejection -- so its later success would clear a cooldown it never saw.
+          const respondedAt = new Date();
+          if (response.status === 429) {
+            // Route-level cooldown, not just the per-job retry below. Without this every other
+            // queued job keeps being admitted at the normal rpm straight into a provider's quota
+            // lockout and rejected in turn (NVIDIA, 2026-08-29: ~50 wasted dispatches per cycle).
+            const throttleEntry = ledgerEntry(coordinator, chosenRoute.route_id);
+            throttleEntry.throttle_streak = (throttleEntry.throttle_streak || 0) + 1;
+            const retryAfterSeconds = parseRetryAfterSeconds(
+              response.headers?.get?.("retry-after"),
+              respondedAt.getTime(),
+            );
+            throttleEntry.throttled_until = new Date(
+              rateLimitedBackoffUntil(
+                throttleEntry.throttle_streak,
+                respondedAt.getTime(),
+                retryAfterSeconds,
+              ),
+            ).toISOString();
+            // Stamped for the same reason as payment_required_at: a slower sibling that started
+            // before this 429 must not clear a cooldown it knows nothing about.
+            throttleEntry.throttled_at = respondedAt.toISOString();
+            ledgerMutatedAfterDispatch = true;
+          }
           if (response.status === 402) {
             // Payment required / provider quota exhausted -- a billing-layer signal no amount of
             // rpm/rpd/tpm pacing fixes, so force the whole route unavailable via blocked_until
@@ -2771,14 +2852,14 @@ async function dispatchBatch(
             const entry = ledgerEntry(coordinator, chosenRoute.route_id);
             entry.payment_required_streak = (entry.payment_required_streak || 0) + 1;
             entry.blocked_until = new Date(
-              paymentRequiredBackoffUntil(entry.payment_required_streak, now.getTime()),
+              paymentRequiredBackoffUntil(entry.payment_required_streak, respondedAt.getTime()),
             ).toISOString();
             // Stamped so a slower sibling that STARTED before this 402 cannot clear the block it
             // knows nothing about. Without a concurrency cap a batch runs several requests on one
             // route, and an in-flight success landing afterwards would otherwise reopen an
             // exhausted route -- now that a 402 requeues its job rather than failing it, that job
             // would come straight back and burn another attempt.
-            entry.payment_required_at = now.toISOString();
+            entry.payment_required_at = respondedAt.toISOString();
             ledgerMutatedAfterDispatch = true;
           }
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
@@ -2947,6 +3028,18 @@ async function dispatchBatch(
         // A successful call proves the route is healthy again -- clear any 402 backoff state,
         // matching the branch above that sets it.
         const successEntry = ledgerEntry(coordinator, chosenRoute.route_id);
+        const throttledAtMs = successEntry.throttled_at
+          ? parseTime(successEntry.throttled_at)
+          : null;
+        if (
+          (throttledAtMs == null || requestStartMs > throttledAtMs) &&
+          (successEntry.throttle_streak || successEntry.throttled_until || successEntry.throttled_at)
+        ) {
+          successEntry.throttle_streak = 0;
+          successEntry.throttled_until = null;
+          successEntry.throttled_at = null;
+          ledgerMutatedAfterDispatch = true;
+        }
         const blockedAtMs = successEntry.payment_required_at
           ? parseTime(successEntry.payment_required_at)
           : null;

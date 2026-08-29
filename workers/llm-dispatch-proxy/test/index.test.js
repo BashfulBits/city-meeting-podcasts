@@ -2943,6 +2943,179 @@ test("a 402 does not consume the job that discovered the exhausted budget", asyn
   assert.equal(record.last_error.status, 402);
 });
 
+test("a 429 stands the whole route down, not just the job that hit it", async () => {
+  // The defect this covers: with only per-job backoff, every other queued job keeps being admitted
+  // at the route's normal rpm straight into a provider's quota lockout. Measured against NVIDIA on
+  // 2026-08-29: two lockouts of 26.1 and 27.0 minutes absorbing 54 and 47 consecutive 429s.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const route = DISPATCH_LIMITS.routes_by_id[routeId];
+
+  const queued = await handleRequest(chatRequest(undefined, "429-blocks-route"), env);
+  await queued.json();
+  const rateLimited = async () =>
+    new Response(JSON.stringify({ error: { message: "rate limit" } }), { status: 429 });
+
+  const now = new Date();
+  const result = await dispatchOne(env, rateLimited, now);
+  assert.equal(result.status, "retrying", "the job itself still retries");
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.throttle_streak, 1);
+  assert.ok(entry.throttled_until, "the route must carry a cooldown");
+  assert.ok(entry.throttled_at, "and a stamp of when it was set");
+  // Probe far enough ahead that this route's own rpm pacing (4 rpm -> a 15s interval) is long
+  // satisfied, so `throttled_until` is the ONLY thing that can still refuse admission. Asserting
+  // at `now` would pass even with the cooldown ignored, because the dispatch above just consumed
+  // the route's rpm slot.
+  const afterPacing = new Date(now.getTime() + 30_000);
+  assert.ok(
+    Date.parse(entry.throttled_until) > afterPacing.getTime(),
+    "probe must sit inside the cooldown window",
+  );
+  const withoutCooldown = { ...entry, throttled_until: null, throttled_at: null };
+  assert.equal(
+    routeAvailable(withoutCooldown, route, { requests: 1, tokens: 0 }, afterPacing),
+    true,
+    "sanity: absent the cooldown the route would be admissible at this instant",
+  );
+  assert.equal(
+    routeAvailable(entry, route, { requests: 1, tokens: 0 }, afterPacing),
+    false,
+    "no further job may be admitted onto the route during its cooldown",
+  );
+});
+
+test("a 429 honors Retry-After when the provider sends one", async () => {
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-retry-after"), env);
+  await queued.json();
+  const rateLimited = async () =>
+    new Response(JSON.stringify({ error: { message: "slow down" } }), {
+      status: 429,
+      headers: { "retry-after": "120" },
+    });
+
+  const now = new Date();
+  await dispatchOne(env, rateLimited, now);
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const cooldownMs = Date.parse(entry.throttled_until) - now.getTime();
+  // 120s from the header, not the 60s first-occurrence fallback.
+  assert.ok(
+    cooldownMs > 110_000 && cooldownMs <= 121_000,
+    `expected a ~120s Retry-After cooldown, got ${Math.round(cooldownMs / 1000)}s`,
+  );
+});
+
+test("a 429 cooldown is measured from the response, not the batch start", async () => {
+  // `now` is the batch's start time. Using it would shorten the cooldown by the upstream call's
+  // duration, and -- worse -- stamp the stale-guard early enough that a sibling which started
+  // after the batch began but before this rejection landed would look like it postdates the
+  // rejection, letting its later success clear a cooldown it never saw.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-response-clock"), env);
+  await queued.json();
+
+  const UPSTREAM_MS = 120;
+  const slowRateLimited = async () => {
+    await new Promise((resolve) => setTimeout(resolve, UPSTREAM_MS));
+    return new Response(JSON.stringify({ error: { message: "rate limit" } }), { status: 429 });
+  };
+
+  const now = new Date();
+  await dispatchOne(env, slowRateLimited, now);
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const stampedAfterStartMs = Date.parse(entry.throttled_at) - now.getTime();
+  assert.ok(
+    stampedAfterStartMs >= UPSTREAM_MS - 20,
+    `throttled_at must be stamped when the 429 arrived, not at batch start; got +${stampedAfterStartMs}ms`,
+  );
+  // And the cooldown window itself is measured from that same instant.
+  const cooldownMs = Date.parse(entry.throttled_until) - Date.parse(entry.throttled_at);
+  assert.ok(
+    cooldownMs >= 59_000 && cooldownMs <= 61_000,
+    `expected a full 60s first cooldown from the response instant, got ${cooldownMs}ms`,
+  );
+});
+
+test("a 429 Retry-After given as an HTTP-date is honored", async () => {
+  // RFC 9110 permits delay-seconds or an HTTP-date. `Number()` yields NaN for the date form, which
+  // would silently discard the provider's own deadline in favour of our exponential guess.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-http-date"), env);
+  await queued.json();
+
+  const deadline = new Date(Date.now() + 15 * 60_000);
+  const rateLimited = async () =>
+    new Response(JSON.stringify({ error: { message: "rate limit" } }), {
+      status: 429,
+      headers: { "retry-after": deadline.toUTCString() },
+    });
+
+  await dispatchOne(env, rateLimited, new Date());
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const cooldownEnd = Date.parse(entry.throttled_until);
+  // ~15 minutes from the header, not the 60s first-occurrence fallback.
+  assert.ok(
+    Math.abs(cooldownEnd - deadline.getTime()) < 5_000,
+    `expected the cooldown to track the HTTP-date deadline, off by ${cooldownEnd - deadline.getTime()}ms`,
+  );
+});
+
+test("a success after a 429 cooldown clears it, but a stale one does not", async () => {
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-clear"), env);
+  await queued.json();
+  const rateLimited = async () =>
+    new Response(JSON.stringify({ error: { message: "rate limit" } }), { status: 429 });
+  const now = new Date();
+  await dispatchOne(env, rateLimited, now);
+
+  let coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  let entry = ledgerEntry(coordinator, routeId);
+  // Rewind the stamp into the future so the next success looks like it started before the 429,
+  // and lift the cooldown so the route is selectable at all.
+  entry.throttled_at = new Date(now.getTime() + 60_000).toISOString();
+  entry.throttled_until = null;
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
+
+  const queued2 = await handleRequest(chatRequest(undefined, "429-clear-2"), env);
+  await queued2.json();
+  const ok = async () =>
+    new Response(JSON.stringify({ id: "after-429", choices: [] }), { status: 200 });
+  const later = new Date(now.getTime() + 10 * 60_000);
+  assert.equal((await dispatchOne(env, ok, later)).status, "completed");
+
+  coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.throttle_streak, 1, "a success predating the 429 must not reset the streak");
+
+  // Now a success that genuinely postdates the 429 does clear it.
+  entry.throttled_at = new Date(now.getTime() - 60_000).toISOString();
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
+  const queued3 = await handleRequest(chatRequest(undefined, "429-clear-3"), env);
+  await queued3.json();
+  assert.equal(
+    (await dispatchOne(env, ok, new Date(now.getTime() + 20 * 60_000))).status,
+    "completed",
+  );
+  coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.throttle_streak, 0);
+  assert.equal(entry.throttled_until, null);
+});
+
 test("a success already in flight when a 402 landed does not reopen the blocked route", async () => {
   // Without a per-route concurrency cap a batch runs several requests on one route. A sibling that
   // STARTED before the 402 proves nothing about the account's balance, so it must not clear the

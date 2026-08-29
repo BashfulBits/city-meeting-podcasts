@@ -45,6 +45,25 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **A 429 now stands the whole route down, not just the job that hit it** (`llm-dispatch-proxy`).
+  Retrying only the job is not enough against a provider that enforces a quota *window*: it answers
+  every request with 429 until the window rolls, so each remaining queued job was still admitted at
+  the route's normal rpm and rejected in turn. NVIDIA on 2026-08-29 showed the shape exactly — two
+  lockouts of 26.1 and 27.0 minutes absorbing 54 and 47 **consecutive** 429s, with no successes
+  interleaved, roughly 50 wasted dispatches per cycle that could not have succeeded. The route now
+  takes an escalating cooldown (`throttled_until`), honouring `Retry-After` when the provider sends
+  one and otherwise doubling from a minute to a half-hour cap, converging on a ~26-minute lockout in
+  about six occurrences rather than fifty. A success clears it, subject to the same stale-guard as
+  the 402 block: only a call that *began* after the 429 proves recovery. Both cooldowns are
+  measured from the instant the rejection arrived rather than from the batch's start time —
+  the latter shortened the window by the upstream call's duration and stamped the stale-guard
+  early enough that a sibling starting mid-batch could still clear a cooldown it never saw,
+  which also corrects the 402 guard shipped moments earlier. `Retry-After` is parsed in both
+  RFC 9110 forms, so an HTTP-date deadline is honoured instead of silently discarded. `llm-dispatch-v2` already
+  had an equivalent via `throttle_streak`/`buffer_seconds`, so this closes the gap between them.
+  Also corrects a comment that claimed 429 was "already handled by requests_available_at/Retry-After"
+  — it was not; `Retry-After` only ever fed the per-job retry delay.
+
 - **A 402 requeue in `llm-dispatch-v2` would have stranded the job permanently.** Claiming a job
   deletes its `job_models` index rows, and the requeue introduced above fell through to a generic
   `UPDATE jobs SET state=...`, leaving the job `queued` while still holding a stale lease and with
