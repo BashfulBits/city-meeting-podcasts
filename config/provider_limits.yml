@@ -1110,28 +1110,38 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
-  - route_id: nvidia_deepseek_v4_pro_0813_free
-    model: deepseek/deepseek-v4-pro
-    # Pools with DeepSeek Direct's paid `deepseek_v4_pro_primary` route below -- this is the same
-    # model, free here, paid ($0.435-0.66/M) there. A job pinned to `deepseek/deepseek-v4-pro`
-    # becomes eligible for this free route first.
-    #
-    # upstream_model is deliberately "deepseek-ai/deepseek-v4-pro", NOT "...-0813": "-0813" is the
-    # model-card/marketing label on the build.nvidia.com landing page, not the API's `model`
-    # field. NVIDIA's own documented curl example uses the bare "deepseek-ai/deepseek-v4-pro"
-    # string; sending the "-0813"-suffixed one 404s with no JSON body at the routing layer before
-    # it ever reaches a serving container (found 2026-08-29 -- a real 404 the route_id's own name
-    # doesn't need to change, since route_id is just our internal label).
-    provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4-pro
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    rpm: 12
-    tpm: 100000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
+  # DISABLED (found 2026-08-29, corrected same day, cause still open): route_id
+  # nvidia_deepseek_v4_pro_0813_free -- upstream_model "deepseek-ai/deepseek-v4-pro-0813" IS the
+  # correct API model string. An earlier version of this comment claimed the "-0813" suffix was
+  # wrong (a marketing-label-only string) based on a secondhand blog synthesis; that was incorrect
+  # -- NVIDIA's own official sample code for this model (the "Sample Python" snippet on this
+  # model's build.nvidia.com page) uses "deepseek-ai/deepseek-v4-pro-0813" verbatim, confirmed by
+  # inspecting the actual submitted request payload that still 404s with that exact string. So the
+  # 404 here is NOT a naming bug on our end, same as nvidia_deepseek_v4_flash_0731_free below (and
+  # a forum post covering both models together -- "Function ... returns DEGRADED error when
+  # calling deepseek-ai/deepseek-v4-flash，deepseek-v4-pro" -- suggests they may share one root
+  # cause). Root cause unconfirmed: could be the same account-level "Public API Endpoints"
+  # access-gating several NVIDIA forum threads describe for deepseek-v4-flash-0731, or something
+  # else specific to this account. Left commented out rather than guessed back into a "corrected"
+  # string, for the same reason as flash below: a 404 gets no automatic block/retry treatment in
+  # either dispatch Worker, so a live-but-broken route here would hard-fail every attempt with no
+  # circuit-break. `deepseek/deepseek-v4-pro`'s only route while this is disabled is DeepSeek
+  # Direct's paid leg ($0.435-0.66/M) -- so Mistral Medium's model_routing overflow onto this model
+  # (config's model_routing block above) is not free right now, only nominally cheap. Re-enable
+  # (uncomment, recompile) once confirmed fixed -- verify with a manual curl first.
+  #
+  # - route_id: nvidia_deepseek_v4_pro_0813_free
+  #   model: deepseek/deepseek-v4-pro
+  #   provider: nvidia
+  #   upstream_model: deepseek-ai/deepseek-v4-pro-0813
+  #   input_context_limit: 1000000
+  #   output_context_limit: 384000
+  #   account_id: primary
+  #   rpm: 12
+  #   tpm: 100000
+  #   free: true
+  #   input_per_token: 0.0
+  #   output_per_token: 0.0
 
   # DISABLED (found 2026-08-29, NVIDIA-side outage, still open): route_id nvidia_deepseek_v4_flash
   # _0731_free -- upstream_model deepseek-ai/deepseek-v4-flash-0731 is the correct API model string

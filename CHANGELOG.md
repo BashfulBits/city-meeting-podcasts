@@ -45,16 +45,24 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
-- **NVIDIA build DeepSeek routes: wrong model string, and a live NVIDIA-side outage.**
-  `nvidia_deepseek_v4_pro_0813_free`'s `upstream_model` was `deepseek-ai/deepseek-v4-pro-0813`,
-  which 404s with no JSON body -- NVIDIA's documented API `model` string for this model omits the
-  `-0813` suffix (that's the model-card/marketing label, not the API identifier). Fixed to
-  `deepseek-ai/deepseek-v4-pro`. Separately, `nvidia_deepseek_v4_flash_0731_free`'s model string
-  was already correct, but NVIDIA's own routing layer is 404ing this exact model account-wide for
-  multiple unrelated developers right now (an open NVIDIA-side access-gating bug, not a config
-  issue); since 404 gets no automatic block/retry treatment in either dispatch Worker the way a
-  real 429 does, this route is commented out until NVIDIA resolves it rather than left live to
-  hard-fail every attempt.
+- **NVIDIA build DeepSeek routes disabled: both 404, root cause not a naming bug.** Both
+  `nvidia_deepseek_v4_pro_0813_free` and `nvidia_deepseek_v4_flash_0731_free` return 404 with no
+  JSON body. An initial fix changed the pro route's `upstream_model` from
+  `deepseek-ai/deepseek-v4-pro-0813` to `deepseek-ai/deepseek-v4-pro`, reasoning the `-0813` suffix
+  was a marketing label rather than the API identifier; that reasoning was wrong -- NVIDIA's own
+  official sample code for this model uses the `-0813`-suffixed string verbatim, confirmed against
+  the real failing request payload, and reverted. Both routes use their correct, docs-matching
+  model strings and the correct `https://integrate.api.nvidia.com/v1/chat/completions` URL
+  (confirmed against NVIDIA's own OpenAI-SDK sample), yet both still 404. This matches NVIDIA
+  Developer Forum reports from multiple unrelated developers of the identical symptom on these
+  exact models (`GET /v1/models` lists them, the playground works, `POST /v1/chat/completions`
+  404s "Function not found for account" before reaching a serving container) -- consistent with an
+  account-level access-gating requirement, though the precise cause is unconfirmed. Since 404 gets
+  no automatic block/retry treatment in either dispatch Worker the way a real 429 does, both routes
+  are commented out (not just documented) rather than left live to hard-fail every attempt.
+  `deepseek/deepseek-v4-flash` still has three working legs (SiliconFlow, DeepSeek Direct,
+  OpenCode); `deepseek/deepseek-v4-pro`'s only route while this is disabled is DeepSeek Direct's
+  paid leg, so Mistral Medium's `model_routing` overflow onto it is not free right now.
 
 - **LLM dispatch V2 mixed-result recovery (GH#1318).** Enqueue and poll batches now preserve
   accepted, replayed, pending, completed, rejected, and failed per-job outcomes instead of
