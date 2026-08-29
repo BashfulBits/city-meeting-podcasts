@@ -122,6 +122,14 @@ providers:
       - id: primary
         api_key_env: DEEPSEEK_API_KEY
   siliconflow:
+    # The GLOBAL platform (`.com`), which is a different service from `siliconflow.cn` with its own
+    # accounts -- a `.com` key is rejected by `.cn` with 401 "Api key is invalid". Only `.cn` offers
+    # free models, gated behind Chinese real-name ID verification, so nothing here is free: every
+    # SiliconFlow route below is `free: false` and stops working at a zero account balance (402
+    # code 30001 on every model, verified 2026-08-29). SiliconFlow is carried as the *cheapest paid*
+    # leg of deepseek/deepseek-v4-flash ($0.049/M vs DeepSeek Direct's $0.14/M), not as capacity --
+    # route selection tries every free leg first, so these are reached only by a job that sets
+    # `allow_paid` once no free route has capacity.
     api_base: https://api.siliconflow.com/v1
     ai_gateway_slug: custom-siliconflow
     # Full path from the origin root (see the `nvidia` block). SiliconFlow serves the same

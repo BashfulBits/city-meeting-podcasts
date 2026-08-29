@@ -45,6 +45,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`llm-dispatch-v2` billed for work a free route could have taken.** Its route comparator ranked
+  purely by available capacity, with `free` appearing nowhere except the hard exclusion applied when
+  a job does *not* set `allow_paid`. So whenever a job did allow paid, a paid route with more
+  headroom outranked a partly-consumed free one — the opposite of v1, which tries every free route
+  first and elevates to paid only when no free route exists or waiting for one would miss the job's
+  deadline. Measured on a mixed pool, 3 of 4 jobs went to the paid route while a free route had
+  capacity. Free now sorts ahead of paid before any capacity signal, so paid is reached only once
+  every free route is exhausted. Rows read did not regress (35 → 31 on the same probe; the fix adds
+  no SQL, only reordering iteration over the already-cached per-window route ledger).
+
 - **A 402 no longer consumes the job that discovered the exhausted budget** (both dispatch
   Workers). The escalating 402 backoff blocks the whole route, but the triggering job was still
   marked terminally `failed` — so every cooldown lapse burned exactly one recoverable job per

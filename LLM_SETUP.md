@@ -10,12 +10,22 @@ LiteLLM and multi-provider routes:
 | **SambaNova** | `SAMBANOVA_API_KEY` | [cloud.sambanova.ai](https://cloud.sambanova.ai) | Direct & Dispatch | Llama 3.3 70B & Qwen 2.5 72B (20 RPM / 1,000 Free RPD) |
 | **Mistral AI** | `MISTRAL_API_KEY`, `MISTRAL_API_KEY_SECONDARY` | [console.mistral.ai](https://console.mistral.ai) | Direct & Dispatch | Mistral Large, Mistral Small 2603, Codestral, Devstral, Medium (account-specific monthly pools) |
 | **Z.AI (Zhipu AI)** | `ZAI_API_KEY` | [z.ai](https://z.ai) | Direct & Dispatch | GLM-4.7-Flash & GLM-4.5-Flash (15 RPM / 500 Free RPD) |
-| **SiliconFlow** | `SILICONFLOW_API_KEY` | [cloud.siliconflow.cn](https://cloud.siliconflow.cn) | Direct & Dispatch | DeepSeek-V4-Flash ($0.049/M promo) & Qwen 2.5 72B ($0.07/M) |
+| **SiliconFlow** | `SILICONFLOW_API_KEY` | [cloud.siliconflow.com](https://cloud.siliconflow.com) (**global site — not `.cn`**, see note below) | Direct & Dispatch | **Paid only for us:** DeepSeek-V4-Flash ($0.049/M promo) & Qwen 2.5 72B ($0.07/M). No free route — the routes stop working at a zero balance |
 | **DeepSeek Direct** | `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com) | Direct & Dispatch | DeepSeek-V4-Flash ($0.14/M base, $0.0028 cache, $0.07 off-peak), DeepSeek-V4-Pro |
 | **OpenRouter** | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) | Direct & Dispatch | Curated Gemma 4, Nemotron 550B/120B free endpoints and frontier models |
 | **Kilo Code** | `KILO_API_KEY` | [app.kilo.ai](https://app.kilo.ai) | Direct & Dispatch | StepFun Step-3.7-Flash & NVIDIA Nemotron-3-Ultra 550B (20 RPM / 200 Free RPD) |
 | **OpenCode Zen** | `OPENCODE_API_KEY` | [opencode.ai/auth](https://opencode.ai/auth) | Direct & Dispatch | DeepSeek-V4-Flash (1M Context), MiMo-V2.5, Nemotron 3 Ultra |
 | **NVIDIA build.nvidia.com** | `NVIDIA_API_KEY` | [build.nvidia.com](https://build.nvidia.com) | Direct & Dispatch | Kimi K3, DeepSeek V4 Pro/Flash, Gemma 4 31B, GPT-OSS 120B, Nemotron 3 Ultra/Super/Nano-Omni, Riva Translate 4B — **no published rate-limit table**; self-imposed 12 RPM (30% of the ~40 RPM community-reported baseline) and 100k TPM/route, see the `nvidia` provider block in `config/provider_limits.yml` |
+
+> **SiliconFlow runs two separate platforms.** `siliconflow.com` (global) is the one
+> `config/provider_limits.yml` calls, and `siliconflow.cn` (China) is a distinct service with its own
+> accounts — a `.com` key is rejected by `.cn` with `401 "Api key is invalid"`. Only the `.cn` platform
+> offers free models, and those are gated behind 实名认证 (Chinese real-name ID verification), so they
+> are not reachable for this project. Every SiliconFlow route here is therefore `free: false` by
+> design; SiliconFlow earns its place as the *cheapest paid* leg of `deepseek/deepseek-v4-flash`
+> ($0.049/M vs DeepSeek Direct's $0.14/M), not as free capacity. With a zero balance its routes
+> return `402 {"code":30001}` on every model — verified 2026-08-29, including
+> `Qwen/Qwen2.5-7B-Instruct`, the model `.cn` documents as its free example.
 
 For the full model evaluation matrix, quality ratings, and recommended task mappings, see the canonical [LLM Model Catalog & Decision Matrix in ARCHITECTURE.md](ARCHITECTURE.md#llm-model-catalog--decision-matrix).
 

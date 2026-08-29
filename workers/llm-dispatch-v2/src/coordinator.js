@@ -1138,6 +1138,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
             const leftPlan = modelPlansByModel.get(left.model);
             const rightPlan = modelPlansByModel.get(right.model);
             return (
+              // Free before paid, ahead of any capacity signal. `allow_paid` is permission to
+              // spend when nothing free will do, not a preference for spending: without this
+              // term a paid route with more headroom outranks a partly-consumed free one and
+              // silently bills for work a free route could have taken. The loop below stops at
+              // the first route with capacity, so paid is reached only once every free route is
+              // exhausted. (v1's selectRouteForModel additionally waits for a free route to
+              // reset unless that would miss the job's deadline; v2 has no deadline concept
+              // here, so it elevates as soon as free capacity runs out.)
+              Number(Boolean(right.free)) - Number(Boolean(left.free)) ||
               (rightPlan?.score || 0) - (leftPlan?.score || 0) ||
               (rightPlan?.routeScores.get(right.route_id) || 0) -
                 (leftPlan?.routeScores.get(left.route_id) || 0)

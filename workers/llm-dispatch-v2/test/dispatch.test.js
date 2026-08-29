@@ -904,3 +904,83 @@ test("purgePendingBatch honors its limit across carried-over and newly-eligible 
     5
   );
 });
+
+// A paid route deliberately given far more headroom than the free one it competes with: the
+// capacity ranking alone would pick it every time. `allow_paid` is permission to spend when
+// nothing free will do, not a preference for spending, so free must win regardless of headroom.
+const FREE_VS_PAID_CATALOG = {
+  model_aliases: {},
+  // Paid listed first on purpose: the routes tie on capacity fraction (both unused), so without
+  // an explicit free-before-paid term the tie falls through to catalog order and the paid route
+  // wins. Listing free first would let this test pass with the bug still present.
+  model_routes_map: { "deepseek/deepseek-v4-flash": ["paid-large", "free-small"] },
+  routes_by_id: {
+    "free-small": {
+      provider: "opencode",
+      upstream_model: "deepseek-v4-flash-free",
+      rpm: 5,
+      rpd: 50,
+      tpm: 100000,
+      free: true,
+      input_context_limit: 1000000,
+      output_context_limit: 100000,
+    },
+    "paid-large": {
+      provider: "siliconflow",
+      upstream_model: "deepseek-ai/DeepSeek-V4-Flash-0731",
+      rpm: 1000,
+      rpd: 100000,
+      tpm: 10000000,
+      free: false,
+      input_context_limit: 1000000,
+      output_context_limit: 100000,
+    },
+  },
+};
+
+test("a job allowing paid still takes the free route when the paid one has more capacity", async () => {
+  const { sql, storage } = createMockSqlStorage();
+  const coordinator = new LLMSchedulerDO(
+    { storage },
+    {
+      MAX_JOBS_PER_UTC_DAY: "10000",
+      MAX_BUNDLE_JOBS: "1",
+      MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1",
+      MAX_CONCURRENT_ROUTE_LANES: "5",
+      MAX_ACTIVE_BUNDLES: "2",
+      MAX_IN_FLIGHT_LLM_CALLS: "8",
+      MAX_BUNDLES_PER_UTC_DAY: "1000",
+      MAX_QUEUE_WAIT_SECONDS: "3600",
+      LEASE_DURATION_SECONDS: "840",
+      MAX_429_RETRIES: "1",
+      MAX_429_BACKOFF_SECONDS: "5",
+      ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
+      DISPATCH_LIMITS_OVERRIDE: FREE_VS_PAID_CATALOG,
+    }
+  );
+  void sql;
+
+  await coordinator.enqueueBatch([
+    {
+      id: "paid-allowed",
+      idempotency_key: "key-paid-allowed",
+      request_digest: "digest-paid-allowed",
+      policy_json: JSON.stringify({
+        allowed_models: ["deepseek/deepseek-v4-flash"],
+        allow_paid: true,
+      }),
+      prompt_family: "tags",
+      input_token_estimate: 500,
+      max_output_token_estimate: 200,
+      payload_key: "payloads/paid-allowed/request.json",
+    },
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs.length, 1);
+  assert.equal(
+    plan.jobs[0].route_id,
+    "free-small",
+    "allow_paid must not send a job to a paid route while a free one has capacity",
+  );
+});
