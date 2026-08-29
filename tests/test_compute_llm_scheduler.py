@@ -49,6 +49,14 @@ def _all_free_direct_routes_exhausted() -> LLMBudget:
                 f"owner-{n}": LLMReservation(cost=0, requests=1, tokens=1)
                 for n in range(route.quota.concurrency)
             }
+        # A route can also be gated purely at the provider level (e.g. `nvidia`'s routes have no
+        # route-level rpm/rpd of their own -- see config/provider_limits.yml's `nvidia` block --
+        # relying entirely on the shared `provider_rpm` clock). Exhaust that clock too, or such a
+        # route would look untouched above and stay eligible, defeating "all free direct routes
+        # exhausted".
+        if route.provider_rpm is not None:
+            provider_ledger = budget._provider_ledger(route)
+            provider_ledger.requests_available_at = (NOW + timedelta(days=1)).isoformat()
     return budget
 
 
