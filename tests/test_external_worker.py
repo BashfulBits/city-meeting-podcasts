@@ -1277,13 +1277,15 @@ def _patch_transcribe_item(monkeypatch, worker, *, exists):
         "_model_with_workers",
         lambda city, tracker=None, *, num_workers=1: object(),
     )
+    valid_words = b'{"segments":[{"words":[{"w":"ok","s":0,"e":1}]}]}'
     monkeypatch.setattr(
-        ew, "transcribe", lambda *a, **k: SimpleNamespace(vtt=b"WEBVTT", words=b"[]")
+        ew, "transcribe", lambda *a, **k: SimpleNamespace(vtt=b"WEBVTT", words=valid_words)
     )
     monkeypatch.setattr(ew, "episode_to_record", lambda e: {"uid": e.uid})
     monkeypatch.setattr(ew, "save_records", lambda *a, **k: None)
     worker.storage = SimpleNamespace(
         exists=lambda key: exists,
+        get_file=lambda key, path: path.write_bytes(valid_words) or True,
         put_file=lambda key, path, mime: f"https://cdn/{key}",
     )
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +12,19 @@ from typing import Any
 
 DEFAULT_DIARIZE_MODEL = "pyannote/speaker-diarization-community-1"
 DEFAULT_EMBEDDING_MODEL = "pyannote/embedding"
+TIMED_WORDS_VALIDATION_VERSION = "1"
+
+
+def has_valid_timed_words(value: bytes | Mapping[str, Any]) -> bool:
+    """Return whether a word-sidecar payload contains at least one usable timed word."""
+    if isinstance(value, bytes):
+        try:
+            value = json.loads(value.decode("utf-8-sig"))
+        except (UnicodeDecodeError, TypeError, ValueError):
+            return False
+    if not isinstance(value, Mapping):
+        return False
+    return any(True for _ in _timed_words(value))
 
 
 @dataclass(frozen=True)
@@ -110,8 +125,13 @@ def _timed_words(words: Mapping[str, Any]) -> Iterable[tuple[float, float, str]]
         start = row.get("start", row.get("s"))
         end = row.get("end", row.get("e"))
         text = row.get("word", row.get("w", row.get("text", "")))
-        if isinstance(start, int | float) and isinstance(end, int | float) and str(text).strip():
-            yield float(start), float(end), str(text).strip()
+        if not isinstance(start, int | float) or not isinstance(end, int | float):
+            continue
+        start_value = float(start)
+        end_value = float(end)
+        if math.isfinite(start_value) and math.isfinite(end_value) and end_value > start_value:
+            if str(text).strip():
+                yield start_value, end_value, str(text).strip()
 
 
 def _mark_overlap(turns: list[dict[str, Any]]) -> None:

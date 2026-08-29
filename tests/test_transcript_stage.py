@@ -1232,7 +1232,7 @@ def _ep_with_audio(uid="uid-asr", links=None) -> Episode:
 
 
 ASR_VTT = b"WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nCouncil meeting called to order.\n"
-ASR_WORDS = b'{"schema":"1","basis":"served","segments":[]}'
+ASR_WORDS = b'{"schema":"1","basis":"served","segments":[{"words":[{"w":"Council","s":0,"e":1}]}]}'
 
 
 class _FakeAsr:
@@ -1919,9 +1919,7 @@ class TestTranscriptStageASR:
 
         ep = _ep_with_audio()
         ep.body = "City Council"
-        fake_asr = _FakeAsr(
-            words=b'{"schema":"2","basis":"served","segments":[]}',
-        )
+        fake_asr = _FakeAsr(words=ASR_WORDS)
         ep, stats, fake_asr = _run_asr(tmp_path, ep, fake_asr)
 
         assert stats.transcribed == 1
@@ -2840,7 +2838,7 @@ class TestTranscriptStageASR:
                     {
                         "output": TranscriptArtifacts(
                             vtt=b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nok\n",
-                            words=b"{}",
+                            words=ASR_WORDS,
                         )
                     },
                 )()
@@ -2979,6 +2977,8 @@ class TestTranscriptStageASR:
         storage_root.mkdir(parents=True, exist_ok=True)
         (storage_root / asr_key).parent.mkdir(parents=True, exist_ok=True)
         (storage_root / asr_key).write_bytes(ASR_VTT)
+        words_key = f"transcripts/{src_key}/{ep.uid}-asr-{recipe}.words.json"
+        (storage_root / words_key).write_bytes(ASR_WORDS)
 
         fake_asr = _FakeAsr()
         with patch("citypods.stages.asr_mod", fake_asr):
@@ -2989,6 +2989,29 @@ class TestTranscriptStageASR:
         assert ep.transcript_synced is True
         assert ep.transcript_key == asr_key
         assert stats.reused == 1
+
+    def test_empty_existing_word_sidecar_routes_back_to_asr(self, tmp_path):
+        ep = _ep_with_audio()
+        city = _city()
+        src_key = source_key(city)
+        old_key = f"transcripts/{src_key}/{ep.uid}-asr-old.vtt"
+        old_words_key = f"transcripts/{src_key}/{ep.uid}-asr-old.words.json"
+        ep.transcript_key = old_key
+        ep.transcript_words_key = old_words_key
+        ep.transcript_synced = True
+        ep.transcript_pipeline_version = ASR_PIPELINE_VERSION
+        ep.transcript_spec_hash = "old"
+        root = tmp_path / "audio"
+        (root / old_key).parent.mkdir(parents=True, exist_ok=True)
+        (root / old_key).write_bytes(ASR_VTT)
+        (root / old_words_key).write_bytes(b'{"segments":[]}')
+
+        ep, stats, fake_asr = _run_asr(tmp_path, ep)
+
+        assert fake_asr.transcribe_calls
+        assert stats.transcribed == 1
+        assert ep.transcript_words_key
+        assert (root / ep.transcript_words_key).read_bytes() == ASR_WORDS
 
     def test_concurrent_source_aliases_share_one_asr_inference(self, tmp_path):
         """Same stable meeting + recipe in two source views runs native ASR only once."""

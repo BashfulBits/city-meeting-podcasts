@@ -7,7 +7,12 @@ from types import ModuleType
 
 import pytest
 
-from citypods.diarize import _attach_embeddings, _mark_overlap, attach_transcript_words
+from citypods.diarize import (
+    _attach_embeddings,
+    _mark_overlap,
+    attach_transcript_words,
+    has_valid_timed_words,
+)
 from citypods.models import City, Episode
 from citypods.records import meeting_page_hash
 from citypods.site import speaker_page_rows
@@ -591,6 +596,31 @@ def test_pilot_selection_is_explicit_and_body_scoped():
     assert pilot_capture_context(config, "denton-tx", "City Council") == "council-chamber-v1"
     assert not pilot_selected(config, "denton-tx", "Planning and Zoning Commission")
     assert not pilot_selected(config, "austin-tx", "City Council")
+
+
+def test_pilot_selection_accepts_explicit_provider_body_prefix():
+    config = {
+        "pilot_bodies": [
+            {
+                "city": "denton-tx",
+                "body": "City Council",
+                "body_prefixes": ["City Council", "Special Called City Council"],
+                "capture_context": "council-chamber-v1",
+            }
+        ]
+    }
+    assert pilot_selected(config, "denton-tx", "City Council Regular Meeting")
+    assert pilot_selected(config, "denton-tx", "Special Called City Council Meeting")
+    assert pilot_capture_context(config, "denton-tx", "City Council on 2026-08-18 2:00 PM") == (
+        "council-chamber-v1"
+    )
+    assert not pilot_selected(config, "denton-tx", "Planning and Zoning Commission")
+
+
+def test_timed_word_validation_rejects_empty_or_invalid_sidecars():
+    assert not has_valid_timed_words(b'{"segments": [{"words": []}]}')
+    assert not has_valid_timed_words(b'{"segments": [{"words": [{"w": "hello", "s": 1, "e": 1}]}]}')
+    assert has_valid_timed_words(b'{"segments": [{"words": [{"w": "hello", "s": 1, "e": 1.5}]}]}')
 
 
 def test_speaker_pages_only_include_admitted_named_quotes():

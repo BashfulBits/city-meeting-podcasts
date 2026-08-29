@@ -23,6 +23,7 @@ consulted (a fake backend exercises the dispatch path in tests).
 
 from __future__ import annotations
 
+import tempfile
 import threading
 import uuid
 from dataclasses import dataclass
@@ -47,6 +48,7 @@ from citypods.compute.budget import (
     save_budget,
     storage_supports_cas,
 )
+from citypods.diarize import has_valid_timed_words
 from citypods.ops.workqueue import (
     WORK_CLASSES,
     WorkItem,
@@ -312,6 +314,16 @@ def _transcript_artifact_present(
         for key, _ in storage.list_objects(f"transcripts/{src_key}/"):
             fname = key.rsplit("/", 1)[-1]
             if any(fname.startswith(prefix) for prefix in prefixes) and fname.endswith(".vtt"):
+                if classes & (ASR_WORK_CLASSES | ALIGN_WORK_CLASSES):
+                    words_key = f"{key[:-4]}.words.json"
+                    if not storage.exists(words_key) or not hasattr(storage, "get_file"):
+                        continue
+                    with tempfile.TemporaryDirectory() as td:
+                        words_path = Path(td) / "words.json"
+                        if not storage.get_file(words_key, words_path):
+                            continue
+                        if not has_valid_timed_words(words_path.read_bytes()):
+                            continue
                 return True
     except Exception:  # noqa: BLE001 — a listing failure must not crash reconcile
         return False

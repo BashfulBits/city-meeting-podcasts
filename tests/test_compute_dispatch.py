@@ -71,7 +71,7 @@ class FakeDispatchBackend:
         recipe: str,
         *,
         vtt: bytes = b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n",
-        words: bytes = b'{"words": []}',
+        words: bytes = b'{"words": [{"word": "hi", "start": 0, "end": 1}]}',
         observed_seconds: float | None = None,
     ) -> None:
         """Simulate the worker: write the content-addressed ``.vtt`` + ``.words.json`` to the bucket
@@ -551,6 +551,9 @@ class TestReconcile:
         # Provider alignment has a distinct content-addressed filename prefix from ASR. Reconcile
         # must settle this completed lease instead of requeueing it as an unfinished ASR item.
         bucket.objs["transcripts/s1/align-provider-align-align-done.vtt"] = b"WEBVTT\n"
+        bucket.objs["transcripts/s1/align-provider-align-align-done.words.json"] = (
+            b'{"words":[{"word":"ok","start":0,"end":1}]}'
+        )
 
         summary = reconcile_compute(
             tmp_path, bucket, now=NOW, sweep_work_leases=True, use_lease_index=False

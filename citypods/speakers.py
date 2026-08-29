@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 IDENTITY_PIPELINE_VERSION = "1"
+PILOT_SCOPE_VERSION = "2"
 MIN_REFERENCE_MEETINGS = 2
 MIN_CALIBRATION_DAYS = 30
 MIN_CALIBRATION_REVIEWS = 30
@@ -101,9 +102,20 @@ def pilot_selected(config: Mapping[str, Any], city_slug: str, body: str | None) 
             continue
         if str(row.get("city") or "") != city_slug:
             continue
-        if _norm(row.get("body")) == _norm(body):
+        if _pilot_row_matches(row, body):
             return True
     return False
+
+
+def _pilot_row_matches(row: Mapping[str, Any], body: str | None) -> bool:
+    """Match an explicit body selector against raw provider body labels."""
+    actual = _norm(body)
+    exact = _norm(row.get("body"))
+    if exact and actual == exact:
+        return True
+    prefixes = [_norm(row.get("body_prefix"))]
+    prefixes.extend(_norm(value) for value in row.get("body_prefixes") or [])
+    return any(prefix and actual.startswith(prefix) for prefix in prefixes)
 
 
 def pilot_capture_context(
@@ -118,7 +130,7 @@ def pilot_capture_context(
     for row in config.get("pilot_bodies") or []:
         if not isinstance(row, Mapping):
             continue
-        if str(row.get("city") or "") != city_slug or _norm(row.get("body")) != _norm(body):
+        if str(row.get("city") or "") != city_slug or not _pilot_row_matches(row, body):
             continue
         context = str(row.get("capture_context") or "").strip()
         if not context:
@@ -687,6 +699,7 @@ def quote_attribution(
 
 __all__ = [
     "IDENTITY_PIPELINE_VERSION",
+    "PILOT_SCOPE_VERSION",
     "MIN_REFERENCE_MEETINGS",
     "assign_turn",
     "auto_publish_allowed",

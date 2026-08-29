@@ -495,6 +495,12 @@ speakers:
   pilot_bodies:
     - city: denton-tx
       body: "City Council"
+      # Swagit persists the feed's body as labels such as "City Council Regular Meeting" and
+      # "City Council on 2026-08-18 2:00 PM"; keep the selection explicit while accepting that
+      # provider label family.
+      body_prefixes:
+        - "City Council"
+        - "Special Called City Council"
       # Calibration is intentionally invalidated if this meeting-audio setup changes.
       capture_context: "denton-council-chamber-audio-v1"
   model: "pyannote/speaker-diarization-community-1"
