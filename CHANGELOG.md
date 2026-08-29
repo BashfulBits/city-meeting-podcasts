@@ -223,6 +223,22 @@ Phase R (Research-Tool Surface)._
   `deepseek/deepseek-v4-flash` still has three working legs (SiliconFlow, DeepSeek Direct,
   OpenCode); `deepseek/deepseek-v4-pro`'s only route while this is disabled is DeepSeek Direct's
   paid leg, so Mistral Medium's `model_routing` overflow onto it is not free right now.
+- **R7 pilot scope and timed-word artifact integrity (GH#1274).** Denton’s native diarization pilot
+  now matches the provider’s explicit `City Council` label family instead of requiring a raw body
+  string that Swagit does not persist. Transcript, provider-alignment, native-provider, and external
+  worker adoption paths now inspect word-sidecar JSON and require at least one finite, positive-length
+  timed word; invalid sidecars are re-routed to alignment or fresh ASR, and fresh outputs cannot be
+  marked complete until validation succeeds. Dispatch lease reconciliation uses the same check, so an
+  empty `.words.json` cannot settle work as done. Existing valid transcript/ASR bytes are reused; the
+  validation fingerprint causes a gradual normal-run audit, and only recordings with missing or invalid
+  word timing are regenerated. No output schema or ASR pipeline-version bump is introduced.
+
+- **R7 sidecar review hardening.** Malformed timed-word rows now reject boolean, null, and
+  overflowing timestamps without raising; joint and section-only City Council labels stay outside
+  the pilot; a provider-linked episode cannot reuse an invalid ASR sidecar; and repeated external
+  ASR outputs without usable timed words use a persisted exponential cooldown. The roadmap index and
+  regression coverage now record these completion semantics. No output schema or ASR pipeline-version
+  bump is introduced.
 
 - **LLM dispatch V2 mixed-result recovery (GH#1318).** Enqueue and poll batches now preserve
   accepted, replayed, pending, completed, rejected, and failed per-job outcomes instead of

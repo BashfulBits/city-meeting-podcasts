@@ -132,6 +132,21 @@ def test_native_diarization_errors_remain_retryable():
     assert "native_diarize" not in episode.stage_completion
 
 
+def test_native_diarization_no_output_marker_remains_dirty():
+    city = _city()
+    episode = _ep("one")
+    episode.stage_completion["native_diarize"] = {
+        "state": "complete",
+        "version": NativeDiarizeStage.version,
+        "input_fingerprint": stage_input_fingerprint(
+            "native_diarize", episode, city, speaker_config={}
+        ),
+        "output": None,
+    }
+
+    assert stage_is_dirty(NativeDiarizeStage(), episode, city, speaker_config={})
+
+
 def _ctx(tmp_path, *, dry_run=False, storage=True, stop=None, chapters_per_source=10_000):
     return StageContext(
         storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn") if storage else None,

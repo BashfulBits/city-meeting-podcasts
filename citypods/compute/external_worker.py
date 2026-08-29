@@ -75,6 +75,7 @@ from citypods.compute.worker_telemetry import (
     load_worker_telemetry,
 )
 from citypods.config import load_city_configs, load_site_config
+from citypods.diarize import has_valid_timed_words
 from citypods.durations import episode_duration_hours
 from citypods.http import make_session
 from citypods.models import City, Episode
@@ -91,6 +92,7 @@ from citypods.records import (
     record_to_episode,
     save_records,
     source_key,
+    transcript_invalid_words_backoff_until,
     transcript_timeout_backoff_until,
 )
 from citypods.security import redact_subprocess_text, validate_source_url
@@ -361,6 +363,17 @@ class CompletedClaim:
 
 class ClaimDeferred(RuntimeError):
     """A claimed item should return to the queue/backoff path, not settle terminally failed."""
+
+
+def _valid_storage_word_sidecar(storage, key: str | None) -> bool:
+    """Check sidecar bytes, not just the existence of the object pointer."""
+    if not key or not storage.exists(key):
+        return False
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "words.json"
+        if not storage.get_file(key, path):
+            return False
+        return has_valid_timed_words(path.read_bytes())
 
 
 def _mark_provider_align_ineligible(ep: Episode, recipe: str, reason: str) -> None:
@@ -891,9 +904,13 @@ class ExternalTranscribeWorker:
         # instead of spending provider budget re-attempting it while it backs off. Reads the
         # deadline off ``metadata`` (``_telemetry_metadata`` already looked the episode up for this
         # same item) rather than re-fetching it.
-        backoff_until = metadata.get("timeout_backoff_until")
-        if backoff_until is not None and datetime.now(UTC) < backoff_until:
-            return False, f"timeout-backoff until={backoff_until.isoformat()}"
+        now = datetime.now(UTC)
+        for reason, backoff_until in (
+            ("timeout-backoff", metadata.get("timeout_backoff_until")),
+            ("invalid-word-sidecar-backoff", metadata.get("invalid_words_backoff_until")),
+        ):
+            if backoff_until is not None and now < backoff_until:
+                return False, f"{reason} until={backoff_until.isoformat()}"
         media_error = metadata.get("transcript_media_error")
         media_identity = metadata.get("transcript_media_error_audio_identity")
         if media_error and media_identity and media_identity == metadata.get("audio_identity"):
@@ -1018,8 +1035,10 @@ class ExternalTranscribeWorker:
             adopted = False
             try:
                 adopted = self._run_with_retry(item, tracker, owner=claim_owner)
-            except ClaimDeferred:
+            except ClaimDeferred as exc:
                 actual = max(0.0, time.monotonic() - started)
+                if str(exc) == "invalid-word-sidecar":
+                    self._record_invalid_words_backoff(item)
                 work_leases.abandon(
                     self.storage,
                     item.source_key,
@@ -1318,6 +1337,7 @@ class ExternalTranscribeWorker:
                 "model": None,
                 "compute_type": None,
                 "timeout_backoff_until": None,
+                "invalid_words_backoff_until": None,
                 "audio_identity": None,
                 "transcript_media_error": None,
                 "transcript_media_error_audio_identity": None,
@@ -1331,6 +1351,7 @@ class ExternalTranscribeWorker:
             # ``_admit_claim`` can gate on it without a second ``_episode_for``/``load_records``
             # round trip for the same item.
             "timeout_backoff_until": transcript_timeout_backoff_until(ep),
+            "invalid_words_backoff_until": transcript_invalid_words_backoff_until(ep),
             "audio_identity": getattr(ep, "audio_key", None)
             or getattr(ep, "hosted_audio_url", None),
             "transcript_media_error": getattr(ep, "transcript_media_error", None),
@@ -1559,7 +1580,9 @@ class ExternalTranscribeWorker:
             vtt_key = _provider_align_object_key(item.source_key, uid, align_spec)
             words_key = _provider_align_words_object_key(item.source_key, uid, align_spec)
 
-            if self.storage.exists(vtt_key) and self.storage.exists(words_key):
+            if self.storage.exists(vtt_key) and _valid_storage_word_sidecar(
+                self.storage, words_key
+            ):
                 adopted = True
             else:
                 adopted = False
@@ -1577,6 +1600,8 @@ class ExternalTranscribeWorker:
                         tracker,
                         timed_segments=timed_segments,
                     )
+                    if not has_valid_timed_words(artifacts.words):
+                        raise AlignmentQualityError("alignment produced no valid timed words")
                 except AlignmentQualityError as exc:
                     if persist_results:
                         _mark_provider_align_ineligible(
@@ -1656,11 +1681,11 @@ class ExternalTranscribeWorker:
             return False
         words = _provider_vtt_words_json(content, basis="served")
         spec = str(provider.get("spec_hash") or "")
-        if words is None or not spec:
+        if words is None or not has_valid_timed_words(words) or not spec:
             return False
         uid = ep.uid or ep.guid
         words_key = _provider_native_words_object_key(item.source_key, uid, spec)
-        existed = self.storage.exists(words_key)
+        existed = _valid_storage_word_sidecar(self.storage, words_key)
         if not existed:
             words_path = work_dir / "provider-native.words.json"
             words_path.write_bytes(words)
@@ -1802,7 +1827,11 @@ class ExternalTranscribeWorker:
         asr_key = _asr_object_key(item.source_key, uid, recipe)
         words_key = _asr_words_object_key(item.source_key, uid, recipe)
         comparison = item.work_class == "transcript-asr-comparison"
-        adopted = allow_adopt and self.storage.exists(asr_key) and self.storage.exists(words_key)
+        adopted = (
+            allow_adopt
+            and self.storage.exists(asr_key)
+            and _valid_storage_word_sidecar(self.storage, words_key)
+        )
         if adopted:
             print(
                 f"[external-worker] adopted {item.source_key}/{item.episode_uid} "
@@ -1828,6 +1857,8 @@ class ExternalTranscribeWorker:
                     tracker,
                     model_num_workers=model_num_workers,
                 )
+                if not has_valid_timed_words(artifacts.words):
+                    raise ClaimDeferred("invalid-word-sidecar")
                 if not persist_results:
                     return False
                 vtt_path = Path(td) / "transcript.vtt"
@@ -2162,6 +2193,21 @@ class InternalTranscribeWorker(ExternalTranscribeWorker):
             print(
                 f"[github-actions-worker] warning: failed to push timeout backoff for "
                 f"{item.source_key}/{item.episode_uid}: {exc}",
+                flush=True,
+            )
+
+    def _record_invalid_words_backoff(self, item: WorkItem) -> None:
+        """Persist a cooldown after fresh ASR returns no usable timed words."""
+        city, ep, records = self._episode_for(item)
+        del city
+        ep.transcript_invalid_words_attempts += 1
+        ep.transcript_invalid_words_last_attempt = datetime.now(UTC).isoformat()
+        try:
+            self._push_owned_transcript_record(item, ep, records, ref_uid=ep.uid or ep.guid)
+        except Exception as exc:  # noqa: BLE001 - preserve the retryable deferred outcome
+            print(
+                f"[{self.config.backend}-worker] warning: failed to push invalid-word-sidecar "
+                f"backoff for {item.source_key}/{item.episode_uid}: {exc}",
                 flush=True,
             )
 

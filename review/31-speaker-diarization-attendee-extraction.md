@@ -29,6 +29,17 @@ issues not yet cut**
 > **Pilot selection:** `denton-tx` / `City Council` is the first explicitly allowlisted shadow pilot;
 > all other city/body pairs remain excluded even while R7 processing is enabled.
 
+> **Pilot-input and artifact-integrity hardening, 2026-08-29 (GH#1274).** Provider body labels are
+> retained raw for registry identity, but an allowlist row may explicitly declare `body_prefixes` when
+> a provider appends meeting type/date text to the configured body. The Denton row uses those selectors
+> for its `City Council` family. Any transcript word sidecar consumed by alignment, ASR adoption, or
+> native diarization must parse to at least one finite, positive-length timed word; an empty or malformed
+> sidecar is not a completion prerequisite and is routed back through alignment or fresh ASR. Fresh
+> external-ASR outputs that still contain no usable timed words use a persisted, reason-specific
+> exponential retry cooldown rather than consuming inference budget every scheduled run. The
+> transcript/native validation fingerprints cause a gradual normal-run audit and reuse valid existing
+> artifacts; they do not invalidate the ASR output recipe or require a destructive bulk backfill.
+
 ---
 
 > **Diarization lane and model preflight, 2026-08-22.** The Denton shadow pilot is now invoked by

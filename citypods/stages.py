@@ -90,7 +90,12 @@ from citypods.asr import asr_initial_prompt
 from citypods.bodies import canonical_body, rank_by_body
 from citypods.compute import DispatchCoordinator, InferenceJob
 from citypods.compute.local import LocalBackend
-from citypods.diarize import DEFAULT_DIARIZE_MODEL, DEFAULT_EMBEDDING_MODEL
+from citypods.diarize import (
+    DEFAULT_DIARIZE_MODEL,
+    DEFAULT_EMBEDDING_MODEL,
+    TIMED_WORDS_VALIDATION_VERSION,
+    has_valid_timed_words,
+)
 from citypods.durations import (
     episode_duration_hours,
     episode_served_duration_seconds,
@@ -674,6 +679,7 @@ def stage_input_fingerprint(
             "audio_spec": ep.audio_spec_hash,
             "timeline": timeline_digest(ep.timeline, ep.sources) if ep.timeline else "",
             "recipe": TRANSCRIPT_PIPELINE_VERSION,
+            "word_validation": TIMED_WORDS_VALIDATION_VERSION,
         }
     elif name == "diarize":
         payload = {
@@ -683,6 +689,8 @@ def stage_input_fingerprint(
         }
     elif name == "native_diarize":
         config = speaker_config or {}
+        from citypods.speakers import PILOT_SCOPE_VERSION
+
         payload = {
             **common,
             "audio": ep.audio_key or ep.hosted_audio_url,
@@ -690,6 +698,8 @@ def stage_input_fingerprint(
             "transcript_words": ep.transcript_words_key,
             "recipe": {
                 "pipeline": DIARIZE_PIPELINE_VERSION,
+                "pilot_scope": PILOT_SCOPE_VERSION,
+                "word_validation": TIMED_WORDS_VALIDATION_VERSION,
                 "model": config.get("model", DEFAULT_DIARIZE_MODEL),
                 "embedding_model": config.get("embedding_model", DEFAULT_EMBEDDING_MODEL),
             },
@@ -829,6 +839,11 @@ def stage_is_dirty(
     if stage.name in {"moment-admission", "moment-judge", "speaker_identity"}:
         return True
     marker = ep.stage_completion.get(stage.name) if isinstance(ep.stage_completion, dict) else None
+    if stage.name == "native_diarize" and isinstance(marker, dict):
+        # A prior R7 run could have marked an unselected or prerequisite-missing episode complete
+        # with no speaker artifact.  Revisit those records after the pilot scope/readiness fix.
+        if marker.get("state") == "complete" and not marker.get("output"):
+            return True
     fingerprint = stage_input_fingerprint(stage, ep, city, speaker_config=speaker_config)
     if not isinstance(marker, dict):
         if not _legacy_stage_complete(stage.name, ep):
@@ -858,6 +873,15 @@ def _mark_stage_complete(
 ) -> None:
     if stat.errors or stat.skipped:
         return
+    if stage.name == "native_diarize":
+        from citypods.speakers import pilot_selected
+
+        episodes = [
+            ep
+            for ep in episodes
+            if pilot_selected(speaker_config or {}, city.slug, ep.body)
+            and stage_output_pointer(stage.name, ep)
+        ]
     state = "complete-empty" if stage.name in _STAGE_EMPTY_OK else "complete"
     for ep in episodes:
         ep.stage_completion[stage.name] = {
@@ -2285,6 +2309,8 @@ def _record_asr_timeout(ep: Episode) -> None:
 def _reset_asr_timeout_backoff(ep: Episode) -> None:
     ep.transcript_timeout_attempts = 0
     ep.transcript_timeout_last_attempt = None
+    ep.transcript_invalid_words_attempts = 0
+    ep.transcript_invalid_words_last_attempt = None
 
 
 def _asr_default_ratio(ctx: StageContext) -> float:
@@ -4893,8 +4919,29 @@ class TranscriptStage:
         def _present(k: str) -> bool:
             return k in hosted_keys if hosted_keys is not None else ctx.storage.exists(k)
 
+        word_sidecar_validity: dict[str, bool] = {}
+
+        def _word_sidecar_present(k: str | None) -> bool:
+            """Require a stored sidecar to contain at least one valid timed word."""
+            if not k:
+                return False
+            present = _present(k)
+            if not present and hosted_keys is not None:
+                # The initial listing intentionally stays cheap, but a migration or inference
+                # earlier in this same pass may have just created the destination key.
+                present = ctx.storage.exists(k)
+            if not present:
+                return False
+            if k not in word_sidecar_validity:
+                word_sidecar_validity[k] = has_valid_timed_words(
+                    _read_storage_bytes(ctx.storage, k) or b""
+                )
+            return word_sidecar_validity[k]
+
         def _store_asr_artifacts(ep: Episode, artifacts, recipe: str) -> None:
             """Write one inference result to this source's existing source-scoped object keys."""
+            if not has_valid_timed_words(artifacts.words):
+                raise ValueError("ASR produced no valid timed words")
             uid = ep.uid or ep.guid
             asr_key = _asr_object_key(src_key, uid, recipe)
             words_key = _asr_words_object_key(src_key, uid, recipe)
@@ -4927,6 +4974,8 @@ class TranscriptStage:
             text_hash: str,
         ) -> None:
             """Store computed timing while retaining provider wording provenance."""
+            if not has_valid_timed_words(artifacts.words):
+                raise ValueError("alignment produced no valid timed words")
             uid = ep.uid or ep.guid
             align_artifact = {
                 **provider_artifact,
@@ -5037,7 +5086,7 @@ class TranscriptStage:
             ):
                 return False
             native_words = _provider_vtt_words_json(content, basis="served")
-            if native_words is None:
+            if native_words is None or not has_valid_timed_words(native_words):
                 # The marker detector is intentionally permissive; require a usable sidecar too
                 # before claiming that a provider-native transcript satisfies word-boundary users.
                 return False
@@ -5077,13 +5126,13 @@ class TranscriptStage:
                 and ep.transcript_synced
                 and _present(key)
                 and selected.get("words_key")
-                and _present(selected["words_key"])
+                and _word_sidecar_present(selected["words_key"])
             ):
                 ep.transcript_hosted_url = ctx.storage.public_url(key)
                 ep.transcript_words_key = selected.get("words_key")
                 ep.transcript_words_url = (
                     ctx.storage.public_url(ep.transcript_words_key)
-                    if ep.transcript_words_key and _present(ep.transcript_words_key)
+                    if ep.transcript_words_key and _word_sidecar_present(ep.transcript_words_key)
                     else None
                 )
                 stats.reused += 1
@@ -5094,7 +5143,7 @@ class TranscriptStage:
             )
             words_url = None
             words = native_words
-            if words is not None and not _present(words_key):
+            if words is not None and not _word_sidecar_present(words_key):
                 with _tmp.TemporaryDirectory() as t:
                     words_dest = Path(t) / "provider.words.json"
                     words_dest.write_bytes(words)
@@ -5159,7 +5208,7 @@ class TranscriptStage:
                 return False
             key = artifact.get("aligned_key")
             words_key = artifact.get("aligned_words_key")
-            if not key or not _present(key) or not words_key or not _present(words_key):
+            if not key or not _present(key) or not _word_sidecar_present(words_key):
                 return False
             ep.transcript_key = key
             ep.transcript_hosted_url = artifact.get("aligned_url") or ctx.storage.public_url(key)
@@ -5392,10 +5441,14 @@ class TranscriptStage:
                         ),
                         recipe_ranks=(route.recipe_ranks if route is not None else None),
                     )
-                    words_present = not ep.transcript_words_key or _present(ep.transcript_words_key)
+                    words_present = not ep.transcript_words_key or _word_sidecar_present(
+                        ep.transcript_words_key
+                    )
                     if accepted_existing_asr and words_present and not force_provider_selection:
                         ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
-                        if ep.transcript_words_key and _present(ep.transcript_words_key):
+                        if ep.transcript_words_key and _word_sidecar_present(
+                            ep.transcript_words_key
+                        ):
                             ep.transcript_words_url = ctx.storage.public_url(
                                 ep.transcript_words_key
                             )
@@ -5404,6 +5457,10 @@ class TranscriptStage:
                         active_synced_reused = True
                         if not provider_url and not force_provider_selection:
                             continue
+                    elif ep.transcript_words_key and not words_present:
+                        redo_stale_asr = True
+                        recheck_asr_key = ep.transcript_key
+                        recheck_asr_words_key = ep.transcript_words_key
                     elif ep.transcript_pipeline_version != ASR_PIPELINE_VERSION:
                         redo_stale_asr = True  # own recipe/version changed; re-transcribe
                     elif ep.transcript_spec_hash:
@@ -5412,7 +5469,9 @@ class TranscriptStage:
                         recheck_asr_words_key = ep.transcript_words_key
                     else:
                         ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
-                        if ep.transcript_words_key and _present(ep.transcript_words_key):
+                        if ep.transcript_words_key and _word_sidecar_present(
+                            ep.transcript_words_key
+                        ):
                             ep.transcript_words_url = ctx.storage.public_url(
                                 ep.transcript_words_key
                             )
@@ -5434,12 +5493,21 @@ class TranscriptStage:
                         # alignment recipe below.
                         redo_stale_asr = True
                         active_is_provider = True
+                    elif ep.transcript_words_key and not _word_sidecar_present(
+                        ep.transcript_words_key
+                    ):
+                        # A provider VTT without a usable sidecar is not complete for the
+                        # downstream word-boundary consumers; route it through alignment or ASR.
+                        redo_stale_asr = True
+                        active_is_provider = True
                     elif force_asr_selection:
                         redo_stale_asr = True
                         active_is_provider = True
                     else:
                         ep.transcript_hosted_url = ctx.storage.public_url(ep.transcript_key)
-                        if ep.transcript_words_key and _present(ep.transcript_words_key):
+                        if ep.transcript_words_key and _word_sidecar_present(
+                            ep.transcript_words_key
+                        ):
                             ep.transcript_words_url = ctx.storage.public_url(
                                 ep.transcript_words_key
                             )
@@ -5834,15 +5902,19 @@ class TranscriptStage:
                 if (
                     ep.transcript_spec_hash == recipe
                     and recheck_asr_key == asr_key
-                    and _present(words_key)
+                    and _word_sidecar_present(words_key)
                 ):
                     _adopt_asr_keys(ep, ctx.storage, asr_key, words_key, recipe)
                     stats.reused += 1
                     continue
-                if provider_url and not align_sections:
+                if (
+                    provider_url
+                    and not align_sections
+                    and recheck_asr_words_key
+                    and _word_sidecar_present(recheck_asr_words_key)
+                ):
                     ep.transcript_hosted_url = ctx.storage.public_url(recheck_asr_key)
-                    if recheck_asr_words_key and _present(recheck_asr_words_key):
-                        ep.transcript_words_url = ctx.storage.public_url(recheck_asr_words_key)
+                    ep.transcript_words_url = ctx.storage.public_url(recheck_asr_words_key)
                     _reset_asr_timeout_backoff(ep)
                     stats.reused += 1
                     continue
@@ -5860,7 +5932,11 @@ class TranscriptStage:
                     if migrate_asr_words_key
                     else "missing"
                 )
-                if vtt_status != "missing" and words_status != "missing":
+                if (
+                    vtt_status != "missing"
+                    and words_status != "missing"
+                    and _word_sidecar_present(words_key)
+                ):
                     _adopt_asr_keys(ep, ctx.storage, asr_key, words_key, recipe)
                     if "copied" in {vtt_status, words_status}:
                         stats.asr_migration_copied += 1
@@ -5883,12 +5959,16 @@ class TranscriptStage:
                     flush=True,
                 )
 
-            if not migration_missing and _present(asr_key) and not force_provider_selection:
+            if (
+                not migration_missing
+                and _present(asr_key)
+                and _word_sidecar_present(words_key)
+                and not force_provider_selection
+            ):
                 ep.transcript_key = asr_key
                 ep.transcript_hosted_url = ctx.storage.public_url(asr_key)
-                if _present(words_key):
-                    ep.transcript_words_key = words_key
-                    ep.transcript_words_url = ctx.storage.public_url(words_key)
+                ep.transcript_words_key = words_key
+                ep.transcript_words_url = ctx.storage.public_url(words_key)
                 ep.transcript_synced = True
                 ep.transcript_basis = "served"
                 ep.transcript_format = "vtt"
@@ -6697,18 +6777,25 @@ class NativeDiarizeStage:
             city_slug=city.slug,
             work_class="transcript-diarize",
         ):
+            uid = ep.uid or ep.guid
             if not pilot_selected(config, city.slug, ep.body):
-                # Don't cache a negative selection: a maintainer may add this body to the pilot
-                # later without bumping the diarization recipe. A lightweight later pass will see
-                # it immediately while selected entries still reuse their content-addressed bytes.
+                # Clear stale no-output markers from the old exact-body matcher. A later pass will
+                # see newly selected bodies immediately, while valid selected artifacts reuse.
+                marker = ep.stage_completion.get(self.name)
+                if isinstance(marker, dict) and not marker.get("output"):
+                    ep.stage_completion.pop(self.name, None)
                 stats.quality("pilot-not-selected")
                 continue
             if ep.speakers_source == "provider" and ep.speakers_synced:
                 stats.reused += 1
                 continue
             if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
+                stats.defer("missing-timed-words", sample=uid)
                 continue
-            uid = ep.uid or ep.guid
+            words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+            if words_raw is None or not has_valid_timed_words(words_raw):
+                stats.defer("invalid-timed-words", sample=uid)
+                continue
             spec = _diarize_spec_hash(ep, model, embedding_model)
             key = _diarize_object_key(src_key, uid, spec)
             if ep.speakers_key == key and ep.speakers_synced and ctx.storage.exists(key):
@@ -6733,10 +6820,6 @@ class NativeDiarizeStage:
             # Do not let a prior transient error look like this attempt's outcome.
             ep.speakers_error = None
             try:
-                words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
-                if words_raw is None:
-                    stats.defer("missing-timed-words", sample=uid)
-                    continue
                 from citypods.diarize import attach_transcript_words
 
                 words = json.loads(words_raw.decode())

@@ -717,6 +717,20 @@ def test_admit_claim_declines_item_still_in_timeout_backoff(tmp_path):
     assert "timeout-backoff" in str(reason)
 
 
+def test_admit_claim_declines_item_still_in_invalid_word_backoff(tmp_path):
+    worker = _loop_worker(tmp_path, ["a"])
+    future = datetime(2030, 1, 1, tzinfo=UTC)
+
+    admitted, reason = worker._admit_claim(
+        _queued("a"),
+        metadata={"duration_hours": 1.0, "invalid_words_backoff_until": future},
+        estimated_runtime_seconds=60.0,
+    )
+
+    assert admitted is False
+    assert "invalid-word-sidecar-backoff" in str(reason)
+
+
 def test_admit_claim_allows_item_once_backoff_window_has_lapsed(tmp_path):
     worker = _loop_worker(tmp_path, ["a"])
     past = datetime(2020, 1, 1, tzinfo=UTC)
@@ -1277,13 +1291,15 @@ def _patch_transcribe_item(monkeypatch, worker, *, exists):
         "_model_with_workers",
         lambda city, tracker=None, *, num_workers=1: object(),
     )
+    valid_words = b'{"segments":[{"words":[{"w":"ok","s":0,"e":1}]}]}'
     monkeypatch.setattr(
-        ew, "transcribe", lambda *a, **k: SimpleNamespace(vtt=b"WEBVTT", words=b"[]")
+        ew, "transcribe", lambda *a, **k: SimpleNamespace(vtt=b"WEBVTT", words=valid_words)
     )
     monkeypatch.setattr(ew, "episode_to_record", lambda e: {"uid": e.uid})
     monkeypatch.setattr(ew, "save_records", lambda *a, **k: None)
     worker.storage = SimpleNamespace(
         exists=lambda key: exists,
+        get_file=lambda key, path: path.write_bytes(valid_words) or True,
         put_file=lambda key, path, mime: f"https://cdn/{key}",
     )
 
