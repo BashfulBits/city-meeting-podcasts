@@ -53,6 +53,7 @@ import {
   nextLocalMidnightUTC,
   nextRouteReset,
   paymentRequiredBackoffUntil,
+  rateLimitedBackoffUntil,
   rankRoutes,
   releaseCronLease,
   readyKey,
@@ -362,9 +363,10 @@ test("a request for a model_routing source model is also made eligible for its o
   assert.equal(stored.model, "mistral/mistral-medium-2508");
   assert.deepEqual(stored.policy.allowed_models, [
     "mistral/mistral-medium-2508",
-    "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
+    "deepseek/deepseek-v4-pro",
   ]);
 
   const withExplicitAllowlist = await handleRequest(
@@ -380,9 +382,10 @@ test("a request for a model_routing source model is also made eligible for its o
   ).json();
   assert.deepEqual(explicitStored.policy.allowed_models, [
     "mistral/mistral-medium-2508",
-    "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
+    "deepseek/deepseek-v4-pro",
   ]);
 
   // A model with no configured overflow (the fixture default) is unaffected.
@@ -409,9 +412,10 @@ test("a request for a model_routing source model is also made eligible for its o
   assert.deepEqual(unrelatedStored.policy.allowed_models, [
     "mistral/mistral-large-2512",
     "mistral/mistral-medium-2508",
-    "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
+    "deepseek/deepseek-v4-pro",
   ]);
 
   const withPeerAlternate = await handleRequest(
@@ -430,9 +434,10 @@ test("a request for a model_routing source model is also made eligible for its o
   assert.deepEqual(peerStored.policy.allowed_models, [
     "mistral/mistral-medium-2508",
     "meta-llama/llama-3.3-70b-instruct",
-    "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
+    "deepseek/deepseek-v4-pro",
   ]);
 });
 
@@ -597,13 +602,13 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
   assert.equal(batchResult.status, "completed");
   assert.equal(batchResult.count, 1);
   assert.equal(batchResult.results[0].status, "completed");
-  // Mistral Medium's model_routing overflow (config/provider_limits.yml) lists DeepSeek V4 Pro via
-  // NVIDIA build first, then Nemotron 3 Super, then Gemini 3.5 Flash Lite. The DeepSeek leg was
-  // briefly commented out on 2026-08-29 -- its 404s were blamed on NVIDIA gating the model, when
-  // the cause was Cloudflare AI Gateway dropping the `/v1` from the custom-provider Base URL -- and
-  // Nemotron 3 Super won here in the meantime. With the leg restored, first preference wins again.
-  assert.equal(batchResult.results[0].routeId, "nvidia_deepseek_v4_pro_0813_free");
-  assert.ok(dispatchedPayload.model.includes("deepseek-v4-pro"));
+  // Mistral Medium's model_routing overflow (config/provider_limits.yml) now lists DeepSeek V4
+  // *Flash* first: it is the only overflow candidate ever scored on this task (review/40's
+  // frozen-gold run, F1 .734 vs Mistral Medium's .643). Pro -- never scored on it, and measured
+  // at ~42s median with multi-hour 429 lockouts -- was demoted to last. Both Flash legs are free,
+  // and rankRoutes' alphabetical tiebreak reaches NVIDIA's before OpenCode's.
+  assert.equal(batchResult.results[0].routeId, "nvidia_deepseek_v4_flash_0731_free");
+  assert.ok(/deepseek-v4-flash/i.test(dispatchedPayload.model));
 
   // The finished request is saved as completed and ready marker removed:
   const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
@@ -3738,4 +3743,18 @@ test("structured-output schema stripping works against the real compiled catalog
   assert.equal(result.status, "completed");
   const sentSchemaText = JSON.stringify(calls[0].response_format.json_schema.schema);
   assert.equal(sentSchemaText.includes("minLength"), false);
+});
+
+test("the 429 route cooldown escalates to the four-hour ceiling and stops there", () => {
+  // Pins the ladder so the ceiling is not lowered back toward the original 30 minutes without a
+  // deliberate decision. NVIDIA's forum reports each request made while blocked extends the
+  // lockout, so a short ceiling means more probes and (if that holds) a lockout that never ends.
+  const now = 1_700_000_000_000;
+  const minutes = (streak) => (rateLimitedBackoffUntil(streak, now) - now) / 60_000;
+  assert.equal(minutes(1), 1);
+  assert.equal(minutes(5), 16);
+  assert.equal(minutes(9), 240, "streak 9 reaches the four-hour ceiling");
+  assert.equal(minutes(20), 240, "and never exceeds it");
+  // Retry-After still wins outright when the provider supplies one.
+  assert.equal((rateLimitedBackoffUntil(9, now, 90) - now) / 1000, 90);
 });

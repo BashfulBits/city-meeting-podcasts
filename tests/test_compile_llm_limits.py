@@ -197,15 +197,20 @@ def test_full_day_pricing_surcharge_is_rejected():
 
 def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
     compiled = compile_llm_limits.compile_limits()
+    # DeepSeek V4 *Flash* leads: it is the only overflow candidate ever scored on this task
+    # (review/40's frozen-gold run, F1 .734 against Mistral Medium's .643). Pro -- never scored,
+    # and measured at ~42s median with multi-hour 429 lockouts -- moved to last.
     assert compiled["model_routing"]["mistral/mistral-medium-2508"] == [
-        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4-flash",
         "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
         "gemini/gemini-3.5-flash-lite",
+        "deepseek/deepseek-v4-pro",
     ]
     assert compiled["model_routing"]["mistral/mistral-medium-2505"] == [
-        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4-flash",
         "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
         "gemini/gemini-3.5-flash-lite",
+        "deepseek/deepseek-v4-pro",
     ]
     worker = compile_llm_limits._worker_catalog(compiled)
     python_catalog = compile_llm_limits._python_routes(compiled)

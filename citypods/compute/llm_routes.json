@@ -19,14 +19,16 @@
   },
   "model_routing": {
     "mistral/mistral-medium-2508": [
-      "deepseek/deepseek-v4-pro",
+      "deepseek/deepseek-v4-flash",
       "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-      "gemini/gemini-3.5-flash-lite"
+      "gemini/gemini-3.5-flash-lite",
+      "deepseek/deepseek-v4-pro"
     ],
     "mistral/mistral-medium-2505": [
-      "deepseek/deepseek-v4-pro",
+      "deepseek/deepseek-v4-flash",
       "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-      "gemini/gemini-3.5-flash-lite"
+      "gemini/gemini-3.5-flash-lite",
+      "deepseek/deepseek-v4-pro"
     ]
   },
   "routes": [

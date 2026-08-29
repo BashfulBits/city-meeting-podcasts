@@ -1395,7 +1395,7 @@ function parseRetryAfterSeconds(raw, nowMs) {
 }
 
 const RATE_LIMIT_BACKOFF_BASE_MS = 60_000;
-const RATE_LIMIT_BACKOFF_CAP_MS = 30 * 60_000;
+const RATE_LIMIT_BACKOFF_CAP_MS = 4 * 60 * 60_000;
 
 /**
  * Escalating cooldown for a route whose most recent attempt came back HTTP 429.
@@ -1408,8 +1408,20 @@ const RATE_LIMIT_BACKOFF_CAP_MS = 30 * 60_000;
  * turns that into about one probe per cooldown.
  *
  * `Retry-After` wins when the provider sends one, since it is authoritative. NVIDIA sends none, so
- * the fallback doubles from a minute and caps at half an hour, converging on a ~26-minute lockout
- * in about six occurrences instead of fifty.
+ * the fallback doubles from a minute, reaching four hours at streak 9.
+ *
+ * The cap is four hours, not the half-hour first shipped, because probing may be what sustains the
+ * lockout. NVIDIA's developer forum reports that "with each new request made while still blocked,
+ * your lockout duration increases (Exponential Backoff)" -- so a 30-minute ceiling means ~48 probes
+ * a day, each potentially re-extending it. That matched what we saw: `deepseek-v4-pro` sat pinned
+ * at the 30-minute cap (throttle_streak 12) and still 429'd 5.5 hours after the lockout began.
+ * Raising the ceiling is also the cheap experiment for that theory -- if lockouts shorten once we
+ * probe roughly hourly instead of half-hourly, probing was the cause. The claim is a community
+ * reply rather than NVIDIA documentation, so treat it as the best available explanation, not fact.
+ *
+ * The cost of guessing high is bounded: a route that recovers early is idle until the next probe,
+ * and any success clears the streak immediately. The cost of guessing low, if the theory holds, is
+ * a lockout that never ends.
  *
  * `streak` is the count AFTER this occurrence, reset to 0 by a later success on that route, so it
  * only grows across consecutive 429s with no success between them. Returns epoch ms; callers store
@@ -3534,6 +3546,7 @@ export {
   ledgerEntry,
   normalizeChatRequest,
   paymentRequiredBackoffUntil,
+  rateLimitedBackoffUntil,
   rankRoutes,
   releaseCoordinator,
   releaseCronLease,
