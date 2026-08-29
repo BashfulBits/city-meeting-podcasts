@@ -45,6 +45,18 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Requeued 971 dispatch jobs stranded by the AI Gateway routing bug, and gave the recovery script
+  an `--error-status` filter.** The gateway 404s left `mistral/mistral-medium-2508` jobs terminally
+  `failed` — 404 is in neither dispatch Worker's `retryableStatus` set and gets no `blocked_until`,
+  so each one hard-failed on its first attempt with no failover and was never revisited. They sat
+  alongside 1,264 records of the *same logical model* failed with 402 payment-required, which
+  `requeue_failed_llm_dispatch.py` could not tell apart: it selected on model prefix alone, so
+  recovering the routing failures would have re-submitted the payment failures too — re-failing all
+  of them and, since the 2026-08-25 402 backoff, driving an escalating route-wide `blocked_until`
+  that keeps other jobs off Mistral as well. The new filter selects on the terminal error's upstream
+  status; a dry run and an independent classification pass agreed on 971 exactly, and the apply
+  moved `failed` 2,243 → 1,272 with zero conflicts.
+
 - **`workers/llm-provider-shim`: a thin shim for providers AI Gateway cannot address.** The gateway
   rewrites the *last path segment* of a Custom Provider's Base URL to a hardcoded `v1` (undocumented;
   established by registering a throwaway custom provider against an echo service). Kilo's
