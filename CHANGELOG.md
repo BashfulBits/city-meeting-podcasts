@@ -56,10 +56,14 @@ Phase R (Research-Tool Surface)._
   (confirmed against NVIDIA's own OpenAI-SDK sample), yet both still 404. This matches NVIDIA
   Developer Forum reports from multiple unrelated developers of the identical symptom on these
   exact models (`GET /v1/models` lists them, the playground works, `POST /v1/chat/completions`
-  404s "Function not found for account" before reaching a serving container) -- consistent with an
-  account-level access-gating requirement, though the precise cause is unconfirmed. Since 404 gets
-  no automatic block/retry treatment in either dispatch Worker the way a real 429 does, both routes
-  are commented out (not just documented) rather than left live to hard-fail every attempt.
+  404s "Function not found for account" before reaching a serving container) -- most likely
+  explanation: NVIDIA gates some models behind a "Public API Endpoints" entitlement that must be
+  explicitly requested/granted per API key (see NVIDIA Developer Forum threads "Request Public API
+  Endpoints access for my API key" and "Request for access to DeepSeek V4 Pro NIM public API
+  endpoint"), which this account's key likely hasn't been granted for these two models yet. Since
+  404 gets no automatic block/retry treatment in either dispatch Worker the way a real 429 does,
+  both routes are commented out (not just documented) rather than left live to hard-fail every
+  attempt.
   `deepseek/deepseek-v4-flash` still has three working legs (SiliconFlow, DeepSeek Direct,
   OpenCode); `deepseek/deepseek-v4-pro`'s only route while this is disabled is DeepSeek Direct's
   paid leg, so Mistral Medium's `model_routing` overflow onto it is not free right now.
