@@ -1076,6 +1076,20 @@ routes:
   # is left at the config default (`standard_json_schema`, via `instructor`) rather than guessing
   # this gateway's native JSON-mode behavior, which is unverified.
   #
+  # Each route ALSO declares its own `rpm: 12`, matching the provider-wide cap, even though
+  # Python's LLMBudget already enforces that cap correctly at the shared-provider level
+  # (`provider_rpm`/`ProviderLedger`) regardless of any route-level value. This is a defense-in-
+  # depth stopgap for `workers/llm-dispatch-v2`: unlike v1 (`llm-dispatch-proxy`, which ports
+  # `providerRpm`/`providerAvailable`/`reserveProviderCapacity`), v2's pacing engine
+  # (`workers/llm-dispatch-v2/src/pacing.js`) has no cross-route, provider-level concept at all --
+  # `earliestSafeStart`/`routeHasCapacityFor` only see one route's own rpm/rpd/tpm. Without a
+  # route-level rpm, v2 would treat these routes as unbounded, and v1/v2 are actively coexisting
+  # right now (`split_cap_multiplier: 0.50` above), not a future migration. This does not restore
+  # true shared pooling in v2 -- in the worst case (many different NVIDIA models dispatched
+  # concurrently) v2's aggregate could still exceed 12 RPM in total -- but it bounds each
+  # individual route rather than leaving it uncapped. A real fix ports provider-level pacing into
+  # v2's pacing.js/coordinator.js; that is a larger follow-up, not done here.
+  #
   # Several of these pool with an existing route elsewhere in this file via `model_key`/`model` --
   # NVIDIA becomes an additional, independent free capacity source for that same logical model
   # rather than a new one, exactly like the existing SambaNova+SiliconFlow / OpenRouter+Kilo+
@@ -1090,6 +1104,7 @@ routes:
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0
@@ -1105,6 +1120,7 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0
@@ -1120,6 +1136,7 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0
@@ -1134,6 +1151,7 @@ routes:
     input_context_limit: 262144
     output_context_limit: 32768
     account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0
@@ -1148,6 +1166,7 @@ routes:
     input_context_limit: 131072
     output_context_limit: 65536
     account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0
@@ -1165,6 +1184,7 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 65536
     account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0
@@ -1182,6 +1202,7 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0
@@ -1198,6 +1219,7 @@ routes:
     input_context_limit: 256000
     output_context_limit: 32768
     account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0
@@ -1214,6 +1236,7 @@ routes:
     input_context_limit: 32768
     output_context_limit: 8192
     account_id: primary
+    rpm: 12
     tpm: 100000
     free: true
     input_per_token: 0.0
