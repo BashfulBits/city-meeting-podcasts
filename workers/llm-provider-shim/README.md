@@ -63,6 +63,10 @@ This Worker forwards third-party API keys, so it must never become an open relay
 - Only `authorization`, `content-type` and `accept` are forwarded upstream; Cloudflare-injected
   headers and cookies are dropped.
 - Paths containing `..` or `%` are rejected before any fetch.
+- Upstream redirects are **refused**, not followed (`redirect: "manual"`, then 502). Workers'
+  `fetch` defaults to `follow` and — unlike a browser — replays every header, `Authorization`
+  included, to the redirect target even cross-origin, so following one would hand the provider's
+  API key to whatever host the `Location` named. Same guard as `workers/granicus-media-proxy`.
 
 ## Tests
 

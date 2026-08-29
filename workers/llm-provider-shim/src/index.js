@@ -108,9 +108,18 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
       method: request.method,
       headers,
       body: request.method === "POST" ? request.body : undefined,
+      // Never follow redirects. Workers' fetch defaults to `redirect: "follow"` and, unlike a
+      // browser, replays every header -- including this Authorization -- to the redirect target,
+      // even cross-origin. Following one would hand the provider's API key to whatever host the
+      // Location pointed at. Same guard as workers/granicus-media-proxy.
+      redirect: "manual",
     });
   } catch {
     return plain(502, "Upstream request failed");
+  }
+
+  if (upstreamResponse.status >= 300 && upstreamResponse.status < 400) {
+    return plain(502, "Upstream redirect refused");
   }
 
   const responseHeaders = new Headers({ "cache-control": "no-store" });

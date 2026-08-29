@@ -145,3 +145,30 @@ test("passes the upstream status through unchanged", async () => {
 
   assert.equal(response.status, 429);
 });
+
+test("refuses an upstream redirect instead of replaying the provider key to its target", async () => {
+  // Workers' fetch defaults to redirect: "follow" and forwards Authorization across origins, so a
+  // 3xx from a provider would hand its API key to whatever host Location named.
+  const redirect = new Response(null, {
+    status: 302,
+    headers: { location: "https://attacker.example/collect" },
+  });
+  const fetchImpl = recordingFetch(redirect);
+  const response = await handleRequest(request(), ENV, fetchImpl.impl);
+
+  assert.equal(response.status, 502);
+  assert.equal(fetchImpl.calls.length, 1, "must not have followed the redirect");
+  assert.equal(
+    fetchImpl.calls[0].init.redirect,
+    "manual",
+    "redirect must be manual so the runtime never replays credentials on its own",
+  );
+  assert.equal(response.headers.get("location"), null, "must not relay the redirect target");
+});
+
+test("passes a non-redirect 3xx-adjacent status through untouched", async () => {
+  const fetchImpl = recordingFetch(new Response("{}", { status: 200 }));
+  const response = await handleRequest(request(), ENV, fetchImpl.impl);
+
+  assert.equal(response.status, 200);
+});

@@ -45,4 +45,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/llm-provider-shim
-          wranglerVersion: "4"
+          # Exact pin per review/22 (Node/Cloudflare Worker class: "exact / lockfile"). "4" would
+          # resolve ^4.0.0, so a later deploy could use a different Wrangler than the one this
+          # Worker was verified with. 4.123.0 is what deployed and validated it on 2026-08-29.
+          wranglerVersion: "4.123.0"
