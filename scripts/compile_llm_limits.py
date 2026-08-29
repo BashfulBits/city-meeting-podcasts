@@ -137,13 +137,23 @@ def _validate_split_cap(raw_multiplier: Any) -> float:
 
 
 def _scale_rate_limit(value: Any, multiplier: float) -> Any:
-    """Scale a numeric rate limit by multiplier, preserving None and 0."""
+    """Scale a numeric rate limit by multiplier, preserving None and 0.
+
+    Rates below one-per-window are preserved as floats rather than floored. Clamping them to 1
+    would *raise* the rate -- ``0.25`` became ``1``, four times what the config asked for -- which
+    inverts the whole point of scaling a limit down. A route slower than one request per minute is
+    a legitimate configuration: NVIDIA's free NIM endpoints lock out for ~26 minutes once roughly
+    30 successful requests land inside an hour, so staying under it means pacing below 1 rpm.
+    """
     if value is None or multiplier == 1.0:
         return value
     if isinstance(value, (int, float)):
         if value == 0:
             return 0
-        return max(1, int(math.floor(value * multiplier)))
+        scaled = value * multiplier
+        if scaled >= 1:
+            return int(math.floor(scaled))
+        return scaled
     return value
 
 

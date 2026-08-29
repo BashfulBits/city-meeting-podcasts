@@ -45,6 +45,26 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Route rates below one request per minute are now expressible, and NVIDIA is paced to its actual
+  per-model quota.** Three separate places clamped a fractional rate *up* to 1 — `_scale_rate_limit`
+  (`0.25 x 0.5` became `1`, four times the configured rate), `routeAvailable`'s per-minute bucket,
+  and the v1 test harness's split-cap un-scaling. The middle one was the dangerous one: a route
+  paced below 1 rpm was refused its first request on a fresh ledger (`0 + 1 > 0.25`), and because
+  that refusal is what prevents `requests_available_at` from ever being written, the route would
+  never admit anything again — silently dead rather than slow. Recompiling the existing catalog
+  changed **zero** routes, so the change only enables new sub-1 configurations.
+  **NVIDIA's quota is per model, not per account** — verified on one key by interleaved calls:
+  `deepseek-v4-pro` returned 429 nine times out of nine while `nemotron-3-super` returned 200 three
+  times, twice inside the same minute. Each route is therefore paced at `0.5 rpm` (30/hr per model,
+  against observed lockout onsets at 28 and 37 successes/hr), with the provider-wide cap raised to
+  6 so it stays a safety net rather than making nine models share one model's budget. This costs no
+  throughput — the quota caps us either way — it spends the budget evenly instead of burning it in
+  half an hour and then sitting locked out for 22+ minutes.
+- **A 402/429 route block could stay stuck forever when two dispatches landed in the same
+  millisecond.** The stale-guard compared `requestStartMs > blockedAtMs`, so a success starting in
+  the same millisecond as the rejection was treated as predating it and never cleared the block.
+  Now `>=`: a call starting in that millisecond did not begin *before* the rejection.
+
 - **A 429 now stands the whole route down, not just the job that hit it** (`llm-dispatch-proxy`).
   Retrying only the job is not enough against a provider that enforces a quota *window*: it answers
   every request with 429 until the window rolls, so each remaining queued job was still admitted at
