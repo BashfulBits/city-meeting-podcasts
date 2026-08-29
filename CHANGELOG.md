@@ -28,6 +28,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch V2 mixed-result recovery (GH#1318).** Enqueue and poll batches now preserve
+  accepted, replayed, pending, completed, rejected, and failed per-job outcomes instead of
+  converting one item into a whole-batch failure. Unknown outcomes use one bounded recovery round:
+  sets larger than five are retried as a batch, while smaller sets use isolated requests. The
+  deferred sweep applies the same threshold, preventing one bad result from turning a 1,000-job
+  poll into 1,000 singleton polls. Payload-free structured counters expose batch, retry, singleton,
+  and schema-correction request counts. No artifact schema, recipe, pipeline version, or backfill
+  behavior changes.
+
 - **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
   deferred sweep now registers the `moment-extraction` response contract. It also stages one
   corrected v2 payload and submits it through a durable schema-retry endpoint that clones the

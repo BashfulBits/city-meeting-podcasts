@@ -19,6 +19,7 @@ GitHub Actions' own hard kill can discard logs or interrupt cleanup.
 from __future__ import annotations
 
 import argparse
+import json
 import signal
 import sys
 from dataclasses import replace
@@ -241,14 +242,13 @@ def main(argv: list[str] | None = None) -> int:
             for h in snapshot.pending()
             if h.backend == "llm-dispatch-v2" and h.deferred_request is None
         ]
-        # A successful batch poll observes *every* real v2 handle -- completed results have
-        # already been persisted by poll_batch, and None is an authoritative "still pending"
-        # observation.  Skip all of those handles below: otherwise a daily sweep with N pending
-        # jobs makes one bounded poll plus N singleton polls, defeating the batching that this
-        # script exists to provide.  A batch exception remains the deliberate exception: fall
-        # back to individual reconciliation so malformed/terminal responses retain their precise
-        # per-handle recovery behavior.
+        # A successful batch poll observes every real v2 handle whose value is a JobResult or
+        # None. Skip those handles below: otherwise a daily sweep with N pending jobs makes one
+        # bounded poll plus N singleton polls. Only an item-level exception or an absent key is
+        # retried individually by this loop; the client batches larger recovery sets itself.
         batch_observed_refs: set[str] = set()
+        batch_fallback_count = 0
+        v2_results = {}
         if v2_handles:
             try:
                 v2_results = backend.poll_batch(v2_handles)
@@ -257,16 +257,59 @@ def main(argv: list[str] | None = None) -> int:
                     f"llm-deferred-sweep: batch poll for v2 handles failed: {exc}",
                     file=sys.stderr,
                 )
-            else:
-                for handle in v2_handles:
-                    result = v2_results.get(handle.ref)
-                    batch_observed_refs.add(handle.ref)
-                    seen_pending.add(handle.recipe_hash)
-                    if result is not None:
-                        completed += 1
-                        snapshot.mark_completed(handle.recipe_hash, result)
-                    else:
-                        still_pending += 1
+            unresolved = [
+                handle
+                for handle in v2_handles
+                if handle.ref not in v2_results or isinstance(v2_results[handle.ref], Exception)
+            ]
+            if len(unresolved) > 5:
+                print(
+                    json.dumps(
+                        {
+                            "event": "llm_dispatch_v2_batch",
+                            "operation": "poll-batch-retry",
+                            "batch_size": len(unresolved),
+                            "batch_retry": 1,
+                            "singleton_fallback": 0,
+                            "request_count": 1,
+                        },
+                        sort_keys=True,
+                    ),
+                    file=sys.stderr,
+                )
+                try:
+                    v2_results.update(backend.poll_batch(unresolved))
+                except Exception as exc:  # noqa: BLE001 -- isolate below after two batch attempts
+                    print(
+                        f"llm-deferred-sweep: v2 recovery batch poll failed: {exc}",
+                        file=sys.stderr,
+                    )
+            for handle in v2_handles:
+                if handle.ref not in v2_results or isinstance(v2_results[handle.ref], Exception):
+                    batch_fallback_count += 1
+                    continue
+                result = v2_results[handle.ref]
+                batch_observed_refs.add(handle.ref)
+                seen_pending.add(handle.recipe_hash)
+                if result is not None:
+                    completed += 1
+                    snapshot.mark_completed(handle.recipe_hash, result)
+                else:
+                    still_pending += 1
+        if batch_fallback_count:
+            print(
+                json.dumps(
+                    {
+                        "event": "llm_dispatch_v2_batch",
+                        "operation": "poll-recovery",
+                        "batch_size": len(v2_handles),
+                        "singleton_fallback": batch_fallback_count,
+                        "request_count": batch_fallback_count,
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
