@@ -127,6 +127,9 @@ _PACING_POLL_CAP_SECONDS = 10.0
 _PACING_MIN_SLEEP_SECONDS = 0.2
 # The ingress Worker caps both enqueue and poll payloads at this many jobs.
 _WORKER_BATCH_LIMIT = 1000
+# Small recovery sets are cheaper and easier to diagnose one at a time. Larger sets stay batched
+# so a partial/uncertain response cannot turn into one Worker invocation per unresolved item.
+BATCH_RETRY_ISOLATION_THRESHOLD = 5
 
 # Completed-result resolution is pure B2 I/O wait (one result GET plus write_deferred's own
 # round trips per job), so a small pool cuts the deferred sweep's runtime without adding
@@ -214,6 +217,14 @@ class LLMStructuredOutputError(LLMBackendError):
 
 class LLMDispatchTerminalError(LLMBackendError):
     """The dispatch Worker recorded a terminal failure for this one request."""
+
+
+class _LLMBatchItemError(LLMBackendError):
+    """An error attached to one batch item, optionally eligible for one isolated retry."""
+
+    def __init__(self, message: str, *, retryable: bool):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 @dataclass(frozen=True)
@@ -451,6 +462,18 @@ def _priced_actual(
 def _format_rejected(rejected: tuple[tuple[str, str], ...]) -> str:
     """Render a ``SelectionResult.rejected`` list as a short, log-friendly summary."""
     return ", ".join(f"{model}: {reason}" for model, reason in rejected) or "no allowed route"
+
+
+def _emit_v2_dispatch_event(operation: str, *, batch_size: int, **counts: int | str) -> None:
+    """Emit bounded, payload-free v2 dispatch telemetry for workflow/Worker logs."""
+    event: dict[str, int | str] = {
+        "event": "llm_dispatch_v2_batch",
+        "operation": operation,
+        "batch_size": batch_size,
+        "request_count": 1,
+        **counts,
+    }
+    print(json.dumps(event, sort_keys=True), flush=True)
 
 
 def _is_rate_limited(exc: BaseException) -> bool:
@@ -1624,7 +1647,10 @@ class LiteLLMBackend(Backend):
             if handle.deferred_request is not None:
                 return self._reconcile_deferred(handle)
             poll_res = self.poll_batch([handle])
-            return poll_res.get(handle.ref)
+            result = poll_res.get(handle.ref)
+            if isinstance(result, Exception):
+                raise result
+            return result
         if handle.backend != self.name:
             raise ValueError(f"cannot reconcile handle for backend {handle.backend!r}")
         if handle.deferred_request is not None:
@@ -1767,7 +1793,9 @@ class LiteLLMBackend(Backend):
                 pass
         return result
 
-    def enqueue_batch(self, jobs: Sequence[InferenceJob]) -> list[JobResult | JobHandle]:
+    def enqueue_batch(
+        self, jobs: Sequence[InferenceJob]
+    ) -> list[JobResult | JobHandle | Exception]:
         """Submit a batch of InferenceJobs to v2 dispatch with B2 payload staging.
 
         Directly writes B2 payload keys from the client before submitting the batch metadata
@@ -1919,10 +1947,19 @@ class LiteLLMBackend(Backend):
                 timeout=self.config.timeout_seconds,
             )
         except requests.RequestException as exc:
+            _emit_v2_dispatch_event(
+                "enqueue-batch", batch_size=len(prepared_jobs), unknown=len(prepared_jobs)
+            )
             raise LLMBackendError("LLM dispatch v2 enqueue-batch request failed") from exc
 
         if response.status_code == 429:
             self._mark_daily_ingest_exhausted()
+            _emit_v2_dispatch_event(
+                "enqueue-batch",
+                batch_size=len(prepared_jobs),
+                deferred=len(job_meta),
+                http_status=response.status_code,
+            )
             for idx, job, _sname, _lmodel, _jid in job_meta:
                 policy = (
                     job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
@@ -1941,12 +1978,37 @@ class LiteLLMBackend(Backend):
             return [cast("JobResult | JobHandle", r) for r in out]
 
         if response.status_code != 200:
+            _emit_v2_dispatch_event(
+                "enqueue-batch",
+                batch_size=len(prepared_jobs),
+                unknown=len(prepared_jobs),
+                http_status=response.status_code,
+            )
             raise LLMBackendError(
-                f"LLM dispatch v2 enqueue-batch returned HTTP {response.status_code}: "
-                f"{response.text}"
+                f"LLM dispatch v2 enqueue-batch returned HTTP {response.status_code}"
             )
 
-        data = response.json()
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            _emit_v2_dispatch_event(
+                "enqueue-batch", batch_size=len(prepared_jobs), unknown=len(prepared_jobs)
+            )
+            raise LLMBackendError("LLM dispatch v2 enqueue-batch returned malformed JSON") from exc
+        if not isinstance(data, Mapping):
+            _emit_v2_dispatch_event(
+                "enqueue-batch", batch_size=len(prepared_jobs), unknown=len(prepared_jobs)
+            )
+            raise LLMBackendError("LLM dispatch v2 enqueue-batch returned a malformed response")
+
+        accepted_entries = data.get("accepted")
+        rejected_entries = data.get("rejected")
+        if not isinstance(accepted_entries, list) or not isinstance(rejected_entries, list):
+            _emit_v2_dispatch_event(
+                "enqueue-batch", batch_size=len(prepared_jobs), unknown=len(prepared_jobs)
+            )
+            raise LLMBackendError("LLM dispatch v2 enqueue-batch omitted per-job outcomes")
+
         # The coordinator echoes back each entry's `submitted_id` (this client's own job_id)
         # rather than requiring the caller to match on `id` -- on an idempotent replay, `id` is
         # the ORIGINAL row's canonical id, which differs from the fresh job_id a retry always
@@ -1954,19 +2016,52 @@ class LiteLLMBackend(Backend):
         # always present and always equal to what this call sent) makes acceptance detection
         # correct for both a fresh insert and a replay; the canonical `id` becomes this job's
         # JobHandle ref so later poll_batch calls resolve it.
-        accepted_by_submitted_id = {
-            a["submitted_id"]: a["id"]
-            for a in data.get("accepted", [])
-            if isinstance(a, dict) and "submitted_id" in a
-        }
-        rejected_by_id = {
-            r["id"]: r.get("reason") for r in data.get("rejected", []) if isinstance(r, dict)
-        }
+        accepted_by_submitted_id: dict[str, str] = {}
+        rejected_by_id: dict[str, str] = {}
+        try:
+            for accepted in accepted_entries:
+                if (
+                    not isinstance(accepted, Mapping)
+                    or not isinstance(accepted.get("submitted_id"), str)
+                    or not isinstance(accepted.get("id"), str)
+                ):
+                    raise ValueError("malformed accepted entry")
+                submitted_id = accepted["submitted_id"]
+                if submitted_id in accepted_by_submitted_id:
+                    raise ValueError("duplicate accepted entry")
+                accepted_by_submitted_id[submitted_id] = accepted["id"]
+            for rejected in rejected_entries:
+                if (
+                    not isinstance(rejected, Mapping)
+                    or not isinstance(rejected.get("id"), str)
+                    or not isinstance(rejected.get("reason"), str)
+                ):
+                    raise ValueError("malformed rejected entry")
+                rejected_id = rejected["id"]
+                if rejected_id in rejected_by_id:
+                    raise ValueError("duplicate rejected entry")
+                rejected_by_id[rejected_id] = rejected["reason"]
+        except ValueError as exc:
+            _emit_v2_dispatch_event(
+                "enqueue-batch", batch_size=len(prepared_jobs), unknown=len(prepared_jobs)
+            )
+            raise LLMBackendError(
+                "LLM dispatch v2 enqueue-batch returned malformed outcomes"
+            ) from exc
 
+        accepted_count = 0
+        replayed_count = 0
+        deferred_count = 0
+        rejected_count = 0
+        unknown_count = 0
         for idx, job, structured_name, logical_model, job_id in job_meta:
             if job_id in accepted_by_submitted_id:
                 canonical_id = accepted_by_submitted_id[job_id]
-                self._daily_ingest_admitted += 1
+                accepted_count += 1
+                if canonical_id == job_id:
+                    self._daily_ingest_admitted += 1
+                else:
+                    replayed_count += 1
                 handle = JobHandle(
                     task=job.task,
                     recipe_hash=job.recipe_hash,
@@ -1980,6 +2075,7 @@ class LiteLLMBackend(Backend):
             else:
                 reason = rejected_by_id.get(job_id, "unknown")
                 if reason == "daily_cap_exceeded":
+                    deferred_count += 1
                     self._mark_daily_ingest_exhausted()
                     policy = (
                         job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
@@ -1996,13 +2092,32 @@ class LiteLLMBackend(Backend):
                         ),
                     )
                 elif reason == "idempotency_conflict":
-                    raise LLMBackendError(f"LLM dispatch v2 idempotency conflict for job {job_id}")
+                    rejected_count += 1
+                    out[idx] = LLMBackendError(
+                        f"LLM dispatch v2 idempotency conflict for job {job_id}"
+                    )
+                elif reason == "unknown":
+                    unknown_count += 1
+                    out[idx] = _LLMBatchItemError(
+                        f"LLM dispatch v2 enqueue-batch omitted job {job_id}", retryable=True
+                    )
                 else:
-                    raise LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
+                    rejected_count += 1
+                    out[idx] = LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
 
-        return [cast("JobResult | JobHandle", r) for r in out]
+        _emit_v2_dispatch_event(
+            "enqueue-batch",
+            batch_size=len(prepared_jobs),
+            accepted=accepted_count,
+            replayed=replayed_count,
+            deferred=deferred_count,
+            rejected=rejected_count,
+            unknown=unknown_count,
+        )
 
-    def poll_batch(self, handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+        return [cast("JobResult | JobHandle | Exception", r) for r in out]
+
+    def poll_batch(self, handles: Sequence[JobHandle]) -> dict[str, JobResult | None | Exception]:
         """Poll multiple v2 handles in a single request and fetch completed results directly
         from B2."""
         v2_handles = [h for h in handles if h.backend == "llm-dispatch-v2"]
@@ -2014,17 +2129,27 @@ class LiteLLMBackend(Backend):
         # The ingress Worker caps both enqueue and poll payloads. Callers such as
         # the daily deferred sweep deliberately hand us their whole pending registry, so enforce
         # that transport limit here rather than depending on every caller to remember it.
-        results: dict[str, JobResult | None] = {}
+        results: dict[str, JobResult | None | Exception] = {}
         for start in range(0, len(v2_handles), _WORKER_BATCH_LIMIT):
-            results.update(self._poll_batch_chunk(v2_handles[start : start + _WORKER_BATCH_LIMIT]))
+            chunk = v2_handles[start : start + _WORKER_BATCH_LIMIT]
+            try:
+                results.update(self._poll_batch_chunk(chunk))
+            except Exception as exc:  # noqa: BLE001 -- isolate one failed chunk from its siblings
+                error = _LLMBatchItemError(
+                    "LLM dispatch v2 poll-batch chunk was unavailable", retryable=True
+                )
+                error.__cause__ = exc
+                results.update({handle.ref: error for handle in chunk})
         return results
 
-    def _poll_batch_chunk(self, v2_handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+    def _poll_batch_chunk(
+        self, v2_handles: Sequence[JobHandle]
+    ) -> dict[str, JobResult | None | Exception]:
         """Poll one Worker-sized v2 status batch.
 
-        Kept separate from :meth:`poll_batch` so terminal-error behavior remains exactly the
-        existing per-Worker-call contract: a bad terminal item makes its own chunk fall back to
-        individual reconciliation in the deferred sweep, without ever sending an oversized POST.
+        Kept separate from :meth:`poll_batch` so each Worker-sized response can retain its
+        per-handle outcomes. A bad terminal item becomes an exception for that handle; siblings
+        remain authoritative and callers may isolate only the bad or unknown handles.
         """
 
         ids = [h.ref for h in v2_handles]
@@ -2041,27 +2166,50 @@ class LiteLLMBackend(Backend):
                 timeout=self.config.timeout_seconds,
             )
         except requests.RequestException as exc:
+            _emit_v2_dispatch_event(
+                "poll-batch", batch_size=len(v2_handles), unknown=len(v2_handles)
+            )
             raise LLMBackendError("LLM dispatch v2 poll-batch request failed") from exc
 
         if response.status_code != 200:
+            _emit_v2_dispatch_event(
+                "poll-batch",
+                batch_size=len(v2_handles),
+                unknown=len(v2_handles),
+                http_status=response.status_code,
+            )
             raise LLMBackendError(
-                f"LLM dispatch v2 poll-batch returned HTTP {response.status_code}: {response.text}"
+                f"LLM dispatch v2 poll-batch returned HTTP {response.status_code}"
             )
 
-        data = response.json()
-        statuses = {s["id"]: s for s in data.get("statuses", []) if isinstance(s, dict)}
-        results: dict[str, JobResult | None] = {}
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            _emit_v2_dispatch_event(
+                "poll-batch", batch_size=len(v2_handles), unknown=len(v2_handles)
+            )
+            raise LLMBackendError("LLM dispatch v2 poll-batch returned malformed JSON") from exc
+        if not isinstance(data, Mapping) or not isinstance(data.get("statuses"), list):
+            _emit_v2_dispatch_event(
+                "poll-batch", batch_size=len(v2_handles), unknown=len(v2_handles)
+            )
+            raise LLMBackendError("LLM dispatch v2 poll-batch omitted per-handle outcomes")
+        statuses: dict[str, Mapping[str, Any]] = {}
+        try:
+            for status in data["statuses"]:
+                if not isinstance(status, Mapping) or not isinstance(status.get("id"), str):
+                    raise ValueError("malformed status entry")
+                status_id = status["id"]
+                if status_id in statuses:
+                    raise ValueError("duplicate status entry")
+                statuses[status_id] = status
+        except ValueError as exc:
+            _emit_v2_dispatch_event(
+                "poll-batch", batch_size=len(v2_handles), unknown=len(v2_handles)
+            )
+            raise LLMBackendError("LLM dispatch v2 poll-batch returned malformed outcomes") from exc
+        results: dict[str, JobResult | None | Exception] = {}
         storage = self._storage_client()
-        # A terminal condition (provider failure, an unreadable/empty result, or a structured
-        # response that fails validation) must not silently discard every OTHER handle's
-        # already-resolved outcome in this same batch call -- collect the exceptions and raise
-        # once at the end instead of mid-loop. The caller (see scripts/llm_deferred_sweep.py)
-        # treats a raised poll_batch call as "nothing in this batch was resolved," and falls back
-        # to resolving each handle individually via reconcile(), which calls poll_batch again for
-        # just that one handle -- at which point (the len(v2_handles) == 1 branch below) the
-        # original, precise exception (e.g. LLMStructuredOutputError, for the sweep's
-        # schema-correction retry to catch) is re-raised as-is rather than a generic summary.
-        terminal_errors: dict[str, LLMBackendError] = {}
 
         def _resolve_completed(h: JobHandle, result_key: str):
             """Fetch, validate and persist one completed job's result.
@@ -2072,16 +2220,16 @@ class LiteLLMBackend(Backend):
             ``("pending", None)``, ``("error", exc)`` or ``("done", JobResult)`` rather than
             mutating shared state, so the caller merges everything on the main thread.
             """
-            raw = storage.get_bytes(result_key) if storage is not None else None
-            body = raw[0] if raw else None
-            if not body:
-                # Never persist an empty/unreadable result as completed: per
-                # citypods/compute/llm_deferred.py's write_deferred, a completed record is
-                # terminal and never downgraded back to pending, so caching {} here would be
-                # permanent. Treat it as still pending; a later poll (once B2
-                # read-after-write consistency catches up) can resolve it correctly.
-                return "pending", None
             try:
+                raw = storage.get_bytes(result_key) if storage is not None else None
+                body = raw[0] if raw else None
+                if not body:
+                    # Never persist an empty/unreadable result as completed: per
+                    # citypods/compute/llm_deferred.py's write_deferred, a completed record is
+                    # terminal and never downgraded back to pending, so caching {} here would be
+                    # permanent. Treat it as still pending; a later poll (once B2
+                    # read-after-write consistency catches up) can resolve it correctly.
+                    return "pending", None
                 output = json.loads(body.decode("utf-8"))
                 res = self._completed_dispatch_result(
                     task=h.task,
@@ -2090,6 +2238,7 @@ class LiteLLMBackend(Backend):
                     structured_output=h.structured_output,
                     model=h.model,
                 )
+                write_deferred(storage, h.recipe_hash, res)
             except LLMBackendError as exc:
                 return "error", exc
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -2103,7 +2252,10 @@ class LiteLLMBackend(Backend):
                 return "error", LLMBackendError(
                     f"LLM dispatch v2 unreadable result body for job {h.ref}: {exc}"
                 )
-            write_deferred(storage, h.recipe_hash, res)
+            except Exception as exc:  # noqa: BLE001 -- isolate storage failure to this job
+                error = LLMBackendError(f"LLM dispatch v2 result resolution failed for job {h.ref}")
+                error.__cause__ = exc
+                return "error", error
             return "done", res
 
         # Partition first, so the B2-bound work is a single parallel phase. Everything else here
@@ -2112,14 +2264,19 @@ class LiteLLMBackend(Backend):
         for h in v2_handles:
             st = statuses.get(h.ref)
             if not st:
-                results[h.ref] = None
+                # The v2 protocol deliberately omits unknown IDs. It is not safe to treat absence
+                # as an authoritative pending observation because doing so would strand a handle
+                # forever; return a per-handle error so the caller can isolate/reconcile it.
+                results[h.ref] = _LLMBatchItemError(
+                    f"LLM dispatch v2 poll-batch omitted job {h.ref}", retryable=True
+                )
                 continue
             state = st.get("state")
             if state == "completed" and st.get("result_key"):
                 completed.append((h, st["result_key"]))
             elif state == "failed":
-                terminal_errors[h.ref] = LLMDispatchTerminalError(
-                    f"LLM dispatch v2 job {h.ref} failed permanently: {st.get('error')}"
+                results[h.ref] = LLMDispatchTerminalError(
+                    f"LLM dispatch v2 job {h.ref} failed permanently"
                 )
             else:
                 results[h.ref] = None
@@ -2146,7 +2303,7 @@ class LiteLLMBackend(Backend):
                 results[h.ref] = value
                 acked_refs.append(h.ref)
             elif kind == "error":
-                terminal_errors[h.ref] = value
+                results[h.ref] = value
             else:
                 results[h.ref] = None
 
@@ -2156,13 +2313,17 @@ class LiteLLMBackend(Backend):
         # schema-correction path re-reads, so its row must survive.
         self._ack_batch(acked_refs)
 
-        if terminal_errors:
-            if len(v2_handles) == 1:
-                raise next(iter(terminal_errors.values()))
-            raise LLMDispatchTerminalError(
-                "LLM dispatch v2 batch contained failed or invalid job(s), falling back to "
-                f"individual resolution: {', '.join(terminal_errors)}"
-            )
+        _emit_v2_dispatch_event(
+            "poll-batch",
+            batch_size=len(v2_handles),
+            completed=sum(isinstance(value, JobResult) for value in results.values()),
+            pending=sum(value is None for value in results.values()),
+            failed=sum(
+                isinstance(value, Exception) and not isinstance(value, _LLMBatchItemError)
+                for value in results.values()
+            ),
+            unknown=sum(isinstance(value, _LLMBatchItemError) for value in results.values()),
+        )
 
         return results
 
@@ -2402,6 +2563,9 @@ class LiteLLMBackend(Backend):
             ref = response_body.get("id") if isinstance(response_body, Mapping) else None
             if not isinstance(ref, str) or not ref:
                 raise LLMBackendError("LLM schema-correction response omitted a v2 job reference")
+            _emit_v2_dispatch_event(
+                "schema-retry", batch_size=1, schema_retry=1, singleton_fallback=0
+            )
         except requests.RequestException as exc:
             # The request may have reached the Worker before the connection failed. Keep the
             # deterministic payload so a retry can safely reuse it if the clone was accepted.
@@ -2498,11 +2662,13 @@ class BatchingDispatchBackend:
             self._queued[job.recipe_hash] = (job, handle)
             return handle
 
-    def enqueue_batch(self, jobs: Sequence[InferenceJob]) -> list[JobResult | JobHandle]:
+    def enqueue_batch(
+        self, jobs: Sequence[InferenceJob]
+    ) -> list[JobResult | JobHandle | Exception]:
         """Collect a stage's existing ``dispatch_job_batch`` inputs without submitting yet."""
         return [self.run_inference(job) for job in jobs]
 
-    def poll_batch(self, handles: Sequence[JobHandle]) -> dict[str, JobResult | None]:
+    def poll_batch(self, handles: Sequence[JobHandle]) -> dict[str, JobResult | None | Exception]:
         """Keep newly collected handles provisional until the run-level :meth:`flush`.
 
         ``dispatch_job_batch`` calls this after ``enqueue_batch`` as its normal immediate
@@ -2536,6 +2702,161 @@ class BatchDispatchOutcome:
     result: JobResult | JobHandle | Exception
 
 
+def _batch_item_retryable(value: object) -> bool:
+    """Return whether a batch outcome is an unknown item-level result worth recovering."""
+    return isinstance(value, _LLMBatchItemError) and value.retryable
+
+
+def _enqueue_batch_with_retry(
+    backend: LiteLLMBackend, jobs: Sequence[InferenceJob]
+) -> list[JobResult | JobHandle | Exception]:
+    """Submit one chunk and retry only unknown outcomes in one bounded recovery round."""
+    try:
+        initial = list(backend.enqueue_batch(jobs))
+    except Exception as exc:  # noqa: BLE001 -- the whole response is unavailable
+        initial = []
+        retry_positions = list(range(len(jobs)))
+        whole_failure = exc
+    else:
+        whole_failure = None
+        if len(initial) != len(jobs):
+            retry_positions = list(range(len(jobs)))
+            initial = []
+        else:
+            retry_positions = [
+                index for index, value in enumerate(initial) if _batch_item_retryable(value)
+            ]
+
+    if not retry_positions:
+        return cast("list[JobResult | JobHandle | Exception]", initial)
+
+    retry_jobs = [jobs[index] for index in retry_positions]
+    if len(retry_jobs) > BATCH_RETRY_ISOLATION_THRESHOLD:
+        _emit_v2_dispatch_event(
+            "enqueue-batch-retry",
+            batch_size=len(retry_jobs),
+            batch_retry=1,
+            singleton_fallback=0,
+        )
+        try:
+            retry_results = list(backend.enqueue_batch(retry_jobs))
+        except Exception as exc:  # noqa: BLE001 -- no further retry round is allowed
+            retry_results = [
+                LLMBackendError("LLM dispatch v2 enqueue recovery batch failed")
+                for _job in retry_jobs
+            ]
+            if whole_failure is None:
+                whole_failure = exc
+        if len(retry_results) != len(retry_jobs):
+            retry_results = [
+                LLMBackendError("LLM dispatch v2 enqueue recovery omitted per-job outcomes")
+                for _job in retry_jobs
+            ]
+    else:
+        _emit_v2_dispatch_event(
+            "enqueue-singleton-fallback",
+            batch_size=len(retry_jobs),
+            batch_retry=0,
+            singleton_fallback=len(retry_jobs),
+            request_count=len(retry_jobs),
+        )
+        retry_results = []
+        for job in retry_jobs:
+            try:
+                one = list(backend.enqueue_batch([job]))
+                retry_results.append(
+                    one[0]
+                    if len(one) == 1
+                    else LLMBackendError("LLM dispatch v2 singleton enqueue omitted its outcome")
+                )
+            except Exception as exc:  # noqa: BLE001 -- isolate only this job
+                retry_results.append(exc)
+
+    if initial:
+        merged = list(initial)
+    else:
+        fallback_error = (
+            "LLM dispatch v2 enqueue recovery unavailable"
+            if whole_failure is not None
+            else "LLM dispatch v2 enqueue response omitted per-job outcomes"
+        )
+        merged = [LLMBackendError(fallback_error) for _job in jobs]
+    for index, value in zip(retry_positions, retry_results, strict=True):
+        merged[index] = value
+    return merged
+
+
+def _poll_batch_with_retry(
+    backend: LiteLLMBackend, handles: Sequence[JobHandle]
+) -> dict[str, JobResult | None | Exception]:
+    """Poll one chunk and retry only unknown handles in one bounded recovery round."""
+    try:
+        initial = dict(backend.poll_batch(handles))
+    except Exception:  # noqa: BLE001 -- the whole response is unavailable
+        initial = {}
+        retry_handles = [h for h in handles if not h.ref.startswith("batch-pending:")]
+        whole_failure = True
+    else:
+        whole_failure = False
+        retry_handles = [
+            handle
+            for handle in handles
+            if not handle.ref.startswith("batch-pending:")
+            and isinstance(backend, LiteLLMBackend)
+            and (handle.ref not in initial or _batch_item_retryable(initial[handle.ref]))
+        ]
+
+    if not retry_handles:
+        return initial
+
+    if len(retry_handles) > BATCH_RETRY_ISOLATION_THRESHOLD:
+        _emit_v2_dispatch_event(
+            "poll-batch-retry",
+            batch_size=len(retry_handles),
+            batch_retry=1,
+            singleton_fallback=0,
+        )
+        try:
+            retry_results = dict(backend.poll_batch(retry_handles))
+        except Exception:  # noqa: BLE001 -- no further retry round is allowed
+            retry_results = {}
+    else:
+        _emit_v2_dispatch_event(
+            "poll-singleton-fallback",
+            batch_size=len(retry_handles),
+            batch_retry=0,
+            singleton_fallback=len(retry_handles),
+            request_count=len(retry_handles),
+        )
+        retry_results = {}
+        for handle in retry_handles:
+            try:
+                one = dict(backend.poll_batch([handle]))
+            except Exception:  # noqa: BLE001 -- leave this handle pending for a later sweep
+                continue
+            if handle.ref in one:
+                retry_results[handle.ref] = one[handle.ref]
+
+    for handle in retry_handles:
+        if handle.ref in retry_results:
+            outcome = retry_results[handle.ref]
+            if _batch_item_retryable(outcome):
+                # A second unknown response is still not evidence of failure. Leave the handle
+                # absent so dispatch_job_batch preserves it and the deferred sweep can retry it.
+                initial.pop(handle.ref, None)
+            else:
+                initial[handle.ref] = outcome
+        else:
+            # Neither poll returned trustworthy status for this handle. Absence is not a failure:
+            # leave it pending so the caller keeps its durable JobHandle.
+            initial.pop(handle.ref, None)
+    if whole_failure and not retry_results:
+        # Keep the existing pending handle when neither the original nor the recovery poll gave
+        # trustworthy status data. The deferred sweep will make the next bounded attempt.
+        return {}
+    return initial
+
+
 def dispatch_job_batch(
     backend: LiteLLMBackend, jobs: Sequence[InferenceJob]
 ) -> list[JobResult | JobHandle | Exception]:
@@ -2564,7 +2885,9 @@ def dispatch_job_batch(
     Returns one entry per input job, in the same order, each either a `JobResult`, a `JobHandle`
     still pending, or an `Exception` if that specific job's own submission failed (the caller is
     expected to check for this and attribute it to that job, same as it would a `run_inference`
-    raise in the old per-job code).
+    raise in the old per-job code). Known per-job rejection errors are not retried. Unknown
+    outcomes get one recovery round: sets larger than five stay batched, and smaller sets use
+    isolated calls; a failed recovery round never recursively fans out.
     """
     if not jobs:
         return []
@@ -2572,30 +2895,18 @@ def dispatch_job_batch(
     results: list[JobResult | JobHandle | Exception] = []
     for chunk_start in range(0, len(jobs), _WORKER_BATCH_LIMIT):
         chunk = jobs[chunk_start : chunk_start + _WORKER_BATCH_LIMIT]
-        try:
-            results.extend(backend.enqueue_batch(chunk))
-        except Exception:  # noqa: BLE001 -- enqueue_batch raises for the WHOLE call on a single
-            # job's rejection (e.g. idempotency_conflict), which would otherwise cost every other
-            # job in this batch its own already-correct submission. Retry one job at a time so a
-            # single bad job costs only itself, matching the old per-job code's isolation.
-            for job in chunk:
-                try:
-                    results.append(backend.enqueue_batch([job])[0])
-                except Exception as job_exc:  # noqa: BLE001 -- isolate this one job's failure
-                    results.append(job_exc)
+        results.extend(_enqueue_batch_with_retry(backend, chunk))
 
     pending_handles = [r for r in results if isinstance(r, JobHandle)]
     if not pending_handles:
         return results
-    try:
-        polled = backend.poll_batch(pending_handles)
-    except Exception:  # noqa: BLE001 -- a poll_batch failure (e.g. a terminal error surfacing
-        # for one unrelated handle in this same batch) must not discard every other handle's
-        # already-accepted state -- leave pending handles pending; the deferred sweep resolves
-        # them on its own cadence either way.
-        return results
+    polled = _poll_batch_with_retry(backend, pending_handles)
     return [
-        polled[r.ref] if isinstance(r, JobHandle) and polled.get(r.ref) is not None else r
+        (
+            polled[r.ref]
+            if isinstance(r, JobHandle) and r.ref in polled and polled[r.ref] is not None
+            else r
+        )
         for r in results
     ]
 

@@ -893,8 +893,17 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   agenda flush/replay. `LiteLLMBackend.poll_batch()` also partitions every caller's v2 status
   request at the Worker limit, and `llm_deferred_sweep.py` now treats a successful bulk poll's
   pending result as authoritative instead of immediately issuing one singleton poll per handle.
-  A terminal or malformed bulk response still deliberately falls back to individual recovery.
+  A whole-request terminal or malformed response uses the bounded second-attempt policy below;
+  known per-item failures remain attached to their own handles.
   No artifact schema, recipe, pipeline version, or backfill behavior changes.
+- **Implemented (GH#1318): mixed-result recovery and bounded second attempts.** The Python client
+  now returns per-job/per-handle outcomes for mixed enqueue and poll responses, so accepted,
+  replayed, completed, and still-pending siblings remain authoritative when another item fails.
+  Known per-item rejections remain errors without pointless resubmission. Unknown outcomes get one
+  recovery round: more than five are retried in a second batch, while five or fewer are isolated;
+  a second failed batch does not recurse. The deferred sweep uses the same threshold after its
+  initial poll. Payload-free structured events report batch, retry, singleton-fallback, and schema-
+  retry counts. No artifact schema, recipe, pipeline version, or backfill behavior changes.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,

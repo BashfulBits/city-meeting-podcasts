@@ -18,6 +18,7 @@ from citypods.compute.llm import (
     LLMBackendConfig,
     LLMBackendError,
     LLMDispatchTerminalError,
+    LLMStructuredOutputError,
     dispatch_job_batch,
 )
 from citypods.compute.llm_policy import LLMRequestPolicy
@@ -498,10 +499,10 @@ def test_enqueue_batch_mixed_accepted_and_rejected():
         task="tag", inputs={"messages": [{"role": "user", "content": "conflict"}]}, recipe_hash="r2"
     )
 
-    # The accepted job must still resolve even though a sibling in the same batch is rejected
-    # with idempotency_conflict, which fails loudly per review/44's stated contract.
-    with pytest.raises(LLMBackendError, match="idempotency conflict"):
-        backend.enqueue_batch([job1, job2])
+    results = backend.enqueue_batch([job1, job2])
+    assert isinstance(results[0], JobHandle)
+    assert isinstance(results[1], LLMBackendError)
+    assert "idempotency conflict" in str(results[1])
 
 
 def test_enqueue_batch_idempotent_replay_uses_canonical_id_as_ref():
@@ -613,10 +614,60 @@ def test_poll_batch_chunks_more_than_one_thousand_v2_handles():
 
     assert poll_sizes == [1000, 1]
     assert len(results) == len(handles)
-    assert all(result is None for result in results.values())
+    assert all(isinstance(result, LLMBackendError) for result in results.values())
 
 
-def test_poll_batch_failed_job_raises():
+def test_poll_batch_isolates_a_failed_chunk_from_sibling_chunks():
+    """A failed 1,000-handle request does not prevent a later chunk from being observed."""
+    storage = MockStorage()
+    poll_sizes = []
+
+    def _poll(_url, json=None, **_kwargs):
+        ids = json["ids"]
+        poll_sizes.append(len(ids))
+        if len(ids) == 1000:
+            return _mock_response(
+                status_code=503,
+                json_data={"detail": "sensitive upstream response body"},
+            )
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [{"id": ref, "state": "queued", "result_key": None} for ref in ids]
+            },
+        )
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(
+            task="tag",
+            recipe_hash=f"recipe-poll-failure-{index}",
+            backend="llm-dispatch-v2",
+            ref=f"poll-failure-{index}",
+        )
+        for index in range(1001)
+    ]
+
+    results = backend.poll_batch(handles)
+
+    assert poll_sizes == [1000, 1]
+    assert len(results) == len(handles)
+    assert isinstance(results["poll-failure-0"], LLMBackendError)
+    assert results["poll-failure-1000"] is None
+    assert "sensitive upstream response body" not in str(results["poll-failure-0"])
+
+
+def test_poll_batch_returns_terminal_error_for_failed_job():
+    """A coordinator terminal status becomes an item-level terminal error without raising."""
     storage = MockStorage()
     mock_session = MagicMock()
 
@@ -627,7 +678,7 @@ def test_poll_batch_failed_job_raises():
                 {
                     "id": "j1",
                     "state": "failed",
-                    "error": "upstream_timeout",
+                    "error": "sensitive provider response body",
                     "attempts": 3,
                 }
             ]
@@ -642,8 +693,10 @@ def test_poll_batch_failed_job_raises():
 
     h1 = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
 
-    with pytest.raises(LLMDispatchTerminalError, match="failed permanently"):
-        backend.poll_batch([h1])
+    results = backend.poll_batch([h1])
+    assert isinstance(results["j1"], LLMDispatchTerminalError)
+    assert "failed permanently" in str(results["j1"])
+    assert "sensitive provider response body" not in str(results["j1"])
 
 
 def test_poll_batch_missing_result_bytes_stays_pending_not_cached_empty():
@@ -740,13 +793,9 @@ def test_poll_batch_validates_structured_output_and_preserves_sibling_results():
         structured_output="dispatch-v2-test-pong",
     )
 
-    # A malformed structured reply for one handle in the batch must not discard the sibling's
-    # already-resolved, valid outcome -- the exception is raised only after both are processed,
-    # and the caller (scripts/llm_deferred_sweep.py) is expected to fall back to polling each
-    # handle individually, at which point j-good is skipped (already resolved) and j-bad's
-    # precise LLMStructuredOutputError surfaces on its own.
-    with pytest.raises(LLMDispatchTerminalError):
-        backend.poll_batch([h_good, h_bad])
+    results = backend.poll_batch([h_good, h_bad])
+    assert isinstance(results["j-good"], JobResult)
+    assert isinstance(results["j-bad"], LLMStructuredOutputError)
 
 
 def _router(routes: dict):
@@ -790,7 +839,10 @@ def test_dispatch_job_batch_submits_all_jobs_in_one_call_and_reconciles_pending(
         ids = json.get("ids", [])
         # Resolve only the first id; the second stays pending, matching a real still-in-flight
         # handle -- proves per-handle results are mapped back correctly, not just "all resolved".
-        statuses = [{"id": ids[0], "state": "completed", "result_key": f"results/{ids[0]}.json"}]
+        statuses = [
+            {"id": ids[0], "state": "completed", "result_key": f"results/{ids[0]}.json"},
+            *({"id": ref, "state": "queued", "result_key": None} for ref in ids[1:]),
+        ]
         storage.put_cas(
             f"results/{ids[0]}.json",
             _json_module.dumps({"choices": [{"message": {"content": "resolved"}}]}).encode("utf-8"),
@@ -828,6 +880,138 @@ def test_dispatch_job_batch_submits_all_jobs_in_one_call_and_reconciles_pending(
     assert isinstance(results[1], JobHandle)
 
 
+def test_dispatch_job_batch_retries_large_unknown_enqueue_set_as_one_batch():
+    """A partial enqueue response retries six unknown jobs together, not as six singletons."""
+    storage = MockStorage()
+    enqueue_sizes = []
+    poll_sizes = []
+
+    def _enqueue(url, json=None, **_kw):
+        jobs = json["jobs"]
+        enqueue_sizes.append(len(jobs))
+        if len(enqueue_sizes) == 1:
+            return _mock_response(
+                status_code=200,
+                json_data={
+                    "accepted": [{"id": job["id"], "submitted_id": job["id"]} for job in jobs[:2]],
+                    "rejected": [],
+                },
+            )
+        return _accept_all(url, json=json)
+
+    def _poll(_url, json=None, **_kw):
+        poll_sizes.append(len(json["ids"]))
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": ref, "state": "queued", "result_key": None} for ref in json["ids"]
+                ]
+            },
+        )
+
+    session = MagicMock()
+    session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={"messages": [{"role": "user", "content": f"job {index}"}]},
+            recipe_hash=f"retry-enqueue-{index}",
+        )
+        for index in range(8)
+    ]
+
+    results = dispatch_job_batch(backend, jobs)
+
+    assert enqueue_sizes == [8, 6]
+    assert poll_sizes == [8]
+    assert all(isinstance(result, JobHandle) for result in results)
+
+
+def test_dispatch_job_batch_retries_large_unknown_poll_set_as_one_batch():
+    """A partial poll response retries six unknown handles together, not as six singletons."""
+    storage = MockStorage()
+    poll_sizes = []
+
+    def _poll(_url, json=None, **_kw):
+        ids = json["ids"]
+        poll_sizes.append(len(ids))
+        visible = ids if len(ids) == 6 else ids[:2]
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [{"id": ref, "state": "queued", "result_key": None} for ref in visible]
+            },
+        )
+
+    session = MagicMock()
+    session.post.side_effect = _router({":enqueue-batch": _accept_all, ":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={"messages": [{"role": "user", "content": f"job {index}"}]},
+            recipe_hash=f"retry-poll-{index}",
+        )
+        for index in range(8)
+    ]
+
+    results = dispatch_job_batch(backend, jobs)
+
+    assert poll_sizes == [8, 6]
+    assert len(results) == 8
+    assert all(isinstance(result, JobHandle) for result in results)
+
+
+def test_dispatch_job_batch_keeps_handle_when_small_poll_recovery_is_still_unknown():
+    """Repeated omitted statuses leave accepted work pending rather than reporting failure."""
+    storage = MockStorage()
+    poll_sizes = []
+
+    def _poll(_url, json=None, **_kw):
+        poll_sizes.append(len(json["ids"]))
+        return _mock_response(status_code=200, json_data={"statuses": []})
+
+    session = MagicMock()
+    session.post.side_effect = _router({":enqueue-batch": _accept_all, ":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={"messages": [{"role": "user", "content": f"job {index}"}]},
+            recipe_hash=f"retry-poll-unknown-{index}",
+        )
+        for index in range(2)
+    ]
+
+    results = dispatch_job_batch(backend, jobs)
+
+    assert poll_sizes == [2, 1, 1]
+    assert all(isinstance(result, JobHandle) for result in results)
+
+
 def test_batching_dispatch_backend_collects_queue_only_jobs_until_flush():
     """A lane can return pending per-item handles while issuing one v2 batch per run."""
     storage = MockStorage()
@@ -840,7 +1024,15 @@ def test_batching_dispatch_backend_collects_queue_only_jobs_until_flush():
 
     def _poll(url, json=None, **_kw):
         poll_calls.append(json)
-        return _mock_response(status_code=200, json_data={"statuses": []})
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": ref, "state": "queued", "result_key": None}
+                    for ref in json.get("ids", [])
+                ]
+            },
+        )
 
     session = MagicMock()
     session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _poll})
@@ -932,7 +1124,7 @@ def test_batching_dispatch_backend_collects_dispatch_job_batch_calls_until_flush
 
 
 def test_batching_dispatch_backend_pairs_a_rejected_job_with_its_exception():
-    """A bulk rejection falls back per job without losing which queued recipe failed."""
+    """A mixed bulk response preserves the accepted handle and the rejected recipe."""
     storage = MockStorage()
 
     def _enqueue(url, json=None, **_kw):
@@ -941,10 +1133,8 @@ def test_batching_dispatch_backend_pairs_a_rejected_job_with_its_exception():
             return _mock_response(
                 status_code=200,
                 json_data={
-                    "accepted": [],
-                    "rejected": [
-                        {"id": job["id"], "reason": "idempotency_conflict"} for job in jobs
-                    ],
+                    "accepted": [{"id": jobs[0]["id"], "submitted_id": jobs[0]["id"]}],
+                    "rejected": [{"id": jobs[1]["id"], "reason": "idempotency_conflict"}],
                 },
             )
         job = jobs[0]
@@ -1003,10 +1193,8 @@ def test_dispatch_job_batch_returns_empty_list_for_no_jobs():
     mock_session.post.assert_not_called()
 
 
-def test_dispatch_job_batch_isolates_a_single_rejected_job():
-    """enqueue_batch raises for the WHOLE call when one job in the batch is rejected (e.g.
-    idempotency_conflict) -- dispatch_job_batch must retry one job at a time in that case so the
-    other, otherwise-valid jobs in the batch still succeed instead of all being lost."""
+def test_dispatch_job_batch_isolates_a_small_whole_batch_failure():
+    """A small whole-request failure still gets per-job isolation after one recovery attempt."""
     storage = MockStorage()
     call_count = {"enqueue": 0}
 
@@ -1014,18 +1202,22 @@ def test_dispatch_job_batch_isolates_a_single_rejected_job():
         jobs = json.get("jobs", [])
         call_count["enqueue"] += 1
         if len(jobs) > 1:
-            # Simulate the whole-batch rejection enqueue_batch raises on for a single bad job.
-            return _mock_response(
-                status_code=200,
-                json_data={
-                    "accepted": [],
-                    "rejected": [{"id": j["id"], "reason": "idempotency_conflict"} for j in jobs],
-                },
-            )
+            raise requests.RequestException("batch transport failure")
         return _accept_all(url, json=json)
 
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": ref, "state": "queued", "result_key": None}
+                    for ref in json.get("ids", [])
+                ]
+            },
+        )
+
     mock_session = MagicMock()
-    mock_session.post.side_effect = _router({":enqueue-batch": _enqueue})
+    mock_session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _poll})
 
     config = LLMBackendConfig(
         model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
@@ -1043,7 +1235,7 @@ def test_dispatch_job_batch_isolates_a_single_rejected_job():
 
     results = dispatch_job_batch(backend, jobs)
 
-    # The whole-batch call was attempted once (and rejected), then each job was retried alone.
+    # The whole-batch call failed once, then each small recovery set member was retried alone.
     assert call_count["enqueue"] == 1 + len(jobs)
     assert len(results) == 2
     assert all(isinstance(r, JobHandle) for r in results)
@@ -1144,12 +1336,15 @@ def test_poll_batch_acks_only_validated_successes_in_one_batched_call():
         JobHandle(task="tag", recipe_hash="r-pending", backend="llm-dispatch-v2", ref="pending"),
     ]
 
-    with pytest.raises(LLMDispatchTerminalError):
-        backend.poll_batch(handles)
+    results = backend.poll_batch(handles)
 
     assert ack_calls == [["good"]], (
         f"exactly one batched ack containing only the validated success; got {ack_calls}"
     )
+    assert isinstance(results["good"], JobResult)
+    assert isinstance(results["bad"], LLMStructuredOutputError)
+    assert isinstance(results["failed"], LLMDispatchTerminalError)
+    assert results["pending"] is None
 
 
 def test_poll_batch_ack_failure_never_fails_an_otherwise_successful_poll():
@@ -1283,12 +1478,13 @@ def test_poll_batch_one_malformed_result_does_not_lose_a_valid_sibling():
         JobHandle(task="tag", recipe_hash="r-bad", backend="llm-dispatch-v2", ref="bad"),
     ]
 
-    with pytest.raises(LLMDispatchTerminalError) as excinfo:
-        backend.poll_batch(handles)
+    results = backend.poll_batch(handles)
 
-    # The malformed job is reported as the failure...
-    assert "bad" in str(excinfo.value)
-    # ...but the good sibling's result must still have been resolved and persisted, not lost.
+    # The malformed job is reported as its own failure...
+    assert isinstance(results["bad"], LLMBackendError)
+    assert "bad" in str(results["bad"])
+    # ...but the good sibling's result is resolved and persisted, not lost.
+    assert isinstance(results["good"], JobResult)
     from citypods.compute.llm_deferred import look_up_deferred
 
     stored = look_up_deferred(storage, "r-good")

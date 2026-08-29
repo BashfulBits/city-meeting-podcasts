@@ -28,6 +28,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **LLM dispatch V2 mixed-result recovery (GH#1318).** Enqueue and poll batches now preserve
+  accepted, replayed, pending, completed, rejected, and failed per-job outcomes instead of
+  converting one item into a whole-batch failure. Unknown outcomes use one bounded recovery round:
+  sets larger than five are retried as a batch, while smaller sets use isolated requests. The
+  deferred sweep applies the same threshold, preventing one bad result from turning a 1,000-job
+  poll into 1,000 singleton polls. Failed poll chunks remain isolated so later chunks still run;
+  retry diagnostics omit response bodies. Payload-free structured counters expose batch, retry,
+  singleton, and schema-correction request counts. No artifact schema, recipe, pipeline version,
+  or backfill behavior changes.
+
 - **Unexpected-body remediation evidence collection.** The remediation workflow now passes its
   GitHub token to the audit's issue-reconciliation read and runs that collection in dry-run mode;
   this prevents step 7 from failing with an unset `GH_TOKEN` and prevents evidence collection from

@@ -351,6 +351,14 @@ def _write_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
     _write_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash), recipe_hash)
 
 
+def _write_index_strict(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
+    """Write one record's index pointers, propagating failures during an explicit repair."""
+    keys = _index_keys(data, recipe_hash=recipe_hash)
+    body = (json.dumps({"recipe_hash": recipe_hash}) + "\n").encode()
+    for key in keys:
+        _write_json(storage, key, body)
+
+
 def _index_ready(storage) -> bool:
     try:
         return bool(storage.exists(DEFERRED_INDEX_MIGRATION_KEY))
@@ -680,14 +688,12 @@ def repair_deferred_index(
         if not isinstance(data, Mapping):
             continue
         recipe_hash = key[len(DEFERRED_PREFIX) : -len(".json")]
-        _best_effort_delete_index(storage, data, recipe_hash)
-        _write_index(storage, data, recipe_hash)
+        _write_index_strict(storage, data, recipe_hash)
         desired.update(_index_keys(data, recipe_hash=recipe_hash))
         repaired += 1
-    # Compaction is safe after the canonical listing: every valid pointer for the current
-    # registry is in ``desired``. Orphans are only advisory, so deleting them cannot lose work.
     # Do not compact while any canonical record was unavailable: its existing pointer may be the
-    # only route by which the next sweep can rediscover that record.
+    # only route by which the next sweep can rediscover that record. Strict pointer writes happen
+    # before compaction, so a failed write also leaves the old index available for dual-read.
     if not had_unavailable:
         for key, _ in storage.list_objects(DEFERRED_INDEX_PENDING_PREFIX):
             if key not in desired:
