@@ -1422,9 +1422,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
           result.provider_status_code >= 500 &&
           result.provider_status_code <= 599;
         // A 402 requeues rather than failing: the route is blocked below, so the job cannot
-        // re-probe it, and it runs on an overflow route or once the cooldown clears.
+        // re-probe it, and it runs on an overflow route or once the cooldown clears. It shares
+        // the 5xx retry budget so a route that stays 402 across every cooldown cannot requeue a
+        // job forever -- v1 bounds the same case with `attempts < maxAttempts`.
         const isPaymentRequired =
-          result.outcome === "retryable_error" && result.provider_status_code === 402;
+          result.outcome === "retryable_error" &&
+          result.provider_status_code === 402 &&
+          job.transient_retry_count < this._max5xxRetries();
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
         const blockedUntil = isFinal5xx
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
@@ -1460,7 +1464,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
             result.job_id
           );
           this._indexQueuedJobModels(job);
-        } else if (shouldRetry5xx) {
+        } else if (shouldRetry5xx || isPaymentRequired) {
+          // Must go through this branch, not the generic UPDATE below: claiming a job deletes its
+          // job_models index rows, so a requeue that only rewrites `state` leaves the job queued
+          // with no index row and holding a stale lease -- claimDispatchWindow can never select it
+          // again, stranding it silently.
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                              lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,

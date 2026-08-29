@@ -2773,6 +2773,12 @@ async function dispatchBatch(
             entry.blocked_until = new Date(
               paymentRequiredBackoffUntil(entry.payment_required_streak, now.getTime()),
             ).toISOString();
+            // Stamped so a slower sibling that STARTED before this 402 cannot clear the block it
+            // knows nothing about. Without a concurrency cap a batch runs several requests on one
+            // route, and an in-flight success landing afterwards would otherwise reopen an
+            // exhausted route -- now that a 402 requeues its job rather than failing it, that job
+            // would come straight back and burn another attempt.
+            entry.payment_required_at = now.toISOString();
             ledgerMutatedAfterDispatch = true;
           }
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
@@ -2941,9 +2947,21 @@ async function dispatchBatch(
         // A successful call proves the route is healthy again -- clear any 402 backoff state,
         // matching the branch above that sets it.
         const successEntry = ledgerEntry(coordinator, chosenRoute.route_id);
-        if (successEntry.payment_required_streak || successEntry.blocked_until) {
+        const blockedAtMs = successEntry.payment_required_at
+          ? parseTime(successEntry.payment_required_at)
+          : null;
+        // Only a call that began AFTER the most recent 402 proves the route recovered. One that
+        // was already in flight when the 402 landed proves nothing about the account's balance.
+        const provesRecovery = blockedAtMs == null || requestStartMs > blockedAtMs;
+        if (
+          provesRecovery &&
+          (successEntry.payment_required_streak ||
+            successEntry.blocked_until ||
+            successEntry.payment_required_at)
+        ) {
           successEntry.payment_required_streak = 0;
           successEntry.blocked_until = null;
+          successEntry.payment_required_at = null;
           ledgerMutatedAfterDispatch = true;
         }
 

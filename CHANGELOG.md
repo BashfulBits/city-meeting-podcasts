@@ -45,6 +45,19 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **A 402 requeue in `llm-dispatch-v2` would have stranded the job permanently.** Claiming a job
+  deletes its `job_models` index rows, and the requeue introduced above fell through to a generic
+  `UPDATE jobs SET state=...`, leaving the job `queued` while still holding a stale lease and with
+  no index row — `claimDispatchWindow` could never select it again, and v1's operator requeue
+  script only reads R2, so it would have been invisible there too. It now takes the same branch as
+  a durable 5xx retry (clearing the lease and re-indexing) and shares the 5xx retry budget, so a
+  route that stays 402 across every cooldown cannot requeue a job forever. Caught in review before
+  reaching production.
+- **A stale success could reopen a 402-blocked route.** Without a per-route concurrency cap a batch
+  runs several requests on one route, and a sibling that *started before* a 402 landed would clear
+  the block on completion, proving nothing about the account's balance. The block now records when
+  it was set, and only a call that began after that clears it.
+
 - **NVIDIA 429s were a concurrency problem, not a rate problem.** Roughly 57% of post-fix NVIDIA
   calls came back 429 while we were averaging just **1.15 requests/min** — some 35x under NVIDIA's
   ~40 RPM community-reported free baseline — and burning ~1,865 tokens/min against a 100,000 TPM

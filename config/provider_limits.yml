@@ -232,9 +232,9 @@ providers:
   #     NOTE: this is an *approximation*, not a true provider-level TPM ledger -- the schema/code
   #     (`LLMBudget`/`ProviderLedger`) only actually enforces a shared limit for `rpm`
   #     (`route.provider_rpm`); there is no equivalent provider-wide token-rate ledger today, so
-  #     each route's 100k TPM is checked independently rather than summed across the account. If
+  #     each route's 40k TPM is checked independently rather than summed across the account. If
   #     several NVIDIA routes are dispatched concurrently at full token throughput, the account's
-  #     *aggregate* token rate could exceed 100k TPM even though no single route did. Adding a real
+  #     *aggregate* token rate could exceed 40k TPM even though no single route did. Adding a real
   #     provider-level TPM ledger (parallel to `provider_rpm`) is a follow-up, not done here.
   #   - No `rpd` is set anywhere below: NVIDIA publishes no daily cap, so encoding one would be
   #     inventing a number we have no basis for.
@@ -1113,8 +1113,9 @@ routes:
   # ==========================================
   # NVIDIA BUILD ROUTES (build.nvidia.com / NIM hosted API catalog)
   # See the `nvidia` provider block above for the capacity caveats these routes share: a
-  # self-imposed 12 RPM provider-wide pace (30% of the ~40 RPM community-reported baseline) and a
-  # per-route 100k TPM self-imposed cap that is *not* summed across routes (no real provider-level
+  # self-imposed 4 RPM provider-wide pace (lowered from 12 on 2026-08-29 -- rate was never the
+  # binding limit; see each route's `concurrency: 1`, which is) and a
+  # per-route 40k TPM self-imposed cap that is *not* summed across routes (no real provider-level
   # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. `structured_output_profile`
   # is left at the config default (`standard_json_schema`, via `instructor`) rather than guessing
   # this gateway's native JSON-mode behavior, which is unverified.
@@ -1129,7 +1130,7 @@ routes:
   # route-level rpm, v2 would treat these routes as unbounded, and v1/v2 are actively coexisting
   # right now (`split_cap_multiplier: 0.50` above), not a future migration. This does not restore
   # true shared pooling in v2 -- in the worst case (many different NVIDIA models dispatched
-  # concurrently) v2's aggregate could still exceed 12 RPM in total -- but it bounds each
+  # concurrently) v2's aggregate could still exceed the provider-wide rpm in total -- but it bounds each
   # individual route rather than leaving it uncapped. A real fix ports provider-level pacing into
   # v2's pacing.js/coordinator.js; that is a larger follow-up, not done here.
   #

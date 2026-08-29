@@ -940,47 +940,107 @@ const FREE_VS_PAID_CATALOG = {
 
 test("a job allowing paid still takes the free route when the paid one has more capacity", async () => {
   const { sql, storage } = createMockSqlStorage();
-  const coordinator = new LLMSchedulerDO(
-    { storage },
-    {
-      MAX_JOBS_PER_UTC_DAY: "10000",
-      MAX_BUNDLE_JOBS: "1",
-      MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1",
-      MAX_CONCURRENT_ROUTE_LANES: "5",
-      MAX_ACTIVE_BUNDLES: "2",
-      MAX_IN_FLIGHT_LLM_CALLS: "8",
-      MAX_BUNDLES_PER_UTC_DAY: "1000",
-      MAX_QUEUE_WAIT_SECONDS: "3600",
-      LEASE_DURATION_SECONDS: "840",
-      MAX_429_RETRIES: "1",
-      MAX_429_BACKOFF_SECONDS: "5",
-      ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
-      DISPATCH_LIMITS_OVERRIDE: FREE_VS_PAID_CATALOG,
-    }
-  );
-  void sql;
+  const env = {
+    MAX_JOBS_PER_UTC_DAY: "10000",
+    MAX_BUNDLE_JOBS: "1",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1",
+    MAX_CONCURRENT_ROUTE_LANES: "5",
+    MAX_ACTIVE_BUNDLES: "2",
+    MAX_IN_FLIGHT_LLM_CALLS: "8",
+    MAX_BUNDLES_PER_UTC_DAY: "1000",
+    MAX_QUEUE_WAIT_SECONDS: "3600",
+    LEASE_DURATION_SECONDS: "840",
+    MAX_429_RETRIES: "1",
+    MAX_429_BACKOFF_SECONDS: "5",
+    ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
+    DISPATCH_LIMITS_OVERRIDE: FREE_VS_PAID_CATALOG,
+  };
+  const coordinator = new LLMSchedulerDO({ storage }, env);
+  const paidJob = (id) => ({
+    id,
+    idempotency_key: `key-${id}`,
+    request_digest: `digest-${id}`,
+    policy_json: JSON.stringify({
+      allowed_models: ["deepseek/deepseek-v4-flash"],
+      allow_paid: true,
+    }),
+    prompt_family: "tags",
+    input_token_estimate: 500,
+    max_output_token_estimate: 200,
+    payload_key: `payloads/${id}/request.json`,
+  });
 
-  await coordinator.enqueueBatch([
+  // Spend some of the free route's capacity first, so the two routes are NOT tied on capacity
+  // fraction: paid-large (1000 rpm / 100k rpd, untouched) now scores strictly higher than
+  // free-small (5 rpm / 50 rpd, partly consumed). Without a real difference the comparator's
+  // capacity terms tie and the assertion below would also pass with capacity ranked ahead of
+  // free -- it would only be testing the tie-break, not the precedence.
+  const t0 = Date.now();
+  await coordinator.enqueueBatch([paidJob("warmup")]);
+  const warm = await coordinator.claimDispatchWindow(t0, 25);
+  assert.equal(warm.jobs[0].route_id, "free-small");
+  await coordinator.completeBatch(warm.bundle_id, warm.execution_token, [
     {
-      id: "paid-allowed",
-      idempotency_key: "key-paid-allowed",
-      request_digest: "digest-paid-allowed",
-      policy_json: JSON.stringify({
-        allowed_models: ["deepseek/deepseek-v4-flash"],
-        allow_paid: true,
-      }),
-      prompt_family: "tags",
-      input_token_estimate: 500,
-      max_output_token_estimate: 200,
-      payload_key: "payloads/paid-allowed/request.json",
+      job_id: "warmup",
+      lease_token: warm.jobs[0].lease_token,
+      attempt_id: "warmup-attempt",
+      planned_at: warm.jobs[0].not_before_at,
+      actual_start_at: t0,
+      actual_end_at: t0 + 500,
+      observed_input_tokens: 500,
+      observed_output_tokens: 200,
+      outcome: "success",
+      provider_status_code: 200,
+      result_key: "results/warmup.json",
     },
   ]);
 
-  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const consumed = [...sql.exec("SELECT rpm_count, rpd_count FROM routes WHERE route_id=?", "free-small")];
+  assert.ok(
+    (consumed[0]?.rpm_count || 0) > 0 || (consumed[0]?.rpd_count || 0) > 0,
+    "the free route must actually have spent capacity for this test to mean anything",
+  );
+
+  await coordinator.enqueueBatch([paidJob("paid-allowed")]);
+  const plan = await coordinator.claimDispatchWindow(t0 + 60_000, 25);
   assert.equal(plan.jobs.length, 1);
   assert.equal(
     plan.jobs[0].route_id,
     "free-small",
-    "allow_paid must not send a job to a paid route while a free one has capacity",
+    "allow_paid must not send a job to a paid route while a free one has capacity, even when the "
+      + "paid route ranks higher on available capacity",
   );
+});
+
+test("a 402-requeued job is claimable again, not stranded queued-without-index", async () => {
+  // Claiming a job deletes its job_models index rows. A requeue that only rewrites `state` leaves
+  // the job queued with a stale lease and no index row, so claimDispatchWindow can never select it
+  // again -- silently stranded, and invisible to the operator requeue script, which only reads
+  // v1's R2 queue. The second claim below is the actual assertion.
+  const { coordinator } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-402")]);
+
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(first.jobs.length, 1);
+  const claimed = first.jobs[0];
+
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-402",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 500,
+      observed_input_tokens: 400,
+      observed_output_tokens: 0,
+      outcome: "retryable_error",
+      provider_status_code: 402,
+    },
+  ]);
+
+  const second = await coordinator.claimDispatchWindow(Date.now() + 120_000, 25);
+  assert.equal(second.jobs.length, 1, "the 402-requeued job must be claimable again");
+  assert.equal(second.jobs[0].id, "j-402");
 });

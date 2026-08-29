@@ -2943,6 +2943,51 @@ test("a 402 does not consume the job that discovered the exhausted budget", asyn
   assert.equal(record.last_error.status, 402);
 });
 
+test("a success already in flight when a 402 landed does not reopen the blocked route", async () => {
+  // Without a per-route concurrency cap a batch runs several requests on one route. A sibling that
+  // STARTED before the 402 proves nothing about the account's balance, so it must not clear the
+  // block. It matters more now that a 402 requeues its job instead of failing it: the requeued job
+  // would come straight back to an exhausted route and burn another attempt.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+
+  const queued = await handleRequest(chatRequest(undefined, "402-then-stale-success"), env);
+  await queued.json();
+  const paymentRequired = async () =>
+    new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
+  const now = new Date();
+  await dispatchOne(env, paymentRequired, now);
+
+  let coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  let entry = ledgerEntry(coordinator, routeId);
+  const blockedUntil = entry.blocked_until;
+  assert.ok(blockedUntil, "the 402 must have blocked the route");
+  assert.ok(entry.payment_required_at, "and stamped when it did");
+
+  // Now let a success land whose request began before that 402 was recorded. Rewinding the stamp
+  // into the future is equivalent to the success having started earlier, without needing two real
+  // concurrent dispatches.
+  entry.payment_required_at = new Date(now.getTime() + 60_000).toISOString();
+  entry.blocked_until = null; // let the route be selectable so the success can dispatch at all
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
+
+  const queued2 = await handleRequest(chatRequest(undefined, "402-then-stale-success-2"), env);
+  await queued2.json();
+  const ok = async () =>
+    new Response(JSON.stringify({ id: "stale-success", choices: [] }), { status: 200 });
+  const later = new Date(now.getTime() + 10 * 60_000);
+  assert.equal((await dispatchOne(env, ok, later)).status, "completed");
+
+  coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  entry = ledgerEntry(coordinator, routeId);
+  assert.equal(
+    entry.payment_required_streak,
+    1,
+    "a success that predates the 402 must not reset the streak",
+  );
+  assert.ok(entry.payment_required_at, "nor clear the stamp");
+});
+
 test("the blocked_until a real 402 writes is one routeAvailable actually honors", async () => {
   // routeAvailable's own blocked_until handling already has direct coverage ("routeAvailable
   // respects rpm/rpd/tpm/blocked_until independently", above) against a hand-seeded fixture.
