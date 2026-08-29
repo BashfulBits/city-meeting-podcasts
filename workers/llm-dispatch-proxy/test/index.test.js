@@ -590,11 +590,12 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
   assert.equal(batchResult.count, 1);
   assert.equal(batchResult.results[0].status, "completed");
   // Mistral Medium's model_routing overflow (config/provider_limits.yml) lists DeepSeek V4 Pro via
-  // NVIDIA build first, then Nemotron 3 Super, then Gemini 3.5 Flash Lite. The DeepSeek leg is
-  // currently commented out (NVIDIA-side 404, unconfirmed root cause -- see that route's comment),
-  // so Nemotron 3 Super wins here instead. Re-check this once DeepSeek's leg is restored.
-  assert.equal(batchResult.results[0].routeId, "nvidia_nemotron_3_super_120b_a12b_free");
-  assert.ok(dispatchedPayload.model.includes("nemotron"));
+  // NVIDIA build first, then Nemotron 3 Super, then Gemini 3.5 Flash Lite. The DeepSeek leg was
+  // briefly commented out on 2026-08-29 -- its 404s were blamed on NVIDIA gating the model, when
+  // the cause was Cloudflare AI Gateway dropping the `/v1` from the custom-provider Base URL -- and
+  // Nemotron 3 Super won here in the meantime. With the leg restored, first preference wins again.
+  assert.equal(batchResult.results[0].routeId, "nvidia_deepseek_v4_pro_0813_free");
+  assert.ok(dispatchedPayload.model.includes("deepseek-v4-pro"));
 
   // The finished request is saved as completed and ready marker removed:
   const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
@@ -907,13 +908,20 @@ test("legacy DeepSeek aliases use the unified free candidate pool", async () => 
   const result = await dispatchOne(env, upstream, new Date());
   assert.equal(result.status, "completed");
   assert.equal(calls.length, 1);
-  // NVIDIA build's leg for this pool (added 2026-08-29) was commented out the same day -- NVIDIA's
-  // own routing layer 404s this exact model account-wide, a live NVIDIA-side outage unrelated to
-  // this repo's config (see config/provider_limits.yml). Back to OpenCode's leg winning the
-  // tie-break until NVIDIA's route is restored; the point of this test is that the alias resolves
-  // into the shared pool at all, not which specific free member ends up serving it.
-  assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
-  assert.equal(calls[0].body.model, "deepseek-v4-flash-free");
+  // The point of this test is that the alias resolves into the shared pool at all, not which
+  // specific free member ends up serving it -- so assert pool membership rather than pinning one
+  // leg, which would break on every change to the pool's composition or tie-break order. (It has:
+  // NVIDIA's leg was removed and restored on 2026-08-29 over a misdiagnosed 404, and pinning
+  // OpenCode's URL here made that a test failure rather than a no-op.)
+  const freePoolUpstreams = new Map([
+    ["https://opencode.ai/zen/v1/chat/completions", "deepseek-v4-flash-free"],
+    ["https://integrate.api.nvidia.com/v1/chat/completions", "deepseek-ai/deepseek-v4-flash-0731"],
+  ]);
+  assert.ok(
+    freePoolUpstreams.has(calls[0].url),
+    `dispatched to ${calls[0].url}, which is not a free leg of deepseek/deepseek-v4-flash`,
+  );
+  assert.equal(calls[0].body.model, freePoolUpstreams.get(calls[0].url));
   const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
   const record = await stored.json();
   assert.equal(record.status, "completed");
@@ -1981,9 +1989,12 @@ test("resolveProviderCredentials routes via AI_GATEWAY_BASE_URL when set across 
     account_id: "primary",
     upstream_model: "Qwen/Qwen2.5-72B-Instruct",
   });
+  // Custom providers carry their api_base path in ai_gateway_chat_path: AI Gateway discards the
+  // path component of a Custom Provider's registered Base URL and joins at the origin root, so
+  // dropping the `/v1` here would dispatch to https://api.siliconflow.com/chat/completions.
   assert.equal(
     custom.url,
-    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/chat/completions",
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/v1/chat/completions",
   );
 });
 
