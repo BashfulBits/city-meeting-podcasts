@@ -1798,6 +1798,60 @@ def test_every_catalog_route_builds_its_configured_gateway_url(route, gateway_en
     assert headers == {"cf-aig-authorization": "Bearer test-auth-token"}
 
 
+# How each custom provider is registered on the Cloudflare side, and therefore what
+# `ai_gateway_chat_path` has to be. This table exists because AI Gateway does NOT join a Custom
+# Provider's Base URL the way its documentation says: instead of `{base_url}/{provider-path}`, it
+# rewrites the base URL's LAST path segment to a hardcoded `v1` and appends the caller path
+# (established 2026-08-29 by registering a throwaway custom provider against an echo service).
+# Because the Cloudflare-side Base URL is not represented in this repo, the mapping cannot be
+# derived -- so it is written down here, and a new custom provider trips the completeness check
+# below until someone records how it is registered.
+CUSTOM_PROVIDER_GATEWAY_PATHS = {
+    # Registered at api_base verbatim; the `/v1` in api_base is also the substituted segment, so
+    # the chat path must carry it or the dispatch lands on the origin root and 404s.
+    "siliconflow": "/v1/chat/completions",
+    "sambanova": "/v1/chat/completions",
+    "nvidia": "/v1/chat/completions",
+    # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
+    # forced `v1` substitution lands correctly and the caller path stays bare.
+    "kilo": "/chat/completions",
+    # Routed through workers/llm-provider-shim, which restores the real upstream prefix, so the
+    # caller path is bare here as well.
+    "zai": "/chat/completions",
+    "opencode": "/chat/completions",
+}
+
+
+def test_every_custom_provider_records_how_it_is_registered():
+    """A new custom provider must state its gateway path, since the rule cannot be inferred."""
+    configured = {
+        route.provider
+        for route in ROUTE_REGISTRY.values()
+        if (route.ai_gateway_slug or "").startswith("custom-")
+    }
+    assert configured == set(CUSTOM_PROVIDER_GATEWAY_PATHS), (
+        "custom providers changed; record the new provider's Cloudflare-side registration in "
+        "CUSTOM_PROVIDER_GATEWAY_PATHS (and see workers/llm-provider-shim/README.md for why the "
+        "documented base-URL join does not apply)"
+    )
+
+
+@pytest.mark.parametrize(
+    "route",
+    sorted(
+        (r for r in ROUTE_REGISTRY.values() if (r.ai_gateway_slug or "").startswith("custom-")),
+        key=lambda r: r.route_id or r.model,
+    ),
+    ids=lambda r: r.route_id or r.model,
+)
+def test_custom_provider_routes_use_their_recorded_gateway_path(route):
+    expected = CUSTOM_PROVIDER_GATEWAY_PATHS[route.provider]
+    assert route.ai_gateway_chat_path == expected, (
+        f"{route.route_id}: ai_gateway_chat_path {route.ai_gateway_chat_path!r} does not match the "
+        f"recorded registration for {route.provider!r} ({expected!r})"
+    )
+
+
 # Only single-provider models belong here. A logical model served by several providers (6 of 31 in
 # the catalog -- `deepseek/deepseek-v4-flash` spans deepseek, custom-siliconflow and
 # custom-opencode) has no fixed gateway slug: the scheduler picks whichever physical route has

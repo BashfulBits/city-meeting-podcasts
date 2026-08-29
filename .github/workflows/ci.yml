@@ -106,6 +106,10 @@ jobs:
         working-directory: workers/city-request-intake
         run: npm test
 
+      - name: Test LLM Provider Shim Worker
+        working-directory: workers/llm-provider-shim
+        run: npm test
+
   # Dependency-pinning policy enforcement (review/22). Keeps pins from rotting.
   deps:
     runs-on: ubuntu-latest

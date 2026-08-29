@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 62,
+    "routes_count": 64,
     "providers_count": 11,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 0.5
@@ -57,7 +57,7 @@
     "siliconflow": {
       "api_base": "https://api.siliconflow.com/v1",
       "ai_gateway_slug": "custom-siliconflow",
-      "ai_gateway_chat_path": "/chat/completions",
+      "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -83,7 +83,7 @@
     "sambanova": {
       "api_base": "https://api.sambanova.ai/v1",
       "ai_gateway_slug": "custom-sambanova",
-      "ai_gateway_chat_path": "/chat/completions",
+      "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -148,7 +148,7 @@
     "nvidia": {
       "api_base": "https://integrate.api.nvidia.com/v1",
       "ai_gateway_slug": "custom-nvidia",
-      "ai_gateway_chat_path": "/chat/completions",
+      "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
       "rpm": 6,
       "reset_timezone": "UTC",
@@ -1321,6 +1321,42 @@
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
     },
+    "nvidia_deepseek_v4_pro_0813_free": {
+      "route_id": "nvidia_deepseek_v4_pro_0813_free",
+      "provider": "nvidia",
+      "upstream_model": "deepseek-ai/deepseek-v4-pro-0813",
+      "input_context_limit": 1000000,
+      "output_context_limit": 384000,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "nvidia_deepseek_v4_flash_0731_free": {
+      "route_id": "nvidia_deepseek_v4_flash_0731_free",
+      "provider": "nvidia",
+      "upstream_model": "deepseek-ai/deepseek-v4-flash-0731",
+      "input_context_limit": 1000000,
+      "output_context_limit": 384000,
+      "account_id": "primary",
+      "rpm": 6,
+      "rpd": null,
+      "tpm": 45000,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
     "nvidia_gemma_4_31b_it_free": {
       "route_id": "nvidia_gemma_4_31b_it_free",
       "provider": "nvidia",
@@ -1477,10 +1513,12 @@
     "deepseek/deepseek-v4-flash": [
       "siliconflow_deepseek_v4_flash_primary",
       "deepseek_v4_flash_primary",
-      "opencode_deepseek_v4_flash_free"
+      "opencode_deepseek_v4_flash_free",
+      "nvidia_deepseek_v4_flash_0731_free"
     ],
     "deepseek/deepseek-v4-pro": [
-      "deepseek_v4_pro_primary"
+      "deepseek_v4_pro_primary",
+      "nvidia_deepseek_v4_pro_0813_free"
     ],
     "mistral/codestral-2508": [
       "mistral_codestral_2508_primary",
@@ -1571,6 +1609,7 @@
     "opencode/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
     "opencode/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "opencode/nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
@@ -1650,6 +1689,10 @@
     "nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "moonshotai/kimi-k3": "moonshotai/kimi-k3",
     "nvidia/moonshotai/kimi-k3": "moonshotai/kimi-k3",
+    "deepseek-ai/deepseek-v4-pro-0813": "deepseek/deepseek-v4-pro",
+    "nvidia/deepseek-ai/deepseek-v4-pro-0813": "deepseek/deepseek-v4-pro",
+    "deepseek-ai/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
+    "nvidia/deepseek-ai/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "google/gemma-4-31b-it": "google/gemma-4-31b-it",
     "nvidia/google/gemma-4-31b-it": "google/gemma-4-31b-it",
     "nvidia/openai/gpt-oss-120b": "openai/gpt-oss-120b",

@@ -52,15 +52,16 @@ def test_generated_catalog_deduplicates_logical_models_across_direct_routes():
 
 
 def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
-    # NVIDIA build's leg for this model (added 2026-08-29) was commented out the same day --
-    # NVIDIA's own routing layer 404s this exact model account-wide (a real NVIDIA-side gating
-    # issue, not a config mistake; see config/provider_limits.yml's nvidia_deepseek_v4_flash_0731
-    # _free route comment). Back to three providers until that route is restored.
+    # NVIDIA build's leg for this model (added 2026-08-29) was briefly commented out the same day
+    # on a misdiagnosis -- the 404s were NOT NVIDIA-side model gating but a dropped `/v1` in the
+    # Cloudflare AI Gateway custom-provider path (see config/provider_limits.yml's `nvidia` block).
+    # Restored once the path fix was verified end-to-end against the live gateway.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
     assert {candidate.provider for candidate in deepseek} == {
         "deepseek",
         "siliconflow",
         "opencode",
+        "nvidia",
     }
     assert canonical_model("opencode/deepseek-v4-flash-free") == "deepseek/deepseek-v4-flash"
     assert MODEL_ALIASES["deepseek/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"

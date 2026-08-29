@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "citypods-llm-provider-shim",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-20",
+  "workers_dev": true,
+  // SHIM_TOKEN is a Worker *secret*, not a var: it is the only thing standing between this Worker
+  // and anyone who learns its URL, since AI Gateway strips cf-aig-authorization before the
+  // upstream sees it. Set it once with `wrangler secret put SHIM_TOKEN`, then register the Custom
+  // Provider Base URL as https://<worker-host>/<SHIM_TOKEN>/<provider>/x -- see src/index.js.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1
+  }
+}

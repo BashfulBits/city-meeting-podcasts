@@ -581,6 +581,43 @@ Dropping that prefix is a silent 404 on Gemini and Mistral only — the provider
 endpoint is not at the root — which is why the routing tests assert the full request URL rather
 than `api_base` alone.
 
+##### Custom-provider routing: the undocumented `v1` rewrite
+
+For **custom** providers (`custom-` slugs) the gateway does *not* join the registered Base URL the
+way [its docs](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/)
+describe (`{base_url}/{provider-path}`). It rewrites the Base URL's **last path segment to a
+hardcoded `v1`** before appending the caller path — established 2026-08-29 by registering a
+throwaway custom provider against an echo service and reading back the upstream URL
+(`/anything/prefix` → `/anything/v1`, `/anything/a/b` → `/anything/a/v1`). Because the registered
+Base URL lives in Cloudflare and not in this repo, the mapping cannot be derived from config alone;
+each provider's Cloudflare-side registration is therefore recorded in
+`CUSTOM_PROVIDER_GATEWAY_PATHS` in [`tests/test_compute_llm.py`](tests/test_compute_llm.py), and a
+new custom provider fails a completeness check until it is written down.
+
+Three consequences shape the current configuration:
+
+- Providers registered at their `api_base` must repeat that path in `ai_gateway_chat_path`
+  (`siliconflow`, `sambanova`, `nvidia` → `/v1/chat/completions`). Omitting it dispatched to the
+  provider's origin root; that is what 404'd every NVIDIA and SambaNova route until 2026-08-29,
+  hard-failing with no failover because 404 is not in either Worker's `retryableStatus` set.
+- `kilo` is registered as `https://api.kilo.ai/api/gateway/v1` — a path Kilo also serves — so the
+  forced substitution lands correctly and its caller path stays bare.
+- `zai` and `opencode` route through **`workers/llm-provider-shim`**, which restores the real
+  upstream prefix. z.ai's `/api/paas/v4` is otherwise inexpressible (the gateway rewrites `v4` →
+  `v1`, and no `v1`-containing path serves its API). The shim keeps them inside AI Gateway's
+  logging rather than bypassing the gateway. It forwards third-party API keys, so it pins its
+  destinations to an allowlist, fails closed without its secret, refuses upstream redirects
+  (`redirect: "manual"`, as `granicus-media-proxy` does — Workers' fetch otherwise replays
+  `Authorization` cross-origin), and returns one opaque 404 for every rejection. Its token lives in
+  the registered Base URL path because the gateway strips `cf-aig-authorization` before the
+  upstream sees it.
+
+Because this behaviour is undocumented and can change without notice — and no offline test can
+observe it — [`tests/live/test_ai_gateway_contract.py`](tests/live/test_ai_gateway_contract.py)
+probes the real gateway weekly from `contracts.yml`, asserting each provider's configured URL
+reaches its API and carrying a canary that fails if Cloudflare ever starts honouring the
+registered path (at which point the compensating prefixes become double-prefixes).
+
 Configuration: `CLOUDFLARE_ACCOUNT_ID` + optional `AI_GATEWAY_ID` (default `citypods-dispatch`)
 derive the standard URL, or `AI_GATEWAY_BASE_URL` overrides it outright.
 `AI_GATEWAY_AUTH_TOKEN` supplies the `cf-aig-authorization` header an authenticated gateway
@@ -623,6 +660,8 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
   Modal pull worker from `main`, protected by the `modal-production` GitHub Environment),
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
   `llm-dispatch-worker-deploy.yml` (path-scoped test/deploy for the Cron-paced LLM Worker),
+  `llm-provider-shim-deploy.yml` (path-scoped test/deploy for `workers/llm-provider-shim/`, the
+  URL-rewriting shim described under "AI Gateway custom-provider routing" below),
   `llm-dispatch-v2-worker-deploy.yml` (path-scoped test/deploy for `workers/llm-dispatch-v2/`, the
   parallel SQLite-Durable-Object-coordinator successor from
   [`review/44`](review/44-bounded-bundled-llm-dispatch.md); Phase 1 only as of
