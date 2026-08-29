@@ -129,7 +129,7 @@ _PACING_MIN_SLEEP_SECONDS = 0.2
 _WORKER_BATCH_LIMIT = 1000
 # Small recovery sets are cheaper and easier to diagnose one at a time. Larger sets stay batched
 # so a partial/uncertain response cannot turn into one Worker invocation per unresolved item.
-_BATCH_RETRY_ISOLATION_THRESHOLD = 5
+BATCH_RETRY_ISOLATION_THRESHOLD = 5
 
 # Completed-result resolution is pure B2 I/O wait (one result GET plus write_deferred's own
 # round trips per job), so a small pool cuts the deferred sweep's runtime without adding
@@ -1985,8 +1985,7 @@ class LiteLLMBackend(Backend):
                 http_status=response.status_code,
             )
             raise LLMBackendError(
-                f"LLM dispatch v2 enqueue-batch returned HTTP {response.status_code}: "
-                f"{response.text}"
+                f"LLM dispatch v2 enqueue-batch returned HTTP {response.status_code}"
             )
 
         try:
@@ -2132,7 +2131,15 @@ class LiteLLMBackend(Backend):
         # that transport limit here rather than depending on every caller to remember it.
         results: dict[str, JobResult | None | Exception] = {}
         for start in range(0, len(v2_handles), _WORKER_BATCH_LIMIT):
-            results.update(self._poll_batch_chunk(v2_handles[start : start + _WORKER_BATCH_LIMIT]))
+            chunk = v2_handles[start : start + _WORKER_BATCH_LIMIT]
+            try:
+                results.update(self._poll_batch_chunk(chunk))
+            except Exception as exc:  # noqa: BLE001 -- isolate one failed chunk from its siblings
+                error = _LLMBatchItemError(
+                    "LLM dispatch v2 poll-batch chunk was unavailable", retryable=True
+                )
+                error.__cause__ = exc
+                results.update({handle.ref: error for handle in chunk})
         return results
 
     def _poll_batch_chunk(
@@ -2172,7 +2179,7 @@ class LiteLLMBackend(Backend):
                 http_status=response.status_code,
             )
             raise LLMBackendError(
-                f"LLM dispatch v2 poll-batch returned HTTP {response.status_code}: {response.text}"
+                f"LLM dispatch v2 poll-batch returned HTTP {response.status_code}"
             )
 
         try:
@@ -2269,7 +2276,7 @@ class LiteLLMBackend(Backend):
                 completed.append((h, st["result_key"]))
             elif state == "failed":
                 results[h.ref] = LLMDispatchTerminalError(
-                    f"LLM dispatch v2 job {h.ref} failed permanently: {st.get('error')}"
+                    f"LLM dispatch v2 job {h.ref} failed permanently"
                 )
             else:
                 results[h.ref] = None
@@ -2311,11 +2318,11 @@ class LiteLLMBackend(Backend):
             batch_size=len(v2_handles),
             completed=sum(isinstance(value, JobResult) for value in results.values()),
             pending=sum(value is None for value in results.values()),
-            failed=sum(isinstance(value, Exception) for value in results.values()),
-            unknown=sum(
-                isinstance(value, LLMBackendError) and "omitted job" in str(value)
+            failed=sum(
+                isinstance(value, Exception) and not isinstance(value, _LLMBatchItemError)
                 for value in results.values()
             ),
+            unknown=sum(isinstance(value, _LLMBatchItemError) for value in results.values()),
         )
 
         return results
@@ -2696,6 +2703,7 @@ class BatchDispatchOutcome:
 
 
 def _batch_item_retryable(value: object) -> bool:
+    """Return whether a batch outcome is an unknown item-level result worth recovering."""
     return isinstance(value, _LLMBatchItemError) and value.retryable
 
 
@@ -2723,7 +2731,7 @@ def _enqueue_batch_with_retry(
         return cast("list[JobResult | JobHandle | Exception]", initial)
 
     retry_jobs = [jobs[index] for index in retry_positions]
-    if len(retry_jobs) > _BATCH_RETRY_ISOLATION_THRESHOLD:
+    if len(retry_jobs) > BATCH_RETRY_ISOLATION_THRESHOLD:
         _emit_v2_dispatch_event(
             "enqueue-batch-retry",
             batch_size=len(retry_jobs),
@@ -2801,7 +2809,7 @@ def _poll_batch_with_retry(
     if not retry_handles:
         return initial
 
-    if len(retry_handles) > _BATCH_RETRY_ISOLATION_THRESHOLD:
+    if len(retry_handles) > BATCH_RETRY_ISOLATION_THRESHOLD:
         _emit_v2_dispatch_event(
             "poll-batch-retry",
             batch_size=len(retry_handles),
@@ -2831,11 +2839,17 @@ def _poll_batch_with_retry(
 
     for handle in retry_handles:
         if handle.ref in retry_results:
-            initial[handle.ref] = retry_results[handle.ref]
-        elif handle.ref not in initial:
-            initial[handle.ref] = _LLMBatchItemError(
-                "LLM dispatch v2 poll recovery returned no per-handle outcome", retryable=False
-            )
+            outcome = retry_results[handle.ref]
+            if _batch_item_retryable(outcome):
+                # A second unknown response is still not evidence of failure. Leave the handle
+                # absent so dispatch_job_batch preserves it and the deferred sweep can retry it.
+                initial.pop(handle.ref, None)
+            else:
+                initial[handle.ref] = outcome
+        else:
+            # Neither poll returned trustworthy status for this handle. Absence is not a failure:
+            # leave it pending so the caller keeps its durable JobHandle.
+            initial.pop(handle.ref, None)
     if whole_failure and not retry_results:
         # Keep the existing pending handle when neither the original nor the recovery poll gave
         # trustworthy status data. The deferred sweep will make the next bounded attempt.

@@ -28,6 +28,7 @@ from pathlib import Path
 
 from citypods.compute.base import JobHandle
 from citypods.compute.llm import (
+    BATCH_RETRY_ISOLATION_THRESHOLD,
     LiteLLMBackend,
     LLMBackendConfig,
     LLMDispatchTerminalError,
@@ -254,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
                 v2_results = backend.poll_batch(v2_handles)
             except Exception as exc:  # noqa: BLE001
                 print(
-                    f"llm-deferred-sweep: batch poll for v2 handles failed: {exc}",
+                    f"llm-deferred-sweep: batch poll for v2 handles failed: {type(exc).__name__}",
                     file=sys.stderr,
                 )
             unresolved = [
@@ -262,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
                 for handle in v2_handles
                 if handle.ref not in v2_results or isinstance(v2_results[handle.ref], Exception)
             ]
-            if len(unresolved) > 5:
+            if len(unresolved) > BATCH_RETRY_ISOLATION_THRESHOLD:
                 print(
                     json.dumps(
                         {
@@ -281,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
                     v2_results.update(backend.poll_batch(unresolved))
                 except Exception as exc:  # noqa: BLE001 -- isolate below after two batch attempts
                     print(
-                        f"llm-deferred-sweep: v2 recovery batch poll failed: {exc}",
+                        f"llm-deferred-sweep: v2 recovery batch poll failed: {type(exc).__name__}",
                         file=sys.stderr,
                     )
             for handle in v2_handles:

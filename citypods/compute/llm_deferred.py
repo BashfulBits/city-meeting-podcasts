@@ -52,6 +52,10 @@ DEFAULT_TTL_DAYS = 38
 DEFAULT_FAILURE_MARKER_TTL_DAYS = 90
 
 
+class DeferredIndexRepairError(RuntimeError):
+    """A canonical deferred record could not be read during an index repair."""
+
+
 @dataclass
 class DeferredSnapshotEntry:
     """One decoded registry object retained by a sweep snapshot."""
@@ -339,6 +343,14 @@ def discard_terminal_failure(
 
 def _write_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
     _write_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash), recipe_hash)
+
+
+def _write_index_strict(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
+    """Write one record's index pointers, propagating failures during an explicit repair."""
+    keys = _index_keys(data, recipe_hash=recipe_hash)
+    body = (json.dumps({"recipe_hash": recipe_hash}) + "\n").encode()
+    for key in keys:
+        _write_json(storage, key, body)
 
 
 def _index_ready(storage) -> bool:
@@ -630,25 +642,37 @@ def load_deferred_snapshot(storage, *, now: datetime | None = None) -> DeferredS
 
 
 def repair_deferred_index(storage, *, now: datetime | None = None) -> int:
-    """Rebuild pending pointers from canonical B2 records and atomically finish migration.
+    """Rebuild pending pointers from canonical B2 records and finish migration fail-closed.
 
     The pass is idempotent. It intentionally lists the canonical prefix only when invoked by an
-    operator/maintenance run; ordinary sweeps use the narrow index listings.
+    operator/maintenance run; ordinary sweeps use the narrow index listings. Every canonical
+    record must be readable before any old pointer is compacted or migration is marked complete.
+    Pointer writes happen before best-effort stale-pointer cleanup, so a failed repair leaves the
+    old dual-read fallback safe to use on the next run.
     """
     current = now or datetime.now(UTC)
-    repaired = 0
-    desired: set[str] = set()
+    canonical: list[tuple[Mapping[str, Any], str]] = []
+    unreadable = 0
     for key, _ in storage.list_objects(DEFERRED_PREFIX):
         data = _read_json(storage, key)
         if not isinstance(data, Mapping):
+            unreadable += 1
             continue
         recipe_hash = key[len(DEFERRED_PREFIX) : -len(".json")]
-        _best_effort_delete_index(storage, data, recipe_hash)
-        _write_index(storage, data, recipe_hash)
+        canonical.append((data, recipe_hash))
+    if unreadable:
+        raise DeferredIndexRepairError(
+            f"deferred index repair aborted: {unreadable} canonical record(s) unreadable"
+        )
+
+    repaired = len(canonical)
+    desired: set[str] = set()
+    for data, recipe_hash in canonical:
+        _write_index_strict(storage, data, recipe_hash)
         desired.update(_index_keys(data, recipe_hash=recipe_hash))
-        repaired += 1
-    # Compaction is safe after the canonical listing: every valid pointer for the current
-    # registry is in ``desired``. Orphans are only advisory, so deleting them cannot lose work.
+    # Compaction is safe after every canonical read and desired pointer write: every valid pointer
+    # for the current registry is in ``desired``. Orphans are only advisory, so failed deletes do
+    # not block migration or lose work.
     for key, _ in storage.list_objects(DEFERRED_INDEX_PENDING_PREFIX):
         if key not in desired:
             try:
@@ -774,6 +798,7 @@ def _release_abandoned_reservation(storage, data: Mapping[str, Any], *, now: dat
 __all__ = [
     "DEFAULT_TTL_DAYS",
     "DEFAULT_FAILURE_MARKER_TTL_DAYS",
+    "DeferredIndexRepairError",
     "DEFERRED_FAILURE_PREFIX",
     "DEFERRED_PREFIX",
     "DEFERRED_INDEX_PREFIX",

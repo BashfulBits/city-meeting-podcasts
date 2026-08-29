@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_budget import mutate_llm_budget
 from citypods.compute.llm_deferred import (
@@ -9,6 +11,7 @@ from citypods.compute.llm_deferred import (
     DEFERRED_INDEX_MIGRATION_KEY,
     DEFERRED_INDEX_PENDING_PREFIX,
     DEFERRED_PREFIX,
+    DeferredIndexRepairError,
     _indexed_listing,
     _write_json,
     deferred_failure_key,
@@ -244,6 +247,28 @@ def test_repair_marks_migration_and_indexed_snapshot_rechecks_canonical_records(
     snapshot = load_deferred_snapshot(storage, now=NOW)
     assert [handle.recipe_hash for handle in snapshot.pending()] == ["pending-1"]
     assert len(snapshot.entries) == 1
+
+
+def test_repair_leaves_dual_read_intact_when_a_canonical_record_is_unreadable():
+    """A partial canonical listing cannot compact pointers or mark migration complete."""
+    storage = MemStorage()
+    write_deferred(storage, "pending-1", _pending_handle("pending-1"), now=NOW)
+    model = next(iter(ROUTES))
+    orphan_key = f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/orphan.json"
+    _write_json(storage, orphan_key, b'{"recipe_hash": "orphan"}\n')
+    original_get_file = storage.get_file
+
+    def _get_file(key, local_path):
+        if key == deferred_key("pending-1"):
+            return False
+        return original_get_file(key, local_path)
+
+    storage.get_file = _get_file
+
+    with pytest.raises(DeferredIndexRepairError, match="1 canonical record"):
+        repair_deferred_index(storage, now=NOW)
+    assert not storage.exists(DEFERRED_INDEX_MIGRATION_KEY)
+    assert orphan_key in storage.keys(DEFERRED_INDEX_PENDING_PREFIX)
 
 
 def test_indexed_listing_skips_a_model_partition_that_is_out_of_capacity():

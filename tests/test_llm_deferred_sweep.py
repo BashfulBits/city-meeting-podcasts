@@ -598,3 +598,41 @@ def test_sweep_retries_large_unresolved_poll_set_as_one_batch(monkeypatch):
     assert llm_deferred_sweep.main([]) == 0
     assert poll_sizes == [8, 6]
     assert reconciled_refs == []
+
+
+def test_sweep_does_not_retain_batch_poll_response_bodies_in_logs(monkeypatch, capsys):
+    """Batch transport diagnostics identify the error type without retaining response content."""
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(
+        cas_capable=True,
+        get_file=lambda *args, **kwargs: False,
+        put_file=lambda *args, **kwargs: None,
+        delete=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    handle = JobHandle(
+        task="tag", recipe_hash="sensitive-poll", backend="llm-dispatch-v2", ref="sensitive-id"
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda *_: _snapshot([handle])
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda *_args, **_kwargs: 0,
+    )
+
+    class MockBackend:
+        def poll_batch(self, _handles):
+            raise RuntimeError("sensitive upstream response body")
+
+        def reconcile(self, _handle):
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    err = capsys.readouterr().err
+    assert "RuntimeError" in err
+    assert "sensitive upstream response body" not in err

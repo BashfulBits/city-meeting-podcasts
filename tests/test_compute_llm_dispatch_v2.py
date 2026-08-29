@@ -617,7 +617,57 @@ def test_poll_batch_chunks_more_than_one_thousand_v2_handles():
     assert all(isinstance(result, LLMBackendError) for result in results.values())
 
 
-def test_poll_batch_failed_job_raises():
+def test_poll_batch_isolates_a_failed_chunk_from_sibling_chunks():
+    """A failed 1,000-handle request does not prevent a later chunk from being observed."""
+    storage = MockStorage()
+    poll_sizes = []
+
+    def _poll(_url, json=None, **_kwargs):
+        ids = json["ids"]
+        poll_sizes.append(len(ids))
+        if len(ids) == 1000:
+            return _mock_response(
+                status_code=503,
+                json_data={"detail": "sensitive upstream response body"},
+            )
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [{"id": ref, "state": "queued", "result_key": None} for ref in ids]
+            },
+        )
+
+    session = MagicMock()
+    session.post.side_effect = _router({":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(
+            task="tag",
+            recipe_hash=f"recipe-poll-failure-{index}",
+            backend="llm-dispatch-v2",
+            ref=f"poll-failure-{index}",
+        )
+        for index in range(1001)
+    ]
+
+    results = backend.poll_batch(handles)
+
+    assert poll_sizes == [1000, 1]
+    assert len(results) == len(handles)
+    assert isinstance(results["poll-failure-0"], LLMBackendError)
+    assert results["poll-failure-1000"] is None
+    assert "sensitive upstream response body" not in str(results["poll-failure-0"])
+
+
+def test_poll_batch_returns_terminal_error_for_failed_job():
+    """A coordinator terminal status becomes an item-level terminal error without raising."""
     storage = MockStorage()
     mock_session = MagicMock()
 
@@ -628,7 +678,7 @@ def test_poll_batch_failed_job_raises():
                 {
                     "id": "j1",
                     "state": "failed",
-                    "error": "upstream_timeout",
+                    "error": "sensitive provider response body",
                     "attempts": 3,
                 }
             ]
@@ -646,6 +696,7 @@ def test_poll_batch_failed_job_raises():
     results = backend.poll_batch([h1])
     assert isinstance(results["j1"], LLMDispatchTerminalError)
     assert "failed permanently" in str(results["j1"])
+    assert "sensitive provider response body" not in str(results["j1"])
 
 
 def test_poll_batch_missing_result_bytes_stays_pending_not_cached_empty():
@@ -927,6 +978,40 @@ def test_dispatch_job_batch_retries_large_unknown_poll_set_as_one_batch():
     assert all(isinstance(result, JobHandle) for result in results)
 
 
+def test_dispatch_job_batch_keeps_handle_when_small_poll_recovery_is_still_unknown():
+    """Repeated omitted statuses leave accepted work pending rather than reporting failure."""
+    storage = MockStorage()
+    poll_sizes = []
+
+    def _poll(_url, json=None, **_kw):
+        poll_sizes.append(len(json["ids"]))
+        return _mock_response(status_code=200, json_data={"statuses": []})
+
+    session = MagicMock()
+    session.post.side_effect = _router({":enqueue-batch": _accept_all, ":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={"messages": [{"role": "user", "content": f"job {index}"}]},
+            recipe_hash=f"retry-poll-unknown-{index}",
+        )
+        for index in range(2)
+    ]
+
+    results = dispatch_job_batch(backend, jobs)
+
+    assert poll_sizes == [2, 1, 1]
+    assert all(isinstance(result, JobHandle) for result in results)
+
+
 def test_batching_dispatch_backend_collects_queue_only_jobs_until_flush():
     """A lane can return pending per-item handles while issuing one v2 batch per run."""
     storage = MockStorage()
@@ -1120,8 +1205,19 @@ def test_dispatch_job_batch_isolates_a_small_whole_batch_failure():
             raise requests.RequestException("batch transport failure")
         return _accept_all(url, json=json)
 
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {"id": ref, "state": "queued", "result_key": None}
+                    for ref in json.get("ids", [])
+                ]
+            },
+        )
+
     mock_session = MagicMock()
-    mock_session.post.side_effect = _router({":enqueue-batch": _enqueue})
+    mock_session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _poll})
 
     config = LLMBackendConfig(
         model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"

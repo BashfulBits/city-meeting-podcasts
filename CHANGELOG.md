@@ -33,9 +33,10 @@ Phase R (Research-Tool Surface)._
   converting one item into a whole-batch failure. Unknown outcomes use one bounded recovery round:
   sets larger than five are retried as a batch, while smaller sets use isolated requests. The
   deferred sweep applies the same threshold, preventing one bad result from turning a 1,000-job
-  poll into 1,000 singleton polls. Payload-free structured counters expose batch, retry, singleton,
-  and schema-correction request counts. No artifact schema, recipe, pipeline version, or backfill
-  behavior changes.
+  poll into 1,000 singleton polls. Failed poll chunks remain isolated so later chunks still run;
+  retry diagnostics omit response bodies. Payload-free structured counters expose batch, retry,
+  singleton, and schema-correction request counts. No artifact schema, recipe, pipeline version,
+  or backfill behavior changes.
 
 - **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
   deferred sweep now registers the `moment-extraction` response contract. It also stages one
