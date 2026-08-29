@@ -589,10 +589,12 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
   assert.equal(batchResult.status, "completed");
   assert.equal(batchResult.count, 1);
   assert.equal(batchResult.results[0].status, "completed");
-  // DeepSeek V4 Pro via NVIDIA build (free, added 2026-08-29) now outranks Gemini 3.5 Flash Lite
-  // as Mistral Medium's overflow target -- see config/provider_limits.yml's model_routing.
-  assert.equal(batchResult.results[0].routeId, "nvidia_deepseek_v4_pro_0813_free");
-  assert.ok(dispatchedPayload.model.includes("deepseek"));
+  // Mistral Medium's model_routing overflow (config/provider_limits.yml) lists DeepSeek V4 Pro via
+  // NVIDIA build first, then Nemotron 3 Super, then Gemini 3.5 Flash Lite. The DeepSeek leg is
+  // currently commented out (NVIDIA-side 404, unconfirmed root cause -- see that route's comment),
+  // so Nemotron 3 Super wins here instead. Re-check this once DeepSeek's leg is restored.
+  assert.equal(batchResult.results[0].routeId, "nvidia_nemotron_3_super_120b_a12b_free");
+  assert.ok(dispatchedPayload.model.includes("nemotron"));
 
   // The finished request is saved as completed and ready marker removed:
   const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
@@ -905,11 +907,13 @@ test("legacy DeepSeek aliases use the unified free candidate pool", async () => 
   const result = await dispatchOne(env, upstream, new Date());
   assert.equal(result.status, "completed");
   assert.equal(calls.length, 1);
-  // NVIDIA build (added 2026-08-29) joined this same free pool and now wins the tie-break over
-  // OpenCode's leg -- the point of this test is that the alias resolves into the shared pool at
-  // all, not which specific free member ends up serving it.
-  assert.equal(calls[0].url, "https://integrate.api.nvidia.com/v1/chat/completions");
-  assert.equal(calls[0].body.model, "deepseek-ai/deepseek-v4-flash-0731");
+  // NVIDIA build's leg for this pool (added 2026-08-29) was commented out the same day -- NVIDIA's
+  // own routing layer 404s this exact model account-wide, a live NVIDIA-side outage unrelated to
+  // this repo's config (see config/provider_limits.yml). Back to OpenCode's leg winning the
+  // tie-break until NVIDIA's route is restored; the point of this test is that the alias resolves
+  // into the shared pool at all, not which specific free member ends up serving it.
+  assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
+  assert.equal(calls[0].body.model, "deepseek-v4-flash-free");
   const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
   const record = await stored.json();
   assert.equal(record.status, "completed");

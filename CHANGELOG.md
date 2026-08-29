@@ -45,6 +45,29 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **NVIDIA build DeepSeek routes disabled: both 404, root cause not a naming bug.** Both
+  `nvidia_deepseek_v4_pro_0813_free` and `nvidia_deepseek_v4_flash_0731_free` return 404 with no
+  JSON body. An initial fix changed the pro route's `upstream_model` from
+  `deepseek-ai/deepseek-v4-pro-0813` to `deepseek-ai/deepseek-v4-pro`, reasoning the `-0813` suffix
+  was a marketing label rather than the API identifier; that reasoning was wrong -- NVIDIA's own
+  official sample code for this model uses the `-0813`-suffixed string verbatim, confirmed against
+  the real failing request payload, and reverted. Both routes use their correct, docs-matching
+  model strings and the correct `https://integrate.api.nvidia.com/v1/chat/completions` URL
+  (confirmed against NVIDIA's own OpenAI-SDK sample), yet both still 404. This matches NVIDIA
+  Developer Forum reports from multiple unrelated developers of the identical symptom on these
+  exact models (`GET /v1/models` lists them, the playground works, `POST /v1/chat/completions`
+  404s "Function not found for account" before reaching a serving container) -- most likely
+  explanation: NVIDIA gates some models behind a "Public API Endpoints" entitlement that must be
+  explicitly requested/granted per API key (see NVIDIA Developer Forum threads "Request Public API
+  Endpoints access for my API key" and "Request for access to DeepSeek V4 Pro NIM public API
+  endpoint"), which this account's key likely hasn't been granted for these two models yet. Since
+  404 gets no automatic block/retry treatment in either dispatch Worker the way a real 429 does,
+  both routes are commented out (not just documented) rather than left live to hard-fail every
+  attempt.
+  `deepseek/deepseek-v4-flash` still has three working legs (SiliconFlow, DeepSeek Direct,
+  OpenCode); `deepseek/deepseek-v4-pro`'s only route while this is disabled is DeepSeek Direct's
+  paid leg, so Mistral Medium's `model_routing` overflow onto it is not free right now.
+
 - **LLM dispatch V2 mixed-result recovery (GH#1318).** Enqueue and poll batches now preserve
   accepted, replayed, pending, completed, rejected, and failed per-job outcomes instead of
   converting one item into a whole-batch failure. Unknown outcomes use one bounded recovery round:

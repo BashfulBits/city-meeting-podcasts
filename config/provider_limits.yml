@@ -1110,37 +1110,77 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
-  - route_id: nvidia_deepseek_v4_pro_0813_free
-    model: deepseek/deepseek-v4-pro
-    # Pools with DeepSeek Direct's paid `deepseek_v4_pro_primary` route below -- this is the same
-    # model, free here, paid ($0.435-0.66/M) there. A job pinned to `deepseek/deepseek-v4-pro`
-    # becomes eligible for this free route first.
-    provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4-pro-0813
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    rpm: 12
-    tpm: 100000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
+  # DISABLED (found 2026-08-29, corrected same day, cause still open): route_id
+  # nvidia_deepseek_v4_pro_0813_free -- upstream_model "deepseek-ai/deepseek-v4-pro-0813" IS the
+  # correct API model string. An earlier version of this comment claimed the "-0813" suffix was
+  # wrong (a marketing-label-only string) based on a secondhand blog synthesis; that was incorrect
+  # -- NVIDIA's own official sample code for this model (the "Sample Python" snippet on this
+  # model's build.nvidia.com page) uses "deepseek-ai/deepseek-v4-pro-0813" verbatim, confirmed by
+  # inspecting the actual submitted request payload that still 404s with that exact string. So the
+  # 404 here is NOT a naming bug on our end, same as nvidia_deepseek_v4_flash_0731_free below (and
+  # a forum post covering both models together -- "Function ... returns DEGRADED error when
+  # calling deepseek-ai/deepseek-v4-flash，deepseek-v4-pro" -- suggests they may share one root
+  # cause). Most likely explanation (2026-08-29): NVIDIA gates some models behind a "Public API
+  # Endpoints" entitlement that must be explicitly requested/granted per API key, separate from
+  # just holding a valid key -- see NVIDIA Developer Forum threads "Request Public API Endpoints
+  # access for my API key" and "Request for access to DeepSeek V4 Pro NIM public API endpoint".
+  # This account's key likely hasn't had that entitlement granted for this model yet. Action: check
+  # the build.nvidia.com dashboard's API-key entitlements/permissions, or file an access request in
+  # the NVIDIA Developer Forums' Access/Accounts category the same way those threads did. Left
+  # commented out rather than guessed back into a "corrected" string: a 404 gets no automatic
+  # block/retry treatment in either dispatch Worker, so a live-but-gated route here would hard-fail
+  # every attempt with no circuit-break. `deepseek/deepseek-v4-pro`'s only route while this is
+  # disabled is DeepSeek Direct's paid leg ($0.435-0.66/M) -- so Mistral Medium's model_routing
+  # overflow onto this model (config's model_routing block above) is not free right now, only
+  # nominally cheap. Re-enable (uncomment, recompile) once the entitlement is granted and confirmed
+  # working with a manual curl.
+  #
+  # - route_id: nvidia_deepseek_v4_pro_0813_free
+  #   model: deepseek/deepseek-v4-pro
+  #   provider: nvidia
+  #   upstream_model: deepseek-ai/deepseek-v4-pro-0813
+  #   input_context_limit: 1000000
+  #   output_context_limit: 384000
+  #   account_id: primary
+  #   rpm: 12
+  #   tpm: 100000
+  #   free: true
+  #   input_per_token: 0.0
+  #   output_per_token: 0.0
 
-  - route_id: nvidia_deepseek_v4_flash_0731_free
-    model: nvidia/deepseek-v4-flash-0731
-    model_key: deepseek/deepseek-v4-flash
-    # Pools with SiliconFlow's and DeepSeek Direct's paid legs and OpenCode's separate free leg --
-    # another independent free pool for the same logical model, not new model coverage.
-    provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4-flash-0731
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    rpm: 12
-    tpm: 100000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
+  # DISABLED (found 2026-08-29, cause identified): route_id nvidia_deepseek_v4_flash_0731_free --
+  # upstream_model deepseek-ai/deepseek-v4-flash-0731 is the correct API model string per NVIDIA's
+  # own docs, and the URL is correct too (see deepseek-v4-pro above), but multiple unrelated
+  # developers are reporting the same 404 "Function not found for account" (no JSON body) on this
+  # exact model: GET /v1/models lists it and it works in NVIDIA's own playground, but POST
+  # /v1/chat/completions is rejected at NVIDIA's routing layer before ever reaching a serving
+  # container. Most likely explanation: the same "Public API Endpoints" per-key entitlement
+  # gating described on deepseek-v4-pro above -- see NVIDIA Developer Forums: "Inference activation
+  # request for deepseek-v4-flash-0731 on NIM API", "404 Function not found for account on
+  # deepseek-ai/deepseek-v4-flash-0731", and "Request Public API Endpoints access for my API key".
+  # Same action as deepseek-v4-pro: check/request that entitlement for this model on this account.
+  #
+  # Left commented out rather than just documented: 404 is NOT in either dispatch Worker's
+  # retryable-status set (`retryableStatus` in llm-dispatch-proxy/src/index.js checks only
+  # 429/500/502/503/504) and gets no `blocked_until`/ProviderLedger.block treatment the way a real
+  # 429 does -- so a live route here would hard-fail every dispatch attempt with no automatic
+  # circuit-break, wasting real attempts against a pool (deepseek/deepseek-v4-flash) that has three
+  # other working legs. Re-enable (uncomment, recompile) once the entitlement is granted and
+  # confirmed working with a manual curl.
+  #
+  # - route_id: nvidia_deepseek_v4_flash_0731_free
+  #   model: nvidia/deepseek-v4-flash-0731
+  #   model_key: deepseek/deepseek-v4-flash
+  #   provider: nvidia
+  #   upstream_model: deepseek-ai/deepseek-v4-flash-0731
+  #   input_context_limit: 1000000
+  #   output_context_limit: 384000
+  #   account_id: primary
+  #   rpm: 12
+  #   tpm: 100000
+  #   free: true
+  #   input_per_token: 0.0
+  #   output_per_token: 0.0
 
   - route_id: nvidia_gemma_4_31b_it_free
     model: google/gemma-4-31b-it
