@@ -241,16 +241,15 @@ class LLMBudget:
                     led.requests_available_at
                     and now.astimezone(UTC) >= datetime.fromisoformat(led.requests_available_at)
                 )
-                # ``max(1, rpm)``: this is a per-MINUTE bucket, and a route may be paced slower
-                # than one request per minute (NVIDIA's free NIM endpoints need 0.25 rpm to stay
-                # under their per-model hourly quota). Comparing against a raw sub-1 rpm refuses
-                # the first request on a fresh ledger -- 0 + 1 <= 0.25 is False -- and since that
-                # refusal is what prevents ``requests_available_at`` from ever being written, the
-                # route would never become available again. Real sub-minute spacing comes from
-                # ``requests_available_at`` (60/rpm seconds), which is exact for fractions.
+                # Use the requested size as the compatibility bucket floor because this is a
+                # per-MINUTE counter, while continuous pacing handles the actual fractional rate.
+                # A structured call reserves two attempts; without this floor, an empty legacy
+                # ledger at 0.25 rpm would reject 0 + 2 <= 0.25 before reserve() can write its
+                # requests_available_at timestamp. Real spacing comes from that timestamp
+                # (60/rpm seconds), which is exact for fractional rates.
                 or (
                     not led.requests_available_at
-                    and led.requests_minute + requests <= max(1, quota.rpm)
+                    and led.requests_minute + requests <= max(requests, quota.rpm)
                 )
             )
             and (quota.rpd is None or led.requests_day + requests <= quota.rpd)

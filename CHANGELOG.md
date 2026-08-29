@@ -55,7 +55,7 @@ Phase R (Research-Tool Surface)._
   changed **zero** routes, so the change only enables new sub-1 configurations.
   **NVIDIA's quota is per model, not per account** — verified on one key by interleaved calls:
   `deepseek-v4-pro` returned 429 nine times out of nine while `nemotron-3-super` returned 200 three
-  times, twice inside the same minute. Each route is therefore paced at `0.5 rpm` (30/hr per model,
+  times, twice inside the same minute. Each route is therefore paced at `0.25 rpm` (15/hr per model,
   against observed lockout onsets at 28 and 37 successes/hr), with the provider-wide cap raised to
   6 so it stays a safety net rather than making nine models share one model's budget. This costs no
   throughput — the quota caps us either way — it spends the budget evenly instead of burning it in

@@ -1585,14 +1585,12 @@ function routeAvailable(entry, route, { requests, tokens }, now, batch = null, m
     // Pacing allows delays within maxStaggerMs. The minute counter remains as a
     // compatibility fallback for ledgers written by older Worker versions.
     //
-    // The counter is floored at 1 because it is a per-MINUTE bucket, and a route may be paced
-    // slower than one request per minute (NVIDIA's free NIM endpoints need ~0.25 rpm to stay
-    // under their hourly quota). Comparing against a raw sub-1 rpm would refuse the very first
-    // request on a fresh ledger -- 0 + 1 > 0.25 -- and because that refusal is what prevents
-    // `requests_available_at` from ever being written, the route would never admit anything
-    // again. Real sub-minute spacing comes from `requests_available_at` (60000/rpm), which is
-    // exact for fractional rates; this fallback only needs to not deadlock.
-    const minuteBucket = Math.max(1, route.rpm);
+    // Use the requested size as the compatibility bucket floor because this is a per-MINUTE
+    // counter, while continuous pacing handles the actual fractional rate. A structured call
+    // reserves two attempts; without this floor, an empty legacy ledger at 0.25 rpm would reject
+    // 0 + 2 <= 0.25 before reserveRouteCapacity can write its requests_available_at timestamp.
+    // Real spacing comes from that timestamp (60000/rpm), which is exact for fractional rates.
+    const minuteBucket = Math.max(requests, route.rpm);
     if (
       (nextRequestAt != null && nextRequestAt - now.getTime() > maxStaggerMs) ||
       (nextRequestAt == null && entry.requests_minute + requests > minuteBucket)
@@ -1734,8 +1732,8 @@ function nextRouteReset(entry, route, now, dispatchLimits = DISPATCH_LIMITS, bud
       const requestReadyMs = parseTime(entry.requests_available_at);
       if (requestReadyMs > now.getTime()) candidates.push(new Date(requestReadyMs));
     } else if (entry.requests_minute >= Math.max(1, route.rpm)) {
-      // Same per-minute bucket floor as routeAvailable: a sub-1 rpm route is spaced by
-      // requests_available_at (the branch above), not by this minute-boundary fallback.
+      // A sub-1 rpm route is spaced by requests_available_at (the branch above), not by this
+      // minute-boundary fallback.
       candidates.push(new Date(nextMinuteMs));
     }
   }
@@ -3043,7 +3041,7 @@ async function dispatchBatch(
           ? parseTime(successEntry.throttled_at)
           : null;
         if (
-          (throttledAtMs == null || requestStartMs >= throttledAtMs) &&
+          (throttledAtMs == null || requestStartMs > throttledAtMs) &&
           (successEntry.throttle_streak || successEntry.throttled_until || successEntry.throttled_at)
         ) {
           successEntry.throttle_streak = 0;
@@ -3054,12 +3052,14 @@ async function dispatchBatch(
         const blockedAtMs = successEntry.payment_required_at
           ? parseTime(successEntry.payment_required_at)
           : null;
-        // Only a call that did not begin BEFORE the most recent 402 proves the route recovered.
+        // Only a call that began STRICTLY AFTER the most recent 402 proves the route recovered.
         // One already in flight when the 402 landed proves nothing about the account's balance.
-        // `>=`, not `>`: these are millisecond stamps, and a call starting in the same millisecond
-        // did not begin *before* the rejection. Strict `>` also made this intermittently wrong --
-        // two dispatches inside one millisecond left the block uncleared forever.
-        const provesRecovery = blockedAtMs == null || requestStartMs >= blockedAtMs;
+        // Equality is not proof of ordering -- `Date.now()` has millisecond granularity, so a
+        // request that genuinely started before the rejection can share its millisecond. Erring
+        // strict costs only an un-reset streak (the next cooldown starts a rung higher, and
+        // `blocked_until` still expires on its own); erring loose re-admits work to a route whose
+        // budget is actually exhausted, which is the whole thing this guard prevents.
+        const provesRecovery = blockedAtMs == null || requestStartMs > blockedAtMs;
         if (
           provesRecovery &&
           (successEntry.payment_required_streak ||

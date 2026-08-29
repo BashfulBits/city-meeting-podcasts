@@ -179,6 +179,26 @@ def test_sub_one_rpm_route_paces_at_sixty_over_rpm():
     )
 
 
+def test_structured_reservation_on_legacy_fractional_ledger_sets_request_schedule():
+    """A two-attempt structured call must initialize pacing on an old fractional ledger."""
+    route = LLMRoute(
+        model="slow/structured-model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=0.25),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    ledger = budget._ledger(route.model, NOW, route=route, create=True)
+    ledger.requests_available_at = ""  # legacy state predating continuous request pacing
+    ledger.requests_minute = 0
+
+    assert budget.available(route.model, route=route, requests=2, tokens=1, cost=0, now=NOW)
+    budget.reserve(route.model, route.model, route=route, requests=2, tokens=1, cost=0, now=NOW)
+
+    assert ledger.requests_available_at == (NOW + timedelta(seconds=480)).isoformat()
+
+
 def test_provider_rpm_is_shared_across_models():
     first = LLMRoute(
         model="provider/first",

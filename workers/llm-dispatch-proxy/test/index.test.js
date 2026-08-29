@@ -2912,6 +2912,9 @@ test("dispatchOne blocks a route after a 402 response, and clears the block on t
   // Real time obviously can't advance a day inside a test; clear the block directly to simulate
   // it having already expired, exactly as it would in production once `now` passes blocked_until.
   entry.blocked_until = null;
+  // Backdate the marker so this test proves the normal recovery path without relying on the next
+  // Date.now() call landing in a later millisecond than the 402 response.
+  entry.payment_required_at = new Date(now.getTime() - 60_000).toISOString();
   await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
 
   const queued2 = await handleRequest(chatRequest(undefined, "402-check-2"), env);
