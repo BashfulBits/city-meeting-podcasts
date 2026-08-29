@@ -45,6 +45,26 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Cloudflare AI Gateway dropped the Base URL path for Custom Providers, 404-ing every NVIDIA and
+  SambaNova route.** The gateway joins the caller-supplied path at the provider's *origin root*,
+  discarding the path component of the registered Base URL — the opposite of what
+  [its documentation](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/)
+  describes (`{base_url}/{provider-path}`). NVIDIA's routes were therefore dispatching to
+  `https://integrate.api.nvidia.com/chat/completions` and receiving an empty-body `text/plain` 404
+  from NVIDIA's AWS load balancer; SambaNova's were hitting `https://api.sambanova.ai/chat/completions`
+  and receiving a plain-text `404 page not found`. Because 404 is not in either dispatch Worker's
+  `retryableStatus` set, these hard-failed with no failover. Fixed by carrying the base path in each
+  provider's `ai_gateway_chat_path` (`/v1/chat/completions`), verified live against the gateway:
+  all nine NVIDIA route models returned HTTP 200 completions, and SambaNova returned a genuine
+  upstream 429 in place of a routing 404. A new guard test asserts the invariant for every
+  `custom-*` route so a provider added with a root-relative path fails in CI rather than in
+  production.
+- **Re-enabled `nvidia_deepseek_v4_pro_0813_free` and `nvidia_deepseek_v4_flash_0731_free`,
+  retiring a misdiagnosis.** Both were disabled on the theory that NVIDIA gated them behind a
+  per-key "Public API Endpoints" entitlement. They were failing for the Base-URL-path reason above,
+  and both return HTTP 200 with the path corrected — no entitlement request was needed or filed.
+  `deepseek/deepseek-v4-flash` is back to four provider legs.
+
 - **NVIDIA build DeepSeek routes disabled: both 404, root cause not a naming bug.** Both
   `nvidia_deepseek_v4_pro_0813_free` and `nvidia_deepseek_v4_flash_0731_free` return 404 with no
   JSON body. An initial fix changed the pro route's `upstream_model` from
