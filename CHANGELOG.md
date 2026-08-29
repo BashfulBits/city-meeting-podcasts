@@ -45,6 +45,19 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **NVIDIA 429s were a concurrency problem, not a rate problem.** Roughly 57% of post-fix NVIDIA
+  calls came back 429 while we were averaging just **1.15 requests/min** — some 35x under NVIDIA's
+  ~40 RPM community-reported free baseline — and burning ~1,865 tokens/min against a 100,000 TPM
+  cap. Neither limit was binding. What binds is overlap: successful calls run **41s median, 77s
+  p90, 399s max**, while 429s return fast and tightly clustered at 8.3–9.1s, the signature of an
+  admission rejection rather than a rate window. With v1 at `BATCH_CONCURRENCY: 2` and v2 at
+  `MAX_JOBS_PER_ROUTE_PER_BUNDLE: 4`, up to six 41-second calls could pile onto one model. Every
+  NVIDIA route now sets `concurrency: 1` (the knob both Workers already honour, as OpenRouter's
+  free legs do), with `rpm` 12 → 4 and `tpm` 100000 → 40000 as secondary guards that align the
+  config with what the dispatchers could ever exercise. Note the ceiling is per-Worker-ledger, so
+  v1 and v2 each keep one in flight while both transports are live — the same coexistence caveat as
+  `split_cap_multiplier`.
+
 - **`llm-dispatch-v2` billed for work a free route could have taken.** Its route comparator ranked
   purely by available capacity, with `free` appearing nowhere except the hard exclusion applied when
   a job does *not* set `allow_paid`. So whenever a job did allow paid, a paid route with more

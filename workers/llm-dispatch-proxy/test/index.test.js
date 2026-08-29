@@ -2426,17 +2426,20 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
 
 test("dispatchBatch defers same-route candidates when TPM delay exceeds max stagger", async () => {
   const env = isolatedEnv();
-  // Request with 8000 tokens. google/gemma-4-31b-it now maps to 4 routes: two Gemini accounts
+  // Request with 8000 tokens. google/gemma-4-31b-it maps to 4 routes: two Gemini accounts
   // (7200 compiled TPM each -> a 66.7s reuse interval, far past the 20s in-batch stagger ceiling),
   // OpenRouter's free leg (no TPM cap, paced only by its 5 RPM -> 12s reuse interval), and NVIDIA
-  // build's leg (added 2026-08-29, 45000 compiled TPM, cheap enough to absorb several reuses
-  // before its accumulating token debt finally exceeds the 20s ceiling too). Empirically (this
-  // scenario is intentionally exact-number-pinned against the real compiled catalog, not
-  // hand-derived, since the ranking that decides which route absorbs each reuse is its own
-  // logic) 8 offered requests admit exactly 7 -- 2 Gemini + 1 OpenRouter fresh, plus NVIDIA
-  // serving 4 total via 3 in-batch paced waits -- and defer the 8th once every route's next reuse
-  // exceeds the 20s max stagger. More than 8 offered requests still admit only 7: re-run this
-  // probe (see the PR that added NVIDIA routing) if the provider catalog changes these numbers.
+  // build's leg. This scenario is intentionally exact-number-pinned against the real compiled
+  // catalog rather than hand-derived, since the ranking that decides which route absorbs each
+  // reuse is its own logic -- so it must be re-probed whenever those limits move.
+  //
+  // Re-probed 2026-08-29 after NVIDIA gained `concurrency: 1` and its TPM dropped 100000 -> 40000
+  // (18000 compiled): 8 offered requests now admit exactly 4 -- one per route, with NVIDIA no
+  // longer absorbing extra reuses because a concurrency of 1 admits a single in-flight call.
+  // Previously it admitted 7 (NVIDIA serving 4 via 3 in-batch paced waits). That drop is the
+  // point of the change, not a regression: NVIDIA answers an overlapping request with a fast
+  // ~8.3s 429, and its successful calls run 41s median, so in-batch reuse mostly manufactured
+  // rejections.
   for (let i = 0; i < 8; i += 1) {
     await handleRequest(
       chatRequest(
@@ -2478,22 +2481,22 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   );
 
   assert.equal(batchResult.status, "completed");
-  // 7 candidates admitted (NVIDIA's route absorbs 4 of them via 3 in-batch paced waits).
-  // Candidate 8 deferred in place (every route's next reuse exceeds the 20s max stagger).
-  assert.equal(batchResult.count, 7);
-  assert.equal(batchResult.completedCount, 7);
-  assert.equal(calls.length, 7);
-  assert.equal(slept.length, 3);
+  // 4 candidates admitted, one per eligible route; no in-batch reuse survives the 20s max
+  // stagger now that NVIDIA is capped at one in-flight call.
+  assert.equal(batchResult.count, 4);
+  assert.equal(batchResult.completedCount, 4);
+  assert.equal(calls.length, 4);
+  assert.equal(slept.length, 0, "no in-batch paced waits remain");
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 7);
+  assert.equal(completedObjects.length, 4);
   const pendingObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "pending",
   );
-  assert.equal(pendingObjects.length, 1);
+  assert.equal(pendingObjects.length, 4);
 });
 
 test("dispatchBatch runs four independently paced routes concurrently", async () => {
