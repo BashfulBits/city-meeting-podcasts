@@ -1379,6 +1379,21 @@ function nextLocalMidnightUTC(date, timeZone = "UTC") {
   return res;
 }
 
+/**
+ * `Retry-After` in either RFC 9110 form: delay-seconds, or an HTTP-date. Returns seconds relative
+ * to `nowMs`, or null when the header is absent or unparseable. A bare `Number()` silently yields
+ * NaN for the date form, which would discard a provider's own deadline in favour of our guess.
+ * `0` is a legitimate value meaning "retry immediately" and is preserved, not treated as absent.
+ */
+function parseRetryAfterSeconds(raw, nowMs) {
+  if (raw == null || raw === "") return null;
+  const asSeconds = Number(raw);
+  if (Number.isFinite(asSeconds)) return Math.max(0, asSeconds);
+  const asDate = Date.parse(raw);
+  if (Number.isFinite(asDate)) return Math.max(0, (asDate - nowMs) / 1000);
+  return null;
+}
+
 const RATE_LIMIT_BACKOFF_BASE_MS = 60_000;
 const RATE_LIMIT_BACKOFF_CAP_MS = 30 * 60_000;
 
@@ -1401,7 +1416,7 @@ const RATE_LIMIT_BACKOFF_CAP_MS = 30 * 60_000;
  * it as an ISO string, like every other ledger timestamp here.
  */
 function rateLimitedBackoffUntil(streak, now, retryAfterSeconds = null) {
-  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
     return now + Math.min(retryAfterSeconds * 1000, RATE_LIMIT_BACKOFF_CAP_MS);
   }
   const exponential = RATE_LIMIT_BACKOFF_BASE_MS * Math.pow(2, Math.max(0, streak - 1));
@@ -2799,23 +2814,32 @@ async function dispatchBatch(
         }
 
         if (!response.ok) {
+          // The wall clock when THIS response arrived. `now` is the batch's start time, which is
+          // wrong twice over for cooldown bookkeeping: it shortens the cooldown by however long
+          // the upstream call took, and it stamps the guard early enough that a sibling which
+          // started after the batch began but before this rejection landed would look like it
+          // postdates the rejection -- so its later success would clear a cooldown it never saw.
+          const respondedAt = new Date();
           if (response.status === 429) {
             // Route-level cooldown, not just the per-job retry below. Without this every other
             // queued job keeps being admitted at the normal rpm straight into a provider's quota
             // lockout and rejected in turn (NVIDIA, 2026-08-29: ~50 wasted dispatches per cycle).
             const throttleEntry = ledgerEntry(coordinator, chosenRoute.route_id);
             throttleEntry.throttle_streak = (throttleEntry.throttle_streak || 0) + 1;
-            const retryAfterHeader = Number(response.headers?.get?.("retry-after"));
+            const retryAfterSeconds = parseRetryAfterSeconds(
+              response.headers?.get?.("retry-after"),
+              respondedAt.getTime(),
+            );
             throttleEntry.throttled_until = new Date(
               rateLimitedBackoffUntil(
                 throttleEntry.throttle_streak,
-                now.getTime(),
-                Number.isFinite(retryAfterHeader) ? retryAfterHeader : null,
+                respondedAt.getTime(),
+                retryAfterSeconds,
               ),
             ).toISOString();
             // Stamped for the same reason as payment_required_at: a slower sibling that started
             // before this 429 must not clear a cooldown it knows nothing about.
-            throttleEntry.throttled_at = now.toISOString();
+            throttleEntry.throttled_at = respondedAt.toISOString();
             ledgerMutatedAfterDispatch = true;
           }
           if (response.status === 402) {
@@ -2828,14 +2852,14 @@ async function dispatchBatch(
             const entry = ledgerEntry(coordinator, chosenRoute.route_id);
             entry.payment_required_streak = (entry.payment_required_streak || 0) + 1;
             entry.blocked_until = new Date(
-              paymentRequiredBackoffUntil(entry.payment_required_streak, now.getTime()),
+              paymentRequiredBackoffUntil(entry.payment_required_streak, respondedAt.getTime()),
             ).toISOString();
             // Stamped so a slower sibling that STARTED before this 402 cannot clear the block it
             // knows nothing about. Without a concurrency cap a batch runs several requests on one
             // route, and an in-flight success landing afterwards would otherwise reopen an
             // exhausted route -- now that a 402 requeues its job rather than failing it, that job
             // would come straight back and burn another attempt.
-            entry.payment_required_at = now.toISOString();
+            entry.payment_required_at = respondedAt.toISOString();
             ledgerMutatedAfterDispatch = true;
           }
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));

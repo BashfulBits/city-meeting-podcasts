@@ -3011,6 +3011,67 @@ test("a 429 honors Retry-After when the provider sends one", async () => {
   );
 });
 
+test("a 429 cooldown is measured from the response, not the batch start", async () => {
+  // `now` is the batch's start time. Using it would shorten the cooldown by the upstream call's
+  // duration, and -- worse -- stamp the stale-guard early enough that a sibling which started
+  // after the batch began but before this rejection landed would look like it postdates the
+  // rejection, letting its later success clear a cooldown it never saw.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-response-clock"), env);
+  await queued.json();
+
+  const UPSTREAM_MS = 120;
+  const slowRateLimited = async () => {
+    await new Promise((resolve) => setTimeout(resolve, UPSTREAM_MS));
+    return new Response(JSON.stringify({ error: { message: "rate limit" } }), { status: 429 });
+  };
+
+  const now = new Date();
+  await dispatchOne(env, slowRateLimited, now);
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const stampedAfterStartMs = Date.parse(entry.throttled_at) - now.getTime();
+  assert.ok(
+    stampedAfterStartMs >= UPSTREAM_MS - 20,
+    `throttled_at must be stamped when the 429 arrived, not at batch start; got +${stampedAfterStartMs}ms`,
+  );
+  // And the cooldown window itself is measured from that same instant.
+  const cooldownMs = Date.parse(entry.throttled_until) - Date.parse(entry.throttled_at);
+  assert.ok(
+    cooldownMs >= 59_000 && cooldownMs <= 61_000,
+    `expected a full 60s first cooldown from the response instant, got ${cooldownMs}ms`,
+  );
+});
+
+test("a 429 Retry-After given as an HTTP-date is honored", async () => {
+  // RFC 9110 permits delay-seconds or an HTTP-date. `Number()` yields NaN for the date form, which
+  // would silently discard the provider's own deadline in favour of our exponential guess.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-http-date"), env);
+  await queued.json();
+
+  const deadline = new Date(Date.now() + 15 * 60_000);
+  const rateLimited = async () =>
+    new Response(JSON.stringify({ error: { message: "rate limit" } }), {
+      status: 429,
+      headers: { "retry-after": deadline.toUTCString() },
+    });
+
+  await dispatchOne(env, rateLimited, new Date());
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const cooldownEnd = Date.parse(entry.throttled_until);
+  // ~15 minutes from the header, not the 60s first-occurrence fallback.
+  assert.ok(
+    Math.abs(cooldownEnd - deadline.getTime()) < 5_000,
+    `expected the cooldown to track the HTTP-date deadline, off by ${cooldownEnd - deadline.getTime()}ms`,
+  );
+});
+
 test("a success after a 429 cooldown clears it, but a stale one does not", async () => {
   const env = isolatedEnv();
   const routeId = "mistral_large_2512_primary";
