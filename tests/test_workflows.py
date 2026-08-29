@@ -133,6 +133,15 @@ def test_remedy_workflows_request_static_minimum_permissions():
     }
 
 
+def test_remedy_evidence_collection_is_authenticated_and_read_only():
+    _wf, job = _job("remedy-unexpected-bodies.yml", "remedy")
+    collect = next(
+        step for step in job["steps"] if step.get("name") == "Collect unexpected-body evidence"
+    )
+    assert collect["env"]["GH_TOKEN"] == "${{ github.token }}"
+    assert "--dry-run" in collect["run"]
+
+
 def test_issue_command_workflows_share_exact_repository_permission_gate():
     for workflow_file, job_name, script in (
         ("stale-commands.yml", "lifecycle-pr", "scripts/stale_commands.py"),

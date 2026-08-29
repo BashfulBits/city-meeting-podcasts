@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from citypods.storage.base import StorageBackend
+from citypods.storage.base import StorageBackend, StorageReadUnavailable
 from citypods.storage.local import LocalStorage
 from citypods.storage.routing import COORDINATION_PREFIXES, RoutingStorage
 from citypods.storage.s3 import CASConflict, S3CompatibleStorage, b2_from_env, r2_from_env
@@ -54,6 +54,7 @@ def make_storage(site_config: dict, base_url: str, output_dir: Path) -> StorageB
 
 __all__ = [
     "StorageBackend",
+    "StorageReadUnavailable",
     "LocalStorage",
     "S3CompatibleStorage",
     "RoutingStorage",

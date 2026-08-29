@@ -214,8 +214,18 @@ def main(argv: list[str] | None = None) -> int:
     _register_known_contracts()
 
     if args.repair_index:
-        repaired = repair_deferred_index(storage)
-        print(f"llm-deferred-sweep: repaired {repaired} canonical deferred records")
+        unavailable = []
+        repaired = repair_deferred_index(storage, unavailable=unavailable)
+        print(
+            f"llm-deferred-sweep: repaired {repaired} canonical deferred records, "
+            f"{len(unavailable)} unavailable"
+        )
+        for error in unavailable:
+            print(
+                f"llm-deferred-sweep: unavailable object skipped key={error.key} "
+                f"reason={error.reason}",
+                file=sys.stderr,
+            )
         return 0
 
     stop_state = _install_signal_handlers()
@@ -232,6 +242,13 @@ def main(argv: list[str] | None = None) -> int:
     skipped_by_pool: dict[tuple, int] = {}
 
     snapshot = load_deferred_snapshot(storage)
+    if snapshot.unavailable_reads:
+        for error in snapshot.unavailable_reads:
+            print(
+                f"llm-deferred-sweep: unavailable object skipped key={error.key} "
+                f"reason={error.reason}",
+                file=sys.stderr,
+            )
     prune_expired_failure_markers(storage)
     if datetime.now(UTC) < deadline_at:
         # Excludes a deferred_request-bearing handle (the client-side daily-cap/429 short-circuit
@@ -407,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
         f"llm-deferred-sweep: {len(seen_pending)} pending seen, {completed} completed, "
         f"{still_pending} still pending observations, {failed} failed "
         f"({recovered_terminal_failures} terminally recovered), {pruned} pruned, "
-        f"{remaining} remaining"
+        f"{remaining} remaining, {len(snapshot.unavailable_reads)} unavailable"
     )
     for signature, skipped in sorted(skipped_by_pool.items(), key=lambda item: -item[1]):
         models, allow_paid = signature
