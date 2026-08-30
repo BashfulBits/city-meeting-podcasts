@@ -177,6 +177,17 @@ loader now starts with a flushed phase event, uses 16 bounded concurrent reads, 
 listed/loaded/omitted snapshot records; it stops admitting reads at the same wall-clock deadline.
 No artifact schema, recipe, pipeline version, or backfill behavior changes.
 
+**R10 legacy-v1 recovery follow-up (2026-08-30, [PR
+#1349](https://github.com/BashfulBits/city-meeting-podcasts/pull/1349)).** The temporary, manual
+`recover_v1_llm_dispatch_results.py` bridge now reconstructs only unfinished agenda/locator jobs
+from durable B2 inputs when direct legacy `job_ref` provenance has already been lost. It imports a
+completed R2 result only after a unique exact normalized-prompt and response-schema-shape match;
+zero/multiple owners and one-to-many historical retry matches remain report-only. The main-only
+workflow, structured scan/reconstruction metrics, changelog, review/44 exit plan, and regression
+tests ship together. This remains a bounded v1-draining aid: it creates no B2 pending handles,
+does not poll the Worker or delete R2 records, and introduces no artifact, recipe, pipeline-version,
+or backfill change.
+
 | Item | #/GH | Maturity | Breakout |
 |---|---|---|---|
 | Per-meeting permalink pages | #46/GH#157 | **Shipped** (#897, 2026-07-13) | [`review/13`](13-per-meeting-pages-and-search.md) Part A · playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata and canonical provenance with a clear no-recording notice · implementation `1790c9f` plus review fixes `20cc5ed` |

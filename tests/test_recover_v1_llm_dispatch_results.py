@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -247,3 +248,174 @@ def test_apply_serializes_distinct_v1_refs_for_one_recipe():
     assert summary["completed_conflict"] == 1
     assert isinstance(result, JobResult)
     assert result.output["choices"][0]["message"]["content"] == "first"
+
+
+def test_dry_run_reconstructs_an_unowned_agenda_request_from_durable_input():
+    """A unique, exact durable prompt match exposes an otherwise unowned completion."""
+
+    from citypods.chapter_jobs import build_agenda_job
+
+    ref = "chatcmpl-reconstructed"
+    agenda_bytes = b"1. Consider a zoning request."
+    job = build_agenda_job(
+        episode_uid="episode-1",
+        agenda_text=agenda_bytes.decode(),
+        agenda_source_hash=hashlib.sha256(agenda_bytes).hexdigest(),
+    )
+    storage = _Storage(
+        {
+            "state/sources/source/episodes.json": json.dumps(
+                {
+                    "episodes": {
+                        "episode-1": {
+                            "uid": "episode-1",
+                            "links": {"agenda_text_artifact_key": "agendas/episode-1.txt"},
+                        }
+                    }
+                }
+            ).encode(),
+            "agendas/episode-1.txt": agenda_bytes,
+        }
+    )
+    r2 = _R2(
+        {
+            f"requests/{ref}.json": json.dumps(
+                {
+                    "id": ref,
+                    "status": "completed",
+                    "model": "mistral/mistral-medium-2508",
+                    "request": {
+                        "messages": job.inputs["messages"],
+                        "response_format": {
+                            "type": "json_schema",
+                            "json_schema": {"schema": {"properties": {"items": {}}}},
+                        },
+                    },
+                    "response": {"choices": [{"message": {"content": "{}"}}]},
+                }
+            ).encode()
+        }
+    )
+
+    summary = recovery.recover_v1_results(
+        storage,
+        r2,
+        "dispatch",
+        dry_run=True,
+        workers=1,
+        validate=lambda _candidate, _response: True,
+    )
+
+    assert summary["owned_requests"] == 0
+    assert summary["reconstructed_candidates"] == 1
+    assert summary["reconstructed_owned_requests"] == 1
+    assert summary["reconstructed_matched_completed"] == 1
+    assert summary["would_import"] == 1
+
+
+def test_reconstruction_with_two_matching_owners_is_never_imported():
+    """A retained record shared by two reconstructed episode owners stays report-only."""
+
+    from citypods.chapter_jobs import build_agenda_job
+
+    ref = "chatcmpl-ambiguous-reconstruction"
+    agenda_bytes = b"1. Consider a zoning request."
+    job = build_agenda_job(
+        episode_uid="episode-1",
+        agenda_text=agenda_bytes.decode(),
+        agenda_source_hash=hashlib.sha256(agenda_bytes).hexdigest(),
+    )
+    episode = {"links": {"agenda_text_artifact_key": "agendas/shared.txt"}}
+    storage = _Storage(
+        {
+            "state/sources/one/episodes.json": _state(entries=[episode]),
+            "state/sources/two/episodes.json": _state(entries=[episode]),
+            "agendas/shared.txt": agenda_bytes,
+        }
+    )
+    r2 = _R2(
+        {
+            f"requests/{ref}.json": json.dumps(
+                {
+                    "id": ref,
+                    "status": "completed",
+                    "request": {
+                        "messages": job.inputs["messages"],
+                        "response_format": {
+                            "type": "json_schema",
+                            "json_schema": {"schema": {"properties": {"items": {}}}},
+                        },
+                    },
+                    "response": {"choices": [{"message": {"content": "{}"}}]},
+                }
+            ).encode()
+        }
+    )
+
+    summary = recovery.recover_v1_results(
+        storage,
+        r2,
+        "dispatch",
+        dry_run=False,
+        workers=1,
+        validate=lambda _candidate, _response: True,
+    )
+
+    assert summary["reconstructed_candidates"] == 2
+    assert summary["reconstructed_ambiguous_owners"] == 1
+    assert summary["would_import"] == 0
+    assert summary["imported"] == 0
+
+
+def test_reconstruction_rejects_one_candidate_matching_multiple_r2_records():
+    """Historical retry records for one reconstructed input are not picked arbitrarily."""
+
+    from citypods.chapter_jobs import build_agenda_job
+
+    agenda_bytes = b"1. Consider a zoning request."
+    job = build_agenda_job(
+        episode_uid="episode-1",
+        agenda_text=agenda_bytes.decode(),
+        agenda_source_hash=hashlib.sha256(agenda_bytes).hexdigest(),
+    )
+    storage = _Storage(
+        {
+            "state/sources/source/episodes.json": _state(
+                entries=[{"links": {"agenda_text_artifact_key": "agendas/episode-1.txt"}}]
+            ),
+            "agendas/episode-1.txt": agenda_bytes,
+        }
+    )
+    base_record = {
+        "status": "completed",
+        "request": {
+            "messages": job.inputs["messages"],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"schema": {"properties": {"items": {}}}},
+            },
+        },
+        "response": {"choices": [{"message": {"content": "{}"}}]},
+    }
+    first_ref = "chatcmpl-first-retry"
+    second_ref = "chatcmpl-second-retry"
+    r2 = _R2(
+        {
+            f"requests/{first_ref}.json": json.dumps({"id": first_ref, **base_record}).encode(),
+            f"requests/{second_ref}.json": json.dumps({"id": second_ref, **base_record}).encode(),
+        }
+    )
+
+    summary = recovery.recover_v1_results(
+        storage,
+        r2,
+        "dispatch",
+        dry_run=False,
+        workers=1,
+        validate=lambda _candidate, _response: True,
+    )
+
+    assert summary["reconstructed_candidate_fanout"] == 1
+    assert summary["would_import"] == 0
+    assert summary["completed_conflict"] == 0
+    assert summary["imported"] == 0
