@@ -260,7 +260,7 @@ def test_snapshot_reads_canonical_records_concurrently_and_preserves_listing_ord
     max_active_reads = 0
     lock = Lock()
 
-    def fake_read(_storage, key):
+    def fake_read(_storage, key, **_kwargs):
         nonlocal active_reads, max_active_reads
         with lock:
             active_reads += 1
@@ -312,6 +312,52 @@ def test_snapshot_stops_admitting_reads_after_its_deadline():
     assert snapshot.listed_count == 2
     assert snapshot.omitted_count == 2
     assert snapshot.deadline_reached
+
+
+def test_snapshot_does_not_report_a_signal_stop_as_a_deadline():
+    snapshot = _load_snapshot_from_keys(
+        None,
+        [("recipe-a", NOW)],
+        deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+        should_stop=lambda: True,
+    )
+
+    assert snapshot.entries == []
+    assert snapshot.omitted_count == 1
+    assert not snapshot.deadline_reached
+
+
+def test_snapshot_polls_stop_signal_while_waiting_for_deadline_bound_reads(monkeypatch):
+    read_started = Event()
+    release_read = Event()
+    stop_requested = Event()
+
+    def blocking_read(_storage, _key, **_kwargs):
+        read_started.set()
+        assert release_read.wait(timeout=3)
+        return None
+
+    monkeypatch.setattr(llm_deferred, "_read_json", blocking_read)
+    result = []
+    reader = Thread(
+        target=lambda: result.append(
+            _load_snapshot_from_keys(
+                None,
+                [("recipe-a", NOW)],
+                deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+                should_stop=stop_requested.is_set,
+            )
+        )
+    )
+    reader.start()
+    assert read_started.wait(timeout=1)
+    stop_requested.set()
+    reader.join(timeout=2)
+    release_read.set()
+
+    assert not reader.is_alive()
+    assert result[0].entries == []
+    assert not result[0].deadline_reached
 
 
 def test_repair_does_not_mark_migration_when_a_canonical_read_is_unavailable():

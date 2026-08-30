@@ -490,7 +490,7 @@ def _write_json(storage, key: str, body: bytes) -> None:
         storage.put_file(key, path, "application/json")
 
 
-def _read_json(storage, key: str) -> Any | None:
+def _read_json(storage, key: str, *, deadline_at: datetime | None = None) -> Any | None:
     """Read and parse a JSON object from storage.
 
     Missing or malformed objects return ``None``. A transient read that exhausted the storage
@@ -499,7 +499,11 @@ def _read_json(storage, key: str) -> Any | None:
     """
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "record.json"
-        if not storage.get_file(key, path):
+        if deadline_at is None:
+            found = storage.get_file(key, path)
+        else:
+            found = storage.get_file(key, path, deadline_at=deadline_at)
+        if not found:
             return None
         try:
             return json.loads(path.read_text())
@@ -592,11 +596,13 @@ def iter_pending_deferred(storage, *, unavailable: list[StorageReadUnavailable] 
             yield decoded
 
 
-def _snapshot_entry(storage, key: str, last_modified: Any) -> DeferredSnapshotEntry:
+def _snapshot_entry(
+    storage, key: str, last_modified: Any, *, deadline_at: datetime | None = None
+) -> DeferredSnapshotEntry:
     """Read one canonical record, preserving an unavailable read as observable state."""
     unavailable = None
     try:
-        data = _read_json(storage, key)
+        data = _read_json(storage, key, deadline_at=deadline_at)
     except StorageReadUnavailable as exc:
         data = None
         unavailable = exc
@@ -634,57 +640,70 @@ def _load_snapshot_from_keys(
         seen.add(key)
         candidates.append((key, last_modified))
 
-    def stop_requested() -> bool:
-        return (deadline_at is not None and datetime.now(UTC) >= deadline_at) or bool(
-            should_stop and should_stop()
-        )
+    def stop_reason() -> str | None:
+        if should_stop and should_stop():
+            return "signal"
+        if deadline_at is not None and datetime.now(UTC) >= deadline_at:
+            return "deadline"
+        return None
 
     entries: dict[int, DeferredSnapshotEntry] = {}
     futures = {}
     next_index = 0
-    stopped = False
+    stop_reason_seen: str | None = None
     executor = ThreadPoolExecutor(max_workers=read_workers, thread_name_prefix="llm-deferred-read")
     try:
         while next_index < len(candidates) and len(futures) < read_workers:
-            if stop_requested():
-                stopped = True
+            if reason := stop_reason():
+                stop_reason_seen = reason
                 break
             key, last_modified = candidates[next_index]
-            futures[executor.submit(_snapshot_entry, storage, key, last_modified)] = next_index
+            futures[
+                executor.submit(
+                    _snapshot_entry, storage, key, last_modified, deadline_at=deadline_at
+                )
+            ] = next_index
             next_index += 1
 
         while futures:
-            if stop_requested():
-                stopped = True
+            if reason := stop_reason():
+                stop_reason_seen = reason
                 break
             wait_timeout = None
             if deadline_at is not None:
                 wait_timeout = max(0.0, (deadline_at - datetime.now(UTC)).total_seconds())
-            elif should_stop is not None:
-                wait_timeout = 1.0
+            if should_stop is not None:
+                wait_timeout = min(1.0, wait_timeout) if wait_timeout is not None else 1.0
             done, _ = wait(futures, timeout=wait_timeout, return_when=FIRST_COMPLETED)
             if not done:
-                if stop_requested():
-                    stopped = True
+                if reason := stop_reason():
+                    stop_reason_seen = reason
                     break
                 continue
             for future in done:
                 entries[futures.pop(future)] = future.result()
             while next_index < len(candidates) and len(futures) < read_workers:
-                if stop_requested():
-                    stopped = True
+                if reason := stop_reason():
+                    stop_reason_seen = reason
                     break
                 key, last_modified = candidates[next_index]
-                futures[executor.submit(_snapshot_entry, storage, key, last_modified)] = next_index
+                futures[
+                    executor.submit(
+                        _snapshot_entry, storage, key, last_modified, deadline_at=deadline_at
+                    )
+                ] = next_index
                 next_index += 1
     finally:
         # Do not wait for an expired sweep's residual B2 requests before emitting its report.
-        executor.shutdown(wait=not stopped, cancel_futures=stopped)
+        executor.shutdown(
+            wait=stop_reason_seen is None,
+            cancel_futures=stop_reason_seen is not None,
+        )
 
     return DeferredSnapshot(
         [entries[index] for index in sorted(entries)],
         listed_count=len(candidates),
-        deadline_reached=stopped,
+        deadline_reached=stop_reason_seen == "deadline",
     )
 
 

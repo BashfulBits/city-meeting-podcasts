@@ -45,7 +45,8 @@ class LocalStorage:
     def public_url(self, key: str) -> str:
         return f"{self.url_prefix}/{key}"
 
-    def get_file(self, key: str, local_path: Path) -> bool:
+    def get_file(self, key: str, local_path: Path, *, deadline_at: datetime | None = None) -> bool:
+        del deadline_at  # Local copies are synchronous and bounded by the caller's filesystem.
         src = self._path(key)
         if not src.exists():
             return False

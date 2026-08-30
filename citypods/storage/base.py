@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -46,11 +47,12 @@ class StorageBackend(Protocol):
     # ``get_file`` / ``list_objects`` / ``delete`` back durable state sync, lease cleanup, and
     # orphan GC. Not every backend implements them; callers must feature-detect via ``hasattr``.
 
-    def get_file(self, key: str, local_path: Path) -> bool:
+    def get_file(self, key: str, local_path: Path, *, deadline_at: datetime | None = None) -> bool:
         """Download ``key`` into ``local_path``. Return False if absent.
 
         S3-compatible backends raise :class:`StorageReadUnavailable` when a transient read still
-        fails after bounded retries. Other backend errors propagate unchanged.
+        fails after bounded retries. ``deadline_at`` bounds the request for callers with a
+        wall-clock budget. Other backend errors propagate unchanged.
         """
         ...
 

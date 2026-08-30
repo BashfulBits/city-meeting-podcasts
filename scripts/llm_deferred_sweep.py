@@ -382,7 +382,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    if datetime.now(UTC) < deadline_at:
+    if not stop_state.requested and datetime.now(UTC) < deadline_at:
         handled_recipe_hashes: set[str] = set()
         # Queue-only records created before the normal call sites adopted run batching must not
         # turn the sweep into one ingress invocation per record. Their portable policy capsule is
@@ -399,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
                     and upgraded_request.policy.queue_only
                 ):
                     v2_queue_only.append((handle, upgraded_handle))
-            if v2_queue_only:
+            if v2_queue_only and not stop_state.requested and datetime.now(UTC) < deadline_at:
                 try:
                     queued_results = backend.enqueue_batch(
                         [_job_from_deferred_handle(upgraded) for _handle, upgraded in v2_queue_only]
@@ -435,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
         # outcomes get one recovery *batch*; after that they remain pending for the next cadence.
         # Falling through to `reconcile()` would turn one failed batch into N singleton polls.
         v2_results = {}
-        if v2_handles:
+        if v2_handles and not stop_state.requested and datetime.now(UTC) < deadline_at:
             try:
                 v2_results = backend.poll_batch(v2_handles)
             except Exception as exc:  # noqa: BLE001
