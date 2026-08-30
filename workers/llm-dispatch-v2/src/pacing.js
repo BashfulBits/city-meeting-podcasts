@@ -127,6 +127,33 @@ export function availableTokenBudget(route, now) {
 }
 
 /**
+ * A route's 429 buffer, decayed for the time elapsed since it was last raised.
+ *
+ * `buffer_seconds` is a backoff, so it has to be able to expire on its own. Stored as a bare
+ * number and compared straight against the dispatch window, it was a permanent kill switch
+ * instead: _capacityFraction scores a route 0 once buffer_seconds >= DISPATCH_WINDOW_SECONDS
+ * (25), and a single 429 adds MAX_429_BACKOFF_SECONDS (60) at once. The only code that ever
+ * cleared it ran on a *successful* completeBatch for that route -- unreachable, because a
+ * zero-capacity route is never ranked, so never claimed, so never succeeds. One 429 therefore
+ * removed a route from v2's ranking forever, with no blocked_until and no error to show for it.
+ * Observed 2026-08-30: 15,833 queued jobs, every route silently at zero, zero bundles claimed.
+ *
+ * Decaying at one second per second gives the backoff its intended meaning -- a 60-second buffer
+ * stops gating the route after ~35 seconds (when it falls under the 25-second window) and is
+ * fully spent after 60 -- and makes recovery unattended.
+ */
+export function effectiveBufferSeconds(route, now) {
+  const stored = Number(route?.buffer_seconds);
+  if (!Number.isFinite(stored) || stored <= 0) return 0;
+  const updatedAt = Number(route?.buffer_updated_at) || 0;
+  // A row written before buffer_updated_at existed has 0 here; treating that as "fully elapsed"
+  // is the right migration, since those are exactly the routes stuck from the old behaviour.
+  if (updatedAt <= 0) return 0;
+  const elapsedSeconds = Math.max(0, (now - updatedAt) / 1000);
+  return Math.max(0, stored - elapsedSeconds);
+}
+
+/**
  * The token reservation this job must carry on this route: never lower than the client's own
  * conservative estimate, the configured floor, or the calibrated per-route/model/prompt-family
  * margin (looked up by the caller, since that's a DB read) -- see Unit 4's exact wording.
@@ -183,8 +210,11 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     }
   }
 
-  // Route buffer: an additive delay accrued from repeated 429s (decays on success elsewhere).
-  const bufferMs = Math.max(0, Number(route?.buffer_seconds) || 0) * 1000;
+  // Route buffer: an additive delay accrued from repeated 429s. Uses what is still *owed* rather
+  // than the stored figure -- the stored one never shrinks, so this pushed every future dispatch
+  // a full buffer beyond `now` forever, which is the same permanent stall as the capacity check
+  // and had to be fixed in both places to matter (see effectiveBufferSeconds).
+  const bufferMs = effectiveBufferSeconds(route, now) * 1000;
   if (bufferMs > 0) notBeforeAt = Math.max(notBeforeAt, now + bufferMs);
 
   // Explicit block from a severe/repeated throttle.
