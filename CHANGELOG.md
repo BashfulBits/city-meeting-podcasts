@@ -45,6 +45,19 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **NVIDIA's per-model rate limit was generalised to every NVIDIA route, throttling the ones doing
+  the work.** `deepseek-v4-pro`'s measured ~30/hr quota was applied as `rpm: 0.5` across all nine
+  NVIDIA routes. NVIDIA's limits are per model, and `nemotron-3-super` has never returned a single
+  429 — but it inherited one request per four minutes per Worker, and it was the route actually
+  carrying Mistral Medium's overflow. Combined with `concurrency: 1` and nemotron's 127–140s median
+  latency, throughput collapsed. Only `deepseek-v4-pro` keeps 0.5 rpm now; the rest return to 4.
+- **The 402 backoff ladder could stop escalating, depending on the day of the week.** The rungs are
+  calendar dates — tomorrow, next UTC Monday, start of next month — and those are not inherently
+  ordered. On a Sunday "next Monday" *is* tomorrow, so a second 402 bought no additional cooldown;
+  near a month end, "start of next month" can fall before next Monday, so a third 402 could regress
+  below the second. The rungs are now combined into a strictly increasing ladder, each at least a
+  day beyond the previous. Found because the Sunday collision failed the v2 suite on 2026-08-30.
+
 - **Mistral Medium's overflow now prefers the model that was actually measured on the task.**
   `review/40`'s frozen-gold scoring (2026-07-31, 322 source-backed positives over 24 agendas) is the
   only evaluation of agenda-chapter extraction, and DeepSeek V4 **Flash** won it — F1 .734 against

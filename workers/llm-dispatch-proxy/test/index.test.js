@@ -2964,7 +2964,7 @@ test("a sub-1-rpm route admits its first request from a fresh ledger", async () 
   // route paced below one request per minute refused its first request (0 + 1 > 0.25). That
   // refusal is also what prevents `requests_available_at` from ever being written, so the route
   // could never admit anything again -- silently dead, not slow.
-  const routeId = "nvidia_kimi_k3_free";
+  const routeId = "nvidia_deepseek_v4_pro_0813_free";
   const route = DISPATCH_LIMITS.routes_by_id[routeId];
   assert.ok(route.rpm < 1, `precondition: ${routeId} must be paced below 1 rpm, got ${route.rpm}`);
 
@@ -2980,10 +2980,10 @@ test("a sub-1-rpm route admits its first request from a fresh ledger", async () 
 
 test("a sub-1-rpm route then spaces requests at 60000/rpm", async () => {
   const env = isolatedEnv();
-  const routeId = "nvidia_kimi_k3_free";
+  const routeId = "nvidia_deepseek_v4_pro_0813_free";
   const route = DISPATCH_LIMITS.routes_by_id[routeId];
   const queued = await handleRequest(
-    chatRequest([{ role: "user", content: "pace me" }], "sub-rpm-pace", "moonshotai/kimi-k3"),
+    chatRequest([{ role: "user", content: "pace me" }], "sub-rpm-pace", "deepseek/deepseek-v4-pro"),
     env,
   );
   await queued.json();
@@ -3757,4 +3757,18 @@ test("the 429 route cooldown escalates to the four-hour ceiling and stops there"
   assert.equal(minutes(20), 240, "and never exceeds it");
   // Retry-After still wins outright when the provider supplies one.
   assert.equal((rateLimitedBackoffUntil(9, now, 90) - now) / 1000, 90);
+});
+
+test("the 402 backoff ladder escalates on every weekday, including Sunday", () => {
+  // Regression for a latent calendar collision: streak 1 blocks until tomorrow and streak 2 until
+  // next UTC Monday, so on a Sunday both landed on the same instant and a second 402 bought no
+  // extra cooldown at all. It surfaced as a suite failure on 2026-08-30, a Sunday.
+  for (const day of ["2026-08-30", "2026-08-31", "2026-09-02", "2026-09-05"]) {
+    const now = Date.parse(`${day}T12:00:00Z`);
+    const first = paymentRequiredBackoffUntil(1, now);
+    const second = paymentRequiredBackoffUntil(2, now);
+    const third = paymentRequiredBackoffUntil(3, now);
+    assert.ok(second > first, `${day}: streak 2 must exceed streak 1`);
+    assert.ok(third > second, `${day}: streak 3 must exceed streak 2`);
+  }
 });
