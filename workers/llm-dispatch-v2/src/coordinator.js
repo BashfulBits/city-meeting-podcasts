@@ -610,6 +610,92 @@ export class LLMSchedulerDO extends DurableObjectBase {
     });
   }
 
+  /**
+   * A read-only snapshot of everything needed to answer "why is nothing dispatching?" without
+   * shipping a new Worker build to find out.
+   *
+   * This exists because on 2026-08-29 v2 ran 721 cron ticks and did substantive work on 16 of
+   * them -- 13 of which were the fixed hourly maintenance pass. Every other tick returned in
+   * ~200ms because claimDispatchWindow found nothing. There was no way to tell from outside
+   * whether the queue was genuinely empty, whether job_models had lost its index rows (jobs
+   * queued but unclaimable -- a real bug we hit once already), or whether every route was
+   * blocked. Those three look identical from the outside and have completely different fixes.
+   *
+   * Deliberately cheap. This DO exhausted the free tier's 5M daily rows-read budget on
+   * 2026-08-27 via two unindexed statements, so every query below is either an indexed COUNT or
+   * a bounded LIMIT: counts ride idx_jobs_state_updated and the job_models model index, and the
+   * routes table is small and fixed-size (one row per configured route). `limit` bounds only the
+   * two listings; the counts are always complete.
+   */
+  async stats(now, limit = 20) {
+    const sql = this._getSql();
+    const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
+
+    const states = {};
+    for (const row of sql.exec("SELECT state, COUNT(*) AS n FROM jobs GROUP BY state")) {
+      states[row.state] = row.n;
+    }
+
+    // The stranding check. A queued job with no job_models row can never be selected by
+    // claimDispatchWindow, so `queued` above would look healthy while nothing is claimable.
+    const unindexed = one(
+      `SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'
+         AND NOT EXISTS (SELECT 1 FROM job_models WHERE job_models.job_id = jobs.id)`
+    ).n;
+
+    const oldestQueued = one(
+      "SELECT MIN(created_at) AS t FROM jobs WHERE state = 'queued'"
+    ).t;
+
+    // What the scheduler actually ranks over: queued work grouped by the model it can run on.
+    const queuedByModel = [...sql.exec(
+      `SELECT m.model AS model, COUNT(*) AS queued
+         FROM job_models m JOIN jobs j ON j.id = m.job_id
+        WHERE j.state = 'queued'
+        GROUP BY m.model ORDER BY queued DESC LIMIT ?`,
+      limit
+    )];
+
+    // Only routes actually standing down, plus why. A healthy route is uninteresting here and
+    // listing all of them would bury the two that matter.
+    const blockedRoutes = [...sql.exec(
+      `SELECT route_id, blocked_until, throttle_streak, payment_required_streak,
+              last_provider_status, rpd_count, rpd_day_key
+         FROM routes WHERE blocked_until IS NOT NULL AND blocked_until > ?
+        ORDER BY blocked_until DESC LIMIT ?`,
+      now, limit
+    )];
+
+    const scheduler = one("SELECT * FROM scheduler WHERE id = 1");
+
+    return {
+      now,
+      jobs: {
+        by_state: states,
+        queued_without_model_index: unindexed,
+        oldest_queued_age_ms: oldestQueued == null ? null : now - oldestQueued,
+      },
+      queued_by_model: queuedByModel,
+      routes: {
+        total: one("SELECT COUNT(*) AS n FROM routes").n,
+        blocked: blockedRoutes,
+      },
+      bundles: {
+        active: one("SELECT COUNT(*) AS n FROM bundles WHERE state = 'active'").n,
+        active_expired: one(
+          "SELECT COUNT(*) AS n FROM bundles WHERE state = 'active' AND lease_expires_at <= ?",
+          now
+        ).n,
+      },
+      scheduler: {
+        utc_day: scheduler.utc_day ?? null,
+        bundle_count_today: scheduler.bundle_count_today ?? 0,
+        jobs_ingested_today: scheduler.jobs_ingested_today ?? 0,
+        next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
+      },
+    };
+  }
+
   async pollBatch(ids) {
     if (!ids || ids.length === 0) {
       return { statuses: [] };
