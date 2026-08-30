@@ -1460,11 +1460,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
           result.outcome === "retryable_error" &&
           result.provider_status_code === 402 &&
           job.transient_retry_count < this._max5xxRetries();
+        // A 400 only ever arrives as `retryable_error` when the dispatcher read the body and found
+        // the provider blaming its own upstream (see gateway.js's upstreamCapacityFailure). The DO
+        // never sees payloads, so the pair (retryable_error, 400) is the whole signal here. The
+        // route is unreachable rather than the job defective, so it gets the 5xx treatment: one
+        // durable retry from the shared budget, and the route stood down so sibling jobs are not
+        // admitted onto a model that would destroy them in turn.
+        const isUpstreamCapacityFailure =
+          result.outcome === "retryable_error" && result.provider_status_code === 400;
+        const isTransientRouteFailure = isFinal5xx || isUpstreamCapacityFailure;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
-        const blockedUntil = isFinal5xx
+        const blockedUntil = isTransientRouteFailure
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
           : null;
-        const shouldRetry5xx = isFinal5xx && job.transient_retry_count < this._max5xxRetries();
+        const shouldRetry5xx =
+          isTransientRouteFailure && job.transient_retry_count < this._max5xxRetries();
 
         let newState;
         switch (result.outcome) {
@@ -1569,7 +1579,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
               paymentRequiredBackoffUntil(newStreak, now),
               job.lease_route_id
             );
-          } else if (isFinal5xx) {
+          } else if (isTransientRouteFailure) {
             // The Gateway has already retried this request. Temporarily remove only this route
             // from the capacity ranking so other models/accounts can drain while it recovers.
             sql.exec(

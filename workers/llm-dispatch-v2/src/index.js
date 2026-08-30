@@ -12,7 +12,7 @@ import {
   validateSchemaRetryRequest,
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
-import { callAiGateway, observedTokens } from "./gateway.js";
+import { callAiGateway, observedTokens, upstreamCapacityFailure } from "./gateway.js";
 
 export { LLMSchedulerDO };
 
@@ -541,7 +541,14 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         // in this job, and the coordinator blocks the whole route on it (see completeBatch).
         // Failing the job that happened to discover the exhausted budget burns one recoverable
         // job per cooldown lapse; v1's dispatcher makes the same call for the same reason.
-        response.status >= 500 || response.status === 402
+        //
+        // A 400 joins it only when the body says the provider failed (upstreamCapacityFailure).
+        // This Worker is the only layer that sees response bodies -- the DO holds job rows and
+        // never a payload -- so the sniffing happens here and completeBatch keys off the pair
+        // (retryable_error, 400) alone.
+        response.status >= 500 ||
+        response.status === 402 ||
+        upstreamCapacityFailure(response.status, response.body)
           ? "retryable_error"
           : "terminal_error"
       ),

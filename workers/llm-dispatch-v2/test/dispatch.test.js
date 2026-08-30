@@ -1172,3 +1172,76 @@ test("a reservation stamps the provider's calendar day, not a rolling-window anc
   assert.equal(row.rpd_day_key, "2026-08-28", "must record the Pacific date, not UTC's 08-29");
   assert.equal(row.rpd_count, 1);
 });
+
+test("a capacity-400 requeues the job and stands the route down, like a final 5xx", async () => {
+  // v2's half of the OpenCode Zen case: HTTP 400 whose body blames the provider's own upstream.
+  // The DO never sees payloads, so the dispatcher does the sniffing and completeBatch keys off
+  // the pair (retryable_error, 400) alone. Without the pairing this fell to the generic branch,
+  // failing the job and leaving the route selectable for every sibling behind it.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-cap-400")]);
+
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(first.jobs.length, 1);
+  const claimed = first.jobs[0];
+  const routeId = claimed.route_id;
+
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-cap-400",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 500,
+      observed_input_tokens: 400,
+      observed_output_tokens: 0,
+      outcome: "retryable_error",
+      provider_status_code: 400,
+    },
+  ]);
+
+  const blockedUntil = [...sql.exec(
+    "SELECT blocked_until FROM routes WHERE route_id=?", routeId)][0]?.blocked_until;
+  assert.ok(blockedUntil && blockedUntil > t, "the unreachable route must be stood down");
+  // Clear it so the retry below is testing job recoverability, not this same block.
+  sql.exec("UPDATE routes SET blocked_until = 0 WHERE route_id = ?", routeId);
+
+  const second = await coordinator.claimDispatchWindow(Date.now() + 120_000, 25);
+  assert.equal(second.jobs.length, 1, "the job must be retried, not destroyed");
+  assert.equal(second.jobs[0].id, "j-cap-400");
+});
+
+test("a genuine 400 still fails the job terminally and leaves the route selectable", async () => {
+  // The negative case that keeps the pairing narrow. A real request defect reaches the DO as
+  // `terminal_error`, and must not block a healthy route just because it shares a status code.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-bad-400")]);
+
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const claimed = first.jobs[0];
+  const routeId = claimed.route_id;
+
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-bad-400",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 500,
+      observed_input_tokens: 400,
+      observed_output_tokens: 0,
+      outcome: "terminal_error",
+      provider_status_code: 400,
+    },
+  ]);
+
+  const row = [...sql.exec("SELECT blocked_until FROM routes WHERE route_id=?", routeId)][0];
+  assert.ok(!row?.blocked_until, "a malformed request says nothing about the route's health");
+
+  const second = await coordinator.claimDispatchWindow(Date.now() + 120_000, 25);
+  assert.equal(second.jobs.length, 0, "a genuine request defect must not be retried");
+});
