@@ -1421,3 +1421,47 @@ test("stats surfaces a route zeroed by its 429 buffer, not just by blocked_until
   );
   assert.ok(s.routes.zero_capacity_count >= 1);
 });
+
+test("a superseded job is claimable and completes, closing the 2026-08-25 enqueue stall", async () => {
+  // End-to-end version of the coordinator-level supersede tests: not just that enqueueBatch
+  // accepts the corrected resubmission, but that the resulting row is actually reachable by
+  // claimDispatchWindow and can run to completion under its new payload.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-stale", { request_digest: "digest-v1-leaked-fields" })]);
+  sql.exec("UPDATE jobs SET state = 'failed', updated_at = ? WHERE id = 'j-stale'", Date.now());
+
+  const enqueueResult = await coordinator.enqueueBatch([
+    makeJob("resubmit", {
+      idempotency_key: "key-j-stale",
+      request_digest: "digest-v2-corrected",
+      payload_key: "payloads/j-stale/v2.json",
+    }),
+  ]);
+  assert.deepEqual(enqueueResult.accepted, [
+    { id: "j-stale", submitted_id: "resubmit", superseded: true },
+  ]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs.length, 1, "the superseded row must be reachable by the scheduler");
+  assert.equal(plan.jobs[0].id, "j-stale");
+  assert.equal(plan.jobs[0].payload_key, "payloads/j-stale/v2.json");
+
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: plan.jobs[0].id,
+      lease_token: plan.jobs[0].lease_token,
+      attempt_id: "a-resubmit",
+      planned_at: plan.jobs[0].not_before_at,
+      actual_start_at: Date.now(),
+      actual_end_at: Date.now() + 500,
+      observed_input_tokens: 100,
+      observed_output_tokens: 50,
+      outcome: "success",
+      provider_status_code: 200,
+      result_key: "results/j-stale/v2.json",
+    },
+  ]);
+  const row = [...sql.exec("SELECT state, result_key FROM jobs WHERE id = 'j-stale'")][0];
+  assert.equal(row.state, "completed");
+  assert.equal(row.result_key, "results/j-stale/v2.json");
+});

@@ -221,7 +221,7 @@ test("enqueueBatch sends a job that fits no configured route under any allowed m
   assert.deepEqual(models.map((row) => row.model), ["__unroutable__"]);
 });
 
-test("enqueueBatch handles idempotent replays and detects conflicts", async () => {
+test("enqueueBatch handles idempotent replays and supersedes a stale queued row", async () => {
   const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
 
   await coordinator.enqueueBatch([
@@ -255,7 +255,46 @@ test("enqueueBatch handles idempotent replays and detects conflicts", async () =
   assert.deepEqual(replay.accepted, [{ id: "j1", submitted_id: "different-id" }]);
   assert.deepEqual(replay.rejected, []);
 
-  // Replay with different digest: rejected with idempotency_conflict
+  // Same key, different digest, and the existing row is still 'queued': supersede rather than
+  // reject -- see "a stale queued row is superseded" below for why this must not be a permanent
+  // rejection.
+  const superseding = await coordinator.enqueueBatch([
+    {
+      id: "conflict-id",
+      idempotency_key: "k1",
+      request_digest: "different-digest",
+      policy_json: "{}",
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/conflict/request.json",
+    },
+  ]);
+  assert.deepEqual(superseding.rejected, []);
+  assert.deepEqual(superseding.accepted, [
+    { id: "j1", submitted_id: "conflict-id", superseded: true },
+  ]);
+});
+
+test("enqueueBatch rejects an idempotency conflict against a genuinely in-flight attempt", async () => {
+  // The one case supersede cannot safely cover: a lease already references the old payload, and
+  // overwriting the row out from under a call that may still be running risks a result racing
+  // back against content that no longer matches what was sent.
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([
+    {
+      id: "j1",
+      idempotency_key: "k1",
+      request_digest: "d1",
+      policy_json: "{}",
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/j1/request.json",
+    },
+  ]);
+  sql.exec("UPDATE jobs SET state = 'leased' WHERE id = 'j1'");
+
   const conflict = await coordinator.enqueueBatch([
     {
       id: "conflict-id",
@@ -270,6 +309,12 @@ test("enqueueBatch handles idempotent replays and detects conflicts", async () =
   ]);
   assert.deepEqual(conflict.accepted, []);
   assert.deepEqual(conflict.rejected, [{ id: "conflict-id", reason: "idempotency_conflict" }]);
+
+  // And the row itself must be untouched -- not overwritten, not requeued.
+  const row = [...sql.exec("SELECT state, request_digest, payload_key FROM jobs WHERE id = 'j1'")][0];
+  assert.equal(row.state, "leased");
+  assert.equal(row.request_digest, "d1");
+  assert.equal(row.payload_key, "payloads/j1/request.json");
 });
 
 test("enqueueBatch admits an idempotent replay even after the daily cap is reached", async () => {
@@ -484,4 +529,145 @@ test("resolveUnknownBatch reports known and unknown attempt ids, chunked past 10
 
   assert.deepEqual(res.resolved.sort(), knownIds.sort());
   assert.equal(res.not_found.length, unknownIds.length);
+});
+
+test("enqueueBatch supersedes a completed row whose old payload was wrong, and re-queues it", async () => {
+  // THE 2026-08-25 production case: a job completed (or failed) under a payload built before
+  // 2c3b2ab stopped leaking policy-only fields into the literal provider request body -- which
+  // every provider correctly rejected. The corrected resubmission carries the same
+  // idempotency_key (same recipe) and a different request_digest (fixed payload). Rejecting that
+  // permanently strands a job that never actually succeeded; superseding lets it run again.
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([
+    {
+      id: "j1",
+      idempotency_key: "k1",
+      request_digest: "d1-leaked-fields",
+      policy_json: "{}",
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/j1/v1.json",
+    },
+  ]);
+  // Nonzero on purpose: this is what a real failed row looks like (it exhausted its retries),
+  // and it is the value supersede must actually reset, not one that was already 0.
+  sql.exec(
+    "UPDATE jobs SET state = 'failed', result_key = NULL, attempts = 2, transient_retry_count = 1,\n" +
+      "                 updated_at = ? WHERE id = 'j1'",
+    Date.now()
+  );
+
+  const result = await coordinator.enqueueBatch([
+    {
+      id: "retry-id",
+      idempotency_key: "k1",
+      request_digest: "d1-corrected",
+      policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false }),
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/j1/v2.json",
+    },
+  ]);
+  assert.deepEqual(result.rejected, []);
+  assert.deepEqual(result.accepted, [{ id: "j1", submitted_id: "retry-id", superseded: true }]);
+
+  const row = [...sql.exec(
+    "SELECT state, request_digest, payload_key, attempts, transient_retry_count FROM jobs WHERE id = 'j1'"
+  )][0];
+  assert.equal(row.state, "queued", "a superseded row must be runnable again, not stuck failed");
+  assert.equal(row.request_digest, "d1-corrected");
+  assert.equal(row.payload_key, "payloads/j1/v2.json");
+  assert.equal(row.attempts, 0, "a corrected payload has never actually been attempted");
+  assert.equal(row.transient_retry_count, 0);
+});
+
+test("supersede does not consume today's admission cap", async () => {
+  // Same rationale as an idempotent replay: this replaces a row that already existed, so it is
+  // not new admission. Getting this wrong would let a flood of resubmissions after a payload
+  // change starve out every genuinely new job for the rest of the day.
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "1" });
+  await coordinator.enqueueBatch([
+    {
+      id: "j1",
+      idempotency_key: "k1",
+      request_digest: "d1",
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/j1/request.json",
+    },
+  ]);
+  // Cap (1) is now exhausted by that one insert.
+  const result = await coordinator.enqueueBatch([
+    {
+      id: "retry-id",
+      idempotency_key: "k1",
+      request_digest: "d2",
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/j1/request-v2.json",
+    },
+  ]);
+  assert.deepEqual(result.accepted, [{ id: "j1", submitted_id: "retry-id", superseded: true }]);
+  assert.deepEqual(result.rejected, []);
+
+  const sched = [...sql.exec("SELECT jobs_ingested_today FROM scheduler WHERE id = 1")][0];
+  assert.equal(sched.jobs_ingested_today, 1, "the supersede must not have incremented the cap");
+});
+
+test("supersede rebuilds the job_models index for the new payload's allowed models", async () => {
+  // The allowed-model set is itself part of policy_json, so a corrected payload can route
+  // differently than the one it replaces. A stale index would leave the row invisible to
+  // claimDispatchWindow under its real, current model, or visible under a model it can no
+  // longer run on.
+  const CATALOG = {
+    model_aliases: {},
+    model_routes_map: {
+      "gemini/flash-lite": ["gem-a"],
+      "mistral/mistral-small": ["mis-a"],
+    },
+    providers: {},
+    routes_by_id: {
+      "gem-a": { input_context_limit: 100000, output_context_limit: 100000, free: true },
+      "mis-a": { input_context_limit: 100000, output_context_limit: 100000, free: true },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    DISPATCH_LIMITS_OVERRIDE: CATALOG,
+  });
+  await coordinator.enqueueBatch([
+    {
+      id: "j1",
+      idempotency_key: "k1",
+      request_digest: "d1",
+      policy_json: JSON.stringify({ allowed_models: ["gemini/flash-lite"], allow_paid: false }),
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/j1/v1.json",
+    },
+  ]);
+  assert.deepEqual(
+    [...sql.exec("SELECT model FROM job_models WHERE job_id = 'j1'")].map((r) => r.model),
+    ["gemini/flash-lite"]
+  );
+
+  await coordinator.enqueueBatch([
+    {
+      id: "retry-id",
+      idempotency_key: "k1",
+      request_digest: "d2",
+      policy_json: JSON.stringify({ allowed_models: ["mistral/mistral-small"], allow_paid: false }),
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/j1/v2.json",
+    },
+  ]);
+  const models = [...sql.exec("SELECT model FROM job_models WHERE job_id = 'j1'")].map((r) => r.model);
+  assert.deepEqual(models, ["mistral/mistral-small"], "the index must reflect the new payload only");
 });
