@@ -66,7 +66,17 @@ function seed(history, { liveQueued = 6 } = {}) {
   const old = now - 90 * 86_400_000;
 
   db.exec("BEGIN");
-  const insJob = db.prepare(`INSERT INTO jobs VALUES (${Array(20).fill("?").join(",")})`);
+  // Column-explicit on purpose: a positional INSERT here breaks every time the jobs table gains
+  // a column, which says nothing about the rows-read behaviour this file exists to pin.
+  const JOB_COLUMNS = [
+    "id", "idempotency_key", "request_digest", "provider_idempotency_key", "state", "priority",
+    "policy_json", "prompt_family", "input_token_estimate", "max_output_token_estimate",
+    "payload_key", "result_key", "lease_token", "lease_route_id", "lease_expires_at",
+    "bundle_id", "attempts", "transient_retry_count", "created_at", "updated_at",
+  ];
+  const insJob = db.prepare(
+    `INSERT INTO jobs (${JOB_COLUMNS.join(",")}) VALUES (${JOB_COLUMNS.map(() => "?").join(",")})`
+  );
   const insBundle = db.prepare("INSERT INTO bundles VALUES (?,?,?,?,?,?,?)");
   const insAttempt = db.prepare(
     "INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, start_state, created_at)" +

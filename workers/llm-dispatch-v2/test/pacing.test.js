@@ -11,6 +11,7 @@ import {
   nextZonedMidnightMs,
   paymentRequiredBackoffUntil,
   FULL_TOKEN_BUDGET_WINDOWS,
+  effectiveBufferSeconds,
 } from "../src/pacing.js";
 
 const NOW = 1_700_000_000_000;
@@ -141,9 +142,27 @@ test("earliestSafeStart returns null when a reservation exceeds the route's burs
 });
 
 test("earliestSafeStart honors an additive route buffer from repeated 429s", () => {
-  const route = freshRoute({ buffer_seconds: 30 });
+  // The buffer now carries the moment it was raised, so it can be spent down; a buffer raised
+  // right now is still owed in full.
+  const route = freshRoute({ buffer_seconds: 30, buffer_updated_at: NOW });
   const result = earliestSafeStart(route, job(), NOW, NOW);
   assert.equal(result.notBeforeAt, NOW + 30_000);
+});
+
+test("earliestSafeStart spends the route buffer down as time passes", () => {
+  // The other half of the 2026-08-30 stall. This delay is applied relative to `now`, so reading
+  // the stored figure pushed every future dispatch a full buffer into the future forever -- the
+  // capacity fix alone did not free the route, because this kept it unschedulable.
+  const route = freshRoute({ buffer_seconds: 30, buffer_updated_at: NOW });
+  assert.equal(earliestSafeStart(route, job(), NOW + 10_000, NOW + 10_000).notBeforeAt,
+    NOW + 10_000 + 20_000, "only the remaining 20s is still owed");
+  assert.equal(earliestSafeStart(route, job(), NOW + 30_000, NOW + 30_000).notBeforeAt,
+    NOW + 30_000, "fully spent, so no delay at all");
+});
+
+test("earliestSafeStart ignores a buffer with no timestamp, as written before the migration", () => {
+  const route = freshRoute({ buffer_seconds: 30 });
+  assert.equal(earliestSafeStart(route, job(), NOW, NOW).notBeforeAt, NOW);
 });
 
 test("earliestSafeStart honors an explicit blocked_until floor", () => {
@@ -214,4 +233,35 @@ test("paymentRequiredBackoffUntil blocks until the start of next UTC month on th
 test("paymentRequiredBackoffUntil rolls the year over correctly for a December streak", () => {
   const december = Date.UTC(2024, 11, 15);
   assert.equal(paymentRequiredBackoffUntil(3, december), Date.UTC(2025, 0, 1));
+});
+
+test("effectiveBufferSeconds decays a 429 buffer to nothing over its own duration", () => {
+  // The 2026-08-30 deadlock in miniature. A stored buffer of 60s is >= the 25s dispatch window,
+  // so _capacityFraction scores the route 0; with no decay the only escape was a success that
+  // scoring 0 makes impossible. It must instead run down on its own.
+  const now = Date.parse("2026-08-30T12:00:00Z");
+  const route = { buffer_seconds: 60, buffer_updated_at: now };
+
+  assert.equal(effectiveBufferSeconds(route, now), 60);
+  assert.equal(effectiveBufferSeconds(route, now + 20_000), 40);
+  // Below the 25s window here, so the route starts being ranked again.
+  assert.ok(effectiveBufferSeconds(route, now + 40_000) < 25);
+  assert.equal(effectiveBufferSeconds(route, now + 60_000), 0);
+  assert.equal(effectiveBufferSeconds(route, now + 600_000), 0, "never goes negative");
+});
+
+test("effectiveBufferSeconds treats a pre-migration row as already elapsed", () => {
+  // Rows written before buffer_updated_at existed carry 0. Those are precisely the routes stuck
+  // under the old behaviour, so they must read as recovered rather than as blocked at t=0.
+  const now = Date.parse("2026-08-30T12:00:00Z");
+  assert.equal(effectiveBufferSeconds({ buffer_seconds: 120, buffer_updated_at: 0 }, now), 0);
+  assert.equal(effectiveBufferSeconds({ buffer_seconds: 120 }, now), 0);
+});
+
+test("effectiveBufferSeconds ignores absent or nonsensical buffers", () => {
+  const now = Date.now();
+  assert.equal(effectiveBufferSeconds({}, now), 0);
+  assert.equal(effectiveBufferSeconds(null, now), 0);
+  assert.equal(effectiveBufferSeconds({ buffer_seconds: 0, buffer_updated_at: now }, now), 0);
+  assert.equal(effectiveBufferSeconds({ buffer_seconds: -5, buffer_updated_at: now }, now), 0);
 });

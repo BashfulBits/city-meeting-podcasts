@@ -1307,3 +1307,117 @@ test("stats reports a standing-down route and its reason", async () => {
   const after = await coordinator.stats(now);
   assert.equal(after.routes.blocked.find((r) => r.route_id === job.route_id), undefined);
 });
+
+test("a route that took a 429 becomes claimable again once its buffer decays", async () => {
+  // THE 2026-08-30 production stall. One 429 added 60s of buffer; _capacityFraction scores a
+  // route 0 as soon as its buffer covers the 25s dispatch window; and the only code that cleared
+  // the buffer ran on a *successful* completeBatch for that route -- which scoring 0 makes
+  // unreachable. A single 429 therefore removed a route from the ranking permanently, with no
+  // blocked_until and no error: 15,833 jobs queued, every route silently at zero, nothing
+  // dispatched for days. The final claim below is the whole assertion.
+  const { coordinator, sql } = makeCoordinator();
+  // Single-route model, or a sibling route absorbs the claim and the buffer is never exercised.
+  const soloPolicy = JSON.stringify({
+    allowed_models: ["mistral/mistral-small"],
+    allow_paid: false,
+  });
+  await coordinator.enqueueBatch([makeJob("j-buffered-1", { policy_json: soloPolicy })]);
+
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(first.jobs.length, 1);
+  const routeId = first.jobs[0].route_id;
+  const t = Date.now();
+
+  // Settle the first bundle so it is not itself holding a slot, and settle it with a plain
+  // terminal 400 -- a success would clear buffer_seconds and a 5xx would set blocked_until,
+  // and either would mask the thing under test.
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: first.jobs[0].id,
+      lease_token: first.jobs[0].lease_token,
+      attempt_id: "a-settle",
+      planned_at: first.jobs[0].not_before_at,
+      outcome: "terminal_error",
+      provider_status_code: 400,
+    },
+  ]);
+
+  // Fresh queued work for the two claims below.
+  await coordinator.enqueueBatch([makeJob("j-buffered-2", { policy_json: soloPolicy })]);
+
+  // Put the route in exactly the state one 429 leaves behind.
+  sql.exec(
+    "UPDATE routes SET buffer_seconds = 60, buffer_updated_at = ?, throttle_streak = 1 WHERE route_id = ?",
+    t,
+    routeId
+  );
+
+  // While the buffer is still owed the route is correctly stood down...
+  const during = await coordinator.claimDispatchWindow(t + 1000, 25);
+  assert.equal(during.jobs.length, 0, "the buffer should gate the route while it is still owed");
+
+  // ...and once it has run down the route must come back on its own, with no success required.
+  const after = await coordinator.claimDispatchWindow(t + 120_000, 25);
+  assert.equal(after.jobs.length, 1, "a 429 must not remove a route from the ranking forever");
+  assert.equal(after.jobs[0].route_id, routeId);
+});
+
+test("an expired bundle gives its token reservation back to the route", async () => {
+  // provisional_reservation is added at claim and subtracted only in completeBatch, which by
+  // definition never runs for a bundle that died mid-tick. Without an explicit release here the
+  // expire-sweep requeued the job but kept its reservation charged against the route forever --
+  // a silent, cumulative drain that lowers the route's capacity score on every crash until it
+  // stops being ranked at all.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-leak")]);
+
+  const before = [...sql.exec("SELECT route_id, provisional_reservation FROM routes")];
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(plan.jobs.length, 1);
+  const routeId = plan.jobs[0].route_id;
+
+  const held = [...sql.exec(
+    "SELECT provisional_reservation FROM routes WHERE route_id = ?", routeId
+  )][0].provisional_reservation;
+  assert.ok(held > 0, "claiming must actually reserve something for this test to mean anything");
+
+  // Let the lease expire without any completeBatch, then run the sweep via the next claim.
+  // LEASE_DURATION_SECONDS is 840 in this env, so step comfortably past it.
+  const later = Date.now() + 20 * 60 * 1000;
+  await coordinator.claimDispatchWindow(later, 25);
+
+  const settled = [...sql.exec(
+    "SELECT provisional_reservation FROM routes WHERE route_id = ?", routeId
+  )][0].provisional_reservation;
+  const baseline = before.find((r) => r.route_id === routeId)?.provisional_reservation ?? 0;
+  assert.equal(settled, baseline, "the dead lease's reservation must be released, not leaked");
+});
+
+test("stats surfaces a route zeroed by its 429 buffer, not just by blocked_until", async () => {
+  // The observability half of the same bug: the first version of this endpoint reported only
+  // blocked_until, so during the stall it showed an empty `blocked` list while every route was
+  // scoring 0. Capacity is the number the scheduler ranks on, so report that.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-stats-buffer")]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const routeId = plan.jobs[0].route_id;
+
+  const t = Date.now();
+  sql.exec(
+    "UPDATE routes SET buffer_seconds = 60, buffer_updated_at = ? WHERE route_id = ?",
+    t,
+    routeId
+  );
+
+  const s = await coordinator.stats(t + 1000);
+  const row = s.routes.all.find((r) => r.route_id === routeId);
+  assert.ok(row, "the route must appear even though nothing blocked it");
+  assert.equal(row.blocked_until, null, "no block is set on this path -- that was the trap");
+  assert.ok(row.buffer_remaining_seconds > 25, "the buffer still covers the dispatch window");
+  assert.equal(row.capacity, 0, "so it contributes no capacity");
+  assert.ok(
+    s.routes.zero_capacity.some((r) => r.route_id === routeId),
+    "and it must be listed as zero-capacity"
+  );
+  assert.ok(s.routes.zero_capacity_count >= 1);
+});
