@@ -60,7 +60,9 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
 
     handles = [_handle("recipe-1"), _handle("recipe-2"), _handle("recipe-3")]
     monkeypatch.setattr(
-        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage, **_kwargs: _snapshot(handles),
     )
     prune_kwargs = {}
 
@@ -97,6 +99,8 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     assert "1 still pending observations" in out.out
     assert "1 failed" in out.out
     assert "2 pruned" in out.out
+    assert '"event": "llm_deferred_snapshot_load_started"' in out.out
+    assert '"snapshot": {"deadline_reached": false' in out.out
     assert "recipe-3" in out.err
     # Verify the active backend was propagated to prune_expired_deferred_snapshot.
     assert "backend" in prune_kwargs
@@ -121,7 +125,9 @@ def test_sweep_reports_unavailable_snapshot_records(monkeypatch, capsys):
             )
         ]
     )
-    monkeypatch.setattr(llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: snapshot)
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage, **_kwargs: snapshot
+    )
     monkeypatch.setattr(
         llm_deferred_sweep,
         "prune_expired_deferred_snapshot",
@@ -148,7 +154,9 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
     monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
     handles = [_handle("recipe-502"), _handle("recipe-malformed")]
     monkeypatch.setattr(
-        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage, **_kwargs: _snapshot(handles),
     )
     monkeypatch.setattr(
         llm_deferred_sweep,
@@ -233,7 +241,7 @@ def test_sweep_exhausts_a_second_malformed_reply_without_submitting_another_corr
     monkeypatch.setattr(
         llm_deferred_sweep,
         "load_deferred_snapshot",
-        lambda _storage: _snapshot([_handle("recipe-1")]),
+        lambda _storage, **_kwargs: _snapshot([_handle("recipe-1")]),
     )
     monkeypatch.setattr(
         llm_deferred_sweep, "prune_expired_deferred_snapshot", lambda *_args, **_kwargs: 0
@@ -296,7 +304,9 @@ def test_sweep_skips_same_capacity_cohort_after_no_fit(monkeypatch, capsys):
         for idx in range(3)
     ]
     monkeypatch.setattr(
-        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage, **_kwargs: _snapshot(handles),
     )
 
     reconciled = []
@@ -359,7 +369,9 @@ def test_sweep_skips_a_different_purpose_sharing_the_same_exhausted_route_pool(m
         ),
     ]
     monkeypatch.setattr(
-        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage, **_kwargs: _snapshot(handles),
     )
 
     reconciled = []
@@ -406,7 +418,9 @@ def test_sweep_does_not_skip_durable_topic_tag_submissions(monkeypatch):
         for idx in range(3)
     ]
     monkeypatch.setattr(
-        llm_deferred_sweep, "load_deferred_snapshot", lambda _storage: _snapshot(handles)
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage, **_kwargs: _snapshot(handles),
     )
 
     reconciled = []
@@ -530,7 +544,7 @@ def test_sweep_batch_polls_v2_handles(monkeypatch):
     monkeypatch.setattr(
         llm_deferred_sweep,
         "load_deferred_snapshot",
-        lambda *_: _snapshot([v2_handle]),
+        lambda *_args, **_kwargs: _snapshot([v2_handle]),
     )
     monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
 
@@ -573,7 +587,7 @@ def test_sweep_skips_reconcile_for_all_handles_observed_by_batch_poll(monkeypatc
     monkeypatch.setattr(
         llm_deferred_sweep,
         "load_deferred_snapshot",
-        lambda *_: _snapshot([resolved_handle, pending_handle]),
+        lambda *_args, **_kwargs: _snapshot([resolved_handle, pending_handle]),
     )
     monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
 
@@ -611,7 +625,9 @@ def test_sweep_retries_large_unresolved_poll_set_as_one_batch(monkeypatch):
         JobHandle(task="tag", recipe_hash=f"r-{index}", backend="llm-dispatch-v2", ref=f"j-{index}")
         for index in range(8)
     ]
-    monkeypatch.setattr(llm_deferred_sweep, "load_deferred_snapshot", lambda *_: _snapshot(handles))
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda *_args, **_kwargs: _snapshot(handles)
+    )
     monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
     monkeypatch.setattr(
         llm_deferred_sweep,
@@ -649,7 +665,9 @@ def test_sweep_retries_small_unresolved_poll_set_as_one_batch(monkeypatch):
         JobHandle(task="tag", recipe_hash=f"r-{index}", backend="llm-dispatch-v2", ref=f"j-{index}")
         for index in range(3)
     ]
-    monkeypatch.setattr(llm_deferred_sweep, "load_deferred_snapshot", lambda *_: _snapshot(handles))
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda *_args, **_kwargs: _snapshot(handles)
+    )
     monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
     monkeypatch.setattr(
         llm_deferred_sweep,
@@ -687,7 +705,9 @@ def test_sweep_leaves_twice_unobserved_v2_handles_for_the_next_cadence(monkeypat
         JobHandle(task="tag", recipe_hash=f"r-{index}", backend="llm-dispatch-v2", ref=f"j-{index}")
         for index in range(3)
     ]
-    monkeypatch.setattr(llm_deferred_sweep, "load_deferred_snapshot", lambda *_: _snapshot(handles))
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda *_args, **_kwargs: _snapshot(handles)
+    )
     monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
     monkeypatch.setattr(
         llm_deferred_sweep,
@@ -734,7 +754,9 @@ def test_sweep_batches_legacy_queue_only_v2_submissions(monkeypatch, capsys):
         )
         for index in range(3)
     ]
-    monkeypatch.setattr(llm_deferred_sweep, "load_deferred_snapshot", lambda *_: _snapshot(handles))
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda *_args, **_kwargs: _snapshot(handles)
+    )
     monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
     monkeypatch.setattr(
         llm_deferred_sweep,
@@ -792,7 +814,9 @@ def test_sweep_does_not_retain_batch_poll_response_bodies_in_logs(monkeypatch, c
         task="tag", recipe_hash="sensitive-poll", backend="llm-dispatch-v2", ref="sensitive-id"
     )
     monkeypatch.setattr(
-        llm_deferred_sweep, "load_deferred_snapshot", lambda *_: _snapshot([handle])
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda *_args, **_kwargs: _snapshot([handle]),
     )
     monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
     monkeypatch.setattr(

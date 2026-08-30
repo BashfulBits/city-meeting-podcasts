@@ -915,7 +915,12 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   V1 intentionally gains no R2 ledger, endpoint, or scan: it remains on its existing temporary
   singleton reaping path while its backlog drains. The scheduled run is now a 30-minute pass inside
   a 40-minute Actions timeout; an operator can still request a longer manual pass with the existing
-  CLI budget argument. No artifact schema, recipe, pipeline version, or backfill behavior changes.
+  CLI budget argument. **Production follow-up:** the first bounded run was killed at the 40-minute
+  job limit without a summary because snapshot construction still issued serial B2 reads before its
+  first log or deadline check. Snapshot loading now emits a flushed start event, reads at most 16
+  records concurrently, records listed/loaded/omitted counts, and stops admitting new reads at the
+  deadline so the remaining tail waits for the next six-hour pass. No artifact schema, recipe,
+  pipeline version, or backfill behavior changes.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,

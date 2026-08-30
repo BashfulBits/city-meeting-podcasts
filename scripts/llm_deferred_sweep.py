@@ -277,12 +277,35 @@ def main(argv: list[str] | None = None) -> int:
     skipped_by_pool: dict[tuple, int] = {}
     v2_unobserved = 0
 
-    snapshot = load_deferred_snapshot(storage)
+    snapshot_started_at = datetime.now(UTC)
+    print(
+        json.dumps(
+            {
+                "event": "llm_deferred_snapshot_load_started",
+                "deadline_at": deadline_at.isoformat(),
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+    snapshot = load_deferred_snapshot(
+        storage,
+        deadline_at=deadline_at,
+        should_stop=lambda: stop_state.requested,
+    )
+    snapshot_elapsed_seconds = round((datetime.now(UTC) - snapshot_started_at).total_seconds(), 3)
     pending_handles = list(snapshot.pending())
     legacy_backend = getattr(backend, "name", "litellm")
     start_summary: dict[str, object] = {
         "event": "llm_deferred_sweep_start",
         "pending": _pending_breakdown(pending_handles, legacy_backend=legacy_backend),
+        "snapshot": {
+            "deadline_reached": snapshot.deadline_reached,
+            "elapsed_seconds": snapshot_elapsed_seconds,
+            "listed": snapshot.listed_count,
+            "loaded": len(snapshot.entries),
+            "omitted": snapshot.omitted_count,
+        },
     }
     stats_method = getattr(backend, "dispatch_v2_stats", None)
     has_v2_dispatch = getattr(getattr(backend, "config", None), "dispatch_v2_url", None)
@@ -291,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
             start_summary["v2_scheduler"] = stats_method()
         except Exception as exc:  # noqa: BLE001 -- observability must not block reaping
             start_summary["v2_scheduler_error"] = type(exc).__name__
-    print(json.dumps(start_summary, sort_keys=True))
+    print(json.dumps(start_summary, sort_keys=True), flush=True)
     if snapshot.unavailable_reads:
         for error in snapshot.unavailable_reads:
             print(
@@ -299,7 +322,19 @@ def main(argv: list[str] | None = None) -> int:
                 f"reason={error.reason}",
                 file=sys.stderr,
             )
-    prune_expired_failure_markers(storage)
+    if not stop_state.requested and datetime.now(UTC) < deadline_at:
+        prune_expired_failure_markers(storage)
+    else:
+        print(
+            json.dumps(
+                {
+                    "event": "llm_deferred_sweep_maintenance_skipped",
+                    "reason": "deadline" if not stop_state.requested else "signal",
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
 
     def recover_terminal(handle: JobHandle, exc: Exception) -> None:
         """Persist one terminal result without re-polling a batch-observed v2 job."""
@@ -518,10 +553,16 @@ def main(argv: list[str] | None = None) -> int:
         "failed": failed,
         "pruned": pruned,
         "remaining": _pending_breakdown(snapshot.pending(), legacy_backend=legacy_backend),
+        "snapshot": {
+            "deadline_reached": snapshot.deadline_reached,
+            "listed": snapshot.listed_count,
+            "loaded": len(snapshot.entries),
+            "omitted": snapshot.omitted_count,
+        },
         "unavailable": len(snapshot.unavailable_reads),
         "v2_unobserved": v2_unobserved,
     }
-    print(json.dumps(end_summary, sort_keys=True))
+    print(json.dumps(end_summary, sort_keys=True), flush=True)
     print(
         f"llm-deferred-sweep: {len(seen_pending)} pending seen, {completed} completed, "
         f"{still_pending} still pending observations, {failed} failed "
