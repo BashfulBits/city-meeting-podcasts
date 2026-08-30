@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 64,
+    "routes_count": 65,
     "providers_count": 11,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 0.5
@@ -618,6 +618,35 @@
         "llm-dispatch"
       ],
       "direct_model": "groq/openai/gpt-oss-120b",
+      "api_base": "https://api.groq.com/openai/v1",
+      "ai_gateway_slug": "groq",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GROQ_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "groq_qwen_3_8_27b_primary",
+      "model": "qwen/qwen3.8-27b",
+      "provider": "groq",
+      "upstream_model": "qwen/qwen3.8-27b",
+      "input_context_limit": 131042,
+      "output_context_limit": 16384,
+      "account_id": "primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 3600,
+      "free": true,
+      "structured_output_profile": "json_object",
+      "structured_output_response_format": "json_object",
+      "structured_output_direct_handler": "native",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "groq/qwen/qwen3.8-27b",
       "api_base": "https://api.groq.com/openai/v1",
       "ai_gateway_slug": "groq",
       "ai_gateway_chat_path": "/chat/completions",
