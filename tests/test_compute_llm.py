@@ -1969,3 +1969,34 @@ def test_dispatch_payload_is_never_rewritten_for_the_gateway(gateway_env):
     assert "gateway.ai.cloudflare.com" not in json.dumps(posted)
     assert "extra_headers" not in payload
     assert "cf-aig-authorization" not in json.dumps(posted).lower()
+
+
+def test_dispatch_v2_stats_returns_the_bounded_scheduler_snapshot():
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"jobs": {"by_state": {"queued": 3}}, "bundles": {"active": 1}}
+
+    class Session:
+        def get(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.6-flash",
+            dispatch_v2_url="https://dispatch.example/",
+            dispatch_v2_auth_token="v2-secret",
+        ),
+        http_session=Session(),
+    )
+
+    assert backend.dispatch_v2_stats(limit=7) == {
+        "jobs": {"by_state": {"queued": 3}},
+        "bundles": {"active": 1},
+    }
+    assert calls[0][0] == "https://dispatch.example/v2/stats?limit=7"
+    assert calls[0][1]["headers"] == {"authorization": "Bearer v2-secret"}

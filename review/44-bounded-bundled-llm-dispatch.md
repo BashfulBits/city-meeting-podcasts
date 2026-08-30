@@ -901,9 +901,21 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   replayed, completed, and still-pending siblings remain authoritative when another item fails.
   Known per-item rejections remain errors without pointless resubmission. Unknown outcomes get one
   recovery round: more than five are retried in a second batch, while five or fewer are isolated;
-  a second failed batch does not recurse. The deferred sweep uses the same threshold after its
-  initial poll. Payload-free structured events report batch, retry, singleton-fallback, and schema-
-  retry counts. No artifact schema, recipe, pipeline version, or backfill behavior changes.
+  a second failed batch does not recurse. Payload-free structured events report batch, retry,
+  singleton-fallback, and schema-retry counts. No artifact schema, recipe, pipeline version, or
+  backfill behavior changes.
+- **Implemented (2026-08-30): batch-only deferred-sweep recovery and bounded observation.** The
+  sweep's v2 pass is stricter than the normal interactive client: every real v2 handle receives one
+  bulk poll and, when necessary, one bulk recovery poll; an absent or unknown second outcome is
+  recorded as unobserved and left for the next cadence, never sent through `reconcile()` for a
+  singleton Worker read. Legacy queue-only capsules are rebuilt into `InferenceJob`s and sent via
+  bounded `enqueue_batch()` calls before their first poll. Start/end JSON summaries split the
+  client-owned deferred registry into v1-dispatched, v2-dispatched, v2-deferred, and direct-deferred
+  work; one authenticated `/v2/stats` snapshot adds the coordinator's independent queue state.
+  V1 intentionally gains no R2 ledger, endpoint, or scan: it remains on its existing temporary
+  singleton reaping path while its backlog drains. The scheduled run is now a 30-minute pass inside
+  a 40-minute Actions timeout; an operator can still request a longer manual pass with the existing
+  CLI budget argument. No artifact schema, recipe, pipeline version, or backfill behavior changes.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,

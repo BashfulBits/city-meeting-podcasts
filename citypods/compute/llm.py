@@ -2355,6 +2355,34 @@ class LiteLLMBackend(Backend):
             except requests.RequestException:
                 return
 
+    def dispatch_v2_stats(self, *, limit: int = 20) -> Mapping[str, Any]:
+        """Return the v2 scheduler's bounded, authenticated operational snapshot.
+
+        This is deliberately separate from :meth:`poll_batch`: the snapshot describes the
+        scheduler's whole queue, while polling observes only the client's deferred handles. It
+        carries no prompt or completion content and lets the deferred sweep distinguish an empty
+        client registry from a coordinator that is still carrying work.
+        """
+        if not self.config.dispatch_v2_url:
+            raise LLMBackendError("LLM dispatch v2 stats requires LLM_DISPATCH_V2_URL")
+        headers = {}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", f"v2/stats?limit={limit}")
+        try:
+            response = self._session.get(url, headers=headers, timeout=self.config.timeout_seconds)
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 stats request failed") from exc
+        if response.status_code != 200:
+            raise LLMBackendError(f"LLM dispatch v2 stats returned HTTP {response.status_code}")
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            raise LLMBackendError("LLM dispatch v2 stats returned malformed JSON") from exc
+        if not isinstance(data, Mapping):
+            raise LLMBackendError("LLM dispatch v2 stats returned a malformed response")
+        return data
+
     def _settle_dispatched_reservation(self, handle: JobHandle, output: Mapping[str, Any]) -> None:
         """Settle a Worker-owned reservation from its terminal raw response.
 
