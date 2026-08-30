@@ -58,6 +58,36 @@ SOURCE_SUFFIX = "/episodes.json"
 DEFAULT_LIMIT = 10_000
 DEFAULT_WORKERS = 16
 REQUEST_ID_RE = re.compile(r"^chatcmpl-[A-Za-z0-9-]{1,128}$")
+SUMMARY_COUNT_KEYS = (
+    "source_records",
+    "owned_requests",
+    "ambiguous_owners",
+    "unreadable_source_records",
+    "r2_listed",
+    "r2_scanned",
+    "r2_completed",
+    "r2_pending",
+    "r2_failed",
+    "r2_invalid_records",
+    "r2_read_errors",
+    "owned_completed",
+    "owned_pending",
+    "owned_failed",
+    "owned_completed_invalid",
+    "owned_not_scanned",
+    "unowned_completed",
+    "unowned_pending",
+    "unowned_failed",
+    "importable_completed",
+    "importable_agenda",
+    "importable_locator",
+    "would_import",
+    "imported",
+    "already_imported",
+    "completed_conflict",
+    "b2_write_errors",
+    "r2_records_retained",
+)
 
 
 @dataclass(frozen=True)
@@ -290,7 +320,6 @@ def recover_v1_results(
         ambiguous_owners=ambiguous_owners,
         unreadable_source_records=unreadable_sources,
         r2_listed=len(request_keys),
-        r2_limit_reached=len(request_keys) >= limit,
     )
     print(
         json.dumps(
@@ -350,6 +379,7 @@ def recover_v1_results(
                 summary["owned_completed_invalid"] += 1
                 continue
             importable.append((candidate, response, record.get("model")))
+            summary[f"importable_{candidate.kind}"] += 1
             if completed % 500 == 0:
                 print(
                     json.dumps(
@@ -365,9 +395,8 @@ def recover_v1_results(
 
     summary["owned_not_scanned"] = len(set(owned) - seen_request_ids)
     summary["importable_completed"] = len(importable)
-    if dry_run:
-        summary["would_import"] = len(importable)
-    else:
+    summary["would_import"] = len(importable)
+    if not dry_run:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [
                 executor.submit(_persist_completed, storage, candidate, response, model)
@@ -381,7 +410,9 @@ def recover_v1_results(
     # R2 records are deliberately retained in both modes; callers may inspect or replay their
     # durable owner state before a separate, verified cleanup decision.
     summary["r2_records_retained"] = summary["r2_scanned"]
-    return dict(summary)
+    result = {key: summary[key] for key in SUMMARY_COUNT_KEYS}
+    result["r2_limit_reached"] = len(request_keys) >= limit
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:

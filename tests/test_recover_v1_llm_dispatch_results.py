@@ -125,7 +125,10 @@ def test_dry_run_reports_only_validated_owned_completion():
     )
 
     assert summary["owned_completed"] == 1
+    assert summary["importable_agenda"] == 1
+    assert summary["importable_locator"] == 0
     assert summary["would_import"] == 1
+    assert summary["imported"] == 0
     assert look_up_deferred(storage, "agenda-recipe") is None
     assert summary["r2_records_retained"] == 1
 
@@ -174,7 +177,7 @@ def test_ambiguous_owner_and_invalid_completion_are_never_imported():
 
     assert summary["ambiguous_owners"] == 1
     assert summary["unowned_completed"] == 1
-    assert "imported" not in summary
+    assert summary["imported"] == 0
 
 
 def test_apply_does_not_replace_a_different_completed_b2_result():
