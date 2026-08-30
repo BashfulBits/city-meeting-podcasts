@@ -3772,3 +3772,55 @@ test("the 402 backoff ladder escalates on every weekday, including Sunday", () =
     assert.ok(third > second, `${day}: streak 3 must exceed streak 2`);
   }
 });
+
+test("a 400 whose body reports an upstream failure requeues the job and stands the route down", async () => {
+  // OpenCode Zen's shape, observed 2026-08-30: HTTP 400, but the payload says the *provider*
+  // failed. Classified as terminal, every job that reached it was destroyed rather than retried.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "upstream-400"), env);
+  const body = await queued.json();
+
+  const upstreamUnavailable = async () =>
+    new Response(
+      JSON.stringify({
+        error: {
+          type: "server_error",
+          message: "Error from provider (Console): Upstream request failed: Model is unavailable.",
+        },
+      }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
+
+  const result = await dispatchOne(env, upstreamUnavailable, new Date());
+  assert.equal(result.status, "retrying", "an unreachable model must not destroy the job");
+
+  const record = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(record.status, "pending");
+  assert.notEqual(record.status, "failed");
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.throttle_streak, 1, "the route stands down so siblings are not destroyed too");
+  assert.ok(entry.throttled_until);
+});
+
+test("a genuine 400 still fails terminally", async () => {
+  // The negative case that keeps the rule narrow: a real request defect says nothing about the
+  // provider, and must not be retried just because it shares a status code.
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "genuine-400"), env);
+  const body = await queued.json();
+
+  const badRequest = async () =>
+    new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: "unknown field 'foo'" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
+
+  const result = await dispatchOne(env, badRequest, new Date());
+  assert.equal(result.status, "failed");
+  const record = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(record.status, "failed");
+  assert.ok(record.error.provider_error?.body_preview, "terminal failures keep their body preview");
+});

@@ -168,6 +168,37 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
   };
 }
 
+/**
+ * A 4xx whose *body* reports a provider-side failure: the status blames the request, the payload
+ * blames the upstream. Treated as transport, not as a defect in the job.
+ *
+ * OpenCode Zen returns HTTP 400 with `{"error":{"type":"server_error","message":"Error from
+ * provider (Console): Upstream request failed: Model is unavailable."}}` while still advertising
+ * the model in its own /v1/models listing. Classified as terminal, every job that reached it was
+ * destroyed rather than retried.
+ *
+ * Deliberately narrow. It applies only to 400 (other 4xx really are request defects: 401 bad
+ * credentials, 404 unknown model, 422 schema), and only when the body self-identifies as a server
+ * or upstream failure. A provider that returns a genuine 400 for a malformed request says nothing
+ * of the sort, and still fails terminally as it should.
+ *
+ * Kept byte-identical in behaviour to v1's copy in workers/llm-dispatch-proxy: the two dispatchers
+ * face the same providers, and a body that costs a job in one must not cost it in the other.
+ */
+export function upstreamCapacityFailure(status, body) {
+  if (status !== 400) return false;
+  const providerError = body?.error;
+  if (!providerError || typeof providerError !== "object") return false;
+  if (String(providerError.type || "").toLowerCase() === "server_error") return true;
+  const message = String(providerError.message || "").toLowerCase();
+  return (
+    message.includes("upstream request failed") ||
+    message.includes("model is unavailable") ||
+    message.includes("no capacity") ||
+    message.includes("temporarily unavailable")
+  );
+}
+
 /** Sums prompt/completion tokens from an OpenAI-shaped `usage` object, if present. */
 export function observedTokens(body) {
   const usage = body?.usage;

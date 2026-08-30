@@ -994,6 +994,39 @@ function retryableStatus(status) {
   return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
+/**
+ * A 4xx whose *body* reports a provider-side failure: the status blames the request, the payload
+ * blames the upstream. Treated as transport, not as a defect in the job.
+ *
+ * OpenCode Zen returns HTTP 400 with `{"error":{"type":"server_error","message":"Error from
+ * provider (Console): Upstream request failed: Model is unavailable."}}` while still advertising
+ * the model in its own /v1/models listing. Classified as terminal, every job that reached it was
+ * destroyed rather than retried -- the third variant of this failure shape in one day, after
+ * NVIDIA's empty-body 404s and OpenRouter's hung-body `invalid_upstream_json`. In each case we
+ * never reached a working model, and nothing about the job caused it.
+ *
+ * Deliberately narrow. It applies only to 400 (other 4xx really are request defects: 401 bad
+ * credentials, 404 unknown model, 422 schema), and only when the body self-identifies as a server
+ * or upstream failure. A provider that returns a genuine 400 for a malformed request says nothing
+ * of the sort, and still fails terminally as it should.
+ *
+ * Sniffing a body to decide retryability is fragile, so the alternative is worth naming: the
+ * honest fix is providers using accurate status codes, which we do not control. The cost of a
+ * false positive here is a wasted retry against a bounded `attempts`; the cost of a false negative
+ * is a permanently destroyed job needing an operator requeue.
+ */
+function upstreamCapacityFailure(status, providerError) {
+  if (status !== 400 || !providerError) return false;
+  if (String(providerError.provider_type || "").toLowerCase() === "server_error") return true;
+  const message = String(providerError.message || "").toLowerCase();
+  return (
+    message.includes("upstream request failed") ||
+    message.includes("model is unavailable") ||
+    message.includes("no capacity") ||
+    message.includes("temporarily unavailable")
+  );
+}
+
 function retryDelaySeconds(response, attempts, cfg) {
   const retryAfter = response ? Number(response.headers?.get?.("retry-after") || response.headers?.["retry-after"]) : NaN;
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
@@ -2903,14 +2936,32 @@ async function dispatchBatch(
           // Requeue it instead: admission keeps it off the now-blocked route, so it runs on an
           // overflow route or once the cooldown clears. `attempts` still bounds it, so a route
           // that stays 402 across every cooldown cannot loop the job forever.
-          const willRetry =
-            (retryableStatus(response.status) || response.status === 402) &&
-            claimed.record.attempts < cfg.maxAttempts;
+          // The body has to be read BEFORE retryability is decided: a 400 that turns out to be a
+          // provider-side failure (see upstreamCapacityFailure) is transport, not a bad request,
+          // and only the payload distinguishes the two. Read with the preview, then drop it if we
+          // end up retrying -- the preview exists to explain terminal failures, and keeping it on
+          // a record that will run again just bloats the queue object.
           const errorReadStartedAt = profileNow();
-          const providerError = await readUpstreamError(response, {
-            persistBodyPreview: !willRetry,
-          });
+          const providerError = await readUpstreamError(response, { persistBodyPreview: true });
           profile.error_read_ms = profileElapsed(errorReadStartedAt);
+          const capacityFailure = upstreamCapacityFailure(response.status, providerError);
+          const willRetry =
+            (retryableStatus(response.status) || response.status === 402 || capacityFailure) &&
+            claimed.record.attempts < cfg.maxAttempts;
+          if (willRetry && providerError && "body_preview" in providerError) {
+            delete providerError.body_preview;
+          }
+          if (capacityFailure) {
+            // Stand the route down like a 429: the model is unreachable, so every other queued job
+            // admitted onto it would be destroyed in turn.
+            const capacityEntry = ledgerEntry(coordinator, chosenRoute.route_id);
+            capacityEntry.throttle_streak = (capacityEntry.throttle_streak || 0) + 1;
+            capacityEntry.throttled_until = new Date(
+              rateLimitedBackoffUntil(capacityEntry.throttle_streak, respondedAt.getTime()),
+            ).toISOString();
+            capacityEntry.throttled_at = respondedAt.toISOString();
+            ledgerMutatedAfterDispatch = true;
+          }
           const errorDetail = {
             code: "upstream_error",
             status: response.status,
