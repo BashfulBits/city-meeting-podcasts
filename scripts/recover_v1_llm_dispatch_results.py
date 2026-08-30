@@ -97,6 +97,7 @@ SUMMARY_COUNT_KEYS = (
     "reconstruction_errors",
     "reconstructed_owned_requests",
     "reconstructed_ambiguous_owners",
+    "reconstructed_candidate_fanout",
     "reconstructed_matched_completed",
     "reconstructed_matched_pending",
     "reconstructed_matched_failed",
@@ -279,6 +280,8 @@ def _structured_output_from_request(request: Mapping[str, Any]) -> str | None:
 
 
 def _bytes(storage, key: object) -> bytes | None:
+    """Return a durable B2 object body, or ``None`` when its key is absent or unreadable."""
+
     if not isinstance(key, str) or not key:
         return None
     loaded = storage.get_bytes(key)
@@ -288,6 +291,8 @@ def _bytes(storage, key: object) -> bytes | None:
 def _agenda_reconstruction(
     storage, source_key: str, episode_uid: str, episode: Mapping[str, Any]
 ) -> ReconstructedRequest | None:
+    """Rebuild one unfinished agenda job from its immutable agenda-text artifact."""
+
     agenda = episode.get("generated_agenda_candidates")
     if isinstance(agenda, Mapping) and agenda.get("status") in {"completed", "accepted"}:
         return None
@@ -322,6 +327,8 @@ def _agenda_reconstruction(
 def _locator_reconstruction(
     storage, source_key: str, episode_uid: str, episode: Mapping[str, Any]
 ) -> ReconstructedRequest | None:
+    """Rebuild one unfinished locator job from validated agenda and transcript artifacts."""
+
     agenda_data = episode.get("generated_agenda_candidates")
     if not isinstance(agenda_data, Mapping) or agenda_data.get("status") not in {
         "completed",
@@ -668,10 +675,17 @@ def recover_v1_results(
     summary.update(reconstruction_summary)
     reconstructed_matches: dict[str, list[ReconstructedRequest]] = defaultdict(list)
     reconstructed_records: dict[str, R2RequestSnapshot] = {}
+    fanout_candidates: set[ReconstructedRequest] = set()
     for candidate in reconstructed:
-        for record in r2_by_messages.get(candidate.messages_fingerprint, []):
-            if record.structured_output != candidate.structured_output:
-                continue
+        matched = [
+            record
+            for record in r2_by_messages.get(candidate.messages_fingerprint, [])
+            if record.structured_output == candidate.structured_output
+        ]
+        if len(matched) > 1:
+            fanout_candidates.add(candidate)
+            summary["reconstructed_candidate_fanout"] += 1
+        for record in matched:
             reconstructed_matches[record.request_id].append(candidate)
             reconstructed_records[record.request_id] = record
     for request_id, candidates in reconstructed_matches.items():
@@ -679,6 +693,8 @@ def recover_v1_results(
             summary["reconstructed_ambiguous_owners"] += 1
             continue
         candidate = candidates[0]
+        if candidate in fanout_candidates:
+            continue
         record = reconstructed_records[request_id]
         summary["reconstructed_owned_requests"] += 1
         summary[f"reconstructed_matched_{record.status}"] += 1
@@ -705,6 +721,7 @@ def recover_v1_results(
                 "event": "v1_recovery_reconstruction_finished",
                 "reconstructed_ambiguous_owners": summary["reconstructed_ambiguous_owners"],
                 "reconstructed_candidates": summary["reconstructed_candidates"],
+                "reconstructed_candidate_fanout": summary["reconstructed_candidate_fanout"],
                 "reconstructed_completed_invalid": summary["reconstructed_completed_invalid"],
                 "reconstructed_matched_completed": summary["reconstructed_matched_completed"],
                 "reconstructed_matched_failed": summary["reconstructed_matched_failed"],

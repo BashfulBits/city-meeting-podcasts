@@ -68,9 +68,10 @@ Phase R (Research-Tool Surface)._
   and accepts an R2 record only when one owner matches its exact normalized prompt and recorded
   response-schema shape. It validates the structured response before writing a completed B2
   deferred record, and reports direct and reconstructed candidates, unavailable inputs, pending,
-  failed, invalid, unowned, and ambiguous records separately. It never guesses an owner, creates
-  no B2 pending handles, calls no Worker endpoint, and retains R2 records for a later verified
-  cleanup decision. This is a temporary migration aid for draining v1; no recipe, artifact schema,
+  failed, invalid, unowned, many-owner, and many-record matches separately. It never guesses an
+  owner, creates no B2 pending handles, calls no Worker endpoint, and retains R2 records for a
+  later verified cleanup decision. This is a temporary migration aid for draining v1; no recipe,
+  artifact schema,
   pipeline version, or backfill changes.
 
 - **The temporary deferred sweep did not leave enough reaping time for legacy v1 handles.** The

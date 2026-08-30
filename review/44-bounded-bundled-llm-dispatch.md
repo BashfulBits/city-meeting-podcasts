@@ -849,9 +849,10 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   that temporary provenance gap. It lists v1 `requests/` directly in R2, joins completed records
   first to exact `job_ref`s retained by the resumable agenda and locator stage state, then rebuilds
   only unfinished agenda/locator prompts from durable source bytes. The latter path requires one
-  exact normalized prompt plus recorded response-schema-shape match; zero or multiple owners are
-  report-only. It validates the recorded structured response and writes the resulting `JobResult`
-  to B2's normal deferred registry. Pending, failed, malformed, unavailable-input, unowned, and
+  exact normalized prompt plus recorded response-schema-shape match; zero or multiple owners, or
+  one candidate matching multiple historical R2 records, are report-only. It validates the
+  recorded structured response and writes the resulting `JobResult` to B2's normal deferred
+  registry. Pending, failed, malformed, unavailable-input, unowned, and
   multiply owned records are report-only; the importer neither guesses ownership nor creates B2
   pending handles. It deliberately retains the R2 object because the v1 Worker has no verified
   DELETE endpoint and B2 persistence alone does not prove downstream consumption. This importer is
