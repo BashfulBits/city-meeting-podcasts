@@ -256,6 +256,19 @@ export async function handleRequest(request, env) {
 
   const coordinator = getCoordinator(env);
 
+  // Operator probe. Authenticated like every other /v2 route -- queue depths and route health are
+  // operational detail, not public -- and read-only: it takes no parameters that change state.
+  if (request.method === "GET" && path === "/v2/stats") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
+    try {
+      return jsonResponse(await coordinator.stats(Date.now(), limit), 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`stats failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
   if (request.method === "POST" && path === "/v2/jobs:enqueue-batch") {
     let body;
     try {
