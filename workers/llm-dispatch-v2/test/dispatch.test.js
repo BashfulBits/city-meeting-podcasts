@@ -353,9 +353,15 @@ test("completeBatch escalates blocked_until on consecutive 402s and clears it on
   // never a sibling route masking the block.
   const policy = JSON.stringify({ allowed_models: ["mistral/mistral-small"], allow_paid: false });
 
+  // Pinned to a Wednesday. The escalation is calendar-based -- streak 1 blocks until tomorrow,
+  // streak 2 until next UTC Monday -- so on a Sunday those two land on the SAME instant and the
+  // strictly-greater assertion below fails through no fault of the code. Using the wall clock made
+  // this test fail every Sunday; it surfaced on 2026-08-30.
+  const FIXED_NOW = Date.parse("2026-08-26T12:00:00Z"); // Wednesday
+
   async function claimAndComplete(jobId, outcome, providerStatusCode) {
     await coordinator.enqueueBatch([makeJob(jobId, { policy_json: policy })]);
-    const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+    const plan = await coordinator.claimDispatchWindow(FIXED_NOW, 25);
     const job = plan.jobs[0];
     await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
       {
@@ -375,7 +381,7 @@ test("completeBatch escalates blocked_until on consecutive 402s and clears it on
   let row = [...sql.exec("SELECT payment_required_streak, blocked_until FROM routes WHERE route_id=?", routeId)][0];
   assert.equal(row.payment_required_streak, 1);
   const afterFirst = row.blocked_until;
-  assert.ok(afterFirst > Date.now()); // blocked into the future
+  assert.ok(afterFirst > FIXED_NOW); // blocked into the future
 
   // Real time obviously can't advance a day inside a test; clear the block directly to simulate
   // it having already expired, exactly as it would in production once `now` passes blocked_until
