@@ -1,7 +1,9 @@
 from datetime import UTC, datetime, timedelta
+from threading import Event, Lock, Thread
 
 import pytest
 
+import citypods.compute.llm_deferred as llm_deferred
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_budget import mutate_llm_budget
 from citypods.compute.llm_deferred import (
@@ -12,6 +14,7 @@ from citypods.compute.llm_deferred import (
     DEFERRED_INDEX_PENDING_PREFIX,
     DEFERRED_PREFIX,
     _indexed_listing,
+    _load_snapshot_from_keys,
     _read_json,
     _write_json,
     deferred_failure_key,
@@ -248,6 +251,113 @@ def test_repair_marks_migration_and_indexed_snapshot_rechecks_canonical_records(
     snapshot = load_deferred_snapshot(storage, now=NOW)
     assert [handle.recipe_hash for handle in snapshot.pending()] == ["pending-1"]
     assert len(snapshot.entries) == 1
+
+
+def test_snapshot_reads_canonical_records_concurrently_and_preserves_listing_order(monkeypatch):
+    release_reads = Event()
+    two_reads_started = Event()
+    active_reads = 0
+    max_active_reads = 0
+    lock = Lock()
+
+    def fake_read(_storage, key, **_kwargs):
+        nonlocal active_reads, max_active_reads
+        with lock:
+            active_reads += 1
+            max_active_reads = max(max_active_reads, active_reads)
+            if active_reads >= 2:
+                two_reads_started.set()
+        assert release_reads.wait(timeout=1)
+        with lock:
+            active_reads -= 1
+        return {
+            "status": "pending",
+            "task": "tag",
+            "recipe_hash": key,
+            "backend": "litellm",
+            "ref": key,
+        }
+
+    monkeypatch.setattr(llm_deferred, "_read_json", fake_read)
+    result = []
+    reader = Thread(
+        target=lambda: result.append(
+            _load_snapshot_from_keys(
+                None,
+                [("recipe-a", NOW), ("recipe-b", NOW), ("recipe-c", NOW)],
+                read_workers=2,
+            )
+        )
+    )
+    reader.start()
+    assert two_reads_started.wait(timeout=1)
+    release_reads.set()
+    reader.join(timeout=1)
+
+    assert not reader.is_alive()
+    assert max_active_reads == 2
+    assert [entry.key for entry in result[0].entries] == ["recipe-a", "recipe-b", "recipe-c"]
+    assert result[0].listed_count == 3
+    assert result[0].omitted_count == 0
+
+
+def test_snapshot_stops_admitting_reads_after_its_deadline():
+    snapshot = _load_snapshot_from_keys(
+        None,
+        [("recipe-a", NOW), ("recipe-b", NOW)],
+        deadline_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+
+    assert snapshot.entries == []
+    assert snapshot.listed_count == 2
+    assert snapshot.omitted_count == 2
+    assert snapshot.deadline_reached
+
+
+def test_snapshot_does_not_report_a_signal_stop_as_a_deadline():
+    snapshot = _load_snapshot_from_keys(
+        None,
+        [("recipe-a", NOW)],
+        deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+        should_stop=lambda: True,
+    )
+
+    assert snapshot.entries == []
+    assert snapshot.omitted_count == 1
+    assert not snapshot.deadline_reached
+
+
+def test_snapshot_polls_stop_signal_while_waiting_for_deadline_bound_reads(monkeypatch):
+    read_started = Event()
+    release_read = Event()
+    stop_requested = Event()
+
+    def blocking_read(_storage, _key, **_kwargs):
+        read_started.set()
+        assert release_read.wait(timeout=3)
+        return None
+
+    monkeypatch.setattr(llm_deferred, "_read_json", blocking_read)
+    result = []
+    reader = Thread(
+        target=lambda: result.append(
+            _load_snapshot_from_keys(
+                None,
+                [("recipe-a", NOW)],
+                deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+                should_stop=stop_requested.is_set,
+            )
+        )
+    )
+    reader.start()
+    assert read_started.wait(timeout=1)
+    stop_requested.set()
+    reader.join(timeout=2)
+    release_read.set()
+
+    assert not reader.is_alive()
+    assert result[0].entries == []
+    assert not result[0].deadline_reached
 
 
 def test_repair_does_not_mark_migration_when_a_canonical_read_is_unavailable():

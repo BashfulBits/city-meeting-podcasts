@@ -691,6 +691,28 @@ class _FakeDownloadClient:
         Path(path).write_text(f"{bucket}:{key}")
 
 
+def test_get_file_deadline_uses_a_capped_client_timeout(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    store = _s3_with_fake_client()
+    client = _FakeDownloadClient([])
+    configs = []
+
+    def new_client(*, config=None):
+        configs.append(config)
+        return client
+
+    store._new_client = new_client
+    destination = tmp_path / "state.json"
+
+    assert store.get_file(
+        "state/k.json", destination, deadline_at=datetime.now(UTC) + timedelta(minutes=1)
+    )
+    assert client.calls == 1
+    assert configs[0].connect_timeout == 15
+    assert configs[0].read_timeout == 15
+
+
 def test_get_file_retries_transfer_failures_then_succeeds(tmp_path, monkeypatch):
     from botocore.exceptions import ReadTimeoutError
 

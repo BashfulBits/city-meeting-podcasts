@@ -51,6 +51,8 @@ jobs:
 
       - name: Reconcile pending deferred/dispatched LLM requests
         env:
+          # Surface phase telemetry even when GitHub cancels the job during a storage read.
+          PYTHONUNBUFFERED: "1"
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

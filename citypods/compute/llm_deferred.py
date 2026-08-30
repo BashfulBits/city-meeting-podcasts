@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import json
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -51,6 +52,10 @@ DEFAULT_TTL_DAYS = 38
 # recipe lineages which are never revisited. Maintenance passes prune only markers whose latest
 # failure is older than this retention period.
 DEFAULT_FAILURE_MARKER_TTL_DAYS = 90
+# B2 body reads dominate a large deferred registry. Keep enough parallelism to turn thousands of
+# independent object reads into a few minutes, without turning one scheduled sweep into a backend
+# connection storm.
+SNAPSHOT_READ_WORKERS = 16
 
 
 @dataclass
@@ -75,6 +80,13 @@ class DeferredSnapshot:
     """
 
     entries: list[DeferredSnapshotEntry]
+    listed_count: int = 0
+    deadline_reached: bool = False
+
+    @property
+    def omitted_count(self) -> int:
+        """Listed records not read because this sweep reached its wall-clock deadline."""
+        return max(0, self.listed_count - len(self.entries))
 
     @property
     def unavailable_reads(self) -> tuple[StorageReadUnavailable, ...]:
@@ -478,7 +490,7 @@ def _write_json(storage, key: str, body: bytes) -> None:
         storage.put_file(key, path, "application/json")
 
 
-def _read_json(storage, key: str) -> Any | None:
+def _read_json(storage, key: str, *, deadline_at: datetime | None = None) -> Any | None:
     """Read and parse a JSON object from storage.
 
     Missing or malformed objects return ``None``. A transient read that exhausted the storage
@@ -487,7 +499,11 @@ def _read_json(storage, key: str) -> Any | None:
     """
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "record.json"
-        if not storage.get_file(key, path):
+        if deadline_at is None:
+            found = storage.get_file(key, path)
+        else:
+            found = storage.get_file(key, path, deadline_at=deadline_at)
+        if not found:
             return None
         try:
             return json.loads(path.read_text())
@@ -580,30 +596,115 @@ def iter_pending_deferred(storage, *, unavailable: list[StorageReadUnavailable] 
             yield decoded
 
 
-def _load_snapshot_from_keys(storage, listing) -> DeferredSnapshot:
-    """Read canonical records named by a listing, de-duplicating multi-route pointers."""
-    entries = []
+def _snapshot_entry(
+    storage, key: str, last_modified: Any, *, deadline_at: datetime | None = None
+) -> DeferredSnapshotEntry:
+    """Read one canonical record, preserving an unavailable read as observable state."""
+    unavailable = None
+    try:
+        data = _read_json(storage, key, deadline_at=deadline_at)
+    except StorageReadUnavailable as exc:
+        data = None
+        unavailable = exc
+    return DeferredSnapshotEntry(
+        key=key,
+        last_modified=last_modified,
+        data=data if isinstance(data, Mapping) else None,
+        decoded=_decode_record(data),
+        unavailable=unavailable,
+    )
+
+
+def _load_snapshot_from_keys(
+    storage,
+    listing,
+    *,
+    deadline_at: datetime | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    read_workers: int = SNAPSHOT_READ_WORKERS,
+) -> DeferredSnapshot:
+    """Read canonical records concurrently, stopping admission at the sweep deadline.
+
+    Object reads are independent and B2-backed; serially downloading a 16k-record registry took
+    nearly two hours in production. At most ``read_workers`` requests are in flight, and records
+    already submitted when the deadline arrives are retained in the partial snapshot. Callers can
+    report ``omitted_count`` and leave the untouched tail for the next cadence.
+    """
+    if read_workers < 1:
+        raise ValueError("read_workers must be at least one")
+    candidates = []
     seen: set[str] = set()
     for key, last_modified in sorted(listing, key=lambda item: (item[1] is None, item[1])):
         if key in seen:
             continue
         seen.add(key)
-        unavailable = None
-        try:
-            data = _read_json(storage, key)
-        except StorageReadUnavailable as exc:
-            data = None
-            unavailable = exc
-        entries.append(
-            DeferredSnapshotEntry(
-                key=key,
-                last_modified=last_modified,
-                data=data if isinstance(data, Mapping) else None,
-                decoded=_decode_record(data),
-                unavailable=unavailable,
-            )
+        candidates.append((key, last_modified))
+
+    def stop_reason() -> str | None:
+        if should_stop and should_stop():
+            return "signal"
+        if deadline_at is not None and datetime.now(UTC) >= deadline_at:
+            return "deadline"
+        return None
+
+    entries: dict[int, DeferredSnapshotEntry] = {}
+    futures = {}
+    next_index = 0
+    stop_reason_seen: str | None = None
+    executor = ThreadPoolExecutor(max_workers=read_workers, thread_name_prefix="llm-deferred-read")
+    try:
+        while next_index < len(candidates) and len(futures) < read_workers:
+            if reason := stop_reason():
+                stop_reason_seen = reason
+                break
+            key, last_modified = candidates[next_index]
+            futures[
+                executor.submit(
+                    _snapshot_entry, storage, key, last_modified, deadline_at=deadline_at
+                )
+            ] = next_index
+            next_index += 1
+
+        while futures:
+            if reason := stop_reason():
+                stop_reason_seen = reason
+                break
+            wait_timeout = None
+            if deadline_at is not None:
+                wait_timeout = max(0.0, (deadline_at - datetime.now(UTC)).total_seconds())
+            if should_stop is not None:
+                wait_timeout = min(1.0, wait_timeout) if wait_timeout is not None else 1.0
+            done, _ = wait(futures, timeout=wait_timeout, return_when=FIRST_COMPLETED)
+            if not done:
+                if reason := stop_reason():
+                    stop_reason_seen = reason
+                    break
+                continue
+            for future in done:
+                entries[futures.pop(future)] = future.result()
+            while next_index < len(candidates) and len(futures) < read_workers:
+                if reason := stop_reason():
+                    stop_reason_seen = reason
+                    break
+                key, last_modified = candidates[next_index]
+                futures[
+                    executor.submit(
+                        _snapshot_entry, storage, key, last_modified, deadline_at=deadline_at
+                    )
+                ] = next_index
+                next_index += 1
+    finally:
+        # Do not wait for an expired sweep's residual B2 requests before emitting its report.
+        executor.shutdown(
+            wait=stop_reason_seen is None,
+            cancel_futures=stop_reason_seen is not None,
         )
-    return DeferredSnapshot(entries)
+
+    return DeferredSnapshot(
+        [entries[index] for index in sorted(entries)],
+        listed_count=len(candidates),
+        deadline_reached=stop_reason_seen == "deadline",
+    )
 
 
 def _indexed_listing(storage, *, now: datetime) -> list[tuple[str, Any]]:
@@ -637,7 +738,14 @@ def _indexed_listing(storage, *, now: datetime) -> list[tuple[str, Any]]:
     return listing
 
 
-def load_deferred_snapshot(storage, *, now: datetime | None = None) -> DeferredSnapshot:
+def load_deferred_snapshot(
+    storage,
+    *,
+    now: datetime | None = None,
+    deadline_at: datetime | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    read_workers: int = SNAPSHOT_READ_WORKERS,
+) -> DeferredSnapshot:
     """Read canonical records once, using the advisory index after migration.
 
     Before the repair pass marks migration complete, the old full listing remains active. This
@@ -654,10 +762,19 @@ def load_deferred_snapshot(storage, *, now: datetime | None = None) -> DeferredS
         return _load_snapshot_from_keys(
             storage,
             ((deferred_key(key.rsplit("/", 1)[-1][:-5]), modified) for key, modified in listing),
+            deadline_at=deadline_at,
+            should_stop=should_stop,
+            read_workers=read_workers,
         )
     # Canonical keys from a full-registry listing are already unique, so the de-dup in
     # `_load_snapshot_from_keys` is a harmless no-op here -- same helper, no duplicated loop.
-    return _load_snapshot_from_keys(storage, storage.list_objects(DEFERRED_PREFIX))
+    return _load_snapshot_from_keys(
+        storage,
+        storage.list_objects(DEFERRED_PREFIX),
+        deadline_at=deadline_at,
+        should_stop=should_stop,
+        read_workers=read_workers,
+    )
 
 
 def repair_deferred_index(

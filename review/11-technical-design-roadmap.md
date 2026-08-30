@@ -172,7 +172,10 @@ poll fallback. Its JSON start/end summaries distinguish v1/v2 client-owned outst
 one bounded v2 coordinator snapshot for independent queue state. V1 deliberately remains unchanged
 while it drains: no new R2 ledger, endpoint, or scan. The six-hour workflow is a bounded 30-minute
 observation/retry pass (40-minute Actions timeout); a manual CLI invocation can still request a
-longer drain. No artifact schema, recipe, pipeline version, or backfill behavior changes.
+longer drain. The first bounded production run exposed a pre-budget serial B2 snapshot scan, so the
+loader now starts with a flushed phase event, uses 16 bounded concurrent reads, and reports
+listed/loaded/omitted snapshot records; it stops admitting reads at the same wall-clock deadline.
+No artifact schema, recipe, pipeline version, or backfill behavior changes.
 
 | Item | #/GH | Maturity | Breakout |
 |---|---|---|---|

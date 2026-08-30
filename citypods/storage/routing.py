@@ -17,6 +17,7 @@ object is addressed on R2 and excluded from the bulk B2 state sync.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from citypods.storage.base import StorageBackend
@@ -181,10 +182,13 @@ class RoutingStorage:
     def public_url(self, key: str) -> str:
         return self._route(key).public_url(key)
 
-    def get_file(self, key: str, local_path: Path) -> bool:
+    def get_file(self, key: str, local_path: Path, *, deadline_at: datetime | None = None) -> bool:
         if self._is_coordination(key):
             self._class_b += 1
-        return self._route(key).get_file(key, local_path)
+        backend = self._route(key)
+        if deadline_at is None:
+            return backend.get_file(key, local_path)
+        return backend.get_file(key, local_path, deadline_at=deadline_at)
 
     def get_range(self, key: str, start: int, end: int) -> bytes | None:
         if self._is_coordination(key):

@@ -70,7 +70,11 @@ Phase R (Research-Tool Surface)._
   runs for 30 minutes within a 40-minute Actions timeout. Both authenticated dispatch endpoints
   now require HTTPS, so a configuration error cannot send their bearer token over cleartext. V1
   remains on its existing temporary R2-backed reap path—no new ledger or endpoint. No artifact
-  schema, recipe, pipeline version, or backfill behavior changes.
+  schema, recipe, pipeline version, or backfill behavior changes. A follow-up after the first
+  bounded production run found that its initial registry snapshot still read every B2 record
+  serially before the deadline check, so the sweep now emits a flushed snapshot-start event and
+  loads at most 16 records concurrently. Snapshot reports include listed/loaded/omitted counts and
+  stop admitting reads at the wall-clock deadline, leaving the untouched tail for the next cadence.
 
 - **SambaNova's Free-tier routes were admitting an incorrect daily quota.** The two physical
   SambaNova routes now use the documented 20 RPM / 20 RPD source ceiling, with the existing
