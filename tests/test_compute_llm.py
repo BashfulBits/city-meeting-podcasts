@@ -2000,3 +2000,23 @@ def test_dispatch_v2_stats_returns_the_bounded_scheduler_snapshot():
     }
     assert calls[0][0] == "https://dispatch.example/v2/stats?limit=7"
     assert calls[0][1]["headers"] == {"authorization": "Bearer v2-secret"}
+
+
+@pytest.mark.parametrize("config_name", ["dispatch_url", "dispatch_v2_url"])
+def test_backend_rejects_cleartext_dispatch_urls_before_any_request(config_name):
+    calls = []
+
+    class Session:
+        def get(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            raise AssertionError("an insecure dispatch URL must not be requested")
+
+    with pytest.raises(ValueError, match="must be an HTTPS URL"):
+        LiteLLMBackend(
+            LLMBackendConfig(
+                model="gemini/gemini-3.6-flash",
+                **{config_name: "http://dispatch.example"},
+            ),
+            http_session=Session(),
+        )
+    assert calls == []

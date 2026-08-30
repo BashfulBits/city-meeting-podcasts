@@ -571,6 +571,14 @@ class LiteLLMBackend(Backend):
             raise ValueError("LLM mode must be 'direct' or 'dispatch'")
         if self.config.mode == "dispatch" and not self.config.dispatch_url:
             raise ValueError("dispatch mode requires LLM_DISPATCH_URL")
+        for config_name, dispatch_url in (
+            ("LLM_DISPATCH_URL", self.config.dispatch_url),
+            ("LLM_DISPATCH_V2_URL", self.config.dispatch_v2_url),
+        ):
+            if dispatch_url:
+                parts = urlsplit(dispatch_url)
+                if parts.scheme.lower() != "https" or not parts.netloc:
+                    raise ValueError(f"{config_name} must be an HTTPS URL")
         self._completion = completion
         self._session = http_session or requests.Session()
         self.storage = storage

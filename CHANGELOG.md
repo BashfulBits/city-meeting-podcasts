@@ -67,9 +67,10 @@ Phase R (Research-Tool Surface)._
   budget without reaping work. V2 now uses one initial and at most one recovery batch, then leaves
   unknown jobs for the next six-hour cadence; legacy queue-only capsules are submitted in bounded
   v2 batches as well. The sweep emits client-owned v1/v2 counts plus one v2 scheduler snapshot and
-  runs for 30 minutes within a 40-minute Actions timeout. V1 remains on its existing temporary
-  R2-backed reap path—no new ledger or endpoint. No artifact schema, recipe, pipeline version, or
-  backfill behavior changes.
+  runs for 30 minutes within a 40-minute Actions timeout. Both authenticated dispatch endpoints
+  now require HTTPS, so a configuration error cannot send their bearer token over cleartext. V1
+  remains on its existing temporary R2-backed reap path—no new ledger or endpoint. No artifact
+  schema, recipe, pipeline version, or backfill behavior changes.
 
 - **SambaNova's Free-tier routes were admitting an incorrect daily quota.** The two physical
   SambaNova routes now use the documented 20 RPM / 20 RPD source ceiling, with the existing
