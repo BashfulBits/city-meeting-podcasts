@@ -61,6 +61,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **The temporary deferred sweep did not leave enough reaping time for legacy v1 handles.** The
+  scheduled pass now runs for 90 minutes inside a 105-minute Actions timeout, retaining a
+  15-minute teardown margin. This allows the B2 deferred registry's finished v1 entries to be
+  verified and persisted after snapshot and maintenance work. It does not enumerate unregistered
+  legacy R2 requests, alter dispatch rate, change any artifact schema, or trigger a backfill; the
+  longer budget is temporary until the registered v1 queue drains.
+
 - **The LLM deferred sweep could turn a failed v2 batch read into a singleton-poll storm.** An
   unresolved v2 handle fell through from the bulk poll into `reconcile()`, so a partial or failed
   recovery could make one Worker invocation per remaining job and consume the full four-hour sweep

@@ -913,14 +913,18 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   client-owned deferred registry into v1-dispatched, v2-dispatched, v2-deferred, and direct-deferred
   work; one authenticated `/v2/stats` snapshot adds the coordinator's independent queue state.
   V1 intentionally gains no R2 ledger, endpoint, or scan: it remains on its existing temporary
-  singleton reaping path while its backlog drains. The scheduled run is now a 30-minute pass inside
-  a 40-minute Actions timeout; an operator can still request a longer manual pass with the existing
-  CLI budget argument. **Production follow-up:** the first bounded run was killed at the 40-minute
-  job limit without a summary because snapshot construction still issued serial B2 reads before its
-  first log or deadline check. Snapshot loading now emits a flushed start event, reads at most 16
-  records concurrently, records listed/loaded/omitted counts, and stops admitting new reads at the
-  deadline so the remaining tail waits for the next six-hour pass. No artifact schema, recipe,
-  pipeline version, or backfill behavior changes.
+  singleton reaping path while its backlog drains. **Deviation, maintainer-approved 2026-08-30:**
+  the scheduled pass is raised from 30 minutes within a 40-minute Actions timeout to 90 minutes
+  within 105 minutes. The observed legacy B2 registry needs materially more time after snapshot and
+  maintenance work to poll and durably consume already-finished v1 results; a 15-minute teardown
+  margin prevents GitHub from cancelling that verified completion. This increases scheduled runner
+  time temporarily, but does not enumerate unknown R2 records or change dispatch rate. Revert to a
+  shorter pass when the client-owned v1 registry is empty. **Production follow-up:** the first
+  bounded run was killed at the 40-minute job limit without a summary because snapshot construction
+  still issued serial B2 reads before its first log or deadline check. Snapshot loading now emits a
+  flushed start event, reads at most 16 records concurrently, records listed/loaded/omitted counts,
+  and stops admitting new reads at the deadline so the remaining tail waits for the next six-hour
+  pass. No artifact schema, recipe, pipeline version, or backfill behavior changes.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,
