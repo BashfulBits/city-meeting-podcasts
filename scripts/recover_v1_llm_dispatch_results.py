@@ -26,7 +26,7 @@ import argparse
 import json
 import re
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -295,6 +295,23 @@ def _persist_completed(
     return "imported"
 
 
+def _persist_recipe_group(
+    storage, entries: list[tuple[OwnedRequest, Mapping[str, Any], object]]
+) -> Counter[str]:
+    """Persist one recipe's candidate results serially and in a stable order.
+
+    A v1 request ID normally derives from its recipe idempotency key, but historical retries can
+    leave more than one request ID for one recipe.  The B2 registry has one key per recipe, so
+    serializing that group prevents two workers from both observing an absent result and claiming
+    they imported it.  Distinct recipes still persist concurrently in the caller.
+    """
+
+    outcomes: Counter[str] = Counter()
+    for candidate, response, model in sorted(entries, key=lambda entry: entry[0].request_id):
+        outcomes[_persist_completed(storage, candidate, response, model)] += 1
+    return outcomes
+
+
 def recover_v1_results(
     storage,
     client: Any,
@@ -397,14 +414,19 @@ def recover_v1_results(
     summary["importable_completed"] = len(importable)
     summary["would_import"] = len(importable)
     if not dry_run:
+        by_recipe: defaultdict[str, list[tuple[OwnedRequest, Mapping[str, Any], object]]] = (
+            defaultdict(list)
+        )
+        for entry in importable:
+            by_recipe[entry[0].recipe_hash].append(entry)
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [
-                executor.submit(_persist_completed, storage, candidate, response, model)
-                for candidate, response, model in importable
+                executor.submit(_persist_recipe_group, storage, entries)
+                for entries in by_recipe.values()
             ]
             for future in as_completed(futures):
                 try:
-                    summary[future.result()] += 1
+                    summary.update(future.result())
                 except Exception:  # noqa: BLE001 -- leave the R2 record intact for a later retry
                     summary["b2_write_errors"] += 1
     # R2 records are deliberately retained in both modes; callers may inspect or replay their

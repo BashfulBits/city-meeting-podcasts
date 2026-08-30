@@ -108,6 +108,17 @@ def _completed(ref: str) -> bytes:
     ).encode()
 
 
+def _completed_with_content(ref: str, content: str) -> bytes:
+    return json.dumps(
+        {
+            "id": ref,
+            "status": "completed",
+            "model": "mistral/mistral-medium-2508",
+            "response": {"choices": [{"message": {"content": content}}]},
+        }
+    ).encode()
+
+
 def test_dry_run_reports_only_validated_owned_completion():
     ref = "chatcmpl-a"
     storage = _Storage({"state/sources/source/episodes.json": _state(entries=[_agenda(ref)])})
@@ -203,3 +214,36 @@ def test_apply_does_not_replace_a_different_completed_b2_result():
 
     assert summary["completed_conflict"] == 1
     assert look_up_deferred(storage, "agenda-recipe") == existing
+
+
+def test_apply_serializes_distinct_v1_refs_for_one_recipe():
+    first_ref = "chatcmpl-a"
+    second_ref = "chatcmpl-b"
+    storage = _Storage(
+        {
+            "state/sources/source/episodes.json": _state(
+                entries=[_agenda(first_ref), _agenda(second_ref)]
+            )
+        }
+    )
+    r2 = _R2(
+        {
+            f"requests/{first_ref}.json": _completed_with_content(first_ref, "first"),
+            f"requests/{second_ref}.json": _completed_with_content(second_ref, "second"),
+        }
+    )
+
+    summary = recovery.recover_v1_results(
+        storage,
+        r2,
+        "dispatch",
+        dry_run=False,
+        workers=2,
+        validate=lambda _candidate, _response: True,
+    )
+
+    result = look_up_deferred(storage, "agenda-recipe")
+    assert summary["imported"] == 1
+    assert summary["completed_conflict"] == 1
+    assert isinstance(result, JobResult)
+    assert result.output["choices"][0]["message"]["content"] == "first"
