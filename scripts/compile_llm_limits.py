@@ -157,6 +157,21 @@ def _scale_rate_limit(value: Any, multiplier: float) -> Any:
     return value
 
 
+def _validate_ai_gateway_max_attempts(value: Any, provider: str) -> int | None:
+    """Validate a provider-specific AI Gateway retry override.
+
+    Cloudflare permits one through five attempts. Keeping the validation in the compiler prevents
+    a malformed provider entry from becoming a live header that the gateway silently ignores.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 5:
+        raise ValueError(
+            f"provider {provider!r} ai_gateway_max_attempts must be an integer from 1 through 5"
+        )
+    return value
+
+
 def _direct_model(provider: str, upstream_model: str) -> str:
     """Return the LiteLLM model selector for a compiled provider route.
 
@@ -304,6 +319,7 @@ _WORKER_PROVIDER_FIELDS = (
     "ai_gateway_slug",
     "ai_gateway_chat_path",
     "chat_path",
+    "ai_gateway_max_attempts",
     "rpm",
     "reset_timezone",
     "accounts",
@@ -706,6 +722,11 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
     split_cap_multiplier = _validate_split_cap(raw_split_cap)
 
     providers = raw.get("providers", {})
+    for provider_name, provider_cfg in providers.items():
+        if isinstance(provider_cfg, dict) and "ai_gateway_max_attempts" in provider_cfg:
+            provider_cfg["ai_gateway_max_attempts"] = _validate_ai_gateway_max_attempts(
+                provider_cfg["ai_gateway_max_attempts"], provider_name
+            )
     if token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0:
         for provider_cfg in providers.values():
             if isinstance(provider_cfg, dict):
@@ -774,6 +795,8 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                 "structured_output_schema_strip_keys": profile["strip_schema_keys"],
             }
         )
+        if provider_cfg.get("ai_gateway_max_attempts") is not None:
+            route["ai_gateway_max_attempts"] = provider_cfg["ai_gateway_max_attempts"]
         route["input_context_limit"] = int(route["input_context_limit"])
         route["output_context_limit"] = int(route["output_context_limit"])
 

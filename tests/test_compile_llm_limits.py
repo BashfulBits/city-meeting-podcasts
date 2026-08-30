@@ -39,6 +39,10 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert isinstance(gemma, dict)
     assert set(gemma) == set(compile_llm_limits._WORKER_ROUTE_FIELDS)
     assert gemma["route_id"] == "gemma_4_31b_primary"
+    samba = worker["routes_by_id"]["sambanova_llama_3_3_70b_instruct_primary"]
+    assert samba["rpd"] == 10
+    assert worker["providers"]["sambanova"]["rpm"] == 10
+    assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
     # route if compile-time route order ever shifted.

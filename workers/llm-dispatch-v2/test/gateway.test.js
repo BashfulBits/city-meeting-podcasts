@@ -9,6 +9,7 @@ const DISPATCH_LIMITS = {
       ai_gateway_slug: "google-ai-studio",
       ai_gateway_chat_path: "/v1beta/openai/chat/completions",
       chat_path: "/chat/completions",
+      ai_gateway_max_attempts: 1,
       accounts: [{ id: "project_primary", api_key_env: "GEMINI_API_KEY" }],
     },
   },
@@ -31,6 +32,7 @@ test("resolveProviderCredentials routes through AI Gateway when AI_GATEWAY_ID + 
   };
   const creds = resolveProviderCredentials(env, ROUTE, DISPATCH_LIMITS);
   assert.equal(creds.usesGateway, true);
+  assert.equal(creds.aiGatewayMaxAttempts, 1);
   assert.equal(
     creds.url,
     "https://gateway.ai.cloudflare.com/v1/acct123/citypods-dispatch/google-ai-studio/v1beta/openai/chat/completions"

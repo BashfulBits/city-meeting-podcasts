@@ -45,6 +45,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **SambaNova's Free-tier routes were admitting an incorrect daily quota.** The two physical
+  SambaNova routes now use the documented 20 RPM / 20 RPD source ceiling, with the existing
+  v1/v2 split-cap compiling that to 10 RPM / 10 RPD per dispatcher while both transports coexist.
+  The shared provider ledger also carries a 20 RPM safety ceiling, and SambaNova calls override
+  AI Gateway's five-attempt retry series with one attempt so a known 429 is not immediately
+  re-sent four more times. SambaNova's documented 200k TPD allowance is not modeled because the
+  catalog has no daily-token field; this change therefore uses the conservative request cap rather
+  than inventing a token parser. No pipeline version or artifact backfill is involved.
+
 - **NVIDIA's per-model rate limit was generalised to every NVIDIA route, throttling the ones doing
   the work.** `deepseek-v4-pro`'s measured ~30/hr quota was applied as `rpm: 0.5` across all nine
   NVIDIA routes. NVIDIA's limits are per model, and `nemotron-3-super` has never returned a single

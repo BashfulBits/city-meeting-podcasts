@@ -2032,7 +2032,13 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
     url = `${aiGatewayBase}/${gatewaySlug}${gatewayPath}`;
   }
 
-  return { apiKey, url, upstreamModel: route.upstream_model, usesGateway: Boolean(aiGatewayBase) };
+  return {
+    apiKey,
+    url,
+    upstreamModel: route.upstream_model,
+    usesGateway: Boolean(aiGatewayBase),
+    aiGatewayMaxAttempts: route.ai_gateway_max_attempts ?? providerCfg.ai_gateway_max_attempts ?? null,
+  };
 }
 
 function eligibleRoutesForModel(canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
@@ -2812,6 +2818,9 @@ async function dispatchBatch(
           // token is configured -- a direct-to-provider call has no gateway edge to authenticate.
           if (creds.usesGateway && env.AI_GATEWAY_AUTH_TOKEN) {
             headers["cf-aig-authorization"] = `Bearer ${env.AI_GATEWAY_AUTH_TOKEN}`;
+          }
+          if (creds.usesGateway && creds.aiGatewayMaxAttempts != null) {
+            headers["cf-aig-max-attempts"] = String(creds.aiGatewayMaxAttempts);
           }
           response = await fetchImpl(creds.url, {
             method: "POST",

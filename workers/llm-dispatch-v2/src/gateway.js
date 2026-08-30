@@ -117,7 +117,13 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
     url = `${aiGatewayBase}/${gatewaySlug}${gatewayPath}`;
   }
 
-  return { apiKey, url, upstreamModel: route.upstream_model, usesGateway: Boolean(aiGatewayBase) };
+  return {
+    apiKey,
+    url,
+    upstreamModel: route.upstream_model,
+    usesGateway: Boolean(aiGatewayBase),
+    aiGatewayMaxAttempts: route.ai_gateway_max_attempts ?? providerCfg.ai_gateway_max_attempts ?? null,
+  };
 }
 
 /**
@@ -137,6 +143,9 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
   // authenticate against.
   if (creds.usesGateway && env.AI_GATEWAY_AUTH_TOKEN) {
     headers["cf-aig-authorization"] = `Bearer ${env.AI_GATEWAY_AUTH_TOKEN}`;
+  }
+  if (creds.usesGateway && creds.aiGatewayMaxAttempts != null) {
+    headers["cf-aig-max-attempts"] = String(creds.aiGatewayMaxAttempts);
   }
   if (idempotencyKey) {
     headers["idempotency-key"] = idempotencyKey;
