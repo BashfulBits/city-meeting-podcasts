@@ -1245,3 +1245,65 @@ test("a genuine 400 still fails the job terminally and leaves the route selectab
   const second = await coordinator.claimDispatchWindow(Date.now() + 120_000, 25);
   assert.equal(second.jobs.length, 0, "a genuine request defect must not be retried");
 });
+
+test("stats distinguishes an empty queue from a stranded one", async () => {
+  // The whole reason the endpoint exists. On 2026-08-29 v2 idled through 705 of 721 cron ticks
+  // and there was no way to tell from outside whether the queue was empty, every route was
+  // blocked, or jobs were queued but missing their job_models index rows -- three causes that
+  // look identical and have nothing in common.
+  const { coordinator, sql } = makeCoordinator();
+
+  const empty = await coordinator.stats(Date.now());
+  assert.equal(empty.jobs.by_state.queued ?? 0, 0);
+  assert.equal(empty.jobs.queued_without_model_index, 0);
+  assert.equal(empty.jobs.oldest_queued_age_ms, null);
+  assert.deepEqual(empty.queued_by_model, []);
+
+  await coordinator.enqueueBatch([makeJob("j-a"), makeJob("j-b")]);
+  const queued = await coordinator.stats(Date.now());
+  assert.equal(queued.jobs.by_state.queued, 2);
+  assert.equal(queued.jobs.queued_without_model_index, 0, "healthy jobs are indexed");
+  assert.ok(queued.queued_by_model.length > 0, "queued work is visible per model");
+  assert.equal(
+    queued.queued_by_model.reduce((n, r) => Math.max(n, r.queued), 0),
+    2
+  );
+
+  // Now reproduce the stranding shape: rows present, index gone. by_state still says "queued".
+  sql.exec("DELETE FROM job_models");
+  const stranded = await coordinator.stats(Date.now());
+  assert.equal(stranded.jobs.by_state.queued, 2, "still queued as far as the jobs table knows");
+  assert.deepEqual(stranded.queued_by_model, [], "but invisible to the scheduler");
+  assert.equal(stranded.jobs.queued_without_model_index, 2, "which is exactly what this reports");
+});
+
+test("stats reports a standing-down route and its reason", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-blocked")]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
+  const job = plan.jobs[0];
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: job.id,
+      lease_token: job.lease_token,
+      attempt_id: "a-402",
+      planned_at: job.not_before_at,
+      outcome: "terminal_error",
+      provider_status_code: 402,
+    },
+  ]);
+
+  const now = Date.now();
+  const s = await coordinator.stats(now);
+  const blocked = s.routes.blocked.find((r) => r.route_id === job.route_id);
+  assert.ok(blocked, "a 402-blocked route must be listed");
+  assert.ok(blocked.blocked_until > now);
+  assert.equal(blocked.payment_required_streak, 1);
+  assert.equal(blocked.last_provider_status, 402);
+
+  // A route whose block has lapsed is healthy again and must drop off the list, or every route
+  // ever throttled would accumulate here and bury the ones actually standing down.
+  sql.exec("UPDATE routes SET blocked_until = ? WHERE route_id = ?", now - 1000, job.route_id);
+  const after = await coordinator.stats(now);
+  assert.equal(after.routes.blocked.find((r) => r.route_id === job.route_id), undefined);
+});
