@@ -17,6 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Mistral Medium 3.5 routing through the Airforce custom provider.** The canonical
+  `mistral/mistral-medium-3-5` pool now sends the existing 2505/2508 selectors to Mistral's
+  `mistral-medium-3-5` API route and adds Airforce's `mistral-medium-3.5` route as an eligible
+  dispatch leg. Airforce is paced at 0.69 RPM and 1,000 RPD (split across the coexisting v1/v2
+  dispatchers), with a 256k input context and a provider-reported 4,096-token output ceiling.
+  The old selectors remain aliases, so already-queued jobs adopt the new route on their next
+  dispatch without a pipeline-version bump or artifact backfill. No independent Airforce TPM
+  ceiling was observed in the local soak, so the route leaves TPM unset and relies on the daily
+  request ledger.
+
 - **Groq Qwen 3.8 27B free route.** Registers `qwen/qwen3.8-27b` with its published 30 RPM, 1K
   RPD, 8K TPM, 131,042-token context, and 16,384-token output limits. Groq's separate 2M TPD
   ceiling is documented in the provider registry but is not yet enforceable because the route-ledger

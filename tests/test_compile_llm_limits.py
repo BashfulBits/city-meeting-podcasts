@@ -99,6 +99,16 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert len(compiled["model_routes_map"][nemotron_super_key]) == 2
     assert compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_super_key
 
+    mistral_medium_key = "mistral/mistral-medium-3-5"
+    medium_routes = compiled["model_routes_map"][mistral_medium_key]
+    assert len(medium_routes) == 3
+    assert {compiled["routes_by_id"][route_id]["provider"] for route_id in medium_routes} == {
+        "airforce",
+        "mistral",
+    }
+    assert compiled["model_aliases"]["mistral/mistral-medium-2508"] == mistral_medium_key
+    assert compiled["model_aliases"]["mistral/mistral-medium-2505"] == mistral_medium_key
+
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():
     compiled = compile_llm_limits.compile_limits()
@@ -118,6 +128,10 @@ def test_compiled_routes_materialize_route_specific_input_and_output_limits():
         and route["output_context_limit"] > 0
         for route in compiled["routes"]
     )
+    medium = compiled["routes_by_id"]["mistral_medium_3_5_primary"]
+    airforce = compiled["routes_by_id"]["airforce_mistral_medium_3_5_primary"]
+    assert (medium["input_context_limit"], medium["output_context_limit"]) == (262144, 262144)
+    assert (airforce["input_context_limit"], airforce["output_context_limit"]) == (262144, 4096)
 
 
 def test_route_limits_cannot_fall_back_to_provider_defaults():
@@ -204,13 +218,7 @@ def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
     # DeepSeek V4 *Flash* leads: it is the only overflow candidate ever scored on this task
     # (review/40's frozen-gold run, F1 .734 against Mistral Medium's .643). Pro -- never scored,
     # and measured at ~42s median with multi-hour 429 lockouts -- moved to last.
-    assert compiled["model_routing"]["mistral/mistral-medium-2508"] == [
-        "deepseek/deepseek-v4-flash",
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-        "gemini/gemini-3.5-flash-lite",
-        "deepseek/deepseek-v4-pro",
-    ]
-    assert compiled["model_routing"]["mistral/mistral-medium-2505"] == [
+    assert compiled["model_routing"]["mistral/mistral-medium-3-5"] == [
         "deepseek/deepseek-v4-flash",
         "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
         "gemini/gemini-3.5-flash-lite",
@@ -341,7 +349,7 @@ def test_python_catalog_rejects_an_unknown_route_account():
 
 
 def test_openai_compatible_provider_selectors_use_litellms_openai_adapter():
-    for provider in ("kilo", "opencode", "siliconflow"):
+    for provider in ("airforce", "kilo", "opencode", "siliconflow"):
         assert compile_llm_limits._direct_model(provider, "vendor/model") == "openai/vendor/model"
 
 

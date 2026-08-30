@@ -190,6 +190,38 @@ test("enqueueBatch omits a model whose every configured route is too small for t
   assert.deepEqual(models.map((row) => row.model), ["model-a"]);
 });
 
+test("enqueueBatch omits a route when input plus output exceeds its context window", async () => {
+  const CATALOG = {
+    model_aliases: {},
+    model_routes_map: { "model-a": ["route-a"], "model-b": ["route-b"] },
+    routes_by_id: {
+      "route-a": { free: true, input_context_limit: 1000, output_context_limit: 500 },
+      "route-b": { free: true, input_context_limit: 2200, output_context_limit: 500 },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    DISPATCH_LIMITS_OVERRIDE: CATALOG,
+  });
+  await coordinator.enqueueBatch([
+    {
+      id: "combined-context-overflow",
+      idempotency_key: "combined-context-overflow-key",
+      request_digest: "combined-context-overflow-digest",
+      policy_json: JSON.stringify({ allowed_models: ["model-a", "model-b"], allow_paid: false }),
+      prompt_family: "tags",
+      input_token_estimate: 1800,
+      max_output_token_estimate: 300,
+      payload_key: "payloads/combined-context-overflow/request.json",
+    },
+  ]);
+
+  const models = [
+    ...sql.exec("SELECT model FROM job_models WHERE job_id='combined-context-overflow'"),
+  ];
+  assert.deepEqual(models.map((row) => row.model), ["model-b"]);
+});
+
 test("enqueueBatch sends a job that fits no configured route under any allowed model to __unroutable__", async () => {
   const CATALOG = {
     model_aliases: {},

@@ -429,7 +429,7 @@ total on `/admin/status`.
 
 ### LLM Model Catalog & Decision Matrix
 
-The pipeline routes LLM jobs across 11 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python `citypods/compute/llm_routes.json`). The generated catalog contains 64 physical provider/account routes representing 35 deduplicated logical models; every route supports direct LiteLLM and asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode, direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those materialized capabilities rather than inferring them from model or route names. Input/output context ceilings are mandatory on each physical route, because model families and gateways can differ (for example, OpenRouter's free Gemma route has a lower effective input ceiling than the native model). Static catalog quotas are only candidate capacity: production routing records observed RPM, TPM, RPD/reset behavior, latency, failures, and structured-output validity before promoting a route.
+The pipeline routes LLM jobs across 12 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python `citypods/compute/llm_routes.json`). The generated catalog contains 63 physical provider/account routes representing 34 deduplicated logical models; every route supports direct LiteLLM and asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode, direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those materialized capabilities rather than inferring them from model or route names. Input/output context ceilings are mandatory on each physical route, because model families and gateways can differ (for example, OpenRouter's free Gemma route has a lower effective input ceiling than the native model). Static catalog quotas are only candidate capacity: production routing records observed RPM, TPM, RPD/reset behavior, latency, failures, and structured-output validity before promoting a route.
 
 | Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Representative Context Window* | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
 |---|---|---|---|---|---|---|
@@ -438,10 +438,11 @@ The pipeline routes LLM jobs across 11 independent providers via [`config/provid
 | **`mistral/mistral-small-2603`** | ⭐ **Tier 2 (Advanced MoE)**<br>119B MoE (128 experts) | Mistral AI | 256k tokens | 49 RPM<br>50k TPM (1B Mo pool) | Available in pool | Full 3-hour meeting ingestion, narrative chapter summaries, legislative amendments |
 | **`mistral/codestral-2508`** | ⭐ **Tier 2 (Structured Specialist)**<br>22B–32B Dense | Mistral AI | 256k tokens | 124 RPM<br>625k TPM (1B Mo pool) | Available in pool | Strict JSON schema extraction, table/ordinance parsing, agenda crosswalk recovery |
 | **`mistral/devstral-2512`** | ⭐ **Tier 2 (Agentic Reasoner)**<br>Agentic Fine-tuned | Mistral AI | 256k tokens | 49 RPM<br>1M TPM (1B Mo pool) | Available in pool | Multi-pass transcript cleanup, meeting action item tracking, tool calling |
+| **`mistral/mistral-medium-3-5`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI + Airforce | 256k tokens (Airforce output capped at 4k) | Mistral: 22 RPM / 356.25k TPM<br>Airforce: 0.69 RPM / 1,000 RPD | Agenda chapter extraction (`chapter_titles.py`) | Production agenda extraction, civic topic indexing, structured meeting summaries |
 | **`mistral/mistral-medium-2508`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 22 RPM<br>356.25k TPM | Agenda chapter extraction (`chapter_titles.py`) | Production agenda extraction, civic topic indexing, structured meeting summaries |
 | **`mistral/mistral-medium-2505`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 25 RPM<br>375k TPM | Available in pool | Fast enterprise chaptering, zoning case digest, secondary agenda verification |
-| **`meta-llama/llama-3.3-70b-instruct`** | ⭐ **Tier 2 (Open Frontier 70B)**<br>70B Dense | SambaNova + OpenRouter | 128k tokens | SambaNova source cap: 20 RPM / 20 RPD (10 / 10 per dispatcher during v1/v2 coexistence) | Available in pool | Low-latency meeting digests, civic discourse classification, speaker stance analysis |
-| **`qwen/qwen-2.5-72b-instruct`** | ⭐ **Tier 2 (Open Frontier 72B)**<br>72B Dense | SambaNova + SiliconFlow | 128k SambaNova / 33k SiliconFlow | SambaNova source cap: 20 RPM / 20 RPD (10 / 10 per dispatcher during v1/v2 coexistence) | Available in pool | Detailed municipal ordinance analysis, multi-lingual transcripts, budgeting review |
+| **`meta-llama/llama-3.3-70b-instruct`** | ⭐ **Tier 2 (Open Frontier 70B)**<br>70B Dense | Groq + SambaNova + OpenRouter | 128k tokens | 50 RPM<br>2,000 Free RPD | Available in pool | Low-latency meeting digests, civic discourse classification, speaker stance analysis |
+| **`qwen/qwen-2.5-72b-instruct`** | ⭐ **Tier 2 (Open Frontier 72B)**<br>72B Dense | SambaNova + SiliconFlow | 128k SambaNova / 33k SiliconFlow | 20 RPM<br>1,000 Free RPD (+ Paid) | Available in pool | Detailed municipal ordinance analysis, multi-lingual transcripts, budgeting review |
 | **`google/gemma-4-31b-it`** | ⚡ **Tier 3 (High-Capacity Core)**<br>31B Dense | Google AI Studio (2x) + OpenRouter | 256k native; gateway-specific | Catalog quota; verify at runtime | R5 independent pre-labeler | High-capacity evaluator overlay and batch categorization |
 | **`google/gemma-4-26b-a4b-it`** | ⚡ **Tier 3 (Sparse Variant)**<br>26B A4B sparse variant | Google AI Studio (2x) + OpenRouter | 256k native; 128k OpenRouter free | Catalog quota; verify at runtime | R5 benchmark challenger | High-throughput tagging and independent free fallback where sparse-variant behavior is acceptable |
 | **`gemini/gemini-3.5-flash-lite`** | ⚡ **Tier 3 (High-Throughput)**<br>High-Speed Flash | Google AI Studio (2x) | 1,000k tokens | 30 RPM<br>1,000 Free RPD | Available in pool | Ultra-long context full-day hearings (1M tokens), fast transcript chunking & indexing |
@@ -567,7 +568,8 @@ leaves it at its `False` default.
 
 Each route contributes two generated fields (`ai_gateway_slug`, `ai_gateway_chat_path`, compiled
 from `config/provider_limits.yml`). The slug names the gateway's provider segment — Cloudflare
-requires a `custom-` prefix for custom providers, hence `custom-zai`, `custom-opencode`. The chat
+requires a `custom-` prefix for custom providers, hence `custom-zai`, `custom-opencode`, and
+`custom-airforce`. The chat
 path matters because **LiteLLM appends `/chat/completions` itself**, so only the part *before*
 that suffix belongs in `api_base`:
 
@@ -602,6 +604,9 @@ Three consequences shape the current configuration:
   hard-failing with no failover because 404 is not in either Worker's `retryableStatus` set.
 - `kilo` is registered as `https://api.kilo.ai/api/gateway/v1` — a path Kilo also serves — so the
   forced substitution lands correctly and its caller path stays bare.
+- `airforce` is registered as `https://api.airforce/v1`; its caller path repeats `/v1` so the
+  forced substitution reaches `https://api.airforce/v1/chat/completions`. Its 4k output ceiling
+  is separate from the model's 256k input context limit.
 - `zai` and `opencode` route through **`workers/llm-provider-shim`**, which restores the real
   upstream prefix. z.ai's `/api/paas/v4` is otherwise inexpressible (the gateway rewrites `v4` →
   `v1`, and no `v1`-containing path serves its API). The shim keeps them inside AI Gateway's
@@ -643,7 +648,7 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
 2. **Civic & Topic Classification (`tag`):** High-volume, short prompt with rigid ontology outputs.
    - *Primary Candidates:* `google/gemma-4-31b-it` (29k RPD free capacity), `google/gemma-4-26b-a4b-it`, `gemini/gemini-3.1-flash-lite`.
 3. **Structured Agenda Extraction & Crosswalk (`chapter_titles` / `agenda_crosswalk`):** Requires 100% strict JSON schema compliance and zero table-structure hallucination.
-   - *Primary Candidates:* `mistral/codestral-2508` (124 RPM, 256k context), `mistral/devstral-2512`, `mistral/mistral-medium-2508`.
+   - *Primary Candidates:* `mistral/codestral-2508` (124 RPM, 256k context), `mistral/devstral-2512`, `mistral/mistral-medium-3-5`.
 4. **Key Soundbite & Quote Selection (`soundbite-select`):** Requires speaker intent nuance, context bounding, and editorial judgment.
    - *Primary Candidates:* `mistral/mistral-large-2512`, `meta-llama/llama-3.3-70b-instruct`, `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`.
 5. **High-Volume Backfills & Reprocessing:** Requires sub-cent token pricing or massive free quotas.

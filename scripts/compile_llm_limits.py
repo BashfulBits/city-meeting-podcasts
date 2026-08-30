@@ -175,12 +175,13 @@ def _validate_ai_gateway_max_attempts(value: Any, provider: str) -> int | None:
 def _direct_model(provider: str, upstream_model: str) -> str:
     """Return the LiteLLM model selector for a compiled provider route.
 
-    Kilo, OpenCode, SiliconFlow, and NVIDIA (build.nvidia.com) expose OpenAI-compatible gateways
+    Airforce, Kilo, OpenCode, SiliconFlow, and NVIDIA (build.nvidia.com) expose
+    OpenAI-compatible gateways
     rather than stable LiteLLM provider adapters. Selecting the OpenAI adapter and supplying the
     compiled ``api_base`` keeps those routes usable directly without teaching the scheduler
     provider-specific URL logic.
     """
-    if provider in {"kilo", "opencode", "siliconflow", "nvidia"}:
+    if provider in {"airforce", "kilo", "opencode", "siliconflow", "nvidia"}:
         return f"openai/{upstream_model}"
     return f"{provider}/{upstream_model}"
 
