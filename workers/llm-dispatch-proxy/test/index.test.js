@@ -2072,6 +2072,33 @@ test("dispatchOne routes through AI Gateway when AI_GATEWAY_BASE_URL is configur
   assert.equal(calls[0].body.model, "gemini-3-flash-preview");
 });
 
+test("dispatchOne applies a provider-specific AI Gateway retry override", async () => {
+  const env = {
+    ...isolatedEnv(),
+    AI_GATEWAY_BASE_URL: "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw",
+    AI_GATEWAY_AUTH_TOKEN: "cf-aig-token-secret",
+  };
+  const model = "meta-llama/llama-3.3-70b-instruct";
+  const routeMap = DISPATCH_LIMITS.model_routes_map[model];
+  const originalRouteMap = [...routeMap];
+  DISPATCH_LIMITS.model_routes_map[model] = ["sambanova_llama_3_3_70b_instruct_primary"];
+  try {
+    await handleRequest(chatRequest(undefined, "samba-gw-retry", model), env);
+    const calls = [];
+    const upstream = async (url, init) => {
+      calls.push({ url, init, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ id: "samba-completion", choices: [] }), { status: 200 });
+    };
+
+    const result = await dispatchOne(env, upstream, new Date());
+    assert.equal(result.status, "completed");
+    assert.equal(calls[0].init.headers["cf-aig-max-attempts"], "1");
+    assert.equal(calls[0].body.model, "Meta-Llama-3.3-70B-Instruct");
+  } finally {
+    DISPATCH_LIMITS.model_routes_map[model] = originalRouteMap;
+  }
+});
+
 test("dispatchOne adds cf-aig-authorization only when routed through the gateway with a token configured", async () => {
   // Cloudflare AI Gateway's own "Authenticated Gateway" setting is independent of the upstream
   // provider's API key: without this header the edge returns a non-retryable 401 before the

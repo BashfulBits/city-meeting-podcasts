@@ -545,7 +545,7 @@
       "output_context_limit": 32768,
       "account_id": "primary",
       "rpm": 10,
-      "rpd": 500,
+      "rpd": 10,
       "tpm": 45000,
       "free": true,
       "structured_output_profile": "standard_json_schema",
@@ -553,6 +553,7 @@
       "structured_output_direct_handler": "instructor",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
+      "ai_gateway_max_attempts": 1,
       "transports": [
         "direct",
         "llm-dispatch"
@@ -563,7 +564,8 @@
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "SAMBANOVA_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 10
     },
     {
       "route_id": "openrouter_meta_llama_llama_3_3_70b_instruct",
@@ -632,7 +634,7 @@
       "output_context_limit": 8192,
       "account_id": "primary",
       "rpm": 10,
-      "rpd": 500,
+      "rpd": 10,
       "tpm": 45000,
       "free": true,
       "structured_output_profile": "standard_json_schema",
@@ -640,6 +642,7 @@
       "structured_output_direct_handler": "instructor",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
+      "ai_gateway_max_attempts": 1,
       "transports": [
         "direct",
         "llm-dispatch"
@@ -650,7 +653,8 @@
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "SAMBANOVA_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 10
     },
     {
       "route_id": "siliconflow_qwen_2_5_72b_primary",

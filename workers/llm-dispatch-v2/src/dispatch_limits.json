@@ -85,6 +85,8 @@
       "ai_gateway_slug": "custom-sambanova",
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
+      "ai_gateway_max_attempts": 1,
+      "rpm": 10,
       "reset_timezone": "UTC",
       "accounts": [
         {
@@ -519,7 +521,7 @@
       "output_context_limit": 32768,
       "account_id": "primary",
       "rpm": 10,
-      "rpd": 500,
+      "rpd": 10,
       "tpm": 45000,
       "concurrency": null,
       "free": true,
@@ -573,7 +575,7 @@
       "output_context_limit": 8192,
       "account_id": "primary",
       "rpm": 10,
-      "rpd": 500,
+      "rpd": 10,
       "tpm": 45000,
       "concurrency": null,
       "free": true,

@@ -744,6 +744,8 @@ class LiteLLMBackend(Backend):
         auth_token = os.environ.get("AI_GATEWAY_AUTH_TOKEN", "").strip()
         if auth_token:
             extra_headers["cf-aig-authorization"] = f"Bearer {auth_token}"
+        if route.ai_gateway_max_attempts is not None:
+            extra_headers["cf-aig-max-attempts"] = str(route.ai_gateway_max_attempts)
         return f"{gateway_base}/{gateway_slug}{_ai_gateway_path_prefix(route)}", extra_headers
 
     def _provider_options(
