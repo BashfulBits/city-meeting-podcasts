@@ -244,14 +244,24 @@ export function computeRouteLaneWait(route, job, laneTime, now, options = {}) {
  */
 export function paymentRequiredBackoffUntil(streak, now) {
   const d = new Date(now);
-  if (streak <= 1) {
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+  const dayOffset = (n) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n);
+  // Intended shape: a day, then a week, then "start of next month" for anything beyond. The raw
+  // calendar values are NOT inherently ordered, so they are combined into a strictly increasing
+  // ladder below rather than returned directly:
+  //   - on a Sunday, "next Monday" IS tomorrow, so rung 2 would equal rung 1;
+  //   - near a month end, "start of next month" can fall BEFORE next Monday, so rung 3 would
+  //     regress below rung 2.
+  // Either way a further 402 would buy no extra cooldown, which is the opposite of an escalation.
+  const daysUntilNextMonday = ((8 - d.getUTCDay()) % 7) || 7;
+  const rungs = [
+    dayOffset(1),
+    dayOffset(daysUntilNextMonday > 1 ? daysUntilNextMonday : daysUntilNextMonday + 7),
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1),
+  ];
+  const target = Math.min(Math.max(Number(streak) || 1, 1), rungs.length);
+  let value = rungs[0];
+  for (let i = 1; i < target; i += 1) {
+    value = Math.max(rungs[i], value + 86_400_000); // at least a day beyond the previous rung
   }
-  if (streak === 2) {
-    // Next UTC Monday, at least 1 and at most 7 days out (today itself included, so a streak
-    // reached exactly on a Monday still gets a full week, not zero).
-    const daysUntilNextMonday = ((8 - d.getUTCDay()) % 7) || 7;
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + daysUntilNextMonday);
-  }
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  return value;
 }
