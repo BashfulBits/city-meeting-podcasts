@@ -145,6 +145,7 @@ npx wrangler secret put MISTRAL_API_KEY_SECONDARY # second Mistral account, same
 npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put GEMINI_API_KEY_SECONDARY   # second Gemini account/project, same free tier shape
 npx wrangler secret put DEEPSEEK_API_KEY
+npx wrangler secret put AIRFORCE_API_KEY              # Airforce custom-provider Mistral capacity
 npx wrangler secret put OPENROUTER_API_KEY         # only if OpenRouter routes are in use
 npx wrangler secret put CLOUDFLARE_ACCOUNT_ID      # only if routing through Cloudflare AI Gateway
 npx wrangler secret put AI_GATEWAY_AUTH_TOKEN      # only if the gateway's Authenticated Gateway toggle is on
@@ -200,9 +201,9 @@ the `env.AI.run()` Workers AI binding, even though the binding needs no `cf-aig-
 Worker depends on rule the binding out: it is **BYOK-only** — every route uses an individually-owned
 provider API key (including two separate Gemini accounts specifically to rotate around one account's free-tier
 limits, review/41) rather than paying through Cloudflare's Unified Billing, and Cloudflare's own docs state
-BYOK is not supported for third-party models called through the AI binding; and six of this catalog's
+BYOK is not supported for third-party models called through the AI binding; and seven of this catalog's
 providers (`custom-siliconflow`, `custom-sambanova`, `custom-zai`, `custom-kilo`, `custom-opencode`,
-`custom-nvidia`) are outside Cloudflare's native model catalog and only reachable as gateway-configured
+`custom-nvidia`, `custom-airforce`) are outside Cloudflare's native model catalog and only reachable as gateway-configured
 Custom Providers on the HTTP endpoint, not through the binding. So the provider-native endpoint plus
 `AI_GATEWAY_AUTH_TOKEN` below is the correct shape for this Worker, not a stopgap.
 
@@ -219,6 +220,7 @@ To enable:
    | `custom-kilo` | `https://api.kilo.ai/api/gateway` |
    | `custom-opencode` | `https://opencode.ai/zen/v1` |
    | `custom-nvidia` | `https://integrate.api.nvidia.com/v1` |
+   | `custom-airforce` | `https://api.airforce/v1` |
 
 4. Set `CLOUDFLARE_ACCOUNT_ID` as a **one-time manual Worker secret** (see the `wrangler secret put` block
    above), the same way as every other credential here. It is deliberately *not* injected by the deploy

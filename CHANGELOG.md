@@ -17,6 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Mistral Medium 3.5 routing through the Airforce custom provider.** The canonical
+  `mistral/mistral-medium-3-5` pool now sends the existing 2505/2508 selectors to Mistral's
+  `mistral-medium-3-5` API route and adds Airforce's `mistral-medium-3.5` route as an eligible
+  dispatch leg. Airforce is paced at 0.69 RPM and 1,000 RPD (split across the coexisting v1/v2
+  dispatchers), with a 256k input context and a provider-reported 4,096-token output ceiling.
+  The old selectors remain aliases, so already-queued jobs adopt the new route on their next
+  dispatch without a pipeline-version bump or artifact backfill. No independent Airforce TPM
+  ceiling was observed in the local soak, so the route leaves TPM unset and relies on the daily
+  request ledger.
+
 - **NVIDIA build.nvidia.com provider and free-capacity pooling for Mistral Medium overflow.** New
   `nvidia` provider in `config/provider_limits.yml` (OpenAI-compatible NIM gateway, `NVIDIA_API_KEY`)
   with a conservative, explicitly self-imposed cap: 12 RPM provider-wide (30% of the ~40 RPM

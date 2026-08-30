@@ -171,6 +171,7 @@ const ENV = {
   KILO_API_KEY: "kilo-secret",
   OPENCODE_API_KEY: "opencode-secret",
   NVIDIA_API_KEY: "nvidia-secret",
+  AIRFORCE_API_KEY: "airforce-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),
@@ -360,9 +361,9 @@ test("a request for a model_routing source model is also made eligible for its o
   assert.equal(queued.status, 202);
   const body = await queued.json();
   const stored = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
-  assert.equal(stored.model, "mistral/mistral-medium-2508");
+  assert.equal(stored.model, "mistral/mistral-medium-3-5");
   assert.deepEqual(stored.policy.allowed_models, [
-    "mistral/mistral-medium-2508",
+    "mistral/mistral-medium-3-5",
     "deepseek/deepseek-v4-flash",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
@@ -381,7 +382,7 @@ test("a request for a model_routing source model is also made eligible for its o
     await env.LLM_QUEUE.get(`requests/${explicitBody.id}.json`)
   ).json();
   assert.deepEqual(explicitStored.policy.allowed_models, [
-    "mistral/mistral-medium-2508",
+    "mistral/mistral-medium-3-5",
     "deepseek/deepseek-v4-flash",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
@@ -411,7 +412,7 @@ test("a request for a model_routing source model is also made eligible for its o
   ).json();
   assert.deepEqual(unrelatedStored.policy.allowed_models, [
     "mistral/mistral-large-2512",
-    "mistral/mistral-medium-2508",
+    "mistral/mistral-medium-3-5",
     "deepseek/deepseek-v4-flash",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "gemini/gemini-3.5-flash-lite",
@@ -432,7 +433,7 @@ test("a request for a model_routing source model is also made eligible for its o
     await env.LLM_QUEUE.get(`requests/${peerBody.id}.json`)
   ).json();
   assert.deepEqual(peerStored.policy.allowed_models, [
-    "mistral/mistral-medium-2508",
+    "mistral/mistral-medium-3-5",
     "meta-llama/llama-3.3-70b-instruct",
     "deepseek/deepseek-v4-flash",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
@@ -574,8 +575,9 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
     version: 1,
     lease: null,
     routes: {
-      mistral_medium_2508_primary: { blocked_until: "2026-08-23T00:00:00Z" },
-      mistral_medium_2508_secondary: { blocked_until: "2026-08-23T00:00:00Z" },
+      mistral_medium_3_5_primary: { blocked_until: "2026-08-23T00:00:00Z" },
+      mistral_medium_3_5_secondary: { blocked_until: "2026-08-23T00:00:00Z" },
+      airforce_mistral_medium_3_5_primary: { blocked_until: "2026-08-23T00:00:00Z" },
     },
     providers: {
       mistral: { requests_available_at: "2026-08-23T00:00:00Z" },
