@@ -3,7 +3,7 @@
 # Used by scripts/compile_llm_limits.py to generate workers/llm-dispatch-proxy/src/dispatch_limits.json
 
 source: Centralized provider limits registry
-observed_on: 2026-08-13
+observed_on: 2026-08-29
 
 # Global token estimate buffer multiplier applied to token budgets (TPM, monthly_tpm) during
 # compilation to safeguard against token estimation drift and prevent 429 rate limit spikes.
@@ -514,6 +514,21 @@ routes:
     upstream_model: openai/gpt-oss-120b
     input_context_limit: 131072
     output_context_limit: 65536
+    account_id: primary
+    rpm: 30
+    rpd: 1000
+    tpm: 8000
+    free: true
+
+  # QWEN 3.8 27B (Groq free route)
+  # Groq's published table (2026-08-29): 30 RPM / 1K RPD / 8K TPM / 2M TPD. This schema has
+  # no TPD field, so the daily token ceiling is documented here but not enforced by the ledger.
+  - route_id: groq_qwen_3_8_27b_primary
+    model: qwen/qwen3.8-27b
+    provider: groq
+    upstream_model: qwen/qwen3.8-27b
+    input_context_limit: 131042
+    output_context_limit: 16384
     account_id: primary
     rpm: 30
     rpd: 1000

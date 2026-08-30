@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Groq Qwen 3.8 27B free route.** Registers `qwen/qwen3.8-27b` with its published 30 RPM, 1K
+  RPD, 8K TPM, 131,042-token context, and 16,384-token output limits. Groq's separate 2M TPD
+  ceiling is documented in the provider registry but is not yet enforceable because the route-ledger
+  schema has no daily-token field. The route is available for explicit Qwen requests; Gemma routing
+  and the production judge remain unchanged pending task-specific evaluation.
+
 - **NVIDIA build.nvidia.com provider and free-capacity pooling for Mistral Medium overflow.** New
   `nvidia` provider in `config/provider_limits.yml` (OpenAI-compatible NIM gateway, `NVIDIA_API_KEY`)
   with a conservative, explicitly self-imposed cap: 12 RPM provider-wide (30% of the ~40 RPM
