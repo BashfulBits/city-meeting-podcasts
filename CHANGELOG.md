@@ -61,6 +61,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **The LLM deferred sweep could turn a failed v2 batch read into a singleton-poll storm.** An
+  unresolved v2 handle fell through from the bulk poll into `reconcile()`, so a partial or failed
+  recovery could make one Worker invocation per remaining job and consume the full four-hour sweep
+  budget without reaping work. V2 now uses one initial and at most one recovery batch, then leaves
+  unknown jobs for the next six-hour cadence; legacy queue-only capsules are submitted in bounded
+  v2 batches as well. The sweep emits client-owned v1/v2 counts plus one v2 scheduler snapshot and
+  runs for 30 minutes within a 40-minute Actions timeout. Both authenticated dispatch endpoints
+  now require HTTPS, so a configuration error cannot send their bearer token over cleartext. V1
+  remains on its existing temporary R2-backed reap path—no new ledger or endpoint. No artifact
+  schema, recipe, pipeline version, or backfill behavior changes.
+
 - **SambaNova's Free-tier routes were admitting an incorrect daily quota.** The two physical
   SambaNova routes now use the documented 20 RPM / 20 RPD source ceiling, with the existing
   v1/v2 split-cap compiling that to 10 RPM / 10 RPD per dispatcher while both transports coexist.
@@ -300,10 +311,10 @@ Phase R (Research-Tool Surface)._
   accepted, replayed, pending, completed, rejected, and failed per-job outcomes instead of
   converting one item into a whole-batch failure. Unknown outcomes use one bounded recovery round:
   sets larger than five are retried as a batch, while smaller sets use isolated requests. The
-  deferred sweep applies the same threshold, preventing one bad result from turning a 1,000-job
-  poll into 1,000 singleton polls. Failed poll chunks remain isolated so later chunks still run;
-  retry diagnostics omit response bodies. Payload-free structured counters expose batch, retry,
-  singleton, and schema-correction request counts. No artifact schema, recipe, pipeline version,
+  deferred sweep originally applied the same threshold. Failed poll chunks remain isolated so later
+  chunks still run; retry diagnostics omit response bodies. Payload-free structured counters expose
+  batch, retry, singleton, and schema-correction request counts. The later batch-only sweep fix
+  above supersedes its small-set singleton fallback. No artifact schema, recipe, pipeline version,
   or backfill behavior changes.
 
 - **Unexpected-body remediation evidence collection.** The remediation workflow now passes its

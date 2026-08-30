@@ -598,7 +598,7 @@ def test_sweep_skips_reconcile_for_all_handles_observed_by_batch_poll(monkeypatc
 
 
 def test_sweep_retries_large_unresolved_poll_set_as_one_batch(monkeypatch):
-    """More than five unresolved V2 handles use one recovery batch, not singleton polling."""
+    """Any unresolved V2 set uses one recovery batch, not singleton polling."""
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     fake_storage = SimpleNamespace(
         cas_capable=True,
@@ -638,6 +638,144 @@ def test_sweep_retries_large_unresolved_poll_set_as_one_batch(monkeypatch):
     assert llm_deferred_sweep.main([]) == 0
     assert poll_sizes == [8, 6]
     assert reconciled_refs == []
+
+
+def test_sweep_retries_small_unresolved_poll_set_as_one_batch(monkeypatch):
+    """The old <=5 branch was the high-frequency singleton-poll regression."""
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    handles = [
+        JobHandle(task="tag", recipe_hash=f"r-{index}", backend="llm-dispatch-v2", ref=f"j-{index}")
+        for index in range(3)
+    ]
+    monkeypatch.setattr(llm_deferred_sweep, "load_deferred_snapshot", lambda *_: _snapshot(handles))
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda *_args, **_kwargs: 0,
+    )
+
+    poll_sizes = []
+    reconciled_refs = []
+
+    class MockBackend:
+        def poll_batch(self, polled_handles):
+            poll_sizes.append(len(polled_handles))
+            if len(poll_sizes) == 1:
+                return {polled_handles[0].ref: None}
+            return {handle.ref: None for handle in polled_handles}
+
+        def reconcile(self, handle):
+            reconciled_refs.append(handle.ref)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert poll_sizes == [3, 2]
+    assert reconciled_refs == []
+
+
+def test_sweep_leaves_twice_unobserved_v2_handles_for_the_next_cadence(monkeypatch, capsys):
+    """A second unavailable batch remains pending; it must not fan out into singleton reads."""
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    handles = [
+        JobHandle(task="tag", recipe_hash=f"r-{index}", backend="llm-dispatch-v2", ref=f"j-{index}")
+        for index in range(3)
+    ]
+    monkeypatch.setattr(llm_deferred_sweep, "load_deferred_snapshot", lambda *_: _snapshot(handles))
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda *_args, **_kwargs: 0,
+    )
+
+    poll_sizes = []
+    reconciled_refs = []
+
+    class MockBackend:
+        def poll_batch(self, polled_handles):
+            poll_sizes.append(len(polled_handles))
+            return {}
+
+        def reconcile(self, handle):
+            reconciled_refs.append(handle.ref)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert poll_sizes == [3, 3]
+    assert reconciled_refs == []
+    assert '"v2_unobserved": 3' in capsys.readouterr().out
+
+
+def test_sweep_batches_legacy_queue_only_v2_submissions(monkeypatch, capsys):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    handles = [
+        JobHandle(
+            task="tag",
+            recipe_hash=f"r-{index}",
+            backend="litellm",
+            ref=f"deferred:r-{index}",
+            structured_output="topic-tags",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "meeting text"},),
+                policy=LLMRequestPolicy(purpose="topic-tags"),
+                output_token_budget=321,
+            ),
+        )
+        for index in range(3)
+    ]
+    monkeypatch.setattr(llm_deferred_sweep, "load_deferred_snapshot", lambda *_: _snapshot(handles))
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda *_args, **_kwargs: 0,
+    )
+
+    submitted = []
+    reconciled = []
+
+    class MockBackend:
+        name = "litellm"
+        config = SimpleNamespace(dispatch_v2_url="https://dispatch.example")
+
+        def enqueue_batch(self, jobs):
+            submitted.extend(jobs)
+            return [
+                JobHandle(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    backend="llm-dispatch-v2",
+                    ref=f"v2-{job.recipe_hash}",
+                )
+                for job in jobs
+            ]
+
+        def poll_batch(self, poll_handles):
+            return {handle.ref: None for handle in poll_handles}
+
+        def reconcile(self, handle):
+            reconciled.append(handle.recipe_hash)
+            return None
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert [job.recipe_hash for job in submitted] == ["r-0", "r-1", "r-2"]
+    assert all(job.inputs["max_tokens"] == 321 for job in submitted)
+    assert all(job.inputs["llm_policy"].queue_only for job in submitted)
+    assert reconciled == []
+    assert '"v1_dispatched": 0' in capsys.readouterr().out
 
 
 def test_sweep_does_not_retain_batch_poll_response_bodies_in_logs(monkeypatch, capsys):

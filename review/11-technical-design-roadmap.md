@@ -166,6 +166,14 @@ treats a successful bulk pending observation as final for that sweep rather than
 handle individually. The tag dispatch cap/no-quota short-circuit, direct/v1 behavior, and terminal
 recovery remain intact; no pipeline-version bump or backfill is required. See review/44 Phase 4.
 
+**R10 deferred-sweep follow-up (2026-08-30).** The sweep now batches legacy queue-only v2
+submissions, and an unresolved v2 status receives at most one recovery *batch*, never a singleton
+poll fallback. Its JSON start/end summaries distinguish v1/v2 client-owned outstanding work, with
+one bounded v2 coordinator snapshot for independent queue state. V1 deliberately remains unchanged
+while it drains: no new R2 ledger, endpoint, or scan. The six-hour workflow is a bounded 30-minute
+observation/retry pass (40-minute Actions timeout); a manual CLI invocation can still request a
+longer drain. No artifact schema, recipe, pipeline version, or backfill behavior changes.
+
 | Item | #/GH | Maturity | Breakout |
 |---|---|---|---|
 | Per-meeting permalink pages | #46/GH#157 | **Shipped** (#897, 2026-07-13) | [`review/13`](13-per-meeting-pages-and-search.md) Part A · playable meetings get player/transcript/chapters/agenda/deep-links; unavailable recordings retain civic metadata and canonical provenance with a clear no-recording notice · implementation `1790c9f` plus review fixes `20cc5ed` |
