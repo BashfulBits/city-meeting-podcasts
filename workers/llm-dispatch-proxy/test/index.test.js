@@ -2446,13 +2446,17 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   // catalog rather than hand-derived, since the ranking that decides which route absorbs each
   // reuse is its own logic -- so it must be re-probed whenever those limits move.
   //
-  // Re-probed 2026-08-29 after NVIDIA gained `concurrency: 1` and its TPM dropped 100000 -> 40000
-  // (18000 compiled): 8 offered requests now admit exactly 4 -- one per route, with NVIDIA no
-  // longer absorbing extra reuses because a concurrency of 1 admits a single in-flight call.
-  // Previously it admitted 7 (NVIDIA serving 4 via 3 in-batch paced waits). That drop is the
-  // point of the change, not a regression: NVIDIA answers an overlapping request with a fast
-  // ~8.3s 429, and its successful calls run 41s median, so in-batch reuse mostly manufactured
-  // rejections.
+  // Re-probed 2026-08-30 after NVIDIA's concurrency was raised 1 -> 4: 8 offered requests admit
+  // exactly 5 -- one per Gemini account, one on OpenRouter, and *two* on NVIDIA, the second via a
+  // single ~15s in-batch paced wait inside the 20s stagger ceiling.
+  //
+  // NVIDIA's second slot is now bounded by TPM, not concurrency: at 18000 compiled TPM two
+  // 8000-token requests fit (16000) and a third does not (24000). That is the intended shape of
+  // the change -- concurrency should stop being the binding constraint and let the real rate
+  // limits bind instead.
+  //
+  // History, since this number has moved twice: it was 7 before 2026-08-29 (NVIDIA serving 4 via
+  // 3 paced waits at 100000 TPM), then 4 when concurrency was capped at 1 that day, now 5.
   for (let i = 0; i < 8; i += 1) {
     await handleRequest(
       chatRequest(
@@ -2494,22 +2498,28 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   );
 
   assert.equal(batchResult.status, "completed");
-  // 4 candidates admitted, one per eligible route; no in-batch reuse survives the 20s max
-  // stagger now that NVIDIA is capped at one in-flight call.
-  assert.equal(batchResult.count, 4);
-  assert.equal(batchResult.completedCount, 4);
-  assert.equal(calls.length, 4);
-  assert.equal(slept.length, 0, "no in-batch paced waits remain");
+  assert.equal(batchResult.count, 5);
+  assert.equal(batchResult.completedCount, 5);
+  assert.equal(calls.length, 5);
+  // Exactly one paced wait: NVIDIA's second request, spaced by its own rpm.
+  assert.equal(slept.length, 1, "NVIDIA's second slot arrives via one in-batch paced wait");
+  assert.ok(slept[0] <= 20_000, "and it stays inside the 20s max stagger");
+  assert.equal(
+    calls.filter((c) => c.url.includes("integrate.api.nvidia.com")).length,
+    2,
+    "the raised concurrency ceiling is what admits the second NVIDIA call"
+  );
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 4);
+  assert.equal(completedObjects.length, 5);
   const pendingObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "pending",
   );
-  assert.equal(pendingObjects.length, 4);
+  // 8 offered, 5 admitted, so 3 stay pending for a later batch.
+  assert.equal(pendingObjects.length, 3);
 });
 
 test("dispatchBatch runs four independently paced routes concurrently", async () => {

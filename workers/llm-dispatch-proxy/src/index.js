@@ -37,7 +37,14 @@ const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
 // without returning to the old prompt-scanning design.
 const DEFAULT_BATCH_CONCURRENCY = 1;
 const DEFAULT_MAX_TOTAL_REQUESTS = 1;
-const DEFAULT_READY_LOOKAHEAD = 500;
+// Ready markers are listed in `available_at` order and only this many are ever examined, so the
+// window is also a fairness boundary, not just a CPU guard. Measured 2026-08-30: 6,447 ready
+// markers, of which the first 500 were 500 long-lane jobs and 0 fast-lane -- every one of the 451
+// fast jobs sat beyond the window and was unreachable until the 5,996 long jobs ahead of them
+// drained. Listing is I/O, not CPU (a full invocation measured 11ms of CPU), so 1000 buys twice
+// the reach at negligible cost. It does not fix the underlying unfairness -- a long-lane backlog
+// larger than the window still starves the fast lane -- see the lane-aware scan follow-up.
+const DEFAULT_READY_LOOKAHEAD = 1000;
 // Maximum delay an admitted candidate is allowed to wait in memory before initiating its
 // upstream HTTP/TCP connection. Kept small (20s) so the connection is established well within
 // Cloudflare's 30-second idle/execution limit while enabling high-RPM models (e.g. Gemma 4 at 30 RPM = 2s)
