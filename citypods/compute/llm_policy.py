@@ -169,6 +169,7 @@ class LLMRoute:
     api_base: str = ""
     ai_gateway_slug: str = ""
     ai_gateway_chat_path: str = ""
+    ai_gateway_max_attempts: int | None = None
     chat_path: str = "/v1/chat/completions"
     api_key_env: str = ""
     account_id: str = ""
@@ -285,6 +286,7 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 api_base=str(item.get("api_base", "")),
                 ai_gateway_slug=str(item.get("ai_gateway_slug", "")),
                 ai_gateway_chat_path=str(item.get("ai_gateway_chat_path", "")),
+                ai_gateway_max_attempts=item.get("ai_gateway_max_attempts"),
                 chat_path=str(item.get("chat_path", "/v1/chat/completions")),
                 api_key_env=str(item.get("api_key_env", "")),
                 account_id=str(item.get("account_id", "")),

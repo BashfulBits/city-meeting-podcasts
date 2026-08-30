@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 63,
+    "routes_count": 64,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 0.5
@@ -98,6 +98,8 @@
       "ai_gateway_slug": "custom-sambanova",
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
+      "ai_gateway_max_attempts": 1,
+      "rpm": 10,
       "reset_timezone": "UTC",
       "accounts": [
         {
@@ -532,7 +534,7 @@
       "output_context_limit": 32768,
       "account_id": "primary",
       "rpm": 10,
-      "rpd": 500,
+      "rpd": 10,
       "tpm": 45000,
       "concurrency": null,
       "free": true,
@@ -578,6 +580,24 @@
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
     },
+    "groq_qwen_3_8_27b_primary": {
+      "route_id": "groq_qwen_3_8_27b_primary",
+      "provider": "groq",
+      "upstream_model": "qwen/qwen3.8-27b",
+      "input_context_limit": 131042,
+      "output_context_limit": 16384,
+      "account_id": "primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 3600,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
     "sambanova_qwen_2_5_72b_instruct_primary": {
       "route_id": "sambanova_qwen_2_5_72b_instruct_primary",
       "provider": "sambanova",
@@ -586,7 +606,7 @@
       "output_context_limit": 8192,
       "account_id": "primary",
       "rpm": 10,
-      "rpd": 500,
+      "rpd": 10,
       "tpm": 45000,
       "concurrency": null,
       "free": true,
@@ -1501,6 +1521,9 @@
       "groq_gpt_oss_120b_primary",
       "nvidia_gpt_oss_120b_free"
     ],
+    "qwen/qwen3.8-27b": [
+      "groq_qwen_3_8_27b_primary"
+    ],
     "qwen/qwen-2.5-72b-instruct": [
       "sambanova_qwen_2_5_72b_instruct_primary",
       "siliconflow_qwen_2_5_72b_primary"
@@ -1627,6 +1650,8 @@
     "openrouter/meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
     "openai/gpt-oss-120b": "openai/gpt-oss-120b",
     "groq/openai/gpt-oss-120b": "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b": "qwen/qwen3.8-27b",
+    "groq/qwen/qwen3.8-27b": "qwen/qwen3.8-27b",
     "Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
     "sambanova/Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
     "Qwen/Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",

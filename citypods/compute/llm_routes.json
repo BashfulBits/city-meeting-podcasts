@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 63,
+    "routes_count": 64,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 0.5
@@ -542,7 +542,7 @@
       "output_context_limit": 32768,
       "account_id": "primary",
       "rpm": 10,
-      "rpd": 500,
+      "rpd": 10,
       "tpm": 45000,
       "free": true,
       "structured_output_profile": "standard_json_schema",
@@ -550,6 +550,7 @@
       "structured_output_direct_handler": "instructor",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
+      "ai_gateway_max_attempts": 1,
       "transports": [
         "direct",
         "llm-dispatch"
@@ -560,7 +561,8 @@
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "SAMBANOVA_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 10
     },
     {
       "route_id": "openrouter_meta_llama_llama_3_3_70b_instruct",
@@ -621,6 +623,35 @@
       "reset_timezone": "UTC"
     },
     {
+      "route_id": "groq_qwen_3_8_27b_primary",
+      "model": "qwen/qwen3.8-27b",
+      "provider": "groq",
+      "upstream_model": "qwen/qwen3.8-27b",
+      "input_context_limit": 131042,
+      "output_context_limit": 16384,
+      "account_id": "primary",
+      "rpm": 15,
+      "rpd": 500,
+      "tpm": 3600,
+      "free": true,
+      "structured_output_profile": "json_object",
+      "structured_output_response_format": "json_object",
+      "structured_output_direct_handler": "native",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "groq/qwen/qwen3.8-27b",
+      "api_base": "https://api.groq.com/openai/v1",
+      "ai_gateway_slug": "groq",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "api_key_env": "GROQ_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
       "route_id": "sambanova_qwen_2_5_72b_instruct_primary",
       "model": "qwen/qwen-2.5-72b-instruct",
       "provider": "sambanova",
@@ -629,7 +660,7 @@
       "output_context_limit": 8192,
       "account_id": "primary",
       "rpm": 10,
-      "rpd": 500,
+      "rpd": 10,
       "tpm": 45000,
       "free": true,
       "structured_output_profile": "standard_json_schema",
@@ -637,6 +668,7 @@
       "structured_output_direct_handler": "instructor",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
+      "ai_gateway_max_attempts": 1,
       "transports": [
         "direct",
         "llm-dispatch"
@@ -647,7 +679,8 @@
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
       "api_key_env": "SAMBANOVA_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_rpm": 10
     },
     {
       "route_id": "siliconflow_qwen_2_5_72b_primary",

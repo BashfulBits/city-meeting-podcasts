@@ -1795,7 +1795,22 @@ def test_every_catalog_route_builds_its_configured_gateway_url(route, gateway_en
 
     slug = route.ai_gateway_slug or route.provider
     assert api_base + "/chat/completions" == f"{_GW}/{slug}{route.ai_gateway_chat_path}"
-    assert headers == {"cf-aig-authorization": "Bearer test-auth-token"}
+    expected_headers = {"cf-aig-authorization": "Bearer test-auth-token"}
+    if route.ai_gateway_max_attempts is not None:
+        expected_headers["cf-aig-max-attempts"] = str(route.ai_gateway_max_attempts)
+    assert headers == expected_headers
+
+
+def test_sambanova_routes_use_a_single_gateway_attempt(gateway_env):
+    route = next(route for route in ROUTE_REGISTRY.values() if route.provider == "sambanova")
+    backend, _ = _recording_backend("meta-llama/llama-3.3-70b-instruct")
+
+    _, headers = backend._resolve_api_base_and_headers(route, direct=True)
+
+    assert headers == {
+        "cf-aig-authorization": "Bearer test-auth-token",
+        "cf-aig-max-attempts": "1",
+    }
 
 
 # How each custom provider is registered on the Cloudflare side, and therefore what

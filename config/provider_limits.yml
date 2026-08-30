@@ -3,7 +3,7 @@
 # Used by scripts/compile_llm_limits.py to generate workers/llm-dispatch-proxy/src/dispatch_limits.json
 
 source: Centralized provider limits registry
-observed_on: 2026-08-13
+observed_on: 2026-08-29
 
 # Global token estimate buffer multiplier applied to token budgets (TPM, monthly_tpm) during
 # compilation to safeguard against token estimation drift and prevent 429 rate limit spikes.
@@ -194,6 +194,13 @@ providers:
     # `/v1/chat/completions` reaches the real API (a genuine 429 rate-limit JSON came back).
     ai_gateway_chat_path: /v1/chat/completions
     chat_path: /chat/completions
+    # SambaNova's documented Free-tier ceiling is 20 requests/minute. Keep this provider-wide
+    # because both configured models share the same API key, and let the split-cap compiler divide
+    # it between the v1/v2 dispatchers while they coexist. A single upstream 429 should not also
+    # incur AI Gateway's five-attempt retry series: the dispatch Workers already apply a durable
+    # route cooldown after the response arrives.
+    rpm: 20
+    ai_gateway_max_attempts: 1
     reset_timezone: UTC
     accounts:
       - id: primary
@@ -496,7 +503,9 @@ routes:
     output_context_limit: 32768
     account_id: primary
     rpm: 20
-    rpd: 1000
+    # SambaNova Free tier: 20 requests/day for this model. The split-cap compiler emits 10 per
+    # dispatcher while v1/v2 coexist, preserving the 20-request provider budget in aggregate.
+    rpd: 20
     tpm: 100000
     free: true
 
@@ -531,6 +540,21 @@ routes:
     tpm: 8000
     free: true
 
+  # QWEN 3.8 27B (Groq free route)
+  # Groq's published table (2026-08-29): 30 RPM / 1K RPD / 8K TPM / 2M TPD. This schema has
+  # no TPD field, so the daily token ceiling is documented here but not enforced by the ledger.
+  - route_id: groq_qwen_3_8_27b_primary
+    model: qwen/qwen3.8-27b
+    provider: groq
+    upstream_model: qwen/qwen3.8-27b
+    input_context_limit: 131042
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 30
+    rpd: 1000
+    tpm: 8000
+    free: true
+
   # ==========================================
   # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
   # ==========================================
@@ -542,7 +566,8 @@ routes:
     output_context_limit: 8192
     account_id: primary
     rpm: 20
-    rpd: 1000
+    # Keep the same conservative Free-tier daily ceiling for this shared-key fallback route.
+    rpd: 20
     tpm: 100000
     free: true
 

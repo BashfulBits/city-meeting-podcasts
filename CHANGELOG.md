@@ -27,6 +27,12 @@ Phase R (Research-Tool Surface)._
   ceiling was observed in the local soak, so the route leaves TPM unset and relies on the daily
   request ledger.
 
+- **Groq Qwen 3.8 27B free route.** Registers `qwen/qwen3.8-27b` with its published 30 RPM, 1K
+  RPD, 8K TPM, 131,042-token context, and 16,384-token output limits. Groq's separate 2M TPD
+  ceiling is documented in the provider registry but is not yet enforceable because the route-ledger
+  schema has no daily-token field. The route is available for explicit Qwen requests; Gemma routing
+  and the production judge remain unchanged pending task-specific evaluation.
+
 - **NVIDIA build.nvidia.com provider and free-capacity pooling for Mistral Medium overflow.** New
   `nvidia` provider in `config/provider_limits.yml` (OpenAI-compatible NIM gateway, `NVIDIA_API_KEY`)
   with a conservative, explicitly self-imposed cap: 12 RPM provider-wide (30% of the ~40 RPM
@@ -54,6 +60,15 @@ Phase R (Research-Tool Surface)._
   starts a resumable bounded tag backfill. No output pipeline-version bump is introduced.
 
 ### Fixed
+
+- **SambaNova's Free-tier routes were admitting an incorrect daily quota.** The two physical
+  SambaNova routes now use the documented 20 RPM / 20 RPD source ceiling, with the existing
+  v1/v2 split-cap compiling that to 10 RPM / 10 RPD per dispatcher while both transports coexist.
+  The shared provider ledger also carries a 20 RPM safety ceiling, and SambaNova calls override
+  AI Gateway's five-attempt retry series with one attempt so a known 429 is not immediately
+  re-sent four more times. SambaNova's documented 200k TPD allowance is not modeled because the
+  catalog has no daily-token field; this change therefore uses the conservative request cap rather
+  than inventing a token parser. No pipeline version or artifact backfill is involved.
 
 - **NVIDIA's per-model rate limit was generalised to every NVIDIA route, throttling the ones doing
   the work.** `deepseek-v4-pro`'s measured ~30/hr quota was applied as `rpm: 0.5` across all nine
