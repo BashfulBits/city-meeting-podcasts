@@ -484,9 +484,77 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // its own request even when the canonical id differs (e.g. a retry that generated
             // a fresh id locally before learning the original was already accepted).
             accepted.push({ id: row.id, submitted_id: job.id });
-          } else {
-            // Reused key with different payload: fail loudly
+          } else if (row.state === "leased" || row.state === "unknown_attempt") {
+            // A genuinely in-flight attempt is the one case superseding cannot safely cover: its
+            // lease_token/bundle_id already reference the old payload, and overwriting the row
+            // out from under a call that may still be running risks a result racing back against
+            // content that no longer matches what was sent. Reject and let the caller retry once
+            // this attempt settles.
             rejected.push({ id: job.id, reason: "idempotency_conflict" });
+          } else {
+            // Same identity (recipe_hash), different content: supersede the stale row rather
+            // than reject it.
+            //
+            // idempotency_key is derived from the job's *recipe*; request_digest hashes the
+            // *payload* actually sent. Any change to payload construction -- 2c3b2ab stopped
+            // leaking policy-only fields into the literal provider request body -- changes the
+            // digest for every job while every key stays identical. Rejecting that as a conflict
+            // is indistinguishable from a real double-submission bug, but it produces a
+            // permanent one: nothing ever deletes a non-terminal row, so the stale row blocks its
+            // own key forever and the caller's real work never gets in. Production hit exactly
+            // this on 2026-08-25: 100% of enqueue-batch calls rejected for five days.
+            //
+            // Safe for every state but the leased one just excluded above:
+            //   - queued: nothing has touched this row yet; overwrite outright.
+            //   - completed/failed: the old outcome was produced from payload construction we
+            //     now know was wrong (the leaked-fields case failed at every provider with
+            //     "Extra inputs are not permitted"); superseding is what lets it be tried again
+            //     with the corrected request instead of standing as a permanent false failure.
+            //   - purge_pending: safe because confirmPurge is itself guarded by
+            //     `state = 'purge_pending'` -- if a purge is mid-flight for the OLD payload_key,
+            //     supersede's state change here simply makes that confirmPurge a no-op, leaving
+            //     this row correctly 'queued' under the NEW payload_key.
+            //
+            // The old payload_key (and result_key, if terminal) become unreferenced -- this
+            // coordinator holds no B2 credentials to delete them (the same split that makes
+            // purgePendingBatch two-phase), and they are small, content-addressed JSON blobs, not
+            // the append-only audio artifacts the project's storage-reclaim tooling targets. An
+            // orphaned KB-scale text blob is an accepted cost of not losing the job.
+            const priority = job.priority !== undefined ? job.priority : 1;
+            const policyJson = typeof job.policy_json === "string" ? job.policy_json : JSON.stringify(job.policy_json || {});
+            const providerIdempotencyKey = job.provider_idempotency_key || null;
+            sql.exec(
+              `UPDATE jobs SET
+                 request_digest = ?, provider_idempotency_key = ?, state = 'queued',
+                 priority = ?, policy_json = ?, prompt_family = ?,
+                 input_token_estimate = ?, max_output_token_estimate = ?, payload_key = ?,
+                 result_key = NULL, lease_token = NULL, lease_route_id = NULL,
+                 lease_expires_at = NULL, bundle_id = NULL, attempts = 0,
+                 transient_retry_count = 0, updated_at = ?
+               WHERE id = ?`,
+              job.request_digest,
+              providerIdempotencyKey,
+              priority,
+              policyJson,
+              job.prompt_family,
+              job.input_token_estimate,
+              job.max_output_token_estimate,
+              job.payload_key,
+              now,
+              row.id
+            );
+            // The allowed-model set can itself have changed between the old and new payload, so
+            // rebuild the index rather than trust whatever it already held (or didn't -- a
+            // completed/failed row has none, since claiming deletes it).
+            sql.exec("DELETE FROM job_models WHERE job_id = ?", row.id);
+            this._indexQueuedJobModels(
+              { ...job, id: row.id, policy_json: policyJson, priority, created_at: now },
+              priority,
+              now
+            );
+            // Superseding replaces a row that already existed; it is not new admission and must
+            // not consume today's cap, for the same reason an idempotent replay doesn't.
+            accepted.push({ id: row.id, submitted_id: job.id, superseded: true });
           }
           continue;
         }
