@@ -842,10 +842,17 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
 
 ### Phase 3 — Exit coexistence
 
-- Monitor v1's pending-record count via `citypods.compute.llm_deferred.list_pending_deferred`
-  (backed by `DEFERRED_INDEX_PENDING_PREFIX` in the deferred registry — the same source the v1
-  sweep itself reads) until it returns empty. This is a checked metric already exposed by existing
-  code, not an assumed timeline or new instrumentation.
+- Monitor the v1 **client registry** via `citypods.compute.llm_deferred.list_pending_deferred`
+  (backed by `DEFERRED_INDEX_PENDING_PREFIX`) until it returns empty, but do not mistake it for the
+  whole legacy Worker queue: historical v1 requests can exist only in R2 after their producer has
+  switched to v2. `scripts/recover_v1_llm_dispatch_results.py` is the bounded, manual bridge for
+  that temporary provenance gap. It lists v1 `requests/` directly in R2, joins completed records
+  only to exact `job_ref`s retained by the resumable agenda and locator stage state, validates the
+  recorded structured response, and writes the resulting `JobResult` to B2's normal deferred
+  registry. Pending, failed, malformed, unowned, and multiply owned records are report-only; the
+  importer neither guesses ownership nor creates B2 pending handles. It deliberately retains the
+  R2 object because the v1 Worker has no verified DELETE endpoint and B2 persistence alone does
+  not prove downstream consumption. This importer is a removal candidate once v1 is empty.
 - Flip v2's route ledger from the 50% split-cap back to 1x.
 - Retire v1's cron trigger and Worker.
 - On a v2 enqueue timeout during this window, retry v2 with the same idempotency key. Do **not**
