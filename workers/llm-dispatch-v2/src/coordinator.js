@@ -4,7 +4,7 @@
  */
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
-import { canonicalModelName, routesEligibleFor } from "./routes.js";
+import { canonicalModelName, routeFitsContext, routesEligibleFor } from "./routes.js";
 import {
   availableTokenBudget,
   computeRouteLaneWait,
@@ -931,10 +931,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * without rewriting it. This follows aliases only: v2 does not expand config/model_routing.
    *
    * Omits a model whose *every* currently configured route is structurally too small for this
-   * job's own token estimates (routesEligibleFor's input/output context-limit check, evaluated
-   * here independent of any live RPM/RPD/TPM/blocked_until state, which fluctuates and must never
-   * exclude a job from the index). Without this, a handful of oversized jobs land at the head of
-   * that model's bounded per-claim candidate window (MAX_JOBS_PER_MODEL_CLAIM) and stay there
+   * job's own token estimates (routesEligibleFor's combined input/output context-limit check,
+   * evaluated here independent of any live RPM/RPD/TPM/blocked_until state, which fluctuates and
+   * must never exclude a job from the index). Without this, a handful of oversized jobs land at
+   * the head of that model's bounded per-claim candidate window (MAX_JOBS_PER_MODEL_CLAIM) and
+   * stay there
    * forever -- routesEligibleFor always returns empty for them, so claimDispatchWindow re-reads
    * the exact same unclaimed rows every tick and a smaller, perfectly dispatchable job queued
    * behind them is never even read, let alone claimed. A model with no configured route at all is
@@ -969,10 +970,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const route = catalog[routeId];
         if (!route) return false;
         if (!allowPaid && !route.free) return false;
-        return (
-          inputTokens <= (route.input_context_limit || 32768) &&
-          outputTokens <= (route.output_context_limit || 1024)
-        );
+        return routeFitsContext(route, inputTokens, outputTokens);
       });
       if (fitsSomeConfiguredRoute) models.add(canonical);
     }
