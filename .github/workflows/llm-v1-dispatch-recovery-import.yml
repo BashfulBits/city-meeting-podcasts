@@ -1,8 +1,9 @@
 name: Recover owned v1 LLM results
 
-# One-time legacy migration: joins direct R2 request records to the exact v1 refs still retained
-# in durable episode state, then imports only schema-valid completed results into B2's deferred
-# registry. It never calls the Worker and deliberately never deletes R2 records.
+# One-time legacy migration: joins R2 records either to exact retained v1 refs, or (only for the
+# resumable agenda/locator stages) to an exactly rebuilt durable prompt and schema shape. It imports
+# only schema-valid completed results into B2's deferred registry, never calls the Worker, and
+# deliberately never deletes R2 records.
 on:
   workflow_dispatch:
     inputs:

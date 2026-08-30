@@ -62,13 +62,16 @@ Phase R (Research-Tool Surface)._
 ### Fixed
 
 - **Legacy v1 LLM completions can now be recovered without polling the Worker.** The temporary,
-  manually dispatched recovery importer scans the legacy R2 request records directly, joins only
+  manually dispatched recovery importer scans legacy R2 request records directly. It first joins
   exact v1 references still persisted by the resumable agenda-extraction and chapter-location
-  stages, validates their structured response before writing a completed B2 deferred record, and
-  reports pending, failed, invalid, unowned, and ambiguous records separately. It never guesses an
-  owner for jobs without durable provenance, creates no B2 pending handles, calls no Worker
-  endpoint, and retains R2 records for a later verified cleanup decision. This is a temporary
-  migration aid for draining v1; no recipe, artifact schema, pipeline version, or backfill changes.
+  stages, then reconstructs only unfinished agenda/locator prompts from their durable source bytes
+  and accepts an R2 record only when one owner matches its exact normalized prompt and recorded
+  response-schema shape. It validates the structured response before writing a completed B2
+  deferred record, and reports direct and reconstructed candidates, unavailable inputs, pending,
+  failed, invalid, unowned, and ambiguous records separately. It never guesses an owner, creates
+  no B2 pending handles, calls no Worker endpoint, and retains R2 records for a later verified
+  cleanup decision. This is a temporary migration aid for draining v1; no recipe, artifact schema,
+  pipeline version, or backfill changes.
 
 - **The temporary deferred sweep did not leave enough reaping time for legacy v1 handles.** The
   scheduled pass now runs for 90 minutes inside a 105-minute Actions timeout, retaining a

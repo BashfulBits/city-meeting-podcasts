@@ -2,10 +2,12 @@
 """Import safely owned completed v1 LLM dispatch results into the B2 deferred registry.
 
 The old v1 Worker keeps its canonical request records in R2, while current producers dispatch
-through v2 and no longer revisit those v1 request identities.  A completed v1 response can only
-be recovered when its durable episode state still contains the exact request ref, recipe, task,
-and response contract.  This tool performs that join directly against R2: it never polls the
-Worker and never infers ownership from a prompt, a model, or a non-reversible idempotency hash.
+through v2 and no longer revisit those v1 request identities. A completed v1 response can be
+recovered from either an exact request ref retained in episode state, or—only for the two
+resumable chapter stages—from an exact normalized prompt rebuilt from their durable source bytes
+and the recorded response-schema shape. The reconstruction path rejects a request with zero or
+multiple possible owners. This tool performs its joins directly against R2: it never polls the
+Worker and never guesses ownership from a model or a non-reversible idempotency hash.
 
 Dry-run is the default.  ``--apply`` writes validated completed results to
 ``state/llm_deferred/`` on B2 so the normal stage replay consumes them.  It intentionally retains
@@ -23,6 +25,7 @@ Optional:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -87,6 +90,17 @@ SUMMARY_COUNT_KEYS = (
     "completed_conflict",
     "b2_write_errors",
     "r2_records_retained",
+    "reconstructed_candidates",
+    "reconstructed_agenda_candidates",
+    "reconstructed_locator_candidates",
+    "reconstruction_input_unavailable",
+    "reconstruction_errors",
+    "reconstructed_owned_requests",
+    "reconstructed_ambiguous_owners",
+    "reconstructed_matched_completed",
+    "reconstructed_matched_pending",
+    "reconstructed_matched_failed",
+    "reconstructed_completed_invalid",
 )
 
 
@@ -101,6 +115,34 @@ class OwnedRequest:
     source_key: str
     episode_uid: str
     kind: str
+
+
+@dataclass(frozen=True)
+class ReconstructedRequest:
+    """A current stage input rebuilt from durable bytes, before it is joined to a v1 request."""
+
+    task: str
+    recipe_hash: str
+    structured_output: str
+    source_key: str
+    episode_uid: str
+    kind: str
+    messages_fingerprint: str
+
+
+@dataclass(frozen=True)
+class R2RequestSnapshot:
+    """The minimal retained R2 state needed for an exact reconstructed-input join."""
+
+    request_id: str
+    status: str
+    model: object
+    response: Mapping[str, Any] | None
+    structured_output: str
+
+
+class ReconstructionInputUnavailable(Exception):
+    """A stage is unfinished but no durable bytes remain to rebuild its prompt."""
 
 
 def _source_keys(storage) -> list[str]:
@@ -198,6 +240,187 @@ def discover_owned_requests(
     owned = {request_id: entries[0] for request_id, entries in claims.items() if len(entries) == 1}
     ambiguous = sum(1 for entries in claims.values() if len(entries) > 1)
     return owned, ambiguous, unreadable, len(source_keys)
+
+
+def _messages_fingerprint(messages: object) -> str | None:
+    """Fingerprint the Worker-normalized message list without retaining prompt material in logs."""
+
+    if (
+        not isinstance(messages, list)
+        or not messages
+        or not all(isinstance(item, Mapping) for item in messages)
+    ):
+        return None
+    try:
+        encoded = json.dumps(
+            messages, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        ).encode()
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _structured_output_from_request(request: Mapping[str, Any]) -> str | None:
+    """Identify only the two response shapes this temporary importer can reconstruct safely."""
+
+    response_format = request.get("response_format")
+    if not isinstance(response_format, Mapping) or response_format.get("type") != "json_schema":
+        return None
+    json_schema = response_format.get("json_schema")
+    schema = json_schema.get("schema") if isinstance(json_schema, Mapping) else None
+    properties = schema.get("properties") if isinstance(schema, Mapping) else None
+    if not isinstance(properties, Mapping):
+        return None
+    if "items" in properties and "anchors" not in properties:
+        return "agenda-chapter-item-extract"
+    if "anchors" in properties and "items" not in properties:
+        return "agenda-chapter-locate"
+    return None
+
+
+def _bytes(storage, key: object) -> bytes | None:
+    if not isinstance(key, str) or not key:
+        return None
+    loaded = storage.get_bytes(key)
+    return loaded[0] if loaded is not None else None
+
+
+def _agenda_reconstruction(
+    storage, source_key: str, episode_uid: str, episode: Mapping[str, Any]
+) -> ReconstructedRequest | None:
+    agenda = episode.get("generated_agenda_candidates")
+    if isinstance(agenda, Mapping) and agenda.get("status") in {"completed", "accepted"}:
+        return None
+    if isinstance(agenda, Mapping) and agenda.get("job_ref"):
+        return None
+    links = episode.get("links")
+    artifact_key = links.get("agenda_text_artifact_key") if isinstance(links, Mapping) else None
+    raw = _bytes(storage, artifact_key)
+    if raw is None:
+        raise ReconstructionInputUnavailable
+    from citypods.chapter_jobs import build_agenda_job
+
+    job = build_agenda_job(
+        episode_uid=episode_uid,
+        agenda_text=raw.decode("utf-8", errors="replace"),
+        agenda_source_hash=hashlib.sha256(raw).hexdigest(),
+    )
+    messages_fingerprint = _messages_fingerprint(job.inputs.get("messages"))
+    if messages_fingerprint is None:
+        return None
+    return ReconstructedRequest(
+        task="agenda-item-extract",
+        recipe_hash=job.recipe_hash,
+        structured_output="agenda-chapter-item-extract",
+        source_key=source_key,
+        episode_uid=episode_uid,
+        kind="agenda",
+        messages_fingerprint=messages_fingerprint,
+    )
+
+
+def _locator_reconstruction(
+    storage, source_key: str, episode_uid: str, episode: Mapping[str, Any]
+) -> ReconstructedRequest | None:
+    agenda_data = episode.get("generated_agenda_candidates")
+    if not isinstance(agenda_data, Mapping) or agenda_data.get("status") not in {
+        "completed",
+        "accepted",
+    }:
+        return None
+    if agenda_data.get("locator_status") in {"completed", "accepted"} or agenda_data.get(
+        "locator_job_ref"
+    ):
+        return None
+    words = _bytes(storage, episode.get("transcript_words_key"))
+    vtt = _bytes(storage, episode.get("transcript_key"))
+    if words is None and vtt is None:
+        raise ReconstructionInputUnavailable
+    from citypods.chapter_artifacts import AgendaCandidatesArtifact
+    from citypods.chapter_jobs import build_locator_job
+    from citypods.chapter_locator import build_locator_units
+
+    units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
+    if not units:
+        raise ReconstructionInputUnavailable
+    selected = words if unit_source == "words" else vtt
+    agenda = AgendaCandidatesArtifact.from_dict(dict(agenda_data))
+    job = build_locator_job(
+        episode_uid=episode_uid,
+        agenda=agenda,
+        transcript_hash=hashlib.sha256(selected or b"").hexdigest(),
+        units=units,
+    )
+    messages_fingerprint = _messages_fingerprint(job.inputs.get("messages"))
+    if messages_fingerprint is None:
+        return None
+    return ReconstructedRequest(
+        task="agenda-chapter-locate",
+        recipe_hash=job.recipe_hash,
+        structured_output="agenda-chapter-locate",
+        source_key=source_key,
+        episode_uid=episode_uid,
+        kind="locator",
+        messages_fingerprint=messages_fingerprint,
+    )
+
+
+def _reconstruct_source_requests(
+    storage, source_key: str
+) -> tuple[list[ReconstructedRequest], Counter[str]]:
+    """Rebuild unfinished agenda/locator inputs from current durable state and artifact bytes."""
+
+    result: list[ReconstructedRequest] = []
+    summary: Counter[str] = Counter()
+    payload = _load_json_bytes(storage, source_key)
+    episodes = payload.get("episodes") if isinstance(payload, Mapping) else None
+    if not isinstance(episodes, Mapping):
+        return result, summary
+    for record_uid, episode in episodes.items():
+        if not isinstance(record_uid, str) or not isinstance(episode, Mapping):
+            continue
+        episode_uid = str(episode.get("uid") or record_uid)
+        for kind, builder in (
+            ("agenda", _agenda_reconstruction),
+            ("locator", _locator_reconstruction),
+        ):
+            try:
+                candidate = builder(storage, source_key, episode_uid, episode)
+            except ReconstructionInputUnavailable:
+                summary["reconstruction_input_unavailable"] += 1
+                continue
+            except Exception:  # noqa: BLE001 -- leave a malformed source for the normal stage retry
+                summary["reconstruction_errors"] += 1
+                continue
+            if candidate is None:
+                continue
+            result.append(candidate)
+            summary["reconstructed_candidates"] += 1
+            summary[f"reconstructed_{kind}_candidates"] += 1
+    return result, summary
+
+
+def discover_reconstructed_requests(
+    storage, *, workers: int
+) -> tuple[list[ReconstructedRequest], Counter[str]]:
+    """Build only current, unfinished chapter jobs whose exact prompt can still be reproduced."""
+
+    candidates: list[ReconstructedRequest] = []
+    summary: Counter[str] = Counter()
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(_reconstruct_source_requests, storage, source_key): source_key
+            for source_key in _source_keys(storage)
+        }
+        for future in as_completed(futures):
+            try:
+                items, counts = future.result()
+            except Exception:  # noqa: BLE001 -- source failure remains visible without stopping import
+                summary["reconstruction_errors"] += 1
+                continue
+            candidates.extend(items)
+            summary.update(counts)
+    return candidates, summary
 
 
 def _list_request_keys(client: Any, bucket: str, limit: int) -> list[str]:
@@ -354,6 +577,7 @@ def recover_v1_results(
 
     importable: list[tuple[OwnedRequest, Mapping[str, Any], object]] = []
     seen_request_ids: set[str] = set()
+    r2_by_messages: dict[str, list[R2RequestSnapshot]] = defaultdict(list)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
             executor.submit(_read_r2_record, client, bucket, key, r2_retries=r2_retries): key
@@ -384,6 +608,36 @@ def recover_v1_results(
                 summary["r2_invalid_records"] += 1
                 continue
             summary[f"r2_{status}"] += 1
+            request = record.get("request")
+            if isinstance(request, Mapping):
+                messages_fingerprint = _messages_fingerprint(request.get("messages"))
+                structured_output = _structured_output_from_request(request)
+                if messages_fingerprint is not None and structured_output is not None:
+                    response = record.get("response")
+                    r2_by_messages[messages_fingerprint].append(
+                        R2RequestSnapshot(
+                            request_id=request_id,
+                            status=status,
+                            model=record.get("model"),
+                            response=response if isinstance(response, Mapping) else None,
+                            structured_output=structured_output,
+                        )
+                    )
+            if completed % 500 == 0:
+                print(
+                    json.dumps(
+                        {
+                            "event": "v1_recovery_scan_progress",
+                            "r2_completed": summary["r2_completed"],
+                            "r2_failed": summary["r2_failed"],
+                            "r2_pending": summary["r2_pending"],
+                            "r2_read_errors": summary["r2_read_errors"],
+                            "r2_scanned": summary["r2_scanned"],
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
             candidate = owned.get(request_id)
             if candidate is None:
                 summary[f"unowned_{status}"] += 1
@@ -397,19 +651,72 @@ def recover_v1_results(
                 continue
             importable.append((candidate, response, record.get("model")))
             summary[f"importable_{candidate.kind}"] += 1
-            if completed % 500 == 0:
-                print(
-                    json.dumps(
-                        {
-                            "event": "v1_recovery_scan_progress",
-                            "r2_scanned": summary["r2_scanned"],
-                            "importable": len(importable),
-                        },
-                        sort_keys=True,
-                    ),
-                    flush=True,
-                )
 
+    print(
+        json.dumps(
+            {
+                "event": "v1_recovery_reconstruction_started",
+                "source_records": summary["source_records"],
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+    reconstructed, reconstruction_summary = discover_reconstructed_requests(
+        storage, workers=workers
+    )
+    summary.update(reconstruction_summary)
+    reconstructed_matches: dict[str, list[ReconstructedRequest]] = defaultdict(list)
+    reconstructed_records: dict[str, R2RequestSnapshot] = {}
+    for candidate in reconstructed:
+        for record in r2_by_messages.get(candidate.messages_fingerprint, []):
+            if record.structured_output != candidate.structured_output:
+                continue
+            reconstructed_matches[record.request_id].append(candidate)
+            reconstructed_records[record.request_id] = record
+    for request_id, candidates in reconstructed_matches.items():
+        if len(candidates) != 1:
+            summary["reconstructed_ambiguous_owners"] += 1
+            continue
+        candidate = candidates[0]
+        record = reconstructed_records[request_id]
+        summary["reconstructed_owned_requests"] += 1
+        summary[f"reconstructed_matched_{record.status}"] += 1
+        if record.status != "completed" or record.response is None:
+            continue
+        owned_candidate = OwnedRequest(
+            request_id=request_id,
+            task=candidate.task,
+            recipe_hash=candidate.recipe_hash,
+            structured_output=candidate.structured_output,
+            source_key=candidate.source_key,
+            episode_uid=candidate.episode_uid,
+            kind=candidate.kind,
+        )
+        if not validate(owned_candidate, record.response):
+            summary["reconstructed_completed_invalid"] += 1
+            continue
+        importable.append((owned_candidate, record.response, record.model))
+        summary[f"importable_{candidate.kind}"] += 1
+
+    print(
+        json.dumps(
+            {
+                "event": "v1_recovery_reconstruction_finished",
+                "reconstructed_ambiguous_owners": summary["reconstructed_ambiguous_owners"],
+                "reconstructed_candidates": summary["reconstructed_candidates"],
+                "reconstructed_completed_invalid": summary["reconstructed_completed_invalid"],
+                "reconstructed_matched_completed": summary["reconstructed_matched_completed"],
+                "reconstructed_matched_failed": summary["reconstructed_matched_failed"],
+                "reconstructed_matched_pending": summary["reconstructed_matched_pending"],
+                "reconstructed_owned_requests": summary["reconstructed_owned_requests"],
+                "reconstruction_errors": summary["reconstruction_errors"],
+                "reconstruction_input_unavailable": summary["reconstruction_input_unavailable"],
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
     summary["owned_not_scanned"] = len(set(owned) - seen_request_ids)
     summary["importable_completed"] = len(importable)
     summary["would_import"] = len(importable)
