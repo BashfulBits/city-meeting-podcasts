@@ -13,7 +13,7 @@ token_estimate_buffer: 0.90
 # across both v1 and v2 dispatchers does not exceed 100% of underlying provider rate limits.
 # Halves RPM, RPD, TPM, and monthly_tpm across all shared routes. Set to 1.0 (or omitted) to
 # restore full 1x capacity once legacy v1 backlog is drained (Phase 3).
-split_cap_multiplier: 0.50
+split_cap_multiplier: 1.0
 
 # Context ceilings are required on every physical route below. They are not provider defaults:
 # model families differ, and a gateway/account can expose a lower ceiling than the native model.
