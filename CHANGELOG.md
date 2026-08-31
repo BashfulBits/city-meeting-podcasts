@@ -81,6 +81,13 @@ Phase R (Research-Tool Surface)._
   legacy R2 requests, alter dispatch rate, change any artifact schema, or trigger a backfill; the
   longer budget is temporary until the registered v1 queue drains.
 
+- **Lifting the v1/v2 split-cap rate-limit multiplier to 1.0 (review/44 Phase 3 coexistence exit).**
+  Following complete draining and purging of the legacy v1 LLM queue in Cloudflare R2
+  (`citypods-llm-dispatch`), `split_cap_multiplier` in `config/provider_limits.yml` is restored from
+  `0.50` back to `1.0`. All provider and route limits (RPM, RPD, TPM, monthly TPM) across Python and
+  the Cloudflare Workers (`workers/llm-dispatch-v2`, `workers/llm-dispatch-proxy`,
+  `citypods/compute/llm_routes.json`) are now unscaled to full 1.0x capacity.
+
 - **The LLM deferred sweep could turn a failed v2 batch read into a singleton-poll storm.** An
   unresolved v2 handle fell through from the bulk poll into `reconcile()`, so a partial or failed
   recovery could make one Worker invocation per remaining job and consume the full four-hour sweep

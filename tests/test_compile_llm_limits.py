@@ -40,8 +40,8 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert set(gemma) == set(compile_llm_limits._WORKER_ROUTE_FIELDS)
     assert gemma["route_id"] == "gemma_4_31b_primary"
     samba = worker["routes_by_id"]["sambanova_llama_3_3_70b_instruct_primary"]
-    assert samba["rpd"] == 10
-    assert worker["providers"]["sambanova"]["rpm"] == 10
+    assert samba["rpd"] == 20
+    assert worker["providers"]["sambanova"]["rpm"] == 20
     assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
@@ -419,18 +419,18 @@ def test_run_discovery_bare_flag_covers_only_providers_with_a_discovery_block(mo
 def test_token_estimate_buffer_scales_route_and_provider_token_budgets():
     compiled = compile_llm_limits.compile_limits()
     assert compiled["_metadata"]["token_estimate_buffer"] == 0.9
-    assert compiled["_metadata"]["split_cap_multiplier"] == 0.50
+    assert compiled["_metadata"]["split_cap_multiplier"] == 1.0
 
-    # Route TPM scaling with 0.90 buffer and 0.50 split-cap:
-    # 250,000 * 0.9 * 0.5 = 112,500; 16,000 * 0.9 * 0.5 = 7,200
+    # Route TPM scaling with 0.90 buffer and 1.0 split-cap:
+    # 250,000 * 0.9 = 225,000; 16,000 * 0.9 = 14,400
     gemini = compiled["routes_by_id"]["gemini_3_5_flash_lite_primary"]
     gemma = compiled["routes_by_id"]["gemma_4_31b_primary"]
-    assert gemini["tpm"] == 112_500
-    assert gemma["tpm"] == 7_200
+    assert gemini["tpm"] == 225_000
+    assert gemma["tpm"] == 14_400
 
-    # RPM / RPD scaled by split-cap (0.50)
-    assert gemini["rpm"] == 7
-    assert gemini["rpd"] == 250
+    # RPM / RPD unscaled with split-cap (1.0)
+    assert gemini["rpm"] == 15
+    assert gemini["rpd"] == 500
     assert gemini["input_context_limit"] == 1048576
     assert gemini["output_context_limit"] == 65536
 

@@ -342,11 +342,11 @@ def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
 
 
 def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
-    """Mistral Large route matches the upstream 0.07-RPS (4 RPM) ceiling halved for split-cap."""
+    """Mistral Large route matches the upstream 0.07-RPS (4 RPM) ceiling with split-cap lifted."""
     route = ROUTES["mistral/mistral-large-2512"]
     assert route.transport == "direct"
     assert set(route.transports) == {"direct", "llm-dispatch"}
-    assert route.quota.rpm == 2
+    assert route.quota.rpm == 4
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():
