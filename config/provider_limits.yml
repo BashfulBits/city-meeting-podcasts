@@ -3,7 +3,7 @@
 # Used by scripts/compile_llm_limits.py to generate workers/llm-dispatch-proxy/src/dispatch_limits.json
 
 source: Centralized provider limits registry
-observed_on: 2026-08-13
+observed_on: 2026-08-29
 
 # Global token estimate buffer multiplier applied to token budgets (TPM, monthly_tpm) during
 # compilation to safeguard against token estimation drift and prevent 429 rate limit spikes.
@@ -78,6 +78,23 @@ providers:
         api_key_env: MISTRAL_API_KEY
       - id: secondary
         api_key_env: MISTRAL_API_KEY_SECONDARY
+  # Airforce's custom provider exposes the same Mistral Medium family through its OpenAI-shaped
+  # API. The account-wide 1,000 RPD allowance is the binding limit for this account; `rpm: 0.69`
+  # paces the route to that daily ceiling (the split-cap compiler then divides it between the v1
+  # and v2 dispatchers while both are live). No independent TPM ceiling was observed in the local
+  # soak, so leave `tpm` unset rather than inventing a smaller cap. The provider's model metadata
+  # reports `max_tokens: 4096`, which is an output budget, not the 256k input context window.
+  airforce:
+    api_base: https://api.airforce/v1
+    ai_gateway_slug: custom-airforce
+    # Registered at `https://api.airforce/v1`; AI Gateway's custom-provider rewrite therefore
+    # requires the `/v1` prefix in the caller path, as verified by the live gateway smoke test.
+    ai_gateway_chat_path: /v1/chat/completions
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: AIRFORCE_API_KEY
   gemini:
     api_base: https://generativelanguage.googleapis.com/v1beta/openai
     ai_gateway_slug: google-ai-studio
@@ -103,6 +120,14 @@ providers:
       - id: primary
         api_key_env: DEEPSEEK_API_KEY
   siliconflow:
+    # The GLOBAL platform (`.com`), which is a different service from `siliconflow.cn` with its own
+    # accounts -- a `.com` key is rejected by `.cn` with 401 "Api key is invalid". Only `.cn` offers
+    # free models, gated behind Chinese real-name ID verification, so nothing here is free: every
+    # SiliconFlow route below is `free: false` and stops working at a zero account balance (402
+    # code 30001 on every model, verified 2026-08-29). SiliconFlow is carried as the *cheapest paid*
+    # leg of deepseek/deepseek-v4-flash ($0.049/M vs DeepSeek Direct's $0.14/M), not as capacity --
+    # route selection tries every free leg first, so these are reached only by a job that sets
+    # `allow_paid` once no free route has capacity.
     api_base: https://api.siliconflow.com/v1
     ai_gateway_slug: custom-siliconflow
     # Full path from the origin root (see the `nvidia` block). SiliconFlow serves the same
@@ -132,6 +157,13 @@ providers:
     # `/v1/chat/completions` reaches the real API (a genuine 429 rate-limit JSON came back).
     ai_gateway_chat_path: /v1/chat/completions
     chat_path: /chat/completions
+    # SambaNova's documented Free-tier ceiling is 20 requests/minute. Keep this provider-wide
+    # because both configured models share the same API key, and let the split-cap compiler divide
+    # it between the v1/v2 dispatchers while they coexist. A single upstream 429 should not also
+    # incur AI Gateway's five-attempt retry series: the dispatch Workers already apply a durable
+    # route cooldown after the response arrives.
+    rpm: 20
+    ai_gateway_max_attempts: 1
     reset_timezone: UTC
     accounts:
       - id: primary
@@ -205,9 +237,9 @@ providers:
   #     NOTE: this is an *approximation*, not a true provider-level TPM ledger -- the schema/code
   #     (`LLMBudget`/`ProviderLedger`) only actually enforces a shared limit for `rpm`
   #     (`route.provider_rpm`); there is no equivalent provider-wide token-rate ledger today, so
-  #     each route's 100k TPM is checked independently rather than summed across the account. If
+  #     each route's 40k TPM is checked independently rather than summed across the account. If
   #     several NVIDIA routes are dispatched concurrently at full token throughput, the account's
-  #     *aggregate* token rate could exceed 100k TPM even though no single route did. Adding a real
+  #     *aggregate* token rate could exceed 40k TPM even though no single route did. Adding a real
   #     provider-level TPM ledger (parallel to `provider_rpm`) is a follow-up, not done here.
   #   - No `rpd` is set anywhere below: NVIDIA publishes no daily cap, so encoding one would be
   #     inventing a number we have no basis for.
@@ -227,7 +259,14 @@ providers:
     ai_gateway_chat_path: /v1/chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    rpm: 12
+    # Provider-wide safety net only -- the REAL limit is per route (0.5 rpm each). NVIDIA's quota
+    # is per MODEL, not per account: verified 2026-08-29 on one key, `deepseek-v4-pro` returned 429
+    # nine times out of nine while `nemotron-3-super` returned 200 three times, twice inside the
+    # same minute (16:58:14 ok / 16:58:50 429). A tight provider-wide cap would therefore be the
+    # wrong instrument -- it would make nine models share one model's budget. This only has to sit
+    # clear of the ~40 RPM community-reported account baseline while staying above the sum of the
+    # route rates (9 x 0.5 = 4.5), leaving per-route pacing as the binding constraint.
+    rpm: 6
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
@@ -427,7 +466,9 @@ routes:
     output_context_limit: 32768
     account_id: primary
     rpm: 20
-    rpd: 1000
+    # SambaNova Free tier: 20 requests/day for this model. The split-cap compiler emits 10 per
+    # dispatcher while v1/v2 coexist, preserving the 20-request provider budget in aggregate.
+    rpd: 20
     tpm: 100000
     free: true
 
@@ -462,6 +503,21 @@ routes:
     tpm: 8000
     free: true
 
+  # QWEN 3.8 27B (Groq free route)
+  # Groq's published table (2026-08-29): 30 RPM / 1K RPD / 8K TPM / 2M TPD. This schema has
+  # no TPD field, so the daily token ceiling is documented here but not enforced by the ledger.
+  - route_id: groq_qwen_3_8_27b_primary
+    model: qwen/qwen3.8-27b
+    provider: groq
+    upstream_model: qwen/qwen3.8-27b
+    input_context_limit: 131042
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 30
+    rpd: 1000
+    tpm: 8000
+    free: true
+
   # ==========================================
   # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
   # ==========================================
@@ -473,7 +529,8 @@ routes:
     output_context_limit: 8192
     account_id: primary
     rpm: 20
-    rpd: 1000
+    # Keep the same conservative Free-tier daily ceiling for this shared-key fallback route.
+    rpd: 20
     tpm: 100000
     free: true
 
@@ -663,28 +720,55 @@ routes:
     tpm: 50000
     free: true
 
-  # Mistral Medium 2508: 0.38 RPS (22 RPM), 356.25k TPM
-  - route_id: mistral_medium_2508_primary
-    model: mistral/mistral-medium-2508
+  # Mistral Medium 3.5: 0.38 RPS (22 RPM), 356.25k TPM. The old 2508/2505 selectors below are
+  # compatibility aliases to this same physical pool; they must retain identical settings so the
+  # compiler coalesces them instead of counting one Mistral credential three times.
+  - route_id: mistral_medium_3_5_primary
+    model: mistral/mistral-medium-3-5
     provider: mistral
-    upstream_model: mistral-medium-2508
-    input_context_limit: 131072
-    output_context_limit: 131072
+    upstream_model: mistral-medium-3-5
+    input_context_limit: 262144
+    output_context_limit: 262144
     account_id: primary
     rpm: 22
     tpm: 356250
     free: true
 
-  # Mistral Medium 2505: 0.42 RPS (25 RPM), 375k TPM
+  - route_id: mistral_medium_2508_primary
+    model: mistral/mistral-medium-2508
+    model_key: mistral/mistral-medium-3-5
+    provider: mistral
+    upstream_model: mistral-medium-3-5
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: primary
+    rpm: 22
+    tpm: 356250
+    free: true
+
   - route_id: mistral_medium_2505_primary
     model: mistral/mistral-medium-2505
+    model_key: mistral/mistral-medium-3-5
     provider: mistral
-    upstream_model: mistral-medium-2505
-    input_context_limit: 131072
-    output_context_limit: 131072
+    upstream_model: mistral-medium-3-5
+    input_context_limit: 262144
+    output_context_limit: 262144
     account_id: primary
-    rpm: 25
-    tpm: 375000
+    rpm: 22
+    tpm: 356250
+    free: true
+
+  - route_id: airforce_mistral_medium_3_5_primary
+    model: airforce/mistral-medium-3.5
+    model_key: mistral/mistral-medium-3-5
+    provider: airforce
+    upstream_model: mistral-medium-3.5
+    input_context_limit: 262144
+    output_context_limit: 4096
+    account_id: primary
+    rpm: 0.69
+    rpd: 1000
+    concurrency: 1
     free: true
 
   # Mistral Large 2512: 0.07 RPS (4.2 RPM -> 4 RPM), 250k TPM
@@ -757,12 +841,24 @@ routes:
     tpm: 50000
     free: true
 
+  - route_id: mistral_medium_3_5_secondary
+    model: mistral/mistral-medium-3-5
+    provider: mistral
+    upstream_model: mistral-medium-3-5
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: secondary
+    rpm: 22
+    tpm: 356250
+    free: true
+
   - route_id: mistral_medium_2508_secondary
     model: mistral/mistral-medium-2508
+    model_key: mistral/mistral-medium-3-5
     provider: mistral
-    upstream_model: mistral-medium-2508
-    input_context_limit: 131072
-    output_context_limit: 131072
+    upstream_model: mistral-medium-3-5
+    input_context_limit: 262144
+    output_context_limit: 262144
     account_id: secondary
     rpm: 22
     tpm: 356250
@@ -770,13 +866,14 @@ routes:
 
   - route_id: mistral_medium_2505_secondary
     model: mistral/mistral-medium-2505
+    model_key: mistral/mistral-medium-3-5
     provider: mistral
-    upstream_model: mistral-medium-2505
-    input_context_limit: 131072
-    output_context_limit: 131072
+    upstream_model: mistral-medium-3-5
+    input_context_limit: 262144
+    output_context_limit: 262144
     account_id: secondary
-    rpm: 25
-    tpm: 375000
+    rpm: 22
+    tpm: 356250
     free: true
 
   - route_id: mistral_large_2512_secondary
@@ -1081,8 +1178,13 @@ routes:
   # ==========================================
   # NVIDIA BUILD ROUTES (build.nvidia.com / NIM hosted API catalog)
   # See the `nvidia` provider block above for the capacity caveats these routes share: a
-  # self-imposed 12 RPM provider-wide pace (30% of the ~40 RPM community-reported baseline) and a
-  # per-route 100k TPM self-imposed cap that is *not* summed across routes (no real provider-level
+  # self-imposed 0.5 RPM provider-wide pace. Measured 2026-08-29: NVIDIA locks these endpoints
+  # out for ~22-49 minutes once roughly 30 successful requests land inside a rolling hour (three
+  # lockouts began at 28, 37 and 31 successes/hr), and the lockouts appear to lengthen when we keep
+  # exhausting it. 30/hr is 0.5/min, so that is the pace. It costs no throughput -- the hourly quota
+  # caps us either way -- it just spends the quota evenly instead of burning it in half an hour and
+  # then sitting locked out. Below 1 rpm is deliberate and supported; see _scale_rate_limit and
+  # per-route 40k TPM self-imposed cap that is *not* summed across routes (no real provider-level
   # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. `structured_output_profile`
   # is left at the config default (`standard_json_schema`, via `instructor`) rather than guessing
   # this gateway's native JSON-mode behavior, which is unverified.
@@ -1097,7 +1199,7 @@ routes:
   # route-level rpm, v2 would treat these routes as unbounded, and v1/v2 are actively coexisting
   # right now (`split_cap_multiplier: 0.50` above), not a future migration. This does not restore
   # true shared pooling in v2 -- in the worst case (many different NVIDIA models dispatched
-  # concurrently) v2's aggregate could still exceed 12 RPM in total -- but it bounds each
+  # concurrently) v2's aggregate could still exceed the provider-wide rpm in total -- but it bounds each
   # individual route rather than leaving it uncapped. A real fix ports provider-level pacing into
   # v2's pacing.js/coordinator.js; that is a larger follow-up, not done here.
   #
@@ -1115,8 +1217,25 @@ routes:
     input_context_limit: 1048576
     output_context_limit: 65536
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
+    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
+    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
+    # showed up immediately as a drop in dispatched jobs.
+    rpm: 4
+    tpm: 40000
+    # Raised back to 4 on 2026-08-30. The ceiling of 1 was set the day before on the
+    # theory that NVIDIA rejects any overlapping request with a fast ~8.3s 429. Gateway
+    # logs since the routing fix landed at 14Z say otherwise: nemotron-3-super ran 39
+    # calls with 39 successes and no 429 at all. The rejections were deepseek-v4-pro's
+    # account-level lockout, which that route still carries its own ceiling for -- the
+    # same over-generalisation that scoped its rate to all nine routes (PR #1336).
+    #
+    # Concurrency, not rpm/tpm, was the binding constraint: with a ceiling of 1 the
+    # dispatcher never came close to either limit, because nothing was allowed in
+    # flight to consume them. 4 here matches this route's rpm. It is per-Worker-ledger,
+    # so v1 and v2 each keep their own -- up to 8 in flight while both transports are
+    # live, the same coexistence caveat as split_cap_multiplier.
+    concurrency: 4
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1135,8 +1254,23 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    # 0.5 rpm = 30/hr, applied ONLY to this route. NVIDIA's limits are per MODEL (see the provider
+    # block), so this rate must not be generalised. Measured 2026-08-29: `deepseek-v4-pro` locks out
+    # for 22+ minutes once ~30 successful calls for THIS model land inside a rolling hour (onsets at
+    # 28 and 37), and a lockout beginning at 15:54 was still running 66 minutes later -- the penalty
+    # appears to lengthen while we keep probing. Pacing to 30/hr costs no throughput here, since the
+    # quota caps us either way. Sub-1 rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s
+    # minute bucket both used to clamp a fractional rate UP to 1.
+    rpm: 0.5
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1149,8 +1283,20 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
+    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
+    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
+    # showed up immediately as a drop in dispatched jobs.
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 4
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1164,8 +1310,20 @@ routes:
     input_context_limit: 262144
     output_context_limit: 32768
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
+    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
+    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
+    # showed up immediately as a drop in dispatched jobs.
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 4
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1179,8 +1337,20 @@ routes:
     input_context_limit: 131072
     output_context_limit: 65536
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
+    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
+    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
+    # showed up immediately as a drop in dispatched jobs.
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 4
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1197,8 +1367,20 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 65536
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
+    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
+    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
+    # showed up immediately as a drop in dispatched jobs.
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 4
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1215,8 +1397,20 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
+    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
+    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
+    # showed up immediately as a drop in dispatched jobs.
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 4
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1232,8 +1426,20 @@ routes:
     input_context_limit: 256000
     output_context_limit: 32768
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
+    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
+    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
+    # showed up immediately as a drop in dispatched jobs.
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 4
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1249,8 +1455,20 @@ routes:
     input_context_limit: 32768
     output_context_limit: 8192
     account_id: primary
-    rpm: 12
-    tpm: 100000
+    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
+    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
+    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
+    # showed up immediately as a drop in dispatched jobs.
+    rpm: 4
+    tpm: 40000
+    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
+    # queueing it. Successful calls on these models run 41s median / 77s p90 /
+    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
+    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
+    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
+    # one -- up to 2 in flight while both transports are live, the same
+    # coexistence caveat as split_cap_multiplier.
+    concurrency: 4
     free: true
     input_per_token: 0.0
     output_per_token: 0.0

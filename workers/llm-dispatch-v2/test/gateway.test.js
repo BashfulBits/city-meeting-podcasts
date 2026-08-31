@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveProviderCredentials, upstreamRequestForRoute } from "../src/gateway.js";
+import { resolveProviderCredentials, upstreamRequestForRoute, upstreamCapacityFailure } from "../src/gateway.js";
 
 const DISPATCH_LIMITS = {
   providers: {
@@ -9,6 +9,7 @@ const DISPATCH_LIMITS = {
       ai_gateway_slug: "google-ai-studio",
       ai_gateway_chat_path: "/v1beta/openai/chat/completions",
       chat_path: "/chat/completions",
+      ai_gateway_max_attempts: 1,
       accounts: [{ id: "project_primary", api_key_env: "GEMINI_API_KEY" }],
     },
   },
@@ -31,6 +32,7 @@ test("resolveProviderCredentials routes through AI Gateway when AI_GATEWAY_ID + 
   };
   const creds = resolveProviderCredentials(env, ROUTE, DISPATCH_LIMITS);
   assert.equal(creds.usesGateway, true);
+  assert.equal(creds.aiGatewayMaxAttempts, 1);
   assert.equal(
     creds.url,
     "https://gateway.ai.cloudflare.com/v1/acct123/citypods-dispatch/google-ai-studio/v1beta/openai/chat/completions"
@@ -119,4 +121,47 @@ test("upstreamRequestForRoute forwards only recognized provider-tuning fields", 
     tool_choice: "auto",
     response_format: payload.response_format,
   });
+});
+
+
+test("upstreamCapacityFailure recognises a 400 whose body blames the provider's upstream", () => {
+  // The exact payload OpenCode Zen returned on 2026-08-30 while still listing the model as
+  // available. Both signals in it are load-bearing and asserted separately below.
+  const observed = {
+    error: {
+      type: "server_error",
+      message: "Error from provider (Console): Upstream request failed: Model is unavailable.",
+    },
+  };
+  assert.equal(upstreamCapacityFailure(400, observed), true);
+
+  // type alone is enough...
+  assert.equal(upstreamCapacityFailure(400, { error: { type: "server_error", message: "" } }), true);
+  // ...and so is the message alone, for providers that do not set a machine-readable type.
+  assert.equal(
+    upstreamCapacityFailure(400, { error: { type: "", message: "Upstream request failed" } }),
+    true
+  );
+  assert.equal(upstreamCapacityFailure(400, { error: { message: "No capacity available" } }), true);
+});
+
+test("upstreamCapacityFailure leaves genuine request defects terminal", () => {
+  // The rule must stay narrow, or a schema bug becomes an infinite retry against a healthy route.
+  assert.equal(
+    upstreamCapacityFailure(400, { error: { type: "invalid_request_error", message: "unknown field 'foo'" } }),
+    false
+  );
+  assert.equal(upstreamCapacityFailure(400, { error: { message: "messages: field required" } }), false);
+  assert.equal(upstreamCapacityFailure(400, {}), false, "no error object at all");
+  assert.equal(upstreamCapacityFailure(400, null), false);
+  assert.equal(upstreamCapacityFailure(400, { error: "a bare string" }), false);
+});
+
+test("upstreamCapacityFailure applies to 400 only, never to other 4xx", () => {
+  // 401/403/404/422 really do blame the request, and a provider echoing "server_error" in one of
+  // them must not win the job an unbounded retry loop.
+  const body = { error: { type: "server_error", message: "Upstream request failed" } };
+  for (const status of [401, 403, 404, 409, 422, 429]) {
+    assert.equal(upstreamCapacityFailure(status, body), false, `status ${status} must stay terminal`);
+  }
 });

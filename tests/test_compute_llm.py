@@ -1795,7 +1795,22 @@ def test_every_catalog_route_builds_its_configured_gateway_url(route, gateway_en
 
     slug = route.ai_gateway_slug or route.provider
     assert api_base + "/chat/completions" == f"{_GW}/{slug}{route.ai_gateway_chat_path}"
-    assert headers == {"cf-aig-authorization": "Bearer test-auth-token"}
+    expected_headers = {"cf-aig-authorization": "Bearer test-auth-token"}
+    if route.ai_gateway_max_attempts is not None:
+        expected_headers["cf-aig-max-attempts"] = str(route.ai_gateway_max_attempts)
+    assert headers == expected_headers
+
+
+def test_sambanova_routes_use_a_single_gateway_attempt(gateway_env):
+    route = next(route for route in ROUTE_REGISTRY.values() if route.provider == "sambanova")
+    backend, _ = _recording_backend("meta-llama/llama-3.3-70b-instruct")
+
+    _, headers = backend._resolve_api_base_and_headers(route, direct=True)
+
+    assert headers == {
+        "cf-aig-authorization": "Bearer test-auth-token",
+        "cf-aig-max-attempts": "1",
+    }
 
 
 # How each custom provider is registered on the Cloudflare side, and therefore what
@@ -1812,6 +1827,7 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     "siliconflow": "/v1/chat/completions",
     "sambanova": "/v1/chat/completions",
     "nvidia": "/v1/chat/completions",
+    "airforce": "/v1/chat/completions",
     # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
     # forced `v1` substitution lands correctly and the caller path stays bare.
     "kilo": "/chat/completions",
@@ -1953,3 +1969,54 @@ def test_dispatch_payload_is_never_rewritten_for_the_gateway(gateway_env):
     assert "gateway.ai.cloudflare.com" not in json.dumps(posted)
     assert "extra_headers" not in payload
     assert "cf-aig-authorization" not in json.dumps(posted).lower()
+
+
+def test_dispatch_v2_stats_returns_the_bounded_scheduler_snapshot():
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"jobs": {"by_state": {"queued": 3}}, "bundles": {"active": 1}}
+
+    class Session:
+        def get(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.6-flash",
+            dispatch_v2_url="https://dispatch.example/",
+            dispatch_v2_auth_token="v2-secret",
+        ),
+        http_session=Session(),
+    )
+
+    assert backend.dispatch_v2_stats(limit=7) == {
+        "jobs": {"by_state": {"queued": 3}},
+        "bundles": {"active": 1},
+    }
+    assert calls[0][0] == "https://dispatch.example/v2/stats?limit=7"
+    assert calls[0][1]["headers"] == {"authorization": "Bearer v2-secret"}
+
+
+@pytest.mark.parametrize("config_name", ["dispatch_url", "dispatch_v2_url"])
+def test_backend_rejects_cleartext_dispatch_urls_before_any_request(config_name):
+    calls = []
+
+    class Session:
+        def get(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            raise AssertionError("an insecure dispatch URL must not be requested")
+
+    with pytest.raises(ValueError, match="must be an HTTPS URL"):
+        LiteLLMBackend(
+            LLMBackendConfig(
+                model="gemini/gemini-3.6-flash",
+                **{config_name: "http://dispatch.example"},
+            ),
+            http_session=Session(),
+        )
+    assert calls == []

@@ -33,6 +33,81 @@ export function minInterRequestGapMs(route) {
   return Math.ceil(MS_PER_MINUTE / rpm);
 }
 
+/**
+ * Calendar date in a provider's own reset timezone, as `YYYY-MM-DD`.
+ *
+ * A daily quota resets on the provider's clock, not 24 hours after we first used it. Gemini's free
+ * tier rolls at midnight America/Los_Angeles; treating it as a rolling 24h window anchored on our
+ * first request holds a route exhausted for up to a further ~14 hours after the provider has
+ * already refilled it. v1 (`llm-dispatch-proxy`'s zonedDateKey/routeResetTimezone) has always keyed
+ * on this; v2 shipped without it, which is the divergence this restores. Duplicated rather than
+ * shared, per this repo's convention of each Worker directory being self-contained.
+ */
+export function zonedDateKey(ms, timeZone = "UTC") {
+  const date = new Date(ms);
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const y = parts.find((p) => p.type === "year")?.value;
+    const m = parts.find((p) => p.type === "month")?.value;
+    const d = parts.find((p) => p.type === "day")?.value;
+    if (y && m && d) return `${y}-${m}-${d}`;
+  } catch {
+    // Invalid timezone string -- fall through to UTC rather than throwing inside the scheduler.
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+/** The provider's reset timezone for a route, defaulting to UTC. */
+export function routeResetTimezone(route) {
+  return route?.reset_timezone || "UTC";
+}
+
+/**
+ * When a route's daily quota next allows a request, keyed on the provider's calendar day.
+ *
+ * A stale day key means the provider has already rolled over, so the route is ready now.
+ *
+ * `limit <= 0` returns `now`, matching the fixedWindowReadyAt behaviour this replaces. Note that
+ * `_capacityFraction` reads `rpd: 0` as the repository's "paused" convention and scores it 0, so
+ * the two disagree -- that predates this change and is deliberately left alone rather than
+ * quietly altered while fixing timezones. In practice a paused route is dropped from the ranking
+ * before pacing is consulted.
+ */
+export function dailyQuotaReadyAt(route, now) {
+  const limit = Number(route?.rpd);
+  if (!Number.isFinite(limit) || limit <= 0) return now;
+  const tz = routeResetTimezone(route);
+  if (route?.rpd_day_key !== zonedDateKey(now, tz)) return now; // provider already reset
+  if ((Number(route?.rpd_count) || 0) < limit) return now;
+  return nextZonedMidnightMs(now, tz);
+}
+
+/** Epoch ms of the next midnight in `timeZone`, found by probing forward one hour at a time. */
+export function nextZonedMidnightMs(now, timeZone = "UTC") {
+  const today = zonedDateKey(now, timeZone);
+  // A day is at most 25 hours across a DST fall-back, so 26 probes always cross the boundary.
+  for (let hour = 1; hour <= 26; hour += 1) {
+    const probe = now + hour * 3_600_000;
+    if (zonedDateKey(probe, timeZone) !== today) {
+      // Narrow to the minute so the route is not held for up to an extra hour.
+      let lo = probe - 3_600_000;
+      let hi = probe;
+      while (hi - lo > 60_000) {
+        const mid = lo + Math.floor((hi - lo) / 2);
+        if (zonedDateKey(mid, timeZone) === today) lo = mid;
+        else hi = mid;
+      }
+      return hi;
+    }
+  }
+  return now + MS_PER_DAY;
+}
+
 function fixedWindowReadyAt(windowStart, count, limit, windowMs, now) {
   if (!Number.isFinite(limit) || limit <= 0) return now; // unlimited / unconfigured
   if (!Number.isFinite(windowStart) || now - windowStart >= windowMs) return now; // stale/fresh window
@@ -49,6 +124,33 @@ export function availableTokenBudget(route, now) {
   const elapsedMs = Math.max(0, now - updatedAt);
   const refilled = (Number(route?.full_token_budget) || 0) + (elapsedMs * tpm) / MS_PER_MINUTE;
   return Math.min(cap, refilled);
+}
+
+/**
+ * A route's 429 buffer, decayed for the time elapsed since it was last raised.
+ *
+ * `buffer_seconds` is a backoff, so it has to be able to expire on its own. Stored as a bare
+ * number and compared straight against the dispatch window, it was a permanent kill switch
+ * instead: _capacityFraction scores a route 0 once buffer_seconds >= DISPATCH_WINDOW_SECONDS
+ * (25), and a single 429 adds MAX_429_BACKOFF_SECONDS (60) at once. The only code that ever
+ * cleared it ran on a *successful* completeBatch for that route -- unreachable, because a
+ * zero-capacity route is never ranked, so never claimed, so never succeeds. One 429 therefore
+ * removed a route from v2's ranking forever, with no blocked_until and no error to show for it.
+ * Observed 2026-08-30: 15,833 queued jobs, every route silently at zero, zero bundles claimed.
+ *
+ * Decaying at one second per second gives the backoff its intended meaning -- a 60-second buffer
+ * stops gating the route after ~35 seconds (when it falls under the 25-second window) and is
+ * fully spent after 60 -- and makes recovery unattended.
+ */
+export function effectiveBufferSeconds(route, now) {
+  const stored = Number(route?.buffer_seconds);
+  if (!Number.isFinite(stored) || stored <= 0) return 0;
+  const updatedAt = Number(route?.buffer_updated_at) || 0;
+  // A row written before buffer_updated_at existed has 0 here; treating that as "fully elapsed"
+  // is the right migration, since those are exactly the routes stuck from the old behaviour.
+  if (updatedAt <= 0) return 0;
+  const elapsedSeconds = Math.max(0, (now - updatedAt) / 1000);
+  return Math.max(0, stored - elapsedSeconds);
 }
 
 /**
@@ -83,11 +185,8 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     fixedWindowReadyAt(route?.rpm_window_start, route?.rpm_count, route?.rpm, MS_PER_MINUTE, now)
   );
 
-  // RPD: fixed 24h window.
-  notBeforeAt = Math.max(
-    notBeforeAt,
-    fixedWindowReadyAt(route?.rpd_window_start, route?.rpd_count, route?.rpd, MS_PER_DAY, now)
-  );
+  // RPD: the provider's calendar day in its own reset timezone, not a rolling 24h window.
+  notBeforeAt = Math.max(notBeforeAt, dailyQuotaReadyAt(route, now));
 
   // TPM: refillable token bucket. Reservations at or under one window's tpm allowance are also
   // gated by the ordinary rolling reservation (tpm_reserved/tpm_window_start) so a burst of
@@ -111,8 +210,11 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     }
   }
 
-  // Route buffer: an additive delay accrued from repeated 429s (decays on success elsewhere).
-  const bufferMs = Math.max(0, Number(route?.buffer_seconds) || 0) * 1000;
+  // Route buffer: an additive delay accrued from repeated 429s. Uses what is still *owed* rather
+  // than the stored figure -- the stored one never shrinks, so this pushed every future dispatch
+  // a full buffer beyond `now` forever, which is the same permanent stall as the capacity check
+  // and had to be fixed in both places to matter (see effectiveBufferSeconds).
+  const bufferMs = effectiveBufferSeconds(route, now) * 1000;
   if (bufferMs > 0) notBeforeAt = Math.max(notBeforeAt, now + bufferMs);
 
   // Explicit block from a severe/repeated throttle.
@@ -172,14 +274,24 @@ export function computeRouteLaneWait(route, job, laneTime, now, options = {}) {
  */
 export function paymentRequiredBackoffUntil(streak, now) {
   const d = new Date(now);
-  if (streak <= 1) {
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+  const dayOffset = (n) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n);
+  // Intended shape: a day, then a week, then "start of next month" for anything beyond. The raw
+  // calendar values are NOT inherently ordered, so they are combined into a strictly increasing
+  // ladder below rather than returned directly:
+  //   - on a Sunday, "next Monday" IS tomorrow, so rung 2 would equal rung 1;
+  //   - near a month end, "start of next month" can fall BEFORE next Monday, so rung 3 would
+  //     regress below rung 2.
+  // Either way a further 402 would buy no extra cooldown, which is the opposite of an escalation.
+  const daysUntilNextMonday = ((8 - d.getUTCDay()) % 7) || 7;
+  const rungs = [
+    dayOffset(1),
+    dayOffset(daysUntilNextMonday > 1 ? daysUntilNextMonday : daysUntilNextMonday + 7),
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1),
+  ];
+  const target = Math.min(Math.max(Number(streak) || 1, 1), rungs.length);
+  let value = rungs[0];
+  for (let i = 1; i < target; i += 1) {
+    value = Math.max(rungs[i], value + 86_400_000); // at least a day beyond the previous rung
   }
-  if (streak === 2) {
-    // Next UTC Monday, at least 1 and at most 7 days out (today itself included, so a streak
-    // reached exactly on a Monday still gets a full week, not zero).
-    const daysUntilNextMonday = ((8 - d.getUTCDay()) % 7) || 7;
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + daysUntilNextMonday);
-  }
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  return value;
 }

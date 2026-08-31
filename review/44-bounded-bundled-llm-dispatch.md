@@ -842,10 +842,21 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
 
 ### Phase 3 — Exit coexistence
 
-- Monitor v1's pending-record count via `citypods.compute.llm_deferred.list_pending_deferred`
-  (backed by `DEFERRED_INDEX_PENDING_PREFIX` in the deferred registry — the same source the v1
-  sweep itself reads) until it returns empty. This is a checked metric already exposed by existing
-  code, not an assumed timeline or new instrumentation.
+- Monitor the v1 **client registry** via `citypods.compute.llm_deferred.list_pending_deferred`
+  (backed by `DEFERRED_INDEX_PENDING_PREFIX`) until it returns empty, but do not mistake it for the
+  whole legacy Worker queue: historical v1 requests can exist only in R2 after their producer has
+  switched to v2. `scripts/recover_v1_llm_dispatch_results.py` is the bounded, manual bridge for
+  that temporary provenance gap. It lists v1 `requests/` directly in R2, joins completed records
+  first to exact `job_ref`s retained by the resumable agenda and locator stage state, then rebuilds
+  only unfinished agenda/locator prompts from durable source bytes. The latter path requires one
+  exact normalized prompt plus recorded response-schema-shape match; zero or multiple owners, or
+  one candidate matching multiple historical R2 records, are report-only. It validates the
+  recorded structured response and writes the resulting `JobResult` to B2's normal deferred
+  registry. Pending, failed, malformed, unavailable-input, unowned, and
+  multiply owned records are report-only; the importer neither guesses ownership nor creates B2
+  pending handles. It deliberately retains the R2 object because the v1 Worker has no verified
+  DELETE endpoint and B2 persistence alone does not prove downstream consumption. This importer is
+  a removal candidate once v1 is empty.
 - Flip v2's route ledger from the 50% split-cap back to 1x.
 - Retire v1's cron trigger and Worker.
 - On a v2 enqueue timeout during this window, retry v2 with the same idempotency key. Do **not**
@@ -901,9 +912,30 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   replayed, completed, and still-pending siblings remain authoritative when another item fails.
   Known per-item rejections remain errors without pointless resubmission. Unknown outcomes get one
   recovery round: more than five are retried in a second batch, while five or fewer are isolated;
-  a second failed batch does not recurse. The deferred sweep uses the same threshold after its
-  initial poll. Payload-free structured events report batch, retry, singleton-fallback, and schema-
-  retry counts. No artifact schema, recipe, pipeline version, or backfill behavior changes.
+  a second failed batch does not recurse. Payload-free structured events report batch, retry,
+  singleton-fallback, and schema-retry counts. No artifact schema, recipe, pipeline version, or
+  backfill behavior changes.
+- **Implemented (2026-08-30): batch-only deferred-sweep recovery and bounded observation.** The
+  sweep's v2 pass is stricter than the normal interactive client: every real v2 handle receives one
+  bulk poll and, when necessary, one bulk recovery poll; an absent or unknown second outcome is
+  recorded as unobserved and left for the next cadence, never sent through `reconcile()` for a
+  singleton Worker read. Legacy queue-only capsules are rebuilt into `InferenceJob`s and sent via
+  bounded `enqueue_batch()` calls before their first poll. Start/end JSON summaries split the
+  client-owned deferred registry into v1-dispatched, v2-dispatched, v2-deferred, and direct-deferred
+  work; one authenticated `/v2/stats` snapshot adds the coordinator's independent queue state.
+  V1 intentionally gains no R2 ledger, endpoint, or scan: it remains on its existing temporary
+  singleton reaping path while its backlog drains. **Deviation, maintainer-approved 2026-08-30:**
+  the scheduled pass is raised from 30 minutes within a 40-minute Actions timeout to 90 minutes
+  within 105 minutes. The observed legacy B2 registry needs materially more time after snapshot and
+  maintenance work to poll and durably consume already-finished v1 results; a 15-minute teardown
+  margin prevents GitHub from cancelling that verified completion. This increases scheduled runner
+  time temporarily, but does not enumerate unknown R2 records or change dispatch rate. Revert to a
+  shorter pass when the client-owned v1 registry is empty. **Production follow-up:** the first
+  bounded run was killed at the 40-minute job limit without a summary because snapshot construction
+  still issued serial B2 reads before its first log or deadline check. Snapshot loading now emits a
+  flushed start event, reads at most 16 records concurrently, records listed/loaded/omitted counts,
+  and stops admitting new reads at the deadline so the remaining tail waits for the next six-hour
+  pass. No artifact schema, recipe, pipeline version, or backfill behavior changes.
 - Round out the bulk client API and observability beyond Phase 1's minimum: retain the `JobHandle`
   public contract with `backend="llm-dispatch-v2"` explicit in every v2 handle; emit one structured
   event per ingress batch, claim plan, paced provider start, actual attempt, retry authorization,

@@ -7,8 +7,11 @@ import {
   earliestSafeStart,
   routeHasCapacityFor,
   computeRouteLaneWait,
+  zonedDateKey,
+  nextZonedMidnightMs,
   paymentRequiredBackoffUntil,
   FULL_TOKEN_BUDGET_WINDOWS,
+  effectiveBufferSeconds,
 } from "../src/pacing.js";
 
 const NOW = 1_700_000_000_000;
@@ -80,10 +83,43 @@ test("earliestSafeStart does not wait once the RPM window has rolled over", () =
   assert.equal(result.notBeforeAt, NOW);
 });
 
-test("earliestSafeStart waits for the next RPD window once the daily cap is full", () => {
-  const route = freshRoute({ rpd: 500, rpd_window_start: NOW, rpd_count: 500 });
+test("earliestSafeStart waits for the provider's next calendar day once the daily cap is full", () => {
+  // Daily quotas roll on the provider's clock, not 24h after our first request of the day. The
+  // route is exhausted only while its recorded day key is still today in that timezone.
+  const tz = "America/Los_Angeles";
+  const today = zonedDateKey(NOW, tz);
+  const route = freshRoute({ rpd: 500, rpd_day_key: today, rpd_count: 500, reset_timezone: tz });
   const result = earliestSafeStart(route, job(), NOW, NOW);
-  assert.equal(result.notBeforeAt, NOW + 86_400_000);
+  assert.equal(result.notBeforeAt, nextZonedMidnightMs(NOW, tz));
+  assert.ok(
+    result.notBeforeAt - NOW < 86_400_000,
+    "next local midnight must be sooner than a full rolling 24h from now",
+  );
+});
+
+test("a stale day key means the provider already reset, so the route is ready now", () => {
+  // The bug this covers: v2 anchored the daily window on first use, so a route exhausted at (say)
+  // 14:00 local stayed exhausted until 14:00 the NEXT day -- ~14 hours past Gemini's actual
+  // midnight-Pacific rollover. Because an exhausted route scores 0 in _capacityFraction, its whole
+  // model then drops out of the ranking and its jobs go unclaimed.
+  const tz = "America/Los_Angeles";
+  const route = freshRoute({
+    rpd: 500,
+    rpd_day_key: zonedDateKey(NOW - 86_400_000, tz), // yesterday, in the provider's timezone
+    rpd_count: 500,
+    reset_timezone: tz,
+  });
+  const result = earliestSafeStart(route, job(), NOW, NOW);
+  assert.equal(result.notBeforeAt, NOW, "a rolled-over daily quota must not hold the route");
+});
+
+test("rpd <= 0 keeps its pre-existing pacing meaning (unconstrained here)", () => {
+  // Pins the behaviour rather than endorsing it: fixedWindowReadyAt treated `limit <= 0` as
+  // unlimited while _capacityFraction reads `rpd: 0` as paused. That disagreement predates the
+  // timezone work and is left as-is; a paused route is dropped from the ranking before pacing
+  // is reached, so the inconsistency is not reachable in practice.
+  const route = freshRoute({ rpd: 0, rpd_count: 0 });
+  assert.equal(earliestSafeStart(route, job(), NOW, NOW).notBeforeAt, NOW);
 });
 
 test("earliestSafeStart waits for token budget to refill for an oversized job", () => {
@@ -106,9 +142,27 @@ test("earliestSafeStart returns null when a reservation exceeds the route's burs
 });
 
 test("earliestSafeStart honors an additive route buffer from repeated 429s", () => {
-  const route = freshRoute({ buffer_seconds: 30 });
+  // The buffer now carries the moment it was raised, so it can be spent down; a buffer raised
+  // right now is still owed in full.
+  const route = freshRoute({ buffer_seconds: 30, buffer_updated_at: NOW });
   const result = earliestSafeStart(route, job(), NOW, NOW);
   assert.equal(result.notBeforeAt, NOW + 30_000);
+});
+
+test("earliestSafeStart spends the route buffer down as time passes", () => {
+  // The other half of the 2026-08-30 stall. This delay is applied relative to `now`, so reading
+  // the stored figure pushed every future dispatch a full buffer into the future forever -- the
+  // capacity fix alone did not free the route, because this kept it unschedulable.
+  const route = freshRoute({ buffer_seconds: 30, buffer_updated_at: NOW });
+  assert.equal(earliestSafeStart(route, job(), NOW + 10_000, NOW + 10_000).notBeforeAt,
+    NOW + 10_000 + 20_000, "only the remaining 20s is still owed");
+  assert.equal(earliestSafeStart(route, job(), NOW + 30_000, NOW + 30_000).notBeforeAt,
+    NOW + 30_000, "fully spent, so no delay at all");
+});
+
+test("earliestSafeStart ignores a buffer with no timestamp, as written before the migration", () => {
+  const route = freshRoute({ buffer_seconds: 30 });
+  assert.equal(earliestSafeStart(route, job(), NOW, NOW).notBeforeAt, NOW);
 });
 
 test("earliestSafeStart honors an explicit blocked_until floor", () => {
@@ -179,4 +233,35 @@ test("paymentRequiredBackoffUntil blocks until the start of next UTC month on th
 test("paymentRequiredBackoffUntil rolls the year over correctly for a December streak", () => {
   const december = Date.UTC(2024, 11, 15);
   assert.equal(paymentRequiredBackoffUntil(3, december), Date.UTC(2025, 0, 1));
+});
+
+test("effectiveBufferSeconds decays a 429 buffer to nothing over its own duration", () => {
+  // The 2026-08-30 deadlock in miniature. A stored buffer of 60s is >= the 25s dispatch window,
+  // so _capacityFraction scores the route 0; with no decay the only escape was a success that
+  // scoring 0 makes impossible. It must instead run down on its own.
+  const now = Date.parse("2026-08-30T12:00:00Z");
+  const route = { buffer_seconds: 60, buffer_updated_at: now };
+
+  assert.equal(effectiveBufferSeconds(route, now), 60);
+  assert.equal(effectiveBufferSeconds(route, now + 20_000), 40);
+  // Below the 25s window here, so the route starts being ranked again.
+  assert.ok(effectiveBufferSeconds(route, now + 40_000) < 25);
+  assert.equal(effectiveBufferSeconds(route, now + 60_000), 0);
+  assert.equal(effectiveBufferSeconds(route, now + 600_000), 0, "never goes negative");
+});
+
+test("effectiveBufferSeconds treats a pre-migration row as already elapsed", () => {
+  // Rows written before buffer_updated_at existed carry 0. Those are precisely the routes stuck
+  // under the old behaviour, so they must read as recovered rather than as blocked at t=0.
+  const now = Date.parse("2026-08-30T12:00:00Z");
+  assert.equal(effectiveBufferSeconds({ buffer_seconds: 120, buffer_updated_at: 0 }, now), 0);
+  assert.equal(effectiveBufferSeconds({ buffer_seconds: 120 }, now), 0);
+});
+
+test("effectiveBufferSeconds ignores absent or nonsensical buffers", () => {
+  const now = Date.now();
+  assert.equal(effectiveBufferSeconds({}, now), 0);
+  assert.equal(effectiveBufferSeconds(null, now), 0);
+  assert.equal(effectiveBufferSeconds({ buffer_seconds: 0, buffer_updated_at: now }, now), 0);
+  assert.equal(effectiveBufferSeconds({ buffer_seconds: -5, buffer_updated_at: now }, now), 0);
 });

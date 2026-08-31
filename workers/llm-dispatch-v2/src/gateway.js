@@ -117,7 +117,13 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
     url = `${aiGatewayBase}/${gatewaySlug}${gatewayPath}`;
   }
 
-  return { apiKey, url, upstreamModel: route.upstream_model, usesGateway: Boolean(aiGatewayBase) };
+  return {
+    apiKey,
+    url,
+    upstreamModel: route.upstream_model,
+    usesGateway: Boolean(aiGatewayBase),
+    aiGatewayMaxAttempts: route.ai_gateway_max_attempts ?? providerCfg.ai_gateway_max_attempts ?? null,
+  };
 }
 
 /**
@@ -137,6 +143,9 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
   // authenticate against.
   if (creds.usesGateway && env.AI_GATEWAY_AUTH_TOKEN) {
     headers["cf-aig-authorization"] = `Bearer ${env.AI_GATEWAY_AUTH_TOKEN}`;
+  }
+  if (creds.usesGateway && creds.aiGatewayMaxAttempts != null) {
+    headers["cf-aig-max-attempts"] = String(creds.aiGatewayMaxAttempts);
   }
   if (idempotencyKey) {
     headers["idempotency-key"] = idempotencyKey;
@@ -166,6 +175,37 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
     parseError,
     correlationId,
   };
+}
+
+/**
+ * A 4xx whose *body* reports a provider-side failure: the status blames the request, the payload
+ * blames the upstream. Treated as transport, not as a defect in the job.
+ *
+ * OpenCode Zen returns HTTP 400 with `{"error":{"type":"server_error","message":"Error from
+ * provider (Console): Upstream request failed: Model is unavailable."}}` while still advertising
+ * the model in its own /v1/models listing. Classified as terminal, every job that reached it was
+ * destroyed rather than retried.
+ *
+ * Deliberately narrow. It applies only to 400 (other 4xx really are request defects: 401 bad
+ * credentials, 404 unknown model, 422 schema), and only when the body self-identifies as a server
+ * or upstream failure. A provider that returns a genuine 400 for a malformed request says nothing
+ * of the sort, and still fails terminally as it should.
+ *
+ * Kept byte-identical in behaviour to v1's copy in workers/llm-dispatch-proxy: the two dispatchers
+ * face the same providers, and a body that costs a job in one must not cost it in the other.
+ */
+export function upstreamCapacityFailure(status, body) {
+  if (status !== 400) return false;
+  const providerError = body?.error;
+  if (!providerError || typeof providerError !== "object") return false;
+  if (String(providerError.type || "").toLowerCase() === "server_error") return true;
+  const message = String(providerError.message || "").toLowerCase();
+  return (
+    message.includes("upstream request failed") ||
+    message.includes("model is unavailable") ||
+    message.includes("no capacity") ||
+    message.includes("temporarily unavailable")
+  );
 }
 
 /** Sums prompt/completion tokens from an OpenAI-shaped `usage` object, if present. */

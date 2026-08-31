@@ -1,10 +1,9 @@
 name: LLM deferred sweep
 
-# R13's deferred-request registry (citypods/compute/llm_deferred.py) holds two kinds of pending
-# record, indistinguishable to this workflow: a deferred-direct LLM request whose off-peak/quota
-# preference hasn't cleared yet, and a genuinely in-flight Mistral dispatch. This job calls
-# reconcile() on every pending record and persists whatever completes; it also prunes registry
-# records past their TTL.
+# R13's deferred-request registry (citypods/compute/llm_deferred.py) holds deferred-direct and
+# genuine dispatch handles. V2 reads and legacy queue-only submissions are bulked; v1 remains on
+# its existing temporary singleton reap path while it drains. The job persists completed results
+# and prunes expired registry records, but its normal six-hour run is a short observation/retry pass.
 #
 # Scheduled every six hours, anchored so one run still lands at 17:30 UTC -- an hour after
 # DeepSeek's 16:30 off-peak window opens (review/27 §5.3), which the previous once-daily cron
@@ -35,9 +34,9 @@ concurrency:
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    # Keep GitHub's job timeout high enough that the script's own graceful wall-clock deadline can
-    # summarize and preserve completed registry updates before Actions' harsher 6-hour kill.
-    timeout-minutes: 240
+    # The v1 registry is temporary but has a large legacy tail. Keep 15 minutes for Actions
+    # teardown after the 90-minute reap pass rather than cancelling a verified B2 completion.
+    timeout-minutes: 105
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -53,6 +52,8 @@ jobs:
 
       - name: Reconcile pending deferred/dispatched LLM requests
         env:
+          # Surface phase telemetry even when GitHub cancels the job during a storage read.
+          PYTHONUNBUFFERED: "1"
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -76,4 +77,4 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        run: python scripts/llm_deferred_sweep.py --run-time-budget-minutes 235
+        run: python scripts/llm_deferred_sweep.py --run-time-budget-minutes 90
