@@ -17,18 +17,7 @@
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
   },
-  "model_routing": {
-    "mistral/mistral-medium-2508": [
-      "deepseek/deepseek-v4-pro",
-      "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-      "gemini/gemini-3.5-flash-lite"
-    ],
-    "mistral/mistral-medium-2505": [
-      "deepseek/deepseek-v4-pro",
-      "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-      "gemini/gemini-3.5-flash-lite"
-    ]
-  },
+  "model_routing": {},
   "routes": [
     {
       "route_id": "gemini_3_5_flash_lite_primary",

@@ -197,16 +197,7 @@ def test_full_day_pricing_surcharge_is_rejected():
 
 def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
     compiled = compile_llm_limits.compile_limits()
-    assert compiled["model_routing"]["mistral/mistral-medium-2508"] == [
-        "deepseek/deepseek-v4-pro",
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-        "gemini/gemini-3.5-flash-lite",
-    ]
-    assert compiled["model_routing"]["mistral/mistral-medium-2505"] == [
-        "deepseek/deepseek-v4-pro",
-        "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-        "gemini/gemini-3.5-flash-lite",
-    ]
+    assert compiled["model_routing"] == {}
     worker = compile_llm_limits._worker_catalog(compiled)
     python_catalog = compile_llm_limits._python_routes(compiled)
     assert worker["model_routing"] == compiled["model_routing"]
