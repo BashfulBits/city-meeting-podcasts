@@ -34,7 +34,7 @@ from citypods.chapter_locator import ensure_locator_contract
 from citypods.chapter_titles import ensure_agenda_item_extractor_contract
 from citypods.compute.base import JobResult
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMStructuredOutputError
-from citypods.compute.llm_deferred import write_deferred
+from citypods.compute.llm_deferred import look_up_deferred, write_deferred
 from citypods.config import load_site_config
 from citypods.moments import ensure_moment_contract
 from citypods.storage import make_storage
@@ -293,6 +293,14 @@ def run_reconciliation(*, dry_run: bool = True) -> int:
     imported_count = 0
     for r2_k, rh, _r2_data, _b2_data, job_res in keys_to_import:
         try:
+            existing = look_up_deferred(storage, rh)
+            if isinstance(existing, JobResult):
+                logger.info(
+                    "Skipping B2 write for recipe %s: already completed canonically on B2", rh
+                )
+                r2_client.delete_object(Bucket=r2_bucket, Key=r2_k)
+                continue
+
             write_deferred(storage, rh, job_res)
             r2_client.delete_object(Bucket=r2_bucket, Key=r2_k)
             imported_count += 1

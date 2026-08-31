@@ -39,6 +39,14 @@ for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
     if (route.tpm) route.tpm = unscale(route.tpm);
   }
 }
+DISPATCH_LIMITS.model_routing = {
+  "mistral/mistral-medium-3-5": [
+    "deepseek/deepseek-v4-flash",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "gemini/gemini-3.5-flash-lite",
+    "deepseek/deepseek-v4-pro",
+  ],
+};
 
 import {
   DISPATCH_COORDINATOR_KEY,
