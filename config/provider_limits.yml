@@ -53,45 +53,8 @@ structured_output_profiles:
 # scheduler (`select_route`) and the `llm-dispatch-proxy` Worker (`normalizeChatRequest`) expand a
 # request's allowed models with this map, so it takes effect for every transport uniformly.
 #
-# HOTFIX (2026-08-21, updated 2026-08-29): Mistral's account-wide monthly allowance is now a
-# $10/mo credit cap rather than a pure rate limit (see the MISTRAL ROUTES hotfix note below),
-# leaving a backlog of queued Mistral Medium jobs with nowhere to drain once that credit is spent.
-# The overflow targets are ordered by *task* evidence where it exists, not by general capability
-# tier. `review/40-generated-agenda-chapters.md`'s frozen-gold scoring (2026-07-31, 322
-# source-backed positives over 24 agendas, matched by source-span overlap rather than title
-# similarity) is the only measurement of this workload:
-#
-#     DeepSeek Flash        precision .979  recall .587  F1 .734  meeting-macro .747
-#     Mistral Medium 2508   precision .698  recall .596  F1 .643  meeting-macro .719
-#     Mistral Large         precision .764  recall .494  F1 .600  meeting-macro .669
-#
-# DeepSeek V4 *Flash* therefore leads: it is the only overflow candidate measured on this task, and
-# it beat the model it is standing in for. (Read the .979 with care -- the gold set was built from a
-# union of Large/DeepSeek/deterministic proposals, so DeepSeek's precision is selection-biased
-# upward. Mistral Medium's row is the least biased, since its outputs were not in that union.)
-#
-# An earlier revision of this block ordered DeepSeek V4 *Pro* first on the argument that it is a
-# higher quality tier than Gemini's "High-Throughput" slot. That reasoning was about general model
-# tiers, not this task: Pro was never scored here, and the sibling that *was* scored -- and won --
-# is Flash. Measured behaviour has since undercut the tier argument too: Pro runs ~42s median with
-# multi-hour 429 lockouts, and Nemotron 3 Super spends ~10k completion tokens per job (mostly hidden
-# reasoning) to emit output comparable in size to Flash Lite's.
-#
-# Nemotron and Gemini 3.5 Flash Lite have never been scored on this workload either, so their order
-# below is operational, not evidential: Nemotron is free and reliable, Flash Lite is fast, cheap in
-# tokens, and has carried most recent overflow in practice. Scoring them properly needs the frozen
-# gold labels, which were never committed and no longer exist on disk or in B2 -- regenerating them
-# means redoing the blinded human review (review/40 §"First frozen-gold method score").
-#
-# `select_route`'s ranking prefers whichever candidate is least-utilized right now (see
-# `citypods/compute/llm_scheduler.py`), so this list expresses preference, not a hard order -- it
-# lets quota-exhaustion overflow drain into whichever pool has headroom.
-model_routing:
-  mistral/mistral-medium-3-5:
-    - deepseek/deepseek-v4-flash
-    - openrouter/nvidia/nemotron-3-super-120b-a12b:free
-    - gemini/gemini-3.5-flash-lite
-    - deepseek/deepseek-v4-pro
+# Mistral Medium jobs route strictly to native Mistral and Airforce Mistral routes.
+model_routing: {}
 
 
 # `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
