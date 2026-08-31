@@ -58,11 +58,26 @@ def _is_acceptable_provenance(task: str, executing_model: str | None) -> bool:
     return False
 
 
-def _build_s3_clients() -> tuple[Any, Any, str, str]:
+def _build_s3_clients(*, bucket: str = "citypods-llm-dispatch") -> tuple[Any, Any, str, str]:
     account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
-    r2_key = os.environ.get("R2_ACCESS_KEY_ID")
-    r2_secret = os.environ.get("R2_SECRET_ACCESS_KEY")
-    r2_bucket = os.environ.get("R2_BUCKET", "citypods-llm-dispatch")
+    r2_key = (
+        os.environ.get("R2_RECLAIM_ACCESS_KEY")
+        or os.environ.get("R2_ACCESS_KEY_ID")
+        or os.environ.get("R2_DEV_ACCESS_KEY")
+    )
+    r2_secret = (
+        os.environ.get("R2_RECLAIM_SECRET_ACCESS_KEY")
+        or os.environ.get("R2_SECRET_ACCESS_KEY")
+        or os.environ.get("R2_DEV_SECRET_ACCESS_KEY")
+    )
+    # The legacy v1 LLM queue lives in the dedicated dispatch bucket ("citypods-llm-dispatch"),
+    # not the general coordination bucket ("citypods-coordination").
+    r2_bucket = (
+        bucket
+        or os.environ.get("R2_DISPATCH_BUCKET")
+        or os.environ.get("R2_LLM_DISPATCH_BUCKET")
+        or "citypods-llm-dispatch"
+    )
 
     b2_endpoint = os.environ.get("B2_ENDPOINT")
     b2_key_id = os.environ.get("B2_KEY_ID")
@@ -121,7 +136,7 @@ def _delete_r2_keys_batch(client: Any, bucket: str, keys: list[str]) -> int:
     return deleted_count
 
 
-def run_reconciliation(*, dry_run: bool = True) -> int:
+def run_reconciliation(*, dry_run: bool = True, bucket: str = "citypods-llm-dispatch") -> int:
     logger.info("Initializing contracts and backends...")
     ensure_agenda_item_extractor_contract()
     ensure_llm_contract()
@@ -132,7 +147,7 @@ def run_reconciliation(*, dry_run: bool = True) -> int:
     backend = LiteLLMBackend(LLMBackendConfig.from_env())
     site_config = load_site_config(Path("config/site_config.yml"))
     storage = make_storage(site_config, "", Path("docs"))
-    r2_client, b2_client, r2_bucket, b2_bucket = _build_s3_clients()
+    r2_client, b2_client, r2_bucket, b2_bucket = _build_s3_clients(bucket=bucket)
 
     logger.info("Listing objects on R2 and B2...")
     r2_request_keys = _list_keys(r2_client, r2_bucket, "requests/")
@@ -339,8 +354,13 @@ def main() -> int:
         action="store_true",
         help="Apply all reconciliation writes to B2 and purge obsolete keys from R2.",
     )
+    parser.add_argument(
+        "--bucket",
+        default="citypods-llm-dispatch",
+        help="Cloudflare R2 dispatch queue bucket name (default: citypods-llm-dispatch).",
+    )
     args = parser.parse_args()
-    return run_reconciliation(dry_run=args.dry_run)
+    return run_reconciliation(dry_run=args.dry_run, bucket=args.bucket)
 
 
 if __name__ == "__main__":
