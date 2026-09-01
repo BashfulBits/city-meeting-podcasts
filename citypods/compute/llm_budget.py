@@ -42,6 +42,8 @@ class LLMReservation:
     provider_key: str = ""
     provider_requests_available_at_before: str = ""
     provider_requests_available_at_after: str = ""
+    provider_tokens_available_at_before: str = ""
+    provider_tokens_available_at_after: str = ""
     reserved_at: str = ""
     expires_at: str = ""
 
@@ -78,9 +80,10 @@ class RouteLedger:
 
 @dataclass
 class ProviderLedger:
-    """Provider-wide request pacing shared by every model and account of that provider."""
+    """Provider-wide request and token pacing shared by every model and account of that provider."""
 
     requests_available_at: str = ""
+    tokens_available_at: str = ""
 
 
 @dataclass
@@ -94,7 +97,11 @@ class LLMBudget:
         return route.route_id or model
 
     def _provider_ledger(self, route: LLMRoute, *, create: bool = True) -> ProviderLedger | None:
-        if not route.provider or route.provider_rpm is None:
+        if not route.provider or (
+            route.provider_rpm is None
+            and route.provider_tpm is None
+            and route.provider_concurrency is None
+        ):
             return None
         led = self.providers.get(route.provider)
         if led is None and create:
@@ -198,15 +205,23 @@ class LLMBudget:
             led.requests_available_at = reservation.requests_available_at_before
         if reservation.provider_key:
             provider_led = self.providers.get(reservation.provider_key)
-            if (
-                provider_led is not None
-                and reservation.provider_requests_available_at_after
-                and provider_led.requests_available_at
-                == reservation.provider_requests_available_at_after
-            ):
-                provider_led.requests_available_at = (
-                    reservation.provider_requests_available_at_before
-                )
+            if provider_led is not None:
+                if (
+                    reservation.provider_requests_available_at_after
+                    and provider_led.requests_available_at
+                    == reservation.provider_requests_available_at_after
+                ):
+                    provider_led.requests_available_at = (
+                        reservation.provider_requests_available_at_before
+                    )
+                if (
+                    reservation.provider_tokens_available_at_after
+                    and provider_led.tokens_available_at
+                    == reservation.provider_tokens_available_at_after
+                ):
+                    provider_led.tokens_available_at = (
+                        reservation.provider_tokens_available_at_before
+                    )
         if reservation.day_key and led.requests_day_key == reservation.day_key:
             led.requests_day = max(0, led.requests_day - reservation.requests)
 
@@ -222,12 +237,40 @@ class LLMBudget:
     ) -> bool:
         led = self._ledger(model, now, route=route, create=False)
         provider_led = self._provider_ledger(route, create=False)
-        if (
-            provider_led is not None
-            and provider_led.requests_available_at
-            and now.astimezone(UTC) < datetime.fromisoformat(provider_led.requests_available_at)
-        ):
+        if route.provider_tpm is not None and route.provider_tpm <= 0:
             return False
+        if route.provider_concurrency is not None:
+            provider_inflight = 0
+            now_utc = now.astimezone(UTC)
+            for r_led in self.routes.values():
+                for owner, res in list(r_led.inflight.items()):
+                    if res.provider_key != route.provider:
+                        continue
+                    if res.expires_at:
+                        try:
+                            expiry = datetime.fromisoformat(res.expires_at)
+                            expired = expiry.tzinfo is None or expiry <= now_utc
+                        except (TypeError, ValueError):
+                            expired = True
+                        if expired:
+                            del r_led.inflight[owner]
+                            self._unwind_reservation(r_led, res)
+                            continue
+                    provider_inflight += 1
+            if provider_inflight >= route.provider_concurrency:
+                return False
+        if provider_led is not None:
+            if provider_led.requests_available_at and now.astimezone(UTC) < datetime.fromisoformat(
+                provider_led.requests_available_at
+            ):
+                return False
+            if (
+                route.provider_tpm is not None
+                and route.provider_tpm > 0
+                and provider_led.tokens_available_at
+                and now.astimezone(UTC) < datetime.fromisoformat(provider_led.tokens_available_at)
+            ):
+                return False
         if led is None:
             return True
         if led.blocked_until and now.astimezone(UTC) < datetime.fromisoformat(led.blocked_until):
@@ -339,6 +382,20 @@ class LLMBudget:
         )
         if provider_led is not None:
             provider_led.requests_available_at = provider_schedule_after
+        provider_token_schedule_before = provider_led.tokens_available_at if provider_led else ""
+        if provider_led is not None and route.provider_tpm is not None and route.provider_tpm > 0:
+            token_interval_seconds = (tokens * 60) / route.provider_tpm
+            if provider_token_schedule_before:
+                ready_at = datetime.fromisoformat(provider_token_schedule_before)
+                base = max(reserved_at, ready_at)
+            else:
+                base = reserved_at
+            provider_token_schedule_after = (
+                base + timedelta(seconds=token_interval_seconds)
+            ).isoformat()
+            provider_led.tokens_available_at = provider_token_schedule_after
+        else:
+            provider_token_schedule_after = provider_token_schedule_before
         led.inflight[owner] = LLMReservation(
             cost=cost,
             requests=requests,
@@ -355,6 +412,8 @@ class LLMBudget:
             provider_key=route.provider if provider_led is not None else "",
             provider_requests_available_at_before=provider_schedule_before,
             provider_requests_available_at_after=provider_schedule_after,
+            provider_tokens_available_at_before=provider_token_schedule_before,
+            provider_tokens_available_at_after=provider_token_schedule_after,
             reserved_at=reserved_at.isoformat(),
             expires_at=(
                 (now + timedelta(seconds=LLM_RESERVATION_TTL_SECONDS)).astimezone(UTC).isoformat()
@@ -434,6 +493,29 @@ class LLMBudget:
             led.tokens_available_at = (
                 base + timedelta(seconds=(actual_tokens * 60) / route.quota.tpm)
             ).isoformat()
+        if (
+            actual_tokens is not None
+            and route.provider_tpm is not None
+            and reservation.provider_key
+            and reservation.provider_tokens_available_at_after
+        ):
+            provider_led = self.providers.get(reservation.provider_key)
+            if (
+                provider_led is not None
+                and provider_led.tokens_available_at
+                == reservation.provider_tokens_available_at_after
+            ):
+                token_start = datetime.fromisoformat(reservation.reserved_at).astimezone(UTC)
+                if reservation.provider_tokens_available_at_before:
+                    ready_at = datetime.fromisoformat(
+                        reservation.provider_tokens_available_at_before
+                    )
+                    base = max(token_start, ready_at)
+                else:
+                    base = token_start
+                provider_led.tokens_available_at = (
+                    base + timedelta(seconds=(actual_tokens * 60) / route.provider_tpm)
+                ).isoformat()
         if actual_cost is not None and led.cost_cycle_key == reservation.cost_cycle_key:
             led.cost_used = max(0.0, led.cost_used + actual_cost - reservation.cost)
         if (
@@ -493,6 +575,12 @@ class LLMBudget:
                             "provider_requests_available_at_after": (
                                 reservation.provider_requests_available_at_after or None
                             ),
+                            "provider_tokens_available_at_before": (
+                                reservation.provider_tokens_available_at_before or None
+                            ),
+                            "provider_tokens_available_at_after": (
+                                reservation.provider_tokens_available_at_after or None
+                            ),
                             "reserved_at": reservation.reserved_at or None,
                             "expires_at": reservation.expires_at or None,
                         }
@@ -502,7 +590,10 @@ class LLMBudget:
                 for model, ledger in self.routes.items()
             },
             "providers": {
-                provider: {"requests_available_at": ledger.requests_available_at or None}
+                provider: {
+                    "requests_available_at": ledger.requests_available_at or None,
+                    "tokens_available_at": ledger.tokens_available_at or None,
+                }
                 for provider, ledger in self.providers.items()
             },
         }
@@ -542,6 +633,12 @@ class LLMBudget:
                         provider_requests_available_at_after=str(
                             value.get("provider_requests_available_at_after") or ""
                         ),
+                        provider_tokens_available_at_before=str(
+                            value.get("provider_tokens_available_at_before") or ""
+                        ),
+                        provider_tokens_available_at_after=str(
+                            value.get("provider_tokens_available_at_after") or ""
+                        ),
                         reserved_at=str(value.get("reserved_at") or ""),
                         expires_at=str(value.get("expires_at") or ""),
                     )
@@ -562,7 +659,8 @@ class LLMBudget:
             )
         providers = {
             str(provider): ProviderLedger(
-                requests_available_at=str(raw.get("requests_available_at") or "")
+                requests_available_at=str(raw.get("requests_available_at") or ""),
+                tokens_available_at=str(raw.get("tokens_available_at") or ""),
             )
             for provider, raw in (data.get("providers") or {}).items()
             if isinstance(raw, dict)

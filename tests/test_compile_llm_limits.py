@@ -626,3 +626,20 @@ def test_split_cap_multiplier_halves_rpm_rpd_tpm():
         assert paused["rpm"] == 5
         assert paused["rpd"] == 0  # 0 stays 0, not unpaused to 1
         assert paused["tpm"] == 0
+
+
+def test_rejects_non_positive_provider_tpm():
+    raw = {
+        "providers": {
+            "bad_tpm_prov": {
+                "tpm": 0,
+            },
+        },
+        "routes": [],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        with pytest.raises(ValueError, match="invalid non-positive tpm"):
+            compile_llm_limits.compile_limits()

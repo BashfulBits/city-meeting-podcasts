@@ -164,6 +164,8 @@ class LLMRoute:
     route_id: str = ""
     provider: str = ""
     provider_rpm: int | None = None
+    provider_tpm: int | None = None
+    provider_concurrency: int | None = None
     upstream_model: str = ""
     direct_model: str = ""
     api_base: str = ""
@@ -281,6 +283,8 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 route_id=str(item.get("route_id", item["model"])),
                 provider=provider,
                 provider_rpm=item.get("provider_rpm"),
+                provider_tpm=item.get("provider_tpm"),
+                provider_concurrency=item.get("provider_concurrency"),
                 upstream_model=str(item.get("upstream_model", "")),
                 direct_model=str(item.get("direct_model", "")),
                 api_base=str(item.get("api_base", "")),

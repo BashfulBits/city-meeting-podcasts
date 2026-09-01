@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveProviderCredentials, upstreamRequestForRoute, upstreamCapacityFailure } from "../src/gateway.js";
+import {
+  parseRetryAfterSeconds,
+  resolveProviderCredentials,
+  upstreamCapacityFailure,
+  upstreamRequestForRoute,
+} from "../src/gateway.js";
 
 const DISPATCH_LIMITS = {
   providers: {
@@ -123,7 +128,6 @@ test("upstreamRequestForRoute forwards only recognized provider-tuning fields", 
   });
 });
 
-
 test("upstreamCapacityFailure recognises a 400 whose body blames the provider's upstream", () => {
   // The exact payload OpenCode Zen returned on 2026-08-30 while still listing the model as
   // available. Both signals in it are load-bearing and asserted separately below.
@@ -164,4 +168,34 @@ test("upstreamCapacityFailure applies to 400 only, never to other 4xx", () => {
   for (const status of [401, 403, 404, 409, 422, 429]) {
     assert.equal(upstreamCapacityFailure(status, body), false, `status ${status} must stay terminal`);
   }
+});
+
+test("parseRetryAfterSeconds parses integer and HTTP date headers", () => {
+  assert.equal(parseRetryAfterSeconds(null), null);
+  assert.equal(parseRetryAfterSeconds({ headers: new Headers() }), null);
+
+  const numHeaders = new Headers({ "retry-after": "42" });
+  assert.equal(parseRetryAfterSeconds({ headers: numHeaders }), 42);
+
+  const resetReqHeaders = new Headers({ "x-ratelimit-reset-requests": "15" });
+  assert.equal(parseRetryAfterSeconds({ headers: resetReqHeaders }), 15);
+
+  const futureDate = new Date(Date.now() + 30_000).toUTCString();
+  const dateHeaders = new Headers({ "retry-after": futureDate });
+  const parsedSec = parseRetryAfterSeconds({ headers: dateHeaders });
+  assert.ok(parsedSec >= 25 && parsedSec <= 35);
+});
+
+test("parseRetryAfterSeconds parses duration strings like 7.66s and 2m59.56s", () => {
+  const groqSeconds = new Headers({ "x-ratelimit-reset-tokens": "7.66s" });
+  assert.equal(parseRetryAfterSeconds({ headers: groqSeconds }), 8);
+
+  const groqMinutes = new Headers({ "x-ratelimit-reset-requests": "2m59.56s" });
+  assert.equal(parseRetryAfterSeconds({ headers: groqMinutes }), 180);
+
+  const groqMs = new Headers({ "retry-after": "500ms" });
+  assert.equal(parseRetryAfterSeconds({ headers: groqMs }), 1);
+
+  const groqHours = new Headers({ "retry-after": "1h2m3s" });
+  assert.equal(parseRetryAfterSeconds({ headers: groqHours }), 3723);
 });

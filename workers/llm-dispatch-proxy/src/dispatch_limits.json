@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 64,
+    "routes_count": 65,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -166,6 +166,8 @@
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
       "rpm": 6,
+      "tpm": 90000,
+      "concurrency": 2,
       "reset_timezone": "UTC",
       "accounts": [
         {
@@ -536,7 +538,7 @@
       "rpm": 20,
       "rpd": 20,
       "tpm": 90000,
-      "concurrency": null,
+      "concurrency": 1,
       "free": true,
       "input_per_token": null,
       "output_per_token": null,
@@ -580,12 +582,30 @@
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
     },
+    "groq_qwen_3_6_27b_primary": {
+      "route_id": "groq_qwen_3_6_27b_primary",
+      "provider": "groq",
+      "upstream_model": "qwen/qwen3.6-27b",
+      "input_context_limit": 131072,
+      "output_context_limit": 65536,
+      "account_id": "primary",
+      "rpm": 30,
+      "rpd": 1000,
+      "tpm": 7200,
+      "concurrency": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
+    },
     "groq_qwen_3_8_27b_primary": {
       "route_id": "groq_qwen_3_8_27b_primary",
       "provider": "groq",
       "upstream_model": "qwen/qwen3.8-27b",
-      "input_context_limit": 131042,
-      "output_context_limit": 16384,
+      "input_context_limit": 131072,
+      "output_context_limit": 65536,
       "account_id": "primary",
       "rpm": 30,
       "rpd": 1000,
@@ -608,7 +628,7 @@
       "rpm": 20,
       "rpd": 20,
       "tpm": 90000,
-      "concurrency": null,
+      "concurrency": 1,
       "free": true,
       "input_per_token": null,
       "output_per_token": null,
@@ -1238,7 +1258,7 @@
       "rpm": 20,
       "rpd": 200,
       "tpm": 90000,
-      "concurrency": null,
+      "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
@@ -1256,7 +1276,7 @@
       "rpm": 20,
       "rpd": 200,
       "tpm": 90000,
-      "concurrency": null,
+      "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
@@ -1274,7 +1294,7 @@
       "rpm": 30,
       "rpd": 500,
       "tpm": 225000,
-      "concurrency": null,
+      "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
@@ -1292,7 +1312,7 @@
       "rpm": 30,
       "rpd": 500,
       "tpm": 90000,
-      "concurrency": null,
+      "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
@@ -1310,7 +1330,7 @@
       "rpm": 20,
       "rpd": 200,
       "tpm": 90000,
-      "concurrency": null,
+      "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
@@ -1521,6 +1541,9 @@
       "groq_gpt_oss_120b_primary",
       "nvidia_gpt_oss_120b_free"
     ],
+    "qwen/qwen3.6-27b": [
+      "groq_qwen_3_6_27b_primary"
+    ],
     "qwen/qwen3.8-27b": [
       "groq_qwen_3_8_27b_primary"
     ],
@@ -1650,6 +1673,8 @@
     "openrouter/meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
     "openai/gpt-oss-120b": "openai/gpt-oss-120b",
     "groq/openai/gpt-oss-120b": "openai/gpt-oss-120b",
+    "qwen/qwen3.6-27b": "qwen/qwen3.6-27b",
+    "groq/qwen/qwen3.6-27b": "qwen/qwen3.6-27b",
     "qwen/qwen3.8-27b": "qwen/qwen3.8-27b",
     "groq/qwen/qwen3.8-27b": "qwen/qwen3.8-27b",
     "Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
