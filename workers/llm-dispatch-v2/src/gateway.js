@@ -211,8 +211,31 @@ export function upstreamCapacityFailure(status, body) {
 }
 
 /**
+ * Parse Go/Groq-style duration strings into whole seconds, rounding up.
+ * Examples: "7.66s", "2m59.56s", "500ms", "1h30m", "15s".
+ */
+export function parseDurationSeconds(str) {
+  if (typeof str !== "string" || !str.trim()) return null;
+  const s = str.trim();
+  const durationRegex =
+    /^(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m(?!s))?(?:(\d+(?:\.\d+)?)s)?(?:(\d+(?:\.\d+)?)ms)?$/;
+  const match = s.match(durationRegex);
+  if (!match) return null;
+  const [, h, m, sec, ms] = match;
+  if (!h && !m && !sec && !ms) return null;
+  const totalSeconds =
+    (h ? parseFloat(h) * 3600 : 0) +
+    (m ? parseFloat(m) * 60 : 0) +
+    (sec ? parseFloat(sec) : 0) +
+    (ms ? parseFloat(ms) / 1000 : 0);
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return 0;
+  return Math.ceil(totalSeconds);
+}
+
+/**
  * Extract and parse standard Retry-After or provider reset headers into whole seconds.
- * Handles integer seconds and HTTP-date strings; returns null if no valid header is present.
+ * Handles integer seconds, duration strings (e.g. "7.66s", "2m59.56s"), and HTTP-date strings;
+ * returns null if no valid header is present.
  */
 export function parseRetryAfterSeconds(response) {
   if (!response || !response.headers) return null;
@@ -225,6 +248,10 @@ export function parseRetryAfterSeconds(response) {
   const numeric = Number(trimmed);
   if (Number.isFinite(numeric) && numeric > 0) {
     return Math.ceil(numeric);
+  }
+  const durationSec = parseDurationSeconds(trimmed);
+  if (durationSec !== null && durationSec > 0) {
+    return durationSec;
   }
   const dateMs = Date.parse(trimmed);
   if (Number.isFinite(dateMs)) {

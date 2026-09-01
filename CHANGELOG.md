@@ -40,7 +40,7 @@ Phase R (Research-Tool Surface)._
   request ledger.
 
 - **Groq Qwen 3.8 27B free route.** Registers `qwen/qwen3.8-27b` with its published 30 RPM, 1K
-  RPD, 8K TPM, 131,042-token context, and 16,384-token output limits. Groq's separate 2M TPD
+  RPD, 8K TPM, 131,072-token context, and 65,536-token output limits. Groq's separate 2M TPD
   ceiling is documented in the provider registry but is not yet enforceable because the route-ledger
   schema has no daily-token field. The route is available for explicit Qwen requests; Gemma routing
   and the production judge remain unchanged pending task-specific evaluation.

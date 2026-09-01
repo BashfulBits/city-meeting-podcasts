@@ -730,10 +730,22 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
 
     providers = raw.get("providers", {})
     for provider_name, provider_cfg in providers.items():
-        if isinstance(provider_cfg, dict) and "ai_gateway_max_attempts" in provider_cfg:
-            provider_cfg["ai_gateway_max_attempts"] = _validate_ai_gateway_max_attempts(
-                provider_cfg["ai_gateway_max_attempts"], provider_name
-            )
+        if isinstance(provider_cfg, dict):
+            if "ai_gateway_max_attempts" in provider_cfg:
+                provider_cfg["ai_gateway_max_attempts"] = _validate_ai_gateway_max_attempts(
+                    provider_cfg["ai_gateway_max_attempts"], provider_name
+                )
+            if "tpm" in provider_cfg and provider_cfg["tpm"] is not None:
+                tpm_val = provider_cfg["tpm"]
+                if (
+                    isinstance(tpm_val, bool)
+                    or not isinstance(tpm_val, (int, float))
+                    or tpm_val <= 0
+                    or not math.isfinite(tpm_val)
+                ):
+                    raise ValueError(
+                        f"provider {provider_name} has invalid non-positive tpm: {tpm_val!r}"
+                    )
     if token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0:
         for provider_cfg in providers.values():
             if isinstance(provider_cfg, dict):

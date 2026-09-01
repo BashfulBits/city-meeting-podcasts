@@ -185,3 +185,17 @@ test("parseRetryAfterSeconds parses integer and HTTP date headers", () => {
   const parsedSec = parseRetryAfterSeconds({ headers: dateHeaders });
   assert.ok(parsedSec >= 25 && parsedSec <= 35);
 });
+
+test("parseRetryAfterSeconds parses duration strings like 7.66s and 2m59.56s", () => {
+  const groqSeconds = new Headers({ "x-ratelimit-reset-tokens": "7.66s" });
+  assert.equal(parseRetryAfterSeconds({ headers: groqSeconds }), 8);
+
+  const groqMinutes = new Headers({ "x-ratelimit-reset-requests": "2m59.56s" });
+  assert.equal(parseRetryAfterSeconds({ headers: groqMinutes }), 180);
+
+  const groqMs = new Headers({ "retry-after": "500ms" });
+  assert.equal(parseRetryAfterSeconds({ headers: groqMs }), 1);
+
+  const groqHours = new Headers({ "retry-after": "1h2m3s" });
+  assert.equal(parseRetryAfterSeconds({ headers: groqHours }), 3723);
+});

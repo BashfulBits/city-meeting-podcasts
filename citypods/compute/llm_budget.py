@@ -237,6 +237,28 @@ class LLMBudget:
     ) -> bool:
         led = self._ledger(model, now, route=route, create=False)
         provider_led = self._provider_ledger(route, create=False)
+        if route.provider_tpm is not None and route.provider_tpm <= 0:
+            return False
+        if route.provider_concurrency is not None:
+            provider_inflight = 0
+            now_utc = now.astimezone(UTC)
+            for r_led in self.routes.values():
+                for owner, res in list(r_led.inflight.items()):
+                    if res.provider_key != route.provider:
+                        continue
+                    if res.expires_at:
+                        try:
+                            expiry = datetime.fromisoformat(res.expires_at)
+                            expired = expiry.tzinfo is None or expiry <= now_utc
+                        except (TypeError, ValueError):
+                            expired = True
+                        if expired:
+                            del r_led.inflight[owner]
+                            self._unwind_reservation(r_led, res)
+                            continue
+                    provider_inflight += 1
+            if provider_inflight >= route.provider_concurrency:
+                return False
         if provider_led is not None:
             if provider_led.requests_available_at and now.astimezone(UTC) < datetime.fromisoformat(
                 provider_led.requests_available_at
@@ -244,19 +266,11 @@ class LLMBudget:
                 return False
             if (
                 route.provider_tpm is not None
+                and route.provider_tpm > 0
                 and provider_led.tokens_available_at
                 and now.astimezone(UTC) < datetime.fromisoformat(provider_led.tokens_available_at)
             ):
                 return False
-            if route.provider_concurrency is not None:
-                provider_inflight = sum(
-                    1
-                    for r_led in self.routes.values()
-                    for res in r_led.inflight.values()
-                    if res.provider_key == route.provider
-                )
-                if provider_inflight >= route.provider_concurrency:
-                    return False
         if led is None:
             return True
         if led.blocked_until and now.astimezone(UTC) < datetime.fromisoformat(led.blocked_until):
@@ -369,7 +383,7 @@ class LLMBudget:
         if provider_led is not None:
             provider_led.requests_available_at = provider_schedule_after
         provider_token_schedule_before = provider_led.tokens_available_at if provider_led else ""
-        if provider_led is not None and route.provider_tpm is not None:
+        if provider_led is not None and route.provider_tpm is not None and route.provider_tpm > 0:
             token_interval_seconds = (tokens * 60) / route.provider_tpm
             if provider_token_schedule_before:
                 ready_at = datetime.fromisoformat(provider_token_schedule_before)
