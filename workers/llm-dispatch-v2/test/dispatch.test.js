@@ -1465,3 +1465,144 @@ test("a superseded job is claimable and completes, closing the 2026-08-25 enqueu
   assert.equal(row.state, "completed");
   assert.equal(row.result_key, "results/j-stale/v2.json");
 });
+
+test("authorizeRetry honors explicit retryAfterSeconds and updates route buffer", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_429_RETRIES: "3" });
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  const job = plan.jobs[0];
+
+  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
+  // Upstream returns 429 with Retry-After: 5
+  const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now, 5);
+  assert.equal(auth.authorized, true);
+  // 5s backoff with 50%-150% jitter gives 2.5s - 7.5s
+  assert.ok(auth.retry_not_before >= now + 2000);
+  assert.ok(auth.retry_not_before <= now + 8000);
+
+  const routeRow = [
+    ...sql.exec("SELECT buffer_seconds, throttle_streak FROM routes WHERE route_id=?", job.route_id),
+  ][0];
+  assert.ok(routeRow.buffer_seconds >= 5);
+  assert.equal(routeRow.throttle_streak, 1);
+});
+
+test("claimDispatchWindow enforces route-level and provider-level concurrency", async () => {
+  const limits = {
+    providers: {
+      strict_prov: {
+        api_base: "https://example.com",
+        accounts: [{ id: "acc1" }],
+        concurrency: 1,
+      },
+    },
+    routes_by_id: {
+      r1: {
+        route_id: "r1",
+        model: "m1",
+        provider: "strict_prov",
+        account_id: "acc1",
+        input_context_limit: 100000,
+        output_context_limit: 10000,
+        rpm: 30,
+        rpd: 1000,
+        free: true,
+        concurrency: 1,
+      },
+      r2: {
+        route_id: "r2",
+        model: "m2",
+        provider: "strict_prov",
+        account_id: "acc1",
+        input_context_limit: 100000,
+        output_context_limit: 10000,
+        rpm: 30,
+        rpd: 1000,
+        free: true,
+        concurrency: 1,
+      },
+    },
+    model_routes_map: {
+      m1: ["r1"],
+      m2: ["r2"],
+    },
+  };
+
+  const { coordinator } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: limits });
+  await coordinator.enqueueBatch([
+    makeJob("j1", { policy_json: JSON.stringify({ allowed_models: ["m1"] }) }),
+    makeJob("j2", { policy_json: JSON.stringify({ allowed_models: ["m2"] }) }),
+  ]);
+
+  const now = Date.now();
+  // Provider concurrency is 1, so only 1 job should be admitted across the whole provider
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  assert.equal(plan.jobs.length, 1);
+
+  // A second claim while j1 is still leased admits 0 jobs
+  const secondPlan = await coordinator.claimDispatchWindow(now + 100, 25);
+  assert.equal(secondPlan.jobs.length, 0);
+});
+
+test("claimDispatchWindow enforces provider-level TPM across routes sharing a provider", async () => {
+  const limits = {
+    providers: {
+      shared_tpm_prov: {
+        api_base: "https://example.com",
+        accounts: [{ id: "acc1" }],
+        tpm: 60000,
+      },
+    },
+    routes_by_id: {
+      tpm_r1: {
+        route_id: "tpm_r1",
+        model: "tm1",
+        provider: "shared_tpm_prov",
+        account_id: "acc1",
+        input_context_limit: 100000,
+        output_context_limit: 50000,
+        rpm: 30,
+        rpd: 1000,
+        tpm: 100000,
+        free: true,
+      },
+      tpm_r2: {
+        route_id: "tpm_r2",
+        model: "tm2",
+        provider: "shared_tpm_prov",
+        account_id: "acc1",
+        input_context_limit: 100000,
+        output_context_limit: 50000,
+        rpm: 30,
+        rpd: 1000,
+        tpm: 100000,
+        free: true,
+      },
+    },
+    model_routes_map: {
+      tm1: ["tpm_r1"],
+      tm2: ["tpm_r2"],
+    },
+  };
+
+  const { coordinator } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: limits });
+  // Each job requests 60,000 tokens (exhausts the 1-minute provider TPM window of 60k)
+  await coordinator.enqueueBatch([
+    makeJob("j1", {
+      input_token_estimate: 30000,
+      max_output_token_estimate: 30000,
+      policy_json: JSON.stringify({ allowed_models: ["tm1"] }),
+    }),
+    makeJob("j2", {
+      input_token_estimate: 30000,
+      max_output_token_estimate: 30000,
+      policy_json: JSON.stringify({ allowed_models: ["tm2"] }),
+    }),
+  ]);
+
+  const now = Date.now();
+  // Within a 25-second dispatch window, only 1 job fits into the 60k TPM allowance
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  assert.equal(plan.jobs.length, 1);
+});

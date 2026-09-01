@@ -210,6 +210,38 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
     }
   }
 
+  // Provider-level TPM: shared refillable token bucket across all routes for this provider.
+  const providerTpm = Number(options?.providerConfig?.tpm ?? route?.provider_tpm);
+  const providerLedger = options?.providerLedger;
+  if (Number.isFinite(providerTpm) && providerTpm > 0 && providerLedger) {
+    if (reservation > providerTpm * FULL_TOKEN_BUDGET_WINDOWS) {
+      return null;
+    }
+    const pWindowReserved = Number(providerLedger?.tpm_reserved) || 0;
+    const pWindowStale =
+      !Number.isFinite(providerLedger?.tpm_window_start) ||
+      now - providerLedger.tpm_window_start >= MS_PER_MINUTE;
+    const pEffectiveWindowReserved = pWindowStale ? 0 : pWindowReserved;
+    if (reservation <= providerTpm && pEffectiveWindowReserved + reservation > providerTpm) {
+      const pStart = pWindowStale ? now : providerLedger.tpm_window_start;
+      notBeforeAt = Math.max(notBeforeAt, pStart + MS_PER_MINUTE);
+    }
+
+    const pCap = providerTpm * FULL_TOKEN_BUDGET_WINDOWS;
+    const pUpdatedAt = Number(providerLedger?.token_budget_updated_at) || 0;
+    const pElapsedMs = Math.max(0, now - pUpdatedAt);
+    const pRefilled =
+      (Number(providerLedger?.full_token_budget) || 0) + (pElapsedMs * providerTpm) / MS_PER_MINUTE;
+    const pAvailableNow = Math.min(pCap, pRefilled);
+    const pAvailableAtNotBefore =
+      pAvailableNow + Math.max(0, notBeforeAt - now) * (providerTpm / MS_PER_MINUTE);
+    if (pAvailableAtNotBefore < reservation) {
+      const pDeficit = reservation - pAvailableNow;
+      const pRefillMs = Math.ceil((pDeficit * MS_PER_MINUTE) / providerTpm);
+      notBeforeAt = Math.max(notBeforeAt, now + Math.max(0, pRefillMs));
+    }
+  }
+
   // Route buffer: an additive delay accrued from repeated 429s. Uses what is still *owed* rather
   // than the stored figure -- the stored one never shrinks, so this pushed every future dispatch
   // a full buffer beyond `now` forever, which is the same permanent stall as the capacity check

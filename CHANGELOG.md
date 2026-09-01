@@ -17,6 +17,18 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Cloudflare AI Gateway rate-limit resilience and Groq free-tier limits update.** Implements
+  aggregate provider-level TPM rate limiting across Python (`citypods/compute/llm_budget.py`,
+  `llm_policy.py`) and Cloudflare Workers V2 (`workers/llm-dispatch-v2`), sharing token buckets
+  across multiple routes under the same provider account (e.g. `nvidia`). Adds per-route and
+  provider concurrency limits (`concurrency: 1` on SambaNova, OpenCode, Kilo; `concurrency: 2` on
+  NVIDIA) to prevent free-tier concurrency exhaustion. Adds `parseRetryAfterSeconds` in Workers V2
+  gateway to capture and honor upstream `Retry-After` and reset headers (`x-ratelimit-reset-*`),
+  updating route cooldown buffers dynamically. Adds full randomized jitter (`0.5 + Math.random()`)
+  to 429 and transient 5xx retries to break thundering-herd storms. Updates the Groq free-tier
+  catalog in `config/provider_limits.yml`, removing deprecated Llama 3.3 routes and adding
+  `gpt-oss-120b`, `qwen/qwen3.6-27b`, and `qwen/qwen3.8-27b` routes meeting the Gemma-4 floor.
+
 - **Mistral Medium 3.5 routing through the Airforce custom provider.** The canonical
   `mistral/mistral-medium-3-5` pool now sends the existing 2505/2508 selectors to Mistral's
   `mistral-medium-3-5` API route and adds Airforce's `mistral-medium-3.5` route as an eligible

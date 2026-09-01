@@ -282,6 +282,10 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
         )
         if provider_cfg.get("rpm") is not None:
             route["provider_rpm"] = provider_cfg["rpm"]
+        if provider_cfg.get("tpm") is not None:
+            route["provider_tpm"] = provider_cfg["tpm"]
+        if provider_cfg.get("concurrency") is not None:
+            route["provider_concurrency"] = provider_cfg["concurrency"]
         routes.append(route)
     return {
         "_metadata": compiled["_metadata"],
@@ -322,6 +326,8 @@ _WORKER_PROVIDER_FIELDS = (
     "chat_path",
     "ai_gateway_max_attempts",
     "rpm",
+    "tpm",
+    "concurrency",
     "reset_timezone",
     "accounts",
 )

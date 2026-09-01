@@ -133,6 +133,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
         payment_required_streak  INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS providers (
+        provider                TEXT PRIMARY KEY,
+        tpm_window_start        INTEGER NOT NULL DEFAULT 0,
+        tpm_reserved            INTEGER NOT NULL DEFAULT 0,
+        full_token_budget       REAL NOT NULL DEFAULT 0,
+        token_budget_updated_at INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE TABLE IF NOT EXISTS bundles (
         bundle_id            TEXT PRIMARY KEY,
         execution_token      TEXT NOT NULL,
@@ -387,11 +395,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_ATTEMPT_PRUNE_PER_TICK", 50);
   }
 
-  /** Return an exponential route cooldown, starting at one minute, for a final Gateway 5xx. */
+  /** Return an exponential route cooldown with randomized jitter for a final Gateway 5xx. */
   _5xxBlockedUntil(retryCount, now) {
     const baseMs = 60_000;
-    const delayMs = Math.min(baseMs * 2 ** Math.max(0, retryCount - 1), this._max5xxBackoffMs());
-    return now + delayMs;
+    const baseDelayMs = Math.min(baseMs * 2 ** Math.max(0, retryCount - 1), this._max5xxBackoffMs());
+    const jitter = Math.random() * 0.5;
+    return now + Math.round(baseDelayMs * (1.0 + jitter));
   }
 
   _maxRouteBufferSeconds() {
@@ -925,6 +934,30 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
+  /** Read a provider's live ledger row, seeding a fresh one the first time this provider is touched. */
+  _getOrCreateProviderLedger(providerName, now, providerCfg) {
+    const sql = this._getSql();
+    const rows = [...sql.exec("SELECT * FROM providers WHERE provider = ?", providerName)];
+    if (rows.length > 0) return rows[0];
+    const tpm = Number(providerCfg?.tpm) || 0;
+    const seedBudget = tpm * FULL_TOKEN_BUDGET_WINDOWS;
+    sql.exec(
+      `INSERT INTO providers (
+        provider, tpm_window_start, tpm_reserved, full_token_budget, token_budget_updated_at
+      ) VALUES (?, 0, 0, ?, ?)`,
+      providerName,
+      seedBudget,
+      now
+    );
+    return {
+      provider: providerName,
+      tpm_window_start: 0,
+      tpm_reserved: 0,
+      full_token_budget: seedBudget,
+      token_budget_updated_at: now,
+    };
+  }
+
   /**
    * Canonical model groups a job may use. Persist every explicit allowed model, even when it has
    * no configured route yet, so a later catalog addition makes an already-queued job searchable
@@ -1271,6 +1304,53 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
+  /** Advance a provider's shared token ledger forward to account for an admitted reservation. */
+  _applyProviderProvisionalReservation(providerLedger, providerCfg, reservation, notBeforeAt) {
+    const sql = this._getSql();
+    const tpm = Number(providerCfg?.tpm) || 0;
+    if (tpm <= 0) return providerLedger;
+
+    let tpmWindowStart = providerLedger.tpm_window_start;
+    let tpmReserved = providerLedger.tpm_reserved;
+    if (reservation <= tpm) {
+      if (!Number.isFinite(tpmWindowStart) || notBeforeAt - tpmWindowStart >= 60_000) {
+        tpmWindowStart = notBeforeAt;
+        tpmReserved = reservation;
+      } else {
+        tpmReserved += reservation;
+      }
+    }
+
+    let fullTokenBudget = providerLedger.full_token_budget;
+    let tokenBudgetUpdatedAt = providerLedger.token_budget_updated_at;
+    const elapsedMs = Math.max(0, notBeforeAt - (tokenBudgetUpdatedAt || 0));
+    const refilled = Math.min(
+      tpm * FULL_TOKEN_BUDGET_WINDOWS,
+      (fullTokenBudget || 0) + (elapsedMs * tpm) / 60_000
+    );
+    fullTokenBudget = Math.max(0, refilled - reservation);
+    tokenBudgetUpdatedAt = notBeforeAt;
+
+    sql.exec(
+      `UPDATE providers SET
+        tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?
+       WHERE provider=?`,
+      tpmWindowStart,
+      tpmReserved,
+      fullTokenBudget,
+      tokenBudgetUpdatedAt,
+      providerLedger.provider
+    );
+
+    return {
+      ...providerLedger,
+      tpm_window_start: tpmWindowStart,
+      tpm_reserved: tpmReserved,
+      full_token_budget: fullTokenBudget,
+      token_budget_updated_at: tokenBudgetUpdatedAt,
+    };
+  }
+
   _calibratedMargin(routeId, model, promptFamily) {
     const sql = this._getSql();
     const key = `${routeId}:${model}:${promptFamily}`;
@@ -1351,6 +1431,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const inFlightCalls = activeBundles.reduce((sum, b) => sum + b.active_call_count, 0);
       if (inFlightCalls >= maxInFlightCalls) return EMPTY;
 
+      const inFlightByRoute = new Map();
+      const inFlightByProvider = new Map();
+      const leasedRows = [...sql.exec(
+        "SELECT lease_route_id, COUNT(*) as cnt FROM jobs WHERE state='leased' GROUP BY lease_route_id"
+      )];
+      for (const row of leasedRows) {
+        if (!row.lease_route_id) continue;
+        inFlightByRoute.set(row.lease_route_id, row.cnt);
+        const catRoute = dispatchLimits.routes_by_id?.[row.lease_route_id];
+        if (catRoute?.provider) {
+          const prev = inFlightByProvider.get(catRoute.provider) || 0;
+          inFlightByProvider.set(catRoute.provider, prev + row.cnt);
+        }
+      }
+
       const ledgerCache = new Map();
       const getMergedRoute = (route) => {
         if (!ledgerCache.has(route.route_id)) {
@@ -1364,11 +1459,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         return ledgerCache.get(route.route_id);
       };
-      const capacityOptions = (route, job) => ({
-        estimateFloor,
-        calibratedMargin: this._calibratedMargin(route.route_id, route.model, job.prompt_family),
-        callDurationCeilingMs,
-      });
+
+      const providerLedgerCache = new Map();
+      const getMergedProvider = (providerName, providerCfg) => {
+        if (!providerLedgerCache.has(providerName)) {
+          const pLedger = this._getOrCreateProviderLedger(providerName, now, providerCfg);
+          providerLedgerCache.set(providerName, pLedger);
+        }
+        return providerLedgerCache.get(providerName);
+      };
+
+      const capacityOptions = (route, job) => {
+        const providerCfg = dispatchLimits.providers?.[route.provider];
+        const providerLedger = route.provider
+          ? getMergedProvider(route.provider, providerCfg)
+          : null;
+        return {
+          estimateFloor,
+          calibratedMargin: this._calibratedMargin(route.route_id, route.model, job.prompt_family),
+          callDurationCeilingMs,
+          providerConfig: providerCfg,
+          providerLedger,
+        };
+      };
 
       const chosen = [];
       const chosenJobIds = new Set();
@@ -1425,6 +1538,24 @@ export class LLMSchedulerDO extends DurableObjectBase {
               (entry) => entry.route.route_id === route.route_id
             ).length;
             if (countInBundle >= maxJobsPerRoutePerBundle) continue;
+
+            const routeConcurrency = Number(route.concurrency);
+            if (Number.isFinite(routeConcurrency) && routeConcurrency > 0) {
+              const curInFlight = (inFlightByRoute.get(route.route_id) || 0) + countInBundle;
+              if (curInFlight >= routeConcurrency) continue;
+            }
+
+            const providerCfg = dispatchLimits.providers?.[route.provider];
+            const providerConcurrency = Number(
+              providerCfg?.concurrency ?? route.provider_concurrency
+            );
+            if (Number.isFinite(providerConcurrency) && providerConcurrency > 0) {
+              const curProviderInFlight =
+                (inFlightByProvider.get(route.provider) || 0) +
+                chosen.filter((entry) => entry.route.provider === route.provider).length;
+              if (curProviderInFlight >= providerConcurrency) continue;
+            }
+
             const merged = getMergedRoute(route);
             if (
               !routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))
@@ -1459,11 +1590,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
       for (const { route, jobs: routeJobs } of byRoute.values()) {
         let laneTime = now;
         let workingRoute = getMergedRoute(route);
+        const providerCfg = dispatchLimits.providers?.[route.provider];
         for (const job of routeJobs) {
           const margin = this._calibratedMargin(route.route_id, route.model, job.prompt_family);
+          const providerLedger = route.provider
+            ? getMergedProvider(route.provider, providerCfg)
+            : null;
           const waitResult = computeRouteLaneWait(workingRoute, job, laneTime, now, {
             estimateFloor,
             calibratedMargin: margin,
+            providerConfig: providerCfg,
+            providerLedger,
           });
           if (waitResult === null) continue; // exceeds this route's burst capacity outright
           if (waitResult.not_before_at + callDurationCeilingMs > dispatchWindowEnd) continue;
@@ -1487,8 +1624,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // later model lookup walk terminal rows before it reaches current work.
           sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
 
-          workingRoute = this._applyProvisionalReservation(workingRoute, waitResult.reservation, waitResult.not_before_at);
+          workingRoute = this._applyProvisionalReservation(
+            workingRoute,
+            waitResult.reservation,
+            waitResult.not_before_at
+          );
           ledgerCache.set(route.route_id, workingRoute);
+
+          if (route.provider && providerCfg?.tpm) {
+            let pWorking = getMergedProvider(route.provider, providerCfg);
+            pWorking = this._applyProviderProvisionalReservation(
+              pWorking,
+              providerCfg,
+              waitResult.reservation,
+              waitResult.not_before_at
+            );
+            providerLedgerCache.set(route.provider, pWorking);
+          }
 
           resultJobs.push({
             id: job.id,
@@ -1563,7 +1715,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * retry that wouldn't fit before the dispatch window or lease expires is declined, not granted
    * late.
    */
-  async authorizeRetry(jobId, leaseToken, attemptId, now) {
+  async authorizeRetry(jobId, leaseToken, attemptId, now, retryAfterSeconds) {
     const sql = this._getSql();
     return this.ctx.storage.transactionSync(() => {
       const jobRows = [...sql.exec(
@@ -1592,7 +1744,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const ledger = this._getOrCreateRouteLedger(routeId, now, {});
       const newStreak = (ledger.throttle_streak || 0) + 1;
       const maxBufferSeconds = this._maxRouteBufferSeconds();
-      const addedBufferSeconds = this._max429BackoffMs() / 1000;
+      const rawRetryAfterSeconds = Number(retryAfterSeconds);
+      const retryAfterSec =
+        Number.isFinite(rawRetryAfterSeconds) && rawRetryAfterSeconds > 0
+          ? Math.min(maxBufferSeconds, rawRetryAfterSeconds)
+          : null;
+      const addedBufferSeconds = retryAfterSec !== null
+        ? retryAfterSec
+        : this._max429BackoffMs() / 1000;
       // Compound from what is actually still owed, not from the raw stored figure -- otherwise
       // 429s hours apart stack to the ceiling as if they were simultaneous.
       const newBufferSeconds = Math.min(
@@ -1608,7 +1767,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         routeId
       );
 
-      const backoffMs = Math.min(this._max429BackoffMs(), newStreak * 1000);
+      const baseBackoffMs = retryAfterSec !== null
+        ? retryAfterSec * 1000
+        : Math.min(this._max429BackoffMs(), newStreak * 1000);
+      const jitterMultiplier = 0.5 + Math.random();
+      const backoffMs = Math.round(baseBackoffMs * jitterMultiplier);
       const retryNotBefore = now + backoffMs;
       const deadline = Math.min(bundle.dispatch_window_end, bundle.lease_expires_at);
       if (retryNotBefore >= deadline) {

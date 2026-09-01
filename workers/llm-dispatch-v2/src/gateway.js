@@ -160,6 +160,7 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
   });
 
   const correlationId = response.headers.get("cf-aig-log-id") || response.headers.get("cf-ray") || null;
+  const retryAfterSeconds = parseRetryAfterSeconds(response);
   let body = null;
   let parseError = null;
   try {
@@ -174,6 +175,7 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
     body,
     parseError,
     correlationId,
+    retryAfterSeconds,
   };
 }
 
@@ -206,6 +208,30 @@ export function upstreamCapacityFailure(status, body) {
     message.includes("no capacity") ||
     message.includes("temporarily unavailable")
   );
+}
+
+/**
+ * Extract and parse standard Retry-After or provider reset headers into whole seconds.
+ * Handles integer seconds and HTTP-date strings; returns null if no valid header is present.
+ */
+export function parseRetryAfterSeconds(response) {
+  if (!response || !response.headers) return null;
+  const raw =
+    response.headers.get("retry-after") ||
+    response.headers.get("x-ratelimit-reset-requests") ||
+    response.headers.get("x-ratelimit-reset-tokens");
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return Math.ceil(numeric);
+  }
+  const dateMs = Date.parse(trimmed);
+  if (Number.isFinite(dateMs)) {
+    const diffSec = Math.ceil((dateMs - Date.now()) / 1000);
+    return diffSec > 0 ? diffSec : 0;
+  }
+  return null;
 }
 
 /** Sums prompt/completion tokens from an OpenAI-shaped `usage` object, if present. */

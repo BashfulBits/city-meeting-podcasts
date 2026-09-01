@@ -511,7 +511,13 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
   const actualEndAt = Date.now();
 
   if (response.status === 429) {
-    return { retry429: true, actualStartAt, actualEndAt, correlationId: response.correlationId };
+    return {
+      retry429: true,
+      actualStartAt,
+      actualEndAt,
+      correlationId: response.correlationId,
+      retryAfterSeconds: response.retryAfterSeconds,
+    };
   }
 
   if (response.ok) {
@@ -641,7 +647,13 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
 
     // 429: ask the DO whether (and when) a retry is authorized.
     laneState.predecessorActualStart = outcome.actualStartAt;
-    const auth = await coordinator.authorizeRetry(job.id, job.lease_token, attemptId, Date.now());
+    const auth = await coordinator.authorizeRetry(
+      job.id,
+      job.lease_token,
+      attemptId,
+      Date.now(),
+      outcome.retryAfterSeconds
+    );
     if (!auth.authorized || auth.retry_not_before > bundleDeadline) {
       return {
         ...baseAttemptResult(job, attemptId, outcome.actualStartAt, outcome.actualEndAt, "terminal_error"),

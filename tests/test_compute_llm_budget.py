@@ -226,6 +226,46 @@ def test_provider_rpm_is_shared_across_models():
     )
 
 
+def test_provider_tpm_and_concurrency_is_shared_across_models():
+    first = LLMRoute(
+        model="provider/first",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100000),
+        pricing=PricingPolicy(),
+        provider="shared-provider",
+        provider_tpm=60000,
+        provider_concurrency=1,
+    )
+    second = LLMRoute(
+        model="provider/second",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100000),
+        pricing=PricingPolicy(),
+        provider="shared-provider",
+        provider_tpm=60000,
+        provider_concurrency=1,
+    )
+    budget = LLMBudget()
+    # Reserve 60k tokens on first route (1 minute's worth of 60k TPM)
+    budget.reserve("first", first.model, route=first, requests=1, tokens=60000, cost=0, now=NOW)
+    # Blocked due to both provider TPM and provider concurrency
+    assert not budget.available(
+        second.model, route=second, requests=1, tokens=1000, cost=0, now=NOW
+    )
+    # Settle reservation on first to commit 60k tokens and free concurrency slot
+    budget.settle("first", first.model, route=first, actual_tokens=60000, now=NOW)
+    # Now concurrency is 0, but token bucket is scheduled until NOW + 60s
+    assert not budget.available(
+        second.model, route=second, requests=1, tokens=1000, cost=0, now=NOW
+    )
+    # After 60s, provider TPM is available again
+    assert budget.available(
+        second.model, route=second, requests=1, tokens=1000, cost=0, now=NOW + timedelta(seconds=60)
+    )
+
+
 def test_serialized_ledger_matches_worker_shape():
     budget = LLMBudget()
     budget.reserve("owner", ROUTE.model, route=ROUTE, requests=1, tokens=10, cost=0.1, now=NOW)
