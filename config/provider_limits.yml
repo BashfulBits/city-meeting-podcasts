@@ -78,7 +78,7 @@ providers:
         api_key_env: MISTRAL_API_KEY
       - id: secondary
         api_key_env: MISTRAL_API_KEY_SECONDARY
-  # Airforce custom provider: serves Mistral Medium 3.5. Strictly guarded with concurrency: 1.
+  # Airforce custom provider: serves Mistral Medium 3.5. Guarded with concurrency: 4.
   # While published docs claimed 20 RPM, live 429 error responses report 1 RPM (plan_rpm: 1),
   # so rpm: 1 is used here.
   airforce:
@@ -88,7 +88,7 @@ providers:
     chat_path: /v1/chat/completions
     reset_timezone: UTC
     rpm: 1
-    concurrency: 1
+    concurrency: 4
     ai_gateway_max_attempts: 1
     accounts:
       - id: primary
@@ -741,7 +741,7 @@ routes:
     free: true
 
   # Airforce Mistral Medium 3.5 (free tier): alias for mistral/mistral-medium-latest
-  # While documentation claimed 20 RPM, error responses said 1 RPM (plan_rpm: 1), so 1 RPM is used.
+  # While documentation reported 20 RPM, error bodies returned 1 RPM (plan_rpm: 1); rpm: 1 is used.
   - route_id: airforce_mistral_medium_3_5_primary
     model: mistral/mistral-medium-3-5
     model_key: mistral/mistral-medium-latest
@@ -753,7 +753,7 @@ routes:
     rpm: 1
     tpm: 200000
     rpd: 1000
-    concurrency: 1
+    concurrency: 4
     free: true
     input_per_token: 0.0
     output_per_token: 0.0

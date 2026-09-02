@@ -44,7 +44,7 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert worker["providers"]["sambanova"]["rpm"] == 20
     assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
     assert worker["providers"]["airforce"]["ai_gateway_max_attempts"] == 1
-    assert worker["providers"]["airforce"]["concurrency"] == 1
+    assert worker["providers"]["airforce"]["concurrency"] == 4
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
     # route if compile-time route order ever shifted.
@@ -111,8 +111,8 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert compiled["model_aliases"]["mistral/mistral-medium-2508"] == mistral_medium_key
     assert compiled["model_aliases"]["mistral/mistral-medium-2505"] == mistral_medium_key
     assert compiled["model_aliases"]["mistral/mistral-medium-3-5"] == mistral_medium_key
-    assert compiled["providers"]["airforce"]["concurrency"] == 1
-    assert compiled["routes_by_id"]["airforce_mistral_medium_3_5_primary"]["concurrency"] == 1
+    assert compiled["providers"]["airforce"]["concurrency"] == 4
+    assert compiled["routes_by_id"]["airforce_mistral_medium_3_5_primary"]["concurrency"] == 4
 
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():

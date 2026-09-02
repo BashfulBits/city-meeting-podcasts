@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Changed
+
+- **Increase Airforce provider and route concurrency.** Raises `concurrency` from 1 to 4 for the
+  `airforce` provider and `airforce_mistral_medium_3_5_primary` route in
+  `config/provider_limits.yml` and recompiled catalogs (`llm_routes.json`, `dispatch_limits.json`).
+  Permits up to 4 concurrent in-flight requests against `api.airforce` to improve throughput now
+  that failure modes other than global rate limits are isolated.
+
 ### Added
 
 - **Airforce provider, Mistral Medium latest migration, and 429 throttle fix.** Adds
