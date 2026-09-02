@@ -317,6 +317,13 @@ enqueue/poll split for today's incident (Verification) before finalizing this va
 | `MAX_B2_SUBREQUESTS` | profiled gate | Bounds I/O below connection ceiling |
 | `COMPLETED_RETENTION_DAYS` | 38 | Bounded availability; matches deferred-handle horizon |
 
+**2026-09-02 Airforce start margin.** The Airforce Mistral Medium route remains paced from request
+start, not response completion: production Gateway logs contain successful pairs less than 60 seconds
+apart measured from the prior response. Its 1 RPM interval therefore has a two-second start-time
+margin (62 seconds total) to absorb clock skew, and provider/route concurrency is one so a slow call
+cannot overlap a second Airforce call. This affects scheduling only; no pipeline version or artifact
+backfill is involved.
+
 The scheduler rejects a deployment configuration whose projected usage exceeds 75% of a relevant
 daily ceiling before retry and maintenance headroom. Scheduled invocations happen whether or not
 there is work, so their fixed daily cost is accounted for separately:

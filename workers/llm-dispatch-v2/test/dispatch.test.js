@@ -152,6 +152,41 @@ test("claimDispatchWindow paces same-route jobs by the RPM inter-request gap", a
   assert.ok(plan.jobs[1].not_before_at >= plan.jobs[0].not_before_at + 1000);
 });
 
+test(
+  "claimDispatchWindow preserves a route's request-start safety margin across bundles",
+  async () => {
+    const catalog = structuredClone(TEST_CATALOG);
+    Object.assign(catalog.routes_by_id["route-c"], {
+      rpm: 1,
+      request_start_margin_seconds: 2,
+    });
+    const { coordinator } = makeCoordinator({
+      DISPATCH_LIMITS_OVERRIDE: catalog,
+      MAX_BUNDLE_JOBS: "1",
+    });
+    await coordinator.enqueueBatch([
+      makeJob("first", {
+        policy_json: JSON.stringify({
+          allowed_models: ["mistral/mistral-small"],
+          allow_paid: false,
+        }),
+      }),
+      makeJob("second", {
+        policy_json: JSON.stringify({
+          allowed_models: ["mistral/mistral-small"],
+          allow_paid: false,
+        }),
+      }),
+    ]);
+
+    const now = Date.now();
+    const first = await coordinator.claimDispatchWindow(now, 25);
+    assert.equal(first.jobs.length, 1);
+    assert.equal((await coordinator.claimDispatchWindow(now + 60_000, 25)).jobs.length, 0);
+    assert.equal((await coordinator.claimDispatchWindow(now + 62_000, 25)).jobs.length, 1);
+  }
+);
+
 test("claimDispatchWindow never opens more than MAX_CONCURRENT_ROUTE_LANES distinct lanes", async () => {
   const { coordinator } = makeCoordinator({ MAX_CONCURRENT_ROUTE_LANES: "1", MAX_BUNDLE_JOBS: "4" });
   await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2"), makeJob("j3")]);

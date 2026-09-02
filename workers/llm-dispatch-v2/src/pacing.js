@@ -24,13 +24,29 @@ const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 24 * 60 * 60_000;
 export const FULL_TOKEN_BUDGET_WINDOWS = 5;
 
-/** ceil(60000 / rpm): the minimum spacing between two requests on the same route, evenly paced
- * so that no sliding 60s window can ever see more than `rpm` requests, regardless of how the
- * fixed-window counter below happens to be aligned. */
+/**
+ * Optional, provider-specific addition to the normal RPM spacing. It is a request-start safety
+ * margin for providers whose clocks can reject an exactly-on-the-minute request; it is not a
+ * response-time delay.
+ */
+export function requestStartMarginMs(route) {
+  const seconds = Number(route?.request_start_margin_seconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  return Math.ceil(seconds * 1000);
+}
+
+/** Length of the route's RPM accounting window, including any start-time safety margin. */
+export function rpmWindowDurationMs(route) {
+  return MS_PER_MINUTE + requestStartMarginMs(route);
+}
+
+/** ceil(60000 / rpm), plus any configured start margin: the minimum spacing between two
+ * requests on the same route, evenly paced so that no sliding 60s window can ever see more than
+ * `rpm` requests, regardless of how the fixed-window counter below happens to be aligned. */
 export function minInterRequestGapMs(route) {
   const rpm = Number(route?.rpm);
   if (!Number.isFinite(rpm) || rpm <= 0) return 0;
-  return Math.ceil(MS_PER_MINUTE / rpm);
+  return Math.ceil(MS_PER_MINUTE / rpm) + requestStartMarginMs(route);
 }
 
 /**
@@ -179,10 +195,16 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
 
   let notBeforeAt = Math.max(earliestCandidateTime, now);
 
-  // RPM: fixed 60s window.
+  // RPM: a one-minute accounting window, with an optional provider-specific start-time margin.
   notBeforeAt = Math.max(
     notBeforeAt,
-    fixedWindowReadyAt(route?.rpm_window_start, route?.rpm_count, route?.rpm, MS_PER_MINUTE, now)
+    fixedWindowReadyAt(
+      route?.rpm_window_start,
+      route?.rpm_count,
+      route?.rpm,
+      rpmWindowDurationMs(route),
+      now
+    )
   );
 
   // RPD: the provider's calendar day in its own reset timezone, not a rolling 24h window.
