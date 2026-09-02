@@ -284,7 +284,9 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_ACTIVE_BUNDLES` | 2 | Bound for partially completed or abandoned dispatch plans |
 | `MAX_IN_FLIGHT_LLM_CALLS` | 8 | Separate global cap; avoids one slow bundle serializing all work |
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
-| `MAX_JOBS_PER_UTC_DAY` | 5,000 | Hard ingestion admission cap. This matches the ~4,000 daily dispatch ceiling while reserving Free-tier SQLite write headroom for each job's model-index rows and lease-time index removal |
+| `MAX_JOBS_PER_UTC_DAY` | 12,000 | Secondary raw-job circuit breaker; it limits runaway job creation but is not the primary DO-write guard |
+| `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` | 30,000 | Primary ingress budget. It conservatively charges the job row, model-index rows, purpose ledger, and scheduler counter, retaining lifecycle/cleanup headroom below the DO daily write ceiling |
+| `INGRESS_PURPOSE_RESERVATIONS` | deployed JSON map | Per-purpose daily write budgets and reserved write units, so one bulk workload cannot consume the capacity retained for another purpose |
 | `ENQUEUE_BATCH_MAX` | profiled gate (target: low hundreds to low thousands of jobs/call) | Jobs accepted per single `enqueue-batch` RPC — sized so reaching `MAX_JOBS_PER_UTC_DAY` takes tens of calls, not thousands |
 | `POLL_BATCH_MAX` | profiled gate (target: enough to cover the largest single reconciliation sweep in one call — see note below) | Statuses/results returned per single `poll-batch` RPC |
 

@@ -466,7 +466,29 @@ test("ingress reservations preserve write capacity for another purpose", async (
   ]);
   const tags = await coordinator.enqueueBatch([job("tags", "topic-tags")]);
   assert.deepEqual(tags.accepted, [{ id: "tags", submitted_id: "tags" }]);
-  assert.equal([...sql.exec("SELECT ingress_write_units_today FROM scheduler")][0].ingress_write_units_today, 6);
+  assert.equal([...sql.exec("SELECT ingress_write_units_today FROM scheduler")][0].ingress_write_units_today, 8);
+});
+
+test("schemaRetry obeys the same ingress write budget as enqueueBatch", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "8",
+  });
+  await coordinator.enqueueBatch([{
+    id: "source", idempotency_key: "source-key", request_digest: "source-digest",
+    policy_json: JSON.stringify({ purpose: "topic-tags" }), prompt_family: "tags",
+    input_token_estimate: 1, max_output_token_estimate: 1,
+    payload_key: "payloads/source/request.json",
+  }]);
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'source'");
+  sql.exec("UPDATE scheduler SET ingress_write_units_today = 8 WHERE id = 1");
+
+  assert.deepEqual(await coordinator.schemaRetry("source", {
+    corrected_payload_key: "payloads/retry/request.json",
+    corrected_request_digest: "retry-digest",
+    corrected_input_token_estimate: 1,
+  }), { status: "ingress_write_budget_reserved" });
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM jobs")][0].n, 1);
 });
 
 test("enqueueBatch rolls the whole batch back if a mid-batch exception is thrown", async () => {

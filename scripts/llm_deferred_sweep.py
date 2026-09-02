@@ -406,6 +406,7 @@ def main(argv: list[str] | None = None) -> int:
                 and (handle := look_up_v2_deferred_ref(storage, row["id"])) is not None
             ]
             v2_terminal_seen = len(terminal_rows)
+            terminal_page_fully_consumed = True
             if terminal_handles:
                 terminal_snapshot = snapshot_deferred_handles(storage, terminal_handles)
                 terminal_results = backend.poll_batch(terminal_handles)
@@ -415,10 +416,11 @@ def main(argv: list[str] | None = None) -> int:
                         recover_terminal(handle, result, target_snapshot=terminal_snapshot)
                     elif isinstance(result, JobResult):
                         completed += 1
-                    elif isinstance(result, Exception):
+                    else:
                         v2_unobserved += 1
+                        terminal_page_fully_consumed = False
             cursor = terminal_page.get("cursor")
-            if isinstance(cursor, dict):
+            if terminal_page_fully_consumed and isinstance(cursor, dict):
                 write_v2_terminal_cursor(storage, cursor)
         except Exception as exc:  # noqa: BLE001 -- leave cursor untouched for the next cadence
             print(

@@ -357,11 +357,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _maxIngressWriteUnitsPerUtcDay() {
     const configured = Number(this.env.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY);
     // Historical deployments set only MAX_JOBS_PER_UTC_DAY.  Preserve that protective bound
-    // until the explicit write budget is configured, using three writes/job as its conservative
-    // estimate (job row, model pointer, purpose counter).
+    // until the explicit write budget is configured, using four writes/job as its conservative
+    // estimate (job row, model pointer, purpose counter, scheduler counter).
     return Number.isFinite(configured) && configured > 0
       ? configured
-      : this._maxJobsPerUtcDay() * 3;
+      : this._maxJobsPerUtcDay() * 4;
   }
 
   _ingressPurposeReservations() {
@@ -388,9 +388,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   _ingressWriteUnitsFor(job) {
-    // jobs + every model-index row + an amortized purpose-ledger update.  It deliberately
-    // overestimates a batch's single scheduler update: a circuit breaker must fail safe.
-    return 2 + this._modelsToIndex(job).length;
+    // jobs + every model-index row + purpose-ledger + scheduler update. A batch performs only
+    // one scheduler update, but charging one per job is the conservative circuit-breaker choice.
+    return 3 + this._modelsToIndex(job).length;
   }
 
   _envInt(name, fallback) {
@@ -806,6 +806,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const now = Date.now();
     const maxJobsToday = this._maxJobsPerUtcDay();
+    const maxIngressWriteUnits = this._maxIngressWriteUnitsPerUtcDay();
 
     return this.ctx.storage.transactionSync(() => {
       // Derive the correction namespace from the source id rather than the source row. That lets
@@ -842,19 +843,54 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return { status: "daily_cap_exceeded" };
       }
 
+      const purpose = source.purpose || this._purposeForJob(source);
+      const reservation = this._ingressPurposeReservations()[purpose] || {};
+      const purposeUsage = [...sql.exec(
+        "SELECT write_units FROM ingress_purpose WHERE utc_day = ? AND purpose = ?",
+        sched.utc_day,
+        purpose
+      )][0]?.write_units || 0;
+      const retryJob = {
+        ...source,
+        input_token_estimate: retry.corrected_input_token_estimate,
+        max_output_token_estimate: source.max_output_token_estimate,
+      };
+      const writeUnits = this._ingressWriteUnitsFor(retryJob);
+      const purposeWriteLimit = Number(reservation.daily_write_units);
+      if (Number.isFinite(purposeWriteLimit) && purposeWriteLimit >= 0 &&
+          purposeUsage + writeUnits > purposeWriteLimit) {
+        return { status: "purpose_write_budget_exceeded" };
+      }
+      const reservations = this._ingressPurposeReservations();
+      const otherReservations = Object.entries(reservations).reduce((sum, [otherPurpose, config]) => {
+        if (otherPurpose === purpose) return sum;
+        const reserved = Number(config?.reserved_write_units);
+        if (!Number.isFinite(reserved) || reserved <= 0) return sum;
+        const used = [...sql.exec(
+          "SELECT write_units FROM ingress_purpose WHERE utc_day = ? AND purpose = ?",
+          sched.utc_day,
+          otherPurpose
+        )][0]?.write_units || 0;
+        return sum + Math.max(0, reserved - used);
+      }, 0);
+      if ((sched.ingress_write_units_today || 0) + writeUnits > maxIngressWriteUnits - otherReservations) {
+        return { status: "ingress_write_budget_reserved" };
+      }
+
       const id = crypto.randomUUID();
       sql.exec(
         `INSERT INTO jobs (
           id, idempotency_key, request_digest, provider_idempotency_key,
-          state, priority, policy_json, prompt_family,
+          state, priority, purpose, policy_json, prompt_family,
           input_token_estimate, max_output_token_estimate,
           payload_key, attempts, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
         id,
         idempotencyKey,
         retry.corrected_request_digest,
         source.provider_idempotency_key,
         source.priority,
+        purpose,
         source.policy_json,
         source.prompt_family,
         retry.corrected_input_token_estimate,
@@ -876,7 +912,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
         now
       );
       sql.exec(
-        "UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + 1 WHERE id = 1"
+        `UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + 1,
+         ingress_write_units_today = ingress_write_units_today + ? WHERE id = 1`,
+        writeUnits
+      );
+      sql.exec(
+        `INSERT INTO ingress_purpose (utc_day, purpose, jobs_ingested, write_units)
+         VALUES (?, ?, 1, ?)
+         ON CONFLICT (utc_day, purpose) DO UPDATE SET
+           jobs_ingested = jobs_ingested + 1,
+           write_units = write_units + excluded.write_units`,
+        sched.utc_day,
+        purpose,
+        writeUnits
       );
       return { status: "accepted", id, idempotency_key: idempotencyKey };
     });

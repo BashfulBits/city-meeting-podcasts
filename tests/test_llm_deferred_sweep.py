@@ -565,6 +565,45 @@ def test_sweep_batch_polls_v2_handles(monkeypatch):
     assert poll_batch_called_with[0].ref == "j1"
 
 
+def test_sweep_does_not_advance_terminal_cursor_until_every_result_is_observable(monkeypatch):
+    """A completed DO row must remain in the feed while its B2 result is still unavailable."""
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    handle = JobHandle(
+        task="tag", recipe_hash="terminal-recipe", backend="llm-dispatch-v2", ref="j1"
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda *_args, **_kwargs: _snapshot([])
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "look_up_v2_deferred_ref", lambda *_args: handle)
+    monkeypatch.setattr(
+        llm_deferred_sweep, "snapshot_deferred_handles", lambda *_args: _snapshot([handle])
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "load_v2_terminal_cursor", lambda *_args: None)
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_args: None)
+    written_cursors = []
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "write_v2_terminal_cursor",
+        lambda _storage, cursor: written_cursors.append(cursor),
+    )
+
+    class MockBackend:
+        config = SimpleNamespace(dispatch_v2_url="https://dispatch.example")
+
+        def terminal_feed(self, _cursor):
+            return {"terminals": [{"id": "j1"}], "cursor": {"updated_at": 1, "id": "j1"}}
+
+        def poll_batch(self, _handles):
+            return {"j1": None}
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert written_cursors == []
+
+
 def test_sweep_skips_reconcile_for_all_handles_observed_by_batch_poll(monkeypatch):
     # Regression test for the singleton-poll storm: a successful batch poll is authoritative for
     # both completed and still-pending v2 handles.  Neither may immediately go through

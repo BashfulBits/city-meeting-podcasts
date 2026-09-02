@@ -7160,6 +7160,29 @@ def _chapter_llm_backend(ctx):
     return backend
 
 
+def _cancel_chapter_fallbacks(ctx, stats: StageStats, states: list[dict]) -> None:
+    """Cancel queued agenda or locator fallbacks and discard their matching deferred handles."""
+    from citypods.compute.llm_deferred import discard_deferred
+
+    candidates = [
+        (state.get(recipe_key), state.get(ref_key))
+        for state in states
+        for recipe_key, ref_key in (("recipe", "job_ref"), ("locator_recipe", "locator_job_ref"))
+        if isinstance(state.get(recipe_key), str) and isinstance(state.get(ref_key), str)
+    ]
+    refs = [ref for _recipe, ref in candidates]
+    cancelled_refs: set[str] = set()
+    cancel = getattr(_chapter_llm_backend(ctx), "cancel_batch", None)
+    if refs and callable(cancel):
+        try:
+            cancelled_refs = set(cancel(refs).get("cancelled", ()))
+        except Exception as exc:  # noqa: BLE001 -- exclusion must still prevent new work
+            stats.errors.append(f"provider chapter cancellation batch: {exc}")
+    for recipe, ref in candidates:
+        if ref in cancelled_refs:
+            discard_deferred(ctx.storage, recipe, expected_ref=ref)
+
+
 def _write_chapter_json(storage, key: str, value: dict) -> str:
     """Upload a bounded generated-chapter artifact without exposing its local temp path."""
 
@@ -7183,7 +7206,6 @@ class AgendaChapterCandidatesStage:
         from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
-        from citypods.compute.llm_deferred import discard_deferred
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
@@ -7202,25 +7224,13 @@ class AgendaChapterCandidatesStage:
         # its derived state; an in-flight attempt is deliberately allowed to settle, but cannot
         # be published because this stage records the exclusion below.  One batched cancellation
         # keeps this migration from recreating the per-episode Worker-invocation pattern v2 fixed.
-        exclusions: list[tuple[Episode, str, str | None]] = []
+        exclusions: list[tuple[Episode, dict]] = []
         for ep in materialized:
             if ep.source_chapters:
-                state = ep.generated_agenda_candidates or {}
-                recipe = state.get("recipe") if isinstance(state.get("recipe"), str) else None
-                ref = state.get("job_ref") if isinstance(state.get("job_ref"), str) else None
-                exclusions.append((ep, recipe or "", ref))
-        cancelled_refs: set[str] = set()
+                exclusions.append((ep, dict(ep.generated_agenda_candidates or {})))
         if exclusions:
-            refs = [ref for _ep, _recipe, ref in exclusions if ref]
-            cancel = getattr(_chapter_llm_backend(ctx), "cancel_batch", None)
-            if refs and callable(cancel):
-                try:
-                    cancelled_refs = set(cancel(refs).get("cancelled", ()))
-                except Exception as exc:  # noqa: BLE001 -- exclusion must still prevent new work
-                    stats.errors.append(f"provider chapter cancellation batch: {exc}")
-            for ep, recipe, ref in exclusions:
-                if recipe and ref and ref in cancelled_refs:
-                    discard_deferred(ctx.storage, recipe, expected_ref=ref)
+            _cancel_chapter_fallbacks(ctx, stats, [state for _ep, state in exclusions])
+            for ep, _state in exclusions:
                 ep.generated_agenda_candidates = {
                     "status": "not_applicable",
                     "reason": "provider_chapters",
@@ -7365,6 +7375,7 @@ class ChapterBoundaryLocatorStage:
                 # historical generated output. Keep the locator independently safe for a
                 # locator-only lane invocation or a partially persisted earlier agenda pass.
                 raw = dict(ep.generated_agenda_candidates or {})
+                _cancel_chapter_fallbacks(ctx, stats, [raw])
                 raw.update(
                     {
                         "status": "not_applicable",
