@@ -1938,6 +1938,7 @@ class LiteLLMBackend(Backend):
                             "allow_paid": (
                                 getattr(policy, "allow_paid", False) if policy else False
                             ),
+                            "purpose": getattr(policy, "purpose", "") if policy else "",
                         }
                     ),
                 }
@@ -2362,6 +2363,79 @@ class LiteLLMBackend(Backend):
                 )
             except requests.RequestException:
                 return
+
+    def cancel_batch(self, refs: Sequence[str]) -> Mapping[str, tuple[str, ...]]:
+        """Cancel submitted v2 jobs that no longer have a consumer.
+
+        This is intentionally limited to coordinator-backed UUID references.  Legacy v1 handles
+        are left to their now-idle worker/TTL path; sending them to a v2 endpoint would create an
+        ambiguous cross-worker cancellation contract.
+        """
+        if not refs or not self.config.dispatch_v2_url:
+            return {"cancelled": (), "in_flight": (), "not_found": ()}
+        headers = {"content-type": "application/json"}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:cancel-batch")
+        combined: dict[str, list[str]] = {"cancelled": [], "in_flight": [], "not_found": []}
+        for start in range(0, len(refs), _WORKER_BATCH_LIMIT):
+            try:
+                response = self._session.post(
+                    url,
+                    json={"ids": list(refs[start : start + _WORKER_BATCH_LIMIT])},
+                    headers=headers,
+                    timeout=self.config.timeout_seconds,
+                )
+                if response.status_code != 200:
+                    raise LLMBackendError(
+                        f"LLM dispatch v2 cancel-batch returned HTTP {response.status_code}"
+                    )
+                data = response.json()
+                if not isinstance(data, Mapping):
+                    raise LLMBackendError("LLM dispatch v2 cancel-batch returned malformed JSON")
+                for key in combined:
+                    values = data.get(key, [])
+                    if not isinstance(values, list) or not all(
+                        isinstance(value, str) for value in values
+                    ):
+                        raise LLMBackendError(
+                            "LLM dispatch v2 cancel-batch returned malformed results"
+                        )
+                    combined[key].extend(values)
+            except requests.RequestException as exc:
+                raise LLMBackendError("LLM dispatch v2 cancel-batch request failed") from exc
+        return {key: tuple(value) for key, value in combined.items()}
+
+    def terminal_feed(
+        self, cursor: Mapping[str, Any] | None, *, limit: int = 500
+    ) -> Mapping[str, Any]:
+        """Read one bounded v2 terminal feed page without observing pending jobs."""
+        if not self.config.dispatch_v2_url:
+            raise LLMBackendError("LLM dispatch v2 terminal feed requires LLM_DISPATCH_V2_URL")
+        headers = {"content-type": "application/json"}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:terminal-feed")
+        try:
+            response = self._session.post(
+                url,
+                json={"cursor": cursor, "limit": limit},
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 terminal-feed request failed") from exc
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 terminal-feed returned HTTP {response.status_code}"
+            )
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            raise LLMBackendError("LLM dispatch v2 terminal-feed returned malformed JSON") from exc
+        if not isinstance(data, Mapping) or not isinstance(data.get("terminals"), list):
+            raise LLMBackendError("LLM dispatch v2 terminal-feed returned malformed data")
+        return data
 
     def dispatch_v2_stats(self, *, limit: int = 20) -> Mapping[str, Any]:
         """Return the v2 scheduler's bounded, authenticated operational snapshot.

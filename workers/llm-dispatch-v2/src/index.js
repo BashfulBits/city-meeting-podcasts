@@ -66,6 +66,7 @@ export function validateConfig(env) {
   const maxJobsPerModelClaim = Number(env.MAX_JOBS_PER_MODEL_CLAIM || maxBundleJobs);
   const maxConcurrentLanes = Number(env.MAX_CONCURRENT_ROUTE_LANES || 5);
   const maxJobsPerDay = Number(env.MAX_JOBS_PER_UTC_DAY || 5000);
+  const maxIngressWriteUnits = Number(env.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY || maxJobsPerDay * 3);
   const max5xxRetries = Number(env.MAX_5XX_RETRIES || 1);
   const max5xxBackoffSeconds = Number(env.MAX_5XX_BACKOFF_SECONDS || 300);
 
@@ -120,14 +121,39 @@ export function validateConfig(env) {
     throw new Error("Invalid config: MAX_5XX_BACKOFF_SECONDS must be an integer from 60 to 300");
   }
 
-  // Check projected Free resource usage stays below 75% threshold
-  // A queued job writes its job row plus one or more model-index rows, and a claimed job removes
-  // those index rows. The 5k ceiling leaves room for the documented dispatch lifecycle writes.
-  const maxJobsBudget = 5000;
-  if (maxJobsPerDay > maxJobsBudget) {
+  // The ingress budget is stated in pessimistic durable-object write units rather than raw job
+  // count.  A queued job writes its job row, one or more model-index rows, and its purpose
+  // ledger; dispatch/cleanup writes remain outside this admission cap.  Keep ingress itself under
+  // 40% of the included 100k daily write limit so the lifecycle has explicit headroom.
+  const maxIngressWriteBudget = 40_000;
+  if (!Number.isInteger(maxIngressWriteUnits) || maxIngressWriteUnits < 1 || maxIngressWriteUnits > maxIngressWriteBudget) {
     throw new Error(
-      `Invalid config: MAX_JOBS_PER_UTC_DAY (${maxJobsPerDay}) exceeds 75% of included daily limit (${maxJobsBudget})`
+      `Invalid config: MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY (${maxIngressWriteUnits}) must be an integer from 1 to ${maxIngressWriteBudget}`
     );
+  }
+  if (!Number.isInteger(maxJobsPerDay) || maxJobsPerDay < 1 || maxJobsPerDay > 20_000) {
+    throw new Error("Invalid config: MAX_JOBS_PER_UTC_DAY must be an integer from 1 to 20000");
+  }
+  if (env.INGRESS_PURPOSE_RESERVATIONS) {
+    let reservations;
+    try {
+      reservations = JSON.parse(env.INGRESS_PURPOSE_RESERVATIONS);
+    } catch {
+      throw new Error("Invalid config: INGRESS_PURPOSE_RESERVATIONS must be JSON");
+    }
+    if (!reservations || typeof reservations !== "object" || Array.isArray(reservations)) {
+      throw new Error("Invalid config: INGRESS_PURPOSE_RESERVATIONS must be an object");
+    }
+    const reserved = Object.values(reservations).reduce((sum, config) => {
+      const value = Number(config?.reserved_write_units || 0);
+      if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+        throw new Error("Invalid config: reservation write units must be non-negative integers");
+      }
+      return sum + value;
+    }, 0);
+    if (reserved > maxIngressWriteUnits) {
+      throw new Error("Invalid config: ingress reservations exceed the global write budget");
+    }
   }
 
   const estimatedCallDurationCeiling = Number(env.ESTIMATED_CALL_DURATION_CEILING_SECONDS || 20);
@@ -359,6 +385,52 @@ export async function handleRequest(request, env) {
     } catch (err) {
       const detail = describeError(err);
       console.error(`ackResults failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  if (request.method === "POST" && path === "/v2/jobs:cancel-batch") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+    const maxBatch = Number(env.POLL_BATCH_MAX || 1000);
+    const validation = validatePollBatchRequest(body, maxBatch);
+    if (!validation.valid) {
+      return errorResponse(400, validation.error, validation.detail);
+    }
+    try {
+      return jsonResponse(await coordinator.cancelBatch(body.ids), 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`cancelBatch failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  if (request.method === "POST" && path === "/v2/jobs:terminal-feed") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+    const cursor = body?.cursor;
+    const limit = Math.min(Math.max(Number(body?.limit) || 500, 1), Number(env.POLL_BATCH_MAX || 1000));
+    if (
+      cursor !== undefined &&
+      (!cursor || typeof cursor !== "object" || Array.isArray(cursor) ||
+       !Number.isFinite(Number(cursor.updated_at)) || typeof cursor.id !== "string")
+    ) {
+      return errorResponse(400, "invalid_request", "cursor must contain updated_at and id");
+    }
+    try {
+      return jsonResponse(await coordinator.terminalFeed(cursor, limit), 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`terminalFeed failed: ${detail}`);
       return errorResponse(500, "coordinator_error", detail);
     }
   }

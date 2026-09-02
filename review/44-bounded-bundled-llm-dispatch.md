@@ -284,7 +284,9 @@ are deliberately conservative and become a tested capacity model, not tuning by 
 | `MAX_ACTIVE_BUNDLES` | 2 | Bound for partially completed or abandoned dispatch plans |
 | `MAX_IN_FLIGHT_LLM_CALLS` | 8 | Separate global cap; avoids one slow bundle serializing all work |
 | `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | Hard admission cap, below the 1,440 daily cron ticks |
-| `MAX_JOBS_PER_UTC_DAY` | 5,000 | Hard ingestion admission cap. This matches the ~4,000 daily dispatch ceiling while reserving Free-tier SQLite write headroom for each job's model-index rows and lease-time index removal |
+| `MAX_JOBS_PER_UTC_DAY` | 12,000 | Secondary raw-job circuit breaker; it limits runaway job creation but is not the primary DO-write guard |
+| `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` | 30,000 | Primary ingress budget. It conservatively charges the job row, model-index rows, purpose ledger, and scheduler counter, retaining lifecycle/cleanup headroom below the DO daily write ceiling |
+| `INGRESS_PURPOSE_RESERVATIONS` | deployed JSON map | Per-purpose daily write budgets and reserved write units, so one bulk workload cannot consume the capacity retained for another purpose |
 | `ENQUEUE_BATCH_MAX` | profiled gate (target: low hundreds to low thousands of jobs/call) | Jobs accepted per single `enqueue-batch` RPC — sized so reaching `MAX_JOBS_PER_UTC_DAY` takes tens of calls, not thousands |
 | `POLL_BATCH_MAX` | profiled gate (target: enough to cover the largest single reconciliation sweep in one call — see note below) | Statuses/results returned per single `poll-batch` RPC |
 
@@ -445,6 +447,13 @@ type the pipeline writes already live in the calling Python client
   `result_key` only, never an inlined result body. A caller that needs a specific job's full result
   fetches it directly from B2 itself (same `b2_from_env()` credentials), exactly once, only for the
   job(s) it actually needs — not proactively for every completed job in a reconciliation sweep.
+- **`POST /v2/jobs:terminal-feed`:** returns one bounded, keyset-paginated stream of changed
+  `completed`/`failed` rows (`updated_at,id`). The deferred sweep owns the cursor and uses its
+  job-id pointer index to read only canonical records named by that page; it does not poll or
+  download the full pending v2 registry.
+- **`POST /v2/jobs:cancel-batch`:** retires queued work whose consumer became inapplicable before
+  it reaches a provider. It never cancels `leased`/`unknown_attempt` work, because only the normal
+  fencing/settlement path can safely resolve an attempt that may already be executing.
 - **`POST /v2/jobs/{id}:schema-retry`:** preserves schema-correction semantics with a new payload
   and idempotency namespace; the caller writes the corrected payload to B2 first, same as
   `enqueue-batch`, and supplies its digest and updated input estimate because the ingress cannot
@@ -463,6 +472,27 @@ proxied through the ingress Worker), then makes one `enqueueBatch` RPC with the 
 object, which is safe and is deleted by the bounded cleanup path. The DO validates an immutable
 request digest with the idempotency key, so a reused key with different contents fails loudly
 rather than corrupting an earlier job.
+
+### Implemented refinement (2026-09-02): fallback-only chapters, ingress reservations, and terminal feed
+
+The historical `MAX_JOBS_PER_UTC_DAY=5,000` cap was a coarse pre-batching safety valve. V2 now
+keeps a secondary raw-job circuit breaker, but makes the admission decision against
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`: a conservative count of the job row, all model-index rows,
+and purpose-ledger work. `INGRESS_PURPOSE_RESERVATIONS` holds purpose-specific daily budgets and
+reserved write units, so bulk `chapter-agenda` ingress cannot consume capacity reserved for tag,
+moment, or locator work. The deployed 30,000-unit budget remains below the DO daily-write ceiling
+with lifecycle/cleanup headroom; it is not an unlimited ingress setting.
+
+Generated agenda/location work is now strictly a fallback for episodes without provider
+`source_chapters`. A provider-marked episode clears its generated overlay and cancels a queued v2
+agenda request in a bounded batch; a leased request is fenced to completion but is no longer
+eligible to alter rendered chapters. This intentionally does not bump the chapter recipe or
+trigger a catalog-wide fallback reprocessing.
+
+The deferred-index repair marker is version 2. Operators must run `llm_deferred_sweep.py
+--repair-index` once after deploying this change; until every canonical record has been indexed,
+the sweep keeps the existing safe full-list fallback. V1 receives no new submission and is retained
+only for its legacy records while its idle backlog finishes.
 
 ### Claim, ordering, pacing, and execution flow
 

@@ -3,6 +3,13 @@
 **Status: L2 designed · 2026-07-27.** This is an empirical fallback for episodes where a provider
 does not supply chapter markers. It does not replace canonical provider chapters.
 
+**Implementation clarification · 2026-09-02.** `source_chapters` is now an explicit hard gate for
+both generated-agenda and generated-boundary stages. An episode that gains provider markers is
+marked `not_applicable`, its stale generated overlay is cleared, and a queued v2 agenda job is
+cancelled in one batch when it has not started. An already leased job may settle but cannot publish
+over provider markers. This is a behavioral correction, not a pipeline-version bump: completed
+fallback artifacts for episodes still lacking provider chapters are retained and are not backfilled.
+
 ## Evidence and scope
 
 The chapter-prevalence audit over the supplied production snapshot found 239 broad candidates with

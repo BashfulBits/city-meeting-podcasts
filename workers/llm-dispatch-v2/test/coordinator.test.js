@@ -438,6 +438,59 @@ test("enqueueBatch enforces daily cap with partial admission", async () => {
   assert.deepEqual(res.rejected, [{ id: "j3", reason: "daily_cap_exceeded" }]);
 });
 
+test("ingress reservations preserve write capacity for another purpose", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "8",
+    INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({
+      "topic-tags": { reserved_write_units: 3 },
+      "chapter-agenda": { daily_write_units: 10 },
+    }),
+  });
+  const job = (id, purpose) => ({
+    id,
+    idempotency_key: `${id}-key`,
+    request_digest: `${id}-digest`,
+    policy_json: JSON.stringify({ allowed_models: ["unknown-model"], purpose }),
+    prompt_family: "test",
+    input_token_estimate: 1,
+    max_output_token_estimate: 1,
+    payload_key: `payloads/${id}/request.json`,
+  });
+
+  const agenda = await coordinator.enqueueBatch([job("agenda", "chapter-agenda")]);
+  assert.deepEqual(agenda.accepted, [{ id: "agenda", submitted_id: "agenda" }]);
+  const blocked = await coordinator.enqueueBatch([job("agenda-2", "chapter-agenda")]);
+  assert.deepEqual(blocked.rejected, [
+    { id: "agenda-2", reason: "ingress_write_budget_reserved" },
+  ]);
+  const tags = await coordinator.enqueueBatch([job("tags", "topic-tags")]);
+  assert.deepEqual(tags.accepted, [{ id: "tags", submitted_id: "tags" }]);
+  assert.equal([...sql.exec("SELECT ingress_write_units_today FROM scheduler")][0].ingress_write_units_today, 8);
+});
+
+test("schemaRetry obeys the same ingress write budget as enqueueBatch", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "8",
+  });
+  await coordinator.enqueueBatch([{
+    id: "source", idempotency_key: "source-key", request_digest: "source-digest",
+    policy_json: JSON.stringify({ purpose: "topic-tags" }), prompt_family: "tags",
+    input_token_estimate: 1, max_output_token_estimate: 1,
+    payload_key: "payloads/source/request.json",
+  }]);
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'source'");
+  sql.exec("UPDATE scheduler SET ingress_write_units_today = 8 WHERE id = 1");
+
+  assert.deepEqual(await coordinator.schemaRetry("source", {
+    corrected_payload_key: "payloads/retry/request.json",
+    corrected_request_digest: "retry-digest",
+    corrected_input_token_estimate: 1,
+  }), { status: "ingress_write_budget_reserved" });
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM jobs")][0].n, 1);
+});
+
 test("enqueueBatch rolls the whole batch back if a mid-batch exception is thrown", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
 
@@ -523,6 +576,57 @@ test("pollBatch returns statuses and omits absent IDs", async () => {
   assert.equal(pollRes.statuses[0].id, "j1");
   assert.equal(pollRes.statuses[0].state, "completed");
   assert.equal(pollRes.statuses[0].result_key, "results/j1/lt1.json");
+});
+
+test("terminalFeed is keyset paginated and cancelBatch removes queued work from dispatch", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([
+    {
+      id: "complete-job",
+      idempotency_key: "complete-key",
+      request_digest: "complete-digest",
+      policy_json: "{}",
+      prompt_family: "tags",
+      input_token_estimate: 1,
+      max_output_token_estimate: 1,
+      payload_key: "payloads/complete/request.json",
+    },
+    {
+      id: "cancel-job",
+      idempotency_key: "cancel-key",
+      request_digest: "cancel-digest",
+      policy_json: "{}",
+      prompt_family: "tags",
+      input_token_estimate: 1,
+      max_output_token_estimate: 1,
+      payload_key: "payloads/cancel/request.json",
+    },
+  ]);
+  sql.exec(
+    "UPDATE jobs SET state='completed', result_key='results/complete.json', updated_at=100 WHERE id='complete-job'"
+  );
+
+  const terminal = await coordinator.terminalFeed({ updated_at: 0, id: "" }, 1);
+  assert.deepEqual(terminal.terminals, [
+    {
+      id: "complete-job",
+      state: "completed",
+      result_key: "results/complete.json",
+      updated_at: 100,
+    },
+  ]);
+  assert.deepEqual(await coordinator.terminalFeed(terminal.cursor, 1), {
+    terminals: [],
+    cursor: terminal.cursor,
+  });
+
+  assert.deepEqual(await coordinator.cancelBatch(["cancel-job", "missing-job"]), {
+    cancelled: ["cancel-job"],
+    in_flight: [],
+    not_found: ["missing-job"],
+  });
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id='cancel-job'")][0].state, "purge_pending");
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id='cancel-job'")][0].n, 0);
 });
 
 test("pollBatch chunks IDs past Cloudflare's 100-bound-parameter limit", async () => {

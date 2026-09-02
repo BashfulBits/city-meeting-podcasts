@@ -11,6 +11,7 @@ from citypods.models import City, Episode
 from citypods.stages import (
     CHAPTER_AGENDA_PIPELINE_VERSION,
     AgendaChapterCandidatesStage,
+    ChapterBoundaryLocatorStage,
     StageContext,
     _legacy_stage_complete,
     stage_input_fingerprint,
@@ -85,6 +86,7 @@ class FakeBackend:
         self.enqueue_calls: list[list] = []  # one entry per enqueue_batch call
         self.submitted_jobs: list = []  # flattened across every enqueue_batch call
         self.poll_calls: list[list] = []  # one entry per poll_batch call
+        self.cancel_calls: list[list[str]] = []
         self._poll_results = poll_results or {}
 
     def enqueue_batch(self, jobs):
@@ -99,6 +101,11 @@ class FakeBackend:
         handles = list(handles)
         self.poll_calls.append(handles)
         return {h.ref: self._poll_results[h.ref] for h in handles if h.ref in self._poll_results}
+
+    def cancel_batch(self, refs):
+        refs = list(refs)
+        self.cancel_calls.append(refs)
+        return {"cancelled": refs, "in_flight": [], "not_found": []}
 
 
 def test_stage_skips_on_dry_run_or_missing_storage(tmp_path: Path):
@@ -136,6 +143,62 @@ def test_stage_defers_on_missing_agenda_artifact(tmp_path: Path):
     assert stats.defer_reasons.get("missing-agenda-artifact") == 1
     assert stats.defer_reasons.get("agenda-artifact-key-present-but-unreadable") == 1
     assert stats.skipped == 2
+
+
+def test_stage_uses_provider_chapters_and_never_enqueues_fallback_work(tmp_path: Path):
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-provider-chapters")
+    ep.source_chapters = [{"start": 0, "title": "Provider call to order"}]
+    ep.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "obsolete-recipe",
+        "job_ref": "obsolete-v2-ref",
+        "locator_recipe": "obsolete-locator-recipe",
+        "locator_job_ref": "obsolete-locator-v2-ref",
+    }
+    ep.generated_chapters = [{"start": 0, "title": "Old generated title"}]
+    backend = FakeBackend()
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+
+    assert backend.enqueue_calls == []
+    assert backend.cancel_calls == [["obsolete-v2-ref", "obsolete-locator-v2-ref"]]
+    assert stats.reused == 1
+    assert ep.generated_agenda_candidates == {
+        "status": "not_applicable",
+        "reason": "provider_chapters",
+        "provider_chapter_count": 1,
+        "locator_status": "not_applicable",
+    }
+    assert ep.generated_chapters == []
+
+
+def test_locator_only_provider_chapter_exclusion_cancels_pending_locator_work(tmp_path: Path):
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-locator-provider-chapters")
+    ep.source_chapters = [{"start": 0, "title": "Provider call to order"}]
+    ep.generated_agenda_candidates = {
+        "status": "accepted",
+        "locator_status": "pending",
+        "locator_recipe": "locator-recipe",
+        "locator_job_ref": "locator-v2-ref",
+    }
+    backend = FakeBackend()
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+
+    assert stats.reused == 1
+    assert backend.cancel_calls == [["locator-v2-ref"]]
+    assert ep.generated_agenda_candidates["status"] == "not_applicable"
+    assert ep.generated_agenda_candidates["locator_status"] == "not_applicable"
 
 
 def test_stage_records_pending_on_job_handle(tmp_path: Path):

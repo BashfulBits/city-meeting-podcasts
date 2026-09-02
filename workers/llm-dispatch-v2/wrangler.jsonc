@@ -45,7 +45,15 @@
     "MAX_ACTIVE_BUNDLES": "2",
     "MAX_IN_FLIGHT_LLM_CALLS": "8",
     "MAX_BUNDLES_PER_UTC_DAY": "1000",
-    "MAX_JOBS_PER_UTC_DAY": "5000",
+    // This is a secondary blast-radius cap.  The primary admission budget below is measured in
+    // pessimistic DO writes, so a one-model and a multi-model job do not consume the same
+    // unaccounted capacity.  It can therefore safely exceed the historical 5k job ceiling.
+    "MAX_JOBS_PER_UTC_DAY": "12000",
+    "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY": "30000",
+    // Keep capacity for latency-sensitive lanes while preventing the fallback agenda extractor
+    // from rebuilding the Mistral backlog. A purpose can use its own reservation plus shared
+    // headroom, but cannot consume capacity reserved for another named purpose.
+    "INGRESS_PURPOSE_RESERVATIONS": "{\"chapter-agenda\":{\"daily_write_units\":4000},\"chapter-locator\":{\"reserved_write_units\":2000,\"daily_write_units\":4000},\"topic-tags\":{\"reserved_write_units\":6000,\"daily_write_units\":9000},\"moments\":{\"reserved_write_units\":4000,\"daily_write_units\":6000}}",
     "ENQUEUE_BATCH_MAX": "1000",
     "POLL_BATCH_MAX": "1000",
     "MAX_RESPONSE_SECONDS": "720",

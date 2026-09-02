@@ -618,7 +618,7 @@ def stage_output_pointer(name: str, ep: Episode) -> str | None:
         return (ep.moment_video_clip or {}).get("key") or (ep.moment_video_clip or {}).get("status")
     if name == "chapter_agenda":
         artifact = ep.generated_agenda_candidates or {}
-        return artifact.get("artifact_key") or artifact.get("recipe")
+        return artifact.get("artifact_key") or artifact.get("recipe") or artifact.get("status")
     if name in {"chapter_locator", "generated_chapters"}:
         artifact = ep.generated_agenda_candidates or {}
         return artifact.get("boundary_artifact_key") or ep.generated_chapters_spec_hash
@@ -815,6 +815,7 @@ def _legacy_stage_complete(name: str, ep: Episode) -> bool:
             "completed",
             "accepted",
             "not_found",
+            "not_applicable",
             "rejected",
         }
     if name in {"chapter_locator", "generated_chapters"}:
@@ -838,6 +839,13 @@ def stage_is_dirty(
     # transcript/media mutation before it can take effect.
     if stage.name in {"moment-admission", "moment-judge", "speaker_identity"}:
         return True
+    # Provider chapter markers are canonical.  A one-time visit converts any historical
+    # generated-chapter state into an explicit fallback exclusion (and, where possible, cancels
+    # its queued job); after that, avoid re-running either LLM stage for the episode.
+    if stage.name == "chapter_agenda" and ep.source_chapters:
+        return (ep.generated_agenda_candidates or {}).get("status") != "not_applicable"
+    if stage.name in {"chapter_locator", "generated_chapters"} and ep.source_chapters:
+        return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
     marker = ep.stage_completion.get(stage.name) if isinstance(ep.stage_completion, dict) else None
     if stage.name == "native_diarize" and isinstance(marker, dict):
         # A prior R7 run could have marked an unselected or prerequisite-missing episode complete
@@ -7152,6 +7160,29 @@ def _chapter_llm_backend(ctx):
     return backend
 
 
+def _cancel_chapter_fallbacks(ctx, stats: StageStats, states: list[dict]) -> None:
+    """Cancel queued agenda or locator fallbacks and discard their matching deferred handles."""
+    from citypods.compute.llm_deferred import discard_deferred
+
+    candidates = [
+        (state.get(recipe_key), state.get(ref_key))
+        for state in states
+        for recipe_key, ref_key in (("recipe", "job_ref"), ("locator_recipe", "locator_job_ref"))
+        if isinstance(state.get(recipe_key), str) and isinstance(state.get(ref_key), str)
+    ]
+    refs = [ref for _recipe, ref in candidates]
+    cancelled_refs: set[str] = set()
+    cancel = getattr(_chapter_llm_backend(ctx), "cancel_batch", None)
+    if refs and callable(cancel):
+        try:
+            cancelled_refs = set(cancel(refs).get("cancelled", ()))
+        except Exception as exc:  # noqa: BLE001 -- exclusion must still prevent new work
+            stats.errors.append(f"provider chapter cancellation batch: {exc}")
+    for recipe, ref in candidates:
+        if ref in cancelled_refs:
+            discard_deferred(ctx.storage, recipe, expected_ref=ref)
+
+
 def _write_chapter_json(storage, key: str, value: dict) -> str:
     """Upload a bounded generated-chapter artifact without exposing its local temp path."""
 
@@ -7180,20 +7211,45 @@ class AgendaChapterCandidatesStage:
         if ctx.dry_run or ctx.storage is None:
             return stats
 
-        # Pass 1: validate and build every eligible episode's job without dispatching any of
-        # them yet, so the whole run's jobs can be submitted in one enqueue_batch call below
-        # instead of one Worker request per episode (see review/44's 2026-08-18 incident
-        # retrospective -- per-job dispatch/reconcile calls were exactly the Worker-request
-        # volume that incident flagged as the thing worth fixing next).
-        prepared: list[tuple[Episode, str, Any, str, str]] = []
-        for ep in _materialize_set(
+        materialized = _materialize_set(
             episodes,
             city.full_artifact_episodes,
             feed_visible_per_body=city.max_episodes,
             policy=ctx.backlog_policy,
             city_slug=city.slug,
             work_class="chapter-agenda",
-        ):
+        )
+
+        # Provider chapters are canonical.  Cancel any still-queued fallback job before clearing
+        # its derived state; an in-flight attempt is deliberately allowed to settle, but cannot
+        # be published because this stage records the exclusion below.  One batched cancellation
+        # keeps this migration from recreating the per-episode Worker-invocation pattern v2 fixed.
+        exclusions: list[tuple[Episode, dict]] = []
+        for ep in materialized:
+            if ep.source_chapters:
+                exclusions.append((ep, dict(ep.generated_agenda_candidates or {})))
+        if exclusions:
+            _cancel_chapter_fallbacks(ctx, stats, [state for _ep, state in exclusions])
+            for ep, _state in exclusions:
+                ep.generated_agenda_candidates = {
+                    "status": "not_applicable",
+                    "reason": "provider_chapters",
+                    "provider_chapter_count": len(ep.source_chapters),
+                    "locator_status": "not_applicable",
+                }
+                ep.generated_chapters = []
+                ep.generated_chapters_spec_hash = ""
+                stats.reused += 1
+
+        # Pass 1: validate and build every eligible episode's job without dispatching any of
+        # them yet, so the whole run's jobs can be submitted in one enqueue_batch call below
+        # instead of one Worker request per episode (see review/44's 2026-08-18 incident
+        # retrospective -- per-job dispatch/reconcile calls were exactly the Worker-request
+        # volume that incident flagged as the thing worth fixing next).
+        prepared: list[tuple[Episode, str, Any, str, str]] = []
+        for ep in materialized:
+            if ep.source_chapters:
+                continue
             uid = ep.uid or ep.guid
             source_artifact = (ep.links or {}).get("agenda_text_artifact_key")
             if not uid or not source_artifact:
@@ -7314,6 +7370,25 @@ class ChapterBoundaryLocatorStage:
             city_slug=city.slug,
             work_class="chapter-locator",
         ):
+            if ep.source_chapters:
+                # AgendaChapterCandidatesStage normally records this at the same time it clears
+                # historical generated output. Keep the locator independently safe for a
+                # locator-only lane invocation or a partially persisted earlier agenda pass.
+                raw = dict(ep.generated_agenda_candidates or {})
+                _cancel_chapter_fallbacks(ctx, stats, [raw])
+                raw.update(
+                    {
+                        "status": "not_applicable",
+                        "reason": "provider_chapters",
+                        "provider_chapter_count": len(ep.source_chapters),
+                        "locator_status": "not_applicable",
+                    }
+                )
+                ep.generated_agenda_candidates = raw
+                ep.generated_chapters = []
+                ep.generated_chapters_spec_hash = ""
+                stats.reused += 1
+                continue
             uid = ep.uid or ep.guid
             raw_agenda = ep.generated_agenda_candidates or {}
             if not uid or raw_agenda.get("status") not in {"completed", "accepted"}:
