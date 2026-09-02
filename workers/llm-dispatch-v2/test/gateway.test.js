@@ -211,10 +211,10 @@ test("parseRetryAfterSeconds parses Airforce rate limit error message payload", 
       code: "429",
     },
   };
-  assert.equal(parseRetryAfterSeconds({ headers: new Headers() }, airforceBody), 1);
+  assert.equal(parseRetryAfterSeconds({ headers: new Headers() }, airforceBody), 119);
   assert.equal(
     parseErrorMessageRetryAfter(airforceBody.error.message),
-    1
+    119
   );
 });
 
