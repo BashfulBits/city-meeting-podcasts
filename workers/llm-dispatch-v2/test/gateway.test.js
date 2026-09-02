@@ -239,7 +239,35 @@ test("parseErrorMessageRetryAfter parses various provider rate limit messages", 
     parseErrorMessageRetryAfter("Your next guaranteed response is in 119 seconds"),
     119
   );
+  assert.equal(
+    parseErrorMessageRetryAfter("Rate limit exceeded (1 request(s) per minute). Try again in 0 seconds."),
+    0
+  );
+  assert.equal(
+    parseRetryAfterSeconds({ headers: new Headers() }, {
+      error: {
+        code: "rate_limit_exceeded",
+        limit: 1,
+        message: "Rate limit exceeded (1 request(s) per minute). Try again in 0 seconds. Higher limits at https://api.airforce/dashboard or discord.gg/airforce",
+        plan_rpm: 1,
+        retry_after_seconds: 0,
+        type: "rate_limit_error",
+      },
+    }),
+    null
+  );
   assert.equal(parseErrorMessageRetryAfter("Non-rate limit error"), null);
   assert.equal(parseErrorMessageRetryAfter(""), null);
   assert.equal(parseErrorMessageRetryAfter(null), null);
+});
+
+test("parseRetryAfterSeconds parses direct retry_after_seconds property", () => {
+  assert.equal(
+    parseRetryAfterSeconds({ headers: new Headers() }, { error: { retry_after_seconds: 45 } }),
+    45
+  );
+  assert.equal(
+    parseRetryAfterSeconds({ headers: new Headers() }, { retry_after_seconds: 30 }),
+    30
+  );
 });

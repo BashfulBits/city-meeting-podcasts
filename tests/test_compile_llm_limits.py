@@ -43,6 +43,8 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert samba["rpd"] == 20
     assert worker["providers"]["sambanova"]["rpm"] == 20
     assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
+    assert worker["providers"]["airforce"]["ai_gateway_max_attempts"] == 1
+    assert worker["providers"]["airforce"]["concurrency"] == 1
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
     # route if compile-time route order ever shifted.
