@@ -162,6 +162,7 @@ const ENV = {
   KILO_API_KEY: "kilo-secret",
   OPENCODE_API_KEY: "opencode-secret",
   NVIDIA_API_KEY: "nvidia-secret",
+  AIRFORCE_API_KEY: "airforce-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),
@@ -335,14 +336,7 @@ test("the stored record's model is the canonical requested model, not an upstrea
   assert.equal(record.request.model, "gemini/gemini-3-flash-preview");
 });
 
-test("a request for a model_routing source model is also made eligible for its overflow target", async () => {
-  // config/provider_limits.yml's `model_routing` maps Mistral Medium to DeepSeek V4 Pro and
-  // Nemotron 3 Super (both free via NVIDIA build, added 2026-08-29) ahead of Gemini 3.5 Flash
-  // Lite, so the backlog can drain onto that independent free-tier capacity without editing the
-  // jobs that dispatch Mistral Medium themselves (2026-08-21 hotfix, updated 2026-08-29 once
-  // Mistral's own account moved to a $10/mo credit cap). The Worker must expand
-  // `policy.allowed_models` the same way the Python scheduler does, whether or not the caller
-  // passed its own `allowed_models`.
+test("a request for an aliased model is normalized to its canonical model", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(
     chatRequest(undefined, "model-routing-implicit", "mistral/mistral-medium-2508"),
@@ -351,13 +345,8 @@ test("a request for a model_routing source model is also made eligible for its o
   assert.equal(queued.status, 202);
   const body = await queued.json();
   const stored = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
-  assert.equal(stored.model, "mistral/mistral-medium-2508");
-  assert.deepEqual(stored.policy.allowed_models, [
-    "mistral/mistral-medium-2508",
-    "deepseek/deepseek-v4-pro",
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "gemini/gemini-3.5-flash-lite",
-  ]);
+  assert.equal(stored.model, "mistral/mistral-medium-latest");
+  assert.equal(stored.policy.allowed_models, undefined);
 
   const withExplicitAllowlist = await handleRequest(
     chatRequest(undefined, "model-routing-explicit", "mistral/mistral-medium-2508", {
@@ -370,12 +359,7 @@ test("a request for a model_routing source model is also made eligible for its o
   const explicitStored = await (
     await env.LLM_QUEUE.get(`requests/${explicitBody.id}.json`)
   ).json();
-  assert.deepEqual(explicitStored.policy.allowed_models, [
-    "mistral/mistral-medium-2508",
-    "deepseek/deepseek-v4-pro",
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "gemini/gemini-3.5-flash-lite",
-  ]);
+  assert.deepEqual(explicitStored.policy.allowed_models, ["mistral/mistral-medium-latest"]);
 
   // A model with no configured overflow (the fixture default) is unaffected.
   const unrouted = await handleRequest(chatRequest(undefined, "model-routing-none"), env);
@@ -400,10 +384,7 @@ test("a request for a model_routing source model is also made eligible for its o
   ).json();
   assert.deepEqual(unrelatedStored.policy.allowed_models, [
     "mistral/mistral-large-2512",
-    "mistral/mistral-medium-2508",
-    "deepseek/deepseek-v4-pro",
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "gemini/gemini-3.5-flash-lite",
+    "mistral/mistral-medium-latest",
   ]);
 
   const withPeerAlternate = await handleRequest(
@@ -420,11 +401,8 @@ test("a request for a model_routing source model is also made eligible for its o
     await env.LLM_QUEUE.get(`requests/${peerBody.id}.json`)
   ).json();
   assert.deepEqual(peerStored.policy.allowed_models, [
-    "mistral/mistral-medium-2508",
+    "mistral/mistral-medium-latest",
     "meta-llama/llama-3.3-70b-instruct",
-    "deepseek/deepseek-v4-pro",
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "gemini/gemini-3.5-flash-lite",
   ]);
 });
 
@@ -561,8 +539,8 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
     version: 1,
     lease: null,
     routes: {
-      mistral_medium_2508_primary: { blocked_until: "2026-08-23T00:00:00Z" },
-      mistral_medium_2508_secondary: { blocked_until: "2026-08-23T00:00:00Z" },
+      mistral_medium_latest_primary: { blocked_until: "2026-08-23T00:00:00Z" },
+      mistral_medium_latest_secondary: { blocked_until: "2026-08-23T00:00:00Z" },
     },
     providers: {
       mistral: { requests_available_at: "2026-08-23T00:00:00Z" },
@@ -589,13 +567,8 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
   assert.equal(batchResult.status, "completed");
   assert.equal(batchResult.count, 1);
   assert.equal(batchResult.results[0].status, "completed");
-  // Mistral Medium's model_routing overflow (config/provider_limits.yml) lists DeepSeek V4 Pro via
-  // NVIDIA build first, then Nemotron 3 Super, then Gemini 3.5 Flash Lite. The DeepSeek leg was
-  // briefly commented out on 2026-08-29 -- its 404s were blamed on NVIDIA gating the model, when
-  // the cause was Cloudflare AI Gateway dropping the `/v1` from the custom-provider Base URL -- and
-  // Nemotron 3 Super won here in the meantime. With the leg restored, first preference wins again.
-  assert.equal(batchResult.results[0].routeId, "nvidia_deepseek_v4_pro_0813_free");
-  assert.ok(dispatchedPayload.model.includes("deepseek-v4-pro"));
+  assert.equal(batchResult.results[0].routeId, "airforce_mistral_medium_3_5_primary");
+  assert.equal(dispatchedPayload.model, "mistral-medium-3.5");
 
   // The finished request is saved as completed and ready marker removed:
   const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();

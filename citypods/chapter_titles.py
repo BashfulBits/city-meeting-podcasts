@@ -20,7 +20,7 @@ from citypods.compute.llm_policy import estimate_tokens
 
 AGENDA_ITEM_EXTRACTOR_CONTRACT = "agenda-chapter-item-extract"
 TITLE_EQUIVALENCE_CONTRACT = "agenda-chapter-title-equivalence"
-AGENDA_PRODUCTION_MODEL = "mistral/mistral-medium-2508"
+AGENDA_PRODUCTION_MODEL = "mistral/mistral-medium-latest"
 # Same-priority alternate for AGENDA_PRODUCTION_MODEL (hotfix follow-up: Mistral's account-wide
 # monthly budget is exhausted, see config/provider_limits.yml). The scheduler's own
 # availability/pacing ranking picks between these -- this is not a preferred-then-fallback order.

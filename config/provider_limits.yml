@@ -64,16 +64,7 @@ structured_output_profiles:
 # (see `citypods/compute/llm_scheduler.py`), so listing all three does not fix an order -- it lets
 # quota-exhaustion overflow drain into whichever pool has headroom. Revisit once Mistral's monthly
 # budget is re-sized (see AGENTS.md / review/11) or once NVIDIA's real-world reliability is known.
-model_routing:
-  mistral/mistral-medium-2508:
-    - deepseek/deepseek-v4-pro
-    - openrouter/nvidia/nemotron-3-super-120b-a12b:free
-    - gemini/gemini-3.5-flash-lite
-
-  mistral/mistral-medium-2505:
-    - deepseek/deepseek-v4-pro
-    - openrouter/nvidia/nemotron-3-super-120b-a12b:free
-    - gemini/gemini-3.5-flash-lite
+model_routing: {}
 
 
 # `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
@@ -250,6 +241,15 @@ providers:
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
+  airforce:
+    api_base: https://api.airforce/v1
+    ai_gateway_slug: custom-airforce
+    ai_gateway_chat_path: /v1/chat/completions
+    chat_path: /v1/chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: AIRFORCE_API_KEY
 routes:
   # ==========================================
   # GEMINI & GEMMA ROUTES (Google AI Studio)
@@ -682,28 +682,56 @@ routes:
     tpm: 50000
     free: true
 
-  # Mistral Medium 2508: 0.38 RPS (22 RPM), 356.25k TPM
-  - route_id: mistral_medium_2508_primary
-    model: mistral/mistral-medium-2508
+  # Mistral Medium Latest: 0.83 RPS (50 RPM), 25k TPM
+  - route_id: mistral_medium_latest_primary
+    model: mistral/mistral-medium-latest
     provider: mistral
-    upstream_model: mistral-medium-2508
+    upstream_model: mistral-medium-latest
     input_context_limit: 131072
-    output_context_limit: 131072
+    output_context_limit: 8192
     account_id: primary
-    rpm: 22
-    tpm: 356250
+    rpm: 50
+    tpm: 25000
     free: true
 
-  # Mistral Medium 2505: 0.42 RPS (25 RPM), 375k TPM
-  - route_id: mistral_medium_2505_primary
-    model: mistral/mistral-medium-2505
-    provider: mistral
-    upstream_model: mistral-medium-2505
+  # Airforce Mistral Medium 3.5 (free tier): alias for mistral/mistral-medium-latest
+  - route_id: airforce_mistral_medium_3_5_primary
+    model: mistral/mistral-medium-3-5
+    model_key: mistral/mistral-medium-latest
+    provider: airforce
+    upstream_model: mistral-medium-3.5
     input_context_limit: 131072
-    output_context_limit: 131072
+    output_context_limit: 8192
     account_id: primary
-    rpm: 25
-    tpm: 375000
+    rpm: 20
+    tpm: 200000
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  # Legacy Medium aliases mapping to mistral/mistral-medium-latest
+  - route_id: mistral_medium_2508_alias_primary
+    model: mistral/mistral-medium-2508
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: primary
+    rpm: 50
+    tpm: 25000
+    free: true
+
+  - route_id: mistral_medium_2505_alias_primary
+    model: mistral/mistral-medium-2505
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: primary
+    rpm: 50
+    tpm: 25000
     free: true
 
   # Mistral Large 2512: 0.07 RPS (4.2 RPM -> 4 RPM), 250k TPM
@@ -776,26 +804,15 @@ routes:
     tpm: 50000
     free: true
 
-  - route_id: mistral_medium_2508_secondary
-    model: mistral/mistral-medium-2508
+  - route_id: mistral_medium_latest_secondary
+    model: mistral/mistral-medium-latest
     provider: mistral
-    upstream_model: mistral-medium-2508
+    upstream_model: mistral-medium-latest
     input_context_limit: 131072
-    output_context_limit: 131072
+    output_context_limit: 8192
     account_id: secondary
-    rpm: 22
-    tpm: 356250
-    free: true
-
-  - route_id: mistral_medium_2505_secondary
-    model: mistral/mistral-medium-2505
-    provider: mistral
-    upstream_model: mistral-medium-2505
-    input_context_limit: 131072
-    output_context_limit: 131072
-    account_id: secondary
-    rpm: 25
-    tpm: 375000
+    rpm: 50
+    tpm: 25000
     free: true
 
   - route_id: mistral_large_2512_secondary

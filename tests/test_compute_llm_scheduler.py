@@ -426,7 +426,7 @@ def test_select_and_reserve_dual_transport_direct_vs_overflow_owner():
 
 
 def test_production_mistral_medium_is_available_directly_after_catalog_expansion():
-    model = "mistral/mistral-medium-2508"
+    model = "mistral/mistral-medium-latest"
     direct = select_route(
         LLMRequestPolicy(allowed_models=(model,)),
         routes=ROUTES,

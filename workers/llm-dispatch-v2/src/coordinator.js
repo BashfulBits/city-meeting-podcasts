@@ -213,6 +213,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "transient_retry_count", "INTEGER NOT NULL DEFAULT 0");
+
+    this._ensureMigratedJobModels();
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
     // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
     // "Durable Objects rows-read overage retrospective"). Both migrations completed in production
@@ -231,6 +233,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
         today
       );
     }
+  }
+
+  _ensureMigratedJobModels() {
+    if (this._migratedJobModels) return;
+    const sql = this._getSql();
+    sql.exec(`
+      UPDATE OR IGNORE job_models SET model = 'mistral/mistral-medium-latest'
+      WHERE model IN (
+        'mistral/mistral-medium-2508',
+        'mistral/mistral-medium-2505',
+        'mistral/mistral-medium-3-5',
+        'mistral-medium-2508',
+        'mistral-medium-2505',
+        'mistral-medium-3.5',
+        'mistral-medium-latest'
+      );
+      DELETE FROM job_models WHERE model IN (
+        'mistral/mistral-medium-2508',
+        'mistral/mistral-medium-2505',
+        'mistral/mistral-medium-3-5',
+        'mistral-medium-2508',
+        'mistral-medium-2505',
+        'mistral-medium-3.5',
+        'mistral-medium-latest'
+      );
+      UPDATE routes SET buffer_seconds = 0 WHERE buffer_seconds > 0;
+    `);
+    this._migratedJobModels = true;
   }
 
   _ensureColumn(table, column, definition) {
@@ -432,6 +462,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // transaction for the whole batch"). ctx.storage.transactionSync requires its callback to
     // run fully synchronously (no await inside), which this loop already does.
     return this.ctx.storage.transactionSync(() => {
+      this._ensureMigratedJobModels();
       const accepted = [];
       const rejected = [];
 
@@ -604,6 +635,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   async pollBatch(ids) {
+    this._ensureMigratedJobModels();
     if (!ids || ids.length === 0) {
       return { statuses: [] };
     }
@@ -850,7 +882,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _capacityFraction(route, now, windowSeconds) {
     if (Number(route.blocked_until) > now) return 0;
-    if (Number(route.buffer_seconds || 0) * 1000 >= windowSeconds * 1000) return 0;
 
     const windowFraction = (limit, windowStart, count, durationMs) => {
       // rpd: 0 is the repository's explicit "paused/exhausted" convention, not an unlimited
@@ -1043,6 +1074,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const dispatchLimits = this._dispatchLimits();
 
     return this.ctx.storage.transactionSync(() => {
+      this._ensureMigratedJobModels();
       const maxBundlesPerDay = this._maxBundlesPerUtcDay();
       const maxActiveBundles = this._maxActiveBundles();
       const maxInFlightCalls = this._maxInFlightLlmCalls();
@@ -1316,17 +1348,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const routeId = job.lease_route_id;
       const ledger = this._getOrCreateRouteLedger(routeId, now, {});
       const newStreak = (ledger.throttle_streak || 0) + 1;
-      const maxBufferSeconds = this._maxRouteBufferSeconds();
-      const addedBufferSeconds = this._max429BackoffMs() / 1000;
-      const newBufferSeconds = Math.min(maxBufferSeconds, (ledger.buffer_seconds || 0) + addedBufferSeconds);
+      const backoffMs = Math.min(this._max429BackoffMs(), newStreak * 1000);
+      const blockedUntil = Math.max(Number(ledger.blocked_until) || 0, now + backoffMs);
       sql.exec(
-        "UPDATE routes SET throttle_streak = ?, last_provider_status = 429, buffer_seconds = ? WHERE route_id = ?",
+        "UPDATE routes SET throttle_streak = ?, last_provider_status = 429, blocked_until = ?, buffer_seconds = 0 WHERE route_id = ?",
         newStreak,
-        newBufferSeconds,
+        blockedUntil,
         routeId
       );
 
-      const backoffMs = Math.min(this._max429BackoffMs(), newStreak * 1000);
       const retryNotBefore = now + backoffMs;
       const deadline = Math.min(bundle.dispatch_window_end, bundle.lease_expires_at);
       if (retryNotBefore >= deadline) {

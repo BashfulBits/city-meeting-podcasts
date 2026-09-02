@@ -1,8 +1,8 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 64,
-    "providers_count": 11,
+    "routes_count": 63,
+    "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 0.5
   },
@@ -156,6 +156,19 @@
         {
           "id": "primary",
           "api_key_env": "NVIDIA_API_KEY"
+        }
+      ]
+    },
+    "airforce": {
+      "api_base": "https://api.airforce/v1",
+      "ai_gateway_slug": "custom-airforce",
+      "ai_gateway_chat_path": "/v1/chat/completions",
+      "chat_path": "/v1/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "AIRFORCE_API_KEY"
         }
       ]
     }
@@ -763,16 +776,16 @@
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
     },
-    "mistral_medium_2508_primary": {
-      "route_id": "mistral_medium_2508_primary",
+    "mistral_medium_latest_primary": {
+      "route_id": "mistral_medium_latest_primary",
       "provider": "mistral",
-      "upstream_model": "mistral-medium-2508",
+      "upstream_model": "mistral-medium-latest",
       "input_context_limit": 131072,
-      "output_context_limit": 131072,
+      "output_context_limit": 8192,
       "account_id": "primary",
-      "rpm": 11,
+      "rpm": 25,
       "rpd": null,
-      "tpm": 160312,
+      "tpm": 11250,
       "concurrency": null,
       "free": true,
       "input_per_token": null,
@@ -781,20 +794,20 @@
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
     },
-    "mistral_medium_2505_primary": {
-      "route_id": "mistral_medium_2505_primary",
-      "provider": "mistral",
-      "upstream_model": "mistral-medium-2505",
+    "airforce_mistral_medium_3_5_primary": {
+      "route_id": "airforce_mistral_medium_3_5_primary",
+      "provider": "airforce",
+      "upstream_model": "mistral-medium-3.5",
       "input_context_limit": 131072,
-      "output_context_limit": 131072,
+      "output_context_limit": 8192,
       "account_id": "primary",
-      "rpm": 12,
+      "rpm": 10,
       "rpd": null,
-      "tpm": 168750,
+      "tpm": 90000,
       "concurrency": null,
       "free": true,
-      "input_per_token": null,
-      "output_per_token": null,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
       "pricing": null,
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
@@ -907,34 +920,16 @@
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
     },
-    "mistral_medium_2508_secondary": {
-      "route_id": "mistral_medium_2508_secondary",
+    "mistral_medium_latest_secondary": {
+      "route_id": "mistral_medium_latest_secondary",
       "provider": "mistral",
-      "upstream_model": "mistral-medium-2508",
+      "upstream_model": "mistral-medium-latest",
       "input_context_limit": 131072,
-      "output_context_limit": 131072,
+      "output_context_limit": 8192,
       "account_id": "secondary",
-      "rpm": 11,
+      "rpm": 25,
       "rpd": null,
-      "tpm": 160312,
-      "concurrency": null,
-      "free": true,
-      "input_per_token": null,
-      "output_per_token": null,
-      "pricing": null,
-      "reset_timezone": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "mistral_medium_2505_secondary": {
-      "route_id": "mistral_medium_2505_secondary",
-      "provider": "mistral",
-      "upstream_model": "mistral-medium-2505",
-      "input_context_limit": 131072,
-      "output_context_limit": 131072,
-      "account_id": "secondary",
-      "rpm": 12,
-      "rpd": null,
-      "tpm": 168750,
+      "tpm": 11250,
       "concurrency": null,
       "free": true,
       "input_per_token": null,
@@ -1532,13 +1527,10 @@
       "mistral_small_2603_primary",
       "mistral_small_2603_secondary"
     ],
-    "mistral/mistral-medium-2508": [
-      "mistral_medium_2508_primary",
-      "mistral_medium_2508_secondary"
-    ],
-    "mistral/mistral-medium-2505": [
-      "mistral_medium_2505_primary",
-      "mistral_medium_2505_secondary"
+    "mistral/mistral-medium-latest": [
+      "mistral_medium_latest_primary",
+      "airforce_mistral_medium_3_5_primary",
+      "mistral_medium_latest_secondary"
     ],
     "mistral/mistral-large-2512": [
       "mistral_large_2512_primary",
@@ -1604,6 +1596,9 @@
   },
   "model_aliases": {
     "deepseek/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
+    "mistral/mistral-medium-3-5": "mistral/mistral-medium-latest",
+    "mistral/mistral-medium-2508": "mistral/mistral-medium-latest",
+    "mistral/mistral-medium-2505": "mistral/mistral-medium-latest",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "opencode/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
@@ -1648,10 +1643,10 @@
     "mistral/devstral-2512": "mistral/devstral-2512",
     "mistral-small-2603": "mistral/mistral-small-2603",
     "mistral/mistral-small-2603": "mistral/mistral-small-2603",
-    "mistral-medium-2508": "mistral/mistral-medium-2508",
-    "mistral/mistral-medium-2508": "mistral/mistral-medium-2508",
-    "mistral-medium-2505": "mistral/mistral-medium-2505",
-    "mistral/mistral-medium-2505": "mistral/mistral-medium-2505",
+    "mistral-medium-latest": "mistral/mistral-medium-latest",
+    "mistral/mistral-medium-latest": "mistral/mistral-medium-latest",
+    "mistral-medium-3.5": "mistral/mistral-medium-latest",
+    "airforce/mistral-medium-3.5": "mistral/mistral-medium-latest",
     "mistral-large-2512": "mistral/mistral-large-2512",
     "mistral/mistral-large-2512": "mistral/mistral-large-2512",
     "mistral-large-3": "mistral/mistral-large-3",
@@ -1703,16 +1698,5 @@
     "nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
     "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2"
   },
-  "model_routing": {
-    "mistral/mistral-medium-2508": [
-      "deepseek/deepseek-v4-pro",
-      "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-      "gemini/gemini-3.5-flash-lite"
-    ],
-    "mistral/mistral-medium-2505": [
-      "deepseek/deepseek-v4-pro",
-      "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-      "gemini/gemini-3.5-flash-lite"
-    ]
-  }
+  "model_routing": {}
 }

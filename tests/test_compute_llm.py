@@ -1812,6 +1812,7 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     "siliconflow": "/v1/chat/completions",
     "sambanova": "/v1/chat/completions",
     "nvidia": "/v1/chat/completions",
+    "airforce": "/v1/chat/completions",
     # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
     # forced `v1` substitution lands correctly and the caller path stays bare.
     "kilo": "/chat/completions",

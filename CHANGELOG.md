@@ -17,6 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Airforce provider, Mistral Medium canonical alias migration, and 429 throttle fix.** Adds
+  `airforce` provider in `config/provider_limits.yml` routing through Cloudflare AI Gateway
+  (`custom-airforce/v1/chat/completions`, `AIRFORCE_API_KEY`) to serve `mistral-medium-3.5`.
+  Standardizes Mistral Medium routes on `mistral/mistral-medium-latest` (50 RPM / 0.83 RPS,
+  25k TPM) with legacy aliases `mistral/mistral-medium-2508` and `mistral/mistral-medium-2505`
+  normalized automatically. Clears cross-model overflow routing so Mistral Medium traffic stays
+  isolated to official Mistral and Airforce endpoints. Fixes a deadlock in LLM Dispatch v2 where
+  transient 429 route buffer penalties were checked as static duration thresholds in
+  `_capacityFraction`, permanently excluding throttled routes from candidate ranking.
+
 - **NVIDIA build.nvidia.com provider and free-capacity pooling for Mistral Medium overflow.** New
   `nvidia` provider in `config/provider_limits.yml` (OpenAI-compatible NIM gateway, `NVIDIA_API_KEY`)
   with a conservative, explicitly self-imposed cap: 12 RPM provider-wide (30% of the ~40 RPM
