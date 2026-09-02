@@ -31,6 +31,9 @@ from citypods.storage.base import StorageReadUnavailable
 DEFERRED_PREFIX = "state/llm_deferred/"
 DEFERRED_INDEX_PREFIX = "state/llm_deferred_index/"
 DEFERRED_INDEX_PENDING_PREFIX = f"{DEFERRED_INDEX_PREFIX}pending/"
+DEFERRED_INDEX_RECONCILE_PREFIX = f"{DEFERRED_INDEX_PREFIX}reconcile/"
+DEFERRED_INDEX_V2_REF_PREFIX = f"{DEFERRED_INDEX_PREFIX}v2-ref/"
+DEFERRED_INDEX_V2_TERMINAL_CURSOR_KEY = f"{DEFERRED_INDEX_PREFIX}v2-terminal-cursor.json"
 DEFERRED_INDEX_MIGRATION_KEY = f"{DEFERRED_INDEX_PREFIX}migration-complete.json"
 DEFERRED_FAILURE_PREFIX = "state/llm_deferred_failures/"
 
@@ -181,10 +184,24 @@ def _index_keys(data: Mapping[str, Any], *, recipe_hash: str) -> tuple[str, ...]
     (model, day) with nothing to skip, which is pure overhead. If a real scheduled-retry feature
     is added later, bucket by its actual due time then, not preemptively.
     """
-    return tuple(
+    model_keys = tuple(
         f"{DEFERRED_INDEX_PENDING_PREFIX}{model}/{recipe_hash}.json"
         for model in _index_models(data)
     )
+    if data.get("status") != "pending":
+        return model_keys
+    is_v2_dispatched = (
+        data.get("backend") == "llm-dispatch-v2"
+        and isinstance(data.get("ref"), str)
+        and data.get("ref")
+        and "messages" not in data
+    )
+    if is_v2_dispatched:
+        return (*model_keys, f"{DEFERRED_INDEX_V2_REF_PREFIX}{data['ref']}.json")
+    # Deferred/direct records still need an ordinary reconciliation pass.  Keep that list
+    # separate from submitted v2 work: a v2 terminal feed can then identify completions by job id
+    # without downloading tens of thousands of pending handle records first.
+    return (*model_keys, f"{DEFERRED_INDEX_RECONCILE_PREFIX}{recipe_hash}.json")
 
 
 def _delete_pointer_keys(storage, keys) -> None:
@@ -373,7 +390,10 @@ def _write_index_strict(storage, data: Mapping[str, Any], recipe_hash: str) -> N
 
 def _index_ready(storage) -> bool:
     try:
-        return bool(storage.exists(DEFERRED_INDEX_MIGRATION_KEY))
+        if not storage.exists(DEFERRED_INDEX_MIGRATION_KEY):
+            return False
+        marker = _read_json(storage, DEFERRED_INDEX_MIGRATION_KEY)
+        return bool(isinstance(marker, Mapping) and marker.get("version", 0) >= 2)
     except Exception:  # noqa: BLE001 -- old/local storage doubles may lack exists
         return False
 
@@ -559,6 +579,23 @@ def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
     return _decode_record(_read_json(storage, deferred_key(recipe_hash)))
 
 
+def discard_deferred(storage, recipe_hash: str, *, expected_ref: str | None = None) -> bool:
+    """Remove an obsolete pending record after its v2 queue entry was cancelled.
+
+    The expected reference makes the operation safe against a producer that re-submitted the same
+    recipe while cancellation was in flight: a newer handle remains authoritative and untouched.
+    """
+    key = deferred_key(recipe_hash)
+    data = _read_json(storage, key)
+    if not isinstance(data, Mapping) or data.get("status") != "pending":
+        return False
+    if expected_ref is not None and data.get("ref") != expected_ref:
+        return False
+    storage.delete(key)
+    _best_effort_delete_index(storage, data, recipe_hash)
+    return True
+
+
 def iter_pending_deferred(storage, *, unavailable: list[StorageReadUnavailable] | None = None):
     """Yield currently-pending records one at a time, oldest-first.
 
@@ -738,6 +775,88 @@ def _indexed_listing(storage, *, now: datetime) -> list[tuple[str, Any]]:
     return listing
 
 
+def load_reconcile_snapshot(
+    storage,
+    *,
+    deadline_at: datetime | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    read_workers: int = SNAPSHOT_READ_WORKERS,
+) -> DeferredSnapshot:
+    """Load only records that still need a client-side retry/reconciliation pass.
+
+    Submitted v2 handles are deliberately absent.  Their coordinator owns terminal state and the
+    sweep consumes them through its bounded terminal feed, avoiding a full B2 registry download.
+    Until the v2 index repair is complete, preserve the old full-read path rather than risking a
+    silent miss of historical records.
+    """
+    if not _index_ready(storage):
+        return load_deferred_snapshot(
+            storage,
+            deadline_at=deadline_at,
+            should_stop=should_stop,
+            read_workers=read_workers,
+        )
+    return _load_snapshot_from_keys(
+        storage,
+        (
+            (deferred_key(key.rsplit("/", 1)[-1][:-5]), modified)
+            for key, modified in storage.list_objects(DEFERRED_INDEX_RECONCILE_PREFIX)
+        ),
+        deadline_at=deadline_at,
+        should_stop=should_stop,
+        read_workers=read_workers,
+    )
+
+
+def look_up_v2_deferred_ref(storage, ref: str) -> JobHandle | None:
+    """Resolve one submitted v2 job id to its canonical pending handle, if still current."""
+    pointer = _read_json(storage, f"{DEFERRED_INDEX_V2_REF_PREFIX}{ref}.json")
+    recipe_hash = pointer.get("recipe_hash") if isinstance(pointer, Mapping) else None
+    if not isinstance(recipe_hash, str) or not recipe_hash:
+        return None
+    decoded = look_up_deferred(storage, recipe_hash)
+    if (
+        isinstance(decoded, JobHandle)
+        and decoded.backend == "llm-dispatch-v2"
+        and decoded.ref == ref
+    ):
+        return decoded
+    return None
+
+
+def snapshot_deferred_handles(storage, handles: list[JobHandle]) -> DeferredSnapshot:
+    """Read the canonical records for a bounded, already-identified handle list."""
+    return DeferredSnapshot(
+        [_snapshot_entry(storage, deferred_key(handle.recipe_hash), None) for handle in handles],
+        listed_count=len(handles),
+    )
+
+
+def load_v2_terminal_cursor(storage) -> dict[str, Any]:
+    """Return the last consumed v2 terminal-feed cursor, or the feed origin."""
+    data = _read_json(storage, DEFERRED_INDEX_V2_TERMINAL_CURSOR_KEY)
+    if not isinstance(data, Mapping):
+        return {"updated_at": 0, "id": ""}
+    updated_at = data.get("updated_at")
+    job_id = data.get("id")
+    if isinstance(updated_at, int | float) and isinstance(job_id, str):
+        return {"updated_at": int(updated_at), "id": job_id}
+    return {"updated_at": 0, "id": ""}
+
+
+def write_v2_terminal_cursor(storage, cursor: Mapping[str, Any]) -> None:
+    """Durably advance the terminal-feed cursor after every processed page."""
+    updated_at = cursor.get("updated_at")
+    job_id = cursor.get("id")
+    if not isinstance(updated_at, int | float) or not isinstance(job_id, str):
+        raise ValueError("v2 terminal cursor must contain updated_at and id")
+    _write_json(
+        storage,
+        DEFERRED_INDEX_V2_TERMINAL_CURSOR_KEY,
+        json.dumps({"updated_at": int(updated_at), "id": job_id}).encode(),
+    )
+
+
 def load_deferred_snapshot(
     storage,
     *,
@@ -745,6 +864,7 @@ def load_deferred_snapshot(
     deadline_at: datetime | None = None,
     should_stop: Callable[[], bool] | None = None,
     read_workers: int = SNAPSHOT_READ_WORKERS,
+    reconcile_only: bool = False,
 ) -> DeferredSnapshot:
     """Read canonical records once, using the advisory index after migration.
 
@@ -753,6 +873,13 @@ def load_deferred_snapshot(
     A transiently unavailable canonical object is retained as an unavailable snapshot entry so
     independent records can still be reconciled; callers should inspect ``unavailable_reads``.
     """
+    if reconcile_only:
+        return load_reconcile_snapshot(
+            storage,
+            deadline_at=deadline_at,
+            should_stop=should_stop,
+            read_workers=read_workers,
+        )
     if now is not None:
         current = now
     else:
@@ -820,7 +947,7 @@ def repair_deferred_index(
                     pass
     prune_expired_failure_markers(storage, now=current)
     if not had_unavailable:
-        _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 1}\n')
+        _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 2}\n')
     return repaired
 
 
@@ -945,9 +1072,14 @@ __all__ = [
     "DeferredSnapshotEntry",
     "MAX_TERMINAL_FAILURE_RETRIES",
     "discard_terminal_failure",
+    "discard_deferred",
     "deferred_key",
     "deferred_failure_key",
     "load_deferred_snapshot",
+    "load_reconcile_snapshot",
+    "look_up_v2_deferred_ref",
+    "snapshot_deferred_handles",
+    "load_v2_terminal_cursor",
     "list_pending_deferred",
     "look_up_deferred",
     "iter_pending_deferred",
@@ -959,4 +1091,5 @@ __all__ = [
     "schema_correction_attempted",
     "terminal_failure_retry_allowed",
     "write_deferred",
+    "write_v2_terminal_cursor",
 ]

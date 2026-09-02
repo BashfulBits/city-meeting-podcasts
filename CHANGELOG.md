@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Provider-chapter fallback gate and bounded v2 ingress/reaping.** Generated agenda and boundary
+  extraction now runs only for episodes without `source_chapters`; provider markers clear any stale
+  generated overlay and batch-cancel queued v2 fallback jobs. Dispatch v2 now budgets ingress in
+  pessimistic Durable Object write units with purpose-scoped reservations, raising the former 5k
+  job ceiling without removing its runaway-workflow guard. The deferred sweep consumes v2 terminal
+  jobs through a cursor feed and job-reference pointers after one explicit index repair, instead of
+  downloading every pending v2 record each cadence. No chapter recipe or pipeline-version bump is
+  introduced, so existing no-provider-chapter fallback artifacts are retained.
+
 - **Airforce provider, Mistral Medium latest migration, and 429 throttle fix.** Adds
   `airforce` provider in `config/provider_limits.yml` routing through Cloudflare AI Gateway
   (`custom-airforce/v1/chat/completions`, `AIRFORCE_API_KEY`) to serve `mistral-medium-3.5`.

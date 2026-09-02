@@ -138,6 +138,35 @@ def test_stage_defers_on_missing_agenda_artifact(tmp_path: Path):
     assert stats.skipped == 2
 
 
+def test_stage_uses_provider_chapters_and_never_enqueues_fallback_work(tmp_path: Path):
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-provider-chapters")
+    ep.source_chapters = [{"start": 0, "title": "Provider call to order"}]
+    ep.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "obsolete-recipe",
+        "job_ref": "obsolete-v2-ref",
+    }
+    ep.generated_chapters = [{"start": 0, "title": "Old generated title"}]
+    backend = FakeBackend()
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+
+    assert backend.enqueue_calls == []
+    assert stats.reused == 1
+    assert ep.generated_agenda_candidates == {
+        "status": "not_applicable",
+        "reason": "provider_chapters",
+        "provider_chapter_count": 1,
+        "locator_status": "not_applicable",
+    }
+    assert ep.generated_chapters == []
+
+
 def test_stage_records_pending_on_job_handle(tmp_path: Path):
     stage = AgendaChapterCandidatesStage()
     city = _make_city()

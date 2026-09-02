@@ -12,6 +12,8 @@ from citypods.compute.llm_deferred import (
     DEFERRED_FAILURE_PREFIX,
     DEFERRED_INDEX_MIGRATION_KEY,
     DEFERRED_INDEX_PENDING_PREFIX,
+    DEFERRED_INDEX_RECONCILE_PREFIX,
+    DEFERRED_INDEX_V2_REF_PREFIX,
     DEFERRED_PREFIX,
     _indexed_listing,
     _load_snapshot_from_keys,
@@ -24,11 +26,13 @@ from citypods.compute.llm_deferred import (
     list_pending_deferred,
     load_deferred_snapshot,
     look_up_deferred,
+    look_up_v2_deferred_ref,
     prune_expired_deferred,
     prune_expired_deferred_snapshot,
     record_schema_correction,
     repair_deferred_index,
     schema_correction_attempted,
+    snapshot_deferred_handles,
     terminal_failure_retry_allowed,
     write_deferred,
 )
@@ -115,6 +119,30 @@ def test_completion_removes_old_route_pointers_after_canonical_write():
         now=NOW,
     )
     assert storage.keys(DEFERRED_INDEX_PENDING_PREFIX) == []
+
+
+def test_v2_handle_has_a_job_ref_pointer_and_direct_work_has_a_reconcile_pointer():
+    storage = MemStorage()
+    v2_handle = JobHandle(
+        task="tag",
+        recipe_hash="v2-recipe",
+        backend="llm-dispatch-v2",
+        ref="v2-job-id",
+    )
+    direct_handle = _pending_handle("direct-recipe")
+    write_deferred(storage, v2_handle.recipe_hash, v2_handle, now=NOW)
+    write_deferred(storage, direct_handle.recipe_hash, direct_handle, now=NOW)
+
+    assert storage.keys(DEFERRED_INDEX_V2_REF_PREFIX) == [
+        f"{DEFERRED_INDEX_V2_REF_PREFIX}v2-job-id.json"
+    ]
+    assert storage.keys(DEFERRED_INDEX_RECONCILE_PREFIX) == [
+        f"{DEFERRED_INDEX_RECONCILE_PREFIX}direct-recipe.json"
+    ]
+    assert look_up_v2_deferred_ref(storage, "v2-job-id") == v2_handle
+
+    snapshot = snapshot_deferred_handles(storage, [v2_handle])
+    assert list(snapshot.pending()) == [v2_handle]
 
 
 def test_terminal_failure_removes_pending_handle_and_keeps_bounded_retry_audit():

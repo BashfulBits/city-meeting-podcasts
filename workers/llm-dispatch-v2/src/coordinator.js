@@ -71,6 +71,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
                                        ('queued','leased','unknown_attempt','completed','retryable',
                                         'failed','purge_pending')),
         priority                    INTEGER NOT NULL DEFAULT 1 CHECK (priority IN (0,1)),
+        purpose                     TEXT NOT NULL DEFAULT '',
         policy_json                 TEXT NOT NULL,
         prompt_family               TEXT NOT NULL,
         input_token_estimate        INTEGER NOT NULL,
@@ -97,6 +98,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       -- rows-read overage. Measured: 60,189 -> 367 VDBE ops at 6,000 terminal jobs.
       CREATE INDEX IF NOT EXISTS idx_jobs_state_updated
         ON jobs (state, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_jobs_state_updated_id
+        ON jobs (state, updated_at, id);
 
       -- A queued job can be compatible with more than one model. This small index is the
       -- scheduler's route-independent work index: admission asks for a few jobs belonging to a
@@ -200,8 +203,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
         utc_day                             TEXT NOT NULL,
         bundle_count_today                  INTEGER NOT NULL DEFAULT 0,
         jobs_ingested_today                 INTEGER NOT NULL DEFAULT 0,
+        ingress_write_units_today           INTEGER NOT NULL DEFAULT 0,
         cleanup_cursor                      TEXT,
         next_maintenance_alarm_at           INTEGER
+      );
+
+      -- One small row per purpose/day makes ingress reservations durable without turning a
+      -- batch admission check into a scan of the jobs table.  The global scheduler counter
+      -- remains the circuit breaker; these rows keep bulk work from consuming capacity held for
+      -- other feature lanes.
+      CREATE TABLE IF NOT EXISTS ingress_purpose (
+        utc_day                             TEXT NOT NULL,
+        purpose                             TEXT NOT NULL,
+        jobs_ingested                       INTEGER NOT NULL DEFAULT 0,
+        write_units                         INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (utc_day, purpose)
       );
 
       -- Keeps the model-queue index's ordering priority synchronized with a direct jobs.priority
@@ -234,6 +250,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // "fully elapsed" -- deliberately, since those are the routes stuck under the old behaviour.
     this._ensureColumn("routes", "buffer_updated_at", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "token_reservation", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("jobs", "purpose", "TEXT NOT NULL DEFAULT ''");
+    // This index references a column introduced after the first production schema. It must be
+    // created only after _ensureColumn: CREATE INDEX inside the bootstrap script would otherwise
+    // make an existing coordinator fail to start before its migration can add `purpose`.
+    sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_jobs_purpose_state_created ON jobs (purpose, state, created_at)"
+    );
+    this._ensureColumn("scheduler", "ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0");
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
     // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
     // "Durable Objects rows-read overage retrospective"). Both migrations completed in production
@@ -308,6 +332,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["transient_retry_count", "INTEGER NOT NULL DEFAULT 0"],
       ["buffer_updated_at", "INTEGER NOT NULL DEFAULT 0"],
       ["token_reservation", "INTEGER NOT NULL DEFAULT 0"],
+      ["purpose", "TEXT NOT NULL DEFAULT ''"],
+      ["ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0"],
       ["mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
@@ -326,6 +352,45 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _maxJobsPerUtcDay() {
     const configured = Number(this.env.MAX_JOBS_PER_UTC_DAY);
     return Number.isFinite(configured) && configured > 0 ? configured : 5000;
+  }
+
+  _maxIngressWriteUnitsPerUtcDay() {
+    const configured = Number(this.env.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY);
+    // Historical deployments set only MAX_JOBS_PER_UTC_DAY.  Preserve that protective bound
+    // until the explicit write budget is configured, using three writes/job as its conservative
+    // estimate (job row, model pointer, purpose counter).
+    return Number.isFinite(configured) && configured > 0
+      ? configured
+      : this._maxJobsPerUtcDay() * 3;
+  }
+
+  _ingressPurposeReservations() {
+    const raw = this.env.INGRESS_PURPOSE_RESERVATIONS;
+    if (!raw) return {};
+    try {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  _purposeForJob(job) {
+    if (typeof job.purpose === "string" && job.purpose.trim()) return job.purpose.trim();
+    try {
+      const policy = typeof job.policy_json === "string" ? JSON.parse(job.policy_json) : job.policy_json;
+      return typeof policy?.purpose === "string" && policy.purpose.trim()
+        ? policy.purpose.trim()
+        : "unspecified";
+    } catch {
+      return "unspecified";
+    }
+  }
+
+  _ingressWriteUnitsFor(job) {
+    // jobs + every model-index row + an amortized purpose-ledger update.  It deliberately
+    // overestimates a batch's single scheduler update: a circuit breaker must fail safe.
+    return 2 + this._modelsToIndex(job).length;
   }
 
   _envInt(name, fallback) {
@@ -472,22 +537,37 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const today = this._currentUtcDay(now);
     const rows = [...sql.exec(
-      "SELECT utc_day, bundle_count_today, jobs_ingested_today FROM scheduler WHERE id = 1"
+      `SELECT utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today
+       FROM scheduler WHERE id = 1`
     )];
     if (rows.length === 0) {
       sql.exec(
-        "INSERT INTO scheduler (id, utc_day, bundle_count_today, jobs_ingested_today) VALUES (1, ?, 0, 0)",
+        `INSERT INTO scheduler (
+          id, utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today
+        ) VALUES (1, ?, 0, 0, 0)`,
         today
       );
-      return { utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
+      return {
+        utc_day: today,
+        bundle_count_today: 0,
+        jobs_ingested_today: 0,
+        ingress_write_units_today: 0,
+      };
     }
     const sched = rows[0];
     if (sched.utc_day !== today) {
       sql.exec(
-        "UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0 WHERE id = 1",
+        `UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0,
+         ingress_write_units_today = 0 WHERE id = 1`,
         today
       );
-      return { ...sched, utc_day: today, bundle_count_today: 0, jobs_ingested_today: 0 };
+      return {
+        ...sched,
+        utc_day: today,
+        bundle_count_today: 0,
+        jobs_ingested_today: 0,
+        ingress_write_units_today: 0,
+      };
     }
     return sched;
   }
@@ -496,6 +576,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const now = Date.now();
     const maxJobsToday = this._maxJobsPerUtcDay();
+    const maxIngressWriteUnits = this._maxIngressWriteUnitsPerUtcDay();
 
     // The whole batch commits or rolls back as one unit -- see review/44 Unit 2 ("one SQLite
     // transaction for the whole batch"). ctx.storage.transactionSync requires its callback to
@@ -507,8 +588,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       const sched = this._rollUtcDayIfNeeded(now);
       let jobsIngestedToday = sched.jobs_ingested_today;
+      let ingressWriteUnits = sched.ingress_write_units_today || 0;
+      const ingressReservations = this._ingressPurposeReservations();
+      const purposeUsage = new Map(
+        [...sql.exec(
+          "SELECT purpose, jobs_ingested, write_units FROM ingress_purpose WHERE utc_day = ?",
+          sched.utc_day
+        )].map((row) => [row.purpose, row])
+      );
 
       let newlyInsertedCount = 0;
+      let newlyAdmittedWriteUnits = 0;
 
       for (const job of jobs) {
         // Check idempotency_key FIRST, before the daily cap. A replay of an already-accepted
@@ -567,10 +657,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
             const priority = job.priority !== undefined ? job.priority : 1;
             const policyJson = typeof job.policy_json === "string" ? job.policy_json : JSON.stringify(job.policy_json || {});
             const providerIdempotencyKey = job.provider_idempotency_key || null;
+            const purpose = this._purposeForJob({ ...job, policy_json: policyJson });
             sql.exec(
               `UPDATE jobs SET
                  request_digest = ?, provider_idempotency_key = ?, state = 'queued',
-                 priority = ?, policy_json = ?, prompt_family = ?,
+                 priority = ?, purpose = ?, policy_json = ?, prompt_family = ?,
                  input_token_estimate = ?, max_output_token_estimate = ?, payload_key = ?,
                  result_key = NULL, lease_token = NULL, lease_route_id = NULL,
                  lease_expires_at = NULL, bundle_id = NULL, attempts = 0,
@@ -579,6 +670,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
               job.request_digest,
               providerIdempotencyKey,
               priority,
+              purpose,
               policyJson,
               job.prompt_family,
               job.input_token_estimate,
@@ -613,19 +705,51 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const priority = job.priority !== undefined ? job.priority : 1;
         const policyJson = typeof job.policy_json === "string" ? job.policy_json : JSON.stringify(job.policy_json || {});
         const providerIdempotencyKey = job.provider_idempotency_key || null;
+        const purpose = this._purposeForJob({ ...job, policy_json: policyJson });
+        const reservation = ingressReservations[purpose] || {};
+        const purposeUsageRow = purposeUsage.get(purpose) || {
+          jobs_ingested: 0,
+          write_units: 0,
+        };
+        const writeUnits = this._ingressWriteUnitsFor({ ...job, policy_json: policyJson });
+        const purposeWriteLimit = Number(reservation.daily_write_units);
+        if (
+          Number.isFinite(purposeWriteLimit) &&
+          purposeWriteLimit >= 0 &&
+          purposeUsageRow.write_units + writeUnits > purposeWriteLimit
+        ) {
+          rejected.push({ id: job.id, reason: "purpose_write_budget_exceeded" });
+          continue;
+        }
+        // A purpose may consume its own reserved write budget plus globally unreserved headroom,
+        // but must leave every other configured purpose enough capacity to use its reservation.
+        const otherReservations = Object.entries(ingressReservations).reduce(
+          (sum, [otherPurpose, config]) => {
+            if (otherPurpose === purpose) return sum;
+            const reserved = Number(config?.reserved_write_units);
+            if (!Number.isFinite(reserved) || reserved <= 0) return sum;
+            return sum + Math.max(0, reserved - (purposeUsage.get(otherPurpose)?.write_units || 0));
+          },
+          0
+        );
+        if (ingressWriteUnits + newlyAdmittedWriteUnits + writeUnits > maxIngressWriteUnits - otherReservations) {
+          rejected.push({ id: job.id, reason: "ingress_write_budget_reserved" });
+          continue;
+        }
 
         sql.exec(
           `INSERT INTO jobs (
             id, idempotency_key, request_digest, provider_idempotency_key,
-            state, priority, policy_json, prompt_family,
+            state, priority, purpose, policy_json, prompt_family,
             input_token_estimate, max_output_token_estimate,
             payload_key, attempts, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
           job.id,
           job.idempotency_key,
           job.request_digest,
           providerIdempotencyKey,
           priority,
+          purpose,
           policyJson,
           job.prompt_family,
           job.input_token_estimate,
@@ -641,13 +765,30 @@ export class LLMSchedulerDO extends DurableObjectBase {
         );
 
         newlyInsertedCount++;
+        newlyAdmittedWriteUnits += writeUnits;
+        purposeUsage.set(purpose, {
+          jobs_ingested: purposeUsageRow.jobs_ingested + 1,
+          write_units: purposeUsageRow.write_units + writeUnits,
+        });
+        sql.exec(
+          `INSERT INTO ingress_purpose (utc_day, purpose, jobs_ingested, write_units)
+           VALUES (?, ?, 1, ?)
+           ON CONFLICT (utc_day, purpose) DO UPDATE SET
+             jobs_ingested = jobs_ingested + 1,
+             write_units = write_units + excluded.write_units`,
+          sched.utc_day,
+          purpose,
+          writeUnits
+        );
         accepted.push({ id: job.id, submitted_id: job.id });
       }
 
       if (newlyInsertedCount > 0) {
         sql.exec(
-          "UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + ? WHERE id = 1",
-          newlyInsertedCount
+          `UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + ?,
+           ingress_write_units_today = ingress_write_units_today + ? WHERE id = 1`,
+          newlyInsertedCount,
+          newlyAdmittedWriteUnits
         );
       }
 
@@ -896,6 +1037,78 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
 
     return { statuses };
+  }
+
+  /** Return a bounded, keyset-paginated feed of v2 terminal work.
+   *
+   * The client owns request payload/result interpretation, while the coordinator is authoritative
+   * for lifecycle state.  This feed lets the reaper ask for only rows that became terminal since
+   * its last cursor instead of downloading every client-side pending record merely to learn that
+   * it is still queued.  `updated_at,id` is a stable keyset cursor; a row updated at the same
+   * millisecond cannot be skipped by a timestamp-only cursor.
+   */
+  async terminalFeed(cursor, limit = 500) {
+    const sql = this._getSql();
+    const afterUpdatedAt = Number(cursor?.updated_at) || 0;
+    const afterId = typeof cursor?.id === "string" ? cursor.id : "";
+    const rows = [...sql.exec(
+      `SELECT id, state, result_key, updated_at FROM jobs
+       WHERE state IN ('completed', 'failed')
+         AND (updated_at > ? OR (updated_at = ? AND id > ?))
+       ORDER BY updated_at ASC, id ASC LIMIT ?`,
+      afterUpdatedAt,
+      afterUpdatedAt,
+      afterId,
+      limit
+    )];
+    const last = rows.at(-1);
+    return {
+      terminals: rows.map((row) => ({
+        id: row.id,
+        state: row.state,
+        result_key: row.result_key,
+        updated_at: row.updated_at,
+      })),
+      cursor: last ? { updated_at: last.updated_at, id: last.id } : { updated_at: afterUpdatedAt, id: afterId },
+    };
+  }
+
+  /** Cancel queued work before it reaches a provider.  Leased/unknown attempts are intentionally
+   * left alone: their provider call may already be running and only completeBatch can fence it. */
+  async cancelBatch(jobIds) {
+    if (!jobIds || jobIds.length === 0) return { cancelled: [], in_flight: [], not_found: [] };
+    const sql = this._getSql();
+    return this.ctx.storage.transactionSync(() => {
+      const cancelled = [];
+      const inFlight = [];
+      const found = new Set();
+      for (const chunk of this._chunks(jobIds)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        const rows = [...sql.exec(
+          `SELECT id, state FROM jobs WHERE id IN (${placeholders})`,
+          ...chunk
+        )];
+        for (const row of rows) {
+          found.add(row.id);
+          if (["leased", "unknown_attempt"].includes(row.state)) {
+            inFlight.push(row.id);
+            continue;
+          }
+          if (row.state === "purge_pending") {
+            cancelled.push(row.id);
+            continue;
+          }
+          sql.exec("DELETE FROM job_models WHERE job_id = ?", row.id);
+          sql.exec(
+            "UPDATE jobs SET state = 'purge_pending', updated_at = ? WHERE id = ?",
+            Date.now(),
+            row.id
+          );
+          cancelled.push(row.id);
+        }
+      }
+      return { cancelled, in_flight: inFlight, not_found: jobIds.filter((id) => !found.has(id)) };
+    });
   }
 
   async resolveUnknownBatch(attemptIds) {

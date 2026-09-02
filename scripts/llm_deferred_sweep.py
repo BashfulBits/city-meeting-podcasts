@@ -35,12 +35,16 @@ from citypods.compute.llm_deferred import (
     MAX_TERMINAL_FAILURE_RETRIES,
     discard_terminal_failure,
     load_deferred_snapshot,
+    load_v2_terminal_cursor,
+    look_up_v2_deferred_ref,
     prune_expired_deferred_snapshot,
     prune_expired_failure_markers,
     record_schema_correction,
     repair_deferred_index,
     schema_correction_attempted,
+    snapshot_deferred_handles,
     write_deferred,
+    write_v2_terminal_cursor,
 )
 from citypods.compute.llm_policy import ROUTES, DeferredLLMRequest
 from citypods.config import load_site_config
@@ -292,6 +296,7 @@ def main(argv: list[str] | None = None) -> int:
         storage,
         deadline_at=deadline_at,
         should_stop=lambda: stop_state.requested,
+        reconcile_only=True,
     )
     snapshot_elapsed_seconds = round((datetime.now(UTC) - snapshot_started_at).total_seconds(), 3)
     pending_handles = list(snapshot.pending())
@@ -336,14 +341,14 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
 
-    def recover_terminal(handle: JobHandle, exc: Exception) -> None:
+    def recover_terminal(handle: JobHandle, exc: Exception, *, target_snapshot=snapshot) -> None:
         """Persist one terminal result without re-polling a batch-observed v2 job."""
         nonlocal failed, recovered_terminal_failures
         failed += 1
         if isinstance(exc, LLMStructuredOutputError):
             if schema_correction_attempted(storage, handle.recipe_hash):
                 marker_count = discard_terminal_failure(
-                    storage, snapshot, handle, exc, backend=backend, exhausted=True
+                    storage, target_snapshot, handle, exc, backend=backend, exhausted=True
                 )
                 recovered_terminal_failures += 1
                 print(
@@ -374,13 +379,52 @@ def main(argv: list[str] | None = None) -> int:
             return
 
         assert isinstance(exc, LLMDispatchTerminalError)
-        marker_count = discard_terminal_failure(storage, snapshot, handle, exc, backend=backend)
+        marker_count = discard_terminal_failure(
+            storage, target_snapshot, handle, exc, backend=backend
+        )
         recovered_terminal_failures += 1
         print(
             f"llm-deferred-sweep: {handle.recipe_hash} terminal failure recovered "
             f"(attempt {marker_count}/{MAX_TERMINAL_FAILURE_RETRIES}): {exc}",
             file=sys.stderr,
         )
+
+    # Submitted v2 work is consumed from the coordinator's bounded terminal feed.  This replaces
+    # the old "load every pending record, then poll every id" loop once `--repair-index` has
+    # seeded v2-ref pointers.  A missing pointer is harmless (the job was already consumed or
+    # predates migration); advance the cursor so it never turns into a permanent hot row.
+    v2_terminal_seen = 0
+    if has_v2_dispatch and not stop_state.requested and datetime.now(UTC) < deadline_at:
+        try:
+            terminal_page = backend.terminal_feed(load_v2_terminal_cursor(storage))
+            terminal_rows = terminal_page.get("terminals", [])
+            terminal_handles = [
+                handle
+                for row in terminal_rows
+                if isinstance(row, dict)
+                and isinstance(row.get("id"), str)
+                and (handle := look_up_v2_deferred_ref(storage, row["id"])) is not None
+            ]
+            v2_terminal_seen = len(terminal_rows)
+            if terminal_handles:
+                terminal_snapshot = snapshot_deferred_handles(storage, terminal_handles)
+                terminal_results = backend.poll_batch(terminal_handles)
+                for handle in terminal_handles:
+                    result = terminal_results.get(handle.ref)
+                    if isinstance(result, (LLMStructuredOutputError, LLMDispatchTerminalError)):
+                        recover_terminal(handle, result, target_snapshot=terminal_snapshot)
+                    elif isinstance(result, JobResult):
+                        completed += 1
+                    elif isinstance(result, Exception):
+                        v2_unobserved += 1
+            cursor = terminal_page.get("cursor")
+            if isinstance(cursor, dict):
+                write_v2_terminal_cursor(storage, cursor)
+        except Exception as exc:  # noqa: BLE001 -- leave cursor untouched for the next cadence
+            print(
+                f"llm-deferred-sweep: v2 terminal feed failed: {type(exc).__name__}",
+                file=sys.stderr,
+            )
 
     if not stop_state.requested and datetime.now(UTC) < deadline_at:
         handled_recipe_hashes: set[str] = set()
@@ -561,6 +605,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "unavailable": len(snapshot.unavailable_reads),
         "v2_unobserved": v2_unobserved,
+        "v2_terminal_seen": v2_terminal_seen,
     }
     print(json.dumps(end_summary, sort_keys=True), flush=True)
     print(

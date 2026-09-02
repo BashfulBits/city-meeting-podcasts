@@ -61,11 +61,12 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     )
   );
 
-  // MAX_JOBS_PER_UTC_DAY > 5,000 (model-index write headroom)
+  // The raw job cap still protects a runaway client even though write units are now the primary
+  // admission budget.
   assert.throws(() =>
     validateConfig(
       createMockEnv({
-        MAX_JOBS_PER_UTC_DAY: "5001",
+        MAX_JOBS_PER_UTC_DAY: "20001",
       })
     )
   );
