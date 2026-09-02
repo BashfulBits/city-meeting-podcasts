@@ -1466,7 +1466,7 @@ test("a superseded job is claimable and completes, closing the 2026-08-25 enqueu
   assert.equal(row.result_key, "results/j-stale/v2.json");
 });
 
-test("authorizeRetry honors explicit retryAfterSeconds and updates route buffer", async () => {
+test("authorizeRetry honors an explicit Retry-After floor and blocks the route", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_429_RETRIES: "3" });
   await coordinator.enqueueBatch([makeJob("j1")]);
   const now = Date.now();
@@ -1477,16 +1477,53 @@ test("authorizeRetry honors explicit retryAfterSeconds and updates route buffer"
   // Upstream returns 429 with Retry-After: 5
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now, 5);
   assert.equal(auth.authorized, true);
-  // 5s backoff with 50%-150% jitter gives 2.5s - 7.5s
-  assert.ok(auth.retry_not_before >= now + 2000);
-  assert.ok(auth.retry_not_before <= now + 8000);
+  // Positive jitter may follow an upstream delay, but can never move the retry before it.
+  assert.ok(auth.retry_not_before >= now + 5000);
+  assert.ok(auth.retry_not_before <= now + 6000);
 
   const routeRow = [
-    ...sql.exec("SELECT buffer_seconds, throttle_streak FROM routes WHERE route_id=?", job.route_id),
+    ...sql.exec(
+      "SELECT buffer_seconds, blocked_until, throttle_streak FROM routes WHERE route_id=?",
+      job.route_id
+    ),
   ][0];
   assert.ok(routeRow.buffer_seconds >= 5);
+  assert.ok(routeRow.blocked_until >= now + 5000);
   assert.equal(routeRow.throttle_streak, 1);
 });
+
+test("authorizeRetry preserves an Airforce guarantee beyond the local buffer cap", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_429_RETRIES: "3",
+    MAX_ROUTE_BUFFER_SECONDS: "60",
+  });
+  await coordinator.enqueueBatch([makeJob("j-airforce")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  const job = plan.jobs[0];
+
+  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
+  // Production Airforce response: the next answer was guaranteed only after 111 seconds.
+  const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now, 111);
+  assert.equal(
+    auth.authorized,
+    false,
+    "the retry must not squeeze into a 25-second bundle window"
+  );
+
+  const routeRow = [
+    ...sql.exec(
+      "SELECT buffer_seconds, blocked_until FROM routes WHERE route_id=?",
+      job.route_id
+    ),
+  ][0];
+  assert.equal(routeRow.buffer_seconds, 60, "the adaptive buffer remains separately bounded");
+  assert.ok(
+    routeRow.blocked_until >= now + 111_000,
+    "a later cron must not bypass Airforce's guaranteed-response deadline"
+  );
+  }
+);
 
 test("claimDispatchWindow enforces route-level and provider-level concurrency", async () => {
   const limits = {
