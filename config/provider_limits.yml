@@ -78,20 +78,14 @@ providers:
         api_key_env: MISTRAL_API_KEY
       - id: secondary
         api_key_env: MISTRAL_API_KEY_SECONDARY
-  # Airforce's custom provider exposes the same Mistral Medium family through its OpenAI-shaped
-  # API. The account-wide 1,000 RPD allowance is the binding limit for this account; `rpm: 0.69`
-  # paces the route to that daily ceiling (the split-cap compiler then divides it between the v1
-  # and v2 dispatchers while both are live). No independent TPM ceiling was observed in the local
-  # soak, so leave `tpm` unset rather than inventing a smaller cap. The provider's model metadata
-  # reports `max_tokens: 4096`, which is an output budget, not the 256k input context window.
+  # Airforce custom provider: serves Mistral Medium 3.5. Strictly guarded with concurrency: 1.
   airforce:
     api_base: https://api.airforce/v1
     ai_gateway_slug: custom-airforce
-    # Registered at `https://api.airforce/v1`; AI Gateway's custom-provider rewrite therefore
-    # requires the `/v1` prefix in the caller path, as verified by the live gateway smoke test.
     ai_gateway_chat_path: /v1/chat/completions
-    chat_path: /chat/completions
+    chat_path: /v1/chat/completions
     reset_timezone: UTC
+    concurrency: 1
     accounts:
       - id: primary
         api_key_env: AIRFORCE_API_KEY
@@ -272,15 +266,6 @@ providers:
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
-  airforce:
-    api_base: https://api.airforce/v1
-    ai_gateway_slug: custom-airforce
-    ai_gateway_chat_path: /v1/chat/completions
-    chat_path: /v1/chat/completions
-    reset_timezone: UTC
-    accounts:
-      - id: primary
-        api_key_env: AIRFORCE_API_KEY
 routes:
   # ==========================================
   # GEMINI & GEMMA ROUTES (Google AI Studio)
@@ -763,6 +748,7 @@ routes:
     rpm: 20
     tpm: 200000
     rpd: 1000
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0

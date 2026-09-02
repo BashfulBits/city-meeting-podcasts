@@ -1005,6 +1005,7 @@
       "rpm": 20,
       "tpm": 180000,
       "rpd": 1000,
+      "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
@@ -1023,7 +1024,8 @@
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/v1/chat/completions",
       "api_key_env": "AIRFORCE_API_KEY",
-      "reset_timezone": "UTC"
+      "reset_timezone": "UTC",
+      "provider_concurrency": 1
     },
     {
       "route_id": "mistral_large_2512_primary",

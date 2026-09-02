@@ -29,6 +29,7 @@
       "ai_gateway_slug": "custom-airforce",
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/v1/chat/completions",
+      "concurrency": 1,
       "reset_timezone": "UTC",
       "accounts": [
         {
@@ -844,7 +845,7 @@
       "rpm": 20,
       "rpd": 1000,
       "tpm": 180000,
-      "concurrency": null,
+      "concurrency": 1,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,

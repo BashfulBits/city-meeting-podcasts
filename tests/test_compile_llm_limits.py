@@ -109,6 +109,8 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert compiled["model_aliases"]["mistral/mistral-medium-2508"] == mistral_medium_key
     assert compiled["model_aliases"]["mistral/mistral-medium-2505"] == mistral_medium_key
     assert compiled["model_aliases"]["mistral/mistral-medium-3-5"] == mistral_medium_key
+    assert compiled["providers"]["airforce"]["concurrency"] == 1
+    assert compiled["routes_by_id"]["airforce_mistral_medium_3_5_primary"]["concurrency"] == 1
 
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():
