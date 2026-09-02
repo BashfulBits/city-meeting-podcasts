@@ -306,6 +306,7 @@ _WORKER_ROUTE_FIELDS = (
     "rpd",
     "tpm",
     "concurrency",
+    "request_start_margin_seconds",
     "free",
     "input_per_token",
     "output_per_token",

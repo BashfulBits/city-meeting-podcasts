@@ -8,6 +8,8 @@ import { canonicalModelName, routeFitsContext, routesEligibleFor } from "./route
 import {
   availableTokenBudget,
   computeRouteLaneWait,
+  minInterRequestGapMs,
+  rpmWindowDurationMs,
   routeHasCapacityFor,
   FULL_TOKEN_BUDGET_WINDOWS,
   paymentRequiredBackoffUntil,
@@ -1421,7 +1423,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       Number(route.rpm),
       route.rpm_window_start,
       route.rpm_count,
-      60_000
+      rpmWindowDurationMs(route)
     );
     // rpd is keyed on the provider's calendar day: a stale key means the provider already reset,
     // so the route is at full daily capacity regardless of how recently we last used it.
@@ -1519,7 +1521,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     let rpmWindowStart = mergedRoute.rpm_window_start;
     let rpmCount = mergedRoute.rpm_count;
-    if (!Number.isFinite(rpmWindowStart) || notBeforeAt - rpmWindowStart >= 60_000) {
+    if (
+      !Number.isFinite(rpmWindowStart) ||
+      notBeforeAt - rpmWindowStart >= rpmWindowDurationMs(mergedRoute)
+    ) {
       rpmWindowStart = notBeforeAt;
       rpmCount = 1;
     } else {

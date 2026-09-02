@@ -78,7 +78,8 @@ providers:
         api_key_env: MISTRAL_API_KEY
       - id: secondary
         api_key_env: MISTRAL_API_KEY_SECONDARY
-  # Airforce custom provider: serves Mistral Medium 3.5. Guarded with concurrency: 4.
+  # Airforce custom provider: serves Mistral Medium 3.5. At 1 RPM, more than one in-flight
+  # request cannot increase sustainable throughput and can race the upstream limiter.
   # While published docs claimed 20 RPM, live 429 error responses report 1 RPM (plan_rpm: 1),
   # so rpm: 1 is used here.
   airforce:
@@ -88,7 +89,7 @@ providers:
     chat_path: /v1/chat/completions
     reset_timezone: UTC
     rpm: 1
-    concurrency: 4
+    concurrency: 1
     ai_gateway_max_attempts: 1
     accounts:
       - id: primary
@@ -753,7 +754,11 @@ routes:
     rpm: 1
     tpm: 200000
     rpd: 1000
-    concurrency: 4
+    # Preserve the 1 RPM request-time limit, then leave a small clock-skew margin before the
+    # next start. This is deliberately not response-time pacing: Airforce accepts successful
+    # pairs less than one minute apart measured from the prior response.
+    request_start_margin_seconds: 2
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0

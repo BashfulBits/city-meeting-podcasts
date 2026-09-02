@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   minInterRequestGapMs,
+  requestStartMarginMs,
+  rpmWindowDurationMs,
   availableTokenBudget,
   reservationFor,
   earliestSafeStart,
@@ -46,6 +48,21 @@ test("minInterRequestGapMs paces evenly to the RPM limit", () => {
   assert.equal(minInterRequestGapMs({ rpm: 60 }), 1000);
   assert.equal(minInterRequestGapMs({ rpm: 0 }), 0);
   assert.equal(minInterRequestGapMs({}), 0);
+});
+
+test("minInterRequestGapMs adds a request-start safety margin without using response time", () => {
+  const route = { rpm: 1, request_start_margin_seconds: 2 };
+  assert.equal(requestStartMarginMs(route), 2000);
+  assert.equal(minInterRequestGapMs(route), 62_000);
+  assert.equal(rpmWindowDurationMs(route), 62_000);
+
+  const exhausted = freshRoute({
+    rpm: 1,
+    request_start_margin_seconds: 2,
+    rpm_window_start: NOW,
+    rpm_count: 1,
+  });
+  assert.equal(earliestSafeStart(exhausted, job(), NOW, NOW).notBeforeAt, NOW + 62_000);
 });
 
 test("availableTokenBudget refills linearly up to the FULL_TOKEN_BUDGET_WINDOWS cap", () => {

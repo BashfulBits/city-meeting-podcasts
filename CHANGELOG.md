@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Serialize Airforce and add a request-start safety margin.** Restores provider and route
+  concurrency to one for Airforce's one-RPM Mistral Medium route, and spaces starts by 62 seconds
+  (the documented minute plus a two-second clock-skew margin). This is intentionally not
+  response-time pacing; it changes scheduling only and requires no recipe, artifact, pipeline
+  version, or catalog backfill.
+
 - **Increase Airforce provider and route concurrency.** Raises `concurrency` from 1 to 4 for the
   `airforce` provider and `airforce_mistral_medium_3_5_primary` route in
   `config/provider_limits.yml` and recompiled catalogs (`llm_routes.json`, `dispatch_limits.json`).
