@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  parseErrorMessageRetryAfter,
   parseRetryAfterSeconds,
   resolveProviderCredentials,
   upstreamCapacityFailure,
@@ -198,4 +199,47 @@ test("parseRetryAfterSeconds parses duration strings like 7.66s and 2m59.56s", (
 
   const groqHours = new Headers({ "retry-after": "1h2m3s" });
   assert.equal(parseRetryAfterSeconds({ headers: groqHours }), 3723);
+});
+
+test("parseRetryAfterSeconds parses Airforce rate limit error message payload", () => {
+  const airforceBody = {
+    error: {
+      message:
+        "Global rate limit exceeded (1 requests per second). Try again in 1.0 seconds. Your next guaranteed response is in 119 seconds. Or upgrade at api.airforce - discord.gg/airforce",
+      type: "rate_limit_exceeded",
+      param: null,
+      code: "429",
+    },
+  };
+  assert.equal(parseRetryAfterSeconds({ headers: new Headers() }, airforceBody), 1);
+  assert.equal(
+    parseErrorMessageRetryAfter(airforceBody.error.message),
+    1
+  );
+});
+
+test("parseErrorMessageRetryAfter parses various provider rate limit messages", () => {
+  assert.equal(
+    parseErrorMessageRetryAfter("Rate limit reached. Please try again in 20s."),
+    20
+  );
+  assert.equal(
+    parseErrorMessageRetryAfter("Rate limit reached. Please try again in 2m30s."),
+    150
+  );
+  assert.equal(
+    parseErrorMessageRetryAfter("Rate limit exceeded. Please wait 15 seconds before retrying."),
+    15
+  );
+  assert.equal(
+    parseErrorMessageRetryAfter("Too many requests, retry after 45 seconds"),
+    45
+  );
+  assert.equal(
+    parseErrorMessageRetryAfter("Your next guaranteed response is in 119 seconds"),
+    119
+  );
+  assert.equal(parseErrorMessageRetryAfter("Non-rate limit error"), null);
+  assert.equal(parseErrorMessageRetryAfter(""), null);
+  assert.equal(parseErrorMessageRetryAfter(null), null);
 });

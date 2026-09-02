@@ -1419,18 +1419,76 @@ function nextLocalMidnightUTC(date, timeZone = "UTC") {
   return res;
 }
 
+function parseDurationSeconds(str) {
+  if (typeof str !== "string" || !str.trim()) return null;
+  const s = str.trim();
+  const durationRegex =
+    /^(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m(?!s))?(?:(\d+(?:\.\d+)?)s)?(?:(\d+(?:\.\d+)?)ms)?$/;
+  const match = s.match(durationRegex);
+  if (!match) return null;
+  const [, h, m, sec, ms] = match;
+  if (!h && !m && !sec && !ms) return null;
+  const totalSeconds =
+    (h ? parseFloat(h) * 3600 : 0) +
+    (m ? parseFloat(m) * 60 : 0) +
+    (sec ? parseFloat(sec) : 0) +
+    (ms ? parseFloat(ms) / 1000 : 0);
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return 0;
+  return Math.ceil(totalSeconds);
+}
+
+function parseErrorMessageRetryAfter(message) {
+  if (typeof message !== "string" || !message.trim()) return null;
+  const regex =
+    /(?:try again in|retry after|wait|retry in|reset in|response (?:is )?in)\s*([0-9]+(?:\.[0-9]+)?\s*[a-z0-9.]+)/i;
+  const match = message.match(regex);
+  if (!match) return null;
+  const raw = match[1].trim().replace(/[.,;:]+$/, "");
+  const durationSec = parseDurationSeconds(raw);
+  if (durationSec !== null && durationSec > 0) return durationSec;
+
+  const numericWithUnit = raw.match(
+    /^(\d+(?:\.\d+)?)\s*(hours?|h|minutes?|mins?|m|seconds?|secs?|s|ms)$/i
+  );
+  if (numericWithUnit) {
+    const val = parseFloat(numericWithUnit[1]);
+    const unit = numericWithUnit[2].toLowerCase();
+    if (unit.startsWith("h")) return Math.ceil(val * 3600);
+    if (unit.startsWith("m") && !unit.startsWith("ms")) return Math.ceil(val * 60);
+    if (unit.startsWith("ms")) return Math.ceil(val / 1000);
+    if (unit.startsWith("s")) return Math.ceil(val);
+  }
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric) && numeric > 0) return Math.ceil(numeric);
+  return null;
+}
+
 /**
- * `Retry-After` in either RFC 9110 form: delay-seconds, or an HTTP-date. Returns seconds relative
- * to `nowMs`, or null when the header is absent or unparseable. A bare `Number()` silently yields
- * NaN for the date form, which would discard a provider's own deadline in favour of our guess.
+ * `Retry-After` in RFC 9110 form (delay-seconds, or an HTTP-date), duration string, or error message.
+ * Returns seconds relative to `nowMs`, or null when absent or unparseable.
  * `0` is a legitimate value meaning "retry immediately" and is preserved, not treated as absent.
  */
-function parseRetryAfterSeconds(raw, nowMs) {
-  if (raw == null || raw === "") return null;
-  const asSeconds = Number(raw);
-  if (Number.isFinite(asSeconds)) return Math.max(0, asSeconds);
-  const asDate = Date.parse(raw);
-  if (Number.isFinite(asDate)) return Math.max(0, (asDate - nowMs) / 1000);
+function parseRetryAfterSeconds(raw, nowMs, body = null) {
+  if (raw != null && raw !== "") {
+    const asSeconds = Number(raw);
+    if (Number.isFinite(asSeconds)) return Math.max(0, asSeconds);
+    const durationSec = parseDurationSeconds(String(raw).trim());
+    if (durationSec !== null && durationSec > 0) return durationSec;
+    const asDate = Date.parse(raw);
+    if (Number.isFinite(asDate)) return Math.max(0, (asDate - nowMs) / 1000);
+  }
+  if (body) {
+    const message =
+      body?.error?.message ||
+      body?.error?.detail ||
+      body?.message ||
+      body?.detail ||
+      (typeof body === "string" ? body : null);
+    if (message) {
+      const parsed = parseErrorMessageRetryAfter(message);
+      if (parsed !== null && parsed > 0) return parsed;
+    }
+  }
   return null;
 }
 
@@ -2902,6 +2960,10 @@ async function dispatchBatch(
           // started after the batch began but before this rejection landed would look like it
           // postdates the rejection -- so its later success would clear a cooldown it never saw.
           const respondedAt = new Date();
+          const errorReadStartedAt = profileNow();
+          const providerError = await readUpstreamError(response, { persistBodyPreview: true });
+          profile.error_read_ms = profileElapsed(errorReadStartedAt);
+
           if (response.status === 429) {
             // Route-level cooldown, not just the per-job retry below. Without this every other
             // queued job keeps being admitted at the normal rpm straight into a provider's quota
@@ -2911,6 +2973,7 @@ async function dispatchBatch(
             const retryAfterSeconds = parseRetryAfterSeconds(
               response.headers?.get?.("retry-after"),
               respondedAt.getTime(),
+              providerError,
             );
             throttleEntry.throttled_until = new Date(
               rateLimitedBackoffUntil(
@@ -2957,9 +3020,6 @@ async function dispatchBatch(
           // and only the payload distinguishes the two. Read with the preview, then drop it if we
           // end up retrying -- the preview exists to explain terminal failures, and keeping it on
           // a record that will run again just bloats the queue object.
-          const errorReadStartedAt = profileNow();
-          const providerError = await readUpstreamError(response, { persistBodyPreview: true });
-          profile.error_read_ms = profileElapsed(errorReadStartedAt);
           const capacityFailure = upstreamCapacityFailure(response.status, providerError);
           const willRetry =
             (retryableStatus(response.status) || response.status === 402 || capacityFailure) &&
