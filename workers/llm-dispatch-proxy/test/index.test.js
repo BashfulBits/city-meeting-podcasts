@@ -3109,8 +3109,8 @@ test("a 429 parses rate limit delay from error message body when retry-after hea
   const entry = ledgerEntry(coordinator, routeId);
   const cooldownMs = Date.parse(entry.throttled_until) - now.getTime();
   assert.ok(
-    cooldownMs >= 900 && cooldownMs <= 2000,
-    `expected a ~1s body delay cooldown, got ${Math.round(cooldownMs / 1000)}s`,
+    cooldownMs > 110_000 && cooldownMs <= 121_000,
+    `expected a ~119s body delay cooldown, got ${Math.round(cooldownMs / 1000)}s`,
   );
 });
 

@@ -243,9 +243,15 @@ export function parseDurationSeconds(str) {
  */
 export function parseErrorMessageRetryAfter(message) {
   if (typeof message !== "string" || !message.trim()) return null;
-  const regex =
+
+  // Prioritize guaranteed response windows (e.g. Airforce "Your next guaranteed response is in 119 seconds")
+  // before short burst hints (e.g. "Try again in 1.0 seconds").
+  const guaranteedRegex =
+    /(?:guaranteed response (?:is )?in)\s*([0-9]+(?:\.[0-9]+)?\s*[a-z0-9.]+)/i;
+  const generalRegex =
     /(?:try again in|retry after|wait|retry in|reset in|response (?:is )?in)\s*([0-9]+(?:\.[0-9]+)?\s*[a-z0-9.]+)/i;
-  const match = message.match(regex);
+
+  const match = message.match(guaranteedRegex) || message.match(generalRegex);
   if (!match) return null;
   const raw = match[1].trim().replace(/[.,;:]+$/, "");
   const durationSec = parseDurationSeconds(raw);
