@@ -3086,6 +3086,34 @@ test("a 429 honors Retry-After when the provider sends one", async () => {
   );
 });
 
+test("a 429 parses rate limit delay from error message body when retry-after header is absent", async () => {
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-body-retry"), env);
+  await queued.json();
+  const rateLimited = async () =>
+    new Response(
+      JSON.stringify({
+        error: {
+          message:
+            "Global rate limit exceeded (1 requests per second). Try again in 1.0 seconds. Your next guaranteed response is in 119 seconds. Or upgrade at api.airforce - discord.gg/airforce",
+        },
+      }),
+      { status: 429, headers: { "content-type": "application/json" } },
+    );
+
+  const now = new Date();
+  await dispatchOne(env, rateLimited, now);
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const cooldownMs = Date.parse(entry.throttled_until) - now.getTime();
+  assert.ok(
+    cooldownMs >= 900 && cooldownMs <= 2000,
+    `expected a ~1s body delay cooldown, got ${Math.round(cooldownMs / 1000)}s`,
+  );
+});
+
 test("a 429 cooldown is measured from the response, not the batch start", async () => {
   // `now` is the batch's start time. Using it would shorten the cooldown by the upstream call's
   // duration, and -- worse -- stamp the stale-guard early enough that a sibling which started

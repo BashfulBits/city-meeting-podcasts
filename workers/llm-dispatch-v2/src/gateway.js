@@ -160,7 +160,6 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
   });
 
   const correlationId = response.headers.get("cf-aig-log-id") || response.headers.get("cf-ray") || null;
-  const retryAfterSeconds = parseRetryAfterSeconds(response);
   let body = null;
   let parseError = null;
   try {
@@ -168,6 +167,7 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
   } catch (err) {
     parseError = err;
   }
+  const retryAfterSeconds = parseRetryAfterSeconds(response, body);
 
   return {
     status: response.status,
@@ -233,30 +233,82 @@ export function parseDurationSeconds(str) {
 }
 
 /**
- * Extract and parse standard Retry-After or provider reset headers into whole seconds.
- * Handles integer seconds, duration strings (e.g. "7.66s", "2m59.56s"), and HTTP-date strings;
- * returns null if no valid header is present.
+ * Extract retry / cooldown delay from provider error message strings.
+ * Handles patterns such as:
+ * - "Try again in 1.0 seconds. Your next guaranteed response is in 119 seconds." -> 1
+ * - "Please try again in 20s." -> 20
+ * - "Rate limit reached. Please try again in 2m30s." -> 150
+ * - "Please wait 15 seconds before retrying" -> 15
+ * - "Your next guaranteed response is in 119 seconds" -> 119
  */
-export function parseRetryAfterSeconds(response) {
-  if (!response || !response.headers) return null;
-  const raw =
-    response.headers.get("retry-after") ||
-    response.headers.get("x-ratelimit-reset-requests") ||
-    response.headers.get("x-ratelimit-reset-tokens");
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  const numeric = Number(trimmed);
-  if (Number.isFinite(numeric) && numeric > 0) {
-    return Math.ceil(numeric);
+export function parseErrorMessageRetryAfter(message) {
+  if (typeof message !== "string" || !message.trim()) return null;
+  const regex =
+    /(?:try again in|retry after|wait|retry in|reset in|response (?:is )?in)\s*([0-9]+(?:\.[0-9]+)?\s*[a-z0-9.]+)/i;
+  const match = message.match(regex);
+  if (!match) return null;
+  const raw = match[1].trim().replace(/[.,;:]+$/, "");
+  const durationSec = parseDurationSeconds(raw);
+  if (durationSec !== null && durationSec > 0) return durationSec;
+
+  const numericWithUnit = raw.match(
+    /^(\d+(?:\.\d+)?)\s*(hours?|h|minutes?|mins?|m|seconds?|secs?|s|ms)$/i
+  );
+  if (numericWithUnit) {
+    const val = parseFloat(numericWithUnit[1]);
+    const unit = numericWithUnit[2].toLowerCase();
+    if (unit.startsWith("h")) return Math.ceil(val * 3600);
+    if (unit.startsWith("m") && !unit.startsWith("ms")) return Math.ceil(val * 60);
+    if (unit.startsWith("ms")) return Math.ceil(val / 1000);
+    if (unit.startsWith("s")) return Math.ceil(val);
   }
-  const durationSec = parseDurationSeconds(trimmed);
-  if (durationSec !== null && durationSec > 0) {
-    return durationSec;
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric) && numeric > 0) return Math.ceil(numeric);
+  return null;
+}
+
+/**
+ * Extract and parse standard Retry-After or provider reset headers (and fallback error body
+ * messages) into whole seconds. Handles integer seconds, duration strings (e.g. "7.66s",
+ * "2m59.56s"), HTTP-date strings, and error message text like "Try again in 1.0 seconds".
+ * Returns null if no valid delay can be found.
+ */
+export function parseRetryAfterSeconds(response, body = null) {
+  if (response && response.headers) {
+    const raw =
+      response.headers.get("retry-after") ||
+      response.headers.get("x-ratelimit-reset-requests") ||
+      response.headers.get("x-ratelimit-reset-tokens");
+    if (raw) {
+      const trimmed = raw.trim();
+      const numeric = Number(trimmed);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        return Math.ceil(numeric);
+      }
+      const durationSec = parseDurationSeconds(trimmed);
+      if (durationSec !== null && durationSec > 0) {
+        return durationSec;
+      }
+      const dateMs = Date.parse(trimmed);
+      if (Number.isFinite(dateMs)) {
+        const diffSec = Math.ceil((dateMs - Date.now()) / 1000);
+        return diffSec > 0 ? diffSec : 0;
+      }
+    }
   }
-  const dateMs = Date.parse(trimmed);
-  if (Number.isFinite(dateMs)) {
-    const diffSec = Math.ceil((dateMs - Date.now()) / 1000);
-    return diffSec > 0 ? diffSec : 0;
+  if (body) {
+    const message =
+      body?.error?.message ||
+      body?.error?.detail ||
+      body?.message ||
+      body?.detail ||
+      (typeof body === "string" ? body : null);
+    if (message) {
+      const parsed = parseErrorMessageRetryAfter(message);
+      if (parsed !== null && parsed > 0) {
+        return parsed;
+      }
+    }
   }
   return null;
 }
