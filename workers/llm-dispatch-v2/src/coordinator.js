@@ -233,10 +233,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // switch (see pacing.js's effectiveBufferSeconds). Existing rows get 0, which reads as
     // "fully elapsed" -- deliberately, since those are the routes stuck under the old behaviour.
     this._ensureColumn("routes", "buffer_updated_at", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("jobs", "transient_retry_count", "INTEGER NOT NULL DEFAULT 0");
-    // The provisional token reservation a lease is holding, so the bundle expire-sweep can give
-    // it back. Previously the amount existed only in the claim response and the completeBatch
-    // result, so a bundle that died before completeBatch leaked its reservation permanently.
     this._ensureColumn("jobs", "token_reservation", "INTEGER NOT NULL DEFAULT 0");
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
     // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
@@ -256,6 +252,43 @@ export class LLMSchedulerDO extends DurableObjectBase {
         today
       );
     }
+    this._ensureColumn("scheduler", "mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureMigratedJobModels();
+  }
+
+  _ensureMigratedJobModels() {
+    if (this._migratedJobModels) return;
+    const sql = this._getSql();
+    const schedulerRows = [...sql.exec("SELECT mistral_latest_migrated FROM scheduler WHERE id = 1")];
+    if (schedulerRows.length > 0 && schedulerRows[0].mistral_latest_migrated === 1) {
+      this._migratedJobModels = true;
+      return;
+    }
+    sql.exec(`
+      UPDATE OR IGNORE job_models SET model = 'mistral/mistral-medium-latest'
+      WHERE model IN (
+        'mistral/mistral-medium-2508',
+        'mistral/mistral-medium-2505',
+        'mistral/mistral-medium-3-5',
+        'mistral-medium-2508',
+        'mistral-medium-2505',
+        'mistral-medium-3.5',
+        'mistral-medium-latest'
+      );
+      DELETE FROM job_models WHERE model IN (
+        'mistral/mistral-medium-2508',
+        'mistral/mistral-medium-2505',
+        'mistral/mistral-medium-3-5',
+        'mistral-medium-2508',
+        'mistral-medium-2505',
+        'mistral-medium-3.5',
+        'mistral-medium-latest'
+      );
+      UPDATE routes SET buffer_seconds = 0, buffer_updated_at = 0
+      WHERE buffer_seconds > 0 AND buffer_updated_at = 0;
+      UPDATE scheduler SET mistral_latest_migrated = 1 WHERE id = 1;
+    `);
+    this._migratedJobModels = true;
   }
 
   _ensureColumn(table, column, definition) {
@@ -275,6 +308,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["transient_retry_count", "INTEGER NOT NULL DEFAULT 0"],
       ["buffer_updated_at", "INTEGER NOT NULL DEFAULT 0"],
       ["token_reservation", "INTEGER NOT NULL DEFAULT 0"],
+      ["mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
@@ -467,6 +501,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // transaction for the whole batch"). ctx.storage.transactionSync requires its callback to
     // run fully synchronously (no await inside), which this loop already does.
     return this.ctx.storage.transactionSync(() => {
+      this._ensureMigratedJobModels();
       const accepted = [];
       const rejected = [];
 
@@ -836,6 +871,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   async pollBatch(ids) {
+    this._ensureMigratedJobModels();
     if (!ids || ids.length === 0) {
       return { statuses: [] };
     }
@@ -1366,6 +1402,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const dispatchLimits = this._dispatchLimits();
 
     return this.ctx.storage.transactionSync(() => {
+      this._ensureMigratedJobModels();
       const maxBundlesPerDay = this._maxBundlesPerUtcDay();
       const maxActiveBundles = this._maxActiveBundles();
       const maxInFlightCalls = this._maxInFlightLlmCalls();

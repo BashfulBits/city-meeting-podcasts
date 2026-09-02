@@ -161,7 +161,7 @@ def test_stage_records_pending_on_job_handle(tmp_path: Path):
     assert ep.generated_agenda_candidates is not None
     assert ep.generated_agenda_candidates["status"] == "pending"
     assert ep.generated_agenda_candidates["job_ref"] == "job-ref-12345"
-    assert ep.generated_agenda_candidates["model"] == "mistral/mistral-medium-2508"
+    assert ep.generated_agenda_candidates["model"] == "mistral/mistral-medium-latest"
 
 
 def test_stage_does_not_resolve_stale_v1_handle_via_poll(tmp_path: Path):

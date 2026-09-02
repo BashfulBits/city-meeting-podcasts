@@ -442,15 +442,15 @@ if not _GENERATED_ROUTES:
             pricing=PricingPolicy(),
             max_provider_attempts=1,
         ),
-        "mistral/mistral-medium-2508": LLMRoute(
-            model="mistral/mistral-medium-2508",
+        "mistral/mistral-medium-latest": LLMRoute(
+            model="mistral/mistral-medium-latest",
             # Production agenda extraction is submitted through the shared deferred Worker so a
-            # GitHub runner never holds an Mistral pacing sleep and the same job registry can
+            # GitHub runner never holds a Mistral pacing sleep and the same job registry can
             # retry or finalize it later.
             transport="llm-dispatch",
             transports=("llm-dispatch",),
             free=True,
-            quota=QuotaPolicy(rpm=22, tpm=356_250),
+            quota=QuotaPolicy(rpm=50, tpm=25_000),
             pricing=PricingPolicy(),
             max_provider_attempts=1,
         ),

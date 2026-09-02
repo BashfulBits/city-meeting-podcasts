@@ -424,10 +424,8 @@ def test_select_and_reserve_dual_transport_direct_vs_overflow_owner():
     assert overflow_selection.transport == "llm-dispatch"
     assert overflow_selection.owner == "recipe-overflow"
 
-
-def test_production_mistral_medium_is_available_directly_after_catalog_expansion():
     model = "mistral/mistral-medium-2508"
-    canonical = "mistral/mistral-medium-3-5"
+    canonical = "mistral/mistral-medium-latest"
     direct = select_route(
         LLMRequestPolicy(allowed_models=(model,)),
         routes=ROUTES,

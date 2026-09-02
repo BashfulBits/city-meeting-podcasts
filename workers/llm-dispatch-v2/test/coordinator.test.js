@@ -703,3 +703,61 @@ test("supersede rebuilds the job_models index for the new payload's allowed mode
   const models = [...sql.exec("SELECT model FROM job_models WHERE job_id = 'j1'")].map((r) => r.model);
   assert.deepEqual(models, ["mistral/mistral-small"], "the index must reflect the new payload only");
 });
+
+test("_ensureMigratedJobModels persists a durable marker and does not clear active buffers on reboot", async () => {
+  const { coordinator, sql, storage } = makeCoordinator();
+  // Migration ran on init:
+  const sched = [...sql.exec("SELECT mistral_latest_migrated FROM scheduler WHERE id = 1")][0];
+  assert.equal(sched.mistral_latest_migrated, 1);
+
+  // Set an active timestamped buffer on a route:
+  const now = Date.now();
+  sql.exec(
+    "INSERT OR REPLACE INTO routes (route_id, buffer_seconds, buffer_updated_at) VALUES ('route-test', 30, ?)",
+    now
+  );
+
+  // Simulate a new DO instance booting against the same storage:
+  const rebooted = new LLMSchedulerDO({ storage }, {});
+  const routeRow = [...sql.exec("SELECT buffer_seconds, buffer_updated_at FROM routes WHERE route_id = 'route-test'")][0];
+  assert.equal(routeRow.buffer_seconds, 30, "active buffer must not be cleared on DO reboot");
+  assert.equal(routeRow.buffer_updated_at, now);
+});
+
+test("authorizeRetry throttles only the specific route_id, keeping providers isolated", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    bundleDeadline,
+    bundleDeadline,
+    now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-airforce', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'airforce_mistral_medium_3_5_primary',
+      'ltok', 'tags', 100, 50, 'payloads/j-airforce/request.json', ?, ?
+    )`,
+    now,
+    now
+  );
+  sql.exec(
+    "INSERT INTO routes (route_id, buffer_seconds, throttle_streak) VALUES ('mistral_medium_latest_primary', 0, 0)"
+  );
+
+  const auth = await coordinator.authorizeRetry("j-airforce", "ltok", "att-1", now, 10);
+  assert.equal(auth.authorized, true);
+
+  const airforceRow = [...sql.exec("SELECT throttle_streak, buffer_seconds FROM routes WHERE route_id = 'airforce_mistral_medium_3_5_primary'")][0];
+  assert.equal(airforceRow.throttle_streak, 1);
+  assert.equal(airforceRow.buffer_seconds, 10);
+
+  const mistralRow = [...sql.exec("SELECT throttle_streak, buffer_seconds FROM routes WHERE route_id = 'mistral_medium_latest_primary'")][0];
+  assert.equal(mistralRow.throttle_streak, 0, "Mistral route must remain unthrottled when Airforce 429s");
+  assert.equal(mistralRow.buffer_seconds, 0);
+});

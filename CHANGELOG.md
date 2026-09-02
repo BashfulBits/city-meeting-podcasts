@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Airforce provider, Mistral Medium latest migration, and 429 throttle fix.** Adds
+  `airforce` provider in `config/provider_limits.yml` routing through Cloudflare AI Gateway
+  (`custom-airforce/v1/chat/completions`, `AIRFORCE_API_KEY`) to serve `mistral-medium-3.5`.
+  Standardizes Mistral Medium routes on `mistral/mistral-medium-latest` (50 RPM / 0.83 RPS,
+  25k TPM) with legacy aliases `mistral/mistral-medium-2508`, `mistral/mistral-medium-2505`,
+  and `mistral/mistral-medium-3-5` normalized automatically. Clears cross-model overflow routing
+  so Mistral Medium traffic stays isolated to official Mistral and Airforce endpoints. Fixes a
+  deadlock in LLM Dispatch v2 where transient 429 route buffer penalties were checked as static
+  duration thresholds in `_capacityFraction`, permanently excluding throttled routes from
+  candidate ranking.
+
 - **Cloudflare AI Gateway rate-limit resilience and Groq free-tier limits update.** Implements
   aggregate provider-level TPM rate limiting across Python (`citypods/compute/llm_budget.py`,
   `llm_policy.py`) and Cloudflare Workers V2 (`workers/llm-dispatch-v2`), sharing token buckets
@@ -28,16 +39,6 @@ Phase R (Research-Tool Surface)._
   to 429 and transient 5xx retries to break thundering-herd storms. Updates the Groq free-tier
   catalog in `config/provider_limits.yml`, removing deprecated Llama 3.3 routes and adding
   `gpt-oss-120b`, `qwen/qwen3.6-27b`, and `qwen/qwen3.8-27b` routes meeting the Gemma-4 floor.
-
-- **Mistral Medium 3.5 routing through the Airforce custom provider.** The canonical
-  `mistral/mistral-medium-3-5` pool now sends the existing 2505/2508 selectors to Mistral's
-  `mistral-medium-3-5` API route and adds Airforce's `mistral-medium-3.5` route as an eligible
-  dispatch leg. Airforce is paced at 0.69 RPM and 1,000 RPD (split across the coexisting v1/v2
-  dispatchers), with a 256k input context and a provider-reported 4,096-token output ceiling.
-  The old selectors remain aliases, so already-queued jobs adopt the new route on their next
-  dispatch without a pipeline-version bump or artifact backfill. No independent Airforce TPM
-  ceiling was observed in the local soak, so the route leaves TPM unset and relies on the daily
-  request ledger.
 
 - **Groq Qwen 3.8 27B free route.** Registers `qwen/qwen3.8-27b` with its published 30 RPM, 1K
   RPD, 8K TPM, 131,072-token context, and 65,536-token output limits. Groq's separate 2M TPD

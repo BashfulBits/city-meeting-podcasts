@@ -20,7 +20,7 @@ from citypods.compute.llm_policy import estimate_tokens
 
 AGENDA_ITEM_EXTRACTOR_CONTRACT = "agenda-chapter-item-extract"
 TITLE_EQUIVALENCE_CONTRACT = "agenda-chapter-title-equivalence"
-AGENDA_PRODUCTION_MODEL = "mistral/mistral-medium-2508"
+AGENDA_PRODUCTION_MODEL = "mistral/mistral-medium-latest"
 # Pinned strictly to Mistral Medium for high-fidelity agenda chapter extraction.
 AGENDA_PRODUCTION_MODELS = (AGENDA_PRODUCTION_MODEL,)
 

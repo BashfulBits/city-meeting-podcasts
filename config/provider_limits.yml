@@ -78,20 +78,14 @@ providers:
         api_key_env: MISTRAL_API_KEY
       - id: secondary
         api_key_env: MISTRAL_API_KEY_SECONDARY
-  # Airforce's custom provider exposes the same Mistral Medium family through its OpenAI-shaped
-  # API. The account-wide 1,000 RPD allowance is the binding limit for this account; `rpm: 0.69`
-  # paces the route to that daily ceiling (the split-cap compiler then divides it between the v1
-  # and v2 dispatchers while both are live). No independent TPM ceiling was observed in the local
-  # soak, so leave `tpm` unset rather than inventing a smaller cap. The provider's model metadata
-  # reports `max_tokens: 4096`, which is an output budget, not the 256k input context window.
+  # Airforce custom provider: serves Mistral Medium 3.5. Strictly guarded with concurrency: 1.
   airforce:
     api_base: https://api.airforce/v1
     ai_gateway_slug: custom-airforce
-    # Registered at `https://api.airforce/v1`; AI Gateway's custom-provider rewrite therefore
-    # requires the `/v1` prefix in the caller path, as verified by the live gateway smoke test.
     ai_gateway_chat_path: /v1/chat/completions
-    chat_path: /chat/completions
+    chat_path: /v1/chat/completions
     reset_timezone: UTC
+    concurrency: 1
     accounts:
       - id: primary
         api_key_env: AIRFORCE_API_KEY
@@ -730,55 +724,58 @@ routes:
     tpm: 50000
     free: true
 
-  # Mistral Medium 3.5: 0.38 RPS (22 RPM), 356.25k TPM. The old 2508/2505 selectors below are
-  # compatibility aliases to this same physical pool; they must retain identical settings so the
-  # compiler coalesces them instead of counting one Mistral credential three times.
-  - route_id: mistral_medium_3_5_primary
-    model: mistral/mistral-medium-3-5
+  # Mistral Medium Latest: 0.83 RPS (50 RPM), 25k TPM
+  - route_id: mistral_medium_latest_primary
+    model: mistral/mistral-medium-latest
     provider: mistral
-    upstream_model: mistral-medium-3-5
-    input_context_limit: 262144
-    output_context_limit: 262144
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
     account_id: primary
-    rpm: 22
-    tpm: 356250
+    rpm: 50
+    tpm: 25000
     free: true
 
-  - route_id: mistral_medium_2508_primary
-    model: mistral/mistral-medium-2508
-    model_key: mistral/mistral-medium-3-5
-    provider: mistral
-    upstream_model: mistral-medium-3-5
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    rpm: 22
-    tpm: 356250
-    free: true
-
-  - route_id: mistral_medium_2505_primary
-    model: mistral/mistral-medium-2505
-    model_key: mistral/mistral-medium-3-5
-    provider: mistral
-    upstream_model: mistral-medium-3-5
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    rpm: 22
-    tpm: 356250
-    free: true
-
+  # Airforce Mistral Medium 3.5 (free tier): alias for mistral/mistral-medium-latest
   - route_id: airforce_mistral_medium_3_5_primary
-    model: airforce/mistral-medium-3.5
-    model_key: mistral/mistral-medium-3-5
+    model: mistral/mistral-medium-3-5
+    model_key: mistral/mistral-medium-latest
     provider: airforce
     upstream_model: mistral-medium-3.5
-    input_context_limit: 262144
-    output_context_limit: 4096
+    input_context_limit: 131072
+    output_context_limit: 8192
     account_id: primary
-    rpm: 0.69
+    rpm: 20
+    tpm: 200000
     rpd: 1000
     concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  # Legacy Medium aliases mapping to mistral/mistral-medium-latest
+  - route_id: mistral_medium_2508_alias_primary
+    model: mistral/mistral-medium-2508
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: primary
+    rpm: 50
+    tpm: 25000
+    free: true
+
+  - route_id: mistral_medium_2505_alias_primary
+    model: mistral/mistral-medium-2505
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: primary
+    rpm: 50
+    tpm: 25000
     free: true
 
   # Mistral Large 2512: 0.07 RPS (4.2 RPM -> 4 RPM), 250k TPM
@@ -851,39 +848,15 @@ routes:
     tpm: 50000
     free: true
 
-  - route_id: mistral_medium_3_5_secondary
-    model: mistral/mistral-medium-3-5
+  - route_id: mistral_medium_latest_secondary
+    model: mistral/mistral-medium-latest
     provider: mistral
-    upstream_model: mistral-medium-3-5
-    input_context_limit: 262144
-    output_context_limit: 262144
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
     account_id: secondary
-    rpm: 22
-    tpm: 356250
-    free: true
-
-  - route_id: mistral_medium_2508_secondary
-    model: mistral/mistral-medium-2508
-    model_key: mistral/mistral-medium-3-5
-    provider: mistral
-    upstream_model: mistral-medium-3-5
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: secondary
-    rpm: 22
-    tpm: 356250
-    free: true
-
-  - route_id: mistral_medium_2505_secondary
-    model: mistral/mistral-medium-2505
-    model_key: mistral/mistral-medium-3-5
-    provider: mistral
-    upstream_model: mistral-medium-3-5
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: secondary
-    rpm: 22
-    tpm: 356250
+    rpm: 50
+    tpm: 25000
     free: true
 
   - route_id: mistral_large_2512_secondary
