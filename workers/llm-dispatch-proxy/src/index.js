@@ -1484,6 +1484,15 @@ function parseRetryAfterSeconds(raw, nowMs, body = null) {
     if (Number.isFinite(asDate)) return Math.max(0, (asDate - nowMs) / 1000);
   }
   if (body) {
+    const directRetrySec = Number(
+      body?.retry_after_seconds ??
+      body?.retry_after ??
+      body?.error?.retry_after_seconds ??
+      body?.error?.retry_after
+    );
+    if (Number.isFinite(directRetrySec) && directRetrySec > 0) {
+      return Math.ceil(directRetrySec);
+    }
     const message =
       body?.error?.message ||
       body?.error?.detail ||
