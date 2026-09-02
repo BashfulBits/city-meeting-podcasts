@@ -31,7 +31,7 @@
       "chat_path": "/v1/chat/completions",
       "ai_gateway_max_attempts": 1,
       "rpm": 1,
-      "concurrency": 1,
+      "concurrency": 4,
       "reset_timezone": "UTC",
       "accounts": [
         {
@@ -847,7 +847,7 @@
       "rpm": 1,
       "rpd": 1000,
       "tpm": 180000,
-      "concurrency": 1,
+      "concurrency": 4,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
