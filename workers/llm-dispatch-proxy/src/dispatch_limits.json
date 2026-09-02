@@ -29,6 +29,7 @@
       "ai_gateway_slug": "custom-airforce",
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/v1/chat/completions",
+      "ai_gateway_max_attempts": 1,
       "concurrency": 1,
       "reset_timezone": "UTC",
       "accounts": [

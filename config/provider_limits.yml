@@ -86,6 +86,7 @@ providers:
     chat_path: /v1/chat/completions
     reset_timezone: UTC
     concurrency: 1
+    ai_gateway_max_attempts: 1
     accounts:
       - id: primary
         api_key_env: AIRFORCE_API_KEY

@@ -1014,6 +1014,7 @@
       "structured_output_direct_handler": "instructor",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
+      "ai_gateway_max_attempts": 1,
       "transports": [
         "direct",
         "llm-dispatch"
