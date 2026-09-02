@@ -2043,12 +2043,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const newStreak = (ledger.throttle_streak || 0) + 1;
       const maxBufferSeconds = this._maxRouteBufferSeconds();
       const rawRetryAfterSeconds = Number(retryAfterSeconds);
+      // A provider-supplied Retry-After (including Airforce's "next guaranteed response" body
+      // hint) is an authoritative floor, not a backoff suggestion. In particular, never cap it
+      // at MAX_ROUTE_BUFFER_SECONDS or apply the ordinary +/- jitter below it: either lets a
+      // later retry land before the provider explicitly said it could succeed.
       const retryAfterSec =
         Number.isFinite(rawRetryAfterSeconds) && rawRetryAfterSeconds > 0
-          ? Math.min(maxBufferSeconds, rawRetryAfterSeconds)
+          ? rawRetryAfterSeconds
           : null;
       const addedBufferSeconds = retryAfterSec !== null
-        ? retryAfterSec
+        ? Math.min(maxBufferSeconds, retryAfterSec)
         : this._max429BackoffMs() / 1000;
       // Compound from what is actually still owed, not from the raw stored figure -- otherwise
       // 429s hours apart stack to the ceiling as if they were simultaneous.
@@ -2058,18 +2062,25 @@ export class LLMSchedulerDO extends DurableObjectBase {
       );
       sql.exec(
         `UPDATE routes SET throttle_streak = ?, last_provider_status = 429,
-                            buffer_seconds = ?, buffer_updated_at = ? WHERE route_id = ?`,
+                            buffer_seconds = ?, buffer_updated_at = ?,
+                            blocked_until = MAX(COALESCE(blocked_until, 0), ?)
+         WHERE route_id = ?`,
         newStreak,
         newBufferSeconds,
         now,
+        retryAfterSec !== null ? now + Math.ceil(retryAfterSec * 1000) : 0,
         routeId
       );
 
       const baseBackoffMs = retryAfterSec !== null
         ? retryAfterSec * 1000
         : Math.min(this._max429BackoffMs(), newStreak * 1000);
-      const jitterMultiplier = 0.5 + Math.random();
-      const backoffMs = Math.round(baseBackoffMs * jitterMultiplier);
+      // Keep retry traffic from converging without ever retrying before an upstream deadline.
+      // The no-hint fallback keeps its historical 50%--150% jitter; an explicit provider delay
+      // gets only a small, positive jitter after its floor.
+      const backoffMs = retryAfterSec !== null
+        ? Math.ceil(baseBackoffMs + Math.random() * Math.min(1000, baseBackoffMs * 0.1))
+        : Math.round(baseBackoffMs * (0.5 + Math.random()));
       const retryNotBefore = now + backoffMs;
       const deadline = Math.min(bundle.dispatch_window_end, bundle.lease_expires_at);
       if (retryNotBefore >= deadline) {

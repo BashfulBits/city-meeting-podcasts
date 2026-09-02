@@ -91,6 +91,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Airforce 429 retry-after guarantees are now authoritative in LLM Dispatch v2.** A parsed
+  provider delay is no longer capped or jittered downward; it becomes a route-level `blocked_until`
+  floor, including when it exceeds the current executor window or adaptive 429-buffer ceiling.
+  Retried work may add only positive post-deadline jitter. This changes scheduling only: no recipe,
+  artifact schema, pipeline version, or catalog backfill is involved.
+
 - **Legacy v1 LLM completions can now be recovered without polling the Worker.** The temporary,
   manually dispatched recovery importer scans legacy R2 request records directly. It first joins
   exact v1 references still persisted by the resumable agenda-extraction and chapter-location

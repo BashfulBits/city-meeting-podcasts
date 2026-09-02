@@ -307,7 +307,7 @@ enqueue/poll split for today's incident (Verification) before finalizing this va
 | `FINALIZATION_RESERVE_SECONDS` | 90 | Time retained for B2 persistence and `completeBatch` |
 | `LEASE_DURATION_SECONDS` | 840 | Covers deadline; stays below cron duration |
 | `MAX_429_RETRIES` | 1 | Bounded same-route retry attempts inside one executor bundle |
-| `MAX_429_BACKOFF_SECONDS` | 60 | Upper bound for in-Worker `Retry-After` sleep |
+| `MAX_429_BACKOFF_SECONDS` | 60 | Upper bound for no-hint 429 fallback; never caps upstream delay |
 | `MAX_5XX_RETRIES` | 1 | One durable outer retry after AI Gateway has exhausted its own fast retry series |
 | `MAX_5XX_BACKOFF_SECONDS` | 300 | Five-minute ceiling for the 60-second exponential durable 5xx delay |
 | `UNKNOWN_ATTEMPT_POLICY` | hold | Unsupported-provider crash after send; never silently reissue |
@@ -613,6 +613,14 @@ the default never hides that choice.
 `routes` records a `throttle_streak`, last provider status, and `blocked_until` per route/account.
 Repeated 429s increase an additive route buffer, capped by configuration; successes decay that
 buffer. A throttled Mistral account therefore does not delay Gemini or a different Mistral account.
+
+**2026-09-02 Airforce retry-after correction.** A provider-supplied `Retry-After` or parsed
+"guaranteed response" window is an authoritative lower bound, not an input to symmetric jitter.
+The scheduler records that complete window in `blocked_until`, even when it exceeds the bounded
+adaptive buffer or current 25-second dispatch window. The same-job retry, when it fits, may add a
+small positive jitter *after* that floor; it can never retry sooner. This prevents a subsequent
+cron tick from bypassing Airforce's global-capacity guarantee while retaining bounded exponential
+fallback behavior for 429s that provide no delay.
 
 A job whose conservative estimate is larger than the ordinary TPM rate is not automatically
 unserviceable. The route ledger models a refillable full token budget and may hold claims until that
