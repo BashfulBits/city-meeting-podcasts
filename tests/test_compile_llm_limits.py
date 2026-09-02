@@ -39,6 +39,10 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert isinstance(gemma, dict)
     assert set(gemma) == set(compile_llm_limits._WORKER_ROUTE_FIELDS)
     assert gemma["route_id"] == "gemma_4_31b_primary"
+    samba = worker["routes_by_id"]["sambanova_llama_3_3_70b_instruct_primary"]
+    assert samba["rpd"] == 20
+    assert worker["providers"]["sambanova"]["rpm"] == 20
+    assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
     # route if compile-time route order ever shifted.
@@ -95,6 +99,17 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert len(compiled["model_routes_map"][nemotron_super_key]) == 2
     assert compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_super_key
 
+    mistral_medium_key = "mistral/mistral-medium-latest"
+    medium_routes = compiled["model_routes_map"][mistral_medium_key]
+    assert len(medium_routes) == 3
+    assert {compiled["routes_by_id"][route_id]["provider"] for route_id in medium_routes} == {
+        "airforce",
+        "mistral",
+    }
+    assert compiled["model_aliases"]["mistral/mistral-medium-2508"] == mistral_medium_key
+    assert compiled["model_aliases"]["mistral/mistral-medium-2505"] == mistral_medium_key
+    assert compiled["model_aliases"]["mistral/mistral-medium-3-5"] == mistral_medium_key
+
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():
     compiled = compile_llm_limits.compile_limits()
@@ -114,6 +129,10 @@ def test_compiled_routes_materialize_route_specific_input_and_output_limits():
         and route["output_context_limit"] > 0
         for route in compiled["routes"]
     )
+    medium = compiled["routes_by_id"]["mistral_medium_latest_primary"]
+    airforce = compiled["routes_by_id"]["airforce_mistral_medium_3_5_primary"]
+    assert (medium["input_context_limit"], medium["output_context_limit"]) == (131072, 8192)
+    assert (airforce["input_context_limit"], airforce["output_context_limit"]) == (131072, 8192)
 
 
 def test_route_limits_cannot_fall_back_to_provider_defaults():
@@ -337,7 +356,7 @@ def test_python_catalog_rejects_an_unknown_route_account():
 
 
 def test_openai_compatible_provider_selectors_use_litellms_openai_adapter():
-    for provider in ("kilo", "opencode", "siliconflow"):
+    for provider in ("airforce", "kilo", "opencode", "siliconflow"):
         assert compile_llm_limits._direct_model(provider, "vendor/model") == "openai/vendor/model"
 
 
@@ -415,18 +434,18 @@ def test_run_discovery_bare_flag_covers_only_providers_with_a_discovery_block(mo
 def test_token_estimate_buffer_scales_route_and_provider_token_budgets():
     compiled = compile_llm_limits.compile_limits()
     assert compiled["_metadata"]["token_estimate_buffer"] == 0.9
-    assert compiled["_metadata"]["split_cap_multiplier"] == 0.50
+    assert compiled["_metadata"]["split_cap_multiplier"] == 1.0
 
-    # Route TPM scaling with 0.90 buffer and 0.50 split-cap:
-    # 250,000 * 0.9 * 0.5 = 112,500; 16,000 * 0.9 * 0.5 = 7,200
+    # Route TPM scaling with 0.90 buffer and 1.0 split-cap:
+    # 250,000 * 0.9 = 225,000; 16,000 * 0.9 = 14,400
     gemini = compiled["routes_by_id"]["gemini_3_5_flash_lite_primary"]
     gemma = compiled["routes_by_id"]["gemma_4_31b_primary"]
-    assert gemini["tpm"] == 112_500
-    assert gemma["tpm"] == 7_200
+    assert gemini["tpm"] == 225_000
+    assert gemma["tpm"] == 14_400
 
-    # RPM / RPD scaled by split-cap (0.50)
-    assert gemini["rpm"] == 7
-    assert gemini["rpd"] == 250
+    # RPM / RPD unscaled with split-cap (1.0)
+    assert gemini["rpm"] == 15
+    assert gemini["rpd"] == 500
     assert gemini["input_context_limit"] == 1048576
     assert gemini["output_context_limit"] == 65536
 
@@ -622,3 +641,20 @@ def test_split_cap_multiplier_halves_rpm_rpd_tpm():
         assert paused["rpm"] == 5
         assert paused["rpd"] == 0  # 0 stays 0, not unpaused to 1
         assert paused["tpm"] == 0
+
+
+def test_rejects_non_positive_provider_tpm():
+    raw = {
+        "providers": {
+            "bad_tpm_prov": {
+                "tpm": 0,
+            },
+        },
+        "routes": [],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        with pytest.raises(ValueError, match="invalid non-positive tpm"):
+            compile_llm_limits.compile_limits()

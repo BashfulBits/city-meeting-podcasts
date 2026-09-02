@@ -8,12 +8,10 @@ between runs beyond what the registry itself already holds. Also prunes registry
 their TTL, so a caller whose own identity changes run to run (e.g. city discovery's recipe_hash,
 which depends on that run's search results) doesn't leave orphaned records behind forever.
 
-Scheduled to run once daily, timed to land inside DeepSeek's off-peak discount window (see the
-workflow this script backs) -- not on a tighter cron, since nothing configured today needs a
-finer-grained wake-up than that, and GitHub Actions cron minutes are worth conserving. The sweep
-uses a long internal wall-clock deadline (just under four hours in Actions) as the policy deadline
-for deferred-direct retries, so it paces through provider minute windows and stops gracefully before
-GitHub Actions' own hard kill can discard logs or interrupt cleanup.
+Scheduled every six hours, with one run inside DeepSeek's off-peak discount window (see the workflow
+this script backs). A normal run is an observation and bounded-retry pass, not a multi-hour drain:
+durable v2 submissions and reads are batched, while direct retries stop cleanly at the configured
+deadline so the next cadence can make a fresh capacity decision.
 """
 
 from __future__ import annotations
@@ -26,9 +24,8 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from citypods.compute.base import JobHandle
+from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import (
-    BATCH_RETRY_ISOLATION_THRESHOLD,
     LiteLLMBackend,
     LLMBackendConfig,
     LLMDispatchTerminalError,
@@ -97,6 +94,7 @@ def _with_sweep_deadline(handle, deadline_at: datetime):
             deferred_request=DeferredLLMRequest(
                 messages=deferred.messages,
                 policy=replace(deferred.policy, deadline_at=None, queue_only=True),
+                output_token_budget=deferred.output_token_budget,
             ),
         )
     return replace(
@@ -104,6 +102,7 @@ def _with_sweep_deadline(handle, deadline_at: datetime):
         deferred_request=DeferredLLMRequest(
             messages=deferred.messages,
             policy=replace(deferred.policy, deadline_at=deadline_at),
+            output_token_budget=deferred.output_token_budget,
         ),
     )
 
@@ -129,6 +128,42 @@ def _capacity_signature(handle) -> tuple | None:
         frozenset(policy.allowed_models) if policy.allowed_models is not None else frozenset(ROUTES)
     )
     return (models, policy.allow_paid)
+
+
+def _job_from_deferred_handle(handle: JobHandle) -> InferenceJob:
+    """Rebuild a queue-only policy job without issuing its legacy singleton reconcile call."""
+    deferred = handle.deferred_request
+    assert isinstance(deferred, DeferredLLMRequest)
+    inputs: dict[str, object] = {
+        "messages": [dict(message) for message in deferred.messages],
+        "max_tokens": deferred.output_token_budget,
+        "llm_policy": deferred.policy,
+    }
+    if handle.structured_output:
+        inputs["structured_output"] = handle.structured_output
+    return InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
+
+
+def _pending_breakdown(handles, *, legacy_backend: str) -> dict[str, int]:
+    """Count the client-owned outstanding handles without scanning either Worker's queue."""
+    counts = {
+        "v1_dispatched": 0,
+        "v2_dispatched": 0,
+        "v2_deferred": 0,
+        "direct_deferred": 0,
+        "other": 0,
+    }
+    for handle in handles:
+        deferred = handle.deferred_request
+        if handle.backend == "llm-dispatch-v2":
+            counts["v2_deferred" if deferred is not None else "v2_dispatched"] += 1
+        elif handle.backend == legacy_backend and deferred is None:
+            counts["v1_dispatched"] += 1
+        elif isinstance(deferred, DeferredLLMRequest):
+            counts["direct_deferred"] += 1
+        else:
+            counts["other"] += 1
+    return counts
 
 
 def _register_known_contracts() -> None:
@@ -183,8 +218,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--run-time-budget-minutes",
         type=float,
-        default=235.0,
-        help="Internal graceful wall-clock budget; Actions wraps this with a 240m timeout.",
+        default=30.0,
+        help="Internal graceful wall-clock budget; Actions wraps this with a 40m timeout.",
     )
     parser.add_argument(
         "--repair-index",
@@ -240,8 +275,46 @@ def main(argv: list[str] | None = None) -> int:
     # pool (if any) is the sweep's actual bottleneck, without persisting a separate index that
     # could drift out of sync with the registry itself.
     skipped_by_pool: dict[tuple, int] = {}
+    v2_unobserved = 0
 
-    snapshot = load_deferred_snapshot(storage)
+    snapshot_started_at = datetime.now(UTC)
+    print(
+        json.dumps(
+            {
+                "event": "llm_deferred_snapshot_load_started",
+                "deadline_at": deadline_at.isoformat(),
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+    snapshot = load_deferred_snapshot(
+        storage,
+        deadline_at=deadline_at,
+        should_stop=lambda: stop_state.requested,
+    )
+    snapshot_elapsed_seconds = round((datetime.now(UTC) - snapshot_started_at).total_seconds(), 3)
+    pending_handles = list(snapshot.pending())
+    legacy_backend = getattr(backend, "name", "litellm")
+    start_summary: dict[str, object] = {
+        "event": "llm_deferred_sweep_start",
+        "pending": _pending_breakdown(pending_handles, legacy_backend=legacy_backend),
+        "snapshot": {
+            "deadline_reached": snapshot.deadline_reached,
+            "elapsed_seconds": snapshot_elapsed_seconds,
+            "listed": snapshot.listed_count,
+            "loaded": len(snapshot.entries),
+            "omitted": snapshot.omitted_count,
+        },
+    }
+    stats_method = getattr(backend, "dispatch_v2_stats", None)
+    has_v2_dispatch = getattr(getattr(backend, "config", None), "dispatch_v2_url", None)
+    if callable(stats_method) and has_v2_dispatch:
+        try:
+            start_summary["v2_scheduler"] = stats_method()
+        except Exception as exc:  # noqa: BLE001 -- observability must not block reaping
+            start_summary["v2_scheduler_error"] = type(exc).__name__
+    print(json.dumps(start_summary, sort_keys=True), flush=True)
     if snapshot.unavailable_reads:
         for error in snapshot.unavailable_reads:
             print(
@@ -249,8 +322,106 @@ def main(argv: list[str] | None = None) -> int:
                 f"reason={error.reason}",
                 file=sys.stderr,
             )
-    prune_expired_failure_markers(storage)
-    if datetime.now(UTC) < deadline_at:
+    if not stop_state.requested and datetime.now(UTC) < deadline_at:
+        prune_expired_failure_markers(storage)
+    else:
+        print(
+            json.dumps(
+                {
+                    "event": "llm_deferred_sweep_maintenance_skipped",
+                    "reason": "deadline" if not stop_state.requested else "signal",
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+
+    def recover_terminal(handle: JobHandle, exc: Exception) -> None:
+        """Persist one terminal result without re-polling a batch-observed v2 job."""
+        nonlocal failed, recovered_terminal_failures
+        failed += 1
+        if isinstance(exc, LLMStructuredOutputError):
+            if schema_correction_attempted(storage, handle.recipe_hash):
+                marker_count = discard_terminal_failure(
+                    storage, snapshot, handle, exc, backend=backend, exhausted=True
+                )
+                recovered_terminal_failures += 1
+                print(
+                    f"llm-deferred-sweep: {handle.recipe_hash} malformed correction exhausted "
+                    f"(attempt {marker_count}/{MAX_TERMINAL_FAILURE_RETRIES}): {exc}",
+                    file=sys.stderr,
+                )
+                return
+            try:
+                corrected = backend.retry_malformed_dispatched(handle)
+                write_deferred(storage, handle.recipe_hash, corrected)
+                snapshot.replace_pending(handle.recipe_hash, corrected)
+                # Persist the one-correction guard before deleting the completed request. A
+                # marker-write failure must leave the original intact, not permit a second retry.
+                record_schema_correction(storage, handle, exc)
+                backend.ack_dispatched_ref(handle)
+                backend.delete_dispatched_ref(handle.ref)
+                print(
+                    f"llm-deferred-sweep: {handle.recipe_hash} submitted one schema correction",
+                    file=sys.stderr,
+                )
+            except Exception as retry_exc:  # noqa: BLE001 -- retain old handle for retry
+                print(
+                    f"llm-deferred-sweep: {handle.recipe_hash} schema correction failed: "
+                    f"{retry_exc}",
+                    file=sys.stderr,
+                )
+            return
+
+        assert isinstance(exc, LLMDispatchTerminalError)
+        marker_count = discard_terminal_failure(storage, snapshot, handle, exc, backend=backend)
+        recovered_terminal_failures += 1
+        print(
+            f"llm-deferred-sweep: {handle.recipe_hash} terminal failure recovered "
+            f"(attempt {marker_count}/{MAX_TERMINAL_FAILURE_RETRIES}): {exc}",
+            file=sys.stderr,
+        )
+
+    if not stop_state.requested and datetime.now(UTC) < deadline_at:
+        handled_recipe_hashes: set[str] = set()
+        # Queue-only records created before the normal call sites adopted run batching must not
+        # turn the sweep into one ingress invocation per record. Their portable policy capsule is
+        # sufficient to rebuild the original InferenceJob and submit one bounded v2 batch.
+        v2_queue_only: list[tuple[JobHandle, JobHandle]] = []
+        if has_v2_dispatch:
+            for handle in pending_handles:
+                if not isinstance(handle.deferred_request, DeferredLLMRequest):
+                    continue
+                upgraded_handle = _with_sweep_deadline(handle, deadline_at)
+                upgraded_request = upgraded_handle.deferred_request
+                if (
+                    isinstance(upgraded_request, DeferredLLMRequest)
+                    and upgraded_request.policy.queue_only
+                ):
+                    v2_queue_only.append((handle, upgraded_handle))
+            if v2_queue_only and not stop_state.requested and datetime.now(UTC) < deadline_at:
+                try:
+                    queued_results = backend.enqueue_batch(
+                        [_job_from_deferred_handle(upgraded) for _handle, upgraded in v2_queue_only]
+                    )
+                except Exception as exc:  # noqa: BLE001 -- leave every durable request pending
+                    queued_results = [exc] * len(v2_queue_only)
+                for (handle, _upgraded), result in zip(v2_queue_only, queued_results, strict=True):
+                    handled_recipe_hashes.add(handle.recipe_hash)
+                    seen_pending.add(handle.recipe_hash)
+                    if isinstance(result, Exception):
+                        failed += 1
+                        print(
+                            f"llm-deferred-sweep: {handle.recipe_hash} v2 enqueue failed: {result}",
+                            file=sys.stderr,
+                        )
+                    elif isinstance(result, JobResult):
+                        completed += 1
+                        snapshot.mark_completed(handle.recipe_hash, result)
+                    else:
+                        still_pending += 1
+                        snapshot.replace_pending(handle.recipe_hash, result)
+
         # Excludes a deferred_request-bearing handle (the client-side daily-cap/429 short-circuit
         # in enqueue_batch, tagged backend="llm-dispatch-v2" but never actually enqueued
         # server-side) -- reconcile() itself branches the same way (_reconcile_deferred vs.
@@ -260,14 +431,11 @@ def main(argv: list[str] | None = None) -> int:
             for h in snapshot.pending()
             if h.backend == "llm-dispatch-v2" and h.deferred_request is None
         ]
-        # A successful batch poll observes every real v2 handle whose value is a JobResult or
-        # None. Skip those handles below: otherwise a daily sweep with N pending jobs makes one
-        # bounded poll plus N singleton polls. Only an item-level exception or an absent key is
-        # retried individually by this loop; the client batches larger recovery sets itself.
-        batch_observed_refs: set[str] = set()
-        batch_fallback_count = 0
+        # A batch response is the only v2 observation this sweep makes for a handle. Unknown
+        # outcomes get one recovery *batch*; after that they remain pending for the next cadence.
+        # Falling through to `reconcile()` would turn one failed batch into N singleton polls.
         v2_results = {}
-        if v2_handles:
+        if v2_handles and not stop_state.requested and datetime.now(UTC) < deadline_at:
             try:
                 v2_results = backend.poll_batch(v2_handles)
             except Exception as exc:  # noqa: BLE001
@@ -280,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
                 for handle in v2_handles
                 if handle.ref not in v2_results or isinstance(v2_results[handle.ref], Exception)
             ]
-            if len(unresolved) > BATCH_RETRY_ISOLATION_THRESHOLD:
+            if unresolved:
                 print(
                     json.dumps(
                         {
@@ -303,26 +471,28 @@ def main(argv: list[str] | None = None) -> int:
                         file=sys.stderr,
                     )
             for handle in v2_handles:
-                if handle.ref not in v2_results or isinstance(v2_results[handle.ref], Exception):
-                    batch_fallback_count += 1
-                    continue
-                result = v2_results[handle.ref]
-                batch_observed_refs.add(handle.ref)
+                handled_recipe_hashes.add(handle.recipe_hash)
                 seen_pending.add(handle.recipe_hash)
-                if result is not None:
+                result = v2_results.get(handle.ref)
+                if isinstance(result, (LLMStructuredOutputError, LLMDispatchTerminalError)):
+                    recover_terminal(handle, result)
+                elif isinstance(result, Exception) or handle.ref not in v2_results:
+                    v2_unobserved += 1
+                elif isinstance(result, JobResult):
                     completed += 1
                     snapshot.mark_completed(handle.recipe_hash, result)
                 else:
                     still_pending += 1
-        if batch_fallback_count:
+        if v2_unobserved:
             print(
                 json.dumps(
                     {
                         "event": "llm_dispatch_v2_batch",
-                        "operation": "poll-recovery",
+                        "operation": "poll-unobserved",
                         "batch_size": len(v2_handles),
-                        "singleton_fallback": batch_fallback_count,
-                        "request_count": batch_fallback_count,
+                        "unobserved": v2_unobserved,
+                        "singleton_fallback": 0,
+                        "request_count": 0,
                     },
                     sort_keys=True,
                 ),
@@ -331,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
         for handle in snapshot.pending():
             if stop_state.requested or datetime.now(UTC) >= deadline_at:
                 break
-            if handle.backend == "llm-dispatch-v2" and handle.ref in batch_observed_refs:
+            if handle.recipe_hash in handled_recipe_hashes:
                 continue
             reconciled_handle = _with_sweep_deadline(handle, deadline_at)
             deferred = reconciled_handle.deferred_request
@@ -347,53 +517,10 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 result = backend.reconcile(reconciled_handle)
             except LLMStructuredOutputError as exc:
-                failed += 1
-                if schema_correction_attempted(storage, handle.recipe_hash):
-                    marker_count = discard_terminal_failure(
-                        storage, snapshot, handle, exc, backend=backend, exhausted=True
-                    )
-                    recovered_terminal_failures += 1
-                    print(
-                        f"llm-deferred-sweep: {handle.recipe_hash} malformed correction exhausted "
-                        f"(attempt {marker_count}/{MAX_TERMINAL_FAILURE_RETRIES}): {exc}",
-                        file=sys.stderr,
-                    )
-                    continue
-                try:
-                    corrected = backend.retry_malformed_dispatched(handle)
-                    write_deferred(storage, handle.recipe_hash, corrected)
-                    snapshot.replace_pending(handle.recipe_hash, corrected)
-                    # Persist the one-correction guard before deleting the completed request.
-                    # A marker-write failure must leave the original intact, not permit a second
-                    # correction of the same malformed result on the next sweep.
-                    record_schema_correction(storage, handle, exc)
-                    # Both replacement persistence steps are durable before the malformed source
-                    # is retired. If this cleanup races, it leaves only harmless retained audit
-                    # history.
-                    backend.ack_dispatched_ref(handle)
-                    backend.delete_dispatched_ref(handle.ref)
-                    print(
-                        f"llm-deferred-sweep: {handle.recipe_hash} submitted one schema correction",
-                        file=sys.stderr,
-                    )
-                except Exception as retry_exc:  # noqa: BLE001 -- retain old handle for retry
-                    print(
-                        f"llm-deferred-sweep: {handle.recipe_hash} schema correction failed: "
-                        f"{retry_exc}",
-                        file=sys.stderr,
-                    )
+                recover_terminal(handle, exc)
                 continue
             except LLMDispatchTerminalError as exc:
-                failed += 1
-                marker_count = discard_terminal_failure(
-                    storage, snapshot, handle, exc, backend=backend
-                )
-                recovered_terminal_failures += 1
-                print(
-                    f"llm-deferred-sweep: {handle.recipe_hash} terminal failure recovered "
-                    f"(attempt {marker_count}/{MAX_TERMINAL_FAILURE_RETRIES}): {exc}",
-                    file=sys.stderr,
-                )
+                recover_terminal(handle, exc)
                 continue
             except Exception as exc:  # noqa: BLE001 -- one bad record must not abort the sweep
                 failed += 1
@@ -420,11 +547,27 @@ def main(argv: list[str] | None = None) -> int:
         for entry in snapshot.entries
         if not entry.deleted and isinstance(entry.decoded, JobHandle)
     )
+    end_summary = {
+        "event": "llm_deferred_sweep_end",
+        "completed": completed,
+        "failed": failed,
+        "pruned": pruned,
+        "remaining": _pending_breakdown(snapshot.pending(), legacy_backend=legacy_backend),
+        "snapshot": {
+            "deadline_reached": snapshot.deadline_reached,
+            "listed": snapshot.listed_count,
+            "loaded": len(snapshot.entries),
+            "omitted": snapshot.omitted_count,
+        },
+        "unavailable": len(snapshot.unavailable_reads),
+        "v2_unobserved": v2_unobserved,
+    }
+    print(json.dumps(end_summary, sort_keys=True), flush=True)
     print(
         f"llm-deferred-sweep: {len(seen_pending)} pending seen, {completed} completed, "
         f"{still_pending} still pending observations, {failed} failed "
-        f"({recovered_terminal_failures} terminally recovered), {pruned} pruned, "
-        f"{remaining} remaining, {len(snapshot.unavailable_reads)} unavailable"
+        f"({recovered_terminal_failures} terminally recovered), {pruned} pruned, {remaining} "
+        f"remaining, {v2_unobserved} v2 unobserved, {len(snapshot.unavailable_reads)} unavailable"
     )
     for signature, skipped in sorted(skipped_by_pool.items(), key=lambda item: -item[1]):
         models, allow_paid = signature

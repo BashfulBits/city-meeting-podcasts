@@ -1,0 +1,71 @@
+name: Recover owned v1 LLM results
+
+# One-time legacy migration: joins R2 records either to exact retained v1 refs, or (only for the
+# resumable agenda/locator stages) to an exactly rebuilt durable prompt and schema shape. It imports
+# only schema-valid completed results into B2's deferred registry, never calls the Worker, and
+# deliberately never deletes R2 records.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run reports candidates; apply writes validated B2 completed records"
+        required: true
+        type: choice
+        options:
+          - dry-run
+          - apply
+        default: dry-run
+      limit:
+        description: "Maximum legacy R2 request records to scan"
+        required: true
+        type: string
+        default: "10000"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-v1-dispatch-recovery-import
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    # workflow_dispatch can target arbitrary refs. Production storage credentials are limited to
+    # reviewed main, including dry-runs, because direct R2 records contain private prompt material.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install recovery clients
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+
+      - name: Import validated v1 completions
+        env:
+          PYTHONUNBUFFERED: "1"
+          MODE: ${{ inputs.mode }}
+          LIMIT_INPUT: ${{ inputs.limit }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RECLAIM_ACCESS_KEY: ${{ secrets.R2_RECLAIM_ACCESS_KEY }}
+          R2_RECLAIM_SECRET_ACCESS_KEY: ${{ secrets.R2_RECLAIM_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          args=(--bucket citypods-llm-dispatch --workers 16 --limit "${LIMIT_INPUT:-10000}")
+          if [ "$MODE" = "apply" ]; then
+            args+=(--apply)
+          fi
+          python -u scripts/recover_v1_llm_dispatch_results.py "${args[@]}" \
+            | tee -a "$GITHUB_STEP_SUMMARY"

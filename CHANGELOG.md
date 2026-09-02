@@ -17,15 +17,34 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
-- **Airforce provider, Mistral Medium canonical alias migration, and 429 throttle fix.** Adds
+- **Airforce provider, Mistral Medium latest migration, and 429 throttle fix.** Adds
   `airforce` provider in `config/provider_limits.yml` routing through Cloudflare AI Gateway
   (`custom-airforce/v1/chat/completions`, `AIRFORCE_API_KEY`) to serve `mistral-medium-3.5`.
   Standardizes Mistral Medium routes on `mistral/mistral-medium-latest` (50 RPM / 0.83 RPS,
-  25k TPM) with legacy aliases `mistral/mistral-medium-2508` and `mistral/mistral-medium-2505`
-  normalized automatically. Clears cross-model overflow routing so Mistral Medium traffic stays
-  isolated to official Mistral and Airforce endpoints. Fixes a deadlock in LLM Dispatch v2 where
-  transient 429 route buffer penalties were checked as static duration thresholds in
-  `_capacityFraction`, permanently excluding throttled routes from candidate ranking.
+  25k TPM) with legacy aliases `mistral/mistral-medium-2508`, `mistral/mistral-medium-2505`,
+  and `mistral/mistral-medium-3-5` normalized automatically. Clears cross-model overflow routing
+  so Mistral Medium traffic stays isolated to official Mistral and Airforce endpoints. Fixes a
+  deadlock in LLM Dispatch v2 where transient 429 route buffer penalties were checked as static
+  duration thresholds in `_capacityFraction`, permanently excluding throttled routes from
+  candidate ranking.
+
+- **Cloudflare AI Gateway rate-limit resilience and Groq free-tier limits update.** Implements
+  aggregate provider-level TPM rate limiting across Python (`citypods/compute/llm_budget.py`,
+  `llm_policy.py`) and Cloudflare Workers V2 (`workers/llm-dispatch-v2`), sharing token buckets
+  across multiple routes under the same provider account (e.g. `nvidia`). Adds per-route and
+  provider concurrency limits (`concurrency: 1` on SambaNova, OpenCode, Kilo; `concurrency: 2` on
+  NVIDIA) to prevent free-tier concurrency exhaustion. Adds `parseRetryAfterSeconds` in Workers V2
+  gateway to capture and honor upstream `Retry-After` and reset headers (`x-ratelimit-reset-*`),
+  updating route cooldown buffers dynamically. Adds full randomized jitter (`0.5 + Math.random()`)
+  to 429 and transient 5xx retries to break thundering-herd storms. Updates the Groq free-tier
+  catalog in `config/provider_limits.yml`, removing deprecated Llama 3.3 routes and adding
+  `gpt-oss-120b`, `qwen/qwen3.6-27b`, and `qwen/qwen3.8-27b` routes meeting the Gemma-4 floor.
+
+- **Groq Qwen 3.8 27B free route.** Registers `qwen/qwen3.8-27b` with its published 30 RPM, 1K
+  RPD, 8K TPM, 131,072-token context, and 65,536-token output limits. Groq's separate 2M TPD
+  ceiling is documented in the provider registry but is not yet enforceable because the route-ledger
+  schema has no daily-token field. The route is available for explicit Qwen requests; Gemma routing
+  and the production judge remain unchanged pending task-specific evaluation.
 
 - **NVIDIA build.nvidia.com provider and free-capacity pooling for Mistral Medium overflow.** New
   `nvidia` provider in `config/provider_limits.yml` (OpenAI-compatible NIM gateway, `NVIDIA_API_KEY`)
@@ -54,6 +73,200 @@ Phase R (Research-Tool Surface)._
   starts a resumable bounded tag backfill. No output pipeline-version bump is introduced.
 
 ### Fixed
+
+- **Legacy v1 LLM completions can now be recovered without polling the Worker.** The temporary,
+  manually dispatched recovery importer scans legacy R2 request records directly. It first joins
+  exact v1 references still persisted by the resumable agenda-extraction and chapter-location
+  stages, then reconstructs only unfinished agenda/locator prompts from their durable source bytes
+  and accepts an R2 record only when one owner matches its exact normalized prompt and recorded
+  response-schema shape. It validates the structured response before writing a completed B2
+  deferred record, and reports direct and reconstructed candidates, unavailable inputs, pending,
+  failed, invalid, unowned, many-owner, and many-record matches separately. It never guesses an
+  owner, creates no B2 pending handles, calls no Worker endpoint, and retains R2 records for a
+  later verified cleanup decision. This is a temporary migration aid for draining v1; no recipe,
+  artifact schema,
+  pipeline version, or backfill changes.
+
+- **The temporary deferred sweep did not leave enough reaping time for legacy v1 handles.** The
+  scheduled pass now runs for 90 minutes inside a 105-minute Actions timeout, retaining a
+  15-minute teardown margin. This allows the B2 deferred registry's finished v1 entries to be
+  verified and persisted after snapshot and maintenance work. It does not enumerate unregistered
+  legacy R2 requests, alter dispatch rate, change any artifact schema, or trigger a backfill; the
+  longer budget is temporary until the registered v1 queue drains.
+
+- **Lifting the v1/v2 split-cap rate-limit multiplier to 1.0 (review/44 Phase 3 coexistence exit).**
+  Following complete draining and purging of the legacy v1 LLM queue in Cloudflare R2
+  (`citypods-llm-dispatch`), `split_cap_multiplier` in `config/provider_limits.yml` is restored from
+  `0.50` back to `1.0`. All provider and route limits (RPM, RPD, TPM, monthly TPM) across Python and
+  the Cloudflare Workers (`workers/llm-dispatch-v2`, `workers/llm-dispatch-proxy`,
+  `citypods/compute/llm_routes.json`) are now unscaled to full 1.0x capacity.
+
+- **The LLM deferred sweep could turn a failed v2 batch read into a singleton-poll storm.** An
+  unresolved v2 handle fell through from the bulk poll into `reconcile()`, so a partial or failed
+  recovery could make one Worker invocation per remaining job and consume the full four-hour sweep
+  budget without reaping work. V2 now uses one initial and at most one recovery batch, then leaves
+  unknown jobs for the next six-hour cadence; legacy queue-only capsules are submitted in bounded
+  v2 batches as well. The sweep emits client-owned v1/v2 counts plus one v2 scheduler snapshot and
+  runs for 30 minutes within a 40-minute Actions timeout. Both authenticated dispatch endpoints
+  now require HTTPS, so a configuration error cannot send their bearer token over cleartext. V1
+  remains on its existing temporary R2-backed reap path—no new ledger or endpoint. No artifact
+  schema, recipe, pipeline version, or backfill behavior changes. A follow-up after the first
+  bounded production run found that its initial registry snapshot still read every B2 record
+  serially before the deadline check, so the sweep now emits a flushed snapshot-start event and
+  loads at most 16 records concurrently. Snapshot reports include listed/loaded/omitted counts and
+  stop admitting reads at the wall-clock deadline, leaving the untouched tail for the next cadence.
+
+- **SambaNova's Free-tier routes were admitting an incorrect daily quota.** The two physical
+  SambaNova routes now use the documented 20 RPM / 20 RPD source ceiling, with the existing
+  v1/v2 split-cap compiling that to 10 RPM / 10 RPD per dispatcher while both transports coexist.
+  The shared provider ledger also carries a 20 RPM safety ceiling, and SambaNova calls override
+  AI Gateway's five-attempt retry series with one attempt so a known 429 is not immediately
+  re-sent four more times. SambaNova's documented 200k TPD allowance is not modeled because the
+  catalog has no daily-token field; this change therefore uses the conservative request cap rather
+  than inventing a token parser. No pipeline version or artifact backfill is involved.
+
+- **NVIDIA's per-model rate limit was generalised to every NVIDIA route, throttling the ones doing
+  the work.** `deepseek-v4-pro`'s measured ~30/hr quota was applied as `rpm: 0.5` across all nine
+  NVIDIA routes. NVIDIA's limits are per model, and `nemotron-3-super` has never returned a single
+  429 — but it inherited one request per four minutes per Worker, and it was the route actually
+  carrying Mistral Medium's overflow. Combined with `concurrency: 1` and nemotron's 127–140s median
+  latency, throughput collapsed. Only `deepseek-v4-pro` keeps 0.5 rpm now; the rest return to 4.
+- **The 402 backoff ladder could stop escalating, depending on the day of the week.** The rungs are
+  calendar dates — tomorrow, next UTC Monday, start of next month — and those are not inherently
+  ordered. On a Sunday "next Monday" *is* tomorrow, so a second 402 bought no additional cooldown;
+  near a month end, "start of next month" can fall before next Monday, so a third 402 could regress
+  below the second. The rungs are now combined into a strictly increasing ladder, each at least a
+  day beyond the previous. Found because the Sunday collision failed the v2 suite on 2026-08-30.
+
+- **Mistral Medium's overflow now prefers the model that was actually measured on the task.**
+  `review/40`'s frozen-gold scoring (2026-07-31, 322 source-backed positives over 24 agendas) is the
+  only evaluation of agenda-chapter extraction, and DeepSeek V4 **Flash** won it — F1 .734 against
+  Mistral Medium's .643. The overflow chain nonetheless led with DeepSeek V4 **Pro**, chosen on a
+  general "higher quality tier" argument that never referenced that evaluation; Pro has never been
+  scored on this task, and neither has Nemotron 3 Super or Gemini 3.5 Flash Lite. Measurement has
+  since undercut the tier argument as well: Pro runs ~42s median with multi-hour 429 lockouts, and
+  Nemotron spends ~10k completion tokens per job, mostly hidden reasoning. Flash now leads (two free
+  legs, OpenCode and NVIDIA), Pro drops to last, and the config records which orderings rest on
+  evidence and which are merely operational.
+- **The 429 route cooldown ceiling is four hours, up from thirty minutes.** NVIDIA's developer forum
+  reports that each request made while blocked extends the lockout, so a 30-minute ceiling meant ~48
+  probes a day, each potentially re-extending it — matching production, where `deepseek-v4-pro` sat
+  pinned at the cap and still 429'd 5.5 hours in. The change is also the cheap test of that theory:
+  if lockouts shorten once we probe roughly hourly, probing was the cause. Guessing high costs an
+  idle route until the next probe, and any success clears the streak immediately; guessing low, if
+  the theory holds, costs a lockout that never ends.
+
+- **`llm-dispatch-v2` reset daily quotas on a rolling 24-hour window instead of the provider's
+  calendar day, hiding whole models from the scheduler.** `reset_timezone` appeared only in v2's
+  compiled catalog and in no v2 source file — v1 has `zonedDateKey`/`routeResetTimezone`, v2 had
+  neither. v2 anchored `rpd` at the first request of a window and only refreshed 24 hours later, so
+  a route exhausted at (say) 14:00 local stayed exhausted until 14:00 the *next* day, well past the
+  provider's real reset. Gemini's free tier rolls at midnight `America/Los_Angeles`, giving up to
+  ~14 hours of needless starvation. The consequence is worse than slowness: `_capacityFraction`
+  scores an exhausted route 0, and `_rankModelsByCapacity` drops any model whose weighted score is
+  0, so an affected model disappears from the ranking entirely and its queued jobs go unclaimed.
+  **28 routes carry an `rpd`**, 14 of them Gemini/Gemma on Pacific time. Daily accounting is now
+  keyed on `zonedDateKey(now, reset_timezone)` across all three places that touch it — the
+  reservation stamp, the capacity score, and `earliestSafeStart`'s readiness — with a new
+  `rpd_day_key` column and the usual `_ensureColumn` migration. `rpd <= 0` keeps its pre-existing
+  pacing meaning rather than being quietly redefined while fixing timezones.
+
+- **Route rates below one request per minute are now expressible, and NVIDIA is paced to its actual
+  per-model quota.** Three separate places clamped a fractional rate *up* to 1 — `_scale_rate_limit`
+  (`0.25 x 0.5` became `1`, four times the configured rate), `routeAvailable`'s per-minute bucket,
+  and the v1 test harness's split-cap un-scaling. The middle one was the dangerous one: a route
+  paced below 1 rpm was refused its first request on a fresh ledger (`0 + 1 > 0.25`), and because
+  that refusal is what prevents `requests_available_at` from ever being written, the route would
+  never admit anything again — silently dead rather than slow. Recompiling the existing catalog
+  changed **zero** routes, so the change only enables new sub-1 configurations.
+  **NVIDIA's quota is per model, not per account** — verified on one key by interleaved calls:
+  `deepseek-v4-pro` returned 429 nine times out of nine while `nemotron-3-super` returned 200 three
+  times, twice inside the same minute. Each route is therefore paced at `0.25 rpm` (15/hr per model,
+  against observed lockout onsets at 28 and 37 successes/hr), with the provider-wide cap raised to
+  6 so it stays a safety net rather than making nine models share one model's budget. This costs no
+  throughput — the quota caps us either way — it spends the budget evenly instead of burning it in
+  half an hour and then sitting locked out for 22+ minutes.
+- **A 402/429 route block could stay stuck forever when two dispatches landed in the same
+  millisecond.** The stale-guard compared `requestStartMs > blockedAtMs`, so a success starting in
+  the same millisecond as the rejection was treated as predating it and never cleared the block.
+  Now `>=`: a call starting in that millisecond did not begin *before* the rejection.
+
+- **A 429 now stands the whole route down, not just the job that hit it** (`llm-dispatch-proxy`).
+  Retrying only the job is not enough against a provider that enforces a quota *window*: it answers
+  every request with 429 until the window rolls, so each remaining queued job was still admitted at
+  the route's normal rpm and rejected in turn. NVIDIA on 2026-08-29 showed the shape exactly — two
+  lockouts of 26.1 and 27.0 minutes absorbing 54 and 47 **consecutive** 429s, with no successes
+  interleaved, roughly 50 wasted dispatches per cycle that could not have succeeded. The route now
+  takes an escalating cooldown (`throttled_until`), honouring `Retry-After` when the provider sends
+  one and otherwise doubling from a minute to a half-hour cap, converging on a ~26-minute lockout in
+  about six occurrences rather than fifty. A success clears it, subject to the same stale-guard as
+  the 402 block: only a call that *began* after the 429 proves recovery. Both cooldowns are
+  measured from the instant the rejection arrived rather than from the batch's start time —
+  the latter shortened the window by the upstream call's duration and stamped the stale-guard
+  early enough that a sibling starting mid-batch could still clear a cooldown it never saw,
+  which also corrects the 402 guard shipped moments earlier. `Retry-After` is parsed in both
+  RFC 9110 forms, so an HTTP-date deadline is honoured instead of silently discarded. `llm-dispatch-v2` already
+  had an equivalent via `throttle_streak`/`buffer_seconds`, so this closes the gap between them.
+  Also corrects a comment that claimed 429 was "already handled by requests_available_at/Retry-After"
+  — it was not; `Retry-After` only ever fed the per-job retry delay.
+
+- **A 402 requeue in `llm-dispatch-v2` would have stranded the job permanently.** Claiming a job
+  deletes its `job_models` index rows, and the requeue introduced above fell through to a generic
+  `UPDATE jobs SET state=...`, leaving the job `queued` while still holding a stale lease and with
+  no index row — `claimDispatchWindow` could never select it again, and v1's operator requeue
+  script only reads R2, so it would have been invisible there too. It now takes the same branch as
+  a durable 5xx retry (clearing the lease and re-indexing) and shares the 5xx retry budget, so a
+  route that stays 402 across every cooldown cannot requeue a job forever. Caught in review before
+  reaching production.
+- **A stale success could reopen a 402-blocked route.** Without a per-route concurrency cap a batch
+  runs several requests on one route, and a sibling that *started before* a 402 landed would clear
+  the block on completion, proving nothing about the account's balance. The block now records when
+  it was set, and only a call that began after that clears it.
+
+- **NVIDIA 429s were a concurrency problem, not a rate problem.** Roughly 57% of post-fix NVIDIA
+  calls came back 429 while we were averaging just **1.15 requests/min** — some 35x under NVIDIA's
+  ~40 RPM community-reported free baseline — and burning ~1,865 tokens/min against a 100,000 TPM
+  cap. Neither limit was binding. What binds is overlap: successful calls run **41s median, 77s
+  p90, 399s max**, while 429s return fast and tightly clustered at 8.3–9.1s, the signature of an
+  admission rejection rather than a rate window. With v1 at `BATCH_CONCURRENCY: 2` and v2 at
+  `MAX_JOBS_PER_ROUTE_PER_BUNDLE: 4`, up to six 41-second calls could pile onto one model. Every
+  NVIDIA route now sets `concurrency: 1` (the knob both Workers already honour, as OpenRouter's
+  free legs do), with `rpm` 12 → 4 and `tpm` 100000 → 40000 as secondary guards that align the
+  config with what the dispatchers could ever exercise. Note the ceiling is per-Worker-ledger, so
+  v1 and v2 each keep one in flight while both transports are live — the same coexistence caveat as
+  `split_cap_multiplier`.
+
+- **`llm-dispatch-v2` billed for work a free route could have taken.** Its route comparator ranked
+  purely by available capacity, with `free` appearing nowhere except the hard exclusion applied when
+  a job does *not* set `allow_paid`. So whenever a job did allow paid, a paid route with more
+  headroom outranked a partly-consumed free one — the opposite of v1, which tries every free route
+  first and elevates to paid only when no free route exists or waiting for one would miss the job's
+  deadline. Measured on a mixed pool, 3 of 4 jobs went to the paid route while a free route had
+  capacity. Free now sorts ahead of paid before any capacity signal, so paid is reached only once
+  every free route is exhausted. Rows read did not regress (35 → 31 on the same probe; the fix adds
+  no SQL, only reordering iteration over the already-cached per-window route ledger).
+
+- **A 402 no longer consumes the job that discovered the exhausted budget** (both dispatch
+  Workers). The escalating 402 backoff blocks the whole route, but the triggering job was still
+  marked terminally `failed` — so every cooldown lapse burned exactly one recoverable job per
+  route, recoverable only by an operator requeue. Production showed the pattern precisely: 2
+  failures per Mistral route on 2026-08-26, matching `payment_required_streak=2` in the ledger,
+  versus 1,260 on 2026-08-22 before the backoff existed. A 402 is a route-level budget signal, not
+  a defect in the job, and the dispatcher already has enough information to say so — it blocks the
+  route in the same branch. The job is now requeued instead: admission keeps it off the blocked
+  route, so it runs on an overflow route or once the cooldown clears, still bounded by `attempts`.
+
+- **Requeued 971 dispatch jobs stranded by the AI Gateway routing bug, and gave the recovery script
+  an `--error-status` filter.** The gateway 404s left `mistral/mistral-medium-2508` jobs terminally
+  `failed` — 404 is in neither dispatch Worker's `retryableStatus` set and gets no `blocked_until`,
+  so each one hard-failed on its first attempt with no failover and was never revisited. They sat
+  alongside 1,264 records of the *same logical model* failed with 402 payment-required, which
+  `requeue_failed_llm_dispatch.py` could not tell apart: it selected on model prefix alone, so
+  recovering the routing failures would have re-submitted the payment failures too — re-failing all
+  of them and, since the 2026-08-25 402 backoff, driving an escalating route-wide `blocked_until`
+  that keeps other jobs off Mistral as well. The new filter selects on the terminal error's upstream
+  status; a dry run and an independent classification pass agreed on 971 exactly, and the apply
+  moved `failed` 2,243 → 1,272 with zero conflicts.
 
 - **`workers/llm-provider-shim`: a thin shim for providers AI Gateway cannot address.** The gateway
   rewrites the *last path segment* of a Custom Provider's Base URL to a hardcoded `v1` (undocumented;
@@ -142,10 +355,10 @@ Phase R (Research-Tool Surface)._
   accepted, replayed, pending, completed, rejected, and failed per-job outcomes instead of
   converting one item into a whole-batch failure. Unknown outcomes use one bounded recovery round:
   sets larger than five are retried as a batch, while smaller sets use isolated requests. The
-  deferred sweep applies the same threshold, preventing one bad result from turning a 1,000-job
-  poll into 1,000 singleton polls. Failed poll chunks remain isolated so later chunks still run;
-  retry diagnostics omit response bodies. Payload-free structured counters expose batch, retry,
-  singleton, and schema-correction request counts. No artifact schema, recipe, pipeline version,
+  deferred sweep originally applied the same threshold. Failed poll chunks remain isolated so later
+  chunks still run; retry diagnostics omit response bodies. Payload-free structured counters expose
+  batch, retry, singleton, and schema-correction request counts. The later batch-only sweep fix
+  above supersedes its small-set singleton fallback. No artifact schema, recipe, pipeline version,
   or backfill behavior changes.
 
 - **Unexpected-body remediation evidence collection.** The remediation workflow now passes its

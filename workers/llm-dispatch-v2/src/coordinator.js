@@ -4,13 +4,17 @@
  */
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
-import { canonicalModelName, routesEligibleFor } from "./routes.js";
+import { canonicalModelName, routeFitsContext, routesEligibleFor } from "./routes.js";
 import {
   availableTokenBudget,
   computeRouteLaneWait,
   routeHasCapacityFor,
   FULL_TOKEN_BUDGET_WINDOWS,
   paymentRequiredBackoffUntil,
+  dailyQuotaReadyAt,
+  zonedDateKey,
+  routeResetTimezone,
+  effectiveBufferSeconds,
 } from "./pacing.js";
 
 /**
@@ -79,6 +83,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         bundle_id                   TEXT,
         attempts                    INTEGER NOT NULL DEFAULT 0,
         transient_retry_count       INTEGER NOT NULL DEFAULT 0,
+        token_reservation           INTEGER NOT NULL DEFAULT 0,
         created_at                  INTEGER NOT NULL,
         updated_at                  INTEGER NOT NULL
       );
@@ -112,6 +117,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         rpm_count               INTEGER NOT NULL DEFAULT 0,
         rpd_window_start        INTEGER NOT NULL DEFAULT 0,
         rpd_count               INTEGER NOT NULL DEFAULT 0,
+        rpd_day_key             TEXT NOT NULL DEFAULT '',
         tpm_window_start        INTEGER NOT NULL DEFAULT 0,
         tpm_reserved            INTEGER NOT NULL DEFAULT 0,
         full_token_budget       REAL NOT NULL DEFAULT 0,
@@ -123,7 +129,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
         last_provider_status     INTEGER,
         blocked_until            INTEGER,
         buffer_seconds           REAL NOT NULL DEFAULT 0,
+        buffer_updated_at        INTEGER NOT NULL DEFAULT 0,
         payment_required_streak  INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS providers (
+        provider                TEXT PRIMARY KEY,
+        tpm_window_start        INTEGER NOT NULL DEFAULT 0,
+        tpm_reserved            INTEGER NOT NULL DEFAULT 0,
+        full_token_budget       REAL NOT NULL DEFAULT 0,
+        token_budget_updated_at INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS bundles (
@@ -211,9 +226,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
+    // Daily quotas reset on the provider's calendar day, not 24h after first use.
+    this._ensureColumn("routes", "rpd_day_key", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("jobs", "transient_retry_count", "INTEGER NOT NULL DEFAULT 0");
-
+    // buffer_seconds needs a timestamp to decay against; without one it was a permanent kill
+    // switch (see pacing.js's effectiveBufferSeconds). Existing rows get 0, which reads as
+    // "fully elapsed" -- deliberately, since those are the routes stuck under the old behaviour.
+    this._ensureColumn("routes", "buffer_updated_at", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("jobs", "token_reservation", "INTEGER NOT NULL DEFAULT 0");
     this._ensureMigratedJobModels();
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
     // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
@@ -275,8 +295,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const ALLOWED_COLUMNS = new Map([
       ["rpd_window_start", "INTEGER NOT NULL DEFAULT 0"],
       ["rpd_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
       ["payment_required_streak", "INTEGER NOT NULL DEFAULT 0"],
       ["transient_retry_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["buffer_updated_at", "INTEGER NOT NULL DEFAULT 0"],
+      ["token_reservation", "INTEGER NOT NULL DEFAULT 0"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
@@ -299,6 +322,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _envInt(name, fallback) {
     const configured = Number(this.env[name]);
     return Number.isFinite(configured) && configured >= 0 ? configured : fallback;
+  }
+
+  /** The dispatch window `capacity` in stats() is scored against, matching what the Worker passes
+   * to claimDispatchWindow so the reported number is the one the scheduler actually ranks on. */
+  _dispatchWindowSecondsForStats() {
+    return this._envInt("DISPATCH_WINDOW_SECONDS", 25);
   }
 
   _maxBundleJobs() {
@@ -391,11 +420,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_ATTEMPT_PRUNE_PER_TICK", 50);
   }
 
-  /** Return an exponential route cooldown, starting at one minute, for a final Gateway 5xx. */
+  /** Return an exponential route cooldown with randomized jitter for a final Gateway 5xx. */
   _5xxBlockedUntil(retryCount, now) {
     const baseMs = 60_000;
-    const delayMs = Math.min(baseMs * 2 ** Math.max(0, retryCount - 1), this._max5xxBackoffMs());
-    return now + delayMs;
+    const baseDelayMs = Math.min(baseMs * 2 ** Math.max(0, retryCount - 1), this._max5xxBackoffMs());
+    const jitter = Math.random() * 0.5;
+    return now + Math.round(baseDelayMs * (1.0 + jitter));
   }
 
   _maxRouteBufferSeconds() {
@@ -489,9 +519,77 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // its own request even when the canonical id differs (e.g. a retry that generated
             // a fresh id locally before learning the original was already accepted).
             accepted.push({ id: row.id, submitted_id: job.id });
-          } else {
-            // Reused key with different payload: fail loudly
+          } else if (row.state === "leased" || row.state === "unknown_attempt") {
+            // A genuinely in-flight attempt is the one case superseding cannot safely cover: its
+            // lease_token/bundle_id already reference the old payload, and overwriting the row
+            // out from under a call that may still be running risks a result racing back against
+            // content that no longer matches what was sent. Reject and let the caller retry once
+            // this attempt settles.
             rejected.push({ id: job.id, reason: "idempotency_conflict" });
+          } else {
+            // Same identity (recipe_hash), different content: supersede the stale row rather
+            // than reject it.
+            //
+            // idempotency_key is derived from the job's *recipe*; request_digest hashes the
+            // *payload* actually sent. Any change to payload construction -- 2c3b2ab stopped
+            // leaking policy-only fields into the literal provider request body -- changes the
+            // digest for every job while every key stays identical. Rejecting that as a conflict
+            // is indistinguishable from a real double-submission bug, but it produces a
+            // permanent one: nothing ever deletes a non-terminal row, so the stale row blocks its
+            // own key forever and the caller's real work never gets in. Production hit exactly
+            // this on 2026-08-25: 100% of enqueue-batch calls rejected for five days.
+            //
+            // Safe for every state but the leased one just excluded above:
+            //   - queued: nothing has touched this row yet; overwrite outright.
+            //   - completed/failed: the old outcome was produced from payload construction we
+            //     now know was wrong (the leaked-fields case failed at every provider with
+            //     "Extra inputs are not permitted"); superseding is what lets it be tried again
+            //     with the corrected request instead of standing as a permanent false failure.
+            //   - purge_pending: safe because confirmPurge is itself guarded by
+            //     `state = 'purge_pending'` -- if a purge is mid-flight for the OLD payload_key,
+            //     supersede's state change here simply makes that confirmPurge a no-op, leaving
+            //     this row correctly 'queued' under the NEW payload_key.
+            //
+            // The old payload_key (and result_key, if terminal) become unreferenced -- this
+            // coordinator holds no B2 credentials to delete them (the same split that makes
+            // purgePendingBatch two-phase), and they are small, content-addressed JSON blobs, not
+            // the append-only audio artifacts the project's storage-reclaim tooling targets. An
+            // orphaned KB-scale text blob is an accepted cost of not losing the job.
+            const priority = job.priority !== undefined ? job.priority : 1;
+            const policyJson = typeof job.policy_json === "string" ? job.policy_json : JSON.stringify(job.policy_json || {});
+            const providerIdempotencyKey = job.provider_idempotency_key || null;
+            sql.exec(
+              `UPDATE jobs SET
+                 request_digest = ?, provider_idempotency_key = ?, state = 'queued',
+                 priority = ?, policy_json = ?, prompt_family = ?,
+                 input_token_estimate = ?, max_output_token_estimate = ?, payload_key = ?,
+                 result_key = NULL, lease_token = NULL, lease_route_id = NULL,
+                 lease_expires_at = NULL, bundle_id = NULL, attempts = 0,
+                 transient_retry_count = 0, updated_at = ?
+               WHERE id = ?`,
+              job.request_digest,
+              providerIdempotencyKey,
+              priority,
+              policyJson,
+              job.prompt_family,
+              job.input_token_estimate,
+              job.max_output_token_estimate,
+              job.payload_key,
+              now,
+              row.id
+            );
+            // The allowed-model set can itself have changed between the old and new payload, so
+            // rebuild the index rather than trust whatever it already held (or didn't -- a
+            // completed/failed row has none, since claiming deletes it).
+            sql.exec("DELETE FROM job_models WHERE job_id = ?", row.id);
+            this._indexQueuedJobModels(
+              { ...job, id: row.id, policy_json: policyJson, priority, created_at: now },
+              priority,
+              now
+            );
+            // Superseding replaces a row that already existed; it is not new admission and must
+            // not consume today's cap, for the same reason an idempotent replay doesn't.
+            accepted.push({ id: row.id, submitted_id: job.id, superseded: true });
           }
           continue;
         }
@@ -634,6 +732,135 @@ export class LLMSchedulerDO extends DurableObjectBase {
     });
   }
 
+  /**
+   * A read-only snapshot of everything needed to answer "why is nothing dispatching?" without
+   * shipping a new Worker build to find out.
+   *
+   * This exists because on 2026-08-29 v2 ran 721 cron ticks and did substantive work on 16 of
+   * them -- 13 of which were the fixed hourly maintenance pass. Every other tick returned in
+   * ~200ms because claimDispatchWindow found nothing. There was no way to tell from outside
+   * whether the queue was genuinely empty, whether job_models had lost its index rows (jobs
+   * queued but unclaimable -- a real bug we hit once already), or whether every route was
+   * blocked. Those three look identical from the outside and have completely different fixes.
+   *
+   * Deliberately cheap. This DO exhausted the free tier's 5M daily rows-read budget on
+   * 2026-08-27 via two unindexed statements, so every query below is either an indexed COUNT or
+   * a bounded LIMIT: counts ride idx_jobs_state_updated and the job_models model index, and the
+   * routes table is small and fixed-size (one row per configured route). `limit` bounds only the
+   * two listings; the counts are always complete.
+   */
+  async stats(now, limit = 20) {
+    const sql = this._getSql();
+    const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
+
+    const states = {};
+    for (const row of sql.exec("SELECT state, COUNT(*) AS n FROM jobs GROUP BY state")) {
+      states[row.state] = row.n;
+    }
+
+    // The stranding check. A queued job with no job_models row can never be selected by
+    // claimDispatchWindow, so `queued` above would look healthy while nothing is claimable.
+    const unindexed = one(
+      `SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'
+         AND NOT EXISTS (SELECT 1 FROM job_models WHERE job_models.job_id = jobs.id)`
+    ).n;
+
+    const oldestQueued = one(
+      "SELECT MIN(created_at) AS t FROM jobs WHERE state = 'queued'"
+    ).t;
+
+    // What the scheduler actually ranks over: queued work grouped by the model it can run on.
+    const queuedByModel = [...sql.exec(
+      `SELECT m.model AS model, COUNT(*) AS queued
+         FROM job_models m JOIN jobs j ON j.id = m.job_id
+        WHERE j.state = 'queued'
+        GROUP BY m.model ORDER BY queued DESC LIMIT ?`,
+      limit
+    )];
+
+    // Every route the DO has a ledger row for, with the two independent reasons a route can be
+    // unusable AND the capacity score itself.
+    //
+    // The first cut of this reported only blocked_until, which is why it could not diagnose the
+    // 2026-08-30 stall: _capacityFraction also zeroes a route when its 429 buffer covers the
+    // dispatch window, and that path sets no block at all. Every route was scoring 0 while this
+    // endpoint cheerfully reported an empty `blocked` list. `capacity` below is the number the
+    // scheduler actually ranks on, so a route contributing nothing can never again be invisible
+    // here regardless of which guard zeroed it.
+    //
+    // The routes table holds one row per route ever touched -- a small, fixed population, not a
+    // traffic-growing table -- so reading all of it is cheap and `limit` only truncates the
+    // listing for display.
+    const routeRows = [...sql.exec(
+      `SELECT route_id, blocked_until, throttle_streak, payment_required_streak,
+              last_provider_status, rpd_count, rpd_day_key, buffer_seconds, buffer_updated_at,
+              provisional_reservation, settled_usage, rpm_count, tpm_reserved, full_token_budget,
+              token_budget_updated_at, tpm_window_start, rpm_window_start, rpd_window_start
+         FROM routes`
+    )];
+    const catalog = this._dispatchLimits();
+    const windowSeconds = this._dispatchWindowSecondsForStats();
+    const routes = routeRows.map((row) => {
+      const catalogRoute = catalog?.routes_by_id?.[row.route_id];
+      const merged = catalogRoute ? { ...catalogRoute, ...row } : row;
+      return {
+        route_id: row.route_id,
+        capacity: catalogRoute ? this._capacityFraction(merged, now, windowSeconds) : null,
+        blocked_until: row.blocked_until,
+        buffer_seconds: row.buffer_seconds,
+        buffer_remaining_seconds: effectiveBufferSeconds(row, now),
+        throttle_streak: row.throttle_streak,
+        payment_required_streak: row.payment_required_streak,
+        last_provider_status: row.last_provider_status,
+        rpd_count: row.rpd_count,
+        rpd_day_key: row.rpd_day_key,
+        provisional_reservation: row.provisional_reservation,
+        in_catalog: Boolean(catalogRoute),
+      };
+    });
+    // Surface the ones that cannot currently take work first -- that is what an operator is
+    // looking for -- then the rest, so a healthy fleet still reads as healthy.
+    const zeroCapacity = routes.filter((r) => r.capacity === 0 || r.capacity === null);
+    const blockedRoutes = routes
+      .filter((r) => Number(r.blocked_until) > now)
+      .sort((a, b) => b.blocked_until - a.blocked_until)
+      .slice(0, limit);
+
+    const scheduler = one("SELECT * FROM scheduler WHERE id = 1");
+
+    return {
+      now,
+      jobs: {
+        by_state: states,
+        queued_without_model_index: unindexed,
+        oldest_queued_age_ms: oldestQueued == null ? null : now - oldestQueued,
+      },
+      queued_by_model: queuedByModel,
+      routes: {
+        total: routes.length,
+        // A route here contributes nothing to dispatch. If this covers every route, the
+        // scheduler has nothing to rank and will claim nothing, however much work is queued.
+        zero_capacity_count: zeroCapacity.length,
+        zero_capacity: zeroCapacity.slice(0, limit),
+        blocked: blockedRoutes,
+        all: routes.slice(0, limit),
+      },
+      bundles: {
+        active: one("SELECT COUNT(*) AS n FROM bundles WHERE state = 'active'").n,
+        active_expired: one(
+          "SELECT COUNT(*) AS n FROM bundles WHERE state = 'active' AND lease_expires_at <= ?",
+          now
+        ).n,
+      },
+      scheduler: {
+        utc_day: scheduler.utc_day ?? null,
+        bundle_count_today: scheduler.bundle_count_today ?? 0,
+        jobs_ingested_today: scheduler.jobs_ingested_today ?? 0,
+        next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
+      },
+    };
+  }
+
   async pollBatch(ids) {
     this._ensureMigratedJobModels();
     if (!ids || ids.length === 0) {
@@ -702,12 +929,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const seedBudget = tpm * FULL_TOKEN_BUDGET_WINDOWS;
     sql.exec(
       `INSERT INTO routes (
-        route_id, rpm_window_start, rpm_count, rpd_window_start, rpd_count,
+        route_id, rpm_window_start, rpm_count, rpd_window_start, rpd_count, rpd_day_key,
         tpm_window_start, tpm_reserved, full_token_budget, token_budget_updated_at,
         provisional_reservation, settled_usage, cost_accumulated,
         throttle_streak, last_provider_status, blocked_until, buffer_seconds,
         payment_required_streak
-      ) VALUES (?, 0, 0, 0, 0, 0, 0, ?, ?, 0, 0, 0, 0, NULL, NULL, 0, 0)`,
+      ) VALUES (?, 0, 0, 0, 0, '', 0, 0, ?, ?, 0, 0, 0, 0, NULL, NULL, 0, 0)`,
       routeId,
       seedBudget,
       now
@@ -717,6 +944,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpm_window_start: 0,
       rpm_count: 0,
       rpd_window_start: 0,
+      rpd_day_key: "",
       rpd_count: 0,
       tpm_window_start: 0,
       tpm_reserved: 0,
@@ -733,16 +961,41 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
+  /** Read a provider's live ledger row, seeding a fresh one the first time this provider is touched. */
+  _getOrCreateProviderLedger(providerName, now, providerCfg) {
+    const sql = this._getSql();
+    const rows = [...sql.exec("SELECT * FROM providers WHERE provider = ?", providerName)];
+    if (rows.length > 0) return rows[0];
+    const tpm = Number(providerCfg?.tpm) || 0;
+    const seedBudget = tpm * FULL_TOKEN_BUDGET_WINDOWS;
+    sql.exec(
+      `INSERT INTO providers (
+        provider, tpm_window_start, tpm_reserved, full_token_budget, token_budget_updated_at
+      ) VALUES (?, 0, 0, ?, ?)`,
+      providerName,
+      seedBudget,
+      now
+    );
+    return {
+      provider: providerName,
+      tpm_window_start: 0,
+      tpm_reserved: 0,
+      full_token_budget: seedBudget,
+      token_budget_updated_at: now,
+    };
+  }
+
   /**
    * Canonical model groups a job may use. Persist every explicit allowed model, even when it has
    * no configured route yet, so a later catalog addition makes an already-queued job searchable
    * without rewriting it. This follows aliases only: v2 does not expand config/model_routing.
    *
    * Omits a model whose *every* currently configured route is structurally too small for this
-   * job's own token estimates (routesEligibleFor's input/output context-limit check, evaluated
-   * here independent of any live RPM/RPD/TPM/blocked_until state, which fluctuates and must never
-   * exclude a job from the index). Without this, a handful of oversized jobs land at the head of
-   * that model's bounded per-claim candidate window (MAX_JOBS_PER_MODEL_CLAIM) and stay there
+   * job's own token estimates (routesEligibleFor's combined input/output context-limit check,
+   * evaluated here independent of any live RPM/RPD/TPM/blocked_until state, which fluctuates and
+   * must never exclude a job from the index). Without this, a handful of oversized jobs land at
+   * the head of that model's bounded per-claim candidate window (MAX_JOBS_PER_MODEL_CLAIM) and
+   * stay there
    * forever -- routesEligibleFor always returns empty for them, so claimDispatchWindow re-reads
    * the exact same unclaimed rows every tick and a smaller, perfectly dispatchable job queued
    * behind them is never even read, let alone claimed. A model with no configured route at all is
@@ -777,10 +1030,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const route = catalog[routeId];
         if (!route) return false;
         if (!allowPaid && !route.free) return false;
-        return (
-          inputTokens <= (route.input_context_limit || 32768) &&
-          outputTokens <= (route.output_context_limit || 1024)
-        );
+        return routeFitsContext(route, inputTokens, outputTokens);
       });
       if (fitsSomeConfiguredRoute) models.add(canonical);
     }
@@ -870,6 +1120,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpm_window_start: 0,
       rpm_count: 0,
       rpd_window_start: 0,
+      rpd_day_key: "",
       rpd_count: 0,
       tpm_window_start: 0,
       tpm_reserved: 0,
@@ -877,11 +1128,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
       token_budget_updated_at: now,
       blocked_until: null,
       buffer_seconds: 0,
+      buffer_updated_at: 0,
     };
   }
 
   _capacityFraction(route, now, windowSeconds) {
     if (Number(route.blocked_until) > now) return 0;
+    // Decayed, not stored: a stored buffer never expires on its own, and the only code that
+    // cleared it required a success this very check makes unreachable (see effectiveBufferSeconds).
+    if (effectiveBufferSeconds(route, now) * 1000 >= windowSeconds * 1000) return 0;
 
     const windowFraction = (limit, windowStart, count, durationMs) => {
       // rpd: 0 is the repository's explicit "paused/exhausted" convention, not an unlimited
@@ -898,12 +1153,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
       route.rpm_count,
       60_000
     );
-    const rpdFraction = windowFraction(
-      Number(route.rpd),
-      route.rpd_window_start,
-      route.rpd_count,
-      86_400_000
-    );
+    // rpd is keyed on the provider's calendar day: a stale key means the provider already reset,
+    // so the route is at full daily capacity regardless of how recently we last used it.
+    const rpdLimit = Number(route.rpd);
+    let rpdFraction;
+    if (rpdLimit === 0) rpdFraction = 0; // repository convention: paused/exhausted
+    else if (!Number.isFinite(rpdLimit) || rpdLimit < 0) rpdFraction = 1;
+    else if (route.rpd_day_key !== zonedDateKey(now, routeResetTimezone(route))) rpdFraction = 1;
+    else
+      rpdFraction = Math.max(
+        0,
+        Math.min(1, (rpdLimit - Math.max(0, route.rpd_count || 0)) / rpdLimit)
+      );
     const tpm = Number(route.tpm);
     const tokenFraction =
       Number.isFinite(tpm) && tpm > 0
@@ -934,6 +1195,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
               ...(ledgers.get(routeId) || this._freshRouteLedger(catalogRoute, now)),
               route_id: routeId,
               model,
+              // Daily quotas roll on the provider's clock; the pure pacing helpers only see the
+              // route object, so carry the provider's reset timezone onto it.
+              reset_timezone:
+                dispatchLimits?.providers?.[catalogRoute.provider]?.reset_timezone || "UTC",
             };
             return { route, score: this._capacityFraction(route, now, windowSeconds) };
           })
@@ -991,9 +1256,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpmCount += 1;
     }
 
+    // Daily quotas roll on the provider's own calendar day, not 24h after our first request.
+    // Anchoring on first use held a route exhausted well past the provider's actual reset --
+    // ~14 hours for Gemini's midnight-America/Los_Angeles rollover -- and because an exhausted
+    // route scores 0 in _capacityFraction, its whole model drops out of the ranking.
+    const rpdDayKey = zonedDateKey(notBeforeAt, routeResetTimezone(mergedRoute));
     let rpdWindowStart = mergedRoute.rpd_window_start;
     let rpdCount = mergedRoute.rpd_count;
-    if (!Number.isFinite(rpdWindowStart) || notBeforeAt - rpdWindowStart >= 86_400_000) {
+    if (mergedRoute.rpd_day_key !== rpdDayKey) {
       rpdWindowStart = notBeforeAt;
       rpdCount = 1;
     } else {
@@ -1029,7 +1299,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     sql.exec(
       `UPDATE routes SET
-        rpm_window_start=?, rpm_count=?, rpd_window_start=?, rpd_count=?,
+        rpm_window_start=?, rpm_count=?, rpd_window_start=?, rpd_count=?, rpd_day_key=?,
         tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?,
         provisional_reservation=?
        WHERE route_id=?`,
@@ -1037,6 +1307,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpmCount,
       rpdWindowStart,
       rpdCount,
+      rpdDayKey,
       tpmWindowStart,
       tpmReserved,
       fullTokenBudget,
@@ -1050,12 +1321,60 @@ export class LLMSchedulerDO extends DurableObjectBase {
       rpm_window_start: rpmWindowStart,
       rpm_count: rpmCount,
       rpd_window_start: rpdWindowStart,
+      rpd_day_key: rpdDayKey,
       rpd_count: rpdCount,
       tpm_window_start: tpmWindowStart,
       tpm_reserved: tpmReserved,
       full_token_budget: fullTokenBudget,
       token_budget_updated_at: tokenBudgetUpdatedAt,
       provisional_reservation: provisionalReservation,
+    };
+  }
+
+  /** Advance a provider's shared token ledger forward to account for an admitted reservation. */
+  _applyProviderProvisionalReservation(providerLedger, providerCfg, reservation, notBeforeAt) {
+    const sql = this._getSql();
+    const tpm = Number(providerCfg?.tpm) || 0;
+    if (tpm <= 0) return providerLedger;
+
+    let tpmWindowStart = providerLedger.tpm_window_start;
+    let tpmReserved = providerLedger.tpm_reserved;
+    if (reservation <= tpm) {
+      if (!Number.isFinite(tpmWindowStart) || notBeforeAt - tpmWindowStart >= 60_000) {
+        tpmWindowStart = notBeforeAt;
+        tpmReserved = reservation;
+      } else {
+        tpmReserved += reservation;
+      }
+    }
+
+    let fullTokenBudget = providerLedger.full_token_budget;
+    let tokenBudgetUpdatedAt = providerLedger.token_budget_updated_at;
+    const elapsedMs = Math.max(0, notBeforeAt - (tokenBudgetUpdatedAt || 0));
+    const refilled = Math.min(
+      tpm * FULL_TOKEN_BUDGET_WINDOWS,
+      (fullTokenBudget || 0) + (elapsedMs * tpm) / 60_000
+    );
+    fullTokenBudget = Math.max(0, refilled - reservation);
+    tokenBudgetUpdatedAt = notBeforeAt;
+
+    sql.exec(
+      `UPDATE providers SET
+        tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?
+       WHERE provider=?`,
+      tpmWindowStart,
+      tpmReserved,
+      fullTokenBudget,
+      tokenBudgetUpdatedAt,
+      providerLedger.provider
+    );
+
+    return {
+      ...providerLedger,
+      tpm_window_start: tpmWindowStart,
+      tpm_reserved: tpmReserved,
+      full_token_budget: fullTokenBudget,
+      token_budget_updated_at: tokenBudgetUpdatedAt,
     };
   }
 
@@ -1106,9 +1425,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
         now
       )];
       if (expiredJobs.length > 0) {
+        // Give the route back what these dead leases were holding. completeBatch is the only
+        // other place provisional_reservation is ever decremented, and by definition it never
+        // ran for these -- so without this every crashed or evicted bundle permanently consumed
+        // a slice of its route's token capacity. That leak is silent and cumulative: the route
+        // stays unblocked and simply scores lower every time, until it stops being ranked at all.
+        for (const job of expiredJobs) {
+          if (!job.lease_route_id || !(Number(job.token_reservation) > 0)) continue;
+          sql.exec(
+            `UPDATE routes SET provisional_reservation = MAX(0, provisional_reservation - ?)
+             WHERE route_id = ?`,
+            job.token_reservation,
+            job.lease_route_id
+          );
+        }
         sql.exec(
           `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
-                            lease_expires_at=NULL, bundle_id=NULL, updated_at=?
+                            lease_expires_at=NULL, bundle_id=NULL, token_reservation=0, updated_at=?
            WHERE state='leased' AND lease_expires_at < ?`,
           now,
           now
@@ -1126,19 +1459,57 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const inFlightCalls = activeBundles.reduce((sum, b) => sum + b.active_call_count, 0);
       if (inFlightCalls >= maxInFlightCalls) return EMPTY;
 
+      const inFlightByRoute = new Map();
+      const inFlightByProvider = new Map();
+      const leasedRows = [...sql.exec(
+        "SELECT lease_route_id, COUNT(*) as cnt FROM jobs WHERE state='leased' GROUP BY lease_route_id"
+      )];
+      for (const row of leasedRows) {
+        if (!row.lease_route_id) continue;
+        inFlightByRoute.set(row.lease_route_id, row.cnt);
+        const catRoute = dispatchLimits.routes_by_id?.[row.lease_route_id];
+        if (catRoute?.provider) {
+          const prev = inFlightByProvider.get(catRoute.provider) || 0;
+          inFlightByProvider.set(catRoute.provider, prev + row.cnt);
+        }
+      }
+
       const ledgerCache = new Map();
       const getMergedRoute = (route) => {
         if (!ledgerCache.has(route.route_id)) {
           const ledger = this._getOrCreateRouteLedger(route.route_id, now, route);
-          ledgerCache.set(route.route_id, { ...route, ...ledger });
+          ledgerCache.set(route.route_id, {
+            ...route,
+            ...ledger,
+            reset_timezone:
+              dispatchLimits?.providers?.[route.provider]?.reset_timezone || "UTC",
+          });
         }
         return ledgerCache.get(route.route_id);
       };
-      const capacityOptions = (route, job) => ({
-        estimateFloor,
-        calibratedMargin: this._calibratedMargin(route.route_id, route.model, job.prompt_family),
-        callDurationCeilingMs,
-      });
+
+      const providerLedgerCache = new Map();
+      const getMergedProvider = (providerName, providerCfg) => {
+        if (!providerLedgerCache.has(providerName)) {
+          const pLedger = this._getOrCreateProviderLedger(providerName, now, providerCfg);
+          providerLedgerCache.set(providerName, pLedger);
+        }
+        return providerLedgerCache.get(providerName);
+      };
+
+      const capacityOptions = (route, job) => {
+        const providerCfg = dispatchLimits.providers?.[route.provider];
+        const providerLedger = route.provider
+          ? getMergedProvider(route.provider, providerCfg)
+          : null;
+        return {
+          estimateFloor,
+          calibratedMargin: this._calibratedMargin(route.route_id, route.model, job.prompt_family),
+          callDurationCeilingMs,
+          providerConfig: providerCfg,
+          providerLedger,
+        };
+      };
 
       const chosen = [];
       const chosenJobIds = new Set();
@@ -1170,6 +1541,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
             const leftPlan = modelPlansByModel.get(left.model);
             const rightPlan = modelPlansByModel.get(right.model);
             return (
+              // Free before paid, ahead of any capacity signal. `allow_paid` is permission to
+              // spend when nothing free will do, not a preference for spending: without this
+              // term a paid route with more headroom outranks a partly-consumed free one and
+              // silently bills for work a free route could have taken. The loop below stops at
+              // the first route with capacity, so paid is reached only once every free route is
+              // exhausted. (v1's selectRouteForModel additionally waits for a free route to
+              // reset unless that would miss the job's deadline; v2 has no deadline concept
+              // here, so it elevates as soon as free capacity runs out.)
+              Number(Boolean(right.free)) - Number(Boolean(left.free)) ||
               (rightPlan?.score || 0) - (leftPlan?.score || 0) ||
               (rightPlan?.routeScores.get(right.route_id) || 0) -
                 (leftPlan?.routeScores.get(left.route_id) || 0)
@@ -1186,6 +1566,24 @@ export class LLMSchedulerDO extends DurableObjectBase {
               (entry) => entry.route.route_id === route.route_id
             ).length;
             if (countInBundle >= maxJobsPerRoutePerBundle) continue;
+
+            const routeConcurrency = Number(route.concurrency);
+            if (Number.isFinite(routeConcurrency) && routeConcurrency > 0) {
+              const curInFlight = (inFlightByRoute.get(route.route_id) || 0) + countInBundle;
+              if (curInFlight >= routeConcurrency) continue;
+            }
+
+            const providerCfg = dispatchLimits.providers?.[route.provider];
+            const providerConcurrency = Number(
+              providerCfg?.concurrency ?? route.provider_concurrency
+            );
+            if (Number.isFinite(providerConcurrency) && providerConcurrency > 0) {
+              const curProviderInFlight =
+                (inFlightByProvider.get(route.provider) || 0) +
+                chosen.filter((entry) => entry.route.provider === route.provider).length;
+              if (curProviderInFlight >= providerConcurrency) continue;
+            }
+
             const merged = getMergedRoute(route);
             if (
               !routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))
@@ -1220,11 +1618,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
       for (const { route, jobs: routeJobs } of byRoute.values()) {
         let laneTime = now;
         let workingRoute = getMergedRoute(route);
+        const providerCfg = dispatchLimits.providers?.[route.provider];
         for (const job of routeJobs) {
           const margin = this._calibratedMargin(route.route_id, route.model, job.prompt_family);
+          const providerLedger = route.provider
+            ? getMergedProvider(route.provider, providerCfg)
+            : null;
           const waitResult = computeRouteLaneWait(workingRoute, job, laneTime, now, {
             estimateFloor,
             calibratedMargin: margin,
+            providerConfig: providerCfg,
+            providerLedger,
           });
           if (waitResult === null) continue; // exceeds this route's burst capacity outright
           if (waitResult.not_before_at + callDurationCeilingMs > dispatchWindowEnd) continue;
@@ -1232,11 +1636,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const leaseToken = crypto.randomUUID();
           sql.exec(
             `UPDATE jobs SET state='leased', lease_token=?, lease_route_id=?, lease_expires_at=?,
-                              bundle_id=?, updated_at=? WHERE id=?`,
+                              bundle_id=?, token_reservation=?, updated_at=? WHERE id=?`,
             leaseToken,
             route.route_id,
             leaseExpiresAt,
             bundleId,
+            // Persisted so the expire-sweep can release exactly what this lease is holding. The
+            // amount previously lived only in the claim response and the completeBatch result, so
+            // a bundle that died before reporting leaked its reservation onto the route forever.
+            waitResult.reservation,
             now,
             job.id
           );
@@ -1244,8 +1652,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // later model lookup walk terminal rows before it reaches current work.
           sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
 
-          workingRoute = this._applyProvisionalReservation(workingRoute, waitResult.reservation, waitResult.not_before_at);
+          workingRoute = this._applyProvisionalReservation(
+            workingRoute,
+            waitResult.reservation,
+            waitResult.not_before_at
+          );
           ledgerCache.set(route.route_id, workingRoute);
+
+          if (route.provider && providerCfg?.tpm) {
+            let pWorking = getMergedProvider(route.provider, providerCfg);
+            pWorking = this._applyProviderProvisionalReservation(
+              pWorking,
+              providerCfg,
+              waitResult.reservation,
+              waitResult.not_before_at
+            );
+            providerLedgerCache.set(route.provider, pWorking);
+          }
 
           resultJobs.push({
             id: job.id,
@@ -1320,7 +1743,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * retry that wouldn't fit before the dispatch window or lease expires is declined, not granted
    * late.
    */
-  async authorizeRetry(jobId, leaseToken, attemptId, now) {
+  async authorizeRetry(jobId, leaseToken, attemptId, now, retryAfterSeconds) {
     const sql = this._getSql();
     return this.ctx.storage.transactionSync(() => {
       const jobRows = [...sql.exec(
@@ -1348,15 +1771,35 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const routeId = job.lease_route_id;
       const ledger = this._getOrCreateRouteLedger(routeId, now, {});
       const newStreak = (ledger.throttle_streak || 0) + 1;
-      const backoffMs = Math.min(this._max429BackoffMs(), newStreak * 1000);
-      const blockedUntil = Math.max(Number(ledger.blocked_until) || 0, now + backoffMs);
+      const maxBufferSeconds = this._maxRouteBufferSeconds();
+      const rawRetryAfterSeconds = Number(retryAfterSeconds);
+      const retryAfterSec =
+        Number.isFinite(rawRetryAfterSeconds) && rawRetryAfterSeconds > 0
+          ? Math.min(maxBufferSeconds, rawRetryAfterSeconds)
+          : null;
+      const addedBufferSeconds = retryAfterSec !== null
+        ? retryAfterSec
+        : this._max429BackoffMs() / 1000;
+      // Compound from what is actually still owed, not from the raw stored figure -- otherwise
+      // 429s hours apart stack to the ceiling as if they were simultaneous.
+      const newBufferSeconds = Math.min(
+        maxBufferSeconds,
+        effectiveBufferSeconds(ledger, now) + addedBufferSeconds
+      );
       sql.exec(
-        "UPDATE routes SET throttle_streak = ?, last_provider_status = 429, blocked_until = ?, buffer_seconds = 0 WHERE route_id = ?",
+        `UPDATE routes SET throttle_streak = ?, last_provider_status = 429,
+                            buffer_seconds = ?, buffer_updated_at = ? WHERE route_id = ?`,
         newStreak,
-        blockedUntil,
+        newBufferSeconds,
+        now,
         routeId
       );
 
+      const baseBackoffMs = retryAfterSec !== null
+        ? retryAfterSec * 1000
+        : Math.min(this._max429BackoffMs(), newStreak * 1000);
+      const jitterMultiplier = 0.5 + Math.random();
+      const backoffMs = Math.round(baseBackoffMs * jitterMultiplier);
       const retryNotBefore = now + backoffMs;
       const deadline = Math.min(bundle.dispatch_window_end, bundle.lease_expires_at);
       if (retryNotBefore >= deadline) {
@@ -1442,11 +1885,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
           Number.isInteger(result.provider_status_code) &&
           result.provider_status_code >= 500 &&
           result.provider_status_code <= 599;
+        // A 402 requeues rather than failing: the route is blocked below, so the job cannot
+        // re-probe it, and it runs on an overflow route or once the cooldown clears. It shares
+        // the 5xx retry budget so a route that stays 402 across every cooldown cannot requeue a
+        // job forever -- v1 bounds the same case with `attempts < maxAttempts`.
+        const isPaymentRequired =
+          result.outcome === "retryable_error" &&
+          result.provider_status_code === 402 &&
+          job.transient_retry_count < this._max5xxRetries();
+        // A 400 only ever arrives as `retryable_error` when the dispatcher read the body and found
+        // the provider blaming its own upstream (see gateway.js's upstreamCapacityFailure). The DO
+        // never sees payloads, so the pair (retryable_error, 400) is the whole signal here. The
+        // route is unreachable rather than the job defective, so it gets the 5xx treatment: one
+        // durable retry from the shared budget, and the route stood down so sibling jobs are not
+        // admitted onto a model that would destroy them in turn.
+        const isUpstreamCapacityFailure =
+          result.outcome === "retryable_error" && result.provider_status_code === 400;
+        const isTransientRouteFailure = isFinal5xx || isUpstreamCapacityFailure;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
-        const blockedUntil = isFinal5xx
+        const blockedUntil = isTransientRouteFailure
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
           : null;
-        const shouldRetry5xx = isFinal5xx && job.transient_retry_count < this._max5xxRetries();
+        const shouldRetry5xx =
+          isTransientRouteFailure && job.transient_retry_count < this._max5xxRetries();
 
         let newState;
         switch (result.outcome) {
@@ -1460,7 +1921,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // A final 5xx has already exhausted AI Gateway's short retry sequence. Give it one
             // durable, minute-scale retry; ambiguous transport failures and B2-write failures
             // must surface as failed instead of silently becoming an unclaimable state.
-            newState = shouldRetry5xx ? "queued" : "failed";
+            newState = shouldRetry5xx || isPaymentRequired ? "queued" : "failed";
             break;
           case "terminal_error":
             newState = "failed";
@@ -1477,7 +1938,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
             result.job_id
           );
           this._indexQueuedJobModels(job);
-        } else if (shouldRetry5xx) {
+        } else if (shouldRetry5xx || isPaymentRequired) {
+          // Must go through this branch, not the generic UPDATE below: claiming a job deletes its
+          // job_models index rows, so a requeue that only rewrites `state` leaves the job queued
+          // with no index row and holding a stale lease -- claimDispatchWindow can never select it
+          // again, stranding it silently.
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                              lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,
@@ -1511,7 +1976,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
             result.observed_input_tokens != null && result.observed_output_tokens != null
               ? result.observed_input_tokens + result.observed_output_tokens
               : null;
-          const reservation = result.token_reservation ?? observedTotal ?? 0;
+          // Prefer the amount actually persisted at claim time: it is what was added to
+          // provisional_reservation, so releasing anything else drifts the two apart.
+          const reservation =
+            Number(job.token_reservation) > 0
+              ? Number(job.token_reservation)
+              : (result.token_reservation ?? observedTotal ?? 0);
           const settledUsage = observedTotal ?? reservation;
           sql.exec(
             `UPDATE routes SET
@@ -1527,7 +1997,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // A successful call proves the route is healthy again -- clear every backoff signal,
             // 402's included, not just the 429 ones already cleared here.
             sql.exec(
-              `UPDATE routes SET throttle_streak = 0, buffer_seconds = 0,
+              `UPDATE routes SET throttle_streak = 0, buffer_seconds = 0, buffer_updated_at = 0,
                                   payment_required_streak = 0, blocked_until = NULL,
                                   last_provider_status = ? WHERE route_id = ?`,
               result.provider_status_code ?? 200,
@@ -1547,7 +2017,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
               paymentRequiredBackoffUntil(newStreak, now),
               job.lease_route_id
             );
-          } else if (isFinal5xx) {
+          } else if (isTransientRouteFailure) {
             // The Gateway has already retried this request. Temporarily remove only this route
             // from the capacity ranking so other models/accounts can drain while it recovers.
             sql.exec(

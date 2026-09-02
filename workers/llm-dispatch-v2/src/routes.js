@@ -30,9 +30,27 @@ export function routeFromCatalog(routeId, dispatchLimits, model) {
 }
 
 /**
+ * Check a request against one route's context ceilings.
+ *
+ * `input_context_limit` is the route's effective total context window. The provider still gets a
+ * separate `output_context_limit` guard because a model can expose a smaller output maximum than
+ * its total window (for example, Airforce's Mistral Medium route).
+ */
+export function routeFitsContext(route, inputTokens, outputTokens) {
+  const contextLimit = route.input_context_limit || 32768;
+  const outputLimit = route.output_context_limit || 1024;
+  return (
+    inputTokens <= contextLimit &&
+    outputTokens <= outputLimit &&
+    inputTokens + outputTokens <= contextLimit
+  );
+}
+
+/**
  * Every route a job's stored policy (policy_json: { allowed_models, allow_paid }) can legally
- * reach, filtered for input/output context-window compatibility -- capacity/pacing eligibility
- * (RPM/TPM/buffer/blocked_until) is a separate, live-ledger-dependent check, see pacing.js.
+ * reach, filtered for combined input/output context-window compatibility -- capacity/pacing
+ * eligibility (RPM/TPM/buffer/blocked_until) is a separate, live-ledger-dependent check, see
+ * pacing.js.
  *
  * Returns routes in model_routes_map's own catalog order (config/provider_limits.yml's authored
  * order, e.g. "high-capacity workhorses" listed first) with no additional ranking -- Unit 4's
@@ -62,8 +80,7 @@ export function routesEligibleFor(job, dispatchLimits) {
       const route = routeFromCatalog(routeId, dispatchLimits, canonical);
       if (!route) continue;
       if (!allowPaid && !route.free) continue;
-      if (inputTokens > (route.input_context_limit || 32768)) continue;
-      if (outputTokens > (route.output_context_limit || 1024)) continue;
+      if (!routeFitsContext(route, inputTokens, outputTokens)) continue;
       seenRouteIds.add(routeId);
       eligible.push(route);
     }

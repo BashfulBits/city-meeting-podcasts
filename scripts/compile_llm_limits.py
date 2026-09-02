@@ -137,25 +137,51 @@ def _validate_split_cap(raw_multiplier: Any) -> float:
 
 
 def _scale_rate_limit(value: Any, multiplier: float) -> Any:
-    """Scale a numeric rate limit by multiplier, preserving None and 0."""
+    """Scale a numeric rate limit by multiplier, preserving None and 0.
+
+    Rates below one-per-window are preserved as floats rather than floored. Clamping them to 1
+    would *raise* the rate -- ``0.25`` became ``1``, four times what the config asked for -- which
+    inverts the whole point of scaling a limit down. A route slower than one request per minute is
+    a legitimate configuration: NVIDIA's free NIM endpoints lock out for ~26 minutes once roughly
+    30 successful requests land inside an hour, so staying under it means pacing below 1 rpm.
+    """
     if value is None or multiplier == 1.0:
         return value
     if isinstance(value, (int, float)):
         if value == 0:
             return 0
-        return max(1, int(math.floor(value * multiplier)))
+        scaled = value * multiplier
+        if scaled >= 1:
+            return int(math.floor(scaled))
+        return scaled
+    return value
+
+
+def _validate_ai_gateway_max_attempts(value: Any, provider: str) -> int | None:
+    """Validate a provider-specific AI Gateway retry override.
+
+    Cloudflare permits one through five attempts. Keeping the validation in the compiler prevents
+    a malformed provider entry from becoming a live header that the gateway silently ignores.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 5:
+        raise ValueError(
+            f"provider {provider!r} ai_gateway_max_attempts must be an integer from 1 through 5"
+        )
     return value
 
 
 def _direct_model(provider: str, upstream_model: str) -> str:
     """Return the LiteLLM model selector for a compiled provider route.
 
-    Kilo, OpenCode, SiliconFlow, and NVIDIA (build.nvidia.com) expose OpenAI-compatible gateways
+    Airforce, Kilo, OpenCode, SiliconFlow, and NVIDIA (build.nvidia.com) expose
+    OpenAI-compatible gateways
     rather than stable LiteLLM provider adapters. Selecting the OpenAI adapter and supplying the
     compiled ``api_base`` keeps those routes usable directly without teaching the scheduler
     provider-specific URL logic.
     """
-    if provider in {"kilo", "opencode", "siliconflow", "nvidia"}:
+    if provider in {"airforce", "kilo", "opencode", "siliconflow", "nvidia"}:
         return f"openai/{upstream_model}"
     return f"{provider}/{upstream_model}"
 
@@ -256,6 +282,10 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
         )
         if provider_cfg.get("rpm") is not None:
             route["provider_rpm"] = provider_cfg["rpm"]
+        if provider_cfg.get("tpm") is not None:
+            route["provider_tpm"] = provider_cfg["tpm"]
+        if provider_cfg.get("concurrency") is not None:
+            route["provider_concurrency"] = provider_cfg["concurrency"]
         routes.append(route)
     return {
         "_metadata": compiled["_metadata"],
@@ -294,7 +324,10 @@ _WORKER_PROVIDER_FIELDS = (
     "ai_gateway_slug",
     "ai_gateway_chat_path",
     "chat_path",
+    "ai_gateway_max_attempts",
     "rpm",
+    "tpm",
+    "concurrency",
     "reset_timezone",
     "accounts",
 )
@@ -696,6 +729,23 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
     split_cap_multiplier = _validate_split_cap(raw_split_cap)
 
     providers = raw.get("providers", {})
+    for provider_name, provider_cfg in providers.items():
+        if isinstance(provider_cfg, dict):
+            if "ai_gateway_max_attempts" in provider_cfg:
+                provider_cfg["ai_gateway_max_attempts"] = _validate_ai_gateway_max_attempts(
+                    provider_cfg["ai_gateway_max_attempts"], provider_name
+                )
+            if "tpm" in provider_cfg and provider_cfg["tpm"] is not None:
+                tpm_val = provider_cfg["tpm"]
+                if (
+                    isinstance(tpm_val, bool)
+                    or not isinstance(tpm_val, (int, float))
+                    or tpm_val <= 0
+                    or not math.isfinite(tpm_val)
+                ):
+                    raise ValueError(
+                        f"provider {provider_name} has invalid non-positive tpm: {tpm_val!r}"
+                    )
     if token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0:
         for provider_cfg in providers.values():
             if isinstance(provider_cfg, dict):
@@ -764,6 +814,8 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                 "structured_output_schema_strip_keys": profile["strip_schema_keys"],
             }
         )
+        if provider_cfg.get("ai_gateway_max_attempts") is not None:
+            route["ai_gateway_max_attempts"] = provider_cfg["ai_gateway_max_attempts"]
         route["input_context_limit"] = int(route["input_context_limit"])
         route["output_context_limit"] = int(route["output_context_limit"])
 

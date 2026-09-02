@@ -135,6 +135,70 @@ def test_rpm_is_a_continuous_request_pace():
     )
 
 
+def test_sub_one_rpm_route_is_admissible_from_a_legacy_ledger_entry():
+    """Hardening, not a live bug: the per-minute bucket must not deadlock a sub-1 rpm route.
+
+    In normal operation a fresh route has no ledger entry and ``available`` short-circuits to True,
+    and after the first reservation ``requests_available_at`` carries the pacing. The bucket
+    fallback is only reached by a ledger entry written before ``requests_available_at`` existed --
+    but on that path a raw sub-1 comparison is fatal: ``0 + 1 <= 0.25`` is False, and because the
+    refusal is what prevents ``requests_available_at`` from ever being written, such a route could
+    never become available again. NVIDIA's free NIM endpoints run at 0.25 rpm, so the shape is
+    real; ``max(1, rpm)`` keeps the legacy path from stranding them.
+    """
+    route = LLMRoute(
+        model="slow/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=0.25),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    legacy = budget._ledger(route.model, NOW, route=route, create=True)
+    legacy.requests_available_at = ""  # pre-dates continuous pacing
+    legacy.requests_minute = 0
+    assert budget.available(route.model, route=route, requests=1, tokens=1, cost=0, now=NOW)
+
+
+def test_sub_one_rpm_route_paces_at_sixty_over_rpm():
+    """After the first reservation, spacing comes from requests_available_at: 60/0.25 = 240s."""
+    route = LLMRoute(
+        model="slow/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=0.25),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    budget.reserve("first", route.model, route=route, requests=1, tokens=1, cost=0, now=NOW)
+    assert not budget.available(
+        route.model, route=route, requests=1, tokens=1, cost=0, now=NOW + timedelta(seconds=239)
+    )
+    assert budget.available(
+        route.model, route=route, requests=1, tokens=1, cost=0, now=NOW + timedelta(seconds=241)
+    )
+
+
+def test_structured_reservation_on_legacy_fractional_ledger_sets_request_schedule():
+    """A two-attempt structured call must initialize pacing on an old fractional ledger."""
+    route = LLMRoute(
+        model="slow/structured-model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(rpm=0.25),
+        pricing=PricingPolicy(),
+    )
+    budget = LLMBudget()
+    ledger = budget._ledger(route.model, NOW, route=route, create=True)
+    ledger.requests_available_at = ""  # legacy state predating continuous request pacing
+    ledger.requests_minute = 0
+
+    assert budget.available(route.model, route=route, requests=2, tokens=1, cost=0, now=NOW)
+    budget.reserve(route.model, route.model, route=route, requests=2, tokens=1, cost=0, now=NOW)
+
+    assert ledger.requests_available_at == (NOW + timedelta(seconds=480)).isoformat()
+
+
 def test_provider_rpm_is_shared_across_models():
     first = LLMRoute(
         model="provider/first",
@@ -159,6 +223,46 @@ def test_provider_rpm_is_shared_across_models():
     assert not budget.available(second.model, route=second, requests=1, tokens=1, cost=0, now=NOW)
     assert budget.available(
         second.model, route=second, requests=1, tokens=1, cost=0, now=NOW + timedelta(seconds=1)
+    )
+
+
+def test_provider_tpm_and_concurrency_is_shared_across_models():
+    first = LLMRoute(
+        model="provider/first",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100000),
+        pricing=PricingPolicy(),
+        provider="shared-provider",
+        provider_tpm=60000,
+        provider_concurrency=1,
+    )
+    second = LLMRoute(
+        model="provider/second",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=100000),
+        pricing=PricingPolicy(),
+        provider="shared-provider",
+        provider_tpm=60000,
+        provider_concurrency=1,
+    )
+    budget = LLMBudget()
+    # Reserve 60k tokens on first route (1 minute's worth of 60k TPM)
+    budget.reserve("first", first.model, route=first, requests=1, tokens=60000, cost=0, now=NOW)
+    # Blocked due to both provider TPM and provider concurrency
+    assert not budget.available(
+        second.model, route=second, requests=1, tokens=1000, cost=0, now=NOW
+    )
+    # Settle reservation on first to commit 60k tokens and free concurrency slot
+    budget.settle("first", first.model, route=first, actual_tokens=60000, now=NOW)
+    # Now concurrency is 0, but token bucket is scheduled until NOW + 60s
+    assert not budget.available(
+        second.model, route=second, requests=1, tokens=1000, cost=0, now=NOW
+    )
+    # After 60s, provider TPM is available again
+    assert budget.available(
+        second.model, route=second, requests=1, tokens=1000, cost=0, now=NOW + timedelta(seconds=60)
     )
 
 
@@ -552,4 +656,80 @@ def test_block_never_moves_an_existing_block_earlier():
     budget.block(ROUTE.model, near, route=ROUTE, now=NOW)
     assert not budget.available(
         ROUTE.model, route=ROUTE, requests=1, tokens=1, cost=0.0, now=NOW + timedelta(minutes=30)
+    )
+
+
+def test_provider_concurrency_reaps_expired_reservations_across_routes():
+    route_a = LLMRoute(
+        model="test/route_a",
+        transport="direct",
+        provider="shared_prov",
+        provider_concurrency=1,
+        free=True,
+        quota=QuotaPolicy(rpm=10, rpd=100),
+        pricing=PricingPolicy(cost_cap=1.0),
+    )
+    route_b = LLMRoute(
+        model="test/route_b",
+        transport="direct",
+        provider="shared_prov",
+        provider_concurrency=1,
+        free=True,
+        quota=QuotaPolicy(rpm=10, rpd=100),
+        pricing=PricingPolicy(cost_cap=1.0),
+    )
+    budget = LLMBudget()
+    # Reserve route_a (default 20m lease expiration)
+    budget.reserve(
+        "owner-a",
+        route_a.model,
+        route=route_a,
+        requests=1,
+        tokens=10,
+        cost=0.0,
+        now=NOW,
+    )
+    # At +5m, reservation is active -> route_b is unavailable due to concurrency 1
+    assert not budget.available(
+        route_b.model,
+        route=route_b,
+        requests=1,
+        tokens=10,
+        cost=0.0,
+        now=NOW + timedelta(minutes=5),
+    )
+    # At +21m, route_a's reservation expired -> available() for route_b reaps it and permits route_b
+    assert budget.available(
+        route_b.model,
+        route=route_b,
+        requests=1,
+        tokens=10,
+        cost=0.0,
+        now=NOW + timedelta(minutes=21),
+    )
+
+
+def test_provider_tpm_non_positive_and_zero_division_guard():
+    zero_tpm_route = LLMRoute(
+        model="test/zero_tpm",
+        transport="direct",
+        provider="prov",
+        provider_tpm=0,
+        free=True,
+        quota=QuotaPolicy(rpm=10, rpd=100),
+        pricing=PricingPolicy(cost_cap=1.0),
+    )
+    budget = LLMBudget()
+    assert not budget.available(
+        zero_tpm_route.model, route=zero_tpm_route, requests=1, tokens=10, cost=0.0, now=NOW
+    )
+    # reserve() must not raise ZeroDivisionError
+    budget.reserve(
+        "owner-1",
+        zero_tpm_route.model,
+        route=zero_tpm_route,
+        requests=1,
+        tokens=10,
+        cost=0.0,
+        now=NOW,
     )

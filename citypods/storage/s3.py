@@ -10,10 +10,14 @@ Requires ``boto3`` (extra: ``citypods[storage]``). Backends are built from env v
 
 from __future__ import annotations
 
+import math
 import os
 import tempfile
 import time
+from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
+from typing import Any
 
 from citypods.storage.base import StorageReadUnavailable
 
@@ -44,6 +48,10 @@ _TRANSIENT_S3_CODES = frozenset(
     }
 )
 _TRANSIENT_S3_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+# Deferred-registry objects are small JSON records. A stalled socket should not keep the sweep's
+# worker thread alive until the workflow's outer kill, but normal bulk audio reads must retain
+# boto3's default timeout behavior.
+DEADLINE_READ_TIMEOUT_CAP_SECONDS = 15
 
 
 def transient_download_errors(
@@ -142,19 +150,26 @@ def is_transient_storage_error(
     return code in _TRANSIENT_S3_CODES or status in _TRANSIENT_S3_STATUS
 
 
-def _retry_storage_read(operation, *, key: str):
+def _retry_storage_read(operation, *, key: str, deadline_at: datetime | None = None):
     """Run one idempotent S3 read with bounded retries for transient backend failures."""
     last_error = None
     for attempt in range(3):
+        if deadline_at is not None and datetime.now(UTC) >= deadline_at:
+            raise StorageReadUnavailable(key, TimeoutError("storage read deadline reached"))
         try:
             return operation()
         except BaseException as exc:
+            if deadline_at is not None and datetime.now(UTC) >= deadline_at:
+                raise StorageReadUnavailable(key, exc) from exc
             if not is_transient_storage_error(exc):
                 raise
             last_error = exc
             if attempt == 2:
                 raise StorageReadUnavailable(key, exc) from exc
-            time.sleep(2**attempt)
+            delay = 2**attempt
+            if deadline_at is not None:
+                delay = min(delay, max(0.0, (deadline_at - datetime.now(UTC)).total_seconds()))
+            time.sleep(delay)
     raise AssertionError(f"unreachable: {last_error!r}")
 
 
@@ -192,8 +207,6 @@ class S3CompatibleStorage:
         region: str = "auto",
         cas_capable: bool = False,
     ):
-        import boto3  # lazy so the package imports without the extra installed
-
         self.name = name
         self.bucket = bucket
         self.public_base_url = public_base_url.rstrip("/")
@@ -207,13 +220,40 @@ class S3CompatibleStorage:
             # the same value; it's easy to paste the bare host and drop the scheme, which boto3
             # rejects outright. Normalize rather than fail the whole worker run.
             endpoint_url = f"https://{endpoint_url}"
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=endpoint_url,
-            aws_access_key_id=access_key_id,
-            aws_secret_access_key=secret_access_key,
-            region_name=region,
+        self._client_options: dict[str, Any] = {
+            "endpoint_url": endpoint_url,
+            "aws_access_key_id": access_key_id,
+            "aws_secret_access_key": secret_access_key,
+            "region_name": region,
+        }
+        self._client = self._new_client()
+        self._deadline_clients: dict[int, Any] = {}
+        self._deadline_clients_lock = Lock()
+
+    def _new_client(self, *, config=None):
+        import boto3
+
+        return boto3.client("s3", config=config, **self._client_options)
+
+    def _client_with_deadline_timeout(self, remaining_seconds: float):
+        """Return a cached client whose socket timeout cannot outlive a sweep deadline."""
+        from botocore.config import Config
+
+        timeout_seconds = max(
+            1, min(DEADLINE_READ_TIMEOUT_CAP_SECONDS, math.ceil(remaining_seconds))
         )
+        with self._deadline_clients_lock:
+            client = self._deadline_clients.get(timeout_seconds)
+            if client is None:
+                client = self._new_client(
+                    config=Config(
+                        connect_timeout=timeout_seconds,
+                        read_timeout=timeout_seconds,
+                        retries={"max_attempts": 0, "mode": "standard"},
+                    )
+                )
+                self._deadline_clients[timeout_seconds] = client
+            return client
 
     def exists(self, key: str) -> bool:
         from botocore.exceptions import ClientError
@@ -307,7 +347,7 @@ class S3CompatibleStorage:
             raise
         return self.public_url(key), resp["ETag"]
 
-    def get_file(self, key: str, local_path: Path) -> bool:
+    def get_file(self, key: str, local_path: Path, *, deadline_at: datetime | None = None) -> bool:
         from botocore.exceptions import ClientError
 
         local_path = Path(local_path)
@@ -318,8 +358,20 @@ class S3CompatibleStorage:
         os.close(staged_fd)
         staged_path = Path(staged_name)
         try:
+
+            def download() -> None:
+                client = self._client
+                if deadline_at is not None:
+                    remaining_seconds = (deadline_at - datetime.now(UTC)).total_seconds()
+                    if remaining_seconds <= 0:
+                        raise TimeoutError("storage read deadline reached")
+                    client = self._client_with_deadline_timeout(remaining_seconds)
+                client.download_file(self.bucket, key, str(staged_path))
+
             _retry_storage_read(
-                lambda: self._client.download_file(self.bucket, key, str(staged_path)), key=key
+                download,
+                key=key,
+                deadline_at=deadline_at,
             )
         except ClientError as exc:
             staged_path.unlink(missing_ok=True)

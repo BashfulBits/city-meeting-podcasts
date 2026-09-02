@@ -14,11 +14,19 @@ import DISPATCH_LIMITS from "../src/dispatch_limits.json" with { type: "json" };
 // deployed from it) keeps `rpd: 0` and 50% split-cap limits untouched. Quota-exhaustion behavior
 // itself, including `rpd`, already has its own dedicated coverage against synthetic route objects.
 const splitCap = DISPATCH_LIMITS._metadata?.split_cap_multiplier || 1.0;
+// Un-scaling must not round a sub-1 rate up to an integer: a route paced slower than one request
+// per minute (NVIDIA's 0.25 compiled rpm) would become 1 here -- `Math.round(0.25 / 0.5)` -- and
+// these tests would silently assert against a 4x faster route than production runs. Mirrors
+// _scale_rate_limit, which keeps fractions below 1 for the same reason.
+const unscale = (value) => {
+  const raw = value / splitCap;
+  return raw >= 1 ? Math.round(raw) : raw;
+};
 if (splitCap < 1.0) {
   for (const provider of Object.values(DISPATCH_LIMITS.providers)) {
-    if (provider.rpm) provider.rpm = Math.round(provider.rpm / splitCap);
-    if (provider.monthly_tpm) provider.monthly_tpm = Math.round(provider.monthly_tpm / splitCap);
-    if (provider.tpm) provider.tpm = Math.round(provider.tpm / splitCap);
+    if (provider.rpm) provider.rpm = unscale(provider.rpm);
+    if (provider.monthly_tpm) provider.monthly_tpm = unscale(provider.monthly_tpm);
+    if (provider.tpm) provider.tpm = unscale(provider.tpm);
   }
 }
 for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
@@ -26,11 +34,19 @@ for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
     route.rpd = null;
   }
   if (splitCap < 1.0) {
-    if (route.rpm) route.rpm = Math.round(route.rpm / splitCap);
-    if (route.rpd) route.rpd = Math.round(route.rpd / splitCap);
-    if (route.tpm) route.tpm = Math.round(route.tpm / splitCap);
+    if (route.rpm) route.rpm = unscale(route.rpm);
+    if (route.rpd) route.rpd = unscale(route.rpd);
+    if (route.tpm) route.tpm = unscale(route.tpm);
   }
 }
+DISPATCH_LIMITS.model_routing = {
+  "mistral/mistral-medium-3-5": [
+    "deepseek/deepseek-v4-flash",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "gemini/gemini-3.5-flash-lite",
+    "deepseek/deepseek-v4-pro",
+  ],
+};
 
 import {
   DISPATCH_COORDINATOR_KEY,
@@ -45,6 +61,7 @@ import {
   nextLocalMidnightUTC,
   nextRouteReset,
   paymentRequiredBackoffUntil,
+  rateLimitedBackoffUntil,
   rankRoutes,
   releaseCronLease,
   readyKey,
@@ -2032,6 +2049,33 @@ test("dispatchOne routes through AI Gateway when AI_GATEWAY_BASE_URL is configur
   assert.equal(calls[0].body.model, "gemini-3-flash-preview");
 });
 
+test("dispatchOne applies a provider-specific AI Gateway retry override", async () => {
+  const env = {
+    ...isolatedEnv(),
+    AI_GATEWAY_BASE_URL: "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw",
+    AI_GATEWAY_AUTH_TOKEN: "cf-aig-token-secret",
+  };
+  const model = "meta-llama/llama-3.3-70b-instruct";
+  const routeMap = DISPATCH_LIMITS.model_routes_map[model];
+  const originalRouteMap = [...routeMap];
+  DISPATCH_LIMITS.model_routes_map[model] = ["sambanova_llama_3_3_70b_instruct_primary"];
+  try {
+    await handleRequest(chatRequest(undefined, "samba-gw-retry", model), env);
+    const calls = [];
+    const upstream = async (url, init) => {
+      calls.push({ url, init, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ id: "samba-completion", choices: [] }), { status: 200 });
+    };
+
+    const result = await dispatchOne(env, upstream, new Date());
+    assert.equal(result.status, "completed");
+    assert.equal(calls[0].init.headers["cf-aig-max-attempts"], "1");
+    assert.equal(calls[0].body.model, "Meta-Llama-3.3-70B-Instruct");
+  } finally {
+    DISPATCH_LIMITS.model_routes_map[model] = originalRouteMap;
+  }
+});
+
 test("dispatchOne adds cf-aig-authorization only when routed through the gateway with a token configured", async () => {
   // Cloudflare AI Gateway's own "Authenticated Gateway" setting is independent of the upstream
   // provider's API key: without this header the edge returns a non-retryable 401 before the
@@ -2399,17 +2443,24 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
 
 test("dispatchBatch defers same-route candidates when TPM delay exceeds max stagger", async () => {
   const env = isolatedEnv();
-  // Request with 8000 tokens. google/gemma-4-31b-it now maps to 4 routes: two Gemini accounts
+  // Request with 8000 tokens. google/gemma-4-31b-it maps to 4 routes: two Gemini accounts
   // (7200 compiled TPM each -> a 66.7s reuse interval, far past the 20s in-batch stagger ceiling),
   // OpenRouter's free leg (no TPM cap, paced only by its 5 RPM -> 12s reuse interval), and NVIDIA
-  // build's leg (added 2026-08-29, 45000 compiled TPM, cheap enough to absorb several reuses
-  // before its accumulating token debt finally exceeds the 20s ceiling too). Empirically (this
-  // scenario is intentionally exact-number-pinned against the real compiled catalog, not
-  // hand-derived, since the ranking that decides which route absorbs each reuse is its own
-  // logic) 8 offered requests admit exactly 7 -- 2 Gemini + 1 OpenRouter fresh, plus NVIDIA
-  // serving 4 total via 3 in-batch paced waits -- and defer the 8th once every route's next reuse
-  // exceeds the 20s max stagger. More than 8 offered requests still admit only 7: re-run this
-  // probe (see the PR that added NVIDIA routing) if the provider catalog changes these numbers.
+  // build's leg. This scenario is intentionally exact-number-pinned against the real compiled
+  // catalog rather than hand-derived, since the ranking that decides which route absorbs each
+  // reuse is its own logic -- so it must be re-probed whenever those limits move.
+  //
+  // Re-probed 2026-08-30 after NVIDIA's concurrency was raised 1 -> 4: 8 offered requests admit
+  // exactly 5 -- one per Gemini account, one on OpenRouter, and *two* on NVIDIA, the second via a
+  // single ~15s in-batch paced wait inside the 20s stagger ceiling.
+  //
+  // NVIDIA's second slot is now bounded by TPM, not concurrency: at 18000 compiled TPM two
+  // 8000-token requests fit (16000) and a third does not (24000). That is the intended shape of
+  // the change -- concurrency should stop being the binding constraint and let the real rate
+  // limits bind instead.
+  //
+  // History, since this number has moved twice: it was 7 before 2026-08-29 (NVIDIA serving 4 via
+  // 3 paced waits at 100000 TPM), then 4 when concurrency was capped at 1 that day, now 5.
   for (let i = 0; i < 8; i += 1) {
     await handleRequest(
       chatRequest(
@@ -2451,22 +2502,28 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   );
 
   assert.equal(batchResult.status, "completed");
-  // 7 candidates admitted (NVIDIA's route absorbs 4 of them via 3 in-batch paced waits).
-  // Candidate 8 deferred in place (every route's next reuse exceeds the 20s max stagger).
-  assert.equal(batchResult.count, 7);
-  assert.equal(batchResult.completedCount, 7);
-  assert.equal(calls.length, 7);
-  assert.equal(slept.length, 3);
+  assert.equal(batchResult.count, 5);
+  assert.equal(batchResult.completedCount, 5);
+  assert.equal(calls.length, 5);
+  // Exactly one paced wait: NVIDIA's second request, spaced by its own rpm.
+  assert.equal(slept.length, 1, "NVIDIA's second slot arrives via one in-batch paced wait");
+  assert.ok(slept[0] <= 20_000, "and it stays inside the 20s max stagger");
+  assert.equal(
+    calls.filter((c) => c.url.includes("integrate.api.nvidia.com")).length,
+    2,
+    "the raised concurrency ceiling is what admits the second NVIDIA call"
+  );
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 7);
+  assert.equal(completedObjects.length, 5);
   const pendingObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "pending",
   );
-  assert.equal(pendingObjects.length, 1);
+  // 8 offered, 5 admitted, so 3 stay pending for a later batch.
+  assert.equal(pendingObjects.length, 3);
 });
 
 test("dispatchBatch runs four independently paced routes concurrently", async () => {
@@ -2857,11 +2914,14 @@ test("dispatchOne blocks a route after a 402 response, and clears the block on t
 
   const now = new Date();
   const result1 = await dispatchOne(env, paymentRequired, now);
-  assert.equal(result1.status, "failed");
+  // The job that discovers an exhausted budget is collateral, not defective: it is requeued, not
+  // failed. Failing it burned one recoverable job per cooldown lapse per route (2026-08-26).
+  assert.equal(result1.status, "retrying");
   assert.equal(result1.routeId, routeId);
 
   const record1 = await (await env.LLM_QUEUE.get(`requests/${body1.id}.json`)).json();
-  assert.equal(record1.status, "failed"); // the individual job still fails normally
+  assert.equal(record1.status, "pending");
+  assert.equal(record1.last_error.status, 402, "the 402 is still recorded on the record");
 
   let coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
   let entry = ledgerEntry(coordinator, routeId);
@@ -2871,6 +2931,9 @@ test("dispatchOne blocks a route after a 402 response, and clears the block on t
   // Real time obviously can't advance a day inside a test; clear the block directly to simulate
   // it having already expired, exactly as it would in production once `now` passes blocked_until.
   entry.blocked_until = null;
+  // Backdate the marker so this test proves the normal recovery path without relying on the next
+  // Date.now() call landing in a later millisecond than the 402 response.
+  entry.payment_required_at = new Date(now.getTime() - 60_000).toISOString();
   await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
 
   const queued2 = await handleRequest(chatRequest(undefined, "402-check-2"), env);
@@ -2887,6 +2950,290 @@ test("dispatchOne blocks a route after a 402 response, and clears the block on t
   entry = ledgerEntry(coordinator, routeId);
   assert.equal(entry.payment_required_streak, 0);
   assert.equal(entry.blocked_until, null);
+});
+
+test("a 402 does not consume the job that discovered the exhausted budget", async () => {
+  // Regression for the 2026-08-26 loss pattern: the 402 backoff blocks the route, but the job
+  // that triggered it used to be marked terminally failed. Every cooldown lapse therefore burned
+  // exactly one recoverable job per route -- 2 per route on 2026-08-26, matching the
+  // payment_required_streak of 2 observed in the production ledger. Those jobs then needed an
+  // operator requeue (scripts/requeue_failed_llm_dispatch.py) to come back at all.
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "402-preserves-job"), env);
+  const body = await queued.json();
+
+  const paymentRequired = async () =>
+    new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
+  const result = await dispatchOne(env, paymentRequired, new Date());
+
+  assert.equal(result.status, "retrying");
+  const record = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(record.status, "pending", "the job must survive to run on an overflow route");
+  assert.notEqual(record.status, "failed");
+  assert.equal(record.last_error.status, 402);
+});
+
+test("a sub-1-rpm route admits its first request from a fresh ledger", async () => {
+  // The deadlock this covers: the per-minute fallback compared `requests_minute + 1 > rpm`, so a
+  // route paced below one request per minute refused its first request (0 + 1 > 0.25). That
+  // refusal is also what prevents `requests_available_at` from ever being written, so the route
+  // could never admit anything again -- silently dead, not slow.
+  const routeId = "nvidia_deepseek_v4_pro_0813_free";
+  const route = DISPATCH_LIMITS.routes_by_id[routeId];
+  assert.ok(route.rpm < 1, `precondition: ${routeId} must be paced below 1 rpm, got ${route.rpm}`);
+
+  const coordinator = {};
+  const entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.requests_available_at, "", "fresh ledger has no pacing timestamp yet");
+  assert.equal(
+    routeAvailable(entry, route, { requests: 1, tokens: 0 }, new Date()),
+    true,
+    "a fresh sub-1-rpm route must admit its first request",
+  );
+});
+
+test("a sub-1-rpm route then spaces requests at 60000/rpm", async () => {
+  const env = isolatedEnv();
+  const routeId = "nvidia_deepseek_v4_pro_0813_free";
+  const route = DISPATCH_LIMITS.routes_by_id[routeId];
+  const queued = await handleRequest(
+    chatRequest([{ role: "user", content: "pace me" }], "sub-rpm-pace", "deepseek/deepseek-v4-pro"),
+    env,
+  );
+  await queued.json();
+
+  const ok = async () =>
+    new Response(JSON.stringify({ id: "sub-rpm", choices: [] }), { status: 200 });
+  const now = new Date();
+  assert.equal((await dispatchOne(env, ok, now)).status, "completed");
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const spacingMs = Date.parse(entry.requests_available_at) - now.getTime();
+  const expected = 60_000 / route.rpm; // 0.25 rpm -> 240s
+  assert.ok(
+    Math.abs(spacingMs - expected) < 2_000,
+    `expected ~${expected / 1000}s spacing for ${route.rpm} rpm, got ${Math.round(spacingMs / 1000)}s`,
+  );
+  assert.ok(expected > 60_000, "sanity: this route is genuinely slower than one per minute");
+});
+
+test("a 429 stands the whole route down, not just the job that hit it", async () => {
+  // The defect this covers: with only per-job backoff, every other queued job keeps being admitted
+  // at the route's normal rpm straight into a provider's quota lockout. Measured against NVIDIA on
+  // 2026-08-29: two lockouts of 26.1 and 27.0 minutes absorbing 54 and 47 consecutive 429s.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const route = DISPATCH_LIMITS.routes_by_id[routeId];
+
+  const queued = await handleRequest(chatRequest(undefined, "429-blocks-route"), env);
+  await queued.json();
+  const rateLimited = async () =>
+    new Response(JSON.stringify({ error: { message: "rate limit" } }), { status: 429 });
+
+  const now = new Date();
+  const result = await dispatchOne(env, rateLimited, now);
+  assert.equal(result.status, "retrying", "the job itself still retries");
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.throttle_streak, 1);
+  assert.ok(entry.throttled_until, "the route must carry a cooldown");
+  assert.ok(entry.throttled_at, "and a stamp of when it was set");
+  // Probe far enough ahead that this route's own rpm pacing (4 rpm -> a 15s interval) is long
+  // satisfied, so `throttled_until` is the ONLY thing that can still refuse admission. Asserting
+  // at `now` would pass even with the cooldown ignored, because the dispatch above just consumed
+  // the route's rpm slot.
+  const afterPacing = new Date(now.getTime() + 30_000);
+  assert.ok(
+    Date.parse(entry.throttled_until) > afterPacing.getTime(),
+    "probe must sit inside the cooldown window",
+  );
+  const withoutCooldown = { ...entry, throttled_until: null, throttled_at: null };
+  assert.equal(
+    routeAvailable(withoutCooldown, route, { requests: 1, tokens: 0 }, afterPacing),
+    true,
+    "sanity: absent the cooldown the route would be admissible at this instant",
+  );
+  assert.equal(
+    routeAvailable(entry, route, { requests: 1, tokens: 0 }, afterPacing),
+    false,
+    "no further job may be admitted onto the route during its cooldown",
+  );
+});
+
+test("a 429 honors Retry-After when the provider sends one", async () => {
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-retry-after"), env);
+  await queued.json();
+  const rateLimited = async () =>
+    new Response(JSON.stringify({ error: { message: "slow down" } }), {
+      status: 429,
+      headers: { "retry-after": "120" },
+    });
+
+  const now = new Date();
+  await dispatchOne(env, rateLimited, now);
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const cooldownMs = Date.parse(entry.throttled_until) - now.getTime();
+  // 120s from the header, not the 60s first-occurrence fallback.
+  assert.ok(
+    cooldownMs > 110_000 && cooldownMs <= 121_000,
+    `expected a ~120s Retry-After cooldown, got ${Math.round(cooldownMs / 1000)}s`,
+  );
+});
+
+test("a 429 cooldown is measured from the response, not the batch start", async () => {
+  // `now` is the batch's start time. Using it would shorten the cooldown by the upstream call's
+  // duration, and -- worse -- stamp the stale-guard early enough that a sibling which started
+  // after the batch began but before this rejection landed would look like it postdates the
+  // rejection, letting its later success clear a cooldown it never saw.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-response-clock"), env);
+  await queued.json();
+
+  const UPSTREAM_MS = 120;
+  const slowRateLimited = async () => {
+    await new Promise((resolve) => setTimeout(resolve, UPSTREAM_MS));
+    return new Response(JSON.stringify({ error: { message: "rate limit" } }), { status: 429 });
+  };
+
+  const now = new Date();
+  await dispatchOne(env, slowRateLimited, now);
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const stampedAfterStartMs = Date.parse(entry.throttled_at) - now.getTime();
+  assert.ok(
+    stampedAfterStartMs >= UPSTREAM_MS - 20,
+    `throttled_at must be stamped when the 429 arrived, not at batch start; got +${stampedAfterStartMs}ms`,
+  );
+  // And the cooldown window itself is measured from that same instant.
+  const cooldownMs = Date.parse(entry.throttled_until) - Date.parse(entry.throttled_at);
+  assert.ok(
+    cooldownMs >= 59_000 && cooldownMs <= 61_000,
+    `expected a full 60s first cooldown from the response instant, got ${cooldownMs}ms`,
+  );
+});
+
+test("a 429 Retry-After given as an HTTP-date is honored", async () => {
+  // RFC 9110 permits delay-seconds or an HTTP-date. `Number()` yields NaN for the date form, which
+  // would silently discard the provider's own deadline in favour of our exponential guess.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-http-date"), env);
+  await queued.json();
+
+  const deadline = new Date(Date.now() + 15 * 60_000);
+  const rateLimited = async () =>
+    new Response(JSON.stringify({ error: { message: "rate limit" } }), {
+      status: 429,
+      headers: { "retry-after": deadline.toUTCString() },
+    });
+
+  await dispatchOne(env, rateLimited, new Date());
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  const cooldownEnd = Date.parse(entry.throttled_until);
+  // ~15 minutes from the header, not the 60s first-occurrence fallback.
+  assert.ok(
+    Math.abs(cooldownEnd - deadline.getTime()) < 5_000,
+    `expected the cooldown to track the HTTP-date deadline, off by ${cooldownEnd - deadline.getTime()}ms`,
+  );
+});
+
+test("a success after a 429 cooldown clears it, but a stale one does not", async () => {
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "429-clear"), env);
+  await queued.json();
+  const rateLimited = async () =>
+    new Response(JSON.stringify({ error: { message: "rate limit" } }), { status: 429 });
+  const now = new Date();
+  await dispatchOne(env, rateLimited, now);
+
+  let coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  let entry = ledgerEntry(coordinator, routeId);
+  // Rewind the stamp into the future so the next success looks like it started before the 429,
+  // and lift the cooldown so the route is selectable at all.
+  entry.throttled_at = new Date(now.getTime() + 60_000).toISOString();
+  entry.throttled_until = null;
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
+
+  const queued2 = await handleRequest(chatRequest(undefined, "429-clear-2"), env);
+  await queued2.json();
+  const ok = async () =>
+    new Response(JSON.stringify({ id: "after-429", choices: [] }), { status: 200 });
+  const later = new Date(now.getTime() + 10 * 60_000);
+  assert.equal((await dispatchOne(env, ok, later)).status, "completed");
+
+  coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.throttle_streak, 1, "a success predating the 429 must not reset the streak");
+
+  // Now a success that genuinely postdates the 429 does clear it.
+  entry.throttled_at = new Date(now.getTime() - 60_000).toISOString();
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
+  const queued3 = await handleRequest(chatRequest(undefined, "429-clear-3"), env);
+  await queued3.json();
+  assert.equal(
+    (await dispatchOne(env, ok, new Date(now.getTime() + 20 * 60_000))).status,
+    "completed",
+  );
+  coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.throttle_streak, 0);
+  assert.equal(entry.throttled_until, null);
+});
+
+test("a success already in flight when a 402 landed does not reopen the blocked route", async () => {
+  // Without a per-route concurrency cap a batch runs several requests on one route. A sibling that
+  // STARTED before the 402 proves nothing about the account's balance, so it must not clear the
+  // block. It matters more now that a 402 requeues its job instead of failing it: the requeued job
+  // would come straight back to an exhausted route and burn another attempt.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+
+  const queued = await handleRequest(chatRequest(undefined, "402-then-stale-success"), env);
+  await queued.json();
+  const paymentRequired = async () =>
+    new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
+  const now = new Date();
+  await dispatchOne(env, paymentRequired, now);
+
+  let coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  let entry = ledgerEntry(coordinator, routeId);
+  const blockedUntil = entry.blocked_until;
+  assert.ok(blockedUntil, "the 402 must have blocked the route");
+  assert.ok(entry.payment_required_at, "and stamped when it did");
+
+  // Now let a success land whose request began before that 402 was recorded. Rewinding the stamp
+  // into the future is equivalent to the success having started earlier, without needing two real
+  // concurrent dispatches.
+  entry.payment_required_at = new Date(now.getTime() + 60_000).toISOString();
+  entry.blocked_until = null; // let the route be selectable so the success can dispatch at all
+  await env.LLM_QUEUE.put(DISPATCH_COORDINATOR_KEY, JSON.stringify(coordinator));
+
+  const queued2 = await handleRequest(chatRequest(undefined, "402-then-stale-success-2"), env);
+  await queued2.json();
+  const ok = async () =>
+    new Response(JSON.stringify({ id: "stale-success", choices: [] }), { status: 200 });
+  const later = new Date(now.getTime() + 10 * 60_000);
+  assert.equal((await dispatchOne(env, ok, later)).status, "completed");
+
+  coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  entry = ledgerEntry(coordinator, routeId);
+  assert.equal(
+    entry.payment_required_streak,
+    1,
+    "a success that predates the 402 must not reset the streak",
+  );
+  assert.ok(entry.payment_required_at, "nor clear the stamp");
 });
 
 test("the blocked_until a real 402 writes is one routeAvailable actually honors", async () => {
@@ -2907,7 +3254,7 @@ test("the blocked_until a real 402 writes is one routeAvailable actually honors"
     new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 402 });
   const now = new Date();
   const result = await dispatchOne(env, paymentRequired, now);
-  assert.equal(result.status, "failed");
+  assert.equal(result.status, "retrying"); // the job is requeued; the route is what gets blocked
 
   const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
   const entry = ledgerEntry(coordinator, routeId);
@@ -3410,4 +3757,84 @@ test("structured-output schema stripping works against the real compiled catalog
   assert.equal(result.status, "completed");
   const sentSchemaText = JSON.stringify(calls[0].response_format.json_schema.schema);
   assert.equal(sentSchemaText.includes("minLength"), false);
+});
+
+test("the 429 route cooldown escalates to the four-hour ceiling and stops there", () => {
+  // Pins the ladder so the ceiling is not lowered back toward the original 30 minutes without a
+  // deliberate decision. NVIDIA's forum reports each request made while blocked extends the
+  // lockout, so a short ceiling means more probes and (if that holds) a lockout that never ends.
+  const now = 1_700_000_000_000;
+  const minutes = (streak) => (rateLimitedBackoffUntil(streak, now) - now) / 60_000;
+  assert.equal(minutes(1), 1);
+  assert.equal(minutes(5), 16);
+  assert.equal(minutes(9), 240, "streak 9 reaches the four-hour ceiling");
+  assert.equal(minutes(20), 240, "and never exceeds it");
+  // Retry-After still wins outright when the provider supplies one.
+  assert.equal((rateLimitedBackoffUntil(9, now, 90) - now) / 1000, 90);
+});
+
+test("the 402 backoff ladder escalates on every weekday, including Sunday", () => {
+  // Regression for a latent calendar collision: streak 1 blocks until tomorrow and streak 2 until
+  // next UTC Monday, so on a Sunday both landed on the same instant and a second 402 bought no
+  // extra cooldown at all. It surfaced as a suite failure on 2026-08-30, a Sunday.
+  for (const day of ["2026-08-30", "2026-08-31", "2026-09-02", "2026-09-05"]) {
+    const now = Date.parse(`${day}T12:00:00Z`);
+    const first = paymentRequiredBackoffUntil(1, now);
+    const second = paymentRequiredBackoffUntil(2, now);
+    const third = paymentRequiredBackoffUntil(3, now);
+    assert.ok(second > first, `${day}: streak 2 must exceed streak 1`);
+    assert.ok(third > second, `${day}: streak 3 must exceed streak 2`);
+  }
+});
+
+test("a 400 whose body reports an upstream failure requeues the job and stands the route down", async () => {
+  // OpenCode Zen's shape, observed 2026-08-30: HTTP 400, but the payload says the *provider*
+  // failed. Classified as terminal, every job that reached it was destroyed rather than retried.
+  const env = isolatedEnv();
+  const routeId = "mistral_large_2512_primary";
+  const queued = await handleRequest(chatRequest(undefined, "upstream-400"), env);
+  const body = await queued.json();
+
+  const upstreamUnavailable = async () =>
+    new Response(
+      JSON.stringify({
+        error: {
+          type: "server_error",
+          message: "Error from provider (Console): Upstream request failed: Model is unavailable.",
+        },
+      }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
+
+  const result = await dispatchOne(env, upstreamUnavailable, new Date());
+  assert.equal(result.status, "retrying", "an unreachable model must not destroy the job");
+
+  const record = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(record.status, "pending");
+  assert.notEqual(record.status, "failed");
+
+  const coordinator = await (await env.LLM_QUEUE.get(DISPATCH_COORDINATOR_KEY)).json();
+  const entry = ledgerEntry(coordinator, routeId);
+  assert.equal(entry.throttle_streak, 1, "the route stands down so siblings are not destroyed too");
+  assert.ok(entry.throttled_until);
+});
+
+test("a genuine 400 still fails terminally", async () => {
+  // The negative case that keeps the rule narrow: a real request defect says nothing about the
+  // provider, and must not be retried just because it shares a status code.
+  const env = isolatedEnv();
+  const queued = await handleRequest(chatRequest(undefined, "genuine-400"), env);
+  const body = await queued.json();
+
+  const badRequest = async () =>
+    new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: "unknown field 'foo'" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
+
+  const result = await dispatchOne(env, badRequest, new Date());
+  assert.equal(result.status, "failed");
+  const record = await (await env.LLM_QUEUE.get(`requests/${body.id}.json`)).json();
+  assert.equal(record.status, "failed");
+  assert.ok(record.error.provider_error?.body_preview, "terminal failures keep their body preview");
 });

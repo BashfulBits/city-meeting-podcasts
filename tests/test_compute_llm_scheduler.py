@@ -342,11 +342,11 @@ def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
 
 
 def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
-    """Mistral Large route matches the upstream 0.07-RPS (4 RPM) ceiling halved for split-cap."""
+    """Mistral Large route matches the upstream 0.07-RPS (4 RPM) ceiling with split-cap lifted."""
     route = ROUTES["mistral/mistral-large-2512"]
     assert route.transport == "direct"
     assert set(route.transports) == {"direct", "llm-dispatch"}
-    assert route.quota.rpm == 2
+    assert route.quota.rpm == 4
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():
@@ -424,9 +424,8 @@ def test_select_and_reserve_dual_transport_direct_vs_overflow_owner():
     assert overflow_selection.transport == "llm-dispatch"
     assert overflow_selection.owner == "recipe-overflow"
 
-
-def test_production_mistral_medium_is_available_directly_after_catalog_expansion():
-    model = "mistral/mistral-medium-latest"
+    model = "mistral/mistral-medium-2508"
+    canonical = "mistral/mistral-medium-latest"
     direct = select_route(
         LLMRequestPolicy(allowed_models=(model,)),
         routes=ROUTES,
@@ -435,7 +434,7 @@ def test_production_mistral_medium_is_available_directly_after_catalog_expansion
         estimated_tokens=1024,
         now=NOW,
     )
-    assert direct.model == model
+    assert direct.model == canonical
     assert direct.transport == "direct"
 
     included = select_route(
@@ -446,7 +445,7 @@ def test_production_mistral_medium_is_available_directly_after_catalog_expansion
         estimated_tokens=1024,
         now=NOW,
     )
-    assert included.model == model
+    assert included.model == canonical
     assert included.transport == "direct"
 
 

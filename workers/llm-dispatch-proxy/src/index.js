@@ -37,7 +37,14 @@ const DEFAULT_MAX_EXECUTION_SECONDS = 13 * 60 + 40; // 820s
 // without returning to the old prompt-scanning design.
 const DEFAULT_BATCH_CONCURRENCY = 1;
 const DEFAULT_MAX_TOTAL_REQUESTS = 1;
-const DEFAULT_READY_LOOKAHEAD = 500;
+// Ready markers are listed in `available_at` order and only this many are ever examined, so the
+// window is also a fairness boundary, not just a CPU guard. Measured 2026-08-30: 6,447 ready
+// markers, of which the first 500 were 500 long-lane jobs and 0 fast-lane -- every one of the 451
+// fast jobs sat beyond the window and was unreachable until the 5,996 long jobs ahead of them
+// drained. Listing is I/O, not CPU (a full invocation measured 11ms of CPU), so 1000 buys twice
+// the reach at negligible cost. It does not fix the underlying unfairness -- a long-lane backlog
+// larger than the window still starves the fast lane -- see the lane-aware scan follow-up.
+const DEFAULT_READY_LOOKAHEAD = 1000;
 // Maximum delay an admitted candidate is allowed to wait in memory before initiating its
 // upstream HTTP/TCP connection. Kept small (20s) so the connection is established well within
 // Cloudflare's 30-second idle/execution limit while enabling high-RPM models (e.g. Gemma 4 at 30 RPM = 2s)
@@ -994,6 +1001,39 @@ function retryableStatus(status) {
   return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
+/**
+ * A 4xx whose *body* reports a provider-side failure: the status blames the request, the payload
+ * blames the upstream. Treated as transport, not as a defect in the job.
+ *
+ * OpenCode Zen returns HTTP 400 with `{"error":{"type":"server_error","message":"Error from
+ * provider (Console): Upstream request failed: Model is unavailable."}}` while still advertising
+ * the model in its own /v1/models listing. Classified as terminal, every job that reached it was
+ * destroyed rather than retried -- the third variant of this failure shape in one day, after
+ * NVIDIA's empty-body 404s and OpenRouter's hung-body `invalid_upstream_json`. In each case we
+ * never reached a working model, and nothing about the job caused it.
+ *
+ * Deliberately narrow. It applies only to 400 (other 4xx really are request defects: 401 bad
+ * credentials, 404 unknown model, 422 schema), and only when the body self-identifies as a server
+ * or upstream failure. A provider that returns a genuine 400 for a malformed request says nothing
+ * of the sort, and still fails terminally as it should.
+ *
+ * Sniffing a body to decide retryability is fragile, so the alternative is worth naming: the
+ * honest fix is providers using accurate status codes, which we do not control. The cost of a
+ * false positive here is a wasted retry against a bounded `attempts`; the cost of a false negative
+ * is a permanently destroyed job needing an operator requeue.
+ */
+function upstreamCapacityFailure(status, providerError) {
+  if (status !== 400 || !providerError) return false;
+  if (String(providerError.provider_type || "").toLowerCase() === "server_error") return true;
+  const message = String(providerError.message || "").toLowerCase();
+  return (
+    message.includes("upstream request failed") ||
+    message.includes("model is unavailable") ||
+    message.includes("no capacity") ||
+    message.includes("temporarily unavailable")
+  );
+}
+
 function retryDelaySeconds(response, attempts, cfg) {
   const retryAfter = response ? Number(response.headers?.get?.("retry-after") || response.headers?.["retry-after"]) : NaN;
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
@@ -1380,10 +1420,66 @@ function nextLocalMidnightUTC(date, timeZone = "UTC") {
 }
 
 /**
+ * `Retry-After` in either RFC 9110 form: delay-seconds, or an HTTP-date. Returns seconds relative
+ * to `nowMs`, or null when the header is absent or unparseable. A bare `Number()` silently yields
+ * NaN for the date form, which would discard a provider's own deadline in favour of our guess.
+ * `0` is a legitimate value meaning "retry immediately" and is preserved, not treated as absent.
+ */
+function parseRetryAfterSeconds(raw, nowMs) {
+  if (raw == null || raw === "") return null;
+  const asSeconds = Number(raw);
+  if (Number.isFinite(asSeconds)) return Math.max(0, asSeconds);
+  const asDate = Date.parse(raw);
+  if (Number.isFinite(asDate)) return Math.max(0, (asDate - nowMs) / 1000);
+  return null;
+}
+
+const RATE_LIMIT_BACKOFF_BASE_MS = 60_000;
+const RATE_LIMIT_BACKOFF_CAP_MS = 4 * 60 * 60_000;
+
+/**
+ * Escalating cooldown for a route whose most recent attempt came back HTTP 429.
+ *
+ * Retrying the *job* is not enough. A provider that enforces a quota window answers every request
+ * with 429 until the window rolls, so with only per-job backoff each remaining queued job is still
+ * admitted at the route's normal rpm and rejected in turn. Measured against NVIDIA on 2026-08-29:
+ * two lockouts of 26.1 and 27.0 minutes, each absorbing 54 and 47 consecutive 429s -- roughly 50
+ * wasted dispatches per cycle, none of which could have succeeded. Standing the whole route down
+ * turns that into about one probe per cooldown.
+ *
+ * `Retry-After` wins when the provider sends one, since it is authoritative. NVIDIA sends none, so
+ * the fallback doubles from a minute, reaching four hours at streak 9.
+ *
+ * The cap is four hours, not the half-hour first shipped, because probing may be what sustains the
+ * lockout. NVIDIA's developer forum reports that "with each new request made while still blocked,
+ * your lockout duration increases (Exponential Backoff)" -- so a 30-minute ceiling means ~48 probes
+ * a day, each potentially re-extending it. That matched what we saw: `deepseek-v4-pro` sat pinned
+ * at the 30-minute cap (throttle_streak 12) and still 429'd 5.5 hours after the lockout began.
+ * Raising the ceiling is also the cheap experiment for that theory -- if lockouts shorten once we
+ * probe roughly hourly instead of half-hourly, probing was the cause. The claim is a community
+ * reply rather than NVIDIA documentation, so treat it as the best available explanation, not fact.
+ *
+ * The cost of guessing high is bounded: a route that recovers early is idle until the next probe,
+ * and any success clears the streak immediately. The cost of guessing low, if the theory holds, is
+ * a lockout that never ends.
+ *
+ * `streak` is the count AFTER this occurrence, reset to 0 by a later success on that route, so it
+ * only grows across consecutive 429s with no success between them. Returns epoch ms; callers store
+ * it as an ISO string, like every other ledger timestamp here.
+ */
+function rateLimitedBackoffUntil(streak, now, retryAfterSeconds = null) {
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+    return now + Math.min(retryAfterSeconds * 1000, RATE_LIMIT_BACKOFF_CAP_MS);
+  }
+  const exponential = RATE_LIMIT_BACKOFF_BASE_MS * Math.pow(2, Math.max(0, streak - 1));
+  return now + Math.min(exponential, RATE_LIMIT_BACKOFF_CAP_MS);
+}
+
+/**
  * Escalating cooldown for a route whose most recent attempt came back HTTP 402 (payment
- * required / provider-side quota exhausted at the billing layer) -- a distinct signal from 429:
- * 429 means "too fast," already handled by requests_available_at/Retry-After above; 402 means
- * "no budget left until some future reset," which no amount of pacing fixes. Returns epoch ms;
+ * required / provider-side quota exhausted at the billing layer) -- a distinct signal from 429,
+ * which gets its own route cooldown in rateLimitedBackoffUntil below. 402 means "no budget left
+ * until some future reset," which no amount of pacing fixes. Returns epoch ms;
  * callers store it as an ISO string in entry.blocked_until, same as every other ledger timestamp
  * here (see parseTime). Mirrors workers/llm-dispatch-v2/src/pacing.js's function of the same
  * name exactly -- kept as a duplicate, not a shared import, per this repo's existing convention
@@ -1398,14 +1494,26 @@ function nextLocalMidnightUTC(date, timeZone = "UTC") {
  */
 function paymentRequiredBackoffUntil(streak, now) {
   const d = new Date(now);
-  if (streak <= 1) {
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+  const dayOffset = (n) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n);
+  // Intended shape: a day, then a week, then "start of next month" for anything beyond. The raw
+  // calendar values are NOT inherently ordered, so they are combined into a strictly increasing
+  // ladder below rather than returned directly:
+  //   - on a Sunday, "next Monday" IS tomorrow, so rung 2 would equal rung 1;
+  //   - near a month end, "start of next month" can fall BEFORE next Monday, so rung 3 would
+  //     regress below rung 2.
+  // Either way a further 402 would buy no extra cooldown, which is the opposite of an escalation.
+  const daysUntilNextMonday = ((8 - d.getUTCDay()) % 7) || 7;
+  const rungs = [
+    dayOffset(1),
+    dayOffset(daysUntilNextMonday > 1 ? daysUntilNextMonday : daysUntilNextMonday + 7),
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1),
+  ];
+  const target = Math.min(Math.max(Number(streak) || 1, 1), rungs.length);
+  let value = rungs[0];
+  for (let i = 1; i < target; i += 1) {
+    value = Math.max(rungs[i], value + 86_400_000); // at least a day beyond the previous rung
   }
-  if (streak === 2) {
-    const daysUntilNextMonday = ((8 - d.getUTCDay()) % 7) || 7;
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + daysUntilNextMonday);
-  }
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  return value;
 }
 
 function ledgerEntry(budget, routeId) {
@@ -1422,6 +1530,7 @@ function ledgerEntry(budget, routeId) {
       requests_day: 0,
       requests_day_key: "",
       blocked_until: null,
+      throttled_until: null,
       cost_used: 0,
       cost_cycle_key: "",
       cost_day_used: 0,
@@ -1489,6 +1598,11 @@ function routePacingDelayMs(entry, route, nowMs) {
   if (entry.blocked_until && parseTime(entry.blocked_until) > nowMs) {
     return Infinity;
   }
+  // A 429 stands the whole route down, not just the job that hit it: a provider enforcing a quota
+  // window rejects every request until the window rolls.
+  if (entry.throttled_until && parseTime(entry.throttled_until) > nowMs) {
+    return Infinity;
+  }
   let delayMs = 0;
   if (route.rpm != null && entry.requests_available_at) {
     const readyMs = parseTime(entry.requests_available_at);
@@ -1525,15 +1639,25 @@ function routeAvailable(entry, route, { requests, tokens }, now, batch = null, m
   if (entry.blocked_until && parseTime(entry.blocked_until) > now.getTime()) {
     return false;
   }
+  if (entry.throttled_until && parseTime(entry.throttled_until) > now.getTime()) {
+    return false;
+  }
   if (route.rpm != null) {
     const nextRequestAt = entry.requests_available_at
       ? parseTime(entry.requests_available_at)
       : null;
     // Pacing allows delays within maxStaggerMs. The minute counter remains as a
     // compatibility fallback for ledgers written by older Worker versions.
+    //
+    // Use the requested size as the compatibility bucket floor because this is a per-MINUTE
+    // counter, while continuous pacing handles the actual fractional rate. A structured call
+    // reserves two attempts; without this floor, an empty legacy ledger at 0.25 rpm would reject
+    // 0 + 2 <= 0.25 before reserveRouteCapacity can write its requests_available_at timestamp.
+    // Real spacing comes from that timestamp (60000/rpm), which is exact for fractional rates.
+    const minuteBucket = Math.max(requests, route.rpm);
     if (
       (nextRequestAt != null && nextRequestAt - now.getTime() > maxStaggerMs) ||
-      (nextRequestAt == null && entry.requests_minute + requests > route.rpm)
+      (nextRequestAt == null && entry.requests_minute + requests > minuteBucket)
     ) {
       return false;
     }
@@ -1671,7 +1795,9 @@ function nextRouteReset(entry, route, now, dispatchLimits = DISPATCH_LIMITS, bud
     if (entry.requests_available_at) {
       const requestReadyMs = parseTime(entry.requests_available_at);
       if (requestReadyMs > now.getTime()) candidates.push(new Date(requestReadyMs));
-    } else if (entry.requests_minute >= route.rpm) {
+    } else if (entry.requests_minute >= Math.max(1, route.rpm)) {
+      // A sub-1 rpm route is spaced by requests_available_at (the branch above), not by this
+      // minute-boundary fallback.
       candidates.push(new Date(nextMinuteMs));
     }
   }
@@ -1906,7 +2032,13 @@ function resolveProviderCredentials(env, route, dispatchLimits = DISPATCH_LIMITS
     url = `${aiGatewayBase}/${gatewaySlug}${gatewayPath}`;
   }
 
-  return { apiKey, url, upstreamModel: route.upstream_model, usesGateway: Boolean(aiGatewayBase) };
+  return {
+    apiKey,
+    url,
+    upstreamModel: route.upstream_model,
+    usesGateway: Boolean(aiGatewayBase),
+    aiGatewayMaxAttempts: route.ai_gateway_max_attempts ?? providerCfg.ai_gateway_max_attempts ?? null,
+  };
 }
 
 function eligibleRoutesForModel(canonicalModel, policy, now, dispatchLimits = DISPATCH_LIMITS) {
@@ -2687,6 +2819,9 @@ async function dispatchBatch(
           if (creds.usesGateway && env.AI_GATEWAY_AUTH_TOKEN) {
             headers["cf-aig-authorization"] = `Bearer ${env.AI_GATEWAY_AUTH_TOKEN}`;
           }
+          if (creds.usesGateway && creds.aiGatewayMaxAttempts != null) {
+            headers["cf-aig-max-attempts"] = String(creds.aiGatewayMaxAttempts);
+          }
           response = await fetchImpl(creds.url, {
             method: "POST",
             headers,
@@ -2761,6 +2896,34 @@ async function dispatchBatch(
         }
 
         if (!response.ok) {
+          // The wall clock when THIS response arrived. `now` is the batch's start time, which is
+          // wrong twice over for cooldown bookkeeping: it shortens the cooldown by however long
+          // the upstream call took, and it stamps the guard early enough that a sibling which
+          // started after the batch began but before this rejection landed would look like it
+          // postdates the rejection -- so its later success would clear a cooldown it never saw.
+          const respondedAt = new Date();
+          if (response.status === 429) {
+            // Route-level cooldown, not just the per-job retry below. Without this every other
+            // queued job keeps being admitted at the normal rpm straight into a provider's quota
+            // lockout and rejected in turn (NVIDIA, 2026-08-29: ~50 wasted dispatches per cycle).
+            const throttleEntry = ledgerEntry(coordinator, chosenRoute.route_id);
+            throttleEntry.throttle_streak = (throttleEntry.throttle_streak || 0) + 1;
+            const retryAfterSeconds = parseRetryAfterSeconds(
+              response.headers?.get?.("retry-after"),
+              respondedAt.getTime(),
+            );
+            throttleEntry.throttled_until = new Date(
+              rateLimitedBackoffUntil(
+                throttleEntry.throttle_streak,
+                respondedAt.getTime(),
+                retryAfterSeconds,
+              ),
+            ).toISOString();
+            // Stamped for the same reason as payment_required_at: a slower sibling that started
+            // before this 429 must not clear a cooldown it knows nothing about.
+            throttleEntry.throttled_at = respondedAt.toISOString();
+            ledgerMutatedAfterDispatch = true;
+          }
           if (response.status === 402) {
             // Payment required / provider quota exhausted -- a billing-layer signal no amount of
             // rpm/rpd/tpm pacing fixes, so force the whole route unavailable via blocked_until
@@ -2771,18 +2934,50 @@ async function dispatchBatch(
             const entry = ledgerEntry(coordinator, chosenRoute.route_id);
             entry.payment_required_streak = (entry.payment_required_streak || 0) + 1;
             entry.blocked_until = new Date(
-              paymentRequiredBackoffUntil(entry.payment_required_streak, now.getTime()),
+              paymentRequiredBackoffUntil(entry.payment_required_streak, respondedAt.getTime()),
             ).toISOString();
+            // Stamped so a slower sibling that STARTED before this 402 cannot clear the block it
+            // knows nothing about. Without a concurrency cap a batch runs several requests on one
+            // route, and an in-flight success landing afterwards would otherwise reopen an
+            // exhausted route -- now that a 402 requeues its job rather than failing it, that job
+            // would come straight back and burn another attempt.
+            entry.payment_required_at = respondedAt.toISOString();
             ledgerMutatedAfterDispatch = true;
           }
           const elapsedSec = Math.max(1, Math.round((Date.now() - requestStartMs) / 1000));
-          const willRetry =
-            retryableStatus(response.status) && claimed.record.attempts < cfg.maxAttempts;
+          // A 402 is a route-level budget signal, not a defect in this job. The branch above has
+          // already blocked the whole route, so the job that happened to discover the exhausted
+          // budget is collateral -- failing it burns one recoverable job per cooldown lapse, per
+          // route (observed 2026-08-26: exactly 2 per route, matching payment_required_streak=2).
+          // Requeue it instead: admission keeps it off the now-blocked route, so it runs on an
+          // overflow route or once the cooldown clears. `attempts` still bounds it, so a route
+          // that stays 402 across every cooldown cannot loop the job forever.
+          // The body has to be read BEFORE retryability is decided: a 400 that turns out to be a
+          // provider-side failure (see upstreamCapacityFailure) is transport, not a bad request,
+          // and only the payload distinguishes the two. Read with the preview, then drop it if we
+          // end up retrying -- the preview exists to explain terminal failures, and keeping it on
+          // a record that will run again just bloats the queue object.
           const errorReadStartedAt = profileNow();
-          const providerError = await readUpstreamError(response, {
-            persistBodyPreview: !willRetry,
-          });
+          const providerError = await readUpstreamError(response, { persistBodyPreview: true });
           profile.error_read_ms = profileElapsed(errorReadStartedAt);
+          const capacityFailure = upstreamCapacityFailure(response.status, providerError);
+          const willRetry =
+            (retryableStatus(response.status) || response.status === 402 || capacityFailure) &&
+            claimed.record.attempts < cfg.maxAttempts;
+          if (willRetry && providerError && "body_preview" in providerError) {
+            delete providerError.body_preview;
+          }
+          if (capacityFailure) {
+            // Stand the route down like a 429: the model is unreachable, so every other queued job
+            // admitted onto it would be destroyed in turn.
+            const capacityEntry = ledgerEntry(coordinator, chosenRoute.route_id);
+            capacityEntry.throttle_streak = (capacityEntry.throttle_streak || 0) + 1;
+            capacityEntry.throttled_until = new Date(
+              rateLimitedBackoffUntil(capacityEntry.throttle_streak, respondedAt.getTime()),
+            ).toISOString();
+            capacityEntry.throttled_at = respondedAt.toISOString();
+            ledgerMutatedAfterDispatch = true;
+          }
           const errorDetail = {
             code: "upstream_error",
             status: response.status,
@@ -2933,9 +3128,38 @@ async function dispatchBatch(
         // A successful call proves the route is healthy again -- clear any 402 backoff state,
         // matching the branch above that sets it.
         const successEntry = ledgerEntry(coordinator, chosenRoute.route_id);
-        if (successEntry.payment_required_streak || successEntry.blocked_until) {
+        const throttledAtMs = successEntry.throttled_at
+          ? parseTime(successEntry.throttled_at)
+          : null;
+        if (
+          (throttledAtMs == null || requestStartMs > throttledAtMs) &&
+          (successEntry.throttle_streak || successEntry.throttled_until || successEntry.throttled_at)
+        ) {
+          successEntry.throttle_streak = 0;
+          successEntry.throttled_until = null;
+          successEntry.throttled_at = null;
+          ledgerMutatedAfterDispatch = true;
+        }
+        const blockedAtMs = successEntry.payment_required_at
+          ? parseTime(successEntry.payment_required_at)
+          : null;
+        // Only a call that began STRICTLY AFTER the most recent 402 proves the route recovered.
+        // One already in flight when the 402 landed proves nothing about the account's balance.
+        // Equality is not proof of ordering -- `Date.now()` has millisecond granularity, so a
+        // request that genuinely started before the rejection can share its millisecond. Erring
+        // strict costs only an un-reset streak (the next cooldown starts a rung higher, and
+        // `blocked_until` still expires on its own); erring loose re-admits work to a route whose
+        // budget is actually exhausted, which is the whole thing this guard prevents.
+        const provesRecovery = blockedAtMs == null || requestStartMs > blockedAtMs;
+        if (
+          provesRecovery &&
+          (successEntry.payment_required_streak ||
+            successEntry.blocked_until ||
+            successEntry.payment_required_at)
+        ) {
           successEntry.payment_required_streak = 0;
           successEntry.blocked_until = null;
+          successEntry.payment_required_at = null;
           ledgerMutatedAfterDispatch = true;
         }
 
@@ -3401,6 +3625,7 @@ export {
   ledgerEntry,
   normalizeChatRequest,
   paymentRequiredBackoffUntil,
+  rateLimitedBackoffUntil,
   rankRoutes,
   releaseCoordinator,
   releaseCronLease,

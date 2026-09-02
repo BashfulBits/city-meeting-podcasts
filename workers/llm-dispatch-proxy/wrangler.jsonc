@@ -40,14 +40,30 @@
     "FAST_UPSTREAM_TIMEOUT_SECONDS": "90",
     "UPSTREAM_TIMEOUT_SECONDS": "720",
     "FINALIZATION_RESERVE_SECONDS": "20",
-    // The free plan permits only 10ms of CPU for this per-minute cron, so batch size is set from
-    // measured production `cpuTime` rather than from provider capacity (review/43).  Measured per
-    // invocation: N=1 8.2ms, N=2 9.9ms, N=3 15.5ms -- and per *request* 8.2ms, 4.95ms, 5.2ms.
-    // N=2 is both the throughput and the efficiency optimum; N=3 is superlinear (three canonical
-    // records live at once) and is worse per request than N=2.  Raising this further needs a
-    // delivery change, not a bigger batch.
-    "BATCH_CONCURRENCY": "2",
-    "MAX_TOTAL_REQUESTS": "2",
+    // BATCH_CONCURRENCY is the number of provider calls in flight at once; MAX_TOTAL_REQUESTS is
+    // how many jobs one invocation may dispatch in total. Both matter, and raising either alone
+    // does nothing: the run loop dispatches min(BATCH_CONCURRENCY, MAX_TOTAL_REQUESTS - done)
+    // per batch and exits once MAX_TOTAL_REQUESTS is reached.
+    //
+    // These were 2 and 2, chosen from measured CPU (N=1 8.2ms, N=2 9.9ms, N=3 15.5ms) against the
+    // free plan's 10ms-per-invocation budget. What that reasoning missed is that an invocation
+    // holds an *exclusive* lease for its whole duration -- every other cron tick returns
+    // lease_busy in ~180ms -- so 2 was not 2 per tick, it was 2 in flight for the entire system
+    // until the invocation ended. With a 12-minute upstream timeout and reasoning models running
+    // 132-666s, that capped the dispatcher near 10 jobs an hour while rpm/tpm sat nearly unused:
+    // nothing was ever allowed in flight to consume them. Measured 2026-08-29: 37 dispatches/hour
+    // fell to 5 as call durations grew, with occupancy flat at ~3200 of every 3600 seconds.
+    //
+    // The 10ms budget is a soft average, not a per-invocation kill, and waiting on a socket costs
+    // no CPU -- a 747-second invocation measured 11ms. Since only one invocation is ever
+    // dispatching, the fleet average stays far below the budget even when the leaseholder spikes:
+    // the other ~119 ticks an hour cost ~0ms each. Extrapolating the measured curve, N=6 is
+    // roughly 25-30ms on the leaseholder alone.
+    //
+    // Start at 6 in flight / 12 per invocation and re-measure `cpuTime` before going further;
+    // both are env-overridable, but changing them needs a deploy.
+    "BATCH_CONCURRENCY": "6",
+    "MAX_TOTAL_REQUESTS": "12",
     // Keep all failure profiles but sample detailed successful dispatch profiles to reduce log
     // serialization and object churn. Set to 1 temporarily for a full diagnostic tail.
     "PROFILE_SAMPLE_RATE": "0.1",
