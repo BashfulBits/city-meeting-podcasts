@@ -22,7 +22,13 @@ name: LLM deferred sweep
 on:
   schedule:
     - cron: "30 5,11,17,23 * * *" # every 6h; the 17:30 run is 1h into DeepSeek's off-peak window
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      repair_index:
+        description: "Rebuild B2 pointer index (--repair-index)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     # The v1 registry is temporary but has a large legacy tail. Keep 15 minutes for Actions
     # teardown after the 90-minute reap pass rather than cancelling a verified B2 completion.
-    timeout-minutes: 105
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -77,4 +83,9 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        run: python scripts/llm_deferred_sweep.py --run-time-budget-minutes 90
+        run: |
+          if [ "${{ inputs.repair_index }}" = "true" ]; then
+            python scripts/llm_deferred_sweep.py --repair-index
+          else
+            python scripts/llm_deferred_sweep.py --run-time-budget-minutes 90
+          fi

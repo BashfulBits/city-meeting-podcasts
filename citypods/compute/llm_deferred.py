@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import tempfile
 from collections.abc import Callable, Mapping
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -909,6 +909,8 @@ def repair_deferred_index(
     *,
     now: datetime | None = None,
     unavailable: list[StorageReadUnavailable] | None = None,
+    workers: int = SNAPSHOT_READ_WORKERS,
+    progress_interval: int = 1000,
 ) -> int:
     """Rebuild pending pointers from canonical B2 records and atomically finish migration.
 
@@ -921,20 +923,48 @@ def repair_deferred_index(
     repaired = 0
     desired: set[str] = set()
     had_unavailable = False
-    for key, _ in storage.list_objects(DEFERRED_PREFIX):
+
+    candidates = [
+        key
+        for key, _ in storage.list_objects(DEFERRED_PREFIX)
+        if key.startswith(DEFERRED_PREFIX) and key.endswith(".json")
+    ]
+    total = len(candidates)
+    if total > 0:
+        print(f"llm-deferred-sweep: repair starting for {total} canonical records", flush=True)
+
+    def _process_candidate(key: str) -> tuple[int, set[str], StorageReadUnavailable | None]:
         try:
             data = _read_json(storage, key)
         except StorageReadUnavailable as exc:
-            had_unavailable = True
-            if unavailable is not None:
-                unavailable.append(exc)
-            continue
+            return 0, set(), exc
         if not isinstance(data, Mapping):
-            continue
+            return 0, set(), None
         recipe_hash = key[len(DEFERRED_PREFIX) : -len(".json")]
         _write_index_strict(storage, data, recipe_hash)
-        desired.update(_index_keys(data, recipe_hash=recipe_hash))
-        repaired += 1
+        return 1, _index_keys(data, recipe_hash=recipe_hash), None
+
+    started_at = datetime.now(UTC)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_process_candidate, key): key for key in candidates}
+        for idx, future in enumerate(as_completed(futures), 1):
+            count, keys, error = future.result()
+            if error is not None:
+                had_unavailable = True
+                if unavailable is not None:
+                    unavailable.append(error)
+            repaired += count
+            desired.update(keys)
+            if progress_interval > 0 and (idx % progress_interval == 0 or idx == total):
+                elapsed = (datetime.now(UTC) - started_at).total_seconds()
+                rate = idx / elapsed if elapsed > 0 else 0.0
+                pct = (idx / total * 100) if total > 0 else 100.0
+                print(
+                    f"llm-deferred-sweep: repair progress {idx}/{total} ({pct:.1f}%) "
+                    f"[{elapsed:.0f}s elapsed, {rate:.1f} rec/s, repaired={repaired}]",
+                    flush=True,
+                )
+
     # Do not compact while any canonical record was unavailable: its existing pointer may be the
     # only route by which the next sweep can rediscover that record. Strict pointer writes happen
     # before compaction, so a failed write also leaves the old index available for dual-read.

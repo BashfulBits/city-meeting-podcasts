@@ -423,10 +423,7 @@ def main(argv: list[str] | None = None) -> int:
             if terminal_page_fully_consumed and isinstance(cursor, dict):
                 write_v2_terminal_cursor(storage, cursor)
         except Exception as exc:  # noqa: BLE001 -- leave cursor untouched for the next cadence
-            print(
-                f"llm-deferred-sweep: v2 terminal feed failed: {type(exc).__name__}",
-                file=sys.stderr,
-            )
+            print(f"llm-deferred-sweep: v2 terminal feed failed: {exc}", file=sys.stderr)
 
     if not stop_state.requested and datetime.now(UTC) < deadline_at:
         handled_recipe_hashes: set[str] = set()
