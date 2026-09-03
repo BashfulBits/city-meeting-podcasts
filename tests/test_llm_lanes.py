@@ -24,6 +24,7 @@ from citypods.compute.llm_lanes import (
     NON_DISPATCHING_PURPOSES,
     LaneConfig,
     UnregisteredLaneError,
+    clear_cache,
     lane_for,
     load_lanes,
     parse_lanes,
@@ -105,6 +106,13 @@ class TestParsing:
         with pytest.raises(ValueError, match=field):
             parse_lanes(_lane(**{field: "lots"}))
 
+    def test_rejects_a_run_cap_above_what_the_daily_budget_funds(self):
+        # Not a harmless ceiling: the producer submits to the run cap and the Worker rejects
+        # everything past the daily budget, so the surplus is wasted ingress traffic that reads
+        # as a lane failing to fill its quota. Four lanes shipped with this skew.
+        with pytest.raises(ValueError, match="rejected at ingress"):
+            parse_lanes(_lane(max_dispatches_per_run=100, daily_write_units=100))
+
     def test_rejects_registering_a_non_dispatching_purpose(self):
         with pytest.raises(ValueError, match="never reaches the ingress Worker"):
             parse_lanes({"topic-tags:rules": _lane()["a-purpose"]})
@@ -157,6 +165,9 @@ class TestLaneLookup:
         # silently found no config because a tool ran from a subdirectory would change those
         # hashes and re-queue the catalog.
         monkeypatch.chdir(tmp_path)
+        # Without this the assertion can be satisfied from a cache entry populated by an earlier
+        # test, which would pass whether or not the lookup is actually CWD-independent.
+        clear_cache()
         assert lane_for("chapter-agenda").primary_model
 
 
@@ -184,6 +195,10 @@ class TestRepositoryConfig:
             assert entry["reserved_write_units"] == lane.reserved_write_units
             assert entry["daily_write_units"] == lane.daily_write_units
             assert entry["models"] == list(lane.models)
+
+    def test_every_lane_run_cap_is_funded_by_its_daily_budget(self):
+        for lane in load_lanes().values():
+            assert lane.max_dispatches_per_run <= lane.max_jobs_per_day, lane.purpose
 
     def test_site_config_no_longer_carries_duplicate_model_lists(self):
         # These keys moved into `llm_lanes`. Leaving a copy behind is how the two lists drifted
@@ -244,3 +259,44 @@ class TestTournamentGrid:
         from citypods.tournament import JUDGE_MODEL, MODELS
 
         assert JUDGE_MODEL not in MODELS
+
+
+class TestJudgePanel:
+    def test_absent_or_empty_allowlist_uses_the_whole_configured_panel(self):
+        from citypods.moment_judging import JUDGE_MODELS, judge_models
+
+        # MomentJudgeStage reads `judges.models` from site config, which no longer carries a list,
+        # so the empty case is the normal one. Treating it as an empty intersection would disable
+        # judging with no error anywhere.
+        assert judge_models(None) == JUDGE_MODELS
+        assert judge_models(()) == JUDGE_MODELS
+        assert judge_models([]) == JUDGE_MODELS
+
+    def test_a_matching_allowlist_narrows_the_panel(self):
+        from citypods.moment_judging import JUDGE_MODELS, judge_models
+
+        assert judge_models([JUDGE_MODELS[0]]) == (JUDGE_MODELS[0],)
+
+    def test_a_non_matching_allowlist_is_an_error_not_a_silent_disable(self):
+        from citypods.moment_judging import judge_models
+
+        with pytest.raises(ValueError, match="matches none of"):
+            judge_models(["retired/typo-route"])
+
+
+class TestTournamentSampleBudget:
+    def test_budget_respects_both_lanes_and_fits_each(self):
+        from citypods.tournament import CONTESTS, MODELS
+
+        tag = lane_for("tournament:tag")
+        judge = lane_for("tournament:tag-judge")
+        # One sample spends from two independent lane budgets: len(MODELS) candidate jobs against
+        # tournament:tag and len(CONTESTS)*2 comparisons against tournament:tag-judge. Dividing
+        # either budget by the COMBINED count would overrun the other lane.
+        samples = min(
+            tag.max_dispatches_per_run // len(MODELS),
+            judge.max_dispatches_per_run // (len(CONTESTS) * 2),
+        )
+        assert samples >= 1
+        assert samples * len(MODELS) <= tag.max_dispatches_per_run
+        assert samples * len(CONTESTS) * 2 <= judge.max_dispatches_per_run

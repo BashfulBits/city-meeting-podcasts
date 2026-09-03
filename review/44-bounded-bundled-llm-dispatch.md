@@ -1880,8 +1880,8 @@ together because the first is what made the other two invisible.
 
 `_purposeForJob` returns the purpose verbatim and `ingressReservations[purpose]` is an exact lookup
 — there is no prefix normalization — so the `topic-tags` and `moments` entries matched nothing.
-Worse than being merely inert: `claimDispatchWindow`'s admission check subtracts **every other
-purpose's** `reserved_write_units` from the headroom a job may use, so those two unreachable keys
+Worse than being merely inert: `enqueueBatch`'s admission check (and `schemaRetry`'s) subtracts
+**every other purpose's** `reserved_write_units` from the headroom a job may use, so those two unreachable keys
 withheld **10,000 of the 30,000 daily ingress write units** from every real lane while remaining
 unusable by the lanes they were named for. Nothing failed; the lanes just quietly had less capacity
 than the config said.
@@ -1964,9 +1964,21 @@ review/43 step 4's decision, not a knob change.
 ### 4. Producer-side quota and failure reporting
 
 - **The tournament was hard-clamped to 2 samples/run** by `min(args.samples, 2)` in `main()`, i.e.
-  ~32 jobs/day against a lane budget sized for far more. The per-run budget now comes from
-  `llm_lanes["tournament:tag"].max_dispatches_per_run` and `llm-tournament.yml` no longer passes
-  `--samples`.
+  ~32 jobs/day against a lane budget sized for far more. The per-run budget is now derived from
+  the registry and `llm-tournament.yml` no longer passes `--samples`, yielding 46 samples/run
+  (184 candidate + 552 comparison jobs).
+
+  One sample spends from **two** lanes with independent budgets — `len(MODELS)` candidate jobs
+  against `tournament:tag` and `len(CONTESTS) * 2` comparisons against `tournament:tag-judge` — so
+  the budget is derived per lane and the smaller taken. Dividing either lane's budget by the
+  combined job count would overrun the other (whose surplus the Worker then rejects) while
+  needlessly starving the first. Their daily budgets are split ~1:3 to match that 4:12 job ratio,
+  so both fill on the same sample count instead of one capping the run while the other idles.
+
+  Relatedly, `parse_lanes` now rejects a lane whose `max_dispatches_per_run` exceeds what its
+  `daily_write_units` funds. Four lanes shipped with that skew; a run cap above the daily budget is
+  not a harmless ceiling, because the producer submits to it and the Worker rejects the surplus —
+  wasted ingress traffic that reads as a lane failing to fill its quota.
 - **`tournament.py` and `r5_benchmark.py` built a fresh `LiteLLMBackend` inside their innermost
   loops**, so every candidate generation and every pairwise comparison was its own Worker request —
   the ingress shape the 2026-08-18 retrospective flagged — and `LiteLLMBackend`'s per-instance

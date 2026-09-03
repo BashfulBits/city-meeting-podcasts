@@ -59,7 +59,17 @@ def judge_models(configured: list[str] | tuple[str, ...] | None = None) -> tuple
     """
     if not configured:
         return JUDGE_MODELS
-    return tuple(model for model in JUDGE_MODELS if model in configured)
+    narrowed = tuple(model for model in JUDGE_MODELS if model in configured)
+    if not narrowed:
+        # A non-empty allowlist that matches nothing is a config error -- a retired or misspelled
+        # route -- not a request to disable judging. Returning () would make MomentJudgeStage
+        # return early at `if not models`, so an operator who fat-fingered a route name would see
+        # judging stop with no error anywhere. Fail where the mistake is.
+        raise ValueError(
+            f"configured R6 judge allowlist {tuple(configured)!r} matches none of the "
+            f"llm_lanes['r6-judge'] panel {JUDGE_MODELS!r}; fix the allowlist or the lane"
+        )
+    return narrowed
 
 
 def judge_policy(configured: list[str] | tuple[str, ...] | None = None) -> LLMRequestPolicy:

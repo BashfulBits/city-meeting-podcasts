@@ -559,6 +559,11 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     # generation for each contestant and each pairwise comparison -- is collected here and
     # submitted in one bounded batch per model at the end, instead of one Worker request per job.
     backends = PerModelBatchingBackends(lambda model: _backend(model, storage))
+    # Comparison submissions that failed outright. These come back from `dispatch_job_batch` as
+    # per-item Exceptions and are recorded against their own comparison below, so they never reach
+    # `backends.flush()`'s outcome list -- without collecting them here the run could queue no
+    # judge job at all and still exit 0.
+    comparison_submit_errors: list[str] = []
     for ep, record, chapter in episodes[:samples]:
         chapter_id = str(chapter["chapter_id"])
         if not (
@@ -609,8 +614,14 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                 contest_failed = True
                 break
             if pending:
-                contest_failed = True
-                break
+                # Keep going rather than breaking. Every contestant's job is built against the
+                # run-scoped collector, which hands back a provisional handle for anything not yet
+                # resolved -- so the FIRST unresolved contestant makes every later one "pending"
+                # too. Breaking here would queue exactly one contestant per run and take one run
+                # per model to fill a sample. Finalization is still correctly deferred by the
+                # `len(outputs) != len(MODELS)` guard below, since a pending model records no
+                # output.
+                continue
             outputs[model] = chapter_tags.get(chapter_id, [])
         if contest_failed or len(outputs) != len(MODELS):
             continue
@@ -709,6 +720,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     # (e.g. LLMBackendError) -- same per-comparison isolation the old code's
                     # `except LLMBackendError` gave a single pairwise_judge call.
                     print(f"llm-tournament: skipping {ep.uid!r} judge {judge}: {result}")
+                    comparison_submit_errors.append(f"{item.comparison_key}: {result}")
                     comparison_store[item.comparison_key] = {
                         "status": "error",
                         "comparison_id": item.comparison_key,
@@ -749,10 +761,13 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     # resolves on a later run from its durable record, exactly as a pending job always has.
     queued = backends.queued_count
     outcomes = backends.flush()
-    submit_errors = PerModelBatchingBackends.submission_errors(outcomes)
+    flush_errors = [
+        str(outcome.result) for outcome in PerModelBatchingBackends.submission_errors(outcomes)
+    ]
+    submit_errors = flush_errors + comparison_submit_errors
     print(
         f"llm-tournament: LLM batch flush: jobs={len(outcomes)} queued={queued} "
-        f"errors={len(submit_errors)}",
+        f"errors={len(flush_errors)} comparison_errors={len(comparison_submit_errors)}",
         flush=True,
     )
 
@@ -764,8 +779,8 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
         # A failed submission is not a deferral: nothing is queued, so no later run picks it up
         # unless this one says so. Report it as a run failure rather than exiting 0 with the work
         # silently dropped.
-        for outcome in submit_errors[:10]:
-            print(f"llm-tournament: submission failed: {outcome.result}", flush=True)
+        for error in submit_errors[:10]:
+            print(f"llm-tournament: submission failed: {error}", flush=True)
         print(
             f"llm-tournament: {len(submit_errors)} job(s) failed to submit; "
             "no work was queued for them",
@@ -790,16 +805,28 @@ def main(argv: list[str] | None = None) -> int:
         return package_ticket(
             site_config_path=args.site_config, output_dir=args.output_dir, out_dir=args.out_dir
         )
-    # The per-run sample budget comes from `llm_lanes["tournament:tag"].max_dispatches_per_run`,
-    # not a magic constant. It used to be hard-clamped to 2 regardless of --samples, which meant
-    # the lane could never dispatch more than ~2 samples' worth of work per day (8 candidate jobs
-    # plus 24 comparisons) against a budget sized for far more -- one of the concrete reasons the
-    # research lanes never came close to filling their quota. Each sample costs one candidate job
-    # per contestant plus one comparison per ordered pair, so convert the job budget into samples
-    # rather than comparing it to a sample count directly.
-    lane = lane_for("tournament:tag")
-    jobs_per_sample = len(MODELS) + len(CONTESTS) * 2
-    sample_budget = max(1, lane.max_dispatches_per_run // max(1, jobs_per_sample))
+    # The per-run sample budget comes from the lane registry, not a magic constant. It used to be
+    # hard-clamped to 2 regardless of --samples, which meant the lane could never dispatch more
+    # than ~2 samples' worth of work per day against a budget sized for far more -- one of the
+    # concrete reasons the research lanes never came close to filling their quota.
+    #
+    # One sample spends from TWO lanes with independent budgets: one candidate job per contestant
+    # against `tournament:tag`, and one comparison per ordered pair against `tournament:tag-judge`.
+    # Dividing either lane's budget by the combined job count would overrun the other lane (whose
+    # surplus the Worker then rejects) while needlessly starving the first, so derive a per-sample
+    # limit from each and take the smaller.
+    tag_lane = lane_for("tournament:tag")
+    judge_lane = lane_for("tournament:tag-judge")
+    tag_samples = tag_lane.max_dispatches_per_run // max(1, len(MODELS))
+    judge_samples = judge_lane.max_dispatches_per_run // max(1, len(CONTESTS) * 2)
+    sample_budget = min(tag_samples, judge_samples)
+    if sample_budget < 1:
+        raise ValueError(
+            "llm_lanes budgets cannot fund one complete tournament sample: "
+            f"tournament:tag allows {tag_lane.max_dispatches_per_run} jobs/run for "
+            f"{len(MODELS)} contestants, tournament:tag-judge allows "
+            f"{judge_lane.max_dispatches_per_run} for {len(CONTESTS) * 2} comparisons"
+        )
     return run(
         site_config_path=args.site_config,
         config_dir=args.config_dir,

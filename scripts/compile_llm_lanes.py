@@ -9,7 +9,7 @@ committed JSON differs from what the YAML produces.
 Why this exists rather than the previous hand-maintained ``INGRESS_PURPOSE_RESERVATIONS`` var: the
 deployed map's keys (``topic-tags``, ``moments``) matched no ``LLMRequestPolicy.purpose`` the client
 has ever sent (``topic-tags:tagger``, ``topic-tags:prelabeler``, ``r6-moments``, ``r6-judge``).
-Because ``claimDispatchWindow``'s admission subtracts *every other* purpose's reservation from the
+Because ``enqueueBatch``'s admission subtracts *every other* purpose's reservation from the
 headroom a job may use, those two unreachable keys withheld 10,000 of the 30,000 daily ingress write
 units from every real lane while remaining unusable by the lanes they were meant to protect. Two
 independently edited lists could not stay in sync, so there is now one list.
@@ -78,7 +78,10 @@ def _global_ingress_budget() -> int:
     import re
 
     text = WRANGLER_JSONC.read_text(encoding="utf-8")
-    match = re.search(r'"MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY"\s*:\s*"(\d+)"', text)
+    # Wrangler `vars` accept either a quoted string or a bare JSON number, and both deploy
+    # identically. Matching only the quoted form would send a perfectly valid numeric declaration
+    # down the "does not define" branch below and fail the deploy with a misleading message.
+    match = re.search(r'"MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY"\s*:\s*"?(\d+)"?', text)
     if not match:
         raise SystemExit(
             f"{WRANGLER_JSONC} does not define MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY; the "

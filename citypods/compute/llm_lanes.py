@@ -190,6 +190,17 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 f"{lane.ingress_write_units_per_job} units one of its jobs costs, so the lane can "
                 "never admit a single job"
             )
+        if lane.max_dispatches_per_run > lane.max_jobs_per_day:
+            # A run cap above what the daily budget funds is not a harmless upper bound: the
+            # producer submits to that cap and the Worker rejects everything past the budget, so
+            # the surplus is pure wasted ingress traffic that looks like a lane failing to fill
+            # its quota. Every lane here is a daily cron, so the two numbers should agree.
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].max_dispatches_per_run "
+                f"({lane.max_dispatches_per_run}) exceeds the {lane.max_jobs_per_day} jobs its "
+                f"daily_write_units ({daily}) can fund at {lane.ingress_write_units_per_job} "
+                "units/job; the surplus would be rejected at ingress"
+            )
         lanes[purpose] = lane
     return lanes
 

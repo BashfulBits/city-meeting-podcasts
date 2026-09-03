@@ -109,14 +109,16 @@ llm_lanes:
     # Pinned strictly to Mistral Medium for high-fidelity agenda chapter extraction.
     # Replaces citypods/chapter_titles.py:AGENDA_PRODUCTION_MODEL.
     models: ["mistral/mistral-medium-latest"]
-    max_dispatches_per_run: 2000
+    # Equal to what daily_write_units funds (4000 / 4 units per job). A higher run cap is not a
+    # harmless ceiling: the producer submits to it and the Worker rejects the surplus.
+    max_dispatches_per_run: 1000
     reserved_write_units: 2000
     daily_write_units: 4000
   chapter-locator:
     # Replaces citypods/chapter_locator.py:PRODUCTION_LOCATOR_MODEL. Gemini 3.5 Flash Lite is
     # reserved for this long-context workload and deliberately not shared with tagging.
     models: ["gemini/gemini-3.5-flash-lite"]
-    max_dispatches_per_run: 2000
+    max_dispatches_per_run: 1000
     reserved_write_units: 2000
     daily_write_units: 4000
   topic-tags:tagger:
@@ -130,7 +132,7 @@ llm_lanes:
     # Mirrors the legacy `tagging.prelabeler.model`. Its own budget, NOT a share of the
     # tagger's -- this split is exactly what the old `topic-tags` key failed to express.
     models: ["google/gemma-4-31b-it"]
-    max_dispatches_per_run: 2000
+    max_dispatches_per_run: 1250
     reserved_write_units: 2000
     daily_write_units: 5000
   r6-moments:
@@ -165,16 +167,20 @@ llm_lanes:
       - "deepseek/deepseek-v4-flash"
       - "zai/glm-4.7-flash"
       - "google/gemma-4-26b-a4b-it"
-    max_dispatches_per_run: 200
+    # One sample costs 4 candidate jobs here and 12 comparisons in `tournament:tag-judge`, so
+    # the two budgets are split ~1:3 to let both fill on the same number of samples instead of
+    # one lane capping the run while the other sits idle. Run caps equal what each daily budget
+    # funds (750 / 4 units per job = 187).
+    max_dispatches_per_run: 187
     reserved_write_units: 500
-    daily_write_units: 1500
+    daily_write_units: 750
   tournament:tag-judge:
     # Replaces citypods/tournament.py:JUDGE_MODEL. Must stay independent of every candidate
     # route above -- `_build_pairwise_judge_job` rejects a judge that is also a contestant.
     models: ["google/gemma-4-31b-it"]
-    max_dispatches_per_run: 600
+    max_dispatches_per_run: 562
     reserved_write_units: 500
-    daily_write_units: 1500
+    daily_write_units: 2250
   r5-benchmark:tag:
     # Replaces citypods/r5_benchmark.py:DEFAULT_TAGGER_MODELS. Compared, not pooled (see
     # tournament:tag). Manual-dispatch only, so it carries no reservation: it draws purely on
@@ -190,7 +196,7 @@ llm_lanes:
   r5-benchmark:judge:
     # Replaces citypods/r5_benchmark.py:DEFAULT_PRELABELER_MODEL in its judge role.
     models: ["google/gemma-4-31b-it"]
-    max_dispatches_per_run: 1800
+    max_dispatches_per_run: 1000
     reserved_write_units: 0
     daily_write_units: 4000
 # Purposes deliberately absent from `llm_lanes`, because neither reaches the v2 ingress Worker:

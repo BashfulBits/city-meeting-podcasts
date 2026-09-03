@@ -87,7 +87,7 @@
     },
     "tournament:tag": {
       "reserved_write_units": 500,
-      "daily_write_units": 1500,
+      "daily_write_units": 750,
       "models": [
         "gemini/gemini-3.1-flash-lite",
         "deepseek/deepseek-v4-flash",
@@ -99,7 +99,7 @@
     },
     "tournament:tag-judge": {
       "reserved_write_units": 500,
-      "daily_write_units": 1500,
+      "daily_write_units": 2250,
       "models": [
         "google/gemma-4-31b-it"
       ],

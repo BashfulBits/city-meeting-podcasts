@@ -40,8 +40,11 @@ Phase R (Research-Tool Surface)._
   candidate generation and every pairwise comparison was its own Worker request and the backend's
   per-instance ingest-throttle state was discarded on each call. Both now share a run-scoped
   `PerModelBatchingBackends` collector and submit one bounded `enqueue_batch` per model. The
-  tournament's per-run budget comes from its lane config instead of a hard two-sample clamp that
-  had capped it near 32 jobs/day. Worker knobs are retuned against the measured binding
+  tournament's per-run budget is derived from its two lane budgets (candidate jobs and comparison
+  jobs bill to different purposes) instead of a hard two-sample clamp that had capped it near 32
+  jobs/day, giving 46 samples per run. A lane whose per-run cap exceeds what its daily write
+  budget funds is now rejected outright — four lanes shipped with that skew, and the surplus was
+  simply rejected at ingress. Worker knobs are retuned against the measured binding
   constraint — the shared 100,000/day Durable Object row-write budget, not the per-invocation
   subrequest ceiling: `MAX_BUNDLES_PER_UTC_DAY` 1,000 → 1,400 and
   `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 30,000 → 24,000 lift the dispatch ceiling from 4,000 to
