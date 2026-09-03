@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
-import { createMockSqlStorage } from "./helpers.js";
+import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 function makeCoordinator(env, { sql, storage } = createMockSqlStorage()) {
-  return { coordinator: new LLMSchedulerDO({ storage }, env), sql, storage };
+  return { coordinator: new LLMSchedulerDO({ storage }, withTestReservations(env)), sql, storage };
 }
 
 test("LLMSchedulerDO extends a base class (regression: real getByName()-style RPC requires this)", () => {
@@ -822,7 +822,7 @@ test("_ensureMigratedJobModels persists a durable marker and does not clear acti
   );
 
   // Simulate a new DO instance booting against the same storage:
-  const rebooted = new LLMSchedulerDO({ storage }, {});
+  const rebooted = new LLMSchedulerDO({ storage }, withTestReservations({}));
   const routeRow = [...sql.exec("SELECT buffer_seconds, buffer_updated_at FROM routes WHERE route_id = 'route-test'")][0];
   assert.equal(routeRow.buffer_seconds, 30, "active buffer must not be cleared on DO reboot");
   assert.equal(routeRow.buffer_updated_at, now);
@@ -864,4 +864,127 @@ test("authorizeRetry throttles only the specific route_id, keeping providers iso
   const mistralRow = [...sql.exec("SELECT throttle_streak, buffer_seconds FROM routes WHERE route_id = 'mistral_medium_latest_primary'")][0];
   assert.equal(mistralRow.throttle_streak, 0, "Mistral route must remain unthrottled when Airforce 429s");
   assert.equal(mistralRow.buffer_seconds, 0);
+});
+
+// --- Ingress purpose registry (llm_lanes) -----------------------------------------------------
+// Before this gate, a purpose absent from the reservation map fell through to unreserved shared
+// headroom. That is how the deployed map came to reserve capacity under "topic-tags" and "moments"
+// while the client sent "topic-tags:tagger", "topic-tags:prelabeler", "r6-moments" and "r6-judge":
+// 10,000 of 30,000 daily write units were withheld from every real lane on behalf of two keys no
+// job could ever match, and nothing failed. The reservation map is now compiled from
+// config/site_config.yml's `llm_lanes` block, and an unregistered purpose is rejected outright.
+
+const REGISTERED_ONLY = JSON.stringify({
+  "topic-tags:tagger": { reserved_write_units: 0, daily_write_units: 10000 },
+});
+
+function purposeJob(id, purpose) {
+  return {
+    id,
+    idempotency_key: `k-${id}`,
+    request_digest: `d-${id}`,
+    policy_json: JSON.stringify({ purpose }),
+    prompt_family: "tags",
+    input_token_estimate: 100,
+    max_output_token_estimate: 50,
+    payload_key: `payloads/${id}/request.json`,
+  };
+}
+
+test("enqueueBatch rejects a purpose with no registered lane", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: REGISTERED_ONLY,
+  });
+
+  const res = await coordinator.enqueueBatch([
+    purposeJob("j-known", "topic-tags:tagger"),
+    purposeJob("j-new-verb", "topic-tags:summarizer"),
+  ]);
+
+  const rejected = res.rejected.find((entry) => entry.id === "j-new-verb");
+  assert.ok(rejected, "an unregistered purpose must be rejected, not silently admitted");
+  assert.equal(rejected.reason, "purpose_not_registered");
+  assert.equal(rejected.purpose, "topic-tags:summarizer");
+
+  // The registered sibling in the same batch still lands: one unregistered purpose must not
+  // fail the whole submission.
+  const rows = [...sql.exec("SELECT id FROM jobs ORDER BY id")];
+  assert.deepEqual(rows.map((row) => row.id), ["j-known"]);
+});
+
+test("a sub-purpose does not inherit its prefix's lane", async () => {
+  // "topic-tags:prelabeler" is a different verb from "topic-tags:tagger" with its own budget, so
+  // registering one must not admit the other. This is the exact shape of the original bug.
+  const { coordinator } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: REGISTERED_ONLY,
+  });
+
+  const res = await coordinator.enqueueBatch([
+    purposeJob("j-prelabel", "topic-tags:prelabeler"),
+  ]);
+
+  assert.equal(res.rejected[0]?.reason, "purpose_not_registered");
+});
+
+test("the compiled reservation map is used when no env override is set", async () => {
+  // Guards the wiring itself: with INGRESS_PURPOSE_RESERVATIONS unset the coordinator must fall
+  // back to src/ingress_reservations.json (compiled from llm_lanes), NOT to an empty map. An
+  // empty map reads as "no lane has a reservation", which is the degraded state this replaced.
+  // Built raw, NOT through makeCoordinator(): that helper injects a test reservation map, which
+  // is exactly the wiring this test needs to bypass.
+  const { sql, storage } = createMockSqlStorage();
+  // Give it the production ingress budget: the compiled map reserves 13,000 units across the
+  // other lanes, and admission subtracts those from the headroom this job may use, so a token
+  // budget would reject even a correctly-registered purpose for the wrong reason.
+  const coordinator = new LLMSchedulerDO({ storage }, {
+    MAX_JOBS_PER_UTC_DAY: "100",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "30000",
+  });
+
+  const res = await coordinator.enqueueBatch([
+    purposeJob("j-real", "topic-tags:tagger"),
+    purposeJob("j-stale-key", "topic-tags"),
+  ]);
+
+  assert.equal([...sql.exec("SELECT id FROM jobs WHERE id = 'j-real'")].length, 1);
+  // "topic-tags" was the old, unreachable reservation key. It is not a purpose any client sends,
+  // so it must now be rejected rather than quietly accepted.
+  assert.equal(
+    res.rejected.find((entry) => entry.id === "j-stale-key")?.reason,
+    "purpose_not_registered"
+  );
+});
+
+test("every purpose the Python client can dispatch has a compiled lane", async () => {
+  // The client half of this contract is citypods/compute/llm_lanes.py, whose lane_for() raises on
+  // an unregistered purpose. This asserts the compiled artifact both halves share actually covers
+  // the purposes in the codebase, so adding a call site without a lane fails here rather than in
+  // production at 18:15 UTC.
+  const { default: compiled } = await import("../src/ingress_reservations.json", {
+    with: { type: "json" },
+  });
+  const dispatchingPurposes = [
+    "chapter-agenda",
+    "chapter-locator",
+    "topic-tags:tagger",
+    "topic-tags:prelabeler",
+    "r6-moments",
+    "r6-judge",
+    "tournament:tag",
+    "tournament:tag-judge",
+    "r5-benchmark:tag",
+    "r5-benchmark:judge",
+  ];
+  for (const purpose of dispatchingPurposes) {
+    assert.ok(
+      Object.hasOwn(compiled.reservations, purpose),
+      `${purpose} has no llm_lanes entry; recompile with scripts/compile_llm_lanes.py`
+    );
+  }
+  assert.ok(
+    compiled.reserved_total <= compiled.global_write_budget,
+    "reservations must not oversubscribe the global ingress write budget"
+  );
 });

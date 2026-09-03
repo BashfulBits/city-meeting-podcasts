@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
-import { createMockSqlStorage } from "./helpers.js";
+import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 const TEST_CATALOG = {
   model_aliases: {},
@@ -61,7 +61,7 @@ function makeCoordinator(envOverrides = {}) {
     DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG,
     ...envOverrides,
   };
-  return { coordinator: new LLMSchedulerDO({ storage }, env), sql };
+  return { coordinator: new LLMSchedulerDO({ storage }, withTestReservations(env)), sql };
 }
 
 function makeJob(id, overrides = {}) {
@@ -996,7 +996,7 @@ test("a job allowing paid still takes the free route when the paid one has more 
     ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
     DISPATCH_LIMITS_OVERRIDE: FREE_VS_PAID_CATALOG,
   };
-  const coordinator = new LLMSchedulerDO({ storage }, env);
+  const coordinator = new LLMSchedulerDO({ storage }, withTestReservations(env));
   const paidJob = (id) => ({
     id,
     idempotency_key: `key-${id}`,
@@ -1112,7 +1112,7 @@ function pacificCoordinator() {
   const { sql, storage } = createMockSqlStorage();
   const coordinator = new LLMSchedulerDO(
     { storage },
-    {
+    withTestReservations({
       MAX_JOBS_PER_UTC_DAY: "10000",
       MAX_BUNDLE_JOBS: "1",
       MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1",
@@ -1126,7 +1126,7 @@ function pacificCoordinator() {
       MAX_429_BACKOFF_SECONDS: "5",
       ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
       DISPATCH_LIMITS_OVERRIDE: PACIFIC_CATALOG,
-    }
+    })
   );
   return { coordinator, sql };
 }

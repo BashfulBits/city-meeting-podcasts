@@ -66,6 +66,142 @@ tagging:
 tournament:
   window_days: 28
   challenger_win_rate: 0.60
+# ---------------------------------------------------------------------------------------------
+# Canonical LLM dispatch lane registry (review/44 Phase 4).
+#
+# ONE entry per `LLMRequestPolicy.purpose` string that can reach the Cloudflare Dispatch v2
+# ingress Worker. This block is the single source of truth for two things that used to live in
+# two unrelated places and silently drifted apart:
+#
+#   1. WHICH MODELS a lane may dispatch to. Previously `tagging.llm_models`/`moments.llm_models`
+#      were config while the chapter, tournament, and R5-benchmark routes were Python constants
+#      (`AGENDA_PRODUCTION_MODEL`, `PRODUCTION_LOCATOR_MODEL`, `tournament.MODELS`,
+#      `r5_benchmark.DEFAULT_TAGGER_MODELS`), so a route change meant a code change and no one
+#      place showed what the catalog actually dispatches to.
+#   2. THE INGRESS WRITE BUDGET that purpose may consume, compiled into the v2 Worker's
+#      `ingress_reservations.json` by `scripts/compile_llm_lanes.py`. The Worker previously
+#      carried a hand-maintained `INGRESS_PURPOSE_RESERVATIONS` var whose keys (`topic-tags`,
+#      `moments`) matched NO purpose the client actually sends (`topic-tags:tagger`,
+#      `topic-tags:prelabeler`, `r6-moments`, `r6-judge`) -- so those two lanes' 10,000 reserved
+#      write units were subtracted from everyone else's headroom while being unusable by the
+#      lanes they were reserved for. Keys here are the exact purpose strings, and both the
+#      compiler and the Worker reject a purpose with no entry rather than letting it fall
+#      through to shared headroom.
+#
+# ADDING A NEW LANE (a new verb/task, e.g. a second judge or a new extractor) REQUIRES A NEW
+# ENTRY HERE. That is deliberate: an unregistered purpose is rejected at three points -- the
+# client refuses to build the job, `compile_llm_lanes.py` refuses to compile, and the Worker
+# rejects the job at ingress with `purpose_not_registered`. Sub-purposes are NOT inherited from
+# a prefix: `topic-tags:prelabeler` does not draw on `topic-tags:tagger`'s budget.
+#
+# `models` is the ordered allowed-model set handed to `LLMRequestPolicy.allowed_models`. The
+# first entry is the stable recipe/calibration route; the rest exist only so a lane can spill
+# onto another INDEPENDENT free-tier quota pool for throughput (see `tagging.llm_models`). These
+# values are identical to the constants/keys they replace, so no recipe hash changes and no
+# stored artifact is invalidated.
+#
+# Ingress write units are the Worker's own pessimistic admission currency, not requests:
+# `3 + len(models)` per admitted job (job row + model-index rows + purpose ledger + scheduler
+# counter). `daily_write_units` is that lane's hard daily ceiling; `reserved_write_units` is the
+# slice no other lane may consume. Reserved must sum to <= MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY;
+# `compile_llm_lanes.py` enforces that and the per-lane arithmetic below.
+llm_lanes:
+  # --- Production enrichment lanes (daily crons; these carry the catalog) ------------------
+  chapter-agenda:
+    # Pinned strictly to Mistral Medium for high-fidelity agenda chapter extraction.
+    # Replaces citypods/chapter_titles.py:AGENDA_PRODUCTION_MODEL.
+    models: ["mistral/mistral-medium-latest"]
+    max_dispatches_per_run: 2000
+    reserved_write_units: 2000
+    daily_write_units: 4000
+  chapter-locator:
+    # Replaces citypods/chapter_locator.py:PRODUCTION_LOCATOR_MODEL. Gemini 3.5 Flash Lite is
+    # reserved for this long-context workload and deliberately not shared with tagging.
+    models: ["gemini/gemini-3.5-flash-lite"]
+    max_dispatches_per_run: 2000
+    reserved_write_units: 2000
+    daily_write_units: 4000
+  topic-tags:tagger:
+    # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and
+    # calibration-matrix key. Mirrors the legacy `tagging.llm_models`.
+    models: ["gemini/gemini-3.1-flash-lite"]
+    max_dispatches_per_run: 2000
+    reserved_write_units: 4000
+    daily_write_units: 9000
+  topic-tags:prelabeler:
+    # Mirrors the legacy `tagging.prelabeler.model`. Its own budget, NOT a share of the
+    # tagger's -- this split is exactly what the old `topic-tags` key failed to express.
+    models: ["google/gemma-4-31b-it"]
+    max_dispatches_per_run: 2000
+    reserved_write_units: 2000
+    daily_write_units: 5000
+  r6-moments:
+    # Mirrors the legacy `moments.llm_models`; the stage still filters this allowlist by
+    # meeting family before dispatching.
+    models:
+      - "gemini/gemini-3.6-flash"
+      - "gemini/gemini-3.5-flash"
+      - "gemini/gemini-3.5-flash-lite"
+      - "gemini/gemini-3.1-flash-lite"
+    max_dispatches_per_run: 40
+    reserved_write_units: 1000
+    daily_write_units: 3000
+  r6-judge:
+    # Mirrors the legacy `moments.judges.models`.
+    models:
+      - "qwen/qwen3.8-27b"
+      - "zai/glm-4.7"
+      - "gemini/gemini-3.6-flash"
+      - "openai/gpt-oss-120b"
+    max_dispatches_per_run: 40
+    reserved_write_units: 1000
+    daily_write_units: 3000
+  # --- Research lanes (bounded, manual or low-cadence; must not starve production) ---------
+  tournament:tag:
+    # Replaces citypods/tournament.py:MODELS. These are CONTESTANTS being compared, so the lane
+    # fans out one single-route job per model -- pooling them would let the scheduler answer
+    # "how does model X tag this chapter?" with model Y and void the comparison.
+    dispatch_shape: per_model
+    models:
+      - "gemini/gemini-3.1-flash-lite"
+      - "deepseek/deepseek-v4-flash"
+      - "zai/glm-4.7-flash"
+      - "google/gemma-4-26b-a4b-it"
+    max_dispatches_per_run: 200
+    reserved_write_units: 500
+    daily_write_units: 1500
+  tournament:tag-judge:
+    # Replaces citypods/tournament.py:JUDGE_MODEL. Must stay independent of every candidate
+    # route above -- `_build_pairwise_judge_job` rejects a judge that is also a contestant.
+    models: ["google/gemma-4-31b-it"]
+    max_dispatches_per_run: 600
+    reserved_write_units: 500
+    daily_write_units: 1500
+  r5-benchmark:tag:
+    # Replaces citypods/r5_benchmark.py:DEFAULT_TAGGER_MODELS. Compared, not pooled (see
+    # tournament:tag). Manual-dispatch only, so it carries no reservation: it draws purely on
+    # unreserved shared headroom and can never displace a scheduled production lane.
+    dispatch_shape: per_model
+    models:
+      - "gemini/gemini-3.1-flash-lite"
+      - "google/gemma-4-26b-a4b-it"
+      - "zai/glm-4.7-flash"
+    max_dispatches_per_run: 900
+    reserved_write_units: 0
+    daily_write_units: 4000
+  r5-benchmark:judge:
+    # Replaces citypods/r5_benchmark.py:DEFAULT_PRELABELER_MODEL in its judge role.
+    models: ["google/gemma-4-31b-it"]
+    max_dispatches_per_run: 1800
+    reserved_write_units: 0
+    daily_write_units: 4000
+# Purposes deliberately absent from `llm_lanes`, because neither reaches the v2 ingress Worker:
+#   `topic-tags:rules`  -- rule-engine bookkeeping recorded via `remember_call_attempt` with a
+#                          `rule:<version>` pseudo-model; no LLM call is ever made.
+#   `city-onboarding`   -- R12 city discovery sets `require_direct=True` (review/41), so it calls
+#                          the provider from the runner and never enqueues.
+# Both are asserted in tests/test_llm_lanes.py so a future change that starts dispatching them
+# fails there rather than silently consuming unreserved ingress headroom.
 # R6 grounded moments. Candidate calls are free-only and shadow/manual by default. Council feeds
 # use the two lower-quota long-context Gemini routes; the stage filters this allowlist by family.
 moments:

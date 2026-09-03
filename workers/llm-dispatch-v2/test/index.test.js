@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker, { LLMSchedulerDO, validateConfig } from "../src/index.js";
-import { createMockSqlStorage } from "./helpers.js";
+import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 function createMockEnv(overrides = {}) {
   const { storage } = createMockSqlStorage();
-  const coordinator = new LLMSchedulerDO({ storage }, { MAX_JOBS_PER_UTC_DAY: "100" });
+  const coordinator = new LLMSchedulerDO({ storage }, withTestReservations({ MAX_JOBS_PER_UTC_DAY: "100" }));
 
   return {
     BEARER_TOKEN: "secret-token",

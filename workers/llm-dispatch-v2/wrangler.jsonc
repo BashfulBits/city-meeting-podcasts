@@ -50,10 +50,14 @@
     // unaccounted capacity.  It can therefore safely exceed the historical 5k job ceiling.
     "MAX_JOBS_PER_UTC_DAY": "12000",
     "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY": "30000",
-    // Keep capacity for latency-sensitive lanes while preventing the fallback agenda extractor
-    // from rebuilding the Mistral backlog. A purpose can use its own reservation plus shared
-    // headroom, but cannot consume capacity reserved for another named purpose.
-    "INGRESS_PURPOSE_RESERVATIONS": "{\"chapter-agenda\":{\"daily_write_units\":4000},\"chapter-locator\":{\"reserved_write_units\":2000,\"daily_write_units\":4000},\"topic-tags\":{\"reserved_write_units\":6000,\"daily_write_units\":9000},\"moments\":{\"reserved_write_units\":4000,\"daily_write_units\":6000}}",
+    // Per-purpose ingress budgets now live in config/site_config.yml's `llm_lanes` block and are
+    // compiled into src/ingress_reservations.json by scripts/compile_llm_lanes.py (drift-checked
+    // in llm-dispatch-v2-worker-deploy.yml), so this var is gone. It had drifted to reserve
+    // capacity under keys -- "topic-tags", "moments" -- that no client purpose ever matched
+    // ("topic-tags:tagger", "topic-tags:prelabeler", "r6-moments", "r6-judge"), which withheld
+    // 10,000 of 30,000 daily write units from every real lane while being unusable by the lanes
+    // it named. Setting INGRESS_PURPOSE_RESERVATIONS here again is still honored, but only as a
+    // deliberate incident-time override of the compiled map.
     "ENQUEUE_BATCH_MAX": "1000",
     "POLL_BATCH_MAX": "1000",
     "MAX_RESPONSE_SECONDS": "720",

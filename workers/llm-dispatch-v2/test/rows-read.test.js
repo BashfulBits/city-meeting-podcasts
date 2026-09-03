@@ -5,6 +5,7 @@ import {
   createRecordingSqlStorage,
   estimateRowsRead,
   GROWABLE_TABLES,
+  withTestReservations,
 } from "./helpers.js";
 
 /**
@@ -61,7 +62,7 @@ function seed(history, { liveQueued = 6 } = {}) {
     MAX_ATTEMPT_PRUNE_PER_TICK: "0",
     DISPATCH_LIMITS_OVERRIDE: CATALOG,
   };
-  const coordinator = new LLMSchedulerDO({ storage }, env);
+  const coordinator = new LLMSchedulerDO({ storage }, withTestReservations(env));
   const now = Date.now();
   const old = now - 90 * 86_400_000;
 

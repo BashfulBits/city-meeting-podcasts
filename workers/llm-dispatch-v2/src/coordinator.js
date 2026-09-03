@@ -4,6 +4,10 @@
  */
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
+// Compiled from config/site_config.yml's `llm_lanes` block by scripts/compile_llm_lanes.py,
+// the same block citypods/compute/llm_lanes.py reads, so client and Worker cannot disagree
+// about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
+import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import { canonicalModelName, routeFitsContext, routesEligibleFor } from "./routes.js";
 import {
   availableTokenBudget,
@@ -366,15 +370,43 @@ export class LLMSchedulerDO extends DurableObjectBase {
       : this._maxJobsPerUtcDay() * 4;
   }
 
+  /**
+   * The per-purpose ingress budgets, compiled from config/site_config.yml's `llm_lanes` block by
+   * scripts/compile_llm_lanes.py.
+   *
+   * This used to read a hand-maintained INGRESS_PURPOSE_RESERVATIONS env var, and its keys had
+   * drifted to name purposes no client ever sends: `topic-tags` and `moments`, against real
+   * purposes `topic-tags:tagger`, `topic-tags:prelabeler`, `r6-moments`, and `r6-judge`. Because
+   * the admission arithmetic below subtracts every *other* purpose's reservation from the headroom
+   * a job may use, those two unreachable keys withheld 10,000 of 30,000 daily write units from
+   * every real lane while being unusable by the lanes they were meant to protect. Compiling from
+   * the same block the Python client reads means the two halves cannot disagree about which
+   * purposes exist.
+   *
+   * The env var is still honored as an explicit operator override for an incident (a reservation
+   * can be widened without a client deploy), but it is no longer the source of truth and an
+   * unparseable value is now a hard error rather than a silent `{}` -- an empty map reads as "no
+   * lane has a reservation," which is precisely the failure this replaced.
+   */
   _ingressPurposeReservations() {
     const raw = this.env.INGRESS_PURPOSE_RESERVATIONS;
-    if (!raw) return {};
-    try {
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
+    if (!raw) return INGRESS_RESERVATIONS.reservations;
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("INGRESS_PURPOSE_RESERVATIONS override must be a JSON object");
     }
+    return parsed;
+  }
+
+  /**
+   * Whether `purpose` has a registered lane. An unregistered purpose is rejected at ingress
+   * instead of drawing on unreserved shared headroom: silently absorbing a new verb/task is how
+   * `topic-tags:prelabeler` came to compete with the production lanes for capacity nobody had
+   * budgeted. The remedy is a new `llm_lanes` entry plus a recompile, which the rejection reason
+   * names.
+   */
+  _purposeIsRegistered(purpose) {
+    return Object.hasOwn(this._ingressPurposeReservations(), purpose);
   }
 
   _purposeForJob(job) {
@@ -708,6 +740,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const policyJson = typeof job.policy_json === "string" ? job.policy_json : JSON.stringify(job.policy_json || {});
         const providerIdempotencyKey = job.provider_idempotency_key || null;
         const purpose = this._purposeForJob({ ...job, policy_json: policyJson });
+        // An unregistered purpose is rejected, never absorbed into unreserved headroom. Falling
+        // through was how a new verb/task (a second judge, a new extractor) could quietly start
+        // competing with the scheduled production lanes for capacity nobody had budgeted, with no
+        // symptom until those lanes started missing their daily quota. The fix is a new
+        // `llm_lanes` entry in config/site_config.yml plus `python scripts/compile_llm_lanes.py`.
+        if (!Object.hasOwn(ingressReservations, purpose)) {
+          rejected.push({ id: job.id, reason: "purpose_not_registered", purpose });
+          continue;
+        }
         const reservation = ingressReservations[purpose] || {};
         const purposeUsageRow = purposeUsage.get(purpose) || {
           jobs_ingested: 0,
@@ -846,7 +887,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       const purpose = source.purpose || this._purposeForJob(source);
-      const reservation = this._ingressPurposeReservations()[purpose] || {};
+      const reservations = this._ingressPurposeReservations();
+      // Same registration gate as enqueueBatch: a schema-correction retry re-admits a job and so
+      // must not become a side door for a purpose with no `llm_lanes` entry.
+      if (!Object.hasOwn(reservations, purpose)) {
+        return { status: "purpose_not_registered" };
+      }
+      const reservation = reservations[purpose] || {};
       const purposeUsage = [...sql.exec(
         "SELECT write_units FROM ingress_purpose WHERE utc_day = ? AND purpose = ?",
         sched.utc_day,
@@ -863,7 +910,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
           purposeUsage + writeUnits > purposeWriteLimit) {
         return { status: "purpose_write_budget_exceeded" };
       }
-      const reservations = this._ingressPurposeReservations();
       const otherReservations = Object.entries(reservations).reduce((sum, [otherPurpose, config]) => {
         if (otherPurpose === purpose) return sum;
         const reserved = Number(config?.reserved_write_units);

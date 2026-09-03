@@ -142,3 +142,37 @@ export function estimateRowsRead(db, { query, params }) {
 
 /** Tables whose row count grows with traffic and so must never be fully scanned. */
 export const GROWABLE_TABLES = ["jobs", "job_models", "bundles", "attempts"];
+
+/**
+ * Ingress purpose reservations for tests that exercise coordinator mechanics rather than the
+ * registry policy itself.
+ *
+ * Production reads the map compiled from config/site_config.yml's `llm_lanes` block, where an
+ * unregistered purpose is rejected at ingress (`purpose_not_registered`) so a new verb/task cannot
+ * quietly spend capacity another lane was relying on. Most tests here build jobs with
+ * `policy_json: "{}"`, which resolves to the "unspecified" purpose; they are testing admission
+ * arithmetic, leasing, pacing and cleanup, not which purposes exist. Registering the purposes
+ * those tests use keeps them focused, while the registry gate itself is covered directly by
+ * "enqueueBatch rejects a purpose with no registered lane" and friends in coordinator.test.js.
+ *
+ * Deliberately generous per-purpose budgets: a test that means to exercise a budget limit sets its
+ * own override rather than depending on a shared number.
+ */
+export const TEST_INGRESS_RESERVATIONS = JSON.stringify({
+  unspecified: { reserved_write_units: 0, daily_write_units: 1000000 },
+  "topic-tags": { reserved_write_units: 0, daily_write_units: 1000000 },
+  "topic-tags:tagger": { reserved_write_units: 0, daily_write_units: 1000000 },
+  "chapter-agenda": { reserved_write_units: 0, daily_write_units: 1000000 },
+  "chapter-locator": { reserved_write_units: 0, daily_write_units: 1000000 },
+  "r6-moments": { reserved_write_units: 0, daily_write_units: 1000000 },
+});
+
+/**
+ * Merge the shared reservation default into a test env without overriding an explicit one, so a
+ * test that is specifically about reservations still controls its own map.
+ */
+export function withTestReservations(env = {}) {
+  return env.INGRESS_PURPOSE_RESERVATIONS
+    ? env
+    : { ...env, INGRESS_PURPOSE_RESERVATIONS: TEST_INGRESS_RESERVATIONS };
+}
