@@ -56,7 +56,11 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        run: python -m citypods.tournament --samples 2
+        # No --samples: the per-run budget comes from
+        # `llm_lanes["tournament:tag"].max_dispatches_per_run` in config/site_config.yml.
+        # The old explicit `--samples 2` capped this lane at ~32 jobs/day against a budget
+        # sized for far more, which is one reason the research lanes never filled quota.
+        run: python -m citypods.tournament
       - name: Publish tournament champion ticket
         env:
           GH_TOKEN: ${{ github.token }}

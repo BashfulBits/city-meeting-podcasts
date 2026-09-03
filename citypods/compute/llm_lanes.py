@@ -30,7 +30,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_SITE_CONFIG_PATH = "config/site_config.yml"
+# Anchored to the repository root rather than the process CWD. Several lanes resolve their models
+# at import time to build a recipe hash, so a lookup that silently found no config (or a different
+# one) because a tool ran from a subdirectory would change recipe hashes and re-queue the catalog.
+# An explicit `path=`/`site_config=` argument still overrides this.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_SITE_CONFIG_PATH = _REPO_ROOT / "config" / "site_config.yml"
 
 # Purposes that deliberately have no lane entry because they never reach the ingress Worker.
 # `topic-tags:rules` is rule-engine bookkeeping recorded with a `rule:<version>` pseudo-model and

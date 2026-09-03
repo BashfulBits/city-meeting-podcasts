@@ -20,8 +20,10 @@ from citypods.compute.llm import (
     LiteLLMBackend,
     LLMBackendConfig,
     LLMBackendError,
+    PerModelBatchingBackends,
     dispatch_job_batch,
 )
+from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 from citypods.config import load_city_configs, load_site_config
@@ -36,23 +38,19 @@ from citypods.tags import (
     load_taxonomy,
 )
 
-MODELS = (
-    "gemini/gemini-3.1-flash-lite",
-    "deepseek/deepseek-v4-flash",
-    # Hotfix follow-up (Mistral's account-wide monthly budget is exhausted, see
-    # config/provider_limits.yml): mistral/mistral-large-2512 replaced with zai/glm-4.7-flash,
-    # plus google/gemma-4-26b-a4b-it added as a 4th contestant. Both are free routes.
-    "zai/glm-4.7-flash",
-    "google/gemma-4-26b-a4b-it",
-)
-JUDGE_MODEL = "google/gemma-4-31b-it"
-CONTESTS = (
-    ("deepseek/deepseek-v4-flash", "gemini/gemini-3.1-flash-lite", JUDGE_MODEL),
-    ("deepseek/deepseek-v4-flash", "zai/glm-4.7-flash", JUDGE_MODEL),
-    ("deepseek/deepseek-v4-flash", "google/gemma-4-26b-a4b-it", JUDGE_MODEL),
-    ("gemini/gemini-3.1-flash-lite", "zai/glm-4.7-flash", JUDGE_MODEL),
-    ("gemini/gemini-3.1-flash-lite", "google/gemma-4-26b-a4b-it", JUDGE_MODEL),
-    ("zai/glm-4.7-flash", "google/gemma-4-26b-a4b-it", JUDGE_MODEL),
+# Contestants and judge come from config/site_config.yml's `llm_lanes` (review/44 Phase 4) rather
+# than being hard-coded here, so every dispatching lane's route choice lives in one place. The
+# `tournament:tag` lane is declared `dispatch_shape: per_model` because these routes are being
+# COMPARED: each contestant gets its own single-route job, and pooling them would let the
+# scheduler answer "how does model X tag this chapter?" with model Y and void the comparison.
+MODELS = lane_for("tournament:tag").models
+JUDGE_MODEL = lane_for("tournament:tag-judge").primary_model
+# Every unordered contestant pair, judged by the one configured judge. Derived rather than listed
+# so adding a contestant to config extends the grid automatically instead of silently comparing a
+# new model against only some of its peers -- the previous hand-written list had to be edited in
+# lockstep with MODELS, and a missed pair produced a quietly incomplete tournament.
+CONTESTS = tuple(
+    (left, right, JUDGE_MODEL) for index, left in enumerate(MODELS) for right in MODELS[index + 1 :]
 )
 STATE = "llm_tournament.json"
 TICKET_STATE = "llm_tournament_tickets.json"
@@ -555,6 +553,10 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     episodes.sort(key=lambda item: (item[0].published, item[0].uid or ""), reverse=True)
     deadline = datetime.now(UTC) + timedelta(minutes=20)
     completed = 0
+    # Run-scoped, per-model backends. Every queue-only job this run creates -- candidate
+    # generation for each contestant and each pairwise comparison -- is collected here and
+    # submitted in one bounded batch per model at the end, instead of one Worker request per job.
+    backends = PerModelBatchingBackends(lambda model: _backend(model, storage))
     for ep, record, chapter in episodes[:samples]:
         chapter_id = str(chapter["chapter_id"])
         if not (
@@ -583,7 +585,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
             )
             try:
                 _, chapter_tags, pending, _ = llm_tag_suggestions(
-                    _backend(model, storage),
+                    backends.collecting(model),
                     taxonomy=taxonomy,
                     agenda_item_titles="",
                     agenda_text="",
@@ -670,7 +672,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
         judge_pending = False
         for judge in {item.judge for item in to_dispatch}:
             group = [item for item in to_dispatch if item.judge == judge]
-            results = dispatch_job_batch(_backend(judge, storage), [item.job for item in group])
+            results = dispatch_job_batch(backends.collecting(judge), [item.job for item in group])
             for item, result in zip(group, results, strict=True):
                 if isinstance(result, JobHandle):
                     comparison_store[item.comparison_key] = {
@@ -741,10 +743,33 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
         state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
         push_state(storage, state_dir, only_paths=[STATE])
         completed += 1
+    # One bounded ingress batch per model for everything this run collected. Newly submitted work
+    # resolves on a later run from its durable record, exactly as a pending job always has.
+    queued = backends.queued_count
+    outcomes = backends.flush()
+    submit_errors = PerModelBatchingBackends.submission_errors(outcomes)
+    print(
+        f"llm-tournament: LLM batch flush: jobs={len(outcomes)} queued={queued} "
+        f"errors={len(submit_errors)}",
+        flush=True,
+    )
+
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
     push_state(storage, state_dir, only_paths=[STATE])
     print(f"llm-tournament: completed {completed} sample(s)")
+    if submit_errors:
+        # A failed submission is not a deferral: nothing is queued, so no later run picks it up
+        # unless this one says so. Report it as a run failure rather than exiting 0 with the work
+        # silently dropped.
+        for outcome in submit_errors[:10]:
+            print(f"llm-tournament: submission failed: {outcome.result}", flush=True)
+        print(
+            f"llm-tournament: {len(submit_errors)} job(s) failed to submit; "
+            "no work was queued for them",
+            flush=True,
+        )
+        return 1
     return 0
 
 
@@ -754,18 +779,30 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--site-config", default="config/site_config.yml")
     parser.add_argument("--config-dir", default="config")
     parser.add_argument("--output-dir", default="docs")
-    parser.add_argument("--samples", type=int, default=2)
+    # Default to the lane's own budget; --samples remains a manual downward override for a
+    # one-off run. A value above the configured budget is clamped, never honored.
+    parser.add_argument("--samples", type=int, default=0)
     parser.add_argument("--out-dir", default="tournament-ticket")
     args = parser.parse_args(argv)
     if args.command == "ticket":
         return package_ticket(
             site_config_path=args.site_config, output_dir=args.output_dir, out_dir=args.out_dir
         )
+    # The per-run sample budget comes from `llm_lanes["tournament:tag"].max_dispatches_per_run`,
+    # not a magic constant. It used to be hard-clamped to 2 regardless of --samples, which meant
+    # the lane could never dispatch more than ~2 samples' worth of work per day (8 candidate jobs
+    # plus 24 comparisons) against a budget sized for far more -- one of the concrete reasons the
+    # research lanes never came close to filling their quota. Each sample costs one candidate job
+    # per contestant plus one comparison per ordered pair, so convert the job budget into samples
+    # rather than comparing it to a sample count directly.
+    lane = lane_for("tournament:tag")
+    jobs_per_sample = len(MODELS) + len(CONTESTS) * 2
+    sample_budget = max(1, lane.max_dispatches_per_run // max(1, jobs_per_sample))
     return run(
         site_config_path=args.site_config,
         config_dir=args.config_dir,
         output_dir=args.output_dir,
-        samples=max(1, min(args.samples, 2)),
+        samples=sample_budget if args.samples <= 0 else max(1, min(args.samples, sample_budget)),
     )
 
 

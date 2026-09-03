@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from citypods.compute.llm import PerModelBatchingBackends
 from citypods.r5_benchmark import (
     CHAPTER_PIPELINE_VERSION,
     PRELABELER_PROMPT_VERSION,
@@ -257,17 +258,20 @@ def test_pairwise_retries_pending_comparisons_and_completion_waits_for_them(monk
     }
     assert _execution_complete(run, dataset) is False
     calls = []
-    monkeypatch.setattr(benchmark, "_backend", lambda *_args: object())
     monkeypatch.setattr(
         benchmark,
         "pairwise_judge",
         lambda *_args, **kwargs: (calls.append(kwargs["recipe_hash"]) or {"winner": "a"}, False),
     )
+    # The three benchmark phases now share one run-scoped collector instead of each building its
+    # own backend, so the double goes in through the factory. A plain object() has no `.config`,
+    # which `collecting()` treats as "batching does not apply" and hands back unwrapped -- exactly
+    # the pre-batching behavior this test asserts.
     _run_pairwise(
         run=run,
         dataset=dataset,
         taxonomy=_taxonomy(),
-        storage=None,
+        backends=PerModelBatchingBackends(lambda _model: object()),
         models=("a", "b"),
         judge_model="judge",
         sample_size=1,

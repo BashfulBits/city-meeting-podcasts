@@ -30,6 +30,7 @@ from pathlib import Path
 from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body, source_body_filter, source_body_inclusions
 from citypods.compute import DispatchCoordinator, make_compute
+from citypods.compute.llm_lanes import lane_for
 from citypods.config import (
     RESERVED_PUBLIC_DIRS as _RESERVED_DOC_NAMES,
 )
@@ -1765,6 +1766,8 @@ def _run_enrich_global_queue(
             prelabeler_enabled = bool(prelabeler_config.get("enabled", False)) and (
                 ctx.tag_backend is not None
             )
+            # Resolved from `llm_lanes["topic-tags:prelabeler"]` where the context is built, so a
+            # test may still inject its own evaluation config here.
             prelabeler_model = str(prelabeler_config.get("model") or "")
             prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
             prelabeler_llm_schema_version = str(prelabeler_config.get("llm_schema_version") or "1")
@@ -2455,7 +2458,10 @@ def _build_impl(
     tagging_config = site_config.get("tagging") or {}
     moments_config = site_config.get("moments") or {}
     speakers_config = site_config.get("speakers") or {}
-    tag_max_dispatches = int(tagging_config.get("max_dispatches_per_run", 2000))
+    # Per-run dispatch caps come from the same lane entry as the models, so a lane's
+    # throughput bound and its ingress write budget are set side by side rather than in two
+    # files that can disagree.
+    tag_max_dispatches = lane_for("topic-tags:tagger", site_config).max_dispatches_per_run
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
@@ -2465,15 +2471,15 @@ def _build_impl(
         from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 
         try:
-            primary_model = str(tagging_config.get("llm_model", "gemini/gemini-3-flash-preview"))
-            # Extra routes the scheduler may spill onto for throughput once the primary's own
-            # per-minute/daily quota window fills (each is an independent free-tier pool). Config's
-            # `tagging.llm_models` lists every route to draw on, primary first; anything after the
-            # primary becomes `additional_models`. Absent/legacy config keeps the single-route
-            # behavior. The primary stays the stable recipe/calibration route (see
-            # llm_tag_suggestions).
-            configured_models = [str(m) for m in (tagging_config.get("llm_models") or [])]
-            additional_models = tuple(m for m in configured_models if m != primary_model)
+            # Routes come from `llm_lanes["topic-tags:tagger"]` (review/44 Phase 4), the same
+            # block the ingress Worker's reservation map is compiled from, so a lane's models and
+            # its write budget can never describe different things. `models[0]` is the stable
+            # recipe/calibration route (see llm_tag_suggestions); the rest are extra routes the
+            # scheduler may spill onto for throughput once the primary's own per-minute/daily
+            # window fills, each an independent free-tier pool.
+            tagger_lane = lane_for("topic-tags:tagger", site_config)
+            primary_model = tagger_lane.primary_model
+            additional_models = tagger_lane.additional_models
             # Start from LLMBackendConfig.from_env() -- the complete, single source of truth for
             # every dispatch-relevant environment variable (dispatch_url/dispatch_auth_token,
             # dispatch_v2_url/dispatch_v2_auth_token, daily_ingest_cap) -- and override only the
@@ -2514,10 +2520,9 @@ def _build_impl(
         from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 
         try:
-            moment_models = [str(model) for model in (moments_config.get("llm_models") or [])]
-            moment_primary = str(moments_config.get("llm_model") or "gemini/gemini-3.6-flash")
-            if moment_primary not in moment_models:
-                moment_models.insert(0, moment_primary)
+            moments_lane = lane_for("r6-moments", site_config)
+            moment_models = list(moments_lane.models)
+            moment_primary = moments_lane.primary_model
             moment_backend = LiteLLMBackend(
                 _dc_replace(
                     LLMBackendConfig.from_env(),
@@ -2779,7 +2784,14 @@ def _build_impl(
         / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
         llm_evaluation_config={
             **(tagging_config.get("evaluation") or {}),
-            "prelabeler": tagging_config.get("prelabeler") or {},
+            # The prelabeler's route comes from its own lane, not from `tagging.prelabeler.model`:
+            # `topic-tags:prelabeler` is a separate verb with a separate ingress budget and does
+            # not inherit anything from the `topic-tags` prefix. Everything else in the block
+            # (enabled, prompt_version, llm_schema_version) stays where it is.
+            "prelabeler": {
+                **(tagging_config.get("prelabeler") or {}),
+                "model": lane_for("topic-tags:prelabeler", site_config).primary_model,
+            },
         },
         moment_evaluation_state_path=state_dir
         / str(
@@ -2789,7 +2801,7 @@ def _build_impl(
             **moments_config,
             **(moments_config.get("evaluation") or {}),
         },
-        moment_max_dispatches=int(moments_config.get("max_dispatches_per_run", 40)),
+        moment_max_dispatches=lane_for("r6-moments", site_config).max_dispatches_per_run,
         speaker_registry_path=state_dir
         / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
         speaker_evaluation_state_path=state_dir

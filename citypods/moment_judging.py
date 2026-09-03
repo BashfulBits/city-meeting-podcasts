@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model, response_model
 
-JUDGE_MODELS = (
-    "qwen/qwen3.8-27b",
-    "zai/glm-4.7",
-    "gemini/gemini-3.6-flash",
-    "openai/gpt-oss-120b",
-)
+# Routes come from `llm_lanes["r6-judge"]` (review/44 Phase 4), the same block the ingress
+# Worker's reservation map is compiled from. `judge_models()` below still intersects this with a
+# caller-supplied allowlist, so a deployment can narrow the panel without widening it.
+JUDGE_MODELS = lane_for("r6-judge").models
 JUDGE_PROMPT_VERSION = "1"
 JUDGE_SCHEMA_VERSION = "1"
 JUDGE_CONTRACT = "moment-judge"
@@ -49,8 +48,16 @@ def ensure_judge_contract():
 
 
 def judge_models(configured: list[str] | tuple[str, ...] | None = None) -> tuple[str, ...]:
-    """Return configured judge routes without inventing a paid fallback."""
-    if configured is None:
+    """Return the judge routes to use, without inventing a paid fallback.
+
+    ``configured`` is an optional narrowing allowlist, not the source of the routes: the panel
+    itself is ``llm_lanes["r6-judge"]``. An absent OR EMPTY allowlist therefore means "the whole
+    configured panel", not "no judges at all" -- the empty case matters because
+    ``MomentJudgeStage`` reads ``judges.models`` from site config, which no longer carries a list.
+    Treating empty as an empty intersection would silently disable judging with no error, which is
+    precisely the class of quiet failure the lane registry exists to remove.
+    """
+    if not configured:
         return JUDGE_MODELS
     return tuple(model for model in JUDGE_MODELS if model in configured)
 

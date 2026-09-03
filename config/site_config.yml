@@ -27,17 +27,14 @@ generated_chapters_enabled: false
 # established how a route's confidence scores behave.
 tagging:
   enabled: true
-  llm_model: "gemini/gemini-3.1-flash-lite"
-  # Keep tagging pinned to the stable/calibrated Gemini 3.1 route. Gemini 3.5 Flash Lite is
-  # reserved for the production chapter locator's long-context workload.
-  llm_models:
-    - "gemini/gemini-3.1-flash-lite"
+  # Routes and the per-run dispatch cap live in `llm_lanes["topic-tags:tagger"]` below, together
+  # with this lane's ingress write budget. They used to be duplicated here as llm_model/llm_models/
+  # max_dispatches_per_run while the chapter, tournament and benchmark lanes kept theirs in Python
+  # constants; one registry keeps every dispatching lane's route choice in one place.
   # direct | dispatch. Tags do not need a same-run response, so keep provider calls off the
   # Actions runner and let the asynchronous dispatch Worker pace and retry them. The tag workflow
   # must provide LLM_DISPATCH_URL/LLM_DISPATCH_AUTH_TOKEN; provider keys remain Worker secrets.
   llm_mode: "dispatch"
-  # Bounded batch of new dispatches per workflow run (prevents flooding the Worker on taxonomy/prompt bumps).
-  max_dispatches_per_run: 2000
   taxonomy_path: "config/taxonomy.yml"
   evaluation:
     state_path: "llm_evaluation.json"
@@ -56,7 +53,8 @@ tagging:
         "litellm:gemini/gemini-3.1-flash-lite": 1.0
   prelabeler:
     enabled: true
-    model: "google/gemma-4-31b-it"
+    # Route lives in `llm_lanes["topic-tags:prelabeler"]` -- a separate verb with its own ingress
+    # budget, which deliberately does not inherit from the `topic-tags` prefix.
     prompt_version: "1"
     # Version the serialized response contract independently of task instructions. Bumping this
     # schedules fresh work for every active candidate whose stored assessment predates it.
@@ -209,13 +207,8 @@ moments:
   mode: "manual"  # manual | auto; global kill switch back to manual
   # Initial rollout is intentionally limited to explicit council feeds and round-robin queue work.
   rollout_meeting_families: [council]
-  max_dispatches_per_run: 40
-  llm_model: "gemini/gemini-3.6-flash"
-  llm_models:
-    - "gemini/gemini-3.6-flash"
-    - "gemini/gemini-3.5-flash"
-    - "gemini/gemini-3.5-flash-lite"
-    - "gemini/gemini-3.1-flash-lite"
+  # Routes and the per-run dispatch cap live in `llm_lanes["r6-moments"]`; the stage still filters
+  # that allowlist by meeting family before dispatching.
   timeout_seconds: 90
   evaluation:
     state_path: "r6_moment_evaluation.json"
@@ -225,11 +218,7 @@ moments:
   judges:
     enabled: true
     allow_paid: false
-    models:
-      - "qwen/qwen3.8-27b"
-      - "zai/glm-4.7"
-      - "gemini/gemini-3.6-flash"
-      - "openai/gpt-oss-120b"
+    # Routes live in `llm_lanes["r6-judge"]`.
 # Optional banner shown on every page; clear it ("") to remove at launch.
 site_notice: "Feed URLs and details may change before launch — don't rely on these feeds yet."
 schedule_cron: "0 */4 * * *"             # production deploy cadence (also set in workflow)
