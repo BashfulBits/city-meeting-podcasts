@@ -395,35 +395,45 @@ def main(argv: list[str] | None = None) -> int:
     # predates migration); advance the cursor so it never turns into a permanent hot row.
     v2_terminal_seen = 0
     if has_v2_dispatch and not stop_state.requested and datetime.now(UTC) < deadline_at:
-        try:
-            terminal_page = backend.terminal_feed(load_v2_terminal_cursor(storage))
-            terminal_rows = terminal_page.get("terminals", [])
-            terminal_handles = [
-                handle
-                for row in terminal_rows
-                if isinstance(row, dict)
-                and isinstance(row.get("id"), str)
-                and (handle := look_up_v2_deferred_ref(storage, row["id"])) is not None
-            ]
-            v2_terminal_seen = len(terminal_rows)
-            terminal_page_fully_consumed = True
-            if terminal_handles:
-                terminal_snapshot = snapshot_deferred_handles(storage, terminal_handles)
-                terminal_results = backend.poll_batch(terminal_handles)
-                for handle in terminal_handles:
-                    result = terminal_results.get(handle.ref)
-                    if isinstance(result, (LLMStructuredOutputError, LLMDispatchTerminalError)):
-                        recover_terminal(handle, result, target_snapshot=terminal_snapshot)
-                    elif isinstance(result, JobResult):
-                        completed += 1
-                    else:
-                        v2_unobserved += 1
-                        terminal_page_fully_consumed = False
-            cursor = terminal_page.get("cursor")
-            if terminal_page_fully_consumed and isinstance(cursor, dict):
-                write_v2_terminal_cursor(storage, cursor)
-        except Exception as exc:  # noqa: BLE001 -- leave cursor untouched for the next cadence
-            print(f"llm-deferred-sweep: v2 terminal feed failed: {exc}", file=sys.stderr)
+        while not stop_state.requested and datetime.now(UTC) < deadline_at:
+            try:
+                current_cursor = load_v2_terminal_cursor(storage)
+                terminal_page = backend.terminal_feed(current_cursor)
+                terminal_rows = terminal_page.get("terminals", [])
+                if not terminal_rows:
+                    break
+                terminal_handles = [
+                    handle
+                    for row in terminal_rows
+                    if isinstance(row, dict)
+                    and isinstance(row.get("id"), str)
+                    and (handle := look_up_v2_deferred_ref(storage, row["id"])) is not None
+                ]
+                v2_terminal_seen += len(terminal_rows)
+                terminal_page_fully_consumed = True
+                if terminal_handles:
+                    terminal_snapshot = snapshot_deferred_handles(storage, terminal_handles)
+                    terminal_results = backend.poll_batch(terminal_handles)
+                    for handle in terminal_handles:
+                        result = terminal_results.get(handle.ref)
+                        if isinstance(result, (LLMStructuredOutputError, LLMDispatchTerminalError)):
+                            recover_terminal(handle, result, target_snapshot=terminal_snapshot)
+                        elif isinstance(result, JobResult):
+                            completed += 1
+                        else:
+                            v2_unobserved += 1
+                            terminal_page_fully_consumed = False
+                cursor = terminal_page.get("cursor")
+                if terminal_page_fully_consumed and isinstance(cursor, dict):
+                    write_v2_terminal_cursor(storage, cursor)
+                    # If the cursor did not advance or page is partial, we are caught up to the tip.
+                    if cursor == current_cursor or len(terminal_rows) < 500:
+                        break
+                else:
+                    break
+            except Exception as exc:  # noqa: BLE001 -- leave cursor untouched for next cadence
+                print(f"llm-deferred-sweep: v2 terminal feed failed: {exc}", file=sys.stderr)
+                break
 
     if not stop_state.requested and datetime.now(UTC) < deadline_at:
         handled_recipe_hashes: set[str] = set()
