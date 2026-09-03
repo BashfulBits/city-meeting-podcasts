@@ -90,7 +90,7 @@ moments:
     enabled: true
     allow_paid: false
     models:
-      - "meta-llama/llama-4-maverick"
+      - "qwen/qwen3.8-27b"
       - "zai/glm-4.7"
       - "gemini/gemini-3.6-flash"
       - "openai/gpt-oss-120b"

@@ -8,7 +8,7 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model, response_model
 
 JUDGE_MODELS = (
-    "meta-llama/llama-4-maverick",
+    "qwen/qwen3.8-27b",
     "zai/glm-4.7",
     "gemini/gemini-3.6-flash",
     "openai/gpt-oss-120b",
