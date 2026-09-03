@@ -30,6 +30,7 @@ from citypods.compute.llm import (
     LLMBackendConfig,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
+    _LLMBatchItemError,
 )
 from citypods.compute.llm_deferred import (
     MAX_TERMINAL_FAILURE_RETRIES,
@@ -420,6 +421,14 @@ def main(argv: list[str] | None = None) -> int:
                             recover_terminal(handle, result, target_snapshot=terminal_snapshot)
                         elif isinstance(result, JobResult):
                             completed += 1
+                        elif isinstance(result, Exception) and not isinstance(
+                            result, _LLMBatchItemError
+                        ):
+                            recover_terminal(
+                                handle,
+                                LLMDispatchTerminalError(str(result)),
+                                target_snapshot=terminal_snapshot,
+                            )
                         else:
                             v2_unobserved += 1
                             terminal_page_fully_consumed = False
