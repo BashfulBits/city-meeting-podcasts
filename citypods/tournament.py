@@ -489,7 +489,9 @@ def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> i
     config = site.get("tournament") or {}
     required = float(config.get("challenger_win_rate", 0.60))
     window = int(config.get("window_days", 28))
-    current = str((site.get("tagging") or {}).get("llm_model") or "")
+    # The reigning production tag route, i.e. what a challenger must beat. Reads the lane
+    # registry rather than the removed `tagging.llm_model` key.
+    current = lane_for("topic-tags:tagger", site).primary_model
     stats = champion_stats(
         state["results"], current_model=current, now=datetime.now(UTC), window_days=window
     )
