@@ -1579,6 +1579,7 @@
       "rpd": null,
       "tpm": 36000,
       "concurrency": 4,
+      "request_start_margin_seconds": null,
       "free": true,
       "input_per_token": 0.0,
       "output_per_token": 0.0,
