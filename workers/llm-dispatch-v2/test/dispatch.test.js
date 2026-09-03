@@ -1421,11 +1421,30 @@ test("an expired bundle gives its token reservation back to the route", async ()
   const later = Date.now() + 20 * 60 * 1000;
   await coordinator.claimDispatchWindow(later, 25);
 
-  const settled = [...sql.exec(
-    "SELECT provisional_reservation FROM routes WHERE route_id = ?", routeId
-  )][0].provisional_reservation;
-  const baseline = before.find((r) => r.route_id === routeId)?.provisional_reservation ?? 0;
-  assert.equal(settled, baseline, "the dead lease's reservation must be released, not leaked");
+  // Assert the accounting identity, not one route's balance. That same claim tick also REQUEUES
+  // the expired job and immediately re-leases it, so `routeId` legitimately ends up holding a
+  // reservation again whenever the re-claim happens to rank the same route first. Which route
+  // wins depends on live daily-quota state, which keys on the provider's calendar day -- so the
+  // old per-route assertion passed only when the re-claim landed elsewhere, and failed for real
+  // on any run whose +20min step crossed UTC midnight (observed in CI at 23:50 UTC, and
+  // reproducible at will by pinning the clock). The release itself was never broken.
+  //
+  // What "not leaked" actually means: every token still reserved on a route must belong to a
+  // lease that is still alive. A leaked dead lease shows up as exactly one job's reservation
+  // counted twice.
+  const reservedOnRoutes = [...sql.exec(
+    "SELECT COALESCE(SUM(provisional_reservation), 0) AS n FROM routes"
+  )][0].n;
+  const heldByLiveLeases = [...sql.exec(
+    "SELECT COALESCE(SUM(token_reservation), 0) AS n FROM jobs WHERE state = 'leased'"
+  )][0].n;
+  assert.equal(
+    reservedOnRoutes,
+    heldByLiveLeases,
+    "the dead lease's reservation must be released, not leaked: routes hold " +
+      `${reservedOnRoutes} tokens but only ${heldByLiveLeases} belong to a live lease`
+  );
+  assert.ok(before.every((r) => r.provisional_reservation === 0), "baseline sanity");
 });
 
 test("stats surfaces a route zeroed by its 429 buffer, not just by blocked_until", async () => {
