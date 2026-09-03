@@ -216,11 +216,23 @@ def load_lanes(
 ) -> dict[str, LaneConfig]:
     """Return the registry, from an already-loaded site config or by reading ``path``.
 
+    A ``site_config`` that declares ``llm_lanes`` wins; one that omits the key falls back to the
+    committed registry at ``path``. The registry is repository-level policy -- which dispatch
+    purposes exist and what each may spend against a shared Cloudflare budget -- not per-deployment
+    site content like ``custom_domain`` or ``tagging.enabled``. ``_build_impl`` is routinely handed
+    a small synthetic config (tests, local dev, a single-city deployment), and before this block
+    existed those callers got the models from Python constants without declaring anything; making
+    the key mandatory would have turned every such config into a hard failure for policy it has no
+    business restating.
+
+    The fallback is deliberately narrow: it applies only when the key is ABSENT. A config that
+    declares ``llm_lanes`` and gets it wrong still raises, so a real misconfiguration is never
+    quietly replaced by the committed defaults.
+
     Results are cached per resolved path because every per-episode stage call asks for its lane;
-    passing ``site_config`` explicitly bypasses the cache entirely, which is what the tests and
-    any caller holding its own config should do.
+    an explicit ``site_config`` carrying its own lanes bypasses the cache.
     """
-    if site_config is not None:
+    if site_config is not None and site_config.get("llm_lanes") is not None:
         return parse_lanes(site_config.get("llm_lanes"))
 
     key = str(Path(path))
@@ -250,6 +262,9 @@ def lane_for(
     to a hard-coded route when this raises: a lane the Worker will reject at ingress
     (``purpose_not_registered``) should fail here, in the producer, where the error names the
     config file to edit.
+
+    ``site_config`` is consulted only when it declares its own ``llm_lanes``; otherwise the
+    committed registry is used. See :func:`load_lanes` for why.
     """
     lanes = load_lanes(site_config, path=path)
     try:

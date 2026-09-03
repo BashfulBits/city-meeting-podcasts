@@ -160,6 +160,33 @@ class TestLaneLookup:
         with pytest.raises(UnregisteredLaneError, match="non-dispatching"):
             lane_for(purpose)
 
+    def test_a_site_config_without_the_key_inherits_the_committed_registry(self):
+        # `_build_impl` is routinely handed a small synthetic site config (tests, local dev, a
+        # single-city deployment). The registry is repository-level policy -- which purposes exist
+        # and what each may spend against a shared Cloudflare budget -- not per-deployment site
+        # content, so a config that never mentions it must not be a hard failure. Making the key
+        # mandatory broke 53 tests in CI before this fallback existed.
+        assert lane_for("topic-tags:tagger", {"tagging": {"enabled": False}}).primary_model
+        assert len(load_lanes({"site_title": "minimal"})) == len(load_lanes())
+
+    def test_a_site_config_that_declares_lanes_wins(self):
+        own = {
+            "llm_lanes": {
+                "topic-tags:tagger": {
+                    "models": ["only/mine"],
+                    "max_dispatches_per_run": 1,
+                    "daily_write_units": 100,
+                }
+            }
+        }
+        assert lane_for("topic-tags:tagger", own).primary_model == "only/mine"
+
+    def test_a_declared_but_malformed_block_still_raises(self):
+        # The fallback is narrow on purpose: it applies only when the key is ABSENT. A real
+        # misconfiguration must never be quietly replaced by the committed defaults.
+        with pytest.raises(ValueError, match="non-empty list"):
+            load_lanes({"llm_lanes": {"topic-tags:tagger": {"models": []}}})
+
     def test_lane_lookup_ignores_the_process_working_directory(self, tmp_path, monkeypatch):
         # Several lanes resolve their models at import time to build a recipe hash. A lookup that
         # silently found no config because a tool ran from a subdirectory would change those
