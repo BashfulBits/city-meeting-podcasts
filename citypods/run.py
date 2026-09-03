@@ -1920,6 +1920,13 @@ def _run_enrich_global_queue(
     # across the entire moments lane and submit one bounded ingress batch after the pass. Existing
     # deferred handles/results still flow through immediately, so their normal next-run finalizers
     # and calibration state remain unchanged.
+    # Failed batch SUBMISSIONS across every enrichment batcher in this run. A submission failure is
+    # categorically different from a deferral: a deferred job is queued and a later run finalizes
+    # it, whereas a failed submission queued nothing at all. Both used to end the run at exit 0
+    # with only a printed `errors=N` to distinguish them, so a lane that dispatched none of its
+    # work still reported success. Collected here and turned into a real error result below.
+    llm_submission_failures: list[str] = []
+
     moment_batcher = None
     original_moment_backend = ctx.moment_backend
     if any(stage.name in {"moments", "moment-judge"} for stage in audio_stages):
@@ -1997,6 +2004,9 @@ def _run_enrich_global_queue(
                 if submission_errors:
                     pipeline.accumulate_stats(
                         [StageStats(chapter_stage.name, errors=submission_errors)]
+                    )
+                    llm_submission_failures.extend(
+                        f"{chapter_stage.name}: {error}" for error in submission_errors[:5]
                     )
                 print(
                     f"[enrich] {chapter_stage.name} LLM batch flush: jobs={len(batch_outcomes)} "
@@ -2092,6 +2102,8 @@ def _run_enrich_global_queue(
             f"completed={completed} errors={failed}",
             flush=True,
         )
+        if failed:
+            llm_submission_failures.append(f"tags: {failed} job(s) failed to submit")
         ctx.tag_backend = original_tag_backend
 
     if moment_batcher is not None:
@@ -2106,6 +2118,8 @@ def _run_enrich_global_queue(
             f"completed={completed} errors={failed}",
             flush=True,
         )
+        if failed:
+            llm_submission_failures.append(f"moments: {failed} job(s) failed to submit")
         ctx.moment_backend = original_moment_backend
 
     if r7_ledger_stages:
@@ -2152,6 +2166,15 @@ def _run_enrich_global_queue(
         else:
             episodes = prepared.get(key, {}).get("episodes", [])
             results.append(CityResult(c.slug, "built", episode_count=len(episodes)))
+    if llm_submission_failures:
+        # Not attributable to one city -- a failed ingress batch spans sources -- so it gets its
+        # own result row. This is what makes `cli.build` exit non-zero: a lane whose jobs never
+        # reached the Worker must not report success, because nothing will retry them until the
+        # next scheduled run and nobody would know to look.
+        detail = "; ".join(llm_submission_failures[:5])
+        if len(llm_submission_failures) > 5:
+            detail += f" (+{len(llm_submission_failures) - 5} more)"
+        results.append(CityResult("llm-dispatch", "error", detail=detail))
     return results
 
 

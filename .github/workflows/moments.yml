@@ -36,6 +36,14 @@ jobs:
         run: pip install -e ".[storage,llm,video]" -c constraints/prod.txt
 
       - name: Produce bounded R6 moment candidates and judge assessments
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled" -- indistinguishable at a glance from someone
+        # cancelling it by hand, and it skips every later step so nothing is persisted or
+        # reported. This lane hit exactly that on eight consecutive scheduled runs
+        # (2026-08-26..09-02). A STEP-level timeout below the job's fails the step, so the run
+        # goes red and the post-steps still execute. Record-first source preparation is what
+        # should keep the lane well inside this; reaching it means something regressed.
+        timeout-minutes: 165
         env:
           GITHUB_TOKEN: ${{ github.token }}
           LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}

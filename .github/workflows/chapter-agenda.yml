@@ -32,6 +32,14 @@ jobs:
         run: pip install -e ".[storage,llm]" -c constraints/prod.txt
 
       - name: Extract agenda candidates
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled" -- indistinguishable at a glance from someone
+        # cancelling it by hand, and it skips every later step so nothing is persisted or
+        # reported. This lane hit exactly that on eight consecutive scheduled runs
+        # (2026-08-26..09-02). A STEP-level timeout below the job's fails the step, so the run
+        # goes red and the post-steps still execute. Record-first source preparation is what
+        # should keep the lane well inside this; reaching it means something regressed.
+        timeout-minutes: 225
         env:
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
