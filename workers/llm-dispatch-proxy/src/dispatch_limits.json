@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 65,
+    "routes_count": 66,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -1502,6 +1502,24 @@
       "pricing": null,
       "reset_timezone": null,
       "structured_output_schema_strip_keys": []
+    },
+    "nvidia_llama_3_3_70b_instruct_free": {
+      "route_id": "nvidia_llama_3_3_70b_instruct_free",
+      "provider": "nvidia",
+      "upstream_model": "meta/llama-3.3-70b-instruct",
+      "input_context_limit": 131072,
+      "output_context_limit": 32768,
+      "account_id": "primary",
+      "rpm": 4,
+      "rpd": null,
+      "tpm": 36000,
+      "concurrency": 4,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "structured_output_schema_strip_keys": []
     }
   },
   "model_routes_map": {
@@ -1538,7 +1556,8 @@
     ],
     "meta-llama/llama-3.3-70b-instruct": [
       "sambanova_llama_3_3_70b_instruct_primary",
-      "openrouter_meta_llama_llama_3_3_70b_instruct"
+      "openrouter_meta_llama_llama_3_3_70b_instruct",
+      "nvidia_llama_3_3_70b_instruct_free"
     ],
     "openai/gpt-oss-120b": [
       "groq_gpt_oss_120b_primary",
@@ -1749,7 +1768,9 @@
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
-    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2"
+    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
+    "meta/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
+    "nvidia/meta/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct"
   },
   "model_routing": {}
 }
