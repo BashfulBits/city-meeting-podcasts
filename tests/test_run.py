@@ -2613,7 +2613,7 @@ def test_transcript_lane_provider_fetch_errors_use_persisted_archive(
 
     out = capsys.readouterr().out
     assert [r.status for r in results] == ["built"]
-    assert "[enrich] source stale" in out
+    assert "[enrich] source records" in out
     assert "[enrich] transcript pass: 2 item(s) with audio" in out
 
 
@@ -2645,7 +2645,7 @@ def test_chapter_agenda_lane_provider_fetch_errors_use_persisted_archive(
 
     out = capsys.readouterr().out
     assert [r.status for r in results] == ["built"]
-    assert "[enrich] source stale" in out
+    assert "[enrich] source records" in out
 
 
 def test_chapter_agenda_lane_provider_fetch_errors_defer_without_archive(tmp_path, fake_provider):
@@ -2676,7 +2676,7 @@ def test_r7_record_backed_lanes_use_persisted_archive_on_provider_fetch_error(
     results = _build_phase(tmp_path, cities, "enrich", ff, lane=lane)
 
     assert [result.status for result in results] == ["built"]
-    assert "[enrich] source stale" in capsys.readouterr().out
+    assert "[enrich] source records" in capsys.readouterr().out
 
 
 def test_audio_lane_provider_fetch_errors_remain_failed(tmp_path, fake_provider):
@@ -2717,6 +2717,7 @@ def test_tag_lane_is_accepted(tmp_path, fake_provider):
     align, so every scheduled run failed immediately with "unknown lane 'tag'" before TagsStage
     ever ran."""
     cities = _setup(tmp_path)
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="audio")
 
     results = _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="tag")
 
@@ -2932,7 +2933,14 @@ def test_tag_lane_pre_filters_candidate_episodes(tmp_path, monkeypatch):
         full_artifact_episodes=2000,
         metadata_retention_episodes=10000,
     )
-    pipeline.fetch_merge = lambda city, key: (_FakeProvider(), [ep_clean, ep_dirty], {}, 0)
+    provider_fetches = []
+    pipeline.fetch_merge = lambda city, key: provider_fetches.append((city, key))
+    pipeline.fetch_merge_from_records = lambda city, key: (
+        _FakeProvider(),
+        [ep_clean, ep_dirty],
+        {},
+        0,
+    )
     pipeline.persist_source = lambda key, eps, persisted, notes=None: None
 
     results = _run_enrich_global_queue(
@@ -2943,6 +2951,7 @@ def test_tag_lane_pre_filters_candidate_episodes(tmp_path, monkeypatch):
         policy=None,
     )
     assert len(results) == 1
+    assert provider_fetches == []
     # Only ep_dirty should have entered the global candidate queue and been processed!
     assert tag_stage.processed == [ep_dirty]
 

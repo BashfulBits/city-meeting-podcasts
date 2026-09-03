@@ -569,26 +569,30 @@ class SourcePipeline:
         return unique, complete, reconciled
 
     def fetch_merge_from_records(
-        self, city: City, key: str, reason: Exception
+        self, city: City, key: str, reason: Exception | None = None
     ) -> tuple[object, list[Episode], dict, int]:
-        """Prepare a source from the persisted archive after a transient fetch failure.
+        """Prepare a source directly from the persisted archive.
 
         Downstream record-backed enrichment lanes (transcribe, align, tag, moments, chapter
         extraction/locator) operate on already-hosted audio and stored documents in
         ``episodes.json``; they do not need fresh provider metadata to enrich existing records.
-        If the provider refresh fails, load the last-known archive and let the stage passes
-        continue.
+        Loading that archive first keeps their bounded work window for the actual backlog instead
+        of spending it scraping every provider. Fresh observations remain the audio/render lanes'
+        responsibility and are merged into the same append-only archive before the next run.
         """
         provider = get_provider(city.provider)
         persisted = load_records(self.state_dir, key)
         if not persisted:
-            raise ProviderError(str(reason)) from reason
+            detail = f": {reason}" if reason is not None else ""
+            raise ProviderError(f"no persisted archive for record-backed lane{detail}") from reason
         episodes = [record_to_episode(rec) for rec in persisted.values()]
         self._hydrate_calendar(key)
-        self._notes[key] = f"stale provider fetch failed: {reason}"
+        if reason is not None:
+            self._notes[key] = f"stale provider fetch failed: {reason}"
         print(
-            f"[enrich] source stale slug={city.slug} provider={city.provider} "
-            f"source={key} archive={len(episodes)} reason={reason}",
+            f"[enrich] source records slug={city.slug} provider={city.provider} "
+            f"source={key} archive={len(episodes)}"
+            f"{f' fallback_reason={reason}' if reason is not None else ''}",
             flush=True,
         )
         return provider, episodes, persisted, 0
@@ -1640,32 +1644,29 @@ def _run_enrich_global_queue(
     prepared: dict[str, dict] = {}
     errors: dict[str, str] = {}
     deferred: dict[str, str] = {}
+    record_backed_lane = ctx.lane in _RECORD_BACKED_LANES
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         fut_key = {
-            pool.submit(pipeline.fetch_merge, city, key): key for key, city in rep_city.items()
+            pool.submit(
+                pipeline.fetch_merge_from_records if record_backed_lane else pipeline.fetch_merge,
+                city,
+                key,
+            ): key
+            for key, city in rep_city.items()
         }
         for fut in fut_key:
             key = fut_key[fut]
             try:
                 provider, episodes, persisted, seeded = fut.result()
             except (ProviderError, SecurityError) as exc:
-                if ctx.lane in _RECORD_BACKED_LANES:
-                    try:
-                        provider, episodes, persisted, seeded = pipeline.fetch_merge_from_records(
-                            rep_city[key], key, exc
-                        )
-                    except ProviderError:
-                        if is_transient_provider_error(exc):
-                            deferred[key] = str(exc)
-                        else:
-                            errors[key] = str(exc)
-                        continue
-                else:
-                    if is_transient_provider_error(exc):
-                        deferred[key] = str(exc)
-                    else:
-                        errors[key] = str(exc)
+                if record_backed_lane:
+                    errors[key] = str(exc)
                     continue
+                if is_transient_provider_error(exc):
+                    deferred[key] = str(exc)
+                else:
+                    errors[key] = str(exc)
+                continue
             notes: list[str] = [f"{seeded} legacy"] if seeded else []
             prepared[key] = {
                 "city": rep_city[key],
@@ -2130,7 +2131,6 @@ def _run_enrich_global_queue(
     # can persist sibling progress and scheduled enrichment lanes complete cleanly instead of
     # reddening on an upstream provider outage they cannot repair. Primary materialization lanes
     # (audio / full enrich) still report source-fetch errors as errors to surface provider drift.
-    record_backed_lane = ctx.lane in _RECORD_BACKED_LANES
     results: list[CityResult] = []
     for c in cities:
         key = source_key(c)
@@ -2625,44 +2625,13 @@ def _build_impl(
                 "(measured per-recipe admission + yield if superseded)"
             )
         elif lane in {"tag", "moments"}:
-            # Dedicated LLM lanes run on a daily cron with their own *job*
-            # timeout, not the 4h-scale cron the generic `run_time_budget_minutes` window is sized
-            # for (== that lane's own cron interval, minus a tail -- see the comment above).
-            # Their lane budget gives the run a deadline anchored to its own job's timeout,
-            # so a run that's still going too long stops dispatching new LLM calls and reaches the
-            # end-of-pass persist with margin to spare before GitHub cancels the job outright.
-            #
-            # Anchor to `enrich_phase_start` (captured before the durable-state restore), NOT to a
-            # fresh `monotonic()` read here: the restore and backend setup run *before* this point,
-            # so a `monotonic()` read here would start the window only after that startup cost and
-            # let a slow start slide the deadline past the job cap (observed: an ~11-min serial
-            # state restore did exactly this and the job was hard-cancelled). Counting startup
-            # against the window guarantees the graceful yield always fires first. Clamp at >= 0 so
-            # a startup that already overran the whole window yields immediately rather than
-            # computing a deadline in the past that reads as "never stop".
-            #
-            # This deadline still can't save a run from `_run_enrich_global_queue`'s source-prepare
-            # pass (the `fetch_merge` `ThreadPoolExecutor` loop, step 1 in its docstring): it runs
-            # to completion unconditionally -- nothing in that loop calls `ctx.stop()` -- before any
-            # of the stage processing this deadline governs even starts. A slow-fetching backlog
-            # (many-committee cities, added latency from a Cloudflare Worker 403 fallback relay) can
-            # alone exceed a tight job timeout regardless of how well-tuned this window is; that's
-            # why `tag.yml`'s job timeout was widened to 240m (mirroring `llm-deferred-sweep.yml`)
-            # rather than tuning this number alone. If prepare itself ever needs a hard bound, it
-            # needs its own `ctx.stop()` check inside that loop -- this deadline can't reach it.
-            lane_window_key = f"{lane}_run_time_budget_minutes"
-            lane_window_min = float(defaults.get(lane_window_key, 20))
-            lane_deadline_secs = lane_window_min * 60 * safety
-            remaining_secs = max(0.0, lane_deadline_secs - (time.monotonic() - enrich_phase_start))
-            deadline = (time.monotonic() + remaining_secs) if lane_window_min > 0 else None
-            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
-            if lane_window_min > 0:
-                print(
-                    f"budget: {lane} window {lane_window_min:.0f}m × {safety} "
-                    "(+ yield if superseded)"
-                )
-            # The queue owns these asynchronous calls; omit runner-side sleep pacing so accepted
-            # Worker jobs remain durable even when the producer yields.
+            # These lanes only prepare queue-only v2 requests. Their committed per-run count caps
+            # are the safety boundary, and the Worker owns pacing plus provider quota. A runner
+            # deadline could stop below that cap even though enqueueing the remaining durable jobs
+            # is cheap, so only a genuinely superseding run asks them to yield. Record-first source
+            # preparation above keeps this bounded pass independent of provider scrape latency.
+            stop = StopSignal(superseded=_newer_run_queued)
+            print(f"budget: {lane} count-bounded (+ yield if superseded)")
             tag_llm_deadline = None
         elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:
             # Chapter jobs are queued rather than held on a runner. The wall-clock stop bounds

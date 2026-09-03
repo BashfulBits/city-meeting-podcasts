@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Record-first, quota-filling LLM producer lanes.** Record-backed enrichment now prepares from
+  the restored append-only episode archives instead of first scraping every live provider and only
+  falling back to records on an error. Queue-only topic-tag and R6 moments runs are bounded by their
+  committed dispatch-count quotas rather than an earlier runner deadline, allowing each daily run
+  to enqueue its full quota when enough pending work exists; Cloudflare Dispatch v2 still owns
+  provider pacing, admission, and quota enforcement. No recipe, artifact, taxonomy, or pipeline
+  version changes, so existing artifacts are retained and no backfill is auto-invalidated.
+
 - **Serialize Airforce and add a request-start safety margin.** Restores provider and route
   concurrency to one for Airforce's one-RPM Mistral Medium route, and spaces starts by 62 seconds
   (the documented minute plus a two-second clock-skew margin). This is intentionally not
