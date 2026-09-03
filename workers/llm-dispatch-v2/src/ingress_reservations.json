@@ -2,7 +2,7 @@
   "_generated_by": "scripts/compile_llm_lanes.py",
   "_source": "config/site_config.yml (llm_lanes)",
   "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
-  "global_write_budget": 30000,
+  "global_write_budget": 24000,
   "reserved_total": 13000,
   "reservations": {
     "chapter-agenda": {

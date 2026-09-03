@@ -17,6 +17,48 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **One canonical registry for every LLM dispatch lane.** `config/site_config.yml` gains an
+  `llm_lanes` block keyed by the exact `LLMRequestPolicy.purpose` string, carrying both that lane's
+  models and its Cloudflare Dispatch v2 ingress write budget. `scripts/compile_llm_lanes.py`
+  compiles it into the Worker's `ingress_reservations.json`, drift-checked at deploy the same way
+  `dispatch_limits.json` already is. This replaces a hand-maintained `INGRESS_PURPOSE_RESERVATIONS`
+  var whose keys had drifted to name purposes no client sends — it reserved capacity under
+  `topic-tags` and `moments` while the client sends `topic-tags:tagger`, `topic-tags:prelabeler`,
+  `r6-moments`, and `r6-judge` — which withheld 10,000 of 30,000 daily ingress write units from
+  every real lane while being unusable by the lanes it named. An unregistered purpose is now
+  rejected at ingress (`purpose_not_registered`) instead of drawing on shared headroom, so a new
+  verb or task requires a new lane entry and a sub-purpose does not inherit its prefix's budget.
+  `tagging.llm_model(s)`, `tagging.prelabeler.model`, `moments.llm_model(s)` and
+  `moments.judges.models` are removed, and the chapter, tournament, and R5-benchmark routes move
+  out of Python constants into the same block. **Model values are unchanged, so no recipe hash
+  changes and no stored artifact is invalidated**; `tests/test_llm_lanes.py` pins the
+  recipe-affecting strings so a future edit surfaces its backfill cost instead of silently
+  queueing catalog rework.
+
+- **Batched research-lane dispatch and a higher dispatch ceiling.** `citypods/tournament.py` and
+  `citypods/r5_benchmark.py` built a fresh `LiteLLMBackend` inside their innermost loops, so every
+  candidate generation and every pairwise comparison was its own Worker request and the backend's
+  per-instance ingest-throttle state was discarded on each call. Both now share a run-scoped
+  `PerModelBatchingBackends` collector and submit one bounded `enqueue_batch` per model. The
+  tournament's per-run budget comes from its lane config instead of a hard two-sample clamp that
+  had capped it near 32 jobs/day. Worker knobs are retuned against the measured binding
+  constraint — the shared 100,000/day Durable Object row-write budget, not the per-invocation
+  subrequest ceiling: `MAX_BUNDLES_PER_UTC_DAY` 1,000 → 1,400 and
+  `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 30,000 → 24,000 lift the dispatch ceiling from 4,000 to
+  5,600 LLM calls/day at 69% of the write ceiling. `MAX_BUNDLE_JOBS` stays at 4 because raising it
+  is what breaches that budget. No recipe, artifact, or pipeline version changes.
+
+### Fixed
+
+- **LLM producer lanes no longer fail silently.** A failed batch submission is not a deferral —
+  nothing is queued, so no later run picks it up — but the enrichment, tournament, and benchmark
+  entry points counted the failures, printed a line, and exited 0. All four now report them and
+  exit non-zero. The four lane workflow steps also gain a step-level timeout below their job
+  timeout: a job-level timeout *cancels* the run, which GitHub shows as a grey "cancelled"
+  indistinguishable from a manual cancellation and which skips every later step, so nothing is
+  persisted or reported. `tag.yml` hit exactly that on eight consecutive scheduled runs between
+  2026-08-26 and 2026-09-02.
+
 - **Record-first, quota-filling LLM producer lanes.** Record-backed enrichment now prepares from
   the restored append-only episode archives instead of first scraping every live provider and only
   falling back to records on an error. Queue-only topic-tag and R6 moments runs are bounded by their

@@ -429,6 +429,18 @@ total on `/admin/status`.
 
 ### LLM Model Catalog & Decision Matrix
 
+**Which lane uses which model is declared in one place:** `config/site_config.yml`'s `llm_lanes`
+block, keyed by the exact `LLMRequestPolicy.purpose` string a call site sends. Each entry carries
+that lane's ordered model list *and* its Cloudflare Dispatch v2 ingress write budget, so a lane's
+routes and what it may spend cannot describe different things.
+[`scripts/compile_llm_lanes.py`](scripts/compile_llm_lanes.py) compiles the block into
+`workers/llm-dispatch-v2/src/ingress_reservations.json` (drift-checked at deploy), and
+[`citypods/compute/llm_lanes.py`](citypods/compute/llm_lanes.py) reads it on the client. A purpose
+with no entry is rejected at ingress rather than drawing on shared headroom, so adding a verb or
+task is a deliberate config edit; a sub-purpose (`topic-tags:prelabeler`) does not inherit its
+prefix's (`topic-tags:tagger`) budget. `llm_lanes` chooses *among* the catalog below; the catalog
+itself — physical routes, quotas, and capabilities — remains `config/provider_limits.yml`'s job.
+
 The pipeline routes LLM jobs across 12 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python `citypods/compute/llm_routes.json`). The generated catalog contains 63 physical provider/account routes representing 34 deduplicated logical models; every route supports direct LiteLLM and asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode, direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those materialized capabilities rather than inferring them from model or route names. Input/output context ceilings are mandatory on each physical route, because model families and gateways can differ (for example, OpenRouter's free Gemma route has a lower effective input ceiling than the native model). Static catalog quotas are only candidate capacity: production routing records observed RPM, TPM, RPD/reset behavior, latency, failures, and structured-output validity before promoting a route.
 
 | Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Representative Context Window* | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |

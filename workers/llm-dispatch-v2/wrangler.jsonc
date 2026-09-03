@@ -44,12 +44,25 @@
     "CRON_TICK_SECONDS": "60",
     "MAX_ACTIVE_BUNDLES": "2",
     "MAX_IN_FLIGHT_LLM_CALLS": "8",
-    "MAX_BUNDLES_PER_UTC_DAY": "1000",
-    // This is a secondary blast-radius cap.  The primary admission budget below is measured in
-    // pessimistic DO writes, so a one-model and a multi-model job do not consume the same
-    // unaccounted capacity.  It can therefore safely exceed the historical 5k job ceiling.
-    "MAX_JOBS_PER_UTC_DAY": "12000",
-    "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY": "30000",
+    // 1,400 of the 1,440 daily cron ticks may claim a bundle (validateConfig requires it stay
+    // under the tick count). Raised from 1,000 on 2026-09-03: at 4 jobs/bundle this lifts the
+    // dispatch ceiling from 4,000 to 5,600 LLM calls/day. See review/44's "Throughput
+    // reconciliation (2026-09-03)" for the write-budget arithmetic behind these three knobs --
+    // in particular why MAX_BUNDLE_JOBS is NOT the knob to raise.
+    "MAX_BUNDLES_PER_UTC_DAY": "1400",
+    // Secondary blast-radius cap. The primary admission budget below is measured in pessimistic
+    // DO writes, so a one-model and a multi-model job do not consume the same unaccounted
+    // capacity. Lowered from 12,000 on 2026-09-03 to sit near the executor's real 5,600/day
+    // drain rate: admitting three times what can be dispatched does not raise throughput, it
+    // grows a backlog while spending the DO write budget that would have funded dispatch.
+    "MAX_JOBS_PER_UTC_DAY": "8000",
+    // Lowered from 30,000 on 2026-09-03 to fund the MAX_BUNDLES_PER_UTC_DAY raise above. The
+    // 100,000/day DO row-write budget is shared between ingestion and dispatch-lifecycle, and
+    // it -- not the 50-subrequest-per-invocation ceiling -- is what actually binds throughput:
+    // 24,000 ingress + 5,600 jobs x ~7 lifecycle writes + 1,400 bundles x ~4 = ~68,800, i.e.
+    // 69% of the ceiling, inside the 75% admission-rejection threshold. The lane reservations
+    // compiled from `llm_lanes` total 13,000, well under this.
+    "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY": "24000",
     // Per-purpose ingress budgets now live in config/site_config.yml's `llm_lanes` block and are
     // compiled into src/ingress_reservations.json by scripts/compile_llm_lanes.py (drift-checked
     // in llm-dispatch-v2-worker-deploy.yml), so this var is gone. It had drifted to reserve
