@@ -256,6 +256,24 @@ test("POST /v2/jobs:poll-batch polls coordinator and returns result_key without 
   assert.equal(data.statuses[0].result_key, null);
 });
 
+test("POST /v2/jobs:terminal-feed returns terminal items and keyset cursor", async () => {
+  const env = createMockEnv();
+  const req = new Request("http://localhost/v2/jobs:terminal-feed", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer secret-token",
+    },
+    body: JSON.stringify({ cursor: { updated_at: 0, id: "" }, limit: 10 }),
+  });
+
+  const res = await worker.fetch(req, env);
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.ok(Array.isArray(data.terminals));
+  assert.ok(data.cursor && typeof data.cursor.updated_at === "number");
+});
+
 test("POST /v2/jobs/{id}:schema-retry persists a corrected queued job", async () => {
   const env = createMockEnv();
   const { getByName } = env.LLM_SCHEDULER;

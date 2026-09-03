@@ -1101,25 +1101,57 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const afterUpdatedAt = Number(cursor?.updated_at) || 0;
     const afterId = typeof cursor?.id === "string" ? cursor.id : "";
-    const rows = [...sql.exec(
+    // Query completed and failed states with two separate seeks against idx_jobs_state_updated_id
+    // using row-value tuple comparison (updated_at, id) > (?, ?). This guarantees a pure index
+    // range seek with NO temp B-tree, whereas `state IN ('completed', 'failed') ORDER BY updated_at`
+    // forces SQLite to scan and sort the entire terminal history in memory.
+    const completedRows = [...sql.exec(
       `SELECT id, state, result_key, updated_at FROM jobs
-       WHERE state IN ('completed', 'failed')
-         AND (updated_at > ? OR (updated_at = ? AND id > ?))
-       ORDER BY updated_at ASC, id ASC LIMIT ?`,
-      afterUpdatedAt,
+       WHERE state = 'completed' AND (updated_at, id) > (?, ?)
+       ORDER BY state ASC, updated_at ASC, id ASC LIMIT ?`,
       afterUpdatedAt,
       afterId,
       limit
     )];
-    const last = rows.at(-1);
+    const failedRows = [...sql.exec(
+      `SELECT id, state, result_key, updated_at FROM jobs
+       WHERE state = 'failed' AND (updated_at, id) > (?, ?)
+       ORDER BY state ASC, updated_at ASC, id ASC LIMIT ?`,
+      afterUpdatedAt,
+      afterId,
+      limit
+    )];
+    const merged = [];
+    let i = 0;
+    let j = 0;
+    while (merged.length < limit && (i < completedRows.length || j < failedRows.length)) {
+      if (i >= completedRows.length) {
+        merged.push(failedRows[j++]);
+      } else if (j >= failedRows.length) {
+        merged.push(completedRows[i++]);
+      } else {
+        const c = completedRows[i];
+        const f = failedRows[j];
+        if (c.updated_at < f.updated_at || (c.updated_at === f.updated_at && c.id < f.id)) {
+          merged.push(c);
+          i++;
+        } else {
+          merged.push(f);
+          j++;
+        }
+      }
+    }
+    const last = merged.at(-1);
     return {
-      terminals: rows.map((row) => ({
+      terminals: merged.map((row) => ({
         id: row.id,
         state: row.state,
         result_key: row.result_key,
         updated_at: row.updated_at,
       })),
-      cursor: last ? { updated_at: last.updated_at, id: last.id } : { updated_at: afterUpdatedAt, id: afterId },
+      cursor: last
+        ? { updated_at: last.updated_at, id: last.id }
+        : { updated_at: afterUpdatedAt, id: afterId },
     };
   }
 

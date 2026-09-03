@@ -2424,10 +2424,11 @@ class LiteLLMBackend(Backend):
                 timeout=self.config.timeout_seconds,
             )
         except requests.RequestException as exc:
-            raise LLMBackendError("LLM dispatch v2 terminal-feed request failed") from exc
+            raise LLMBackendError(f"LLM dispatch v2 terminal-feed request failed: {exc}") from exc
         if response.status_code != 200:
+            error_body = response.text.replace("\n", " ")[:300]
             raise LLMBackendError(
-                f"LLM dispatch v2 terminal-feed returned HTTP {response.status_code}"
+                f"LLM dispatch v2 terminal-feed returned HTTP {response.status_code}: {error_body}"
             )
         try:
             data = response.json()

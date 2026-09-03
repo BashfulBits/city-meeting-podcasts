@@ -249,15 +249,35 @@ def schema_correction_attempted(storage, recipe_hash: str) -> bool:
     return bool(isinstance(data, Mapping) and data.get("schema_correction_attempted"))
 
 
-def prune_expired_failure_markers(storage, *, now: datetime | None = None) -> int:
-    """Delete terminal-failure audit markers beyond their bounded retention period."""
+def prune_expired_failure_markers(
+    storage,
+    *,
+    now: datetime | None = None,
+    ttl_days: float = DEFAULT_FAILURE_MARKER_TTL_DAYS,
+) -> int:
+    """Delete terminal-failure audit markers beyond their bounded retention period.
+
+    Uses `last_modified` from the listing to skip downloading unexpired markers, avoiding tens of
+    thousands of serial HTTP requests.
+    """
     current = now or datetime.now(UTC)
+    cutoff = current - timedelta(days=ttl_days)
     deleted = 0
     try:
         listing = storage.list_objects(DEFERRED_FAILURE_PREFIX)
     except Exception:  # noqa: BLE001 -- audit cleanup must never block a sweep
         return 0
-    for key, _ in listing:
+
+    # Filter out markers whose S3 last_modified proves they were written recently.
+    candidates: list[str] = []
+    for key, last_modified in listing:
+        if isinstance(last_modified, datetime):
+            ts = last_modified if last_modified.tzinfo else last_modified.replace(tzinfo=UTC)
+            if ts > cutoff:
+                continue
+        candidates.append(key)
+
+    for key in candidates:
         try:
             data = _read_json(storage, key)
         except StorageReadUnavailable:
@@ -269,9 +289,11 @@ def prune_expired_failure_markers(storage, *, now: datetime | None = None) -> in
             last_failed_at = datetime.fromisoformat(raw) if isinstance(raw, str) else None
         except ValueError:
             last_failed_at = None
-        if last_failed_at is None or current <= last_failed_at + timedelta(
-            days=DEFAULT_FAILURE_MARKER_TTL_DAYS
-        ):
+        if last_failed_at is None:
+            continue
+        if last_failed_at.tzinfo is None:
+            last_failed_at = last_failed_at.replace(tzinfo=UTC)
+        if current <= last_failed_at + timedelta(days=ttl_days):
             continue
         try:
             storage.delete(key)

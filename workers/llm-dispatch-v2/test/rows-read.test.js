@@ -140,6 +140,7 @@ async function exerciseAll(fixture) {
       }))));
   await run("resolveUnknownBatch", () => coordinator.resolveUnknownBatch(["att-1", "nope"]));
   await run("confirmNeverAccepted", () => coordinator.confirmNeverAccepted(["live-0", "nope"]));
+  await run("terminalFeed", () => coordinator.terminalFeed({ updated_at: 0, id: "" }, 20));
   const purge = await run("purgePendingBatch", () => coordinator.purgePendingBatch(20));
   await run("confirmPurge", () => coordinator.confirmPurge(purge.jobs.map((j) => j.id)));
   await run("pruneTerminalRecords", async () => coordinator._pruneTerminalRecords(now));
