@@ -2023,6 +2023,7 @@ def _run_enrich_global_queue(
             return
         # Never push provisional batch-pending handles to durable state.  Submit them first so
         # the checkpoint records a real Worker handle (or the submission error) for retry.
+        checkpoint_start = time.monotonic()
         _flush_tag_batch()
         persist_start = time.monotonic()
         _persist_all()
@@ -2032,7 +2033,7 @@ def _run_enrich_global_queue(
         _checkpoint_cost["persist"] += push_start - persist_start
         _checkpoint_cost["push"] += finished - push_start
         _checkpoint_cost["n"] += 1
-        elapsed = finished - persist_start
+        elapsed = finished - checkpoint_start
         _last_checkpoint["interval"] = max(
             _CHECKPOINT_INTERVAL_SECONDS, elapsed / _MAX_CHECKPOINT_DUTY_CYCLE
         )
