@@ -88,7 +88,7 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 >
 > **System architecture evolution & refactoring roadmap (2026-09-04, detailed to L3 same day).**
 > [`review/45`](review/45-system-architecture-evolution-and-refactoring.md) synthesizes a
-> system-wide audit into 18 initiatives plus state-store partitioning and v1 retirement, each now
+> system-wide audit into 19 initiatives plus state-store partitioning and v1 retirement, each now
 > **individually L3 dev-ready** — exact file/function references, algorithms, schemas, and test
 > plans grounded in the current codebase, spanning throughput, reliability, observability, LLM
 > dispatch, and module boundaries. It corrects overlap with shipped duration normalization
