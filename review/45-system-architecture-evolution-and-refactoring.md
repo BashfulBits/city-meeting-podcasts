@@ -795,12 +795,16 @@ Existing accepted designs take precedence where they overlap; several entries be
      `citypods.statesync` already thread an optional `log: Callable[[str], None] | None` through
      most multi-step functions. Do not rewrite all ~164 print call sites. Add one `emit_event(...)`
      call at the start and end of each already-narrated phase boundary; the L3 issue must enumerate
-     every site by a fresh grep, but these five are confirmed real and keep their existing
-     human-readable print line unchanged alongside the new structured one: `run.py:2144`/`2152`
-     (audio pass start/done), `run.py:2165`/`2176` (transcript pass start/done), `run.py:2213-2217`
-     (tag LLM batch flush — port its existing `jobs=`/`pending=`/`completed=`/`errors=` values
-     verbatim into `emit_event`'s fields), `run.py:2692-2694` (state restore summary), and
-     `stages.py:2583-2588` (`_log_asr_external_required` — already structured-ish; port its fields).
+     every site by a fresh grep (line numbers shift as nearby code lands — re-grep, don't trust a
+     stale citation), but these five are confirmed real as of this writing and keep their existing
+     human-readable print line unchanged alongside the new structured one: `run.py:2168`/`2176`
+     (audio pass start/done), `run.py:2190`/`2200` (transcript pass start/done),
+     `run.py:1998-2016`'s `_flush_tag_batch()` (tag LLM batch flush — port its existing
+     `jobs=`/`pending=`/`completed=`/`errors=` values verbatim into `emit_event`'s fields; this
+     function now runs at both `_checkpoint_if_due()` and end-of-pass, so instrument it once inside
+     the shared helper rather than at each call site), `run.py:2705-2707` (state restore summary),
+     and `stages.py:2660-2668` (`_log_asr_external_required` — already structured-ish; port its
+     fields).
   3. **Redaction enforced by construction.** `emit_event`'s `**fields` accepts only
      `int | float | str | bool | None`; passing anything else (a list, dict, or object) must raise
      `TypeError` at the call site rather than silently stringify — the mechanical guard against a
@@ -1020,11 +1024,21 @@ Existing accepted designs take precedence where they overlap; several entries be
   this initiative should be sequenced to land *after* Initiative 4 (it builds on the same dirty-push
   mechanism) and must not touch `push_records_merged` independently.
 - **Item 2 (registry sufficiency) needs its premise checked, not assumed — the registry is already
-  more sufficient than the issue implies, but one property is unproven.** `write_deferred(storage,
-  job.recipe_hash, handle)` (`citypods/compute/llm.py:2082`) already runs **synchronously and
-  independently of episode-record persistence**, immediately on Worker acceptance inside
-  `enqueue_batch` itself — not gated on `_persist_all()`/`mid_run_checkpoint()`. So a crash between
-  acceptance and the next checkpoint does not lose the durable B2 registry entry for that job. What
+  more sufficient than the issue implies, and one relevant piece landed independently while this
+  document was being written.** PR #1462 ("flush topic tag jobs at checkpoints", merged after this
+  section was first drafted) already moved the tag batch's submission into a shared
+  `_flush_tag_batch()` (`run.py:1998-2016`), called from `_checkpoint_if_due()` *before*
+  `_persist_all()`/`mid_run_checkpoint()` (`run.py:2024-2027`, with an explicit comment: "Never
+  push provisional batch-pending handles to durable state. Submit them first so the checkpoint
+  records a real Worker handle... for retry"). That closes exactly one gap this initiative would
+  otherwise have had to open: it guarantees every checkpoint's local persist reflects the batch's
+  post-submission state (durable handle or recorded submission error), never a stale
+  pre-submission placeholder. It does **not** by itself prove crash safety *before* a checkpoint —
+  `write_deferred(storage, job.recipe_hash, handle)` (`citypods/compute/llm.py:2082`) already runs
+  **synchronously and independently of episode-record persistence**, immediately on Worker
+  acceptance inside `enqueue_batch` itself, so a crash between acceptance and the next checkpoint
+  (whether or not that checkpoint has run `_flush_tag_batch()` yet) does not lose the durable B2
+  registry entry for that job. What
   is genuinely unproven is **recipe-hash determinism across a crash and restart**: on the next run,
   `TagsStage` must re-derive the *exact same* `recipe_hash` for the same candidate from the
   episode's pre-tag state so that `look_up_deferred()` (called at the top of `enqueue_batch`,
