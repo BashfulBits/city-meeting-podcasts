@@ -72,7 +72,7 @@ def test_main_handles_classification_failure_gracefully(tmp_path, monkeypatch):
     monkeypatch.setattr(_mod, "feed_paths_by_slug", lambda root: {})
 
     def fake_classify(bundle, storage=None):
-        raise RuntimeError("API Gateway returned 404: Not Found")
+        raise ConnectionError("API Gateway returned 404: Not Found")
 
     monkeypatch.setattr(_mod, "classify_unexpected_bodies", fake_classify)
 
@@ -90,4 +90,4 @@ def test_main_handles_classification_failure_gracefully(tmp_path, monkeypatch):
     assert output_report.exists()
     content = output_report.read_text(encoding="utf-8")
     assert "#### `granicus:fake-source`" in content
-    assert "> Classification failed: API Gateway returned 404: Not Found" in content
+    assert "> Classification failed (ConnectionError)." in content

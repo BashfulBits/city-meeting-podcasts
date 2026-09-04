@@ -128,8 +128,10 @@ def main(argv: list[str] | None = None) -> int:
             # grow past the route's input ceiling as findings accumulate.
             remedy = classify_unexpected_bodies(bundle, storage=storage)
         except Exception as exc:
-            _log(f"  classification failed for {source_key}: {exc}")
-            reports.append(f"#### `{source_key}`\n\n> Classification failed: {exc}")
+            _log(f"  classification failed for {source_key}: {type(exc).__name__}")
+            reports.append(
+                f"#### `{source_key}`\n\n> Classification failed ({type(exc).__name__})."
+            )
             continue
 
         plan = validate_proposals(remedy, bundle, feed_paths)

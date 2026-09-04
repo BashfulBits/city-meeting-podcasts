@@ -437,10 +437,9 @@ def test_classify_reraises_backend_inference_failure(evidence):
         def run_inference(self, job):
             raise ConnectionError("Connection refused")
 
-    with pytest.raises(
-        RuntimeError, match="Remedy classification inference failed: Connection refused"
-    ):
+    with pytest.raises(RuntimeError, match="^Remedy classification inference failed$") as exc_info:
         classify_unexpected_bodies(evidence, storage=MemStorage(), backend=ExplodingBackend())
+    assert isinstance(exc_info.value.__cause__, ConnectionError)
 
 
 def test_remedy_models_exist_in_the_route_catalog():
