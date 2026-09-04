@@ -7484,7 +7484,7 @@ class AgendaChapterCandidatesStage:
             prepared, results, strict=True
         ):
             if is_new_dispatch:
-                ctx.settle_chapter_agenda_dispatch(dispatched=True)
+                ctx.settle_chapter_agenda_dispatch(dispatched=not isinstance(result, Exception))
             if isinstance(result, Exception):
                 stats.errors.append(f"{uid}: agenda chapter extraction: {result}")
                 continue
@@ -7669,7 +7669,7 @@ class ChapterBoundaryLocatorStage:
             is_new_dispatch,
         ), result in zip(prepared, results, strict=True):
             if is_new_dispatch:
-                ctx.settle_chapter_locator_dispatch(dispatched=True)
+                ctx.settle_chapter_locator_dispatch(dispatched=not isinstance(result, Exception))
             if isinstance(result, Exception):
                 stats.errors.append(f"{uid}: chapter locator: {result}")
                 continue

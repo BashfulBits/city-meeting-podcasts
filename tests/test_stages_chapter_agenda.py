@@ -497,6 +497,25 @@ def test_agenda_stage_enforces_producer_dispatch_cap(tmp_path: Path):
     assert stats.defer_reasons.get("llm-pending") == 1
 
 
+def test_agenda_stage_failed_batch_job_does_not_consume_dispatch_quota(tmp_path: Path):
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-fail-dispatch")
+    _put_storage_bytes(storage, ep.links["agenda_text_artifact_key"], b"Agenda")
+
+    backend = FakeBackend(RuntimeError("worker ingress 503"))
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_agenda_max_dispatches = 1
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert len(stats.errors) == 1
+    assert ctx.chapter_agenda_dispatches_count == 0
+    assert ctx.chapter_agenda_dispatches_reserved == 0
+    assert not ctx.chapter_agenda_dispatch_exhausted.is_set()
+
+
 def test_episode_needs_chapter_agenda_evaluates_correctly():
     from citypods.stages import episode_needs_chapter_agenda
 
