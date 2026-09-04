@@ -59,6 +59,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Endpoint Contracts workflow installs dev dependencies for AI Gateway probe.** `contracts.yml`
+  runs `tests/live/test_ai_gateway_contract.py` via `python -m pytest` to probe Cloudflare AI Gateway
+  custom-provider routing, but its install step previously locked only `constraints/prod.txt`,
+  failing scheduled runs with `No module named pytest`. The install step now installs `.[dev]`
+  constrained by `constraints/dev.txt`.
+
 - **Topic-tag checkpoints no longer spend most of their time in serial storage I/O.** Dispatch
   batches now stage independent B2 payloads and persist accepted/deferred handles with bounded
   concurrency. An ambiguous transport failure retries the exact same prepared envelope, retaining
