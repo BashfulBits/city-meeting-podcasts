@@ -32,6 +32,8 @@ TAG_PROMPT_VERSION = "3"
 TAG_LLM_SCHEMA_VERSION = "2"
 PRELABELER_PROMPT_VERSION = "1"
 TAG_FEATURE = "topic-tags"
+TAGGER_PURPOSE = "topic-tags:tagger"
+PRELABELER_PURPOSE = "topic-tags:prelabeler"
 PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrect")
 # Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output
 # schema and future envelope fields. This is a transport guard, separate from model context.
@@ -974,7 +976,7 @@ def llm_tag_suggestions(
     chapter_inputs: list[dict[str, Any]] | None = None,
     agenda_documents: list[dict[str, str]] | None = None,
     allow_paid: bool = False,
-    purpose: str = TAG_FEATURE,
+    purpose: str = TAGGER_PURPOSE,
     deadline_at: Any | None = None,
     call_metadata_out: dict[str, Any] | None = None,
     _batched: bool = False,
@@ -1370,7 +1372,7 @@ def llm_prelabel_candidates(
     allow_paid: bool = False,
     deadline_at: Any | None = None,
     call_metadata_out: dict[str, Any] | None = None,
-    purpose: str = "topic-tags:prelabeler",
+    purpose: str = PRELABELER_PURPOSE,
 ) -> tuple[dict[str, dict[str, Any]], bool, str | None]:
     """Run the independent discrete evaluator over persisted candidate subjects.
 
@@ -1769,6 +1771,8 @@ __all__ = [
     "PRELABELER_CONTRACT",
     "PRELABELER_PROMPT_VERSION",
     "TAG_FEATURE",
+    "TAGGER_PURPOSE",
+    "PRELABELER_PURPOSE",
     "TAG_PROMPT_VERSION",
     "TAGGER_VERSION",
     "CHAPTER_PIPELINE_VERSION",
