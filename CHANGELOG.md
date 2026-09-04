@@ -104,7 +104,9 @@ Phase R (Research-Tool Surface)._
   timeout: a job-level timeout *cancels* the run, which GitHub shows as a grey "cancelled"
   indistinguishable from a manual cancellation and which skips every later step, so nothing is
   persisted or reported. `tag.yml` hit exactly that on eight consecutive scheduled runs between
-  2026-08-26 and 2026-09-02.
+  2026-08-26 and 2026-09-02. `llm-tournament.yml` gets the same guard for a new reason: its
+  sampling step now sizes itself from the lane budget (~46 samples, up from a hard-coded 2), so
+  overrunning the 30-minute job would spend all that work and skip the champion-ticket step.
 
 - **Record-first, quota-filling LLM producer lanes.** Record-backed enrichment now prepares from
   the restored append-only episode archives instead of first scraping every live provider and only
