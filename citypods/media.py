@@ -970,8 +970,11 @@ def _download_granicus_audio_fallback(
     raw_dest = dest.with_name(f"{dest.stem}.worker.mp4")
     try:
         # For truncated probe fetches, cap the byte range so only the initial chunk is pulled
-        effective_max_bytes = (
-            min(max_media_bytes or 8_000_000, 8_000_000) if max_seconds else max_media_bytes
+        effective_max_bytes = None if max_seconds else max_media_bytes
+        max_download_bytes = (
+            (min(max_media_bytes, 8_000_000) if max_media_bytes else 8_000_000)
+            if max_seconds
+            else None
         )
         # Re-acquire the same provider controls that guarded the failed direct attempt. The
         # Worker host itself is not the provider's CDN, so only the original URL is used for the
@@ -985,6 +988,7 @@ def _download_granicus_audio_fallback(
                 fallback.token,
                 raw_dest,
                 max_bytes=effective_max_bytes,
+                max_download_bytes=max_download_bytes,
                 stop=stop,
             )
             _log_ffmpeg_event(
@@ -1041,7 +1045,11 @@ def _download_granicus_audio_fallback(
         OSError,
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
-    ):
+    ) as exc:
+        _log_ffmpeg_event(
+            log,
+            f"[enrich] granicus transport fallback failed error={exc}",
+        )
         resolved = True
         return False
     finally:

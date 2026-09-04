@@ -3013,6 +3013,43 @@ def test_granicus_short_zero_exit_is_retried_through_chunked_worker(monkeypatch,
     assert dest.read_bytes() == b"complete"
 
 
+def test_granicus_truncated_probe_passes_max_download_bytes_without_max_bytes(
+    monkeypatch, tmp_path
+):
+    import citypods.media as media
+
+    monkeypatch.setenv("GRANICUS_PROXY_BASE_URL", "https://worker.example")
+    monkeypatch.setenv("GRANICUS_PROXY_TOKEN", "secret")
+    monkeypatch.setattr("citypods.granicus_proxy.validate_source_url", lambda *_a, **_k: None)
+    calls: list[list[str]] = []
+
+    def _run(cmd, **_kwargs):
+        calls.append(cmd)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(
+                1, cmd, stderr=b"https protocol error: 403 Forbidden"
+            )
+        Path(cmd[-1]).write_bytes(b"probe-audio")
+
+    monkeypatch.setattr(media, "_run_ffmpeg_guarded", _run)
+    download_verified_kwargs: dict = {}
+
+    def _fake_download_verified(_url, _token, raw_dest, **kwargs):
+        download_verified_kwargs.update(kwargs)
+        raw_dest.write_bytes(b"video-slice")
+        return len(b"video-slice")
+
+    monkeypatch.setattr(media, "download_verified", _fake_download_verified)
+    source = "https://archive-video.granicus.com/arlingtontx/arlingtontx_test.mp4"
+    dest = tmp_path / "probe.mka"
+
+    assert media._download_audio(source, dest, max_seconds=3.0) is True
+    assert download_verified_kwargs.get("max_bytes") is None
+    assert download_verified_kwargs.get("max_download_bytes") == 8_000_000
+    assert dest.read_bytes() == b"probe-audio"
+    assert len(calls) == 2
+
+
 def test_granicus_direct_rate_limit_is_preserved_without_worker_fallback(monkeypatch, tmp_path):
     import citypods.media as media
 
