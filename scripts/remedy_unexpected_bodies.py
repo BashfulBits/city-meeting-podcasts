@@ -40,7 +40,6 @@ from citypods.audit_remedy import (
     verify_remedy_mutations,
 )
 from citypods.config import load_city_configs, load_site_config
-from citypods.state import pull_canonical_state
 from citypods.storage import make_storage
 
 
@@ -109,7 +108,6 @@ def main(argv: list[str] | None = None) -> int:
 
     site_config = load_site_config(repo_root / "config" / "site_config.yml")
     output_dir = repo_root / site_config.get("output_dir", "docs")
-    pull_canonical_state(site_config, output_dir)
     storage = make_storage(site_config, site_config.get("base_url", ""), output_dir)
 
     cities = load_city_configs(repo_root / "config", {})

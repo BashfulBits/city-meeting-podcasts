@@ -1535,6 +1535,7 @@ def audit_city(
     timeline_repair_cohort: str | None = None,
     timeline_finding_min_delta: float = 1.0,
     unexpected_evidence: list[UnexpectedBodyEvidence] | None = None,
+    unexpected_evidence_only: bool = False,
 ) -> list[Finding]:
     """Fetch a city once and run every applicable check, returning all findings.
 
@@ -1572,6 +1573,8 @@ def audit_city(
                     records=dict(records or {}),
                 )
             )
+    if unexpected_evidence_only:
+        return [unexpected] if unexpected else []
     if records is not None:
         merge_persisted(episodes, records)
 
@@ -1929,6 +1932,7 @@ def audit_all(
     timeline_repair_cohort: str | None = None,
     timeline_finding_min_delta: float = 1.0,
     unexpected_evidence: list[UnexpectedBodyEvidence] | None = None,
+    unexpected_evidence_only: bool = False,
 ) -> list[Finding]:
     """Run every check across all cities. One fetch per city; ``view_counts`` and the
     per-source record store are gathered so the provider-specific checks apply.
@@ -2023,6 +2027,8 @@ def audit_all(
     unexpected_checked_sources: set[str] = set()
     for city in cities:
         src_key = source_key(city)
+        if unexpected_evidence_only and src_key in unexpected_checked_sources:
+            continue
         records = load_records(state_dir, src_key)
         entity_of_source[src_key] = city.city_entity
         records_by_source[src_key] = records
@@ -2081,6 +2087,7 @@ def audit_all(
                 cities_by_source[src_key] if src_key not in unexpected_checked_sources else None
             ),
             unexpected_evidence=unexpected_evidence,
+            unexpected_evidence_only=unexpected_evidence_only,
         )
         findings.extend(city_findings)
         if src_key not in unexpected_checked_sources and not any(
@@ -2096,6 +2103,9 @@ def audit_all(
         # it independently in this same sequential loop, so the last one reflects every prior
         # sibling's self-heal by the time we get here.
         records_by_source[src_key] = records
+
+    if unexpected_evidence_only:
+        return findings
 
     cross_findings, cross_touched = reconcile_cross_source_audio(
         records_by_source,

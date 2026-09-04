@@ -27,6 +27,7 @@ reconcile = _mod.reconcile
 _reconcile_grouped = _mod._reconcile_grouped
 _issue_number_from_url = _mod._issue_number_from_url
 _dispatch_remedy_workflow = _mod._dispatch_remedy_workflow
+_resolve_affected_sources = _mod._resolve_affected_sources
 _title = _mod._title
 _body = _mod._body
 _state_comment = _mod._state_comment
@@ -1543,3 +1544,37 @@ def test_dispatch_remedy_workflow_warns_without_github_repo(monkeypatch, capsys)
         _dispatch_remedy_workflow(1238, github_repo=None)
     assert calls == []
     assert "GITHUB_REPOSITORY unset" in capsys.readouterr().err
+
+
+def test_resolve_affected_sources_success():
+    body = (
+        "Some issue text\n"
+        "<!-- citypods:feed-health:state\n"
+        '{"first_seen": {"dallas-city-council": "2026-09-01"}, '
+        '"rows": {"denton-city-council": {}}}\n'
+        "-->\n"
+    )
+    payload = _mod.json.dumps({"body": body})
+    with mock.patch.object(_mod, "_gh", return_value=payload):
+        slugs = _resolve_affected_sources(1238, github_repo="test/repo")
+    assert slugs == {"dallas-city-council", "denton-city-council"}
+
+
+def test_resolve_affected_sources_failure_returns_none(capsys):
+    def _boom(*_a, **_k):
+        raise RuntimeError("gh issue view failed: not found")
+
+    with mock.patch.object(_mod, "_gh", side_effect=_boom):
+        slugs = _resolve_affected_sources(1238, github_repo="test/repo")
+    assert slugs is None
+    assert "failed to fetch issue #1238 state" in capsys.readouterr().err
+
+
+def test_resolve_affected_sources_missing_or_invalid_state():
+    with mock.patch.object(_mod, "_gh", return_value=_mod.json.dumps({"body": "No state marker"})):
+        slugs = _resolve_affected_sources(1238, github_repo="test/repo")
+    assert slugs is None
+
+    with mock.patch.object(_mod, "_gh", return_value=_mod.json.dumps({"body": ""})):
+        slugs = _resolve_affected_sources(1238, github_repo="test/repo")
+    assert slugs is None
