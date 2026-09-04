@@ -7,7 +7,7 @@ Owner: maintainers & agents. Scope: comprehensive system architecture evolution 
 throughput, reliability, observability, LLM job admission/refinement, and structural
 codebase refactoring.
 
-> **Implementation status.** This is an umbrella document covering 18 initiatives plus the
+> **Implementation status.** This is an umbrella document covering 19 initiatives plus the
 > state-store partitioning (§2) and v1 retirement (§3) programs; it is not one single feature with
 > one rollout. Each workstream below is now individually **L3 dev-ready**: exact file/function
 > references, verbatim signatures, concrete algorithms, schemas, and test names, grounded directly
@@ -432,7 +432,7 @@ which has a paired v2 branch that must survive unchanged).
 
 ---
 
-## §4. The 5 Core Architectural Pillars & 18 L3-Detailed Initiatives
+## §4. The 5 Core Architectural Pillars & 19 L3-Detailed Initiatives
 
 Each entry below is individually L3 dev-ready — implementable directly from this document. Being
 detailed is not the same as being scheduled: entering the active queue still requires a measured
@@ -1004,6 +1004,70 @@ Existing accepted designs take precedence where they overlap; several entries be
   any gap must be filed as a narrow review/34 follow-up with a fixed corpus version, judge version,
   score thresholds, cost ceiling, and a no-auto-production-route rule.
 
+#### Initiative 19: Admission-First & Registry-First Tag Dispatch ([GH#1463](https://github.com/BashfulBits/city-meeting-podcasts/issues/1463)) — L3
+- **Problem, confirmed against the real code**: `LiteLLMBackend.enqueue_batch()`
+  (`citypods/compute/llm.py:1806-2124`) unconditionally writes every job's B2 payload —
+  `storage.put_cas(payload_key, canonical_payload_str.encode("utf-8"), "application/json")`
+  (`:1911-1918`) — **before** it ever POSTs the batch to the Worker's
+  `v2/jobs:enqueue-batch` (`:1952-1959`). Admission/capacity rejection (`purpose_not_registered`,
+  `model_not_in_lane`, per-purpose `daily_write_units` exhaustion, global
+  `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`) happens entirely inside the DO's
+  `enqueueBatch` (`workers/llm-dispatch-v2/src/coordinator.js:650+`), *after* that write has
+  already happened — a rejected job has already cost a real B2 write for nothing. This part of the
+  issue's problem statement is accurate as filed.
+- **Item 3 (only merge/persist changed source records) is [GH#1458](https://github.com/BashfulBits/city-meeting-podcasts/issues/1458),
+  i.e. Initiative 4 above — already fully specified there.** Do not re-derive or duplicate it here;
+  this initiative should be sequenced to land *after* Initiative 4 (it builds on the same dirty-push
+  mechanism) and must not touch `push_records_merged` independently.
+- **Item 2 (registry sufficiency) needs its premise checked, not assumed — the registry is already
+  more sufficient than the issue implies, but one property is unproven.** `write_deferred(storage,
+  job.recipe_hash, handle)` (`citypods/compute/llm.py:2082`) already runs **synchronously and
+  independently of episode-record persistence**, immediately on Worker acceptance inside
+  `enqueue_batch` itself — not gated on `_persist_all()`/`mid_run_checkpoint()`. So a crash between
+  acceptance and the next checkpoint does not lose the durable B2 registry entry for that job. What
+  is genuinely unproven is **recipe-hash determinism across a crash and restart**: on the next run,
+  `TagsStage` must re-derive the *exact same* `recipe_hash` for the same candidate from the
+  episode's pre-tag state so that `look_up_deferred()` (called at the top of `enqueue_batch`,
+  `:1832`) finds the prior handle/result and skips re-submission. This has never been asserted as
+  an explicit test. Before reducing checkpoint frequency or scope on the strength of "the registry
+  already covers it," add a kill-and-resume integration test that: runs `TagsStage`'s real
+  recursive per-episode job-splitting path (not a synthetic single-job case, since that's what
+  `citypods/tags.py`'s `llm_tag_suggestions` actually does — recursively splitting one episode into
+  a variable number of jobs, per review/44's Phase 4 note), submits a batch, kills the process
+  before any `_persist_all()`/push, restarts, and asserts (a) zero duplicate `enqueue_batch` calls
+  for already-accepted recipe hashes and (b) every already-completed result is still reachable and
+  gets applied. Only once that property is proven does it become safe to widen Initiative 4's
+  dirty-skip to cover in-flight tag checkpoints more aggressively.
+- **Item 1 (atomic, expiring admission reservation before payload staging)**: this extends
+  review/44's existing ingress-reservation design (`llm_lanes`'s `reserved_write_units`/
+  `daily_write_units`, compiled into `ingress_reservations.json`, enforced in
+  `coordinator.js`'s `enqueueBatch`), not a replacement for it. A two-phase protocol is needed: a
+  cheap pre-check/reserve call the client makes *before* `put_cas`-ing any payload, and a matching
+  consume-on-enqueue step. "Expiring" means a client that reserves and then crashes before staging
+  must not permanently strand that capacity — size the TTL against `_CHECKPOINT_INTERVAL_SECONDS`
+  (180s) plus this initiative's own new admission round-trip, not an arbitrary value. **Whatever
+  storage backs the reservation must stay rows-read-bounded exactly like the existing
+  `scheduler`/`ingress_purpose` tables** (`scheduler` is a single row; `ingress_purpose` is keyed
+  by `(utc_day, purpose)`, so at most a few dozen rows ever exist at once) — a reservation table
+  keyed by job id or unbounded by day would reintroduce the *exact* failure shape of the
+  2026-08-27 DO rows-read incident review/44 already paid for. Prefer extending the existing
+  per-purpose/per-day row over adding a new per-job one if the design can make that work.
+- **Item 4 (extended per-purpose stats)**: reuse the existing bounded diagnostic-RPC precedent,
+  `stats(now, limit=20)` (`coordinator.js:1090-1189+`, already exposed at the authenticated
+  `GET /v2/stats`, `index.js:308`) — do not invent a second reporting path. `ingress_purpose`
+  (per-purpose daily `jobs_ingested`/`write_units`, already a bounded table) is trivial to add to
+  `stats()`'s response. **Rejections are not persisted anywhere today** — `enqueueBatch` returns a
+  `reason` synchronously to the caller and the client only emits a local structured event
+  (`_emit_v2_dispatch_event`); there is nothing for `/v2/stats` to read back. Add a bounded,
+  per-day-per-purpose-per-reason rejection counter (same `(utc_day, purpose)` shape as
+  `ingress_purpose`, not a per-rejection row) and extend `test/rows-read.test.js` with the same
+  seed-at-two-scales/`EXPLAIN QUERY PLAN`/mutation-test methodology for the new table before this
+  ships.
+- **Impact**: eliminates wasted B2 payload writes for jobs the Worker cannot admit; converts
+  "the registry probably already handles crash recovery" into a proven, tested property that
+  Initiative 4's checkpoint-skipping can safely rely on; gives operators real per-purpose
+  admission/rejection visibility via the existing stats surface.
+
 ---
 
 ### Pillar 5: Architectural Consistency & De-Monolithization
@@ -1103,6 +1167,14 @@ as the definition of done, not as a precondition to start.
    movement.
 9. **Security transport proposal.** The threat model covers every outbound transport, including
    subprocesses. An independent security review accepts a safe transport/fallback before code.
+10. **[GH#1463](https://github.com/BashfulBits/city-meeting-podcasts/issues/1463) admission-first
+    and registry-first tag dispatch (Initiative 19).** Sequenced strictly after row 1
+    (GH#1458/Initiative 4) — it builds on the same dirty-push mechanism and must not fork it.
+    Complete only when the kill-and-resume test proves zero duplicate `enqueue_batch` calls and no
+    lost completed results through `TagsStage`'s real recursive splitting path, the admission
+    reservation's storage stays rows-read-bounded (same invariant class as
+    `test/rows-read.test.js`), and the new rejection counter is bounded per `(utc_day, purpose)`
+    rather than per-rejection.
 
 Work that review/26 and review/34 already own stays there. Range slicing, OpenTelemetry, confidence
 fallbacks, and a stage protocol remain backlog candidates until their measurement or product trigger

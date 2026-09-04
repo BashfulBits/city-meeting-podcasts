@@ -149,6 +149,16 @@ Phase R (Research-Tool Surface)._
   their own explicit maintainer-approval checkpoints inside the now-detailed design; review/26
   duration normalization and review/34 tournament work remain their own accepted designs.
 
+- **review/45 gains Initiative 19, folding in [GH#1463](https://github.com/BashfulBits/city-meeting-podcasts/issues/1463).**
+  GH#1463's dirty-source-tracking ask (its item 3) is already GH#1458/Initiative 4 — cross-referenced,
+  not duplicated. Its remaining scope (an atomic/expiring v2 admission reservation before B2 payload
+  staging, hardening the deferred-job registry's crash-recovery guarantee with a proof obligation
+  rather than an assumption, and extended per-purpose admission/rejection stats) is specified as a
+  new L3 initiative sequenced after Initiative 4, grounded against the real `enqueue_batch`/
+  `coordinator.js` admission flow (confirmed: `write_deferred` already persists accepted jobs
+  independently of episode-record persistence, but recipe-hash determinism across a crash/restart is
+  currently unproven; rejections are not persisted anywhere today).
+
 - **Provider-chapter fallback gate and bounded v2 ingress/reaping.** Generated agenda and boundary
   extraction now runs only for episodes without `source_chapters`; provider markers clear any stale
   generated overlay and batch-cancel queued v2 fallback jobs. Dispatch v2 now budgets ingress in
