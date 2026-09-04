@@ -1,5 +1,6 @@
 """Tests for bounded bundled LLM dispatch v2 Python client."""
 
+import copy
 import json
 import json as _json_module  # alias for use inside mocks whose own `json=` kwarg shadows the name
 import threading
@@ -194,7 +195,7 @@ def test_enqueue_batch_retries_transport_with_the_same_staged_envelope():
     submitted: list[dict] = []
 
     def post(url, json=None, **_kwargs):
-        submitted.append(json)
+        submitted.append(copy.deepcopy(json))
         if len(submitted) == 1:
             raise requests.ConnectionError("response lost after enqueue")
         job = json["jobs"][0]
