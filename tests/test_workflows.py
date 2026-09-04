@@ -1330,6 +1330,15 @@ def test_contracts_wait_loop_does_not_merge_stderr_into_the_json_comparison():
     assert "2>&1" not in run
 
 
+def test_contracts_workflow_installs_dev_dependencies_with_dev_constraints():
+    # contracts.yml probes AI Gateway custom-provider routing via `pytest`, so it requires
+    # pytest (part of the `dev` extra) pinned via `constraints/dev.txt`.
+    _wf, job = _job("contracts.yml")
+    install_step = next(s for s in job["steps"] if s.get("name") == "Install")
+    run = install_step["run"]
+    assert 'pip install -e ".[dev]" -c constraints/dev.txt' in run
+
+
 def test_availability_digest_wait_loop_does_not_merge_stderr_into_the_json_comparison():
     _wf, job = _job("availability-digest.yml", job_name="digest")
     wait_step = next(
