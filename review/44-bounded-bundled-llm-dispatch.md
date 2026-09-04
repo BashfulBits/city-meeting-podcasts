@@ -2050,9 +2050,14 @@ Verified across three runs of the same lane:
 
 The interval now scales with the last checkpoint's own duration (`next_interval=1043s` after a 261s
 checkpoint) to hold overhead under ~25% of wall clock, and 9 stage completions landed *during* that
-checkpoint where the pool previously idled. **Open follow-up:** the state push itself costs 225s and
-was observed at 555s on a second checkpoint. The duty-cycle bound contains its impact but does not
-explain why pushing 42 files costs minutes; that is worth its own investigation.
+checkpoint where the pool previously idled. **Open follow-up ([#1458](https://github.com/BashfulBits/city-meeting-podcasts/issues/1458)):**
+the push itself costs 225s, and 555s on the second checkpoint. Root-caused after this section was
+first written: the checkpoint calls `push_records_merged`, which loops **serially** over all 42
+owned sources making three network round-trips each (`list_objects` + `get_file` + `put_file`) while
+the eight-worker pool sits idle, and re-uploads every source's whole `episodes.json` unconditionally
+rather than skipping unchanged ones. `push_state`/`pull_state` were both given a bounded upload pool
+for exactly this latency-bound cost; `push_records_merged` never was. The duty-cycle bound contains
+the impact by checkpointing less often, which widens the loss window rather than reducing the cost.
 
 ## Consequences and rejected alternatives
 
