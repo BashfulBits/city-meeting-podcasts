@@ -127,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             # One call per source: bundles are independent, and a single combined prompt would
             # grow past the route's input ceiling as findings accumulate.
             remedy = classify_unexpected_bodies(bundle, storage=storage)
-        except (RuntimeError, ValueError) as exc:
+        except Exception as exc:
             _log(f"  classification failed for {source_key}: {exc}")
             reports.append(f"#### `{source_key}`\n\n> Classification failed: {exc}")
             continue

@@ -223,6 +223,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Gemini direct AI Gateway routing and remedy workflow resilience.** Fixes 404 client errors when
+  routing direct Gemini calls through Cloudflare AI Gateway by mapping Gemini's path prefix to
+  `/v1beta` instead of `/v1beta/openai`, matching LiteLLM's native Google AI Studio adapter
+  (`VertexLLM`) which calls `{api_base}/models/{model}:generateContent`. Preserves the
+  `/v1beta/openai` base in `config/provider_limits.yml` and worker dispatch payloads for Cloudflare
+  Workers compatibility. Broadens exception handling in `classify_unexpected_bodies` and
+  `scripts/remedy_unexpected_bodies.py` to catch all inference exceptions, preventing workflow
+  crashes and guaranteeing report generation on classification failures.
+
 - **Airforce 429 retry-after guarantees are now authoritative in LLM Dispatch v2.** A parsed
   provider delay is no longer capped or jittered downward; it becomes a route-level `blocked_until`
   floor, including when it exceeds the current executor window or adaptive 429-buffer ceiling.

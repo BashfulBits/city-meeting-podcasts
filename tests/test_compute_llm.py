@@ -1778,10 +1778,9 @@ def _recording_backend(model, **config_kwargs):
 _GW = "https://gateway.ai.cloudflare.com/v1/cf-acc-123/citypods-dispatch"
 
 
-# The URL LiteLLM must ultimately request is `api_base` + "/chat/completions", so the assertions
-# below reconstruct that whole URL rather than checking `api_base` alone. An `api_base` of
-# ".../google-ai-studio" looks plausible in isolation and is exactly the bug: Gemini's gateway
-# endpoint lives under "/v1beta/openai", so the prefix has to survive into `api_base`.
+# For OpenAI-compatible routes, LiteLLM appends "/chat/completions", so the assertions below
+# reconstruct that whole URL. For Gemini, LiteLLM's native Google AI Studio adapter (VertexLLM)
+# appends `/models/{model}:{endpoint}` rather than `/chat/completions`.
 @pytest.mark.parametrize(
     "route",
     sorted(ROUTE_REGISTRY.values(), key=lambda r: r.route_id or r.model),
@@ -1794,7 +1793,13 @@ def test_every_catalog_route_builds_its_configured_gateway_url(route, gateway_en
     api_base, headers = backend._resolve_api_base_and_headers(route, direct=True)
 
     slug = route.ai_gateway_slug or route.provider
-    assert api_base + "/chat/completions" == f"{_GW}/{slug}{route.ai_gateway_chat_path}"
+    if route.provider == "gemini":
+        assert (
+            api_base + f"/models/{route.upstream_model}:generateContent"
+            == f"{_GW}/{slug}/v1beta/models/{route.upstream_model}:generateContent"
+        )
+    else:
+        assert api_base + "/chat/completions" == f"{_GW}/{slug}{route.ai_gateway_chat_path}"
     expected_headers = {"cf-aig-authorization": "Bearer test-auth-token"}
     if route.ai_gateway_max_attempts is not None:
         expected_headers["cf-aig-max-attempts"] = str(route.ai_gateway_max_attempts)
@@ -1876,7 +1881,10 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
 @pytest.mark.parametrize(
     ("model", "expected_request_url"),
     [
-        ("gemini/gemini-3.6-flash", f"{_GW}/google-ai-studio/v1beta/openai/chat/completions"),
+        (
+            "gemini/gemini-3.6-flash",
+            f"{_GW}/google-ai-studio/v1beta/models/gemini-3.6-flash:generateContent",
+        ),
         ("mistral/mistral-large-2512", f"{_GW}/mistral/v1/chat/completions"),
         ("zai/glm-4.7-flash", f"{_GW}/custom-zai/chat/completions"),
     ],
@@ -1886,8 +1894,37 @@ def test_direct_call_requests_the_gateway_url(model, expected_request_url, gatew
 
     assert isinstance(backend.run_inference(job(content="test")), JobResult)
     assert len(calls) == 1
-    assert calls[0]["api_base"] + "/chat/completions" == expected_request_url
+    if model.startswith("gemini/"):
+        route = ROUTE_CANDIDATES[model][0]
+        actual_url = calls[0]["api_base"] + f"/models/{route.upstream_model}:generateContent"
+        assert actual_url == expected_request_url
+    else:
+        assert calls[0]["api_base"] + "/chat/completions" == expected_request_url
     assert calls[0]["extra_headers"] == {"cf-aig-authorization": "Bearer test-auth-token"}
+
+
+def test_gemini_direct_gateway_url_matches_litellm_request(gateway_env):
+    """LiteLLM's native Google AI Studio adapter must produce the exact gateway URL."""
+    from litellm.llms.vertex_ai.gemini.vertex_and_google_ai_studio_gemini import VertexLLM
+
+    route = ROUTE_CANDIDATES["gemini/gemini-3.5-flash"][0]
+    backend, _ = _recording_backend("gemini/gemini-3.5-flash")
+    api_base, _ = backend._resolve_api_base_and_headers(route, direct=True)
+
+    auth, url = VertexLLM()._get_token_and_url(
+        model=route.upstream_model,
+        auth_header=None,
+        gemini_api_key="test-gemini-key",
+        vertex_project=None,
+        vertex_location=None,
+        vertex_credentials=None,
+        stream=False,
+        custom_llm_provider="gemini",
+        api_base=api_base,
+    )
+    expected = f"{_GW}/google-ai-studio/v1beta/models/{route.upstream_model}:generateContent"
+    assert url == expected
+    assert auth == {"x-goog-api-key": "test-gemini-key"}
 
 
 def test_single_provider_models_used_end_to_end_really_are_single_provider():
@@ -1915,7 +1952,7 @@ def test_llm_ai_gateway_kill_switch_restores_the_direct_upstream(disabled, gatew
     backend, calls = _recording_backend("gemini/gemini-3.6-flash")
 
     assert isinstance(backend.run_inference(job(content="test")), JobResult)
-    assert calls[0]["api_base"] == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert calls[0]["api_base"] == "https://generativelanguage.googleapis.com/v1beta"
     assert not calls[0].get("extra_headers")
 
 
@@ -1926,7 +1963,7 @@ def test_direct_call_without_gateway_configured_keeps_the_provider_upstream(monk
     backend, calls = _recording_backend("gemini/gemini-3.6-flash")
 
     assert isinstance(backend.run_inference(job(content="test")), JobResult)
-    assert calls[0]["api_base"] == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert calls[0]["api_base"] == "https://generativelanguage.googleapis.com/v1beta"
     assert not calls[0].get("extra_headers")
 
 

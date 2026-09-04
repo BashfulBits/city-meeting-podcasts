@@ -432,6 +432,17 @@ def test_classify_raises_on_empty_content(evidence):
         classify_unexpected_bodies(evidence, storage=MemStorage(), backend=EmptyBackend())
 
 
+def test_classify_reraises_backend_inference_failure(evidence):
+    class ExplodingBackend:
+        def run_inference(self, job):
+            raise ConnectionError("Connection refused")
+
+    with pytest.raises(
+        RuntimeError, match="Remedy classification inference failed: Connection refused"
+    ):
+        classify_unexpected_bodies(evidence, storage=MemStorage(), backend=ExplodingBackend())
+
+
 def test_remedy_models_exist_in_the_route_catalog():
     """An unqualified model name silently matches no route and defers every request."""
     from citypods.audit_remedy import REMEDY_MODELS

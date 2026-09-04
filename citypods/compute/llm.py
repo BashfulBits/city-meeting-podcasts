@@ -148,8 +148,9 @@ _POLL_RESULT_MAX_WORKERS = 8
 _AI_GATEWAY_ENV = "LLM_AI_GATEWAY"
 _AI_GATEWAY_DISABLED_VALUES = frozenset({"0", "false", "off", "no"})
 _DEFAULT_AI_GATEWAY_ID = "citypods-dispatch"
-# LiteLLM appends this to `api_base` itself, so a route's gateway path contributes only the part
-# *before* it (Gemini's `/v1beta/openai`, Mistral's `/v1`, nothing for a plain OpenAI shape).
+# LiteLLM appends this to `api_base` itself for OpenAI-compatible routes, so their gateway path
+# contributes only the part *before* it (Mistral's `/v1`, nothing for a plain OpenAI shape).
+# Gemini uses its native adapter and takes `/v1beta` (see `_ai_gateway_path_prefix`).
 _AI_GATEWAY_CHAT_SUFFIX = "/chat/completions"
 
 
@@ -176,11 +177,16 @@ def _ai_gateway_base() -> str:
 def _ai_gateway_path_prefix(route: LLMRoute) -> str:
     """The provider path segment the gateway needs but LiteLLM will not supply.
 
-    A route's ``ai_gateway_chat_path`` is the whole path after the provider slug (Gemini's
-    ``/v1beta/openai/chat/completions``). LiteLLM appends ``/chat/completions`` on its own, so
-    only the prefix belongs in ``api_base``; dropping it is what would send Gemini and Mistral
-    gateway calls to a 404. A path that does not end in the usual suffix is used verbatim.
+    For OpenAI-compatible routes, LiteLLM appends ``/chat/completions`` on its own, so only the
+    prefix before that suffix belongs in ``api_base`` (e.g. Mistral's ``/v1``).
+    Gemini is different: LiteLLM routes ``gemini/...`` models through its native Google AI Studio
+    adapter (``VertexLLM``), which appends ``/models/{model}:{endpoint}`` rather than
+    ``/chat/completions``. For Gemini under Cloudflare AI Gateway, the path prefix before
+    ``/models/...`` is the API version (``/v1beta``), NOT the OpenAI compatibility path
+    ``/v1beta/openai``.
     """
+    if route.provider == "gemini":
+        return "/v1beta"
     chat_path = (route.ai_gateway_chat_path or "").strip()
     if chat_path.endswith(_AI_GATEWAY_CHAT_SUFFIX):
         return chat_path[: -len(_AI_GATEWAY_CHAT_SUFFIX)]
@@ -742,6 +748,8 @@ class LiteLLMBackend(Backend):
         if route is None:
             return None, {}
         api_base = route.api_base or None
+        if direct and route.provider == "gemini":
+            api_base = "https://generativelanguage.googleapis.com/v1beta"
         if not direct or not _ai_gateway_enabled():
             return api_base, {}
         gateway_base = _ai_gateway_base()

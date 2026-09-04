@@ -55,3 +55,39 @@ def test_checkout_remedy_branch_creates_a_branch_when_no_remote_exists(tmp_path,
     _mod._checkout_remedy_branch(branch, tmp_path)
 
     assert commands[-1] == ["git", "checkout", "-b", branch]
+
+
+def test_main_handles_classification_failure_gracefully(tmp_path, monkeypatch):
+    evidence_file = tmp_path / "evidence.json"
+    evidence_file.write_text(
+        '{"sources": [{"source_key": "granicus:fake-source", "unexpected_findings": []}]}',
+        encoding="utf-8",
+    )
+    output_report = tmp_path / "report.md"
+
+    monkeypatch.setattr(_mod, "load_site_config", lambda path: {})
+    monkeypatch.setattr(_mod, "pull_canonical_state", lambda cfg, out: None)
+    monkeypatch.setattr(_mod, "make_storage", lambda cfg, url, out: None)
+    monkeypatch.setattr(_mod, "load_city_configs", lambda path, reg: [])
+    monkeypatch.setattr(_mod, "feed_paths_by_slug", lambda root: {})
+
+    def fake_classify(bundle, storage=None):
+        raise RuntimeError("API Gateway returned 404: Not Found")
+
+    monkeypatch.setattr(_mod, "classify_unexpected_bodies", fake_classify)
+
+    code = _mod.main(
+        [
+            "--evidence-file",
+            str(evidence_file),
+            "--output",
+            str(output_report),
+            "--repo-root",
+            str(tmp_path),
+        ]
+    )
+    assert code == 0
+    assert output_report.exists()
+    content = output_report.read_text(encoding="utf-8")
+    assert "#### `granicus:fake-source`" in content
+    assert "> Classification failed: API Gateway returned 404: Not Found" in content
