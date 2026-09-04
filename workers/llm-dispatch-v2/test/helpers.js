@@ -170,9 +170,12 @@ export const TEST_INGRESS_RESERVATIONS = JSON.stringify({
 /**
  * Merge the shared reservation default into a test env without overriding an explicit one, so a
  * test that is specifically about reservations still controls its own map.
+ *
+ * Ownership, not truthiness: `""` and `"{}"` are exactly the invalid bindings a validation test
+ * needs to pass through, and a truthiness check would helpfully replace them with a working map.
  */
 export function withTestReservations(env = {}) {
-  return env.INGRESS_PURPOSE_RESERVATIONS
+  return Object.hasOwn(env, "INGRESS_PURPOSE_RESERVATIONS")
     ? env
     : { ...env, INGRESS_PURPOSE_RESERVATIONS: TEST_INGRESS_RESERVATIONS };
 }

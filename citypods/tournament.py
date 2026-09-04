@@ -491,7 +491,7 @@ def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> i
     window = int(config.get("window_days", 28))
     # The reigning production tag route, i.e. what a challenger must beat. Reads the lane
     # registry rather than the removed `tagging.llm_model` key.
-    current = lane_for("topic-tags:tagger", site).primary_model
+    current = lane_for("topic-tags:tagger").primary_model
     stats = champion_stats(
         state["results"], current_model=current, now=datetime.now(UTC), window_days=window
     )

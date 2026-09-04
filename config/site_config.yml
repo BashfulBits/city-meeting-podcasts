@@ -96,7 +96,15 @@ tournament:
 # first entry is the stable recipe/calibration route; the rest exist only so a lane can spill
 # onto another INDEPENDENT free-tier quota pool for throughput (see `tagging.llm_models`). These
 # values are identical to the constants/keys they replace, so no recipe hash changes and no
-# stored artifact is invalidated.
+# stored artifact is invalidated. The list is ENFORCED, not documentation: a job naming a route
+# its lane does not declare is rejected at ingress with `model_not_in_lane`.
+#
+# THIS BLOCK IS REPOSITORY-LEVEL POLICY, NOT PER-DEPLOYMENT SITE CONTENT. It is read from this
+# committed file and never from a config passed with `--site-config`, because the Worker's
+# reservation map is compiled from this file alone -- lanes resolved from anywhere else would
+# look like they applied in the producer and simply not exist at ingress. A selected site config
+# still NARROWS a lane where that is meaningful (`moments.judges.models` picks a subset of
+# `r6-judge` below); it never decides which purposes exist or what each may spend.
 #
 # Ingress write units are the Worker's own pessimistic admission currency, not requests:
 # `3 + len(models)` per admitted job (job row + model-index rows + purpose ledger + scheduler

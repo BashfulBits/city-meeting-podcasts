@@ -12,6 +12,7 @@ from citypods.r5_benchmark import (
     _execution_complete,
     _run_compatible,
     _run_pairwise,
+    _run_prelabeler,
     compute_metrics,
     create_dataset,
     labels_template,
@@ -334,3 +335,99 @@ def test_benchmark_reports_prelabeler_precision_by_source_kind_and_requires_appr
         "approved_by": "maintainer",
     }
     assert compute_metrics(state, taxonomy)["route_selection_eligible"] is True
+
+
+def _prelabel_example(example_id):
+    example = _example(example_id)
+    example["chapter_id"] = example["source"]["chapter_id"]
+    example["episode_uid"] = f"ep-{example_id}"
+    example["episode_title"] = "Episode"
+    return example
+
+
+def _prelabel_run(tagger_status, tags=()):
+    return {
+        "run_id": "run-1",
+        "taggers": {"a": {"examples": {"e1": {"status": tagger_status, "tags": list(tags)}}}},
+    }
+
+
+def test_prelabeling_waits_for_every_tagger_before_it_can_resolve(monkeypatch):
+    # Under Dispatch v2 the whole first tagger pass comes back deferred, so `_run_prelabeler` used
+    # to assess the rule engine's candidates alone. If that rules-only job resolved first its entry
+    # became "resolved", and the early return skipped the example forever: the LLM candidates the
+    # pre-labeler exists to evaluate were never looked at, on any later run.
+    import citypods.r5_benchmark as benchmark
+
+    calls = []
+    monkeypatch.setattr(
+        benchmark,
+        "llm_prelabel_candidates",
+        lambda *_args, **kwargs: calls.append(kwargs) or ({}, False, "reviewer"),
+    )
+    dataset = {"sample_digest": "d", "examples": [_prelabel_example("e1")]}
+    kwargs = dict(
+        dataset=dataset,
+        taxonomy=_taxonomy(),
+        backends=PerModelBatchingBackends(lambda _model: object()),
+        model="reviewer",
+        llm_schema_version="1",
+        allow_paid=False,
+        deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+    )
+
+    deferred = _prelabel_run("pending")
+    _run_prelabeler(run=deferred, **kwargs)
+    entry = deferred["prelabeler"]["examples"]["e1"]
+    assert calls == [], "no prelabel job may be spent while a tagger is still deferred"
+    assert entry["status"] == "awaiting-taggers"
+    assert entry["awaiting_models"] == ["a"]
+    # Not a terminal state: even once every tagger lands, a run holding this entry is incomplete,
+    # so the next pass reconsiders the example rather than reporting a finished benchmark.
+    assert (
+        _execution_complete(
+            {
+                "taggers": {"a": {"examples": {"e1": {"status": "resolved"}}}},
+                "prelabeler": {"examples": {"e1": entry}},
+            },
+            dataset,
+        )
+        is False
+    )
+
+    resolved = _prelabel_run(
+        "resolved", tags=[{"candidate_id": "c1", "id": "housing", "source_kind": "llm"}]
+    )
+    resolved["prelabeler"] = deferred["prelabeler"]
+    _run_prelabeler(run=resolved, **kwargs)
+    assert len(calls) == 1
+    assert [item["candidate_id"] for item in calls[0]["candidates"]] == ["c1"]
+    assert resolved["prelabeler"]["examples"]["e1"]["status"] == "resolved"
+
+
+def test_benchmark_prelabeling_is_charged_to_the_benchmark_lane(monkeypatch):
+    # `llm_prelabel_candidates` hard-coded purpose="topic-tags:prelabeler", so the shadow benchmark
+    # spent the production catalog's prelabel write budget -- and the `r5-benchmark:judge` lane it
+    # takes its model from went unused.
+    import citypods.r5_benchmark as benchmark
+
+    calls = []
+    monkeypatch.setattr(
+        benchmark,
+        "llm_prelabel_candidates",
+        lambda *_args, **kwargs: calls.append(kwargs) or ({}, False, "reviewer"),
+    )
+    run = _prelabel_run(
+        "resolved", tags=[{"candidate_id": "c1", "id": "housing", "source_kind": "llm"}]
+    )
+    _run_prelabeler(
+        run=run,
+        dataset={"sample_digest": "d", "examples": [_prelabel_example("e1")]},
+        taxonomy=_taxonomy(),
+        backends=PerModelBatchingBackends(lambda _model: object()),
+        model="reviewer",
+        llm_schema_version="1",
+        allow_paid=False,
+        deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+    )
+    assert calls[0]["purpose"] == "r5-benchmark:judge"

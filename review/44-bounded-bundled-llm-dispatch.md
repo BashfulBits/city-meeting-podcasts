@@ -1900,6 +1900,30 @@ new lane entry; a sub-purpose does not inherit its prefix's budget.** That is de
 alternative (deriving a budget family from the prefix) would have re-created the original failure
 in a form that looks correct.
 
+**Scope of the gate, after review (2026-09-04).** Registering the purpose is only half the
+contract: `_modelsForQueuedJob` indexes whatever `allowed_models` a policy carries, so a job
+stamped with a registered purpose could still be claimed on a route that lane never declared —
+spending a budget sized for one route set on another, and making the compiled map's `models` a
+statement of intent rather than of what runs. Ingress now also rejects `model_not_in_lane`,
+comparing both sides through `canonicalModelName` so an alias is not mistaken for a foreign route.
+A lane that declares no `models` constrains nothing, because the `INGRESS_PURPOSE_RESERVATIONS`
+env var exists so an operator can reshape budgets without a redeploy and should not have to
+restate route lists. Both gates also run on the **supersession** path (same `idempotency_key`, new
+`request_digest`): superseding consumes no admission budget, which is precisely why it must not be
+the way around registration — a stale row whose lane has since been retired would otherwise be
+resurrected into `queued` under a purpose no reservation covers.
+
+**There is deliberately no per-run lane override.** `lane_for()` takes no `site_config`, because
+the Worker half cannot honor one: `compile_llm_lanes.py` builds `ingress_reservations.json` from
+the committed `config/site_config.yml` alone, so a run resolving its models or budgets from some
+other config would submit jobs the deployed Worker either rejects (`purpose_not_registered`) or
+charges against budgets that config never described — an override that appears to work in the
+producer and does not exist at ingress. A `--site-config` still governs site content, and still
+*narrows* a lane where that is meaningful (`moments.judges.models` selects a subset of
+`llm_lanes["r6-judge"]`); it never decides which purposes exist or what each may spend. This also
+keeps the import-time lane resolution that several recipe hashes depend on honest: one file, one
+answer, no run-to-run hash drift that would re-queue the catalog.
+
 ### 2. Model choice was split between config and code
 
 `tagging.llm_models` and `moments.llm_models` were config while `AGENDA_PRODUCTION_MODEL`,

@@ -82,6 +82,18 @@ class TestParsing:
         with pytest.raises(ValueError, match="non-empty list"):
             parse_lanes(_lane(models=[]))
 
+    @pytest.mark.parametrize("model", [None, 3, "", "   ", ["nested"]])
+    def test_rejects_a_model_that_is_not_a_non_empty_string(self, model):
+        # `str(model)` would have produced the route names "None", "3" and "", none of which any
+        # llm_routes.json entry can match. Such a lane compiles and admits jobs at ingress, and
+        # every one is then indexed under the `__unroutable__` sentinel and never claimed -- quota
+        # spent on work that can never run.
+        with pytest.raises(ValueError, match="non-empty string"):
+            parse_lanes(_lane(models=[model]))
+
+    def test_strips_surrounding_whitespace_from_models(self):
+        assert parse_lanes(_lane(models=[" m1 "]))["a-purpose"].models == ("m1",)
+
     def test_rejects_duplicate_models(self):
         # A duplicate would double-count the lane's per-job ingress write units against its budget.
         with pytest.raises(ValueError, match="duplicates"):
@@ -160,32 +172,19 @@ class TestLaneLookup:
         with pytest.raises(UnregisteredLaneError, match="non-dispatching"):
             lane_for(purpose)
 
-    def test_a_site_config_without_the_key_inherits_the_committed_registry(self):
-        # `_build_impl` is routinely handed a small synthetic site config (tests, local dev, a
-        # single-city deployment). The registry is repository-level policy -- which purposes exist
-        # and what each may spend against a shared Cloudflare budget -- not per-deployment site
-        # content, so a config that never mentions it must not be a hard failure. Making the key
-        # mandatory broke 53 tests in CI before this fallback existed.
-        assert lane_for("topic-tags:tagger", {"tagging": {"enabled": False}}).primary_model
-        assert len(load_lanes({"site_title": "minimal"})) == len(load_lanes())
-
-    def test_a_site_config_that_declares_lanes_wins(self):
-        own = {
-            "llm_lanes": {
-                "topic-tags:tagger": {
-                    "models": ["only/mine"],
-                    "max_dispatches_per_run": 1,
-                    "daily_write_units": 100,
-                }
-            }
-        }
-        assert lane_for("topic-tags:tagger", own).primary_model == "only/mine"
-
-    def test_a_declared_but_malformed_block_still_raises(self):
-        # The fallback is narrow on purpose: it applies only when the key is ABSENT. A real
-        # misconfiguration must never be quietly replaced by the committed defaults.
-        with pytest.raises(ValueError, match="non-empty list"):
-            load_lanes({"llm_lanes": {"topic-tags:tagger": {"models": []}}})
+    def test_lane_resolution_takes_no_per_run_site_config(self):
+        # The registry is repository-level policy, and deliberately has no per-run override.
+        # `scripts/compile_llm_lanes.py` builds the Worker's reservation map from the committed
+        # `config/site_config.yml` alone, so a run that resolved its models or budgets from some
+        # other config would submit jobs the deployed Worker either rejects outright
+        # (`purpose_not_registered`) or charges against budgets that config never described: the
+        # override would appear to work in the producer and simply not exist at ingress. A
+        # selected `--site-config` still governs site content, and still NARROWS a lane where that
+        # is meaningful (`moments.judges.models` picks a subset of `llm_lanes["r6-judge"]`).
+        with pytest.raises(TypeError):
+            lane_for("topic-tags:tagger", {"llm_lanes": {}})  # type: ignore[call-arg]
+        with pytest.raises(TypeError):
+            load_lanes({"llm_lanes": {}})  # type: ignore[call-arg]
 
     def test_lane_lookup_ignores_the_process_working_directory(self, tmp_path, monkeypatch):
         # Several lanes resolve their models at import time to build a recipe hash. A lookup that

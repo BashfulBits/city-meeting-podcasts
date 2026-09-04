@@ -33,7 +33,13 @@ Phase R (Research-Tool Surface)._
   out of Python constants into the same block. **Model values are unchanged, so no recipe hash
   changes and no stored artifact is invalidated**; `tests/test_llm_lanes.py` pins the
   recipe-affecting strings so a future edit surfaces its backfill cost instead of silently
-  queueing catalog rework.
+  queueing catalog rework. The lane's route list is enforced, not merely documented: a job whose
+  `allowed_models` name a route its own lane never declared is rejected at ingress
+  (`model_not_in_lane`), and both gates also cover the supersession path, which consumes no
+  admission budget and so must not be a way around registration. The registry has no per-run
+  override by design — the Worker's reservation map is compiled from the committed
+  `config/site_config.yml` alone, so lanes resolved from any other config would look like they
+  applied in the producer and simply not exist at ingress.
 
 - **Batched research-lane dispatch and a higher dispatch ceiling.** `citypods/tournament.py` and
   `citypods/r5_benchmark.py` built a fresh `LiteLLMBackend` inside their innermost loops, so every
@@ -80,6 +86,16 @@ Phase R (Research-Tool Surface)._
   9 stage completions land *during* that checkpoint where previously the pool sat empty. At 19.5x
   the original rate, a backlog that took the full 180-minute job timeout finishes in roughly ten
   minutes of the same work.
+
+- **The R5 benchmark no longer bills the catalog's prelabel lane, or prelabels an incomplete
+  candidate set.** `llm_prelabel_candidates` hard-coded `purpose="topic-tags:prelabeler"`, so the
+  shadow benchmark spent the production catalog's ingress write budget while its own
+  `r5-benchmark:judge` lane went unused; the purpose is now a parameter that keeps the production
+  default. Separately, a prelabel entry that reaches `resolved` is never recomputed, and under
+  Dispatch v2 the whole first tagger pass comes back deferred — so the pre-labeler assessed the
+  rule engine's candidates alone and permanently froze that verdict, never looking at the LLM
+  candidates it exists to evaluate. It now waits for every tagger to resolve an example before
+  spending a job on it.
 
 - **LLM producer lanes no longer fail silently.** A failed batch submission is not a deferral —
   nothing is queued, so no later run picks it up — but the enrichment, tournament, and benchmark

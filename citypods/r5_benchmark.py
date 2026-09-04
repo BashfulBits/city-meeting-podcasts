@@ -397,6 +397,24 @@ def _run_prelabeler(
         prior = prelabel["examples"].get(example_id) or {}
         if prior.get("status") == "resolved":
             continue
+        # Every tagger's candidates are part of this example's subject set, and a prelabel entry
+        # that reaches "resolved" is never recomputed (the early return just above). Assessing an
+        # example while a tagger is still deferred would therefore permanently freeze a
+        # rules-only verdict for it: under Dispatch v2 the whole first pass is deferred, so the
+        # prelabeler would judge nothing but the rule engine and the LLM candidates it exists to
+        # evaluate would never be looked at. Leave the example for the run that has them.
+        unresolved = [
+            tagger_model
+            for tagger_model, model_run in taggers.items()
+            if ((model_run.get("examples") or {}).get(example_id) or {}).get("status") != "resolved"
+        ]
+        if unresolved:
+            prelabel["examples"][example_id] = {
+                "status": "awaiting-taggers",
+                "awaiting_models": sorted(unresolved),
+                "assessments": {},
+            }
+            continue
         subjects: list[dict[str, Any]] = []
         deterministic = tag_episode(
             str(example["source"].get("title") or "")
@@ -448,6 +466,8 @@ def _run_prelabeler(
                 allow_paid=allow_paid,
                 deadline_at=deadline_at,
                 call_metadata_out=metadata,
+                # Charged to the benchmark's own lane, not the catalog's prelabel budget.
+                purpose="r5-benchmark:judge",
             )
             for candidate_id, assessment in assessments.items():
                 subject = next(

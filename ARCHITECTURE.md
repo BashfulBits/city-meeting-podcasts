@@ -438,8 +438,14 @@ routes and what it may spend cannot describe different things.
 [`citypods/compute/llm_lanes.py`](citypods/compute/llm_lanes.py) reads it on the client. A purpose
 with no entry is rejected at ingress rather than drawing on shared headroom, so adding a verb or
 task is a deliberate config edit; a sub-purpose (`topic-tags:prelabeler`) does not inherit its
-prefix's (`topic-tags:tagger`) budget. `llm_lanes` chooses *among* the catalog below; the catalog
-itself — physical routes, quotas, and capabilities — remains `config/provider_limits.yml`'s job.
+prefix's (`topic-tags:tagger`) budget. A job may only name routes its own lane declares — ingress
+rejects `model_not_in_lane` — so the block describes what actually runs, not merely what was
+intended. The registry is repository-level policy read from the committed file and has no per-run
+override: a `--site-config` chooses site content and may *narrow* a lane
+(`moments.judges.models` selects a subset of `llm_lanes["r6-judge"]`), but never which purposes
+exist or what each may spend, because the deployed Worker's reservation map is compiled from the
+committed file alone. `llm_lanes` chooses *among* the catalog below; the catalog itself — physical
+routes, quotas, and capabilities — remains `config/provider_limits.yml`'s job.
 
 The pipeline routes LLM jobs across 12 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python `citypods/compute/llm_routes.json`). The generated catalog contains 63 physical provider/account routes representing 34 deduplicated logical models; every route supports direct LiteLLM and asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode, direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those materialized capabilities rather than inferring them from model or route names. Input/output context ceilings are mandatory on each physical route, because model families and gateways can differ (for example, OpenRouter's free Gemma route has a lower effective input ceiling than the native model). Static catalog quotas are only candidate capacity: production routing records observed RPM, TPM, RPD/reset behavior, latency, failures, and structured-output validity before promoting a route.
 

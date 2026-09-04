@@ -2597,7 +2597,7 @@ def _build_impl(
     # Per-run dispatch caps come from the same lane entry as the models, so a lane's
     # throughput bound and its ingress write budget are set side by side rather than in two
     # files that can disagree.
-    tag_max_dispatches = lane_for("topic-tags:tagger", site_config).max_dispatches_per_run
+    tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
@@ -2613,7 +2613,7 @@ def _build_impl(
             # recipe/calibration route (see llm_tag_suggestions); the rest are extra routes the
             # scheduler may spill onto for throughput once the primary's own per-minute/daily
             # window fills, each an independent free-tier pool.
-            tagger_lane = lane_for("topic-tags:tagger", site_config)
+            tagger_lane = lane_for("topic-tags:tagger")
             primary_model = tagger_lane.primary_model
             additional_models = tagger_lane.additional_models
             # Start from LLMBackendConfig.from_env() -- the complete, single source of truth for
@@ -2656,7 +2656,7 @@ def _build_impl(
         from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 
         try:
-            moments_lane = lane_for("r6-moments", site_config)
+            moments_lane = lane_for("r6-moments")
             moment_models = list(moments_lane.models)
             moment_primary = moments_lane.primary_model
             moment_backend = LiteLLMBackend(
@@ -2926,7 +2926,7 @@ def _build_impl(
             # (enabled, prompt_version, llm_schema_version) stays where it is.
             "prelabeler": {
                 **(tagging_config.get("prelabeler") or {}),
-                "model": lane_for("topic-tags:prelabeler", site_config).primary_model,
+                "model": lane_for("topic-tags:prelabeler").primary_model,
             },
         },
         moment_evaluation_state_path=state_dir
@@ -2937,7 +2937,7 @@ def _build_impl(
             **moments_config,
             **(moments_config.get("evaluation") or {}),
         },
-        moment_max_dispatches=lane_for("r6-moments", site_config).max_dispatches_per_run,
+        moment_max_dispatches=lane_for("r6-moments").max_dispatches_per_run,
         speaker_registry_path=state_dir
         / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
         speaker_evaluation_state_path=state_dir

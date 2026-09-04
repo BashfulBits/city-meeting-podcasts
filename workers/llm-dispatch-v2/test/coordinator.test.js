@@ -988,3 +988,127 @@ test("every purpose the Python client can dispatch has a compiled lane", async (
     "reservations must not oversubscribe the global ingress write budget"
   );
 });
+
+// --- Lane route allowlist ---------------------------------------------------------------------
+// Registering the purpose is half the contract; the lane also names the routes it may spend its
+// budget on. Without this check a job stamped `topic-tags:tagger` could be claimed on any route in
+// the catalog -- a hand-run `--models` override or a stale client would spend a budget sized for
+// one route set on another, and the compiled map's `models` would describe intent rather than what
+// actually runs.
+
+const LANE_WITH_MODELS = JSON.stringify({
+  "topic-tags:tagger": {
+    reserved_write_units: 0,
+    daily_write_units: 10000,
+    models: ["gemini/gemini-3.1-flash-lite"],
+  },
+});
+
+function laneModelJob(id, purpose, allowedModels) {
+  return {
+    id,
+    idempotency_key: `k-${id}`,
+    request_digest: `d-${id}`,
+    policy_json: JSON.stringify({ purpose, allowed_models: allowedModels }),
+    prompt_family: "tags",
+    input_token_estimate: 100,
+    max_output_token_estimate: 50,
+    payload_key: `payloads/${id}/request.json`,
+  };
+}
+
+test("enqueueBatch rejects a model its lane does not declare", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_MODELS,
+  });
+
+  const res = await coordinator.enqueueBatch([
+    laneModelJob("j-in-lane", "topic-tags:tagger", ["gemini/gemini-3.1-flash-lite"]),
+    laneModelJob("j-off-lane", "topic-tags:tagger", ["some-other/model"]),
+  ]);
+
+  const rejected = res.rejected.find((entry) => entry.id === "j-off-lane");
+  assert.ok(rejected, "a route outside the lane must be rejected, not admitted on the lane's budget");
+  assert.equal(rejected.reason, "model_not_in_lane");
+  assert.deepEqual(rejected.models, ["some-other/model"]);
+
+  // The in-lane sibling in the same batch still lands, and the rejected job consumed nothing.
+  assert.deepEqual([...sql.exec("SELECT id FROM jobs ORDER BY id")].map((row) => row.id), [
+    "j-in-lane",
+  ]);
+  const sched = [...sql.exec("SELECT ingress_write_units_today FROM scheduler WHERE id = 1")][0];
+  assert.equal(sched.ingress_write_units_today, 4, "only the admitted job may be charged");
+});
+
+test("a lane that declares no models constrains no route", async () => {
+  // The env override exists so an operator can reshape budgets without a redeploy; it need not
+  // restate route lists, and an absent `models` must never read as "no route is allowed" -- that
+  // would reject every job the moment someone set a budget override.
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({
+      "topic-tags:tagger": { reserved_write_units: 0, daily_write_units: 10000 },
+    }),
+  });
+
+  await coordinator.enqueueBatch([
+    laneModelJob("j-any", "topic-tags:tagger", ["whatever/model"]),
+  ]);
+
+  assert.equal([...sql.exec("SELECT id FROM jobs WHERE id = 'j-any'")].length, 1);
+});
+
+test("superseding a stale row still goes through the registration gate", async () => {
+  // Superseding consumes no admission budget, which is exactly why it must not be a way around
+  // registration: same idempotency_key, new request_digest, and a lane that has since been
+  // removed would otherwise resurrect the row into `queued` under a purpose no reservation covers.
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: REGISTERED_ONLY,
+  });
+
+  await coordinator.enqueueBatch([purposeJob("j-super", "topic-tags:tagger")]);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'j-super'")][0].state, "queued");
+  sql.exec("UPDATE jobs SET state = 'failed' WHERE id = 'j-super'");
+
+  // The lane is retired between the two submissions.
+  coordinator.env.INGRESS_PURPOSE_RESERVATIONS = JSON.stringify({
+    "chapter-agenda": { reserved_write_units: 0, daily_write_units: 10000 },
+  });
+
+  const res = await coordinator.enqueueBatch([
+    { ...purposeJob("j-super", "topic-tags:tagger"), request_digest: "d-changed" },
+  ]);
+
+  assert.equal(res.rejected[0]?.reason, "purpose_not_registered");
+  const row = [...sql.exec("SELECT state, request_digest FROM jobs WHERE id = 'j-super'")][0];
+  assert.equal(row.state, "failed", "a rejected supersession must not requeue the stale row");
+  assert.equal(row.request_digest, "d-j-super", "the stale row keeps its own payload digest");
+});
+
+test("superseding a stale row still goes through the lane route allowlist", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_MODELS,
+  });
+
+  await coordinator.enqueueBatch([
+    laneModelJob("j-route", "topic-tags:tagger", ["gemini/gemini-3.1-flash-lite"]),
+  ]);
+  sql.exec("UPDATE jobs SET state = 'failed' WHERE id = 'j-route'");
+
+  const res = await coordinator.enqueueBatch([
+    {
+      ...laneModelJob("j-route", "topic-tags:tagger", ["some-other/model"]),
+      request_digest: "d-changed",
+    },
+  ]);
+
+  assert.equal(res.rejected[0]?.reason, "model_not_in_lane");
+  assert.equal(
+    [...sql.exec("SELECT state FROM jobs WHERE id = 'j-route'")][0].state,
+    "failed",
+    "a rejected supersession must not requeue the stale row"
+  );
+});

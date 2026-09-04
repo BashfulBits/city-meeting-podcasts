@@ -409,6 +409,47 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return Object.hasOwn(this._ingressPurposeReservations(), purpose);
   }
 
+  /**
+   * Models a job asks for that its own lane never declared, canonicalized on both sides.
+   *
+   * Registering the purpose is only half the contract. `_modelsForQueuedJob` indexes whatever
+   * `allowed_models` the policy carries, so a job stamped with a registered purpose could be
+   * claimed on a route that lane's `llm_lanes` entry does not list -- spending a budget sized for
+   * one set of routes on another, and making the compiled map's `models` a description of intent
+   * rather than of what actually runs. The producer already resolves its routes from
+   * `lane_for(...)`; this is the ingress-side half of that, so a hand-run `--models` override or a
+   * stale client cannot quietly widen a lane.
+   *
+   * Returns `[]` (admit) when the lane declares no `models` at all: the env-var override exists to
+   * let an operator reshape budgets without a redeploy and need not restate route lists, and an
+   * absent list must never be read as "no route is allowed".
+   */
+  _modelsOutsideLane(job, reservation, dispatchLimits) {
+    const declared = Array.isArray(reservation?.models) ? reservation.models : [];
+    if (declared.length === 0) return [];
+    const allowed = new Set(
+      declared
+        .filter((model) => typeof model === "string" && model.trim() !== "")
+        .map((model) => canonicalModelName(model.trim(), dispatchLimits))
+    );
+    if (allowed.size === 0) return [];
+    let policy;
+    try {
+      policy = typeof job.policy_json === "string" ? JSON.parse(job.policy_json) : job.policy_json;
+    } catch {
+      return [];
+    }
+    const requested = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
+    const offenders = [];
+    for (const rawModel of requested) {
+      if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
+      if (!allowed.has(canonicalModelName(rawModel.trim(), dispatchLimits))) {
+        offenders.push(rawModel.trim());
+      }
+    }
+    return offenders;
+  }
+
   _purposeForJob(job) {
     if (typeof job.purpose === "string" && job.purpose.trim()) return job.purpose.trim();
     try {
@@ -624,6 +665,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       let jobsIngestedToday = sched.jobs_ingested_today;
       let ingressWriteUnits = sched.ingress_write_units_today || 0;
       const ingressReservations = this._ingressPurposeReservations();
+      // Resolved once for the whole batch: both the lane-model check and the write-unit charge
+      // canonicalize against it, and it is a static catalog for the life of the call.
+      const dispatchLimits = this._dispatchLimits();
       const purposeUsage = new Map(
         [...sql.exec(
           "SELECT purpose, jobs_ingested, write_units FROM ingress_purpose WHERE utc_day = ?",
@@ -692,6 +736,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
             const policyJson = typeof job.policy_json === "string" ? job.policy_json : JSON.stringify(job.policy_json || {});
             const providerIdempotencyKey = job.provider_idempotency_key || null;
             const purpose = this._purposeForJob({ ...job, policy_json: policyJson });
+            // The same gate the new-insert path applies below. Superseding consumes no admission
+            // budget, which is exactly why it must not be a way around registration: a stale row
+            // whose lane has since been removed (or renamed) would otherwise be resurrected into
+            // `queued` under a purpose no reservation covers, and dispatched. The caller's remedy
+            // is the same either way -- add the `llm_lanes` entry and recompile.
+            if (!Object.hasOwn(ingressReservations, purpose)) {
+              rejected.push({ id: job.id, reason: "purpose_not_registered", purpose });
+              continue;
+            }
+            const supersedeOffenders = this._modelsOutsideLane(
+              { ...job, policy_json: policyJson },
+              ingressReservations[purpose],
+              dispatchLimits
+            );
+            if (supersedeOffenders.length > 0) {
+              rejected.push({
+                id: job.id,
+                reason: "model_not_in_lane",
+                purpose,
+                models: supersedeOffenders,
+              });
+              continue;
+            }
             sql.exec(
               `UPDATE jobs SET
                  request_digest = ?, provider_idempotency_key = ?, state = 'queued',
@@ -750,6 +817,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
           continue;
         }
         const reservation = ingressReservations[purpose] || {};
+        // A registered purpose still may not route outside its own lane -- see
+        // `_modelsOutsideLane`. Checked before any budget arithmetic so a job that cannot legally
+        // run never consumes the day's admission.
+        const offendingModels = this._modelsOutsideLane(
+          { ...job, policy_json: policyJson },
+          reservation,
+          dispatchLimits
+        );
+        if (offendingModels.length > 0) {
+          rejected.push({
+            id: job.id,
+            reason: "model_not_in_lane",
+            purpose,
+            models: offendingModels,
+          });
+          continue;
+        }
         const purposeUsageRow = purposeUsage.get(purpose) || {
           jobs_ingested: 0,
           write_units: 0,

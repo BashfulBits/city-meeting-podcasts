@@ -156,7 +156,19 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
         raw_models = entry.get("models")
         if not isinstance(raw_models, (list, tuple)) or not raw_models:
             raise ValueError(f"llm_lanes[{purpose!r}].models must be a non-empty list")
-        models = tuple(str(model) for model in raw_models)
+        # Coercing with `str()` would have turned a YAML `null`, a bare number, or an empty
+        # string into the routes "None", "3", and "" -- names no entry in llm_routes.json can
+        # match. Such a lane compiles and admits jobs at ingress, and every one of them is then
+        # indexed under the `__unroutable__` sentinel and never claimed: quota spent on work that
+        # can never run. Reject the value where it is written instead.
+        models: tuple[str, ...] = ()
+        for index, model in enumerate(raw_models):
+            if not isinstance(model, str) or not model.strip():
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].models[{index}] must be a non-empty string, "
+                    f"got {model!r}"
+                )
+            models += (model.strip(),)
         if len(set(models)) != len(models):
             raise ValueError(f"llm_lanes[{purpose!r}].models contains duplicates: {models}")
 
@@ -214,32 +226,30 @@ _CACHE: dict[str, dict[str, LaneConfig]] = {}
 _CACHE_LOCK = threading.Lock()
 
 
-def load_lanes(
-    site_config: Mapping[str, Any] | None = None,
-    *,
-    path: str | Path = DEFAULT_SITE_CONFIG_PATH,
-) -> dict[str, LaneConfig]:
-    """Return the registry, from an already-loaded site config or by reading ``path``.
+def load_lanes(*, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> dict[str, LaneConfig]:
+    """Return the registry compiled from the ``llm_lanes`` block in ``path``.
 
-    A ``site_config`` that declares ``llm_lanes`` wins; one that omits the key falls back to the
-    committed registry at ``path``. The registry is repository-level policy -- which dispatch
-    purposes exist and what each may spend against a shared Cloudflare budget -- not per-deployment
-    site content like ``custom_domain`` or ``tagging.enabled``. ``_build_impl`` is routinely handed
-    a small synthetic config (tests, local dev, a single-city deployment), and before this block
-    existed those callers got the models from Python constants without declaring anything; making
-    the key mandatory would have turned every such config into a hard failure for policy it has no
-    business restating.
+    **The registry is repository-level policy, not per-deployment site content.** It is read from
+    one file and never from a caller-supplied ``site_config`` mapping, for two reasons:
 
-    The fallback is deliberately narrow: it applies only when the key is ABSENT. A config that
-    declares ``llm_lanes`` and gets it wrong still raises, so a real misconfiguration is never
-    quietly replaced by the committed defaults.
+    * The Worker half cannot honor an override. ``scripts/compile_llm_lanes.py`` builds
+      ``ingress_reservations.json`` from this same committed file, and the deploy workflow fails
+      on drift. A run that resolved its models or budgets from some *other* config would submit
+      jobs the deployed Worker has never heard of (rejected ``purpose_not_registered``) or charge
+      them against budgets that config does not describe -- the override would look like it
+      worked in the producer and quietly not exist at ingress.
+    * Several lanes resolve at import time to build recipe hashes (agenda chapters, the locator,
+      the tagger). A per-run model choice would make the same artifact hash differently between
+      two runs of the same catalog and re-queue it, which is the backfill story AGENTS.md
+      requires be deliberate.
 
-    Results are cached per resolved path because every per-episode stage call asks for its lane;
-    an explicit ``site_config`` carrying its own lanes bypasses the cache.
+    So a config selected with ``--site-config`` controls site content -- ``custom_domain``,
+    ``tagging.enabled``, the judge allowlist that *narrows* ``llm_lanes["r6-judge"]`` -- and never
+    which purposes exist or what each may spend. ``path`` stays parameterized for the compiler and
+    for tests; nothing in the pipeline passes it.
+
+    Results are cached per resolved path because every per-episode stage call asks for its lane.
     """
-    if site_config is not None and site_config.get("llm_lanes") is not None:
-        return parse_lanes(site_config.get("llm_lanes"))
-
     key = str(Path(path))
     with _CACHE_LOCK:
         cached = _CACHE.get(key)
@@ -255,12 +265,7 @@ def load_lanes(
     return lanes
 
 
-def lane_for(
-    purpose: str,
-    site_config: Mapping[str, Any] | None = None,
-    *,
-    path: str | Path = DEFAULT_SITE_CONFIG_PATH,
-) -> LaneConfig:
+def lane_for(purpose: str, *, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> LaneConfig:
     """Return the lane for ``purpose``, raising :class:`UnregisteredLaneError` if there is none.
 
     This is the only supported way for a call site to learn its models. Callers must not fall back
@@ -268,10 +273,10 @@ def lane_for(
     (``purpose_not_registered``) should fail here, in the producer, where the error names the
     config file to edit.
 
-    ``site_config`` is consulted only when it declares its own ``llm_lanes``; otherwise the
-    committed registry is used. See :func:`load_lanes` for why.
+    There is deliberately no per-run override -- see :func:`load_lanes` for why the registry is
+    repository-level.
     """
-    lanes = load_lanes(site_config, path=path)
+    lanes = load_lanes(path=path)
     try:
         return lanes[purpose]
     except KeyError:

@@ -1370,6 +1370,7 @@ def llm_prelabel_candidates(
     allow_paid: bool = False,
     deadline_at: Any | None = None,
     call_metadata_out: dict[str, Any] | None = None,
+    purpose: str = "topic-tags:prelabeler",
 ) -> tuple[dict[str, dict[str, Any]], bool, str | None]:
     """Run the independent discrete evaluator over persisted candidate subjects.
 
@@ -1377,6 +1378,11 @@ def llm_prelabel_candidates(
     context. It deliberately has a different structured contract and route allowlist from the
     production tagger. ``({}, True, None)`` means deferred; ``({}, True, "payload-too-large")``
     is reserved for a future token-aware split/defer implementation.
+
+    ``purpose`` names the ``llm_lanes`` entry these jobs are charged to at ingress. It defaults to
+    the production lane, but the R5 benchmark runs the same evaluator over its own frozen sample
+    and passes ``r5-benchmark:judge``: a shadow benchmark must not spend the catalog's prelabel
+    budget, which is exactly what a hard-coded purpose made it do.
     """
     if not candidates or not model:
         return {}, False, None
@@ -1513,7 +1519,7 @@ def llm_prelabel_candidates(
             inputs["llm_policy"] = LLMRequestPolicy(
                 allowed_models=(model,),
                 allow_paid=allow_paid,
-                purpose="topic-tags:prelabeler",
+                purpose=purpose,
                 deadline_at=None,
                 queue_only=True,
                 timeout_class="fast",

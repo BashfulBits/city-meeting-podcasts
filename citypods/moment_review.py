@@ -194,7 +194,7 @@ def package(args: argparse.Namespace) -> int:
     if not children:
         # Reads the lane registry rather than the removed `moments.llm_models` key; an empty
         # list here would make _dispatch_blocked_reason report no blocked route at all.
-        models = list(lane_for("r6-moments", site).models)
+        models = list(lane_for("r6-moments").models)
         reason = _dispatch_blocked_reason(state_dir, models)
         if reason:
             manifest["reasons"] = [reason]
