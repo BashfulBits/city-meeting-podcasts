@@ -39,6 +39,16 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **System architecture evolution & refactoring roadmap (review/45).** Synthesizes an exhaustive
+  codebase audit across throughput, reliability, observability, LLM job admission, and structural
+  modularity into an 11-PR delivery schedule. Establishes the Option B clean cutover to partitioned
+  lane sidecars (`catalog.json`, `audio.json`, `transcripts.json`, `enrichment.json`) with an
+  explicit repository-wide runner suspension runbook to eliminate Backblaze B2 TOCTOU race
+  conditions. Decommissions legacy v1 dispatch proxy with zero remaining backlog, folds in
+  PR #1457 (`llm_lanes` single source of truth), fast-tracks GH #1458 (parallelized and
+  dirty-skipped `push_records_merged`), and incorporates GH #1459 (step-level timeouts for
+  long-running workflows).
+
 - **Provider-chapter fallback gate and bounded v2 ingress/reaping.** Generated agenda and boundary
   extraction now runs only for episodes without `source_chapters`; provider markers clear any stale
   generated overlay and batch-cancel queued v2 fallback jobs. Dispatch v2 now budgets ingress in

@@ -86,6 +86,17 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > explicit Free-tier caps and does not alter the current
 > R2-backed production transport until its parity and canary gates pass.
 >
+> **System architecture evolution & refactoring roadmap (2026-09-04).**
+> [`review/45`](review/45-system-architecture-evolution-and-refactoring.md) synthesizes a
+> system-wide architectural audit into an 11-PR implementation roadmap spanning throughput
+> (shard-scoped state sync, probe caching, GH#1458 parallel statesync), reliability (Option B state
+> store partitioning into catalog/audio/transcripts/enrichment sidecars with global runner
+> suspension runbook, GH#1459 step timeouts, SSRF DNS pinning, BaseStage protocol), observability
+> (structured JSON telemetry, DO 80% quota alarms), LLM admission (retiring v1 proxy worker, LiteLLM
+> native JSON schema, prompt prefix caching, priority queuing on `llm_lanes`), and monolith
+> deconstruction (splitting stages.py, run.py, media.py, and compute/llm.py into subpackages <1,000
+> LOC each; duration field normalization).
+>
 > **Granicus media reliability follow-up (2026-06-16).** Endpoint issue #300 still reproduces when
 > `contracts.yml` overlaps active `audio.yml`: Arlington's Granicus RSS/media/chapter checks pass, but
 > ffmpeg receives HTTP 403 from `archive-video.granicus.com` on the GitHub-hosted runner. A local serial
