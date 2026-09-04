@@ -71,8 +71,7 @@ episode mapping, and a digest. The design must assign every existing record fiel
 `links`, `stage_completion`, planning fields, append-only calendar rows, integrity results,
 private review/evaluation state, and all artifact references. It must either give each such object
 a unique lane owner (for example distinct `tags.json`, `moments.json`, and chapter sidecars), or
-retain the current merge/lease discipline for the shared object. “enrichment” is not a
-sufficient
+retain the current merge/lease discipline for the shared object. “enrichment” is not a sufficient
 ownership boundary by itself.
 
 The reader must assemble an in-memory `Episode` only after it verifies that every required
@@ -89,6 +88,17 @@ download, and flips the active pointer only as its final write while all writers
 The prior generation remains readable and protected from lifecycle deletion through the agreed
 rollback window. Rollback is a quiesced pointer flip, followed by a fresh-read canary; it is not a
 best-effort reversal of individual sidecars.
+
+**Naming collision the L3 design must resolve first.** `citypods.statesync` already writes a
+`generation` field on the compact remote manifest (`_validate_manifest`, `ensure_remote_manifest`)
+— an unrelated monotonically incrementing counter for that manifest object itself, bumped on every
+manifest write and unconnected to any per-source state layout. Reusing the word "generation" for
+the partitioning cutover's own version namespace risks a reader (or a log line, or a future grep)
+conflating a manifest-generation bump with a state-layout-generation cutover, which are
+independent concepts that can each advance without the other. The L3 design must either pick a
+distinct term for the partitioning namespace (for example `layout_epoch` or `partition_generation`)
+or explicitly document how the two counters coexist and are told apart in tooling and operator
+output.
 
 ### Preconditions and operational runbook
 
@@ -173,15 +183,31 @@ v1 retirement is a migration of data, producer configuration, generated route me
 deployed Worker—not a source deletion. The L3 issue must name the surviving v2 equivalents for
 every v1 capability before removing the proxy.
 
+**This is a gate on [`review/44`](44-bounded-bundled-llm-dispatch.md)'s own "Phase 3 — Exit
+coexistence," not a parallel plan.** Phase 3 already specifies the mechanics: monitor the v1
+client registry via `citypods.compute.llm_deferred.list_pending_deferred`
+(`DEFERRED_INDEX_PENDING_PREFIX`) until empty, but treat that as necessary and not sufficient,
+since historical v1 requests can exist in R2 after a producer has already switched to v2;
+`scripts/recover_v1_llm_dispatch_results.py` is the existing bounded, manual bridge for that
+provenance gap and is itself a removal candidate once v1 is empty; flip v2's route ledger from its
+50% split-cap back to 1x; then retire v1's cron trigger and Worker. Phase 3 also names v1 clients
+outside the agenda/chapter flow that quiescence proof must not miss — `citypods/tournament.py`,
+`citypods/audit_remedy.py`, and ad hoc `TagsStage` calls — because `reset-agenda-chapter-state.yml`
+only covers the agenda/chapter path and would silently orphan their pending jobs if reused as a
+general migration mechanism. The L3 issue should promote and complete that existing plan, updating
+review/44 in place, rather than re-deriving quiescence/drain mechanics from scratch.
+
 1. **Prove quiescence.** Inventory every `LLM_DISPATCH_URL` / token consumer, queue-only path,
    scheduled/manual workflow, R2 prefix, recovery importer, requeue script, test, deployment
-   workflow, and limits-compiler output. Disable *new v1 production* first with a configuration
-   validation that fails closed; retain a read-only diagnostic while the drain runs.
-2. **Drain and preserve.** Run the existing recovery/reconciliation tools in dry-run and apply
-   modes, with immutable counts and sampled schema-valid result verification. Keep the R2 source
-   records and the read-only recovery path through an explicitly approved retention window. A zero
-   queue count at one instant is insufficient: prove no producer has written after the cutover and
-   no owned terminal result remains unimported.
+   workflow, and limits-compiler output — including the three non-agenda clients named above.
+   Disable *new v1 production* first with a configuration validation that fails closed; retain a
+   read-only diagnostic while the drain runs.
+2. **Drain and preserve.** Run the existing recovery/reconciliation tools (`list_pending_deferred`
+   and `scripts/recover_v1_llm_dispatch_results.py`) in dry-run and apply modes, with immutable
+   counts and sampled schema-valid result verification. Keep the R2 source records and the
+   read-only recovery path through an explicitly approved retention window. A zero queue count at
+   one instant is insufficient: prove no producer has written after the cutover and no owned
+   terminal result remains unimported.
 3. **Prove v2 parity.** Contract-test ingress, idempotency, polling, schema correction, retry and
    terminal reconciliation for every active purpose/route. Verify dashboard/sweep observability
    and error semantics from a clean workflow environment containing only v2 credentials.
@@ -239,17 +265,34 @@ designs take precedence where they overlap.
   paths.
 - **Impact**: Reduces network transfer for verification stages by up to 95%.
 
-#### Initiative 4: Parallelized & Dirty-Skipping State Push (GH #1458)
+#### Initiative 4: Parallelized & Dirty-Skipping State Push ([GH#1458](https://github.com/BashfulBits/city-meeting-podcasts/issues/1458))
 - **Problem**: `push_records_merged` serially iterates through owned sources and unconditionally
   re-reads, re-merges, re-encodes, and re-uploads untouched records at every checkpoint.
+- **Evidence already on file**: the issue's own instrumented `tag` lane run measured 224.9s and
+  555.1s per checkpoint pushing 42 sources (5.4s and 13.2s per source), all serial round-trips
+  against `_STATE_SYNC_MAX_WORKERS` sitting idle at concurrency 1; this is the direct cause of
+  `tag.yml` hitting GitHub's 180-minute job timeout on three consecutive scheduled runs. It
+  directly affects every lane wired to `mid_run_checkpoint` in `run.py` — `tag`, `diarize`,
+  `speaker-identity` — and therefore `tag.yml`, `r7-diarization.yml`, and
+  `tournament-tag-backfill.yml`; scoped `audio.yml`/`asr.yml` shards pay a smaller, single-call
+  version of the same cost at end-of-run.
 - **Design gate**: `push_state()` is already parallelized; the remaining hot path is the serial
   fetch/merge/put in `citypods.statesync.push_records_merged()`. Select dirty *source record
-  files* before any remote read, preserve the existing fail-safe “unreadable remote means no
-  write” rule, and parallelize only distinct source keys. Do not share a mutable local record map,
-  clear a dirty entry before its PUT and manifest update both succeed, or make the worker count a
-  hard-coded 16: make it storage-connection-pool aware, configurable, and measured. Tests need
-  interleaved same-source/cross-source writes, one failed PUT, deterministic logging, and a
-  retry after a cancelled checkpoint.
+  files* before any remote read (the existing `DIRTY_JOURNAL_NAME` journal or a pre-merge digest
+  comparison both work), preserve the existing fail-safe “unreadable remote means no write” rule,
+  and parallelize only distinct source keys. Do not share a mutable local record map, clear a
+  dirty entry before its PUT and manifest update both succeed, or assume `_STATE_SYNC_MAX_WORKERS`
+  is automatically the right bound here: make it storage-connection-pool aware, configurable, and
+  measured — reusing the existing constant is the right default unless a measurement says
+  otherwise. **Before touching the hot path**, resolve or explicitly account for
+  `push_records_merged`'s two live `DIAGNOSTIC` blocks (`_diag_new_artifact_keys` and the
+  post-push readback) from the still-open agenda-extraction storage-recall investigation — the
+  readback adds a *fourth* round-trip per source whenever a new `*_artifact_key` is present, and
+  a naive parallelization would silently change its behavior or interleaving. Tests need
+  interleaved same-source/cross-source writes, one failed PUT, deterministic logging, and a retry
+  after a cancelled checkpoint; a before/after timing comparison on one real `workflow_dispatch`
+  run of `tag.yml` (the checkpoint's own `persist=..s push=..s` log line) is the issue's own
+  suggested verification.
 - **Impact**: Drops checkpoint latency from 15–30s down to <2s; resolves timeout cancellation in
   `tag.yml` and long-running enrichment workflows.
 
@@ -265,17 +308,34 @@ designs take precedence where they overlap.
 - **Impact condition**: Eliminates cross-lane clobbers only for objects with a verified exclusive
   writer. Shared objects retain their merge/lease protocol until split further.
 
-#### Initiative 6: Step-Level Timeouts & Budget Stop Alignment (GH #1459)
+#### Initiative 6: Step-Level Timeouts & Budget Stop Alignment ([GH#1459](https://github.com/BashfulBits/city-meeting-podcasts/issues/1459))
 - **Problem**: Overrunning jobs hit GitHub's job-level timeout, cancelling the runner and skipping
-  crucial trailing reporting steps.
-- **Design gate**: Inventory every long-running *work* step first, including `tag.yml`,
-  `moments.yml` and the chapter lanes, rather than applying a generic percentage. Anchor the
-  application
-  deadline at job start (so restore/install time consumes runway), reserve an explicit durable
-  checkpoint/report tail, and make timeout/defer/interrupt outcomes distinguishable. A shell
-  timeout alone is not graceful: it must leave enough time for the process's stop predicate and
-  existing SIGTERM checkpoint path. Test timeout values, deadline propagation, a deferred exit
-  with trailing summary, and a real failure that remains red.
+  crucial trailing reporting steps. PR #1457 already added this to `tag.yml`, `moments.yml`,
+  `chapter-agenda.yml`, `chapter-locator.yml`, and `llm-tournament.yml`; the same gap remains
+  elsewhere.
+- **Evidence already on file**: the issue names the remaining affected jobs and the step each
+  cancellation would skip — `r7-diarization.yml :: diarize` (330m job timeout; a cancel skips the
+  unconditional "project speaker identities and queue review candidates" step, so diarization
+  work finishes but is never projected or queued for review), `audio.yml :: audio` (360m; its
+  `if: always()`-guarded reporting step is only partially protected, inside the runner's
+  cancellation grace period before force-termination), `llm-deferred-sweep.yml :: sweep` (360m;
+  loses the `llm_deferred_sweep_end` summary, the only place `submit_failed` currently surfaces),
+  `r5-benchmark.yml :: benchmark` (180m), and `tournament-tag-backfill.yml :: backfill` (180m). A
+  **distinct, easier-to-miss gap**: `asr.yml` declares **no** `timeout-minutes` on either job
+  (`asr`, `reconcile`), so both silently inherit GitHub's 360-minute default — that needs an
+  explicit bound as its own decision, not a step-timeout retrofit. The issue's suggested step
+  values follow PR #1457's ~92–94%-of-job-timeout precedent.
+- **Design gate**: Inventory every long-running *work* step first, including the jobs above,
+  rather than applying a generic percentage — size headroom to what each job's trailing step
+  actually needs (a projection step doing real work needs more than a step that only prints a
+  summary). Anchor the application deadline at job start (so restore/install time consumes
+  runway), reserve an explicit durable checkpoint/report tail, and make timeout/defer/interrupt
+  outcomes distinguishable. A shell timeout alone is not graceful: it must leave enough time for
+  the process's stop predicate and existing SIGTERM checkpoint path. `tests/test_workflows.py`
+  already asserts job timeouts for several of these workflows but no step timeouts anywhere;
+  extend it alongside the fix so the invariant is enforced rather than re-derived. Test timeout
+  values, deadline propagation, a deferred exit with trailing summary, and a real failure that
+  remains red.
 - **Impact**: Prevents grey cancelled runs; guarantees trailing reporting steps execute and fail
   visibly as red on true timeouts.
 
@@ -311,8 +371,10 @@ designs take precedence where they overlap.
   outcome, bounded error class). Never log prompts, transcript text, tokens, URLs with credentials,
   or raw provider responses. Define the authoritative quota source, polling cadence, reset
   timezone, uncertainty behavior, idempotency key/deduplication, and failure path for the alert
-  before choosing Discord or issue delivery. The alert must itself be bounded and cannot add an
-  unindexed DO scan.
+  before choosing Discord or issue delivery — `workers/city-request-intake` already sends
+  idempotency-keyed Discord webhook notifications (`DISCORD_WEBHOOK_URL`, `notifyDiscord`/
+  `updateDiscord`) and is a candidate pattern to reuse rather than a novel integration. The alert
+  must itself be bounded and cannot add an unindexed DO scan.
 - **Impact**: Real-time visibility into quota consumption and immediate alert on runaway queries.
 
 #### Initiative 10: OpenTelemetry Tracing for Multi-Stage Runner Spans
@@ -383,8 +445,8 @@ designs take precedence where they overlap.
 ### Pillar 5: Architectural Consistency & De-Monolithization
 
 #### Initiative 17: Modularize 4 Monolith Modules (<1,000 LOC per File)
-- **Problem**: `stages.py` (7.6k LOC), `run.py` (4.2k LOC), `compute/llm.py` (3.0k LOC), and
-  `media.py` (3.0k LOC) are oversized monoliths that impede safe refactoring.
+- **Problem**: `stages.py` (7.7k LOC), `run.py` (4.2k LOC), `compute/llm.py` (3.0k LOC), and
+  `media.py` (3.7k LOC) are oversized monoliths that impede safe refactoring.
 - **Design gate**: Do not create `citypods/stages/`, `citypods/media/`, or `citypods/compute/llm/`
   alongside same-named `.py` facades: Python import resolution would shadow the facade and can
   silently break imports. First extract into distinct implementation namespaces (for example
@@ -410,12 +472,17 @@ work, and independent refactors into unsafe bundles. The ordering below is a dep
 not a calendar commitment; each row becomes a separate issue/PR series only after it passes its
 L3 gate.
 
-1. **GH#1458 checkpoint profiling and dirty-source push.** Capture a representative trace and
-   identify exactly which `push_records_merged` calls are unchanged. Complete only with no
-   lost-update regression, a cancelled-PUT retry, and measured cold/warm improvement.
-2. **GH#1459 graceful timeout envelope.** Inventory long work steps and reserve a post-work
-   persistence/report tail. Complete only when each affected job defers before the hard timeout
-   and failure/cancellation classifications remain distinct.
+1. **[GH#1458](https://github.com/BashfulBits/city-meeting-podcasts/issues/1458) checkpoint
+   profiling and dirty-source push.** Root cause and a representative trace are already recorded
+   on the issue (Initiative 4) — this row is comparatively lower research risk than the rows
+   below and can move to L3 fastest, provided the two live `DIAGNOSTIC` blocks are resolved or
+   accounted for first. Complete only with no lost-update regression, a cancelled-PUT retry, and
+   measured cold/warm improvement.
+2. **[GH#1459](https://github.com/BashfulBits/city-meeting-podcasts/issues/1459) graceful timeout
+   envelope.** The affected-jobs table and suggested step values are already recorded on the issue
+   (Initiative 6), including the separate `asr.yml` gap (no job timeout at all). Also comparatively
+   ready for L3. Complete only when each affected job defers before the hard timeout and
+   failure/cancellation classifications remain distinct.
 3. **v1 retirement discovery/drain.** Finish §3's consumer, R2, and deployed-Worker inventory.
    A maintainer must accept the drain report and v2-only canary before any production deletion.
 4. **State partitioning design/migration rehearsal.** Complete §2's field/owner matrix,
@@ -445,13 +512,21 @@ is recorded. None may be bundled merely to fill a sprint.
 
 1. **Static Analysis & Linters**:
    - Every PR must pass `ruff check .` and `ruff format --check .` under the
-     strict 100-character limit.
-   - Enforce type annotations via `mypy` on all newly extracted subpackages.
+     strict 100-character limit (the current `select = ["E", "F", "I", "UP", "B"]`; no annotation
+     or type-checking rules are enabled today).
+   - **No type checker is part of this repository's toolchain** (no `mypy`/`pyright` config, CI
+     step, or `constraints/*.txt` entry). Do not assume Initiative 17's module extraction can lean
+     on one: adding a type checker is itself a new-tooling decision gated by review/22's
+     dependency policy (pinned constraints, CI wiring, `check_dependency_policy.py` coverage), and
+     it would need its own evaluation of how much of the pre-existing code it touches by import
+     already type-checks cleanly. Track it as its own candidate if wanted, not a blanket
+     requirement on every extraction PR.
 2. **Offline Test Suite Execution**:
    - Maintain 100% pass rate across the offline test suite (`pytest -q`, 3,730+ tests).
 3. **Workflow Timeout Assertions**:
-   - `tests/test_workflows.py` asserts step-level timeouts for all long-running workflows to
-     prevent regressions (GH #1459).
+   - `tests/test_workflows.py` already asserts job timeouts for several long-running workflows; it
+     must gain step-level timeout assertions for every workflow Initiative 6 touches, to prevent
+     regressions ([GH#1459](https://github.com/BashfulBits/city-meeting-podcasts/issues/1459)).
 4. **State migration and concurrent-write tests**:
    - Exercise every field/owner mapping with multi-lane interleavings, a partial upload, corrupt or
      missing sidecar, pointer-flip interruption, rollback, and a fresh-checkout reconstruction.
