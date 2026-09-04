@@ -79,6 +79,9 @@ def _stream_response(
         if max_bytes is not None and written > max_bytes:
             raise ChunkedDownloadError("Worker response exceeded the configured media cap")
         dest.write(chunk)
+        # Avoid pulling another socket chunk if the limit was reached exactly on a chunk boundary
+        if max_download_bytes is not None and written == max_download_bytes:
+            return written
     if max_download_bytes is not None and written == max_download_bytes:
         return written
     if expected_bytes is not None and written != expected_bytes:

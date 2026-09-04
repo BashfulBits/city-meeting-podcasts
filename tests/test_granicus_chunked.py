@@ -252,6 +252,33 @@ def test_download_verified_smaller_than_max_download_bytes(monkeypatch, fake_url
     assert dest.read_bytes() == payload
 
 
+def test_download_verified_stops_immediately_on_exact_chunk_boundary(
+    monkeypatch, fake_url, tmp_path: Path
+):
+    yielded_chunks = 0
+
+    class _MultiChunkResponse(_Response):
+        def iter_content(self, chunk_size):
+            nonlocal yielded_chunks
+            del chunk_size
+            for chunk in (b"chunk1-10b", b"chunk2-10b", b"chunk3-10b"):
+                yielded_chunks += 1
+                yield chunk
+
+    session = _Session(b"placeholder", ignore_ranges=True)
+    monkeypatch.setattr(
+        session,
+        "get",
+        lambda *_args, **_kwargs: _MultiChunkResponse(b"full-data", 200, {"Content-Length": "30"}),
+    )
+    monkeypatch.setattr("citypods.granicus_chunked.requests.Session", lambda: session)
+
+    dest = tmp_path / "media.mp4"
+    assert download_verified(fake_url, "secret", dest, max_download_bytes=10) == 10
+    assert dest.read_bytes() == b"chunk1-10b"
+    assert yielded_chunks == 1
+
+
 @pytest.mark.parametrize("bad_max", [0, -1])
 def test_download_verified_rejects_non_positive_max_download_bytes(
     fake_url, tmp_path: Path, bad_max
