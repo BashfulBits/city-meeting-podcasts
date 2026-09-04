@@ -71,6 +71,27 @@ Phase R (Research-Tool Surface)._
   provisional `llm-pending` counts for replayed `JobResult` items or submission errors to eliminate
   double-counting while preserving accurate stage totals. No recipe, artifact, or pipeline
   version changes.
+  
+- **Granicus Worker fallback respects slice download caps on truncated probes.**
+  `download_verified` in `citypods/granicus_chunked.py` previously treated `max_bytes` solely as a
+  remote media cap (`total > max_bytes`), causing truncated media-fetch probes with an 8 MB cap
+  to immediately fail against large meeting video files (>1 GB) with
+  `ChunkedDownloadError("Worker object exceeds the configured media cap")` and trigger spurious
+  `RateLimitedMediaFetchError` contract probe failures (#1241). Added a `max_download_bytes`
+  parameter to `download_verified` to bound byte ranges and stream limits without rejecting large
+  remote objects, and preserved captured FFmpeg diagnostic logs when contract checks encounter
+  exceptions.
+
+- **Topic-tag dispatches use the registered v2 lane purpose.** `llm_tag_suggestions()` previously
+  defaulted to the storage feature name `topic-tags`, while the v2 ingress registry requires
+  `topic-tags:tagger`. The tagger and pre-labeler now share explicit purpose constants, preventing
+  rejected queue submissions without changing recipes, artifacts, or backfill behavior.
+
+- **Endpoint Contracts workflow installs dev dependencies for AI Gateway probe.** `contracts.yml`
+  runs `tests/live/test_ai_gateway_contract.py` via `python -m pytest` to probe Cloudflare AI Gateway
+  custom-provider routing, but its install step previously locked only `constraints/prod.txt`,
+  failing scheduled runs with `No module named pytest`. The install step now installs `.[dev]`
+  constrained by `constraints/dev.txt`.
 
 - **Topic-tag checkpoints no longer spend most of their time in serial storage I/O.** Dispatch
   batches now stage independent B2 payloads and persist accepted/deferred handles with bounded

@@ -97,3 +97,20 @@ def test_check_city_unregistered_provider_returns_a_result_not_raises():
     assert results[0].endpoint == "list"
     assert results[0].ok is False
     assert "not-a-real-provider" in results[0].detail
+
+
+def test_check_city_media_fetch_exception_includes_ffmpeg_log(monkeypatch):
+    monkeypatch.setattr("citypods.contracts.get_provider", lambda name: _FakeProvider())
+    monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/ffmpeg")
+
+    def _failing_download(_url, _dest, *, log=None, **_kwargs):
+        if log is not None:
+            log("ffmpeg probe event failure details")
+        raise RuntimeError("ffmpeg crash")
+
+    monkeypatch.setattr("citypods.media._download_audio", _failing_download)
+    results = check_city("fake-city", "fake", {})
+    fetch = next(r for r in results if r.endpoint == "media-fetch")
+    assert fetch.ok is False
+    assert "RuntimeError('ffmpeg crash')" in fetch.detail
+    assert "ffmpeg=ffmpeg probe event failure details" in fetch.detail

@@ -133,10 +133,10 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
         else:
             from citypods.media import _download_audio
 
+            logs: list[str] = []
             try:
                 with tempfile.TemporaryDirectory() as td:
                     dest = Path(td) / "probe.mka"
-                    logs: list[str] = []
                     ok = _download_audio(
                         resolved_url,
                         dest,
@@ -161,7 +161,10 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
                         )
                     )
             except Exception as exc:  # noqa: BLE001
-                out.append(_r(provider_name, slug, "media-fetch", False, repr(exc)))
+                detail = repr(exc)
+                if logs:
+                    detail += f"\nffmpeg={_tail(logs[-1])}"
+                out.append(_r(provider_name, slug, "media-fetch", False, detail))
 
     # 3. Chapters/transcript — only for providers that expose them; reachable + parseable.
     fetch_chapters = getattr(provider, "fetch_chapters", None)

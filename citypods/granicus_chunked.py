@@ -58,6 +58,7 @@ def _stream_response(
     *,
     expected_bytes: int | None,
     max_bytes: int | None,
+    max_download_bytes: int | None = None,
     stop: Callable[[], bool] | None,
 ) -> int:
     response.raise_for_status()
@@ -67,12 +68,22 @@ def _stream_response(
             raise StopRequested("chunked download stopped")
         if not chunk:
             continue
+        if max_download_bytes is not None and written + len(chunk) > max_download_bytes:
+            allowed = max_download_bytes - written
+            dest.write(chunk[:allowed])
+            written += allowed
+            break
         written += len(chunk)
         if expected_bytes is not None and written > expected_bytes:
             raise ChunkedDownloadError("Worker response exceeded its declared byte range")
         if max_bytes is not None and written > max_bytes:
             raise ChunkedDownloadError("Worker response exceeded the configured media cap")
         dest.write(chunk)
+        # Avoid pulling another socket chunk if the limit was reached exactly on a chunk boundary
+        if max_download_bytes is not None and written == max_download_bytes:
+            return written
+    if max_download_bytes is not None and written == max_download_bytes:
+        return written
     if expected_bytes is not None and written != expected_bytes:
         raise ChunkedDownloadError(
             f"Worker response was truncated: received {written} of {expected_bytes} bytes"
@@ -87,6 +98,7 @@ def _download_full(
     dest: Path,
     *,
     max_bytes: int | None,
+    max_download_bytes: int | None = None,
     stop: Callable[[], bool] | None,
 ) -> int:
     """Download a whole object and verify Content-Length when the origin supplies it."""
@@ -108,6 +120,7 @@ def _download_full(
                 output,
                 expected_bytes=advertised,
                 max_bytes=max_bytes,
+                max_download_bytes=max_download_bytes,
                 stop=stop,
             )
 
@@ -120,14 +133,22 @@ def _download_ranges(
     *,
     chunk_bytes: int,
     max_bytes: int | None,
+    max_download_bytes: int | None = None,
     stop: Callable[[], bool] | None,
 ) -> int:
     """Download an object as sequential exact ranges; raise if Range is ignored or malformed."""
     start = 0
     total: int | None = None
+    target_bytes: int | None = None
     with dest.open("wb") as output:
-        while total is None or start < total:
-            end = start + chunk_bytes - 1
+        while target_bytes is None or start < target_bytes:
+            remaining = (
+                (target_bytes - start)
+                if target_bytes is not None
+                else ((max_download_bytes - start) if max_download_bytes is not None else None)
+            )
+            step = min(chunk_bytes, remaining) if remaining is not None else chunk_bytes
+            end = start + step - 1
             for attempt in range(_RANGE_ATTEMPTS):
                 try:
                     with session.get(
@@ -171,6 +192,11 @@ def _download_ranges(
                                 raise ChunkedDownloadError(
                                     "Worker object exceeds the configured media cap"
                                 )
+                            target_bytes = (
+                                min(total, max_download_bytes)
+                                if max_download_bytes is not None
+                                else total
+                            )
                         elif total != response_total:
                             raise ChunkedDownloadError(
                                 "Worker object size changed during range download"
@@ -189,7 +215,7 @@ def _download_ranges(
                                 response,
                                 staged_range,
                                 expected_bytes=response_end_i - response_start_i + 1,
-                                max_bytes=max_bytes,
+                                max_bytes=None,
                                 stop=stop,
                             )
                             staged_range.seek(0)
@@ -199,9 +225,15 @@ def _download_ranges(
                 except requests.RequestException:
                     if attempt + 1 == _RANGE_ATTEMPTS:
                         raise
-    if total is None or start != total or dest.stat().st_size != total:
+    expected_size = target_bytes
+    if (
+        total is None
+        or expected_size is None
+        or start != expected_size
+        or dest.stat().st_size != expected_size
+    ):
         raise ChunkedDownloadError("assembled Worker ranges did not match the object size")
-    return total
+    return dest.stat().st_size
 
 
 def download_verified(
@@ -211,6 +243,7 @@ def download_verified(
     *,
     chunk_bytes: int = DEFAULT_CHUNK_BYTES,
     max_bytes: int | None = None,
+    max_download_bytes: int | None = None,
     stop: Callable[[], bool] | None = None,
 ) -> int:
     """Download *proxy_url* with exact ranges, falling back to one verified full GET.
@@ -222,6 +255,8 @@ def download_verified(
     """
     if chunk_bytes <= 0:
         raise ValueError("chunk_bytes must be positive")
+    if max_download_bytes is not None and max_download_bytes <= 0:
+        raise ValueError("max_download_bytes must be positive")
     validate_source_url(proxy_url, resolve=True)
     session = requests.Session()
     session.max_redirects = 3
@@ -235,6 +270,7 @@ def download_verified(
                     dest,
                     chunk_bytes=chunk_bytes,
                     max_bytes=max_bytes,
+                    max_download_bytes=max_download_bytes,
                     stop=stop,
                 )
             except _RangeUnsupported:
@@ -244,6 +280,7 @@ def download_verified(
                     token,
                     dest,
                     max_bytes=max_bytes,
+                    max_download_bytes=max_download_bytes,
                     stop=stop,
                 )
     except requests.RequestException as exc:

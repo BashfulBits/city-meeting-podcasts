@@ -1567,7 +1567,9 @@ class TagsStage:
             visible_candidates,
         )
         from citypods.tags import (
+            PRELABELER_PURPOSE,
             TAG_PROMPT_VERSION,
+            TAGGER_PURPOSE,
             TAGGER_VERSION,
             agenda_document_context,
             chapter_tag_inputs,
@@ -2181,7 +2183,7 @@ class TagsStage:
                         dispatch_settled = True
                         remember_call_attempt(
                             ep,
-                            purpose="topic-tags:tagger",
+                            purpose=TAGGER_PURPOSE,
                             recipe_hash=llm_recipe,
                             status="deferred" if dispatched else "resolved",
                             metadata=tag_call_metadata,
@@ -2234,7 +2236,7 @@ class TagsStage:
                             ctx.settle_tag_dispatch(False)
                         remember_call_attempt(
                             ep,
-                            purpose="topic-tags:tagger",
+                            purpose=TAGGER_PURPOSE,
                             recipe_hash=llm_recipe,
                             status="error",
                             metadata=tag_call_metadata,
@@ -2328,7 +2330,7 @@ class TagsStage:
                             dispatch_settled = True
                             remember_call_attempt(
                                 ep,
-                                purpose="topic-tags:prelabeler",
+                                purpose=PRELABELER_PURPOSE,
                                 recipe_hash=prelabel_recipe,
                                 status="deferred" if prelabel_dispatched else "resolved",
                                 metadata=prelabel_call_metadata,
@@ -2359,7 +2361,7 @@ class TagsStage:
                                 ctx.settle_tag_prelabeler_dispatch(False)
                             remember_call_attempt(
                                 ep,
-                                purpose="topic-tags:prelabeler",
+                                purpose=PRELABELER_PURPOSE,
                                 recipe_hash=prelabel_recipe,
                                 status="error",
                                 metadata=prelabel_call_metadata,
