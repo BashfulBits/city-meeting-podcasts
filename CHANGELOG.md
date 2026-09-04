@@ -100,7 +100,13 @@ Phase R (Research-Tool Surface)._
 - **LLM producer lanes no longer fail silently.** A failed batch submission is not a deferral —
   nothing is queued, so no later run picks it up — but the enrichment, tournament, and benchmark
   entry points counted the failures, printed a line, and exited 0. All four now report them and
-  exit non-zero. The four lane workflow steps also gain a step-level timeout below their job
+  exit non-zero. `scripts/llm_deferred_sweep.py` had the same defect and is fixed the same way,
+  with one distinction its reconciler role requires: submission rejections are counted separately
+  from reconcile failures (`submit_failed` in the end summary), and only the former set the exit
+  status — a bad payload or a provider error is an ordinary per-record outcome for a sweep and
+  must not turn that workflow permanently red. The Worker's new registration gate makes this
+  reachable in production: a legacy record carrying the bare `topic-tags` purpose is upgraded to
+  queue-only by the sweep and rejected at ingress as `purpose_not_registered`. The four lane workflow steps also gain a step-level timeout below their job
   timeout: a job-level timeout *cancels* the run, which GitHub shows as a grey "cancelled"
   indistinguishable from a manual cancellation and which skips every later step, so nothing is
   persisted or reported. `tag.yml` hit exactly that on eight consecutive scheduled runs between

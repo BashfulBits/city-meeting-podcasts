@@ -273,6 +273,13 @@ def main(argv: list[str] | None = None) -> int:
     completed = 0
     still_pending = 0
     failed = 0
+    # Submission rejections, a strict subset of `failed`. Tracked apart because the two mean
+    # opposite things for the sweep's exit status: a reconcile failure is an ordinary per-record
+    # outcome for a reconciler (a bad payload, a provider error) and must not turn this workflow
+    # permanently red, whereas a failed ENQUEUE queued nothing at all -- the record stays pending
+    # and no later run picks it up on its own, so a sweep that reports success while silently
+    # dropping submissions is the same defect the producer lanes were just fixed for.
+    submit_failed = 0
     recovered_terminal_failures = 0
     seen_pending: set[str] = set()
     exhausted_capacity: set[tuple] = set()
@@ -473,6 +480,7 @@ def main(argv: list[str] | None = None) -> int:
                     seen_pending.add(handle.recipe_hash)
                     if isinstance(result, Exception):
                         failed += 1
+                        submit_failed += 1
                         print(
                             f"llm-deferred-sweep: {handle.recipe_hash} v2 enqueue failed: {result}",
                             file=sys.stderr,
@@ -613,6 +621,7 @@ def main(argv: list[str] | None = None) -> int:
         "event": "llm_deferred_sweep_end",
         "completed": completed,
         "failed": failed,
+        "submit_failed": submit_failed,
         "pruned": pruned,
         "remaining": _pending_breakdown(snapshot.pending(), legacy_backend=legacy_backend),
         "snapshot": {
@@ -629,7 +638,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"llm-deferred-sweep: {len(seen_pending)} pending seen, {completed} completed, "
         f"{still_pending} still pending observations, {failed} failed "
-        f"({recovered_terminal_failures} terminally recovered), {pruned} pruned, {remaining} "
+        f"({recovered_terminal_failures} terminally recovered, {submit_failed} never submitted), "
+        f"{pruned} pruned, {remaining} "
         f"remaining, {v2_unobserved} v2 unobserved, {len(snapshot.unavailable_reads)} unavailable"
     )
     for signature, skipped in sorted(skipped_by_pool.items(), key=lambda item: -item[1]):
@@ -642,6 +652,18 @@ def main(argv: list[str] | None = None) -> int:
         )
     if stop_state.requested:
         print("llm-deferred-sweep: graceful stop requested; finished work has been persisted")
+    if submit_failed:
+        # Everything above is already persisted -- resolved work is never lost -- but the run must
+        # not report success while some of its records were never queued. They stay pending, so a
+        # later sweep will retry them; a green run here would mean nobody ever finds out that a
+        # whole ingress batch was rejected (an unregistered purpose on a legacy record, an expired
+        # auth token, a Worker outage).
+        print(
+            f"llm-deferred-sweep: {submit_failed} record(s) failed to submit; no work was queued "
+            "for them and they remain pending",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
