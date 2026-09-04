@@ -51,13 +51,13 @@ jobs:
     # citypods/statesync.py) to publish feeds/pages, so it needs the storage creds — but no
     # ffmpeg, no Whisper model, and no audio/ASR encodes. All heavy work runs in audio.yml/asr.yml.
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
 
       # Latency optimization only: the object bucket is the source of truth for build state
@@ -140,7 +140,7 @@ jobs:
       # scheduled/push runs with an otherwise-clean render. Retry twice with backoff before failing.
       - name: Deploy to GitHub Pages (attempt 1)
         id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
         continue-on-error: true
 
       - name: Wait before retry 1
@@ -150,7 +150,7 @@ jobs:
       - name: Deploy to GitHub Pages (attempt 2)
         id: deployment2
         if: steps.deployment.outcome == 'failure'
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
         continue-on-error: true
 
       - name: Wait before retry 2
@@ -160,4 +160,4 @@ jobs:
       - name: Deploy to GitHub Pages (attempt 3)
         id: deployment3
         if: steps.deployment.outcome == 'failure' && steps.deployment2.outcome == 'failure'
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
