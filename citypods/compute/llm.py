@@ -2806,20 +2806,6 @@ class BatchingDispatchBackend:
             for job, result in zip(jobs, results, strict=True)
         ]
 
-    def flush_if_ready(self, minimum_jobs: int) -> list[BatchDispatchOutcome]:
-        """Submit an accumulated batch once it reaches ``minimum_jobs``.
-
-        A run-level collector must not hold every job until the final epilogue: a hard runner
-        timeout would discard the whole in-memory batch without ever contacting the Worker. The
-        snapshot-and-clear operation in :meth:`flush` remains safe while producer threads add more
-        jobs, so this gives the coordinator an inexpensive periodic durable commit point.
-        """
-        if minimum_jobs < 1:
-            raise ValueError("minimum_jobs must be positive")
-        if self.queued_count < minimum_jobs:
-            return []
-        return self.flush()
-
 
 class PerModelBatchingBackends:
     """Run-scoped, per-model backends that share one queue-only batch collector.
