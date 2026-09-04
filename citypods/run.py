@@ -905,9 +905,23 @@ def _run_bounded(
     the producer never waits for the whole current batch to drain.
 
     ``on_progress``, if given, runs after each drain cycle -- always from this function's own
-    (calling) thread, never concurrently with itself or with a still-running ``fn`` submission.
-    Used for periodic mid-pass checkpointing on passes with no natural end-of-phase persist
-    boundary (see the `tag` lane's checkpoint push in ``_run_enrich_global_queue``).
+    (calling) thread and never concurrently with itself. Used for periodic mid-pass checkpointing
+    on passes with no natural end-of-phase persist boundary (see the `tag` lane's checkpoint push
+    in ``_run_enrich_global_queue``).
+
+    **The submission window is refilled BEFORE ``on_progress`` runs, not after.** ``on_progress``
+    is not necessarily cheap: the tag lane's checkpoint persists every prepared source, which
+    measured ~230 seconds against a 180-second interval in production. Refilling afterwards meant
+    the pool sat at whatever depth the drain left it -- often empty -- for that entire window, so
+    a lane with eight workers completed *one* item per ~250-second cycle and spent ~90% of a
+    three-hour run with idle workers (runs #70/#71/#72, 2026-09-03/04: one `stage start`, one
+    `stage done`, then 229 seconds of nothing but heartbeats, repeatedly). Filling first keeps the
+    workers busy across the checkpoint.
+
+    This does not change *whether* ``fn`` runs concurrently with ``on_progress`` -- ``wait``
+    returns on the FIRST completion, so siblings were always still running -- only how many. A
+    callback that mutates state the running ``fn`` also touches must already tolerate that;
+    ``_persist_all``'s record merge is append-only and idempotent for exactly this reason.
     """
     iterator = iter(items)
     pending: set = set()
@@ -925,9 +939,9 @@ def _run_bounded(
         done, pending = wait(pending, return_when=FIRST_COMPLETED)
         for future in done:
             future.result()
+        _fill()
         if on_progress is not None:
             on_progress()
-        _fill()
 
 
 @dataclass

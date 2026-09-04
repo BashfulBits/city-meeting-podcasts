@@ -1214,6 +1214,53 @@ def test_bounded_runner_calls_on_progress_once_per_drain_cycle(monkeypatch):
     assert len(calls) == 5
 
 
+def test_run_bounded_keeps_the_window_full_while_on_progress_runs(monkeypatch):
+    """A slow ``on_progress`` must not starve the pool.
+
+    Regression for the tag lane's 180-minute runs (#70/#71/#72, 2026-09-03/04). The mid-pass
+    checkpoint persists every prepared source and measured ~230s against a 180s interval; because
+    the window was refilled only *after* ``on_progress`` returned, eight workers completed exactly
+    one item per ~250s cycle -- one `stage start`, one `stage done`, then 229 seconds of nothing
+    but heartbeats. Asserting on submission ORDER (rather than timing) keeps this deterministic:
+    by the time the callback runs, the window must already be back up to ``max_pending``.
+    """
+    submitted: list[int] = []
+    window_at_callback: list[int] = []
+
+    class _Pool:
+        def submit(self, fn, item):
+            submitted.append(item)
+
+            class _F:
+                def result(self_inner):
+                    return item
+
+            return _F()
+
+    def _one_done(pending, *, return_when):
+        future = next(iter(pending))
+        return {future}, pending - {future}
+
+    monkeypatch.setattr(run, "wait", _one_done)
+    run._run_bounded(
+        _Pool(),
+        lambda item: item,
+        range(6),
+        max_pending=3,
+        # Record how much work had been submitted by the time the callback fired.
+        on_progress=lambda: window_at_callback.append(len(submitted)),
+    )
+
+    assert submitted == list(range(6)), "every item must still be submitted exactly once, in order"
+    # First callback fires after item 0 completes; the refill must already have queued item 3.
+    assert window_at_callback[0] == 4, (
+        "the submission window must be refilled BEFORE on_progress runs, otherwise the pool "
+        f"idles for the whole callback; saw only {window_at_callback[0]} items submitted"
+    )
+    # And it stays ahead for every later cycle until the iterator is exhausted.
+    assert window_at_callback == [4, 5, 6, 6, 6, 6]
+
+
 def test_heartbeat_tick_prints_active_work_snapshot(tmp_path, capsys):
     # CR2-TS-10: call _tick() directly (the sibling stall-dump test's established pattern)
     # instead of racing the background thread's own interval_seconds timing.
