@@ -64,9 +64,22 @@ Phase R (Research-Tool Surface)._
   repeatedly — and being cancelled at GitHub's 180-minute job timeout on three consecutive runs
   (2026-09-03/04). The interval now re-anchors after the checkpoint, scales so checkpoint cost stays
   under ~25% of wall clock, and the window is refilled before the callback so workers keep going
-  across it. The re-anchor alone raised measured throughput from **2.6 to 23.6 stage completions per
-  minute (9x)**. Adds a thread-activity sampler to the heartbeat, since its existing `active work:`
-  line only covers one instrumented call and reported "no tracked work active" for a busy run.
+  across it. Adds a thread-activity sampler to the heartbeat, since its existing `active work:` line
+  only covers one instrumented call and reported "no tracked work active" for a busy run.
+
+  Verified on three instrumented production runs of the same lane:
+
+  | | `main` | + interval re-anchor | + refill & adaptive interval |
+  |---|---:|---:|---:|
+  | stage completions / min | 2.6 | 23.6 | **50.6** |
+  | worker parallelism | ~1 item / 250s | 2.9x | **5.7x** |
+  | distinct sources touched | 3 | 11 | 11 |
+  | checkpoint overhead | ~continuous | — | **15% of wall clock** |
+
+  A 261s checkpoint now sets `next_interval=1043s` instead of coming due again after 180s, and
+  9 stage completions land *during* that checkpoint where previously the pool sat empty. At 19.5x
+  the original rate, a backlog that took the full 180-minute job timeout finishes in roughly ten
+  minutes of the same work.
 
 - **LLM producer lanes no longer fail silently.** A failed batch submission is not a deferral —
   nothing is queued, so no later run picks it up — but the enrichment, tournament, and benchmark

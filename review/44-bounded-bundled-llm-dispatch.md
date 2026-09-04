@@ -1993,6 +1993,43 @@ review/43 step 4's decision, not a knob change.
   exactly that on eight consecutive scheduled runs (2026-08-26 … 2026-09-02). The four lane steps
   now carry a step-level timeout below the job's, so the run goes red and the post-steps still run.
 
+### 5. The lane was starving its own worker pool (measured 2026-09-04)
+
+The eight consecutive timeouts were not caused by the dispatch path at all. Instrumenting the lane
+(a heartbeat thread sampler plus checkpoint timing) found the mid-pass checkpoint was doing two
+things wrong at once:
+
+- `_checkpoint_if_due` re-anchored its interval timer **before** doing the work, so a checkpoint
+  slower than the 180s interval came due the instant it returned — the lane checkpointed
+  continuously.
+- `_run_bounded` refilled its submission window **after** `on_progress`, so the worker pool sat
+  empty for the whole checkpoint.
+
+Measured cost: **261–589s per checkpoint**, dominated by the durable state push (225–555s), not the
+local record persist (34–47s). Net effect: one item completed per ~250s cycle with eight workers
+available — one `stage start`, one `stage done`, then 229 seconds of nothing but heartbeats.
+
+The heartbeat had been actively misleading here: `PROGRESS` is registered around exactly one call
+(`llm_tag_suggestions`), which returns immediately under `BatchingDispatchBackend`, so `active work:`
+read "no tracked work active" for 172 of 180 ticks of a run that was in fact busy. The thread
+sampler exists so a busy run is never again indistinguishable from a stalled one.
+
+Verified across three runs of the same lane:
+
+| | `main` (#71) | + re-anchor (#72) | + refill & adaptive interval (#73) |
+| --- | ---: | ---: | ---: |
+| stage completions/min | 2.6 | 23.6 | **50.6** |
+| worker parallelism | ~1 item/250s | 2.9x | **5.7x** |
+| distinct sources | 3 | 11 | 11 |
+| checkpoints in run | 41 | 2 | 1 |
+| checkpoint overhead | ~continuous | — | **15%** |
+
+The interval now scales with the last checkpoint's own duration (`next_interval=1043s` after a 261s
+checkpoint) to hold overhead under ~25% of wall clock, and 9 stage completions landed *during* that
+checkpoint where the pool previously idled. **Open follow-up:** the state push itself costs 225s and
+was observed at 555s on a second checkpoint. The duty-cycle bound contains its impact but does not
+explain why pushing 42 files costs minutes; that is worth its own investigation.
+
 ## Consequences and rejected alternatives
 
 - **B2 queue-manifest claim:** rejected. Object invalidation is not the atomic scheduler claim and
