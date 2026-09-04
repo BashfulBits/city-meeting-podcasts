@@ -59,6 +59,11 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Topic-tag dispatches use the registered v2 lane purpose.** `llm_tag_suggestions()` previously
+  defaulted to the storage feature name `topic-tags`, while the v2 ingress registry requires
+  `topic-tags:tagger`. The tagger and pre-labeler now share explicit purpose constants, preventing
+  rejected queue submissions without changing recipes, artifacts, or backfill behavior.
+
 - **Endpoint Contracts workflow installs dev dependencies for AI Gateway probe.** `contracts.yml`
   runs `tests/live/test_ai_gateway_contract.py` via `python -m pytest` to probe Cloudflare AI Gateway
   custom-provider routing, but its install step previously locked only `constraints/prod.txt`,

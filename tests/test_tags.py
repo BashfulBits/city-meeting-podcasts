@@ -911,6 +911,7 @@ def test_llm_tag_suggestions_dispatches_when_material_fits_one_tpm_capped_route(
 
         def run_inference(self, job):
             assert "llm_policy" in job.inputs
+            assert job.inputs["llm_policy"].purpose == "topic-tags:tagger"
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
