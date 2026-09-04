@@ -1,10 +1,19 @@
 # review/45 — System Architecture Evolution & Refactoring Plan
 
-**Maturity: L3 dev-ready · authored 2026-09-04 · proposed architectural evolution roadmap**
+**Maturity: L2 program design · authored 2026-09-04 · reviewed and hardened 2026-09-04**
 
 Owner: maintainers & agents. Scope: comprehensive system architecture evolution across
 throughput, reliability, observability, LLM job admission/refinement, and structural
 codebase refactoring.
+
+> **Implementation status.** This is an umbrella decision record, not one independently
+> implementable feature. It is deliberately **L2**: its workstreams have different risk,
+> ownership, and rollout requirements. No item below is authorized as an L3 implementation merely
+> because this document exists. Before coding, each selected workstream must have its own L3
+> issue/design slice with the exact data contract, affected call sites, migration/backfill and
+> rollback story, observability, and acceptance tests. That prevents a broad audit from silently
+> overriding the already-committed designs in review/18, review/22, review/26, review/34, and
+> review/44.
 
 ---
 
@@ -31,38 +40,89 @@ coupling points, performance bottlenecks, and operational debt:
    R2-backed single-job ingress) alongside v2 (`workers/llm-dispatch-v2`, Durable Object SQLite
    batching), imposing dual-transport logic and complex branching in `citypods/compute/llm.py`.
    PR #1457 established `llm_lanes` as the single source of truth for purpose routing and write
-   reservations; v1 has zero active jobs or consumers and is ready for full decommissioning.
+   reservations. The repository still contains v1 producer configuration, recovery/reconciliation
+   tooling, worker deployment/test paths, and a dual-output limits compiler; retirement requires
+   evidence, not an assumption that its backlog is empty.
 5. **Durable Object Quota Exhaustion**: The Cloudflare Workers free plan enforces a 5M daily
    Durable Object row-read ceiling. On 2026-08-27, unindexed bookkeeping scans exhausted this quota,
    halting inference. Pre-breach alerting and structured telemetry are essential.
-6. **Core Module Monoliths**: Four files contain ~18,000 lines of code: `stages.py` (7,668 LOC),
-   `run.py` (4,240 LOC), `compute/llm.py` (3,040 LOC), and `media.py` (2,980 LOC). This creates
+6. **Core Module Monoliths**: Four files contain ~18,600 lines of code: `stages.py` (7,667 LOC),
+   `run.py` (4,208 LOC), `compute/llm.py` (3,040 LOC), and `media.py` (3,691 LOC). This creates
    severe cognitive load, complex merge conflicts, and elevated regression risks.
 
 ---
 
-## §2. Option B State-Store Cutover & Global Runner Suspension Runbook
+## §2. Candidate State-Store Partitioning: Required Design Gates & Cutover Runbook
 
 ### Rationale for Option B (Clean Cutover)
 
-Rather than maintaining dual-read compatibility paths that perpetuate legacy state parsing, the
-system executes a one-time clean cutover to partitioned lane sidecars:
-- `state/sources/<source>/catalog.json`: Scrape metadata, meeting dates, titles, and portal links.
-- `state/sources/<source>/audio.json`: `audio_spec_hash`, timeline, duration, chapters, audio URLs.
-- `state/sources/<source>/transcripts.json`: ASR text, word-level alignments, provider metadata.
-- `state/sources/<source>/enrichment.json`: Topic tags, summaries, moments, cards, agendas.
+The current `episodes.json` merge protocol in `citypods.records` / `citypods.statesync` is a
+documented, conservative mitigation for overlapping lane writes; it is not evidence that four
+coarse sidecars are automatically safe. In particular, `enrichment.json` would still have several
+writers (`tag`, `moments`, chapter-agenda, chapter-locator, and diarization-related projections),
+and catalog refresh, planning fields, and audio work do not have identical ownership. A partition
+only eliminates a lost update when **exactly one concurrent writer owns each mutable object**.
 
-Because each lane workflow writes exclusively to its dedicated sidecar, cross-lane TOCTOU
-clobbering on B2 is structurally eliminated.
+The prospective L3 design must therefore define a versioned, per-source manifest plus an exact
+object ownership table. A viable shape is a generation namespace such as
+`state/generations/<generation>/sources/<source>/` with a small, last-written active-generation
+pointer. Each sidecar envelope must carry `schema_version`, `source_key`, `generation`, an
+episode mapping, and a digest. The design must assign every existing record field, including
+`links`, `stage_completion`, planning fields, append-only calendar rows, integrity results,
+private review/evaluation state, and all artifact references. It must either give each such object
+a unique lane owner (for example distinct `tags.json`, `moments.json`, and chapter sidecars), or
+retain the current merge/lease discipline for the shared object. “enrichment” is not a
+sufficient
+ownership boundary by itself.
 
-### Operational Runbook: Global Worker Suspension & Cutover
+The reader must assemble an in-memory `Episode` only after it verifies that every required
+sidecar belongs to the same active generation. A missing, corrupt, duplicate, or mixed-generation
+sidecar must fail closed for writes and report the source; it must never synthesize an empty block
+that overwrites durable data. Keep source identity, stable episode UID, append-only merge behavior,
+split `audio_spec_hash` / `feed_content_hash`, and the stage-before-audio ordering invariant
+unchanged. The migration must not turn historical retention, tombstones, or B2 version lifecycle
+into a mass deletion of `episodes.json` objects.
+
+There is no permanent dual-read production path in this option, but an operational rollback is
+still mandatory. The migration publishes a complete immutable generation, verifies it by fresh
+download, and flips the active pointer only as its final write while all writers are quiesced.
+The prior generation remains readable and protected from lifecycle deletion through the agreed
+rollback window. Rollback is a quiesced pointer flip, followed by a fresh-read canary; it is not a
+best-effort reversal of individual sidecars.
+
+### Preconditions and operational runbook
+
+The script and the partition-aware reader/writer must be merged first but remain inactive behind
+an explicit state-generation configuration. A cutover operator must record the exact main SHA,
+generation ID, object count/digests, and approver in the run summary. Verify that repository-level
+Actions administration is available before beginning; do not discover that after cancelling work.
+
+1. Run the migration in read-only mode against a fresh state pull. It must report every source,
+   sidecar count, retained UID count, canonical artifact-key set, and semantic round-trip diff.
+   Any mismatch is a stop condition.
+2. Announce the maintenance window, disable all writers, and cancel **all pages** of queued and
+   in-progress runs. Re-list until two consecutive polls are empty. Also account for external
+   workers and manually dispatched maintenance workflows; cancelling Actions alone does not fence
+   a process that already has B2 credentials.
+3. Take an immutable legacy snapshot/generation manifest and verify it from a separate clean
+   checkout. Do not rely on an Actions cache as a backup.
+4. Publish the candidate generation without changing the pointer; list and fresh-read every
+   object, validate schemas/digests, and reassemble every source into the same logical records.
+5. Flip the pointer, then run a read-only render canary and one writer canary for a source that
+   exercises audio, transcript, links, and enrichment ownership. Verify the written generation
+   and the legacy generation independently.
+6. Re-enable scheduled writers only after the canary has completed. Keep the old generation and
+   a rollback command for the documented retention window; publish the final migration evidence.
+
+The following commands are illustrative operator aids, not a complete or self-authorizing
+procedure. The real L3 slice must supply pagination-safe commands and a `--dry-run` default.
 
 To prevent in-flight runner jobs from writing legacy state during the migration, follow this
 exact suspension procedure:
 
 ```bash
 # ==============================================================================
-# STEP 1: Cancel all in-flight and queued workflow runs
+# STEP 1: Cancel all in-flight and queued workflow runs (repeat with pagination as needed)
 # ==============================================================================
 gh run list --status in_progress --json databaseId -q '.[].databaseId' \
   | xargs -I {} gh run cancel {}
@@ -84,15 +144,14 @@ gh run list --status queued
 # Confirm both return empty output before proceeding.
 
 # ==============================================================================
-# STEP 4: Execute the state partitioning migration script
-# Splits existing episodes.json into catalog, audio, transcripts, enrichment.
+# STEP 4: Publish and verify a candidate generation; this does NOT flip the active pointer.
 # ==============================================================================
-python -m scripts.migrate_state_partitioning --execute --verify
+python -m scripts.migrate_state_partitioning --generation "<timestamp-or-uuid>" --execute --verify
 
 # ==============================================================================
-# STEP 5: Deploy the partitioned codebase (Merge PR #2)
+# STEP 5: Activate only after the evidence review described above.
 # ==============================================================================
-git push origin main
+python -m scripts.migrate_state_partitioning --generation "<timestamp-or-uuid>" --activate
 
 # ==============================================================================
 # STEP 6: Re-enable GitHub Actions repository-wide
@@ -101,61 +160,96 @@ gh api -X PUT /repos/BashfulBits/city-meeting-podcasts/actions/permissions \
   -F enabled=true
 
 # ==============================================================================
-# STEP 7: Dispatch a canary verification run
+# STEP 7: Dispatch read and write canaries, then inspect generation/digest evidence
 # ==============================================================================
 gh workflow run tag.yml -f city=arlington-tx
 ```
 
 ---
 
-## §3. Sunsetting Legacy v1 LLM Dispatch Proxy
+## §3. Candidate v1 LLM Dispatch Retirement: Evidence Gates
 
-With zero active consumers, zero jobs in queue, and PR #1457 having unified all purpose routing
-and ingress reservations under `llm_lanes`, legacy v1 is decommissioned completely:
+v1 retirement is a migration of data, producer configuration, generated route metadata, and a
+deployed Worker—not a source deletion. The L3 issue must name the surviving v2 equivalents for
+every v1 capability before removing the proxy.
 
-1. **Delete Worker**: Remove `workers/llm-dispatch-proxy/` and associated wrangler configurations.
-2. **Purge Client Branches**:
-   - In `citypods/compute/llm.py`, delete `_run_remote_proxy()`, legacy R2 ledger parsing, and
-     `LLM_DISPATCH_PROXY_URL` routing fallbacks.
-   - Standardize all asynchronous remote inference strictly on `workers/llm-dispatch-v2` via
-     `enqueue_batch` and `poll_batch`.
-3. **Workflow Cleanup**: Remove `LLM_DISPATCH_PROXY_URL` and `LLM_DISPATCH_AUTH_TOKEN` from all
-   GitHub Actions workflow secrets and environment blocks.
+1. **Prove quiescence.** Inventory every `LLM_DISPATCH_URL` / token consumer, queue-only path,
+   scheduled/manual workflow, R2 prefix, recovery importer, requeue script, test, deployment
+   workflow, and limits-compiler output. Disable *new v1 production* first with a configuration
+   validation that fails closed; retain a read-only diagnostic while the drain runs.
+2. **Drain and preserve.** Run the existing recovery/reconciliation tools in dry-run and apply
+   modes, with immutable counts and sampled schema-valid result verification. Keep the R2 source
+   records and the read-only recovery path through an explicitly approved retention window. A zero
+   queue count at one instant is insufficient: prove no producer has written after the cutover and
+   no owned terminal result remains unimported.
+3. **Prove v2 parity.** Contract-test ingress, idempotency, polling, schema correction, retry and
+   terminal reconciliation for every active purpose/route. Verify dashboard/sweep observability
+   and error semantics from a clean workflow environment containing only v2 credentials.
+4. **Remove in a coherent series.** Move shared route/credential logic out of the v1 directory
+   before deleting it; update `scripts/compile_llm_limits.py`, `scripts/pre-push.sh`, CI, deploy
+   workflows, recovery/requeue/report scripts, Python configuration and tests together. Remove
+   old GitHub secrets only after the code/config scan and a v2-only canary pass.
+5. **Decommission last.** `git rm` does not remove the deployed Worker or R2 data. After the
+   retention window and an explicit maintainer approval, disable/delete the deployed Worker using
+   Cloudflare's supported operation, record the immutable export/retention disposition, and prove
+   that an attempted v1 request cannot be accepted. This is a destructive operational action and
+   is outside an ordinary code PR.
 
 ---
 
-## §4. The 5 Core Architectural Pillars & 16 Initiatives
+## §4. The 5 Core Architectural Pillars & 18 Candidate Initiatives
+
+The entries below are candidate workstreams, not a promise to implement all 18. Each one needs a
+measured trigger and a narrow L3 breakout before entering the active queue. Existing accepted
+designs take precedence where they overlap.
 
 ### Pillar 1: Throughput & Work Distribution
 
 #### Initiative 1: Shard-Scoped State Synchronization (Sparse Fetching)
 - **Problem**: Matrix shard runners download all ~3,500 state files across all 85 catalog feeds,
   even when processing only a single city or source shard.
-- **Design**: Modify `citypods/state.py:pull_state()` to accept `--source-keys` or `--shard-index`.
-  The loader queries the remote prefix index and transfers only files matching the active shard.
+- **Design gate**: Extend `citypods.statesync.pull_state()` rather than inventing a second state
+  loader. The matrix planner must first emit an explicit manifest-derived source-to-object map;
+  `pull_state(only_paths=...)` then restores that closed set plus every required global control
+  file. Never infer ownership from a prefix listing at worker time, and never permit a sparse
+  worker to write a file it did not restore/own. Compare cold and warm-cache transfer bytes,
+  object count, and startup time before claiming a percentage improvement.
 - **Impact**: Cuts runner startup state-sync latency by 75–85% (~45–90s saved per matrix job).
 
 #### Initiative 2: In-Process Media Probing Cache & FFmpeg Subprocess Pooling
 - **Problem**: A single meeting audio file is independently probed up to four times via `ffprobe`
   during a pipeline execution across `AudioStage`, `SilenceTrimmerStage`, and `ASRStage`.
-- **Design**: Implement an in-memory probe cache in `citypods/media.py` keyed by
-  `(path, mtime, size)`. Persist probe metadata on episode state records to avoid repeated
-  child process spawns.
-- **Impact**: Eliminates 300–800ms of process-forking overhead per episode; accelerates local and CI
-  builds by 2–4 minutes.
+- **Design gate**: Implement a process-local, bounded cache in `citypods.media` keyed by canonical
+  local path plus file identity (`mtime_ns`, size, and, where available, content digest). Cache
+  only successful immutable probe results and invalidate on replace/delete. Do not persist
+  transient probe data into episode records: persisted duration/evidence already has the
+  audio-owned contract in review/26, and a probe-cache entry is neither canonical metadata nor a
+  pipeline-versioned artifact.
+- **Impact**: Eliminates 300–800ms of process-forking overhead per episode; accelerates local
+  and CI builds by 2–4 minutes.
 
 #### Initiative 3: Granular S3/B2 Range-Header Audio Slicing
 - **Problem**: Verification stages download entire multi-gigabyte audio files to inspect audio
   continuity, headers, or silence baselines.
-- **Design**: Use HTTP Range headers (`Range: bytes=0-1048576`) in `citypods/audio/pipeline.py`
-  to fetch stream headers and sample snippets without transferring entire payloads.
+- **Design gate**: First classify which verifier decisions are valid from a head range, tail range,
+  or a seekable local artifact. Container metadata and a leading sample cannot establish duration,
+  continuity, or trailing silence for every codec. Add capability detection (206 + valid
+  `Content-Range`), a strict full-fetch fallback, byte caps, redirect/SSRF validation per request,
+  and fixtures for ignored/malformed ranges and HLS/MP4 edge cases before changing correctness
+  paths.
 - **Impact**: Reduces network transfer for verification stages by up to 95%.
 
 #### Initiative 4: Parallelized & Dirty-Skipping State Push (GH #1458)
 - **Problem**: `push_records_merged` serially iterates through owned sources and unconditionally
   re-reads, re-merges, re-encodes, and re-uploads untouched records at every checkpoint.
-- **Design**: Parallelize `push_records_merged` using `ThreadPoolExecutor` (bounded to 16 workers)
-  and inspect `DIRTY_JOURNAL_NAME` or pre-merge record hashes to skip untouched sources.
+- **Design gate**: `push_state()` is already parallelized; the remaining hot path is the serial
+  fetch/merge/put in `citypods.statesync.push_records_merged()`. Select dirty *source record
+  files* before any remote read, preserve the existing fail-safe “unreadable remote means no
+  write” rule, and parallelize only distinct source keys. Do not share a mutable local record map,
+  clear a dirty entry before its PUT and manifest update both succeed, or make the worker count a
+  hard-coded 16: make it storage-connection-pool aware, configurable, and measured. Tests need
+  interleaved same-source/cross-source writes, one failed PUT, deterministic logging, and a
+  retry after a cancelled checkpoint.
 - **Impact**: Drops checkpoint latency from 15–30s down to <2s; resolves timeout cancellation in
   `tag.yml` and long-running enrichment workflows.
 
@@ -168,25 +262,35 @@ and ingress reservations under `llm_lanes`, legacy v1 is decommissioned complete
   mutations in monolithic `episodes.json`.
 - **Design**: Enforce isolated single-writer sidecar files partitioned by pipeline domain:
   `catalog.json`, `audio.json`, `transcripts.json`, and `enrichment.json`.
-- **Impact**: 100% elimination of cross-lane state clobbers; enables safe concurrent CI lanes.
+- **Impact condition**: Eliminates cross-lane clobbers only for objects with a verified exclusive
+  writer. Shared objects retain their merge/lease protocol until split further.
 
 #### Initiative 6: Step-Level Timeouts & Budget Stop Alignment (GH #1459)
 - **Problem**: Overrunning jobs hit GitHub's job-level timeout, cancelling the runner and skipping
   crucial trailing reporting steps.
-- **Design**: Add step-level timeouts (sized at ~92–94% of job timeouts) to `r7-diarization.yml`,
-  `audio.yml`, `llm-deferred-sweep.yml`, `r5-benchmark.yml`, `tournament-tag-backfill.yml`, and
-  `asr.yml`. Align `BaseStage` wall-clock budget checks so stages stop cleanly before step timeouts.
-  Add regression assertions to `tests/test_workflows.py`.
+- **Design gate**: Inventory every long-running *work* step first, including `tag.yml`,
+  `moments.yml` and the chapter lanes, rather than applying a generic percentage. Anchor the
+  application
+  deadline at job start (so restore/install time consumes runway), reserve an explicit durable
+  checkpoint/report tail, and make timeout/defer/interrupt outcomes distinguishable. A shell
+  timeout alone is not graceful: it must leave enough time for the process's stop predicate and
+  existing SIGTERM checkpoint path. Test timeout values, deadline propagation, a deferred exit
+  with trailing summary, and a real failure that remains red.
 - **Impact**: Prevents grey cancelled runs; guarantees trailing reporting steps execute and fail
   visibly as red on true timeouts.
 
 #### Initiative 7: Hardened SSRF Source URL Validator (DNS Pinning & CIDR Checks)
 - **Problem**: Time-of-check to time-of-use (TOCTOU) DNS rebinding vulnerability in
   `validate_source_url`: domain is validated, but subsequent `requests.get()` re-resolves DNS.
-- **Design**: In `citypods/fetch.py`, resolve the target IP upfront, validate against extended
-  private/internal CIDRs (including CGNAT `100.64.0.0/10`), and bind the connection socket
-  directly to the pinned IP with the `Host` header set explicitly.
-- **Impact**: Complete mitigation of DNS rebinding and internal network scanning vulnerabilities.
+- **Design gate**: This is a security-sensitive research spike, not an implementation instruction.
+  A naïve IP URL plus `Host` header breaks HTTPS SNI/certificate verification, proxy behavior,
+  redirects, connection reuse, and the ffmpeg paths that do not use `requests`. Produce a threat
+  model and a transport design that pins the connection while retaining hostname SNI and
+  certificate validation, or document a trusted proxy boundary for transports that cannot do so.
+  Audit every outbound path (`citypods.http`, provider adapters, document/media fetches, urllib,
+  and subprocesses). Test IPv4/IPv6, every DNS answer, rebinding between validation and connect,
+  redirects, proxy environment variables, and a safe failure. Do not claim complete mitigation
+  before that design is independently reviewed.
 
 #### Initiative 8: Formal `BaseStage` Protocol Contract
 - **Problem**: Stages across `citypods/stages.py` have divergent signatures, inconsistent return
@@ -202,16 +306,21 @@ and ingress reservations under `llm_lanes`, legacy v1 is decommissioned complete
 #### Initiative 9: Structured Event Telemetry & Durable Object Quota Alarms
 - **Problem**: Unstructured `print()` logging prevents programmatic log ingestion. Cloudflare
   Durable Object 5M row-read exhaustion hit without pre-breach warning.
-- **Design**: Replace raw `print()` with structured JSON logging (`structlog` / `logging`).
-  In `workers/llm-dispatch-v2`, implement read-counter telemetry with automated Discord/GitHub
-  issue alerts at 80% (4M reads) of the daily quota.
+- **Design gate**: Preserve the existing stable, human-readable workflow summaries while introducing
+  a small event schema (`event`, UTC timestamp, run/workflow id, lane, source count, duration,
+  outcome, bounded error class). Never log prompts, transcript text, tokens, URLs with credentials,
+  or raw provider responses. Define the authoritative quota source, polling cadence, reset
+  timezone, uncertainty behavior, idempotency key/deduplication, and failure path for the alert
+  before choosing Discord or issue delivery. The alert must itself be bounded and cannot add an
+  unindexed DO scan.
 - **Impact**: Real-time visibility into quota consumption and immediate alert on runaway queries.
 
 #### Initiative 10: OpenTelemetry Tracing for Multi-Stage Runner Spans
 - **Problem**: Profiling stage duration across distributed runners requires manual log timestamp
   correlation.
-- **Design**: Add optional OpenTelemetry span instrumentation in `citypods/telemetry.py` covering
-  scrape, probe, transcribe, LLM dispatch, and feed rendering.
+- **Design gate**: Decide exporter, sampling, retention/cost budget, secret configuration, and a
+  no-export default before adding a dependency. Span attributes must use source hashes/counts, not
+  transcript or prompt content. Local tests should assert no network/exporter activity by default.
 - **Impact**: Delivers instant visual waterfall traces of feed processing latency.
 
 ---
@@ -227,37 +336,47 @@ and ingress reservations under `llm_lanes`, legacy v1 is decommissioned complete
 #### Initiative 12: Unified Structured Output via LiteLLM Native JSON Schema
 - **Problem**: Instructor 1.15.4's lack of native Gemini JSON Schema support forced a hand-rolled
   shim (`_run_native_structured_direct()`) in `compute/llm.py`.
-- **Design**: Upgrade LiteLLM and use `response_format={"type": "json_object", "schema": ...}`
-  with direct Pydantic model validation across all providers.
-- **Impact**: Retires ~350 LOC of fragile custom shims; standardizes schema enforcement across
-  OpenAI, Gemini, Anthropic, and DeepSeek.
+- **Design gate**: A dependency upgrade does not prove uniform provider semantics. Build a route ×
+  model × schema capability matrix from pinned versions and live contract probes, then retain the
+  current local Pydantic validation and schema-retry behavior as the correctness authority. Only
+  remove a shim when every enabled route has equivalent request/response, refusal, retry, and
+  usage-accounting behavior. Follow review/22: pin/recompile constraints and state whether a
+  prompt/response recipe change triggers gradual invalidation or leaves historical artifacts.
 
 #### Initiative 13: Model-Specific Prefix Prompt Caching
 - **Problem**: Dynamic variables placed early in prompt templates bust provider prefix caches.
-- **Design**: Restructure prompts in `citypods/compute/prompts/` to place invariant system
-  instructions, few-shot exemplars, and schemas at the prefix, padding to provider cache
-  boundaries (1,024 tokens for Anthropic, 32,768 tokens for Gemini).
-- **Impact**: Reduces LLM input token costs by 50–75% and cuts time-to-first-token by 40%.
+- **Design gate**: Treat caching as route-specific and evidence-driven; do not pad prompts to
+  assumed provider boundaries or promise a universal saving. Preserve message roles and semantic
+  ordering, measure cache-hit/creation tokens and latency per route, and make the prompt/recipe
+  fingerprint explicit. Any output-affecting prompt change needs golden/tournament comparison and
+  the same backfill statement required for a pipeline-version change.
 
 #### Initiative 14: Dynamic Budget Allocation & Priority Queuing on `llm_lanes`
 - **Problem**: High-volume backfills saturate worker admission, starving daily active feeds.
-- **Design**: In `workers/llm-dispatch-v2`, enforce priority queues (`high`: active meeting
-  publication; `low`: historical archive backfills) keyed by `llm_lanes` write reservations.
-- **Impact**: Zero queuing delay for active daily municipal feeds regardless of backfill volume.
+- **Design gate**: v2 already persists indexed priority `0/1` and orders claims by it. Define the
+  producer mapping from a verifiable publication deadline to the existing values, authorization
+  against priority inflation, an aging/starvation rule for backfills, per-lane admission caps, and
+  metrics for queue age by priority. “Zero delay” is not a valid promise when a route/provider
+  is unavailable.
 
 #### Initiative 15: Calibrated Confidence Estimation & Deterministic Fallbacks
 - **Problem**: Occasional LLM hallucination during low-audio-quality segments produces invalid
   chapter timestamps or inaccurate agenda links.
-- **Design**: Implement heuristic confidence scoring; candidates scoring below threshold fall back
-  to deterministic regex/keyword extractors, preserving the untrusted LLM invariant.
-- **Impact**: Eliminates publication of corrupted chapter boundaries and preserves
-  timeline integrity.
+- **Design gate**: Reuse the existing evidence, candidate, and human-review contracts rather than
+  trusting a model-reported or ad-hoc heuristic score. Define feature-specific precision/recall
+  thresholds, deterministic validator inputs, what “no result” means, and an audit record for a
+  rejected candidate. A regex fallback may be less correct than withholding a chapter/link, so it
+  must be evaluated per feature and must never replace official title, date, URL, or transcript
+  text. This belongs in the relevant review/35 or generated-chapter follow-up, not a generic
+  cross-feature stage.
 
 #### Initiative 16: Autonomous Evaluator Tournament Engine
 - **Problem**: Prompt revisions and model upgrades currently rely on subjective manual checks.
-- **Design**: Add an automated tournament harness in `scripts/eval_prompt_tournament.py` to evaluate
-  candidate prompts against golden meeting transcripts, scoring cost, latency, and accuracy.
-- **Impact**: Data-driven, empirical validation for all future prompt and model migrations.
+- **Status**: The reusable tournament and merge-gated champion-routing work is already designed and
+  implemented locally in review/34. This program must integrate with that contract rather than
+  create a parallel `scripts/eval_prompt_tournament.py`; any gap must be filed as a narrow review/34
+  follow-up with a fixed corpus version, judge version, score thresholds, cost ceiling, and a
+  no-auto-production-route rule.
 
 ---
 
@@ -266,77 +385,59 @@ and ingress reservations under `llm_lanes`, legacy v1 is decommissioned complete
 #### Initiative 17: Modularize 4 Monolith Modules (<1,000 LOC per File)
 - **Problem**: `stages.py` (7.6k LOC), `run.py` (4.2k LOC), `compute/llm.py` (3.0k LOC), and
   `media.py` (3.0k LOC) are oversized monoliths that impede safe refactoring.
-- **Design**: Refactor into cohesive packages with backward-compatible top-level facade imports:
-  - `citypods/stages/` (`audio.py`, `asr.py`, `enrichment.py`, `render.py`)
-  - `citypods/runner/` (`cli.py`, `orchestrator.py`, `budget.py`, `matrix.py`)
-  - `citypods/compute/llm/` (`client.py`, `schemas.py`, `batch.py`, `cost.py`)
-  - `citypods/media/` (`probe.py`, `ffmpeg.py`, `silence.py`, `tags.py`)
-- **Impact**: Dramatic reduction in merge conflicts, faster linting/indexing, and clean unit tests.
+- **Design gate**: Do not create `citypods/stages/`, `citypods/media/`, or `citypods/compute/llm/`
+  alongside same-named `.py` facades: Python import resolution would shadow the facade and can
+  silently break imports. First extract into distinct implementation namespaces (for example
+  `citypods/_stage_impl/`, `_media_impl/`, and `compute/_llm_impl/`) while the existing modules
+  explicitly re-export the public API. Split one module per behavior-preserving PR, preserve import
+  and CLI contracts, and use characterization tests plus import smoke tests. A file-size target is
+  a review heuristic, not an acceptance criterion; no behavior change, circular imports, or
+  unreviewable four-module move is acceptable.
 
-#### Initiative 18: Normalize `Episode` Model & Consolidate Duration Fields
-- **Problem**: Three competing duration fields (`duration`, `duration_seconds`, `audio_duration`)
-  with mixed types (float, int, string `"HH:MM:SS"`) cause parsing confusion.
-- **Design**: Standardize on `duration_seconds: float` on `Episode` in `citypods/records.py`.
-  Provide property helpers (`formatted_duration`) for presentation without mutating raw data.
-- **Impact**: Eliminates repeated string parsing and resolves subtle off-by-one timeline bugs.
+#### Initiative 18: Duration-field consolidation — superseded
+- **Disposition**: Do not schedule this work. H21 is already shipped in review/26: source and served
+  duration are intentionally distinct clocks, with canonical `source_duration_seconds` and
+  `served_duration_seconds` helpers, audio-owned normalization, compatibility reads, and a manual
+  repair action. Collapsing them into one `duration_seconds` field would regress timeline-integrity
+  checks and violate that accepted ownership model. Future duration changes belong in review/26.
 
 ---
 
-## §5. Phasing & PR Sequencing Plan
+## §5. Promotion Order and L3 Exit Criteria
 
-```mermaid
-flowchart TD
-    subgraph P1["Phase 1: Immediate Reliability & Debt (Sprint 1)"]
-        PR1["PR 1: Fast-track GH#1458 & GH#1459<br/>(Parallel Statesync + Step Timeouts)"]
-        PR2["PR 2: Option B Partitioned State Store<br/>(catalog, audio, transcripts, enrichment)"]
-        PR3["PR 3: Sunset v1 Proxy Worker<br/>(Delete proxy worker & v1 client paths)"]
-    end
+The former fixed “11 PR / four sprint” schedule mixed discoveries, migrations, already-shipped
+work, and independent refactors into unsafe bundles. The ordering below is a dependency order,
+not a calendar commitment; each row becomes a separate issue/PR series only after it passes its
+L3 gate.
 
-    subgraph P2["Phase 2: Throughput, Modularity & Observability (Sprint 2)"]
-        PR4["PR 4: Shard-Scoped State Sync<br/>(Sparse pull_state by source_key)"]
-        PR5["PR 5: LiteLLM Native JSON Schema<br/>(Retire Instructor & custom direct shim)"]
-        PR6["PR 6: Structured Logging & DO Alarms<br/>(JSON telemetry + 80% quota alerts)"]
-        PR7["PR 7: Deconstruct Monolith Modules<br/>(stages, run, media, llm -> packages)"]
-    end
+1. **GH#1458 checkpoint profiling and dirty-source push.** Capture a representative trace and
+   identify exactly which `push_records_merged` calls are unchanged. Complete only with no
+   lost-update regression, a cancelled-PUT retry, and measured cold/warm improvement.
+2. **GH#1459 graceful timeout envelope.** Inventory long work steps and reserve a post-work
+   persistence/report tail. Complete only when each affected job defers before the hard timeout
+   and failure/cancellation classifications remain distinct.
+3. **v1 retirement discovery/drain.** Finish §3's consumer, R2, and deployed-Worker inventory.
+   A maintainer must accept the drain report and v2-only canary before any production deletion.
+4. **State partitioning design/migration rehearsal.** Complete §2's field/owner matrix,
+   generation protocol, offline round trip, and rollback drill. A separate maintainer-approved
+   maintenance window—not a normal PR—activates a verified generation.
+5. **Sparse state pull.** Require a manifest-derived source/object map. Sparse and full reads
+   must assemble identical logical records, and unowned paths cannot be pushed.
+6. **Observability/DO quota alert.** Select an authoritative quota signal and alert destination
+   with cost/privacy review. Bounded telemetry must pass rows-read scaling tests, and a synthetic
+   threshold must emit one deduplicated alert.
+7. **Provider/schema and prompt-cache probes.** Require a pinned route capability matrix and
+   baseline measurements. Route-specific contracts/evaluations justify every removal or recipe
+   fingerprint decision.
+8. **One behavior-preserving module extraction.** Identify a leaf seam and characterization
+   boundary. Existing imports/CLI/output remain compatible, with no circular import or unrelated
+   movement.
+9. **Security transport proposal.** The threat model covers every outbound transport, including
+   subprocesses. An independent security review accepts a safe transport/fallback before code.
 
-    subgraph P3["Phase 3: Caching, Contracts & Model Hygiene (Sprint 3)"]
-        PR8["PR 8: Normalize Episode Duration<br/>(Consolidate to duration_seconds: float)"]
-        PR9["PR 9: Prompt Prefix Caching & Priority<br/>(Cache optimization + priority queues)"]
-        PR10["PR 10: Probe Cache, SSRF & BaseStage<br/>(In-memory ffprobe + DNS pin + Protocol)"]
-    end
-
-    subgraph P4["Phase 4: Advanced Capabilities & Tournaments (Sprint 4+)"]
-        PR11["PR 11: Advanced Capabilities<br/>(Range audio, OpenTelemetry, Tournament)"]
-    end
-
-    PR1 --> PR2 --> PR4
-    PR1 --> PR3
-    PR2 --> PR7
-    PR3 --> PR5
-    PR4 --> PR10
-    PR5 --> PR9
-    PR6 --> PR11
-    PR7 --> PR8
-    PR8 --> PR10
-    PR9 --> PR11
-    PR10 --> PR11
-```
-
-### Detailed PR Breakdown
-
-| PR | Title & Focus | Files Touched | Dependencies | Exit Criteria |
-|---|---|---|---|---|
-| **PR 1** | **Fast-track GH #1458 & GH #1459** (Parallel statesync + step timeouts) | `citypods/statesync.py`, `.github/workflows/*.yml`, `tests/test_workflows.py` | None | `push_records_merged` parallelized; step timeouts asserted in tests; clean CI. |
-| **PR 2** | **Option B Partitioned State Store** (Sidecars + migration script) | `citypods/records.py`, `citypods/state.py`, `scripts/migrate_state_partitioning.py` | PR 1 | Runbook executed; sidecars active; 0 cross-lane clobbers in live runs. |
-| **PR 3** | **Decommission v1 LLM Dispatch Proxy** | `workers/llm-dispatch-proxy/`, `citypods/compute/llm.py`, `.github/workflows/*.yml` | PR 1 | Worker removed; v1 client code purged; all routes dispatch via v2. |
-| **PR 4** | **Shard-Scoped State Synchronization** | `citypods/state.py`, `citypods/cli.py`, `.github/workflows/*.yml` | PR 2 | Runners pull only active shard files; startup transfer reduced >75%. |
-| **PR 5** | **LiteLLM Native JSON Schema Unification** | `citypods/compute/llm.py`, `pyproject.toml`, `constraints/*.txt` | PR 3 | Instructor & custom direct shim removed; Pydantic validation on all models. |
-| **PR 6** | **Structured Telemetry & DO Quota Alarms** | `citypods/run.py`, `workers/llm-dispatch-v2/src/coordinator.js` | None | JSON logs in CI; automated alert fires when DO rows-read exceed 80%. |
-| **PR 7** | **Deconstruct Monolithic Modules** | `citypods/stages/`, `citypods/runner/`, `citypods/media/`, `citypods/compute/llm/` | PR 2 | All 4 files split into subpackages <1,000 LOC each; facades preserve imports. |
-| **PR 8** | **Episode Schema Normalization** | `citypods/records.py`, `citypods/render.py`, `templates/*.j2` | PR 7 | Single `duration_seconds: float` field; all template formatters verified. |
-| **PR 9** | **Prompt Prefix Caching & Priority Queuing** | `citypods/compute/prompts/`, `workers/llm-dispatch-v2/` | PR 5 | Token costs drop >50% on cached routes; active feeds prioritized over backfills. |
-| **PR 10** | **Media Cache, SSRF Pinning & Stage Protocol**| `citypods/media/probe.py`, `citypods/fetch.py`, `citypods/stages/contract.py` | PR 4, PR 7 | In-memory probe cache hits verified; DNS pinning tested; BaseStage enforced. |
-| **PR 11** | **Advanced Telemetry & Autonomous Tournaments**| `citypods/telemetry.py`, `citypods/audio/`, `scripts/eval_tournament.py` | PR 6, PR 9 | OTel spans functional; range queries slice audio; tournament ranks prompts. |
+Work that review/26 and review/34 already own stays there. Range slicing, OpenTelemetry, confidence
+fallbacks, and a stage protocol remain backlog candidates until their measurement or product trigger
+is recorded. None may be bundled merely to fill a sprint.
 
 ---
 
@@ -351,20 +452,38 @@ flowchart TD
 3. **Workflow Timeout Assertions**:
    - `tests/test_workflows.py` asserts step-level timeouts for all long-running workflows to
      prevent regressions (GH #1459).
-4. **Golden Snapshot Integrity**:
-   - Feed and page rendering outputs must be validated with `SNAPSHOT_UPDATE=1 pytest` whenever
-     schema formatters or render templates are refactored.
-5. **Durable Object Mutation & Invariant Guards**:
+4. **State migration and concurrent-write tests**:
+   - Exercise every field/owner mapping with multi-lane interleavings, a partial upload, corrupt or
+     missing sidecar, pointer-flip interruption, rollback, and a fresh-checkout reconstruction.
+   - Compare UID set, artifact references, completion state, planning/timeline values, and
+     append-only calendar rows—not merely JSON object counts. The migration is idempotent in
+     dry-run and publish modes, and does not tombstone legacy objects before approval.
+5. **v1 retirement tests**:
+   - Run recovery/reconciliation fixtures through the drain report and verify a clean v2-only
+     environment has no v1 fallback. Keep a test proving the retired ingress is rejected only
+     after the approved operational deletion.
+6. **Golden Snapshot Integrity**:
+   - First run ordinary `pytest` to detect unintended output changes. Use `SNAPSHOT_UPDATE=1
+     pytest` only for an intentional rendered-output change, then review the generated diff and
+     state the pipeline-version/backfill disposition.
+7. **Durable Object Mutation & Invariant Guards**:
    - Run `test/rows-read.test.js` in `workers/llm-dispatch-v2/` to ensure no database statement
      scans an unbounded or traffic-growable table.
+8. **Live/security contract tests**:
+   - Gate only the selected route/security changes behind opt-in live tests with no production
+     mutation. Record provider, dependency, and baseline versions with the results; mocked tests
+     alone cannot establish provider schema or DNS-pinning behavior.
 
 ---
 
 ## §7. Documentation & Architectural Contract Updates
 
 Per the repository lifecycle contract in `CONTRIBUTING.md` and `review/11`:
-- **`review/11-technical-design-roadmap.md`**: Add catalog row for `review/45` under the Active
-  Architectural Evolution Series (L3 dev-ready).
-- **`ROADMAP.md`**: Update core engineering priorities with references to `review/45`.
-- **`ARCHITECTURE.md`**: Document the target partitioned state store architecture and v2 dispatch.
-- **`CHANGELOG.md`**: Record the adoption of RFC `review/45` as the strategic refactoring plan.
+- **`review/11-technical-design-roadmap.md`**: Catalog this as an L2 umbrella and point each
+  selected L3 issue at its own breakout. Mark superseded overlap with review/26 and review/34.
+- **`ROADMAP.md`**: Describe review/45 as a gated architectural program, not an adopted sprint
+  schedule or a completed state-store cutover.
+- **`ARCHITECTURE.md`**: Describe only the as-built state store and dispatch system. Update it after
+  a partitioning or retirement change actually ships; do not document a target design as current.
+- **`CHANGELOG.md`**: Record the reviewed planning decision accurately. Add implementation entries
+  only as individual PRs merge, including every pipeline-version/backfill disposition.

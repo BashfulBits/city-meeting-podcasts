@@ -88,14 +88,12 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 >
 > **System architecture evolution & refactoring roadmap (2026-09-04).**
 > [`review/45`](review/45-system-architecture-evolution-and-refactoring.md) synthesizes a
-> system-wide architectural audit into an 11-PR implementation roadmap spanning throughput
-> (shard-scoped state sync, probe caching, GH#1458 parallel statesync), reliability (Option B state
-> store partitioning into catalog/audio/transcripts/enrichment sidecars with global runner
-> suspension runbook, GH#1459 step timeouts, SSRF DNS pinning, BaseStage protocol), observability
-> (structured JSON telemetry, DO 80% quota alarms), LLM admission (retiring v1 proxy worker, LiteLLM
-> native JSON schema, prompt prefix caching, priority queuing on `llm_lanes`), and monolith
-> deconstruction (splitting stages.py, run.py, media.py, and compute/llm.py into subpackages <1,000
-> LOC each; duration field normalization).
+> system-wide audit into an **L2 gated program** spanning throughput, reliability, observability,
+> LLM dispatch, and module boundaries. It corrects overlap with shipped duration normalization
+> (review/26), existing v2 priority support, and review/34 tournaments; it requires a narrow L3
+> design, evidence, rollback, and acceptance gates before any state-store cutover, v1 retirement,
+> security transport change, dependency migration, or module extraction. It is not an adopted
+> 11-PR sprint or an as-built state-store change.
 >
 > **Granicus media reliability follow-up (2026-06-16).** Endpoint issue #300 still reproduces when
 > `contracts.yml` overlaps active `audio.yml`: Arlington's Granicus RSS/media/chapter checks pass, but
