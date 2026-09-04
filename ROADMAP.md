@@ -86,14 +86,18 @@ features. Detailed design: [`review/12`](review/12-hardening-and-efficiency.md).
 > explicit Free-tier caps and does not alter the current
 > R2-backed production transport until its parity and canary gates pass.
 >
-> **System architecture evolution & refactoring roadmap (2026-09-04).**
+> **System architecture evolution & refactoring roadmap (2026-09-04, detailed to L3 same day).**
 > [`review/45`](review/45-system-architecture-evolution-and-refactoring.md) synthesizes a
-> system-wide audit into an **L2 gated program** spanning throughput, reliability, observability,
-> LLM dispatch, and module boundaries. It corrects overlap with shipped duration normalization
-> (review/26), existing v2 priority support, and review/34 tournaments; it requires a narrow L3
-> design, evidence, rollback, and acceptance gates before any state-store cutover, v1 retirement,
-> security transport change, dependency migration, or module extraction. It is not an adopted
-> 11-PR sprint or an as-built state-store change.
+> system-wide audit into 18 initiatives plus state-store partitioning and v1 retirement, each now
+> **individually L3 dev-ready** — exact file/function references, algorithms, schemas, and test
+> plans grounded in the current codebase, spanning throughput, reliability, observability, LLM
+> dispatch, and module boundaries. It corrects overlap with shipped duration normalization
+> (review/26), existing v2 priority support, and review/34 tournaments. Being L3 dev-ready is not
+> the same as being adopted or executed: §5 sets a dependency order (not a calendar), and the
+> state-store pointer flip, the v1 Worker's deployed-deletion step, and the SSRF transport design
+> each still require explicit maintainer sign-off before executing. It is not an adopted 11-PR
+> sprint or an as-built state-store change — nothing here has shipped merely because the document
+> is detailed.
 >
 > **Granicus media reliability follow-up (2026-06-16).** Endpoint issue #300 still reproduces when
 > `contracts.yml` overlaps active `audio.yml`: Arlington's Granicus RSS/media/chapter checks pass, but

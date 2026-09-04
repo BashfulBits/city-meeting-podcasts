@@ -136,12 +136,18 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
-- **System architecture evolution & refactoring program (review/45).** Records a reviewed L2
-  umbrella for future throughput, reliability, observability, LLM dispatch, and modularity work.
-  It does not itself activate a state-store cutover, retire v1, or ship an 11-PR schedule. Those
-  high-risk changes now require focused L3 designs with evidence, ownership/migration/rollback,
-  and acceptance gates; review/26 duration normalization and review/34 tournament work remain
-  their own accepted designs.
+- **System architecture evolution & refactoring program (review/45), detailed to L3.** Records a
+  reviewed umbrella for future throughput, reliability, observability, LLM dispatch, and
+  modularity work; hardened from an initial "L3 dev-ready" overclaim into a gated L2 program, then
+  detailed back to **L3 dev-ready per workstream** the same day — every one of its 18 initiatives
+  plus state-store partitioning (§2) and v1 retirement (§3) now carries exact file/function
+  references, algorithms, schemas, and test plans grounded directly in the codebase (several
+  premises in the earlier draft were corrected against the real code in the process: Initiative
+  8's stage-signature claim was factually wrong, Initiative 11's LOC estimate was off by ~10x,
+  Initiative 14's "priority already in `llm_lanes`" was false). It does not itself activate a
+  state-store cutover, retire v1, or ship an 11-PR schedule — those still-destructive steps carry
+  their own explicit maintainer-approval checkpoints inside the now-detailed design; review/26
+  duration normalization and review/34 tournament work remain their own accepted designs.
 
 - **Provider-chapter fallback gate and bounded v2 ingress/reaping.** Generated agenda and boundary
   extraction now runs only for episodes without `source_chapters`; provider markers clear any stale
