@@ -59,6 +59,19 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Chapter agenda extraction and boundary locator runtime bottlenecks eliminated.** Eliminates
+  redundant 7m 29s replay loop for deferred `JobHandle` items by recording pending status and
+  job refs directly in memory after batch flush. Short-circuits agenda text and transcript
+  artifact downloads from B2 storage when deferred jobs are already pending. Wires
+  `max_dispatches_per_run` from `config/site_config.yml` into runner `StageContext` for
+  `chapter-agenda` and `chapter-locator` producer dispatch caps (1,000 max dispatches), avoiding
+  quota breaches and Worker write rejections. Pre-filters global queue candidate episodes in
+  `_run_enrich_global_queue` down to eligible episodes needing work (dropping candidate queue
+  from 25,031 to ~1,777 items). In batch-prepare pass: enabled stats accumulation and deducted
+  provisional `llm-pending` counts for replayed `JobResult` items or submission errors to eliminate
+  double-counting while preserving accurate stage totals. No recipe, artifact, or pipeline
+  version changes.
+
 - **Topic-tag checkpoints no longer spend most of their time in serial storage I/O.** Dispatch
   batches now stage independent B2 payloads and persist accepted/deferred handles with bounded
   concurrency. An ambiguous transport failure retries the exact same prepared envelope, retaining

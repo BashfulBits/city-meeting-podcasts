@@ -385,3 +385,96 @@ def test_locator_stage_fingerprint_and_completion_helpers():
     ep.generated_agenda_candidates = {}
     ep.generated_chapters_spec_hash = "spec-1"
     assert stage_output_pointer("chapter_locator", ep) == "spec-1"
+
+
+def test_locator_stage_short_circuits_storage_download_when_deferred_job_pending(tmp_path: Path):
+    from citypods.compute.llm_deferred import write_deferred
+
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-locator-short-circuit")
+    # Deliberately do NOT write transcript words or vtt to storage!
+    # If the short-circuit fails, missing units would defer as missing-timed-transcript.
+
+    handle = JobHandle(
+        task="agenda-chapter-locate",
+        ref="durable-loc-v2-ref-999",
+        recipe_hash="loc-pending-recipe-123",
+        backend="llm-dispatch-v2",
+    )
+    write_deferred(storage, "loc-pending-recipe-123", handle)
+
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "locator_status": "pending",
+        "locator_recipe": "loc-pending-recipe-123",
+        "locator_job_ref": "batch-pending:loc-pending-recipe-123",
+    }
+    backend = FakeBackend()
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.defer_reasons.get("llm-pending") == 1
+    assert backend.enqueue_calls == []
+    assert ep.generated_agenda_candidates["locator_job_ref"] == "durable-loc-v2-ref-999"
+
+
+def test_locator_stage_enforces_producer_dispatch_cap(tmp_path: Path):
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep1 = _make_episode("ep-loc-cap-1")
+    ep2 = _make_episode("ep-loc-cap-2")
+    _put_storage_bytes(storage, ep1.transcript_key, SAMPLE_VTT)
+    _put_storage_bytes(storage, ep2.transcript_key, SAMPLE_VTT)
+
+    handle = JobHandle(
+        task="agenda-chapter-locate",
+        ref="loc-cap-ref",
+        recipe_hash="cap-loc-recipe",
+        backend="llm-dispatch-v2",
+    )
+    backend = FakeBackend(handle)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_locator_max_dispatches = 1
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep1, ep2], ctx)
+    assert len(backend.submitted_jobs) == 1
+    assert stats.defer_reasons.get("producer-cap") == 1
+    assert stats.defer_reasons.get("llm-pending") == 1
+
+
+def test_episode_needs_chapter_locator_evaluates_correctly():
+    from citypods.stages import episode_needs_chapter_locator
+
+    ep = _make_episode("ep-loc-eval")
+    # ep has completed agenda and transcript keys
+    assert episode_needs_chapter_locator(ep) is True
+
+    # Missing transcript keys
+    ep.transcript_key = ""
+    ep.transcript_words_key = ""
+    assert episode_needs_chapter_locator(ep) is False
+    ep.transcript_key = "transcripts/t.vtt"
+
+    # Agenda not completed
+    ep.generated_agenda_candidates = {"status": "pending"}
+    assert episode_needs_chapter_locator(ep) is False
+
+    # Locator already completed or accepted
+    ep.generated_agenda_candidates = {"status": "completed", "locator_status": "completed"}
+    assert episode_needs_chapter_locator(ep) is False
+    ep.generated_agenda_candidates = {"status": "completed", "locator_status": "accepted"}
+    assert episode_needs_chapter_locator(ep) is False
+
+    # Provider chapters present but not yet reconciled
+    ep.source_chapters = [{"start": 0, "title": "Call to order"}]
+    ep.generated_agenda_candidates = {"status": "completed", "locator_status": "pending"}
+    assert episode_needs_chapter_locator(ep) is True
+
+    # Provider chapters already reconciled to not_applicable
+    ep.generated_agenda_candidates = {"status": "completed", "locator_status": "not_applicable"}
+    assert episode_needs_chapter_locator(ep) is False

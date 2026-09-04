@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from citypods import run
-from citypods.compute.base import InferenceJob, JobHandle
+from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import BatchDispatchOutcome, LLMBackendError
 from citypods.models import AgendaRecord, CalendarIndex, City, Episode
 from citypods.providers import get_provider, register
@@ -155,6 +155,12 @@ def test_chapter_batch_replay_uses_real_outcomes_and_records_submission_errors()
         "recipe": "agenda-recipe",
         "job_ref": "batch-pending:agenda-recipe",
     }
+    completed = _ep("completed")
+    completed.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "completed-recipe",
+        "job_ref": "batch-pending:completed-recipe",
+    }
     failed = _ep("failed")
     failed.generated_agenda_candidates = {
         "status": "pending",
@@ -172,42 +178,86 @@ def test_chapter_batch_replay_uses_real_outcomes_and_records_submission_errors()
             ),
         ),
         BatchDispatchOutcome(
+            job=InferenceJob(task="agenda-item-extract", recipe_hash="completed-recipe"),
+            result=JobResult(
+                task="agenda-item-extract",
+                recipe_hash="completed-recipe",
+                output={"choices": [{"message": {"content": '{"items": []}'}}]},
+            ),
+        ),
+        BatchDispatchOutcome(
             job=InferenceJob(task="agenda-item-extract", recipe_hash="failed-recipe"),
             result=RuntimeError("ingress unavailable"),
         ),
     ]
 
     replay, errors = run._chapter_batch_replay_items(
-        [("source", agenda), ("source", failed)], "chapter_agenda", outcomes
+        [("source", agenda), ("source", completed), ("source", failed)], "chapter_agenda", outcomes
     )
 
-    assert replay == [("source", agenda)]
+    # Deferred handles are updated directly in memory, omitting redundant stage replay
+    assert replay == [("source", completed)]
     assert errors == ["uid-failed: agenda chapter extraction: ingress unavailable"]
+    assert agenda.generated_agenda_candidates["status"] == "pending"
+    assert agenda.generated_agenda_candidates["job_ref"] == "real-agenda-job"
     assert failed.generated_agenda_candidates["status"] == "error"
     assert failed.generated_agenda_candidates["error"].endswith("ingress unavailable")
     assert "job_ref" not in failed.generated_agenda_candidates
 
 
 def test_chapter_batch_replay_records_locator_submission_errors():
+    pending = _ep("locator-pending")
+    pending.generated_agenda_candidates = {
+        "locator_status": "pending",
+        "locator_recipe": "locator-pending-recipe",
+        "locator_job_ref": "batch-pending:locator-pending-recipe",
+    }
+    completed = _ep("locator-completed")
+    completed.generated_agenda_candidates = {
+        "locator_status": "pending",
+        "locator_recipe": "locator-completed-recipe",
+        "locator_job_ref": "batch-pending:locator-completed-recipe",
+    }
     failed = _ep("locator-failed")
     failed.generated_agenda_candidates = {
         "locator_status": "pending",
-        "locator_recipe": "locator-recipe",
-        "locator_job_ref": "batch-pending:locator-recipe",
+        "locator_recipe": "locator-failed-recipe",
+        "locator_job_ref": "batch-pending:locator-failed-recipe",
     }
     outcomes = [
         BatchDispatchOutcome(
-            job=InferenceJob(task="agenda-chapter-locate", recipe_hash="locator-recipe"),
+            job=InferenceJob(task="agenda-chapter-locate", recipe_hash="locator-pending-recipe"),
+            result=JobHandle(
+                task="agenda-chapter-locate",
+                recipe_hash="locator-pending-recipe",
+                backend="llm-dispatch-v2",
+                ref="real-locator-job",
+            ),
+        ),
+        BatchDispatchOutcome(
+            job=InferenceJob(task="agenda-chapter-locate", recipe_hash="locator-completed-recipe"),
+            result=JobResult(
+                task="agenda-chapter-locate",
+                recipe_hash="locator-completed-recipe",
+                output={"choices": [{"message": {"content": '{"anchors": []}'}}]},
+            ),
+        ),
+        BatchDispatchOutcome(
+            job=InferenceJob(task="agenda-chapter-locate", recipe_hash="locator-failed-recipe"),
             result=RuntimeError("ingress unavailable"),
-        )
+        ),
     ]
 
     replay, errors = run._chapter_batch_replay_items(
-        [("source", failed)], "chapter_locator", outcomes
+        [("source", pending), ("source", completed), ("source", failed)],
+        "chapter_locator",
+        outcomes,
     )
 
-    assert replay == []
+    assert replay == [("source", completed)]
     assert errors == ["uid-locator-failed: chapter locator: ingress unavailable"]
+    assert pending.generated_agenda_candidates["locator_status"] == "pending"
+    assert pending.generated_agenda_candidates["locator_job_ref"] == "real-locator-job"
     assert failed.generated_agenda_candidates["locator_status"] == "error"
     assert failed.generated_agenda_candidates["locator_error"].endswith("ingress unavailable")
     assert "locator_job_ref" not in failed.generated_agenda_candidates
@@ -3001,6 +3051,156 @@ def test_tag_lane_pre_filters_candidate_episodes(tmp_path, monkeypatch):
     assert provider_fetches == []
     # Only ep_dirty should have entered the global candidate queue and been processed!
     assert tag_stage.processed == [ep_dirty]
+
+
+def test_chapter_lanes_pre_filter_candidate_episodes(tmp_path):
+    """In chapter-agenda and chapter-locator lanes, _run_enrich_global_queue filters
+    candidate_episodes to only items needing work, while retained_episodes remains intact.
+    """
+    from citypods.run import SourcePipeline, _run_enrich_global_queue
+    from citypods.stages import StageContext, StageStats
+
+    ep_no_agenda = Episode(
+        guid="no-agenda",
+        uid="uid-no-agenda",
+        title="No Agenda Meeting",
+        published=_NOW,
+        video_url="https://x/no.mp4",
+        media_kind="hls",
+        body="Council",
+        links={},
+    )
+    ep_need_agenda = Episode(
+        guid="need-agenda",
+        uid="uid-need-agenda",
+        title="Need Agenda Meeting",
+        published=_NOW,
+        video_url="https://x/need.mp4",
+        media_kind="hls",
+        body="Council",
+        links={"agenda_text_artifact_key": "agenda/text/need.txt"},
+    )
+    ep_done_agenda = Episode(
+        guid="done-agenda",
+        uid="uid-done-agenda",
+        title="Done Agenda Meeting",
+        published=_NOW,
+        video_url="https://x/done.mp4",
+        media_kind="hls",
+        body="Council",
+        links={"agenda_text_artifact_key": "agenda/text/done.txt"},
+        generated_agenda_candidates={"status": "completed", "candidates": [{"title": "Item 1"}]},
+    )
+
+    class _CountingStage:
+        version = 1
+
+        def __init__(self, name):
+            self.name = name
+            self.processed = []
+
+        def process(self, provider, city, episodes, ctx):
+            self.processed.extend(episodes)
+            return StageStats(self.name)
+
+    city = _bare_city("test-city")
+
+    agenda_stage = _CountingStage("chapter_agenda")
+    ctx_agenda = StageContext(
+        storage=None, ffmpeg=None, max_kbps=96, dry_run=True, lane="chapter-agenda"
+    )
+    pipeline_agenda = SourcePipeline(
+        state_dir=tmp_path / "state-agenda",
+        stages=[agenda_stage],
+        ctx=ctx_agenda,
+        full_artifact_episodes=2000,
+        metadata_retention_episodes=10000,
+    )
+    pipeline_agenda.fetch_merge_from_records = lambda city, key: (
+        object(),
+        [ep_no_agenda, ep_need_agenda, ep_done_agenda],
+        {},
+        0,
+    )
+    pipeline_agenda.persist_source = lambda key, eps, persisted, notes=None: None
+
+    results_agenda = _run_enrich_global_queue(
+        pipeline_agenda,
+        [city],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+    )
+    assert len(results_agenda) == 1
+    assert agenda_stage.processed == [ep_need_agenda]
+
+    # Test chapter-locator lane
+    ep_no_trans = Episode(
+        guid="no-trans",
+        uid="uid-no-trans",
+        title="No Transcript Meeting",
+        published=_NOW,
+        video_url="https://x/notrans.mp4",
+        media_kind="hls",
+        body="Council",
+        links={},
+        generated_agenda_candidates={"status": "completed", "candidates": [{"title": "Item 1"}]},
+    )
+    ep_need_loc = Episode(
+        guid="need-loc",
+        uid="uid-need-loc",
+        title="Need Locator Meeting",
+        published=_NOW,
+        video_url="https://x/needloc.mp4",
+        media_kind="hls",
+        body="Council",
+        transcript_words_key="transcript/words/loc.json",
+        generated_agenda_candidates={"status": "completed", "candidates": [{"title": "Item 1"}]},
+    )
+    ep_done_loc = Episode(
+        guid="done-loc",
+        uid="uid-done-loc",
+        title="Done Locator Meeting",
+        published=_NOW,
+        video_url="https://x/doneloc.mp4",
+        media_kind="hls",
+        body="Council",
+        transcript_words_key="transcript/words/loc2.json",
+        generated_agenda_candidates={
+            "status": "completed",
+            "locator_status": "completed",
+            "candidates": [{"title": "Item 1"}],
+        },
+    )
+
+    locator_stage = _CountingStage("chapter_locator")
+    ctx_locator = StageContext(
+        storage=None, ffmpeg=None, max_kbps=96, dry_run=True, lane="chapter-locator"
+    )
+    pipeline_locator = SourcePipeline(
+        state_dir=tmp_path / "state-locator",
+        stages=[locator_stage],
+        ctx=ctx_locator,
+        full_artifact_episodes=2000,
+        metadata_retention_episodes=10000,
+    )
+    pipeline_locator.fetch_merge_from_records = lambda city, key: (
+        object(),
+        [ep_no_trans, ep_need_loc, ep_done_loc],
+        {},
+        0,
+    )
+    pipeline_locator.persist_source = lambda key, eps, persisted, notes=None: None
+
+    results_locator = _run_enrich_global_queue(
+        pipeline_locator,
+        [city],
+        source_cache=None,
+        max_workers=1,
+        policy=None,
+    )
+    assert len(results_locator) == 1
+    assert locator_stage.processed == [ep_need_loc]
 
 
 def test_tag_batch_submission_failure_replaces_provisional_defer_with_error():

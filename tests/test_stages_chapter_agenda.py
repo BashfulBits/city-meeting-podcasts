@@ -435,3 +435,95 @@ def test_stage_fingerprint_and_completion_helpers():
     assert stage_output_pointer("chapter_agenda", ep) == "state/gen/key.json"
     ep.generated_agenda_candidates = {"recipe": "r1"}
     assert stage_output_pointer("chapter_agenda", ep) == "r1"
+
+
+def test_agenda_stage_short_circuits_storage_download_when_deferred_job_pending(tmp_path: Path):
+    from citypods.compute.llm_deferred import write_deferred
+
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-short-circuit")
+    # Deliberately do NOT write ep.links["agenda_text_artifact_key"] to storage!
+    # If the short-circuit fails, reading storage would defer as unreadable.
+
+    handle = JobHandle(
+        task="agenda-item-extract",
+        ref="durable-v2-ref-999",
+        recipe_hash="pending-recipe-123",
+        backend="llm-dispatch-v2",
+    )
+    write_deferred(storage, "pending-recipe-123", handle)
+
+    ep.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "pending-recipe-123",
+        "job_ref": "batch-pending:pending-recipe-123",
+    }
+    backend = FakeBackend()
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.defer_reasons.get("llm-pending") == 1
+    assert backend.enqueue_calls == []
+    # job_ref was updated to durable ref from registry
+    assert ep.generated_agenda_candidates["job_ref"] == "durable-v2-ref-999"
+
+
+def test_agenda_stage_enforces_producer_dispatch_cap(tmp_path: Path):
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep1 = _make_episode("ep-cap-1")
+    ep2 = _make_episode("ep-cap-2")
+    _put_storage_bytes(storage, ep1.links["agenda_text_artifact_key"], b"Agenda 1")
+    _put_storage_bytes(storage, ep2.links["agenda_text_artifact_key"], b"Agenda 2")
+
+    handle = JobHandle(
+        task="agenda-item-extract",
+        ref="job-cap-ref",
+        recipe_hash="cap-recipe",
+        backend="llm-dispatch-v2",
+    )
+    backend = FakeBackend(handle)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_agenda_max_dispatches = 1
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep1, ep2], ctx)
+    assert len(backend.submitted_jobs) == 1
+    assert stats.defer_reasons.get("producer-cap") == 1
+    assert stats.defer_reasons.get("llm-pending") == 1
+
+
+def test_episode_needs_chapter_agenda_evaluates_correctly():
+    from citypods.stages import episode_needs_chapter_agenda
+
+    ep = _make_episode("ep-eval")
+    # Brand new with agenda link
+    assert episode_needs_chapter_agenda(ep) is True
+
+    # No agenda link
+    ep.links = {}
+    assert episode_needs_chapter_agenda(ep) is False
+
+    # Pending status with agenda link
+    ep.links = {"agenda_text_artifact_key": "docs/agenda"}
+    ep.generated_agenda_candidates = {"status": "pending"}
+    assert episode_needs_chapter_agenda(ep) is True
+
+    # Completed or accepted
+    ep.generated_agenda_candidates = {"status": "completed"}
+    assert episode_needs_chapter_agenda(ep) is False
+    ep.generated_agenda_candidates = {"status": "accepted"}
+    assert episode_needs_chapter_agenda(ep) is False
+
+    # Provider chapters present but not yet reconciled
+    ep.source_chapters = [{"start": 0, "title": "Call to order"}]
+    ep.generated_agenda_candidates = {"status": "pending"}
+    assert episode_needs_chapter_agenda(ep) is True
+
+    # Provider chapters already reconciled to not_applicable
+    ep.generated_agenda_candidates = {"status": "not_applicable"}
+    assert episode_needs_chapter_agenda(ep) is False
