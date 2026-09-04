@@ -34,11 +34,11 @@
     "crons": ["* * * * *"]
   },
   "vars": {
-    "MAX_BUNDLE_JOBS": "4",
+    "MAX_BUNDLE_JOBS": "5",
     // Read at most this many indexed queue entries for one capacity-ranked model before moving
     // to the next model. Exact token/lane checks still run only on these small candidate sets.
     "MAX_JOBS_PER_MODEL_CLAIM": "4",
-    "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "4",
+    "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "3",
     "MAX_CONCURRENT_ROUTE_LANES": "5",
     "DISPATCH_WINDOW_SECONDS": "25",
     "CRON_TICK_SECONDS": "60",
