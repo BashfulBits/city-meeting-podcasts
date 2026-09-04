@@ -66,7 +66,6 @@ def test_main_handles_classification_failure_gracefully(tmp_path, monkeypatch):
     output_report = tmp_path / "report.md"
 
     monkeypatch.setattr(_mod, "load_site_config", lambda path: {})
-    monkeypatch.setattr(_mod, "pull_canonical_state", lambda cfg, out: None)
     monkeypatch.setattr(_mod, "make_storage", lambda cfg, url, out: None)
     monkeypatch.setattr(_mod, "load_city_configs", lambda path, reg: [])
     monkeypatch.setattr(_mod, "feed_paths_by_slug", lambda root: {})

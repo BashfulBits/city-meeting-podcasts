@@ -37,8 +37,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from citypods.compute.base import InferenceJob, JobHandle
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 from citypods.compute.llm_policy import LLMRequestPolicy
+from citypods.compute.structured import register_response_model
 from citypods.feed_yaml_edit import add_body_any, add_body_include, assert_only_addition
 from citypods.models import City, Episode
+
+REMEDY_CONTRACT = "unexpected-body-remedy"
 
 # Free, high-context routes suitable for a low-volume classification run. These are catalog
 # `model` keys from citypods/compute/llm_routes.json -- the scheduler matches `allowed_models`
@@ -89,6 +92,11 @@ class RemedyOutput(BaseModel):
     proposals: list[BodyProposal]
 
 
+def ensure_remedy_contract() -> type[RemedyOutput]:
+    """Register the remedy output schema for structured LLM completion."""
+    return register_response_model(REMEDY_CONTRACT, RemedyOutput)
+
+
 @dataclass
 class RejectedProposal:
     proposal: BodyProposal
@@ -127,6 +135,7 @@ Rules you must follow:
 - Prefer attaching to an existing feed. Propose `new_feed` only for a clearly recurring series.
 - A body that is not a session of the target feed's own body (an independent advisory board, for
   example) belongs on its own feed or on a boards/commissions feed -- not on a City Council feed.
+- Output a JSON object matching {{"proposals": [...]}} containing your proposals.
 
 EVIDENCE:
 {evidence_json}
@@ -250,6 +259,7 @@ def classify_unexpected_bodies(
     deadline_minutes: int = 5,
 ) -> RemedyOutput:
     """Classify one source's findings. Raises on a deferred or unusable response."""
+    ensure_remedy_contract()
     policy = LLMRequestPolicy(
         allow_paid=False,
         allowed_models=REMEDY_MODELS,
@@ -268,7 +278,11 @@ def classify_unexpected_bodies(
 
     job = InferenceJob(
         task="tag",
-        inputs={"messages": [{"role": "user", "content": prompt}], "llm_policy": policy},
+        inputs={
+            "messages": [{"role": "user", "content": prompt}],
+            "structured_output": REMEDY_CONTRACT,
+            "llm_policy": policy,
+        },
         recipe_hash=evidence_recipe_hash(evidence),
     )
 

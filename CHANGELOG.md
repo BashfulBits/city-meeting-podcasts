@@ -59,6 +59,27 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Remedy unexpected bodies workflow runtime, state integrity, and structured output schema.**
+  `.github/workflows/remedy-unexpected-bodies.yml` previously took ~30 minutes per run due to
+  several compounding issues:
+  - Step 1 (`Collect unexpected-body evidence`) lacked Cloudflare R2 credentials, causing
+    `pull_canonical_state` to fail manifest resolution and fall back to listing only 424 B2 files.
+    Missing historical meeting records caused hundreds of existing meetings in Dallas, Denton,
+    and Fort Worth to be falsely flagged as unexpected bodies, producing massive prompts that
+    exceeded context budgets and triggered Gemini 429 rate limits. R2 secrets are now wired into
+    step 1.
+  - Step 1 previously ran against the entire catalog across all cities and feeds, refetching
+    sibling feeds on the same source view dozens of times (e.g. Dallas was scraped 36 times).
+    `scripts/audit_feeds.py` now accepts `--issue` to scope evidence collection strictly to
+    feeds sharing the source keys of affected feeds parsed from the issue state marker, skips
+    sibling fetches when collecting evidence, and bypasses issue reconciliation on dry-run
+    evidence generation.
+  - `classify_unexpected_bodies` now specifies `structured_output` (`unexpected-body-remedy`
+    contract bound to `RemedyOutput`) in `InferenceJob.inputs`, preventing Pydantic validation
+    failures from unstructured model responses.
+  - Removed an unnecessary `apt-get install -y ffmpeg` step and eliminated a redundant second
+    `pull_canonical_state` invocation in Step 2.
+
 - **Chapter agenda extraction and boundary locator runtime bottlenecks eliminated.** Eliminates
   redundant 7m 29s replay loop for deferred `JobHandle` items by recording pending status and
   job refs directly in memory after batch flush. Short-circuits agenda text and transcript

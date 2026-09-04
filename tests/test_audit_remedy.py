@@ -11,10 +11,11 @@ from datetime import UTC, datetime
 
 import pytest
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from citypods.audit import collect_unexpected_bodies
 from citypods.audit_remedy import (
+    REMEDY_CONTRACT,
     BodyProposal,
     RejectedProposal,
     RemedyOutput,
@@ -22,6 +23,7 @@ from citypods.audit_remedy import (
     SourceContext,
     apply_remedy_plan,
     classify_unexpected_bodies,
+    ensure_remedy_contract,
     evidence_recipe_hash,
     feed_paths_by_slug,
     format_remedy_markdown,
@@ -29,6 +31,7 @@ from citypods.audit_remedy import (
     validate_proposals,
 )
 from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.structured import register_response_model
 from citypods.models import City, Episode
 from tests._cas_fake import MemStorage
 
@@ -391,6 +394,7 @@ def test_classify_parses_a_fenced_response(evidence):
     class FakeBackend:
         def run_inference(self, job):
             assert job.recipe_hash == evidence_recipe_hash(evidence)
+            assert job.inputs.get("structured_output") == REMEDY_CONTRACT
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
@@ -402,6 +406,20 @@ def test_classify_parses_a_fenced_response(evidence):
 
     out = classify_unexpected_bodies(evidence, storage=MemStorage(), backend=FakeBackend())
     assert out.proposals[0].action == "union"
+
+
+def test_ensure_remedy_contract():
+    model = ensure_remedy_contract()
+    assert model is RemedyOutput
+    assert ensure_remedy_contract() is RemedyOutput
+
+
+def test_ensure_remedy_contract_rejects_conflict():
+    class IncompatibleModel(BaseModel):
+        foo: str
+
+    with pytest.raises(ValueError, match="conflicting structured-output contract"):
+        register_response_model(REMEDY_CONTRACT, IncompatibleModel)
 
 
 def test_classify_raises_when_the_request_is_deferred(evidence):
