@@ -59,6 +59,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Topic-tag checkpoints no longer spend most of their time in serial storage I/O.** Dispatch
+  batches now stage independent B2 payloads and persist accepted/deferred handles with bounded
+  concurrency. An ambiguous transport failure retries the exact same prepared envelope, retaining
+  job IDs and B2 keys rather than creating an avoidable second upload set. Per-purpose ingress
+  budget rejections are now durable deferrals (with reason-count telemetry), not failed
+  submissions, and do not trigger a meaningless status poll. Independent source-record
+  fetch/merge/upload checkpoints also run with bounded concurrency while retaining the existing
+  per-source foreign-block merge. No dispatch quota, recipe, artifact, pipeline version, or
+  backfill behavior changes.
+
 - **Topic-tag ingress now reaches the Worker before the runner timeout.** The tag lane formerly
   retained every new queue-only job in a process-local `BatchingDispatchBackend`; its only flush
   was in the final epilogue, so a 165-minute step timeout could cancel the run with zero accepted

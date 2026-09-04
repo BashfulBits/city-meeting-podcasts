@@ -688,20 +688,20 @@ def push_records_merged(
     state_dir = Path(state_dir)
     protected = frozenset(protected_blocks)
     emit = log or (lambda msg: print(msg, flush=True))
-    pushed = 0
-    for sk in sorted(set(source_keys)):
+
+    def _push_one(sk: str) -> int:
         try:
             remote = fetch_remote_records(storage, sk)
         except Exception as exc:  # noqa: BLE001 — any backend listing error → fail safe (skip)
             if raise_on_transient:
                 raise TransientStateSyncError(f"remote read failed for source {sk}: {exc}") from exc
             emit(f"state: WARNING remote read failed for source {sk}: {exc}; skipping push")
-            continue
+            return 0
         if remote is None:
             if raise_on_transient:
                 raise TransientStateSyncError(f"remote record for source {sk} unreadable")
             emit(f"state: WARNING remote record for source {sk} unreadable; skipping push")
-            continue
+            return 0
         local = load_records(state_dir, sk)
         # DIAGNOSTIC (agenda-extraction storage-recall investigation -- see the matching
         # checkpoints in run.py's persist_source and stages.py's _store_document/AgendaTextStage):
@@ -764,8 +764,19 @@ def push_records_merged(
                     f"expected={added} actual={actual} match={actual == added} "
                     f"readback_is_none={readback is None}"
                 )
-        pushed += 1
-    return pushed
+        return 1
+
+    # Each source has a distinct local file and remote object. Parallelizing them preserves the
+    # foreign-block merge for every source while eliminating the long serial B2 tail from a tag
+    # checkpoint that touches dozens of sources.
+    source_keys = sorted(set(source_keys))
+    if not source_keys:
+        return 0
+    workers = min(_STATE_SYNC_MAX_WORKERS, len(source_keys))
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return sum(pool.map(_push_one, source_keys))
+    return _push_one(source_keys[0])
 
 
 def push_calendar_records_merged(storage, state_dir: Path, source_keys, *, log=None) -> int:
