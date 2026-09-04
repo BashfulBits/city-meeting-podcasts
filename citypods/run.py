@@ -19,6 +19,7 @@ import shutil
 import sys
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager as _contextmanager
@@ -1333,6 +1334,64 @@ def _resource_admission_from_defaults(defaults: dict, *, time_bounded: bool, dry
     )
 
 
+_CITYPODS_PKG_DIR = str(Path(__file__).resolve().parent)
+
+
+def _thread_activity_snapshot(max_rows: int = 6) -> str:
+    """Where every live worker thread actually is, sampled from the interpreter's own frames.
+
+    The heartbeat's ``active work:`` line reports :data:`PROGRESS`, which the tag lane registers
+    around exactly one call (``llm_tag_suggestions``). Once that call became a
+    ``BatchingDispatchBackend`` collection it returns immediately, so ``PROGRESS`` is almost always
+    empty and the heartbeat reports "no tracked work active" for a run that is in fact busy --
+    which is indistinguishable from a genuinely stalled run and made a 3-hour lane impossible to
+    diagnose from its logs (2026-09-03: 172 of 180 ticks reported no tracked work, while only 53
+    minutes of the 180 were accounted for by stage timings).
+
+    Rather than hand-instrumenting every candidate hot spot, sample ``sys._current_frames()`` and
+    attribute each thread to (a) the innermost frame inside this package, which says WHAT the
+    thread is doing in our code, and (b) its true innermost frame, which says what it is BLOCKED
+    ON (``ssl.read``, ``socket.recv_into``, ``lock.acquire``, ...). Aggregated by location so a
+    pool of eight identical workers prints one row, not eight.
+
+    Best-effort by construction: this runs on the heartbeat thread while others mutate their
+    stacks, so it is a sample, not a consistent snapshot. Any failure degrades to a short note
+    rather than taking the heartbeat down with it.
+    """
+    try:
+        frames = sys._current_frames()
+        by_thread = {t.ident: t.name for t in threading.enumerate()}
+        rows: Counter[str] = Counter()
+        sampled = 0
+        for ident, frame in frames.items():
+            name = by_thread.get(ident, f"tid-{ident}")
+            # Skip the sampler's own thread; it is always inside this function.
+            if name == "citypods-heartbeat":
+                continue
+            innermost = f"{Path(frame.f_code.co_filename).name}:{frame.f_code.co_name}"
+            ours = None
+            probe = frame
+            while probe is not None:
+                if probe.f_code.co_filename.startswith(_CITYPODS_PKG_DIR):
+                    ours = (
+                        f"{Path(probe.f_code.co_filename).name}:"
+                        f"{probe.f_lineno} {probe.f_code.co_name}"
+                    )
+                    break
+                probe = probe.f_back
+            sampled += 1
+            rows[f"{ours or '<non-citypods>'} blocked_in={innermost}"] += 1
+        if not sampled:
+            return "no threads sampled"
+        parts = [f"{count}x {loc}" for loc, count in rows.most_common(max_rows)]
+        extra = len(rows) - max_rows
+        if extra > 0:
+            parts.append(f"(+{extra} more locations)")
+        return f"threads={sampled} " + " | ".join(parts)
+    except Exception as exc:  # noqa: BLE001 -- diagnostics must never break the heartbeat
+        return f"unavailable ({type(exc).__name__})"
+
+
 class _ResourceHeartbeat:
     # Once a stack dump has fired, wait at least this long before dumping again — the same stall
     # would otherwise re-dump every tick and flood the log without adding information.
@@ -1393,6 +1452,9 @@ class _ResourceHeartbeat:
         deterministically instead of racing the background thread's own timing."""
         print(f"[{self.label}] heartbeat {_resource_snapshot(self.root)}", flush=True)
         print(f"[{self.label}] active work: {format_snapshot(PROGRESS.snapshot())}", flush=True)
+        # PROGRESS only covers explicitly instrumented calls; this covers everything else, so a
+        # busy-but-uninstrumented run is distinguishable from a stalled one.
+        print(f"[{self.label}] thread activity: {_thread_activity_snapshot()}", flush=True)
         self._print_gate_and_lease_state()
         self._sample()
         self._maybe_dump_stalled_threads()
@@ -1904,6 +1966,11 @@ def _run_enrich_global_queue(
     # `_run_bounded`'s own calling thread between drain cycles, never concurrently with itself.
     _CHECKPOINT_INTERVAL_SECONDS = 180.0
     _last_checkpoint = {"t": time.monotonic()}
+    # Cumulative cost of the mid-pass checkpoint, reported on every checkpoint. The per-stage
+    # `seconds=` timings accounted for only 53 of a 180-minute tag run (2026-09-03) and nothing
+    # measured the checkpoint path, which runs 47 times in a run of that length -- so it was a
+    # prime suspect for the unaccounted time with no number attached to it either way.
+    _checkpoint_cost = {"persist": 0.0, "push": 0.0, "n": 0}
 
     def _checkpoint_if_due() -> None:
         if mid_run_checkpoint is None:
@@ -1912,8 +1979,25 @@ def _run_enrich_global_queue(
         if now - _last_checkpoint["t"] < _CHECKPOINT_INTERVAL_SECONDS:
             return
         _last_checkpoint["t"] = now
+        persist_start = time.monotonic()
         _persist_all()
+        push_start = time.monotonic()
         mid_run_checkpoint()
+        finished = time.monotonic()
+        _checkpoint_cost["persist"] += push_start - persist_start
+        _checkpoint_cost["push"] += finished - push_start
+        _checkpoint_cost["n"] += 1
+        print(
+            f"[enrich] checkpoint #{_checkpoint_cost['n']}: "
+            f"persist={push_start - persist_start:.1f}s push={finished - push_start:.1f}s "
+            f"cumulative persist={_checkpoint_cost['persist']:.0f}s "
+            f"push={_checkpoint_cost['push']:.0f}s",
+            flush=True,
+        )
+        # Re-anchor AFTER the checkpoint so its own cost is not charged against the next
+        # interval; otherwise a checkpoint slower than the interval would fire back-to-back
+        # forever and the interval would silently stop meaning anything.
+        _last_checkpoint["t"] = time.monotonic()
 
     # R6's extraction and independent judge stages are invoked one episode/candidate at a time by
     # the global queue, but each creates an independent queue-only v2 job. Collect those new jobs
