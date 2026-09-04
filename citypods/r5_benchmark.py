@@ -19,6 +19,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from citypods.compute.llm import PerModelBatchingBackends
+from citypods.compute.llm_lanes import lane_for
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import load_records, record_to_episode, source_key
 from citypods.state import resolve_state_dir
@@ -49,12 +51,12 @@ STATE_NAME = "r5_tag_benchmark.json"
 DEFAULT_SAMPLE_SIZE = 200
 MIN_SAMPLE_SIZE = 200
 MAX_SAMPLE_SIZE = 300
-DEFAULT_TAGGER_MODELS = (
-    "gemini/gemini-3.1-flash-lite",
-    "google/gemma-4-26b-a4b-it",
-    "zai/glm-4.7-flash",
-)
-DEFAULT_PRELABELER_MODEL = "google/gemma-4-31b-it"
+# Tagger contestants and the judge route come from config/site_config.yml's `llm_lanes`
+# (review/44 Phase 4). `r5-benchmark:tag` is `dispatch_shape: per_model` for the same reason as
+# `tournament:tag`: these routes are compared, not pooled, so each gets its own single-route job.
+# Both remain overridable per run via --models/--prelabeler-model.
+DEFAULT_TAGGER_MODELS = lane_for("r5-benchmark:tag").models
+DEFAULT_PRELABELER_MODEL = lane_for("r5-benchmark:judge").primary_model
 LABEL_MARKER = "<!-- citypods:r5-benchmark-review "
 
 
@@ -288,7 +290,7 @@ def _run_taggers(
     run: dict[str, Any],
     dataset: dict[str, Any],
     taxonomy: Any,
-    storage: Any,
+    backends: PerModelBatchingBackends,
     models: tuple[str, ...],
     allow_paid: bool,
     deadline_at: datetime,
@@ -296,7 +298,7 @@ def _run_taggers(
     outputs = run.setdefault("taggers", {})
     for model in models:
         model_run = outputs.setdefault(model, {"model": model, "examples": {}})
-        backend = _backend(model, storage)
+        backend = backends.collecting(model)
         for example in dataset["examples"]:
             example_id = example["example_id"]
             prior = model_run["examples"].get(example_id) or {}
@@ -370,7 +372,7 @@ def _run_prelabeler(
     run: dict[str, Any],
     dataset: dict[str, Any],
     taxonomy: Any,
-    storage: Any,
+    backends: PerModelBatchingBackends,
     model: str,
     llm_schema_version: str,
     allow_paid: bool,
@@ -388,12 +390,30 @@ def _run_prelabeler(
     prelabel["model"] = model
     prelabel["prompt_version"] = PRELABELER_PROMPT_VERSION
     prelabel["llm_schema_version"] = llm_schema_version
-    backend = _backend(model, storage)
+    backend = backends.collecting(model)
     taggers = run.get("taggers") or {}
     for example in dataset["examples"]:
         example_id = example["example_id"]
         prior = prelabel["examples"].get(example_id) or {}
         if prior.get("status") == "resolved":
+            continue
+        # Every tagger's candidates are part of this example's subject set, and a prelabel entry
+        # that reaches "resolved" is never recomputed (the early return just above). Assessing an
+        # example while a tagger is still deferred would therefore permanently freeze a
+        # rules-only verdict for it: under Dispatch v2 the whole first pass is deferred, so the
+        # prelabeler would judge nothing but the rule engine and the LLM candidates it exists to
+        # evaluate would never be looked at. Leave the example for the run that has them.
+        unresolved = [
+            tagger_model
+            for tagger_model, model_run in taggers.items()
+            if ((model_run.get("examples") or {}).get(example_id) or {}).get("status") != "resolved"
+        ]
+        if unresolved:
+            prelabel["examples"][example_id] = {
+                "status": "awaiting-taggers",
+                "awaiting_models": sorted(unresolved),
+                "assessments": {},
+            }
             continue
         subjects: list[dict[str, Any]] = []
         deterministic = tag_episode(
@@ -446,6 +466,8 @@ def _run_prelabeler(
                 allow_paid=allow_paid,
                 deadline_at=deadline_at,
                 call_metadata_out=metadata,
+                # Charged to the benchmark's own lane, not the catalog's prelabel budget.
+                purpose="r5-benchmark:judge",
             )
             for candidate_id, assessment in assessments.items():
                 subject = next(
@@ -480,7 +502,7 @@ def _run_pairwise(
     run: dict[str, Any],
     dataset: dict[str, Any],
     taxonomy: Any,
-    storage: Any,
+    backends: PerModelBatchingBackends,
     models: tuple[str, ...],
     judge_model: str,
     sample_size: int,
@@ -513,7 +535,7 @@ def _run_pairwise(
         results.append(entry)
 
     taggers = run.get("taggers") or {}
-    judge_backend = _backend(judge_model, storage)
+    judge_backend = backends.collecting(judge_model)
     selected_examples = dataset.get("examples", [])[: max(0, sample_size)]
     for example in selected_examples:
         example_id = example["example_id"]
@@ -1134,11 +1156,15 @@ def run(
         state["approval"] = None
         state.setdefault("runs", []).append(run_state)
     deadline = datetime.now(UTC) + timedelta(minutes=120)
+    # One run-scoped collector shared by all three phases: every queue-only job the tagger,
+    # prelabeler, and pairwise-judge passes create is submitted in one bounded batch per model
+    # below, instead of one Worker request per (model, example).
+    backends = PerModelBatchingBackends(lambda model: _backend(model, storage))
     _run_taggers(
         run=run_state,
         dataset=dataset,
         taxonomy=taxonomy,
-        storage=storage,
+        backends=backends,
         models=models,
         allow_paid=allow_paid,
         deadline_at=deadline,
@@ -1147,7 +1173,7 @@ def run(
         run=run_state,
         dataset=dataset,
         taxonomy=taxonomy,
-        storage=storage,
+        backends=backends,
         model=prelabeler_model,
         llm_schema_version=prelabeler_llm_schema_version,
         allow_paid=allow_paid,
@@ -1158,13 +1184,25 @@ def run(
             run=run_state,
             dataset=dataset,
             taxonomy=taxonomy,
-            storage=storage,
+            backends=backends,
             models=models,
             judge_model=str(judge_model),
             sample_size=pairwise_samples,
             allow_paid=allow_paid,
             deadline_at=deadline,
         )
+    # One bounded ingress batch per model for everything the three phases collected. Newly
+    # submitted work resolves on a later run from its durable record, exactly as a pending job
+    # always has, so this does not change the benchmark's own resume semantics.
+    queued = backends.queued_count
+    outcomes = backends.flush()
+    submit_errors = PerModelBatchingBackends.submission_errors(outcomes)
+    print(
+        f"r5-benchmark: LLM batch flush: jobs={len(outcomes)} queued={queued} "
+        f"errors={len(submit_errors)}",
+        flush=True,
+    )
+
     run_state["execution_status"] = (
         "complete" if _execution_complete(run_state, dataset) else "pending"
     )
@@ -1178,6 +1216,18 @@ def run(
         f"r5-benchmark: dataset={dataset['actual_size']} taggers={len(models)} "
         f"prelabeler={prelabeler_model} state={STATE_NAME}"
     )
+    if submit_errors:
+        # A failed submission queued nothing, so no later run picks it up on its own. State is
+        # already persisted above -- resolved work is never lost -- but the run must not report
+        # success while some of its jobs were silently dropped.
+        for outcome in submit_errors[:10]:
+            print(f"r5-benchmark: submission failed: {outcome.result}", flush=True)
+        print(
+            f"r5-benchmark: {len(submit_errors)} job(s) failed to submit; "
+            "no work was queued for them",
+            flush=True,
+        )
+        return 1
     return 0
 
 

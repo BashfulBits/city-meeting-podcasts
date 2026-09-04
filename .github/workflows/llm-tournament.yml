@@ -33,7 +33,13 @@ jobs:
           cache: pip
       - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[storage,llm]" -c constraints/prod.txt
-      - name: Run two bounded tag samples
+      - name: Run bounded tag samples
+        # Below the 30-minute job timeout so the champion-ticket step below still runs. A
+        # job-level timeout CANCELS the run, which skips every later step: the sampling work
+        # would be spent and no ticket published, reported as a grey "cancelled" that looks
+        # like someone pressed the button. This step now sizes itself from the lane budget
+        # (~46 samples, up from a hard-coded 2), so it is no longer trivially short.
+        timeout-minutes: 22
         env:
           LLM_SAFE_DIAGNOSTICS: ${{ inputs.safe_diagnostics && '1' || '0' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -56,7 +62,11 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        run: python -m citypods.tournament --samples 2
+        # No --samples: the per-run budget comes from
+        # `llm_lanes["tournament:tag"].max_dispatches_per_run` in config/site_config.yml.
+        # The old explicit `--samples 2` capped this lane at ~32 jobs/day against a budget
+        # sized for far more, which is one reason the research lanes never filled quota.
+        run: python -m citypods.tournament
       - name: Publish tournament champion ticket
         env:
           GH_TOKEN: ${{ github.token }}

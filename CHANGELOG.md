@@ -17,6 +17,103 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **One canonical registry for every LLM dispatch lane.** `config/site_config.yml` gains an
+  `llm_lanes` block keyed by the exact `LLMRequestPolicy.purpose` string, carrying both that lane's
+  models and its Cloudflare Dispatch v2 ingress write budget. `scripts/compile_llm_lanes.py`
+  compiles it into the Worker's `ingress_reservations.json`, drift-checked at deploy the same way
+  `dispatch_limits.json` already is. This replaces a hand-maintained `INGRESS_PURPOSE_RESERVATIONS`
+  var whose keys had drifted to name purposes no client sends — it reserved capacity under
+  `topic-tags` and `moments` while the client sends `topic-tags:tagger`, `topic-tags:prelabeler`,
+  `r6-moments`, and `r6-judge` — which withheld 10,000 of 30,000 daily ingress write units from
+  every real lane while being unusable by the lanes it named. An unregistered purpose is now
+  rejected at ingress (`purpose_not_registered`) instead of drawing on shared headroom, so a new
+  verb or task requires a new lane entry and a sub-purpose does not inherit its prefix's budget.
+  `tagging.llm_model(s)`, `tagging.prelabeler.model`, `moments.llm_model(s)` and
+  `moments.judges.models` are removed, and the chapter, tournament, and R5-benchmark routes move
+  out of Python constants into the same block. **Model values are unchanged, so no recipe hash
+  changes and no stored artifact is invalidated**; `tests/test_llm_lanes.py` pins the
+  recipe-affecting strings so a future edit surfaces its backfill cost instead of silently
+  queueing catalog rework. The lane's route list is enforced, not merely documented: a job whose
+  `allowed_models` name a route its own lane never declared is rejected at ingress
+  (`model_not_in_lane`), and both gates also cover the supersession path, which consumes no
+  admission budget and so must not be a way around registration. The registry has no per-run
+  override by design — the Worker's reservation map is compiled from the committed
+  `config/site_config.yml` alone, so lanes resolved from any other config would look like they
+  applied in the producer and simply not exist at ingress.
+
+- **Batched research-lane dispatch and a higher dispatch ceiling.** `citypods/tournament.py` and
+  `citypods/r5_benchmark.py` built a fresh `LiteLLMBackend` inside their innermost loops, so every
+  candidate generation and every pairwise comparison was its own Worker request and the backend's
+  per-instance ingest-throttle state was discarded on each call. Both now share a run-scoped
+  `PerModelBatchingBackends` collector and submit one bounded `enqueue_batch` per model. The
+  tournament's per-run budget is derived from its two lane budgets (candidate jobs and comparison
+  jobs bill to different purposes) instead of a hard two-sample clamp that had capped it near 32
+  jobs/day, giving 46 samples per run. A lane whose per-run cap exceeds what its daily write
+  budget funds is now rejected outright — four lanes shipped with that skew, and the surplus was
+  simply rejected at ingress. Worker knobs are retuned against the measured binding
+  constraint — the shared 100,000/day Durable Object row-write budget, not the per-invocation
+  subrequest ceiling: `MAX_BUNDLES_PER_UTC_DAY` 1,000 → 1,400 and
+  `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 30,000 → 24,000 lift the dispatch ceiling from 4,000 to
+  5,600 LLM calls/day at 69% of the write ceiling. `MAX_BUNDLE_JOBS` stays at 4 because raising it
+  is what breaches that budget. No recipe, artifact, or pipeline version changes.
+
+### Fixed
+
+- **Tag/moments lanes no longer spend a whole run checkpointing.** The mid-pass checkpoint
+  re-anchored its interval timer *before* doing its work, so a checkpoint slower than the 180s
+  interval came due the instant it returned and the lane checkpointed continuously; and
+  `_run_bounded` refilled its submission window *after* `on_progress`, so the worker pool sat empty
+  for that whole window. Measured on an instrumented run: the checkpoint takes **272s then 589s**,
+  dominated by the durable state push (225s/555s) rather than the local record persist (47s/34s).
+  Together these had the tag lane completing **one item per ~250s cycle** with eight workers
+  available — one `stage start`, one `stage done`, then 229 seconds of nothing but heartbeats,
+  repeatedly — and being cancelled at GitHub's 180-minute job timeout on three consecutive runs
+  (2026-09-03/04). The interval now re-anchors after the checkpoint, scales so checkpoint cost stays
+  under ~25% of wall clock, and the window is refilled before the callback so workers keep going
+  across it. Adds a thread-activity sampler to the heartbeat, since its existing `active work:` line
+  only covers one instrumented call and reported "no tracked work active" for a busy run.
+
+  Verified on three instrumented production runs of the same lane:
+
+  | | `main` | + interval re-anchor | + refill & adaptive interval |
+  |---|---:|---:|---:|
+  | stage completions / min | 2.6 | 23.6 | **50.6** |
+  | worker parallelism | ~1 item / 250s | 2.9x | **5.7x** |
+  | distinct sources touched | 3 | 11 | 11 |
+  | checkpoint overhead | ~continuous | — | **15% of wall clock** |
+
+  A 261s checkpoint now sets `next_interval=1043s` instead of coming due again after 180s, and
+  9 stage completions land *during* that checkpoint where previously the pool sat empty. At 19.5x
+  the original rate, a backlog that took the full 180-minute job timeout finishes in roughly ten
+  minutes of the same work.
+
+- **The R5 benchmark no longer bills the catalog's prelabel lane, or prelabels an incomplete
+  candidate set.** `llm_prelabel_candidates` hard-coded `purpose="topic-tags:prelabeler"`, so the
+  shadow benchmark spent the production catalog's ingress write budget while its own
+  `r5-benchmark:judge` lane went unused; the purpose is now a parameter that keeps the production
+  default. Separately, a prelabel entry that reaches `resolved` is never recomputed, and under
+  Dispatch v2 the whole first tagger pass comes back deferred — so the pre-labeler assessed the
+  rule engine's candidates alone and permanently froze that verdict, never looking at the LLM
+  candidates it exists to evaluate. It now waits for every tagger to resolve an example before
+  spending a job on it.
+
+- **LLM producer lanes no longer fail silently.** A failed batch submission is not a deferral —
+  nothing is queued, so no later run picks it up — but the enrichment, tournament, and benchmark
+  entry points counted the failures, printed a line, and exited 0. All four now report them and
+  exit non-zero. `scripts/llm_deferred_sweep.py` had the same defect and is fixed the same way,
+  with one distinction its reconciler role requires: submission rejections are counted separately
+  from reconcile failures (`submit_failed` in the end summary), and only the former set the exit
+  status — a bad payload or a provider error is an ordinary per-record outcome for a sweep and
+  must not turn that workflow permanently red. The Worker's new registration gate makes this
+  reachable in production: a legacy record carrying the bare `topic-tags` purpose is upgraded to
+  queue-only by the sweep and rejected at ingress as `purpose_not_registered`. The four lane workflow steps also gain a step-level timeout below their job
+  timeout: a job-level timeout *cancels* the run, which GitHub shows as a grey "cancelled"
+  indistinguishable from a manual cancellation and which skips every later step, so nothing is
+  persisted or reported. `tag.yml` hit exactly that on eight consecutive scheduled runs between
+  2026-08-26 and 2026-09-02. `llm-tournament.yml` gets the same guard for a new reason: its
+  sampling step now sizes itself from the lane budget (~46 samples, up from a hard-coded 2), so
+  overrunning the 30-minute job would spend all that work and skip the champion-ticket step.
+
 - **Record-first, quota-filling LLM producer lanes.** Record-backed enrichment now prepares from
   the restored append-only episode archives instead of first scraping every live provider and only
   falling back to records on an error. Queue-only topic-tag and R6 moments runs are bounded by their

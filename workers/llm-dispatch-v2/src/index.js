@@ -4,6 +4,7 @@
  */
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
+import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import { LLMSchedulerDO } from "./coordinator.js";
 import {
   validateEnqueueBatchRequest,
@@ -134,26 +135,46 @@ export function validateConfig(env) {
   if (!Number.isInteger(maxJobsPerDay) || maxJobsPerDay < 1 || maxJobsPerDay > 20_000) {
     throw new Error("Invalid config: MAX_JOBS_PER_UTC_DAY must be an integer from 1 to 20000");
   }
+  // Per-purpose ingress budgets. The compiled map (from config/site_config.yml's `llm_lanes`) is
+  // the source of truth; INGRESS_PURPOSE_RESERVATIONS remains only as an incident-time operator
+  // override. Validate whichever one will actually be in force, and fail the deploy rather than
+  // degrade to "no purpose has a reservation" -- an empty map is exactly the state that let the
+  // production lanes silently lose the capacity reserved for them.
+  let reservations = INGRESS_RESERVATIONS.reservations;
   if (env.INGRESS_PURPOSE_RESERVATIONS) {
-    let reservations;
     try {
       reservations = JSON.parse(env.INGRESS_PURPOSE_RESERVATIONS);
     } catch {
       throw new Error("Invalid config: INGRESS_PURPOSE_RESERVATIONS must be JSON");
     }
-    if (!reservations || typeof reservations !== "object" || Array.isArray(reservations)) {
-      throw new Error("Invalid config: INGRESS_PURPOSE_RESERVATIONS must be an object");
+  }
+  if (!reservations || typeof reservations !== "object" || Array.isArray(reservations)) {
+    throw new Error("Invalid config: ingress purpose reservations must be an object");
+  }
+  if (Object.keys(reservations).length === 0) {
+    throw new Error(
+      "Invalid config: ingress purpose reservations are empty; every dispatching purpose needs " +
+      "an llm_lanes entry (recompile with scripts/compile_llm_lanes.py)"
+    );
+  }
+  const reserved = Object.entries(reservations).reduce((sum, [purpose, config]) => {
+    const value = Number(config?.reserved_write_units || 0);
+    if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+      throw new Error("Invalid config: reservation write units must be non-negative integers");
     }
-    const reserved = Object.values(reservations).reduce((sum, config) => {
-      const value = Number(config?.reserved_write_units || 0);
-      if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
-        throw new Error("Invalid config: reservation write units must be non-negative integers");
-      }
-      return sum + value;
-    }, 0);
-    if (reserved > maxIngressWriteUnits) {
-      throw new Error("Invalid config: ingress reservations exceed the global write budget");
+    const daily = Number(config?.daily_write_units);
+    // A lane with no daily ceiling can consume the whole shared pool, which is the same
+    // unbounded-lane problem the registry exists to prevent -- require it explicitly.
+    if (!Number.isInteger(daily) || daily < value) {
+      throw new Error(
+        `Invalid config: reservation for ${purpose} must declare an integer daily_write_units ` +
+        "of at least its reserved_write_units"
+      );
     }
+    return sum + value;
+  }, 0);
+  if (reserved > maxIngressWriteUnits) {
+    throw new Error("Invalid config: ingress reservations exceed the global write budget");
   }
 
   const estimatedCallDurationCeiling = Number(env.ESTIMATED_CALL_DURATION_CEILING_SECONDS || 20);

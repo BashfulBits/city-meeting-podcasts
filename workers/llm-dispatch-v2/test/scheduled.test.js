@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker, { LLMSchedulerDO } from "../src/index.js";
-import { createMockSqlStorage } from "./helpers.js";
+import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 const CATALOG = {
   model_aliases: {},
@@ -80,7 +80,7 @@ function makeEnv(overrides = {}) {
     ESTIMATED_CALL_DURATION_CEILING_SECONDS: "1",
     DISPATCH_LIMITS_OVERRIDE: CATALOG,
   };
-  const coordinator = new LLMSchedulerDO({ storage }, coordinatorEnv);
+  const coordinator = new LLMSchedulerDO({ storage }, withTestReservations(coordinatorEnv));
   return {
     BEARER_TOKEN: "secret-token",
     LLM_SCHEDULER: { getByName: () => coordinator },

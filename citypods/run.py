@@ -19,6 +19,7 @@ import shutil
 import sys
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager as _contextmanager
@@ -30,6 +31,7 @@ from pathlib import Path
 from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body, source_body_filter, source_body_inclusions
 from citypods.compute import DispatchCoordinator, make_compute
+from citypods.compute.llm_lanes import lane_for
 from citypods.config import (
     RESERVED_PUBLIC_DIRS as _RESERVED_DOC_NAMES,
 )
@@ -903,9 +905,24 @@ def _run_bounded(
     the producer never waits for the whole current batch to drain.
 
     ``on_progress``, if given, runs after each drain cycle -- always from this function's own
-    (calling) thread, never concurrently with itself or with a still-running ``fn`` submission.
-    Used for periodic mid-pass checkpointing on passes with no natural end-of-phase persist
-    boundary (see the `tag` lane's checkpoint push in ``_run_enrich_global_queue``).
+    (calling) thread and never concurrently with itself. Used for periodic mid-pass checkpointing
+    on passes with no natural end-of-phase persist boundary (see the `tag` lane's checkpoint push
+    in ``_run_enrich_global_queue``).
+
+    **The submission window is refilled BEFORE ``on_progress`` runs, not after.** ``on_progress``
+    is not necessarily cheap: the tag lane's checkpoint measured **272s and 589s** against a
+    180-second interval in production (run #72, 2026-09-04), dominated by the durable state push
+    (225s then 555s) rather than the local record persist (47s then 34s). Refilling afterwards meant
+    the pool sat at whatever depth the drain left it -- often empty -- for that entire window, so
+    a lane with eight workers completed *one* item per ~250-second cycle and spent ~90% of a
+    three-hour run with idle workers (runs #70/#71/#72, 2026-09-03/04: one `stage start`, one
+    `stage done`, then 229 seconds of nothing but heartbeats, repeatedly). Filling first keeps the
+    workers busy across the checkpoint.
+
+    This does not change *whether* ``fn`` runs concurrently with ``on_progress`` -- ``wait``
+    returns on the FIRST completion, so siblings were always still running -- only how many. A
+    callback that mutates state the running ``fn`` also touches must already tolerate that;
+    ``_persist_all``'s record merge is append-only and idempotent for exactly this reason.
     """
     iterator = iter(items)
     pending: set = set()
@@ -923,9 +940,9 @@ def _run_bounded(
         done, pending = wait(pending, return_when=FIRST_COMPLETED)
         for future in done:
             future.result()
+        _fill()
         if on_progress is not None:
             on_progress()
-        _fill()
 
 
 @dataclass
@@ -1332,6 +1349,64 @@ def _resource_admission_from_defaults(defaults: dict, *, time_bounded: bool, dry
     )
 
 
+_CITYPODS_PKG_DIR = str(Path(__file__).resolve().parent)
+
+
+def _thread_activity_snapshot(max_rows: int = 6) -> str:
+    """Where every live worker thread actually is, sampled from the interpreter's own frames.
+
+    The heartbeat's ``active work:`` line reports :data:`PROGRESS`, which the tag lane registers
+    around exactly one call (``llm_tag_suggestions``). Once that call became a
+    ``BatchingDispatchBackend`` collection it returns immediately, so ``PROGRESS`` is almost always
+    empty and the heartbeat reports "no tracked work active" for a run that is in fact busy --
+    which is indistinguishable from a genuinely stalled run and made a 3-hour lane impossible to
+    diagnose from its logs (2026-09-03: 172 of 180 ticks reported no tracked work, while only 53
+    minutes of the 180 were accounted for by stage timings).
+
+    Rather than hand-instrumenting every candidate hot spot, sample ``sys._current_frames()`` and
+    attribute each thread to (a) the innermost frame inside this package, which says WHAT the
+    thread is doing in our code, and (b) its true innermost frame, which says what it is BLOCKED
+    ON (``ssl.read``, ``socket.recv_into``, ``lock.acquire``, ...). Aggregated by location so a
+    pool of eight identical workers prints one row, not eight.
+
+    Best-effort by construction: this runs on the heartbeat thread while others mutate their
+    stacks, so it is a sample, not a consistent snapshot. Any failure degrades to a short note
+    rather than taking the heartbeat down with it.
+    """
+    try:
+        frames = sys._current_frames()
+        by_thread = {t.ident: t.name for t in threading.enumerate()}
+        rows: Counter[str] = Counter()
+        sampled = 0
+        for ident, frame in frames.items():
+            name = by_thread.get(ident, f"tid-{ident}")
+            # Skip the sampler's own thread; it is always inside this function.
+            if name == "citypods-heartbeat":
+                continue
+            innermost = f"{Path(frame.f_code.co_filename).name}:{frame.f_code.co_name}"
+            ours = None
+            probe = frame
+            while probe is not None:
+                if probe.f_code.co_filename.startswith(_CITYPODS_PKG_DIR):
+                    ours = (
+                        f"{Path(probe.f_code.co_filename).name}:"
+                        f"{probe.f_lineno} {probe.f_code.co_name}"
+                    )
+                    break
+                probe = probe.f_back
+            sampled += 1
+            rows[f"{ours or '<non-citypods>'} blocked_in={innermost}"] += 1
+        if not sampled:
+            return "no threads sampled"
+        parts = [f"{count}x {loc}" for loc, count in rows.most_common(max_rows)]
+        extra = len(rows) - max_rows
+        if extra > 0:
+            parts.append(f"(+{extra} more locations)")
+        return f"threads={sampled} " + " | ".join(parts)
+    except Exception as exc:  # noqa: BLE001 -- diagnostics must never break the heartbeat
+        return f"unavailable ({type(exc).__name__})"
+
+
 class _ResourceHeartbeat:
     # Once a stack dump has fired, wait at least this long before dumping again — the same stall
     # would otherwise re-dump every tick and flood the log without adding information.
@@ -1392,6 +1467,9 @@ class _ResourceHeartbeat:
         deterministically instead of racing the background thread's own timing."""
         print(f"[{self.label}] heartbeat {_resource_snapshot(self.root)}", flush=True)
         print(f"[{self.label}] active work: {format_snapshot(PROGRESS.snapshot())}", flush=True)
+        # PROGRESS only covers explicitly instrumented calls; this covers everything else, so a
+        # busy-but-uninstrumented run is distinguishable from a stalled one.
+        print(f"[{self.label}] thread activity: {_thread_activity_snapshot()}", flush=True)
         self._print_gate_and_lease_state()
         self._sample()
         self._maybe_dump_stalled_threads()
@@ -1765,6 +1843,8 @@ def _run_enrich_global_queue(
             prelabeler_enabled = bool(prelabeler_config.get("enabled", False)) and (
                 ctx.tag_backend is not None
             )
+            # Resolved from `llm_lanes["topic-tags:prelabeler"]` where the context is built, so a
+            # test may still inject its own evaluation config here.
             prelabeler_model = str(prelabeler_config.get("model") or "")
             prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
             prelabeler_llm_schema_version = str(prelabeler_config.get("llm_schema_version") or "1")
@@ -1900,23 +1980,66 @@ def _run_enrich_global_queue(
     # is opt-in per call site -- `None` for every other lane -- and runs from
     # `_run_bounded`'s own calling thread between drain cycles, never concurrently with itself.
     _CHECKPOINT_INTERVAL_SECONDS = 180.0
-    _last_checkpoint = {"t": time.monotonic()}
+    # A checkpoint must not cost more than this share of the run. Measured on run #72
+    # (2026-09-04), one checkpoint took 272s and the next 589s -- both far above the 180s floor --
+    # so a fixed interval would spend most of a run checkpointing even with the re-anchor below.
+    # Requiring the next interval to be at least `1/_MAX_CHECKPOINT_DUTY_CYCLE` times the last
+    # checkpoint's own duration bounds that overhead at ~25% of wall clock while still
+    # checkpointing as often as the push cost allows. The floor keeps the fast case unchanged.
+    _MAX_CHECKPOINT_DUTY_CYCLE = 0.25
+    _last_checkpoint = {"t": time.monotonic(), "interval": _CHECKPOINT_INTERVAL_SECONDS}
+    # Cumulative cost of the mid-pass checkpoint, reported on every checkpoint. The per-stage
+    # `seconds=` timings accounted for only 53 of a 180-minute tag run (2026-09-03) and nothing
+    # measured the checkpoint path, which runs ~41-47 times in a run of that length -- so it was a
+    # prime suspect for the unaccounted time with no number attached to it either way. It was: the
+    # durable state push dominates (225s then 555s), not the local record persist (47s then 34s).
+    _checkpoint_cost = {"persist": 0.0, "push": 0.0, "n": 0}
 
     def _checkpoint_if_due() -> None:
         if mid_run_checkpoint is None:
             return
         now = time.monotonic()
-        if now - _last_checkpoint["t"] < _CHECKPOINT_INTERVAL_SECONDS:
+        if now - _last_checkpoint["t"] < _last_checkpoint["interval"]:
             return
-        _last_checkpoint["t"] = now
+        persist_start = time.monotonic()
         _persist_all()
+        push_start = time.monotonic()
         mid_run_checkpoint()
+        finished = time.monotonic()
+        _checkpoint_cost["persist"] += push_start - persist_start
+        _checkpoint_cost["push"] += finished - push_start
+        _checkpoint_cost["n"] += 1
+        elapsed = finished - persist_start
+        _last_checkpoint["interval"] = max(
+            _CHECKPOINT_INTERVAL_SECONDS, elapsed / _MAX_CHECKPOINT_DUTY_CYCLE
+        )
+        print(
+            f"[enrich] checkpoint #{_checkpoint_cost['n']}: "
+            f"persist={push_start - persist_start:.1f}s push={finished - push_start:.1f}s "
+            f"cumulative persist={_checkpoint_cost['persist']:.0f}s "
+            f"push={_checkpoint_cost['push']:.0f}s "
+            f"next_interval={_last_checkpoint['interval']:.0f}s",
+            flush=True,
+        )
+        # Re-anchor AFTER the checkpoint so its own cost is not charged against the next
+        # interval; otherwise a checkpoint slower than the interval would fire back-to-back
+        # forever and the interval would silently stop meaning anything. That is exactly what
+        # runs #70/#71 did: a 272-589s checkpoint against a 180s interval came due the instant it
+        # returned, so the lane checkpointed continuously and completed one item per cycle.
+        _last_checkpoint["t"] = time.monotonic()
 
     # R6's extraction and independent judge stages are invoked one episode/candidate at a time by
     # the global queue, but each creates an independent queue-only v2 job. Collect those new jobs
     # across the entire moments lane and submit one bounded ingress batch after the pass. Existing
     # deferred handles/results still flow through immediately, so their normal next-run finalizers
     # and calibration state remain unchanged.
+    # Failed batch SUBMISSIONS across every enrichment batcher in this run. A submission failure is
+    # categorically different from a deferral: a deferred job is queued and a later run finalizes
+    # it, whereas a failed submission queued nothing at all. Both used to end the run at exit 0
+    # with only a printed `errors=N` to distinguish them, so a lane that dispatched none of its
+    # work still reported success. Collected here and turned into a real error result below.
+    llm_submission_failures: list[str] = []
+
     moment_batcher = None
     original_moment_backend = ctx.moment_backend
     if any(stage.name in {"moments", "moment-judge"} for stage in audio_stages):
@@ -1994,6 +2117,9 @@ def _run_enrich_global_queue(
                 if submission_errors:
                     pipeline.accumulate_stats(
                         [StageStats(chapter_stage.name, errors=submission_errors)]
+                    )
+                    llm_submission_failures.extend(
+                        f"{chapter_stage.name}: {error}" for error in submission_errors[:5]
                     )
                 print(
                     f"[enrich] {chapter_stage.name} LLM batch flush: jobs={len(batch_outcomes)} "
@@ -2089,6 +2215,8 @@ def _run_enrich_global_queue(
             f"completed={completed} errors={failed}",
             flush=True,
         )
+        if failed:
+            llm_submission_failures.append(f"tags: {failed} job(s) failed to submit")
         ctx.tag_backend = original_tag_backend
 
     if moment_batcher is not None:
@@ -2103,6 +2231,8 @@ def _run_enrich_global_queue(
             f"completed={completed} errors={failed}",
             flush=True,
         )
+        if failed:
+            llm_submission_failures.append(f"moments: {failed} job(s) failed to submit")
         ctx.moment_backend = original_moment_backend
 
     if r7_ledger_stages:
@@ -2149,6 +2279,15 @@ def _run_enrich_global_queue(
         else:
             episodes = prepared.get(key, {}).get("episodes", [])
             results.append(CityResult(c.slug, "built", episode_count=len(episodes)))
+    if llm_submission_failures:
+        # Not attributable to one city -- a failed ingress batch spans sources -- so it gets its
+        # own result row. This is what makes `cli.build` exit non-zero: a lane whose jobs never
+        # reached the Worker must not report success, because nothing will retry them until the
+        # next scheduled run and nobody would know to look.
+        detail = "; ".join(llm_submission_failures[:5])
+        if len(llm_submission_failures) > 5:
+            detail += f" (+{len(llm_submission_failures) - 5} more)"
+        results.append(CityResult("llm-dispatch", "error", detail=detail))
     return results
 
 
@@ -2455,7 +2594,10 @@ def _build_impl(
     tagging_config = site_config.get("tagging") or {}
     moments_config = site_config.get("moments") or {}
     speakers_config = site_config.get("speakers") or {}
-    tag_max_dispatches = int(tagging_config.get("max_dispatches_per_run", 2000))
+    # Per-run dispatch caps come from the same lane entry as the models, so a lane's
+    # throughput bound and its ingress write budget are set side by side rather than in two
+    # files that can disagree.
+    tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
@@ -2465,15 +2607,15 @@ def _build_impl(
         from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 
         try:
-            primary_model = str(tagging_config.get("llm_model", "gemini/gemini-3-flash-preview"))
-            # Extra routes the scheduler may spill onto for throughput once the primary's own
-            # per-minute/daily quota window fills (each is an independent free-tier pool). Config's
-            # `tagging.llm_models` lists every route to draw on, primary first; anything after the
-            # primary becomes `additional_models`. Absent/legacy config keeps the single-route
-            # behavior. The primary stays the stable recipe/calibration route (see
-            # llm_tag_suggestions).
-            configured_models = [str(m) for m in (tagging_config.get("llm_models") or [])]
-            additional_models = tuple(m for m in configured_models if m != primary_model)
+            # Routes come from `llm_lanes["topic-tags:tagger"]` (review/44 Phase 4), the same
+            # block the ingress Worker's reservation map is compiled from, so a lane's models and
+            # its write budget can never describe different things. `models[0]` is the stable
+            # recipe/calibration route (see llm_tag_suggestions); the rest are extra routes the
+            # scheduler may spill onto for throughput once the primary's own per-minute/daily
+            # window fills, each an independent free-tier pool.
+            tagger_lane = lane_for("topic-tags:tagger")
+            primary_model = tagger_lane.primary_model
+            additional_models = tagger_lane.additional_models
             # Start from LLMBackendConfig.from_env() -- the complete, single source of truth for
             # every dispatch-relevant environment variable (dispatch_url/dispatch_auth_token,
             # dispatch_v2_url/dispatch_v2_auth_token, daily_ingest_cap) -- and override only the
@@ -2514,10 +2656,9 @@ def _build_impl(
         from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 
         try:
-            moment_models = [str(model) for model in (moments_config.get("llm_models") or [])]
-            moment_primary = str(moments_config.get("llm_model") or "gemini/gemini-3.6-flash")
-            if moment_primary not in moment_models:
-                moment_models.insert(0, moment_primary)
+            moments_lane = lane_for("r6-moments")
+            moment_models = list(moments_lane.models)
+            moment_primary = moments_lane.primary_model
             moment_backend = LiteLLMBackend(
                 _dc_replace(
                     LLMBackendConfig.from_env(),
@@ -2779,7 +2920,14 @@ def _build_impl(
         / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
         llm_evaluation_config={
             **(tagging_config.get("evaluation") or {}),
-            "prelabeler": tagging_config.get("prelabeler") or {},
+            # The prelabeler's route comes from its own lane, not from `tagging.prelabeler.model`:
+            # `topic-tags:prelabeler` is a separate verb with a separate ingress budget and does
+            # not inherit anything from the `topic-tags` prefix. Everything else in the block
+            # (enabled, prompt_version, llm_schema_version) stays where it is.
+            "prelabeler": {
+                **(tagging_config.get("prelabeler") or {}),
+                "model": lane_for("topic-tags:prelabeler").primary_model,
+            },
         },
         moment_evaluation_state_path=state_dir
         / str(
@@ -2789,7 +2937,7 @@ def _build_impl(
             **moments_config,
             **(moments_config.get("evaluation") or {}),
         },
-        moment_max_dispatches=int(moments_config.get("max_dispatches_per_run", 40)),
+        moment_max_dispatches=lane_for("r6-moments").max_dispatches_per_run,
         speaker_registry_path=state_dir
         / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
         speaker_evaluation_state_path=state_dir

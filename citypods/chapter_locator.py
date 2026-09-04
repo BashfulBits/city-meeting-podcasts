@@ -13,6 +13,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from citypods.compute.llm_lanes import lane_for
+
 LOCATOR_CONTRACT = "agenda-chapter-locate"
 # Mistral's current API/dispatch alias for Mistral Large 3. The dated API ID
 # ``mistral-large-2512`` is useful for external audit, but the paced Worker advertises this
@@ -28,7 +30,18 @@ MISTRAL_LOCATOR_MODEL = "mistral/mistral-large-2512"
 DEEPSEEK_FREE_LOCATOR_MODEL = "deepseek/deepseek-v4-flash"
 NEMOTRON_LOCATOR_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
-PRODUCTION_LOCATOR_MODEL = "gemini/gemini-3.5-flash-lite"
+# The production locator route, resolved from config/site_config.yml's
+# `llm_lanes["chapter-locator"]` rather than hard-coded, so every dispatching lane's route choice
+# is visible in one place (review/44 Phase 4).
+#
+# THIS STRING IS PART OF THE RECIPE HASH (see `stages.py`'s `chapter_locator` recipe), so changing
+# the configured model re-queues every locator artifact in the catalog -- a deliberate backfill
+# whose story the PR and CHANGELOG must state per AGENTS.md, not a config tweak.
+# `tests/test_llm_lanes.py` pins the current value.
+#
+# The `_LOCATOR_MODEL_BANDS` ladder below is a SEPARATE concern: it picks a fallback candidate set
+# by request size for the shadow/experimental locator path, and is not the production lane.
+PRODUCTION_LOCATOR_MODEL = lane_for("chapter-locator").primary_model
 # Mistral Large 3 accepts 256k total tokens. Reserve enough output room for a long chapter list
 # plus one structured-output repair. Gemini's documented 1M input window has the same reserve.
 MISTRAL_CONTEXT_TOKENS = 256_000

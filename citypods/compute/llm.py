@@ -2807,6 +2807,83 @@ class BatchingDispatchBackend:
         ]
 
 
+class PerModelBatchingBackends:
+    """Run-scoped, per-model backends that share one queue-only batch collector.
+
+    The research lanes (``citypods/tournament.py``, ``citypods/r5_benchmark.py``) compare several
+    models over the same inputs, so each needs its own ``LiteLLMBackend`` (the backend's configured
+    model is what ``llm_tag_suggestions`` turns into ``allowed_models``). Both used to build that
+    backend inside their innermost loop, which caused two distinct problems:
+
+    * **One Worker request per job.** Every candidate generation and every pairwise comparison
+      submitted on its own. review/44's 2026-08-18 retrospective identified exactly this per-job
+      ingress shape as what broke the Workers Free request ceiling, and PR #1262 batched the
+      production lanes but left these two.
+    * **Reset client-side throttle state.** ``LiteLLMBackend`` accumulates daily-ingest admission
+      and exhaustion state per instance, so rebuilding it per call discarded that state every
+      time and the guard meant to stop submitting once headroom is gone could never trip.
+
+    ``factory`` builds the real backend for one model; results are memoized for the run.
+    :meth:`collecting` returns a :class:`BatchingDispatchBackend` around it, which hands each
+    caller an ordinary pending ``JobHandle`` immediately and defers the actual submission to
+    :meth:`flush`. A job whose deferred record already holds a result or a pending handle still
+    passes straight through, so a later run finalizes prior work unchanged.
+
+    When v2 is not configured (local runs, legacy v1) :meth:`collecting` returns the real backend
+    untouched, so this never changes behavior for a deployment it does not apply to -- the same
+    guard ``run.py`` applies before wrapping the tag/moment/chapter backends.
+    """
+
+    def __init__(self, factory: Callable[[str], LiteLLMBackend]):
+        self._factory = factory
+        self._real: dict[str, LiteLLMBackend] = {}
+        self._batchers: dict[str, BatchingDispatchBackend] = {}
+
+    def real(self, model: str) -> LiteLLMBackend:
+        """The unwrapped backend, which reads durable records without collecting new work."""
+        if model not in self._real:
+            self._real[model] = self._factory(model)
+        return self._real[model]
+
+    def collecting(self, model: str) -> LiteLLMBackend | BatchingDispatchBackend:
+        """The backend to build jobs against while preparing a run.
+
+        Returns the backend unwrapped whenever batching cannot apply: v2 unconfigured (local runs,
+        legacy v1), or a factory that returned something other than a real ``LiteLLMBackend`` (test
+        doubles, a direct-only backend). Probed with ``getattr`` rather than an isinstance check so
+        a substituted backend keeps its exact previous behavior instead of raising.
+        """
+        backend = self.real(model)
+        if not getattr(getattr(backend, "config", None), "dispatch_v2_url", None):
+            return backend
+        if model not in self._batchers:
+            self._batchers[model] = BatchingDispatchBackend(backend)
+        return self._batchers[model]
+
+    @property
+    def queued_count(self) -> int:
+        return sum(batcher.queued_count for batcher in self._batchers.values())
+
+    def flush(self) -> list[BatchDispatchOutcome]:
+        """Submit every collected job in one bounded batch per model."""
+        outcomes: list[BatchDispatchOutcome] = []
+        for batcher in self._batchers.values():
+            outcomes.extend(batcher.flush())
+        return outcomes
+
+    @staticmethod
+    def submission_errors(
+        outcomes: Sequence[BatchDispatchOutcome],
+    ) -> list[BatchDispatchOutcome]:
+        """The outcomes whose submission failed outright.
+
+        A failed submission is NOT a deferral: nothing was queued, so no later run picks it up on
+        its own. Callers are expected to report these and exit non-zero rather than finishing
+        green with the work silently dropped.
+        """
+        return [outcome for outcome in outcomes if isinstance(outcome.result, Exception)]
+
+
 @dataclass(frozen=True)
 class BatchDispatchOutcome:
     """One run-batched submission result paired with its original inference job."""
@@ -3033,6 +3110,7 @@ __all__ = [
     "LLMStructuredOutputError",
     "LLM_TASKS",
     "LiteLLMBackend",
+    "PerModelBatchingBackends",
     "SUPPORTED_MODELS",
     "TASK_PROMPTS",
     "TASK_VERSIONS",

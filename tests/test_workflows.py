@@ -833,8 +833,9 @@ def test_tag_lane_uses_async_llm_dispatch_and_keeps_provider_key_off_runner():
 
     site = yaml.safe_load((WORKFLOWS.parent.parent / "config" / "site_config.yml").read_text())
     assert site["tagging"]["llm_mode"] == "dispatch"
-    assert site["tagging"]["llm_model"] == "gemini/gemini-3.1-flash-lite"
-    assert site["tagging"]["llm_models"] == ["gemini/gemini-3.1-flash-lite"]
+    # The tag lane's routes moved out of `tagging.llm_model`/`llm_models` and into the canonical
+    # `llm_lanes` registry, which also carries the lane's ingress write budget (review/44 Phase 4).
+    assert site["llm_lanes"]["topic-tags:tagger"]["models"] == ["gemini/gemini-3.1-flash-lite"]
 
 
 def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():

@@ -924,6 +924,14 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   accumulate a whole run's jobs and submit them via one `enqueue_batch`/`poll_batch` round trip
   each, through the shared `dispatch_job_batch()` helper — see the Phase 1 revision note above for
   why this was still outstanding after Phase 1 "shipped."
+- **Implemented (2026-09-03): run-batched tournament and R5-benchmark dispatch.** Both built a
+  fresh `LiteLLMBackend` inside their innermost loops, so every contestant's candidate generation
+  and every pairwise comparison was its own Worker request, and the backend's per-instance
+  daily-ingest throttle state was discarded on each call. A shared `PerModelBatchingBackends`
+  collector now holds one backend per model for the whole run and submits one bounded
+  `enqueue_batch` per model. The tournament's per-run budget also comes from its lane config
+  instead of a hard `min(args.samples, 2)` clamp. See "Lane registry and throughput reconciliation
+  (2026-09-03)" below.
 - Batch the remaining lower-volume call sites the same way: the transcribe/align paths in
   `citypods/stages.py`, `citypods/audit_remedy.py`. (`citypods/discovery/classify.py` is out of
   scope — it already sets `require_direct=True` per review/41 and never dispatches through the
@@ -1852,6 +1860,208 @@ increase active-bundle or in-flight-call capacity, raise the same-route cap, len
 window, or raise the daily bundle or ingestion cap through a new measured capacity review — informed
 by the real aggregate route capacity in the Demand model, so
 route capacity is never the limiting assumption, only Worker CPU and DO SQLite writes are.
+
+## Lane registry and throughput reconciliation (2026-09-03)
+
+Three related defects kept the producer lanes from filling their dispatch quota. They are recorded
+together because the first is what made the other two invisible.
+
+### 1. Purpose reservations named purposes no client ever sent
+
+`INGRESS_PURPOSE_RESERVATIONS` was a hand-maintained wrangler var whose keys had drifted from the
+`LLMRequestPolicy.purpose` strings the client actually sends:
+
+| Reservation key | Purpose(s) actually sent |
+| --- | --- |
+| `chapter-agenda` | `chapter-agenda` ✓ |
+| `chapter-locator` | `chapter-locator` ✓ |
+| `topic-tags` | `topic-tags:tagger`, `topic-tags:prelabeler` ✗ |
+| `moments` | `r6-moments`, `r6-judge` ✗ |
+
+`_purposeForJob` returns the purpose verbatim and `ingressReservations[purpose]` is an exact lookup
+— there is no prefix normalization — so the `topic-tags` and `moments` entries matched nothing.
+Worse than being merely inert: `enqueueBatch`'s admission check (and `schemaRetry`'s) subtracts
+**every other purpose's** `reserved_write_units` from the headroom a job may use, so those two unreachable keys
+withheld **10,000 of the 30,000 daily ingress write units** from every real lane while remaining
+unusable by the lanes they were named for. Nothing failed; the lanes just quietly had less capacity
+than the config said.
+
+Four further purposes (`tournament:tag`, `tournament:tag-judge`, `r5-benchmark:tag`,
+`r5-benchmark:judge`) had no entry at all and drew on unreserved shared headroom, so research work
+competed directly with the scheduled production lanes for capacity nobody had budgeted.
+
+**Fix.** `config/site_config.yml` gains an `llm_lanes` block keyed by the exact purpose string,
+carrying both the lane's models and its ingress budget. `scripts/compile_llm_lanes.py` compiles it
+into `workers/llm-dispatch-v2/src/ingress_reservations.json`, drift-checked in
+`llm-dispatch-v2-worker-deploy.yml` exactly as `dispatch_limits.json` already is. An unregistered
+purpose is now **rejected** at ingress (`purpose_not_registered`) instead of falling through to
+shared headroom, and raises `UnregisteredLaneError` on the client. **A new verb or task requires a
+new lane entry; a sub-purpose does not inherit its prefix's budget.** That is deliberate — the
+alternative (deriving a budget family from the prefix) would have re-created the original failure
+in a form that looks correct.
+
+**Scope of the gate, after review (2026-09-04).** Registering the purpose is only half the
+contract: `_modelsForQueuedJob` indexes whatever `allowed_models` a policy carries, so a job
+stamped with a registered purpose could still be claimed on a route that lane never declared —
+spending a budget sized for one route set on another, and making the compiled map's `models` a
+statement of intent rather than of what runs. Ingress now also rejects `model_not_in_lane`,
+comparing both sides through `canonicalModelName` so an alias is not mistaken for a foreign route.
+A lane that declares no `models` constrains nothing, because the `INGRESS_PURPOSE_RESERVATIONS`
+env var exists so an operator can reshape budgets without a redeploy and should not have to
+restate route lists. Both gates also run on the **supersession** path (same `idempotency_key`, new
+`request_digest`): superseding consumes no admission budget, which is precisely why it must not be
+the way around registration — a stale row whose lane has since been retired would otherwise be
+resurrected into `queued` under a purpose no reservation covers. And on **`schemaRetry`**, for the
+opposite reason: a retry *does* re-admit, consuming the day's job count and charging write units,
+so a source whose lane has since dropped the route it names would spend that lane's budget on a
+route the lane no longer declares. All three admission paths now apply both gates; applying one
+half of the contract in a path that applies the other is what leaves a door open.
+
+**There is deliberately no per-run lane override.** `lane_for()` takes no `site_config`, because
+the Worker half cannot honor one: `compile_llm_lanes.py` builds `ingress_reservations.json` from
+the committed `config/site_config.yml` alone, so a run resolving its models or budgets from some
+other config would submit jobs the deployed Worker either rejects (`purpose_not_registered`) or
+charges against budgets that config never described — an override that appears to work in the
+producer and does not exist at ingress. A `--site-config` still governs site content, and still
+*narrows* a lane where that is meaningful (`moments.judges.models` selects a subset of
+`llm_lanes["r6-judge"]`); it never decides which purposes exist or what each may spend. This also
+keeps the import-time lane resolution that several recipe hashes depend on honest: one file, one
+answer, no run-to-run hash drift that would re-queue the catalog.
+
+### 2. Model choice was split between config and code
+
+`tagging.llm_models` and `moments.llm_models` were config while `AGENDA_PRODUCTION_MODEL`,
+`PRODUCTION_LOCATOR_MODEL`, `tournament.MODELS`/`JUDGE_MODEL`/`CONTESTS`, and
+`r5_benchmark.DEFAULT_TAGGER_MODELS` were Python constants. No single place showed what the catalog
+dispatches to, and a route change meant a code change. All of them now resolve from the same
+`llm_lanes` block. Values are unchanged, so **no recipe hash changes and no artifact is
+invalidated**; `tests/test_llm_lanes.py` pins the recipe-affecting strings so a future edit fails
+there rather than silently queueing weeks of catalog rework.
+
+The tournament's contest grid is now derived from the configured contestants instead of a
+hand-written list that had to be edited in lockstep with `MODELS`. The resulting pair set is
+identical, so no in-flight `comparison_id` is orphaned.
+
+### 3. Throughput knobs — maintainer-approved deviation
+
+Per AGENTS.md's deviation gate, these are production knobs and the reasoning is recorded here.
+
+**The DO row-write budget binds, not the subrequest ceiling.** Per dispatched job the coordinator
+writes roughly 7 rows (lease `UPDATE jobs`; `DELETE job_models` for its index rows;
+`attemptStarted`'s `INSERT attempts` + `UPDATE jobs`; `completeBatch`'s `UPDATE jobs` +
+`UPDATE routes`; the eventual purge `DELETE`), plus ~4 per bundle. Against the shared 100,000/day
+ceiling and `validateConfig`'s 75% admission-rejection threshold:
+
+| Configuration | Jobs/day | DO writes | % of 100k | |
+| --- | ---: | ---: | ---: | --- |
+| current (30,000 ingress · 1,000 bundles · 4/bundle) | 4,000 | 62,000 | 62% | |
+| raise bundles only (30,000 · 1,400 · 4) | 5,600 | 74,800 | 75% | at the threshold |
+| **also raise bundle jobs (30,000 · 1,400 · 8)** | 11,200 | 114,000 | **114%** | **breach** |
+| **adopted (24,000 · 1,400 · 4)** | **5,600** | **68,800** | **69%** | |
+
+So `MAX_BUNDLE_JOBS` is *not* the knob to raise, even though the subrequest ceiling would allow it
+(`PURGE_BATCH_LIMIT=12` + `MAX_BUNDLE_JOBS=8` costs 40 of the 50 available). Raising it is what
+breaches the write budget — the same budget whose exhaustion caused the 2026-08-27 outage.
+
+Adopted:
+
+| Knob | Was | Now | Why |
+| --- | ---: | ---: | --- |
+| `MAX_BUNDLES_PER_UTC_DAY` | 1,000 | 1,400 | +40% dispatch ceiling; stays under the 1,440 daily cron ticks `validateConfig` requires |
+| `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` | 30,000 | 24,000 | funds the above within the 75% threshold |
+| `MAX_JOBS_PER_UTC_DAY` | 12,000 | 8,000 | secondary cap, brought near the real drain rate |
+| `MAX_BUNDLE_JOBS` | 4 | 4 | unchanged — see the table above |
+
+**Why lowering ingress raises useful throughput.** Ingress was admitting up to 12,000 jobs/day
+against a 4,000/day drain. The surplus never became LLM calls; it became a growing queue that spent
+DO write budget which could instead have funded dispatch. Matching admission to drain trades
+backlog depth for a 40% higher completion rate.
+
+**Cost and risk.** Dispatch-lifecycle writes rise from ~32,000 to ~39,000/day; total projected usage
+goes 62% → 69% of the daily ceiling. The per-job write figure is *derived from reading
+`coordinator.js`'s statements, not measured in production* — the 2026-08-27 retrospective is
+explicit that a knob sized against an assumed ceiling is the bug class to avoid, so the remaining
+6 points of headroom under the threshold are deliberate and the next change here should be driven by
+a measured `rows written` figure from Workers Logs rather than this estimate.
+
+**Not adopted.** Raising toward the ~66,620/day aggregate free-route provider capacity. That is a
+provider-side number; the Free-tier DO write budget is two orders of magnitude tighter and is what
+governs. Reaching it needs Workers Paid or a second DO to shard the write budget, which is
+review/43 step 4's decision, not a knob change.
+
+### 4. Producer-side quota and failure reporting
+
+- **The tournament was hard-clamped to 2 samples/run** by `min(args.samples, 2)` in `main()`, i.e.
+  ~32 jobs/day against a lane budget sized for far more. The per-run budget is now derived from
+  the registry and `llm-tournament.yml` no longer passes `--samples`, yielding 46 samples/run
+  (184 candidate + 552 comparison jobs).
+
+  One sample spends from **two** lanes with independent budgets — `len(MODELS)` candidate jobs
+  against `tournament:tag` and `len(CONTESTS) * 2` comparisons against `tournament:tag-judge` — so
+  the budget is derived per lane and the smaller taken. Dividing either lane's budget by the
+  combined job count would overrun the other (whose surplus the Worker then rejects) while
+  needlessly starving the first. Their daily budgets are split ~1:3 to match that 4:12 job ratio,
+  so both fill on the same sample count instead of one capping the run while the other idles.
+
+  Relatedly, `parse_lanes` now rejects a lane whose `max_dispatches_per_run` exceeds what its
+  `daily_write_units` funds. Four lanes shipped with that skew; a run cap above the daily budget is
+  not a harmless ceiling, because the producer submits to it and the Worker rejects the surplus —
+  wasted ingress traffic that reads as a lane failing to fill its quota.
+- **`tournament.py` and `r5_benchmark.py` built a fresh `LiteLLMBackend` inside their innermost
+  loops**, so every candidate generation and every pairwise comparison was its own Worker request —
+  the ingress shape the 2026-08-18 retrospective flagged — and `LiteLLMBackend`'s per-instance
+  daily-ingest throttle state was discarded on every call, so the client-side guard could never
+  trip. Both now share a run-scoped `PerModelBatchingBackends` collector and submit one bounded
+  `enqueue_batch` per model. This completes the Phase 4 call-site batching item for the two
+  remaining lanes.
+- **A failed submission exited 0.** It is not a deferral: nothing was queued, so no later run picks
+  it up. All four entry points now report it and exit non-zero.
+- **A 180-minute job timeout CANCELS the run** — grey in the UI, indistinguishable from a manual
+  cancellation, with every later step skipped so nothing is persisted or reported. `tag.yml` hit
+  exactly that on eight consecutive scheduled runs (2026-08-26 … 2026-09-02). The four lane steps
+  now carry a step-level timeout below the job's, so the run goes red and the post-steps still run.
+
+### 5. The lane was starving its own worker pool (measured 2026-09-04)
+
+The eight consecutive timeouts were not caused by the dispatch path at all. Instrumenting the lane
+(a heartbeat thread sampler plus checkpoint timing) found the mid-pass checkpoint was doing two
+things wrong at once:
+
+- `_checkpoint_if_due` re-anchored its interval timer **before** doing the work, so a checkpoint
+  slower than the 180s interval came due the instant it returned — the lane checkpointed
+  continuously.
+- `_run_bounded` refilled its submission window **after** `on_progress`, so the worker pool sat
+  empty for the whole checkpoint.
+
+Measured cost: **261–589s per checkpoint**, dominated by the durable state push (225–555s), not the
+local record persist (34–47s). Net effect: one item completed per ~250s cycle with eight workers
+available — one `stage start`, one `stage done`, then 229 seconds of nothing but heartbeats.
+
+The heartbeat had been actively misleading here: `PROGRESS` is registered around exactly one call
+(`llm_tag_suggestions`), which returns immediately under `BatchingDispatchBackend`, so `active work:`
+read "no tracked work active" for 172 of 180 ticks of a run that was in fact busy. The thread
+sampler exists so a busy run is never again indistinguishable from a stalled one.
+
+Verified across three runs of the same lane:
+
+| | `main` (#71) | + re-anchor (#72) | + refill & adaptive interval (#73) |
+| --- | ---: | ---: | ---: |
+| stage completions/min | 2.6 | 23.6 | **50.6** |
+| worker parallelism | ~1 item/250s | 2.9x | **5.7x** |
+| distinct sources | 3 | 11 | 11 |
+| checkpoints in run | 41 | 2 | 1 |
+| checkpoint overhead | ~continuous | — | **15%** |
+
+The interval now scales with the last checkpoint's own duration (`next_interval=1043s` after a 261s
+checkpoint) to hold overhead under ~25% of wall clock, and 9 stage completions landed *during* that
+checkpoint where the pool previously idled. **Open follow-up ([#1458](https://github.com/BashfulBits/city-meeting-podcasts/issues/1458)):**
+the push itself costs 225s, and 555s on the second checkpoint. Root-caused after this section was
+first written: the checkpoint calls `push_records_merged`, which loops **serially** over all 42
+owned sources making three network round-trips each (`list_objects` + `get_file` + `put_file`) while
+the eight-worker pool sits idle, and re-uploads every source's whole `episodes.json` unconditionally
+rather than skipping unchanged ones. `push_state`/`pull_state` were both given a bounded upload pool
+for exactly this latency-bound cost; `push_records_merged` never was. The duty-cycle bound contains
+the impact by checkpointing less often, which widens the loss window rather than reducing the cost.
 
 ## Consequences and rejected alternatives
 
