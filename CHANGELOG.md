@@ -59,6 +59,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **R6 accepted jobs no longer report false submission failures.** Meeting moments run #13
+  accepted all 14 jobs, then treated four immediate poll errors as failed submissions. Shared
+  run-scoped collectors now flush bounded enqueue batches only; durable handles retain execution
+  and schema failures for normal reconciliation and its existing bounded retry/correction policy.
+  Rejected submissions still fail the producer. This also fixes the same collector contract for
+  tags, chapters, and research lanes. No recipe/version change or artifact backfill is required.
+
 - **Granicus Worker fallback respects slice download caps on truncated probes.**
   `download_verified` in `citypods/granicus_chunked.py` previously treated `max_bytes` solely as a
   remote media cap (`total > max_bytes`), causing truncated media-fetch probes with an 8 MB cap

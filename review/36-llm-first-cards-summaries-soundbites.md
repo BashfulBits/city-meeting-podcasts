@@ -41,6 +41,19 @@ The dedicated `moments.yml` producer sends the bounded shared extraction/judge a
 v2 dispatch collector as one Worker ingress batch per run; durable handles/results remain finalized on
 later lane passes or by the deferred sweep, so batching changes request shape without changing R6
 candidate recipes, schemas, or calibration behavior.
+
+**Producer failure correction (2026-09-04):** [run #13](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/33922960526)
+accepted all 14 batched jobs (nine replays), then polled five completed, five pending, and four
+errors. The collector mislabeled those four result errors as submission failures and exited 1.
+The log does not distinguish terminal execution failure from result-validation failure; it does
+separately report four extraction recipes already blocked by the existing terminal-retry cap.
+The fix keeps collector flushes admission-only, using the same bounded enqueue recovery and
+chunking. Accepted handles stay durable for later readers/the deferred sweep, which already owns
+schema correction and terminal-failure retirement. Actual enqueue exceptions still fail the run.
+This shared collector contract applies to the other producer lanes too; direct
+`dispatch_job_batch` callers retain their immediate reconciliation. No limits, recipes, retry caps,
+or stored artifacts change, and no backfill or failure-marker reset is needed.
+
 The OpenCV face/mouth-motion analyzer is pinned and versioned behind the framing recipe; it tracks a
 confident active speaker, otherwise uses a stable group crop, honors a manual anchor, and never upscales
 below the 720-pixel square-pane policy. Redirected media is first resolved through the SSRF gate before

@@ -1197,12 +1197,52 @@ def test_batching_dispatch_backend_collects_queue_only_jobs_until_flush():
     assert len(results) == 3
     assert len(enqueue_calls) == 1
     assert len(enqueue_calls[0]["jobs"]) == 3
-    assert len(poll_calls) == 1
-    assert len(poll_calls[0]["ids"]) == 3
+    assert poll_calls == []
     assert all(isinstance(outcome.result, JobHandle) for outcome in results)
     assert all(not outcome.result.ref.startswith("batch-pending:") for outcome in results)
     assert [outcome.job.recipe_hash for outcome in results] == [job.recipe_hash for job in jobs]
     assert batching.queued_count == 0
+
+
+@pytest.mark.parametrize("poll_error", [LLMDispatchTerminalError, LLMStructuredOutputError])
+def test_collector_keeps_accepted_job_durable_for_failure_reconciliation(poll_error):
+    """R6 #13: accepted jobs with bad results are not failed submissions."""
+    from citypods.compute.llm import PerModelBatchingBackends
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = _router({":enqueue-batch": _accept_all})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.6-flash",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    backend.poll_batch = MagicMock(
+        side_effect=lambda handles: {handle.ref: poll_error("bad result") for handle in handles}
+    )
+    job = InferenceJob(
+        task="moment-extraction",
+        inputs={
+            "messages": [{"role": "user", "content": "meeting"}],
+            "llm_policy": LLMRequestPolicy(queue_only=True),
+        },
+        recipe_hash="moment-accepted-bad-result",
+    )
+    collector = BatchingDispatchBackend(backend)
+    collector.run_inference(job)
+    outcomes = collector.flush()
+
+    assert PerModelBatchingBackends.submission_errors(outcomes) == []
+    handle = outcomes[0].result
+    assert isinstance(handle, JobHandle)
+    assert look_up_deferred(storage, job.recipe_hash) == handle
+    backend.poll_batch.assert_not_called()
+    # The same error remains observable by the existing reconciliation path.
+    assert isinstance(backend.poll_batch([handle])[handle.ref], poll_error)
 
 
 def test_batching_dispatch_backend_collects_dispatch_job_batch_calls_until_flush():
