@@ -638,8 +638,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"llm-deferred-sweep: {len(seen_pending)} pending seen, {completed} completed, "
         f"{still_pending} still pending observations, {failed} failed "
-        f"({recovered_terminal_failures} terminally recovered, {submit_failed} never submitted), "
-        f"{pruned} pruned, {remaining} "
+        f"({recovered_terminal_failures} terminally recovered), "
+        f"{submit_failed} never submitted, {pruned} pruned, {remaining} "
         f"remaining, {v2_unobserved} v2 unobserved, {len(snapshot.unavailable_reads)} unavailable"
     )
     for signature, skipped in sorted(skipped_by_pool.items(), key=lambda item: -item[1]):
