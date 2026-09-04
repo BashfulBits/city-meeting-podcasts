@@ -1,5 +1,6 @@
 """Tests for bounded bundled LLM dispatch v2 Python client."""
 
+import copy
 import json
 import json as _json_module  # alias for use inside mocks whose own `json=` kwarg shadows the name
 import threading
@@ -136,6 +137,92 @@ def test_enqueue_batch_submits_jobs_and_persists_payloads_to_b2():
     # Check that payloads were written to storage via put_cas (the real storage API)
     stored_payload_keys = [k for k in storage.files if k.startswith("payloads/")]
     assert len(stored_payload_keys) == 2
+
+
+def test_enqueue_batch_stages_independent_payloads_concurrently():
+    class ConcurrentPayloadStorage(MockStorage):
+        def __init__(self):
+            super().__init__()
+            self._lock = threading.Lock()
+            self._active_payload_writes = 0
+            self.peak_payload_writes = 0
+
+        def put_cas(self, key, data, content_type, *, if_none_match=None, if_match=None):
+            if key.startswith("payloads/"):
+                with self._lock:
+                    self._active_payload_writes += 1
+                    self.peak_payload_writes = max(
+                        self.peak_payload_writes, self._active_payload_writes
+                    )
+                threading.Event().wait(0.02)
+                with self._lock:
+                    self._active_payload_writes -= 1
+            return super().put_cas(
+                key,
+                data,
+                content_type,
+                if_none_match=if_none_match,
+                if_match=if_match,
+            )
+
+    storage = ConcurrentPayloadStorage()
+    session = MagicMock()
+    session.post.side_effect = _accept_all
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://v2.example"
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    jobs = [
+        InferenceJob(
+            task="tag",
+            inputs={"messages": [{"role": "user", "content": f"payload-{index}"}]},
+            recipe_hash=f"payload-{index}",
+        )
+        for index in range(2)
+    ]
+
+    backend.enqueue_batch(jobs)
+
+    assert storage.peak_payload_writes == 2
+
+
+def test_enqueue_batch_retries_transport_with_the_same_staged_envelope():
+    storage = MockStorage()
+    session = MagicMock()
+    submitted: list[dict] = []
+
+    def post(url, json=None, **_kwargs):
+        submitted.append(copy.deepcopy(json))
+        if len(submitted) == 1:
+            raise requests.ConnectionError("response lost after enqueue")
+        job = json["jobs"][0]
+        return _mock_response(
+            json_data={"accepted": [{"id": job["id"], "submitted_id": job["id"]}], "rejected": []}
+        )
+
+    session.post.side_effect = post
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://v2.example"
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag",
+        inputs={"messages": [{"role": "user", "content": "retry"}]},
+        recipe_hash="retry-same-envelope",
+    )
+
+    result = backend.enqueue_batch([job])
+
+    assert isinstance(result[0], JobHandle)
+    assert len(submitted) == 2
+    assert submitted[0]["jobs"] == submitted[1]["jobs"]
+    assert len([key for key in storage.files if key.startswith("payloads/")]) == 1
 
 
 def test_v2_schema_correction_stages_corrected_payload_and_acks_source():
@@ -470,6 +557,48 @@ def test_enqueue_batch_server_rejections():
     assert isinstance(results[0], JobHandle)
     assert results[0].deferred_request is not None
     assert backend._daily_ingest_exhausted is True
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["purpose_write_budget_exceeded", "ingress_write_budget_reserved"],
+)
+def test_enqueue_batch_defers_per_purpose_capacity_rejections(reason):
+    storage = MockStorage()
+    session = MagicMock()
+
+    def mock_post(url, json=None, headers=None, timeout=None):
+        jobs = json.get("jobs", [])
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "accepted": [],
+                "rejected": [{"id": job["id"], "reason": reason} for job in jobs],
+            },
+        )
+
+    session.post.side_effect = mock_post
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag",
+        inputs={"messages": [{"role": "user", "content": "try tomorrow"}]},
+        recipe_hash=f"capacity-{reason}",
+    )
+
+    result = backend.enqueue_batch([job])
+
+    assert isinstance(result[0], JobHandle)
+    assert result[0].deferred_request is not None
+    assert result[0].ref.startswith(f"deferred-{reason}-")
+    assert backend._daily_ingest_exhausted is False
+    assert any(key.startswith("state/llm_deferred/") for key in storage.files)
 
 
 def test_enqueue_batch_mixed_accepted_and_rejected():
@@ -1235,10 +1364,58 @@ def test_dispatch_job_batch_isolates_a_small_whole_batch_failure():
 
     results = dispatch_job_batch(backend, jobs)
 
-    # The whole-batch call failed once, then each small recovery set member was retried alone.
-    assert call_count["enqueue"] == 1 + len(jobs)
+    # One same-envelope transport retry precedes the existing singleton recovery for a small
+    # unresolved batch.
+    assert call_count["enqueue"] == 2 + len(jobs)
     assert len(results) == 2
     assert all(isinstance(r, JobHandle) for r in results)
+
+
+def test_dispatch_job_batch_does_not_poll_a_capacity_deferral():
+    storage = MockStorage()
+    calls = {"enqueue": 0, "poll": 0}
+
+    def _enqueue(_url, json=None, **_kw):
+        calls["enqueue"] += 1
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "accepted": [],
+                "rejected": [
+                    {
+                        "id": job["id"],
+                        "reason": "purpose_write_budget_exceeded",
+                    }
+                    for job in json["jobs"]
+                ],
+            },
+        )
+
+    def _poll(*_args, **_kwargs):
+        calls["poll"] += 1
+        return _mock_response(status_code=200, json_data={"statuses": []})
+
+    session = MagicMock()
+    session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _poll})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag",
+        inputs={"messages": [{"role": "user", "content": "later"}]},
+        recipe_hash="capacity-deferred-no-poll",
+    )
+
+    results = dispatch_job_batch(backend, [job])
+
+    assert isinstance(results[0], JobHandle)
+    assert results[0].deferred_request is not None
+    assert calls == {"enqueue": 1, "poll": 0}
 
 
 def test_dispatch_job_batch_chunks_large_batch_over_one_thousand():

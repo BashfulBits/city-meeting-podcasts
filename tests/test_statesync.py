@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from datetime import UTC, datetime
 
@@ -315,6 +316,36 @@ def test_push_records_merged_preserves_concurrent_audio(tmp_path):
     assert final["transcript"]["synced"] is True
     # The local on-disk copy is rewritten to match what was pushed (so a later reuse sees the URL).
     assert load_records(state_dir, sk)["u1"]["audio"]["url"] == "NEW"
+
+
+def test_push_records_merged_pushes_independent_sources_concurrently(tmp_path):
+    class ConcurrentLocalStorage(LocalStorage):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._lock = threading.Lock()
+            self._active = 0
+            self.peak_uploads = 0
+
+        def put_file(self, key, local_path, content_type):
+            if key.endswith("/episodes.json"):
+                with self._lock:
+                    self._active += 1
+                    self.peak_uploads = max(self.peak_uploads, self._active)
+                threading.Event().wait(0.02)
+                with self._lock:
+                    self._active -= 1
+            return super().put_file(key, local_path, content_type)
+
+    bucket = ConcurrentLocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    for source_key in ("source-a", "source-b"):
+        _seed_remote(bucket, source_key, {"u1": {"uid": "u1"}})
+        save_records(state_dir, source_key, {"u1": {"uid": "u1", "tags": [source_key]}})
+
+    assert (
+        push_records_merged(bucket, state_dir, ["source-a", "source-b"], protected_blocks=()) == 2
+    )
+    assert bucket.peak_uploads == 2
 
 
 def test_push_records_merged_checks_maintenance_lease_before_writing(tmp_path):

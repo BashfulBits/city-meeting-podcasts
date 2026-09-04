@@ -135,6 +135,23 @@ BATCH_RETRY_ISOLATION_THRESHOLD = 5
 # round trips per job), so a small pool cuts the deferred sweep's runtime without adding
 # meaningful client CPU or risking provider-side rate limits -- no LLM call happens here.
 _POLL_RESULT_MAX_WORKERS = 8
+# New v2 requests have the same B2-bound shape: each payload is a distinct object, and each
+# accepted handle writes a distinct deferred record. Keep their upload/persist fan-out bounded for
+# the same reason as completed-result resolution above. The Worker still receives one ingress
+# request per transport batch.
+_BATCH_B2_IO_MAX_WORKERS = 8
+
+# The coordinator can reject a syntactically valid job because today's admission allocation is
+# spent. Those outcomes are ordinary deferred work: a later run must retry them, not record a
+# permanent submission error. Keep idempotency/model/purpose errors outside this set -- those need
+# an operator or code/config correction rather than a blind retry.
+_DEFERRED_INGRESS_REASONS = frozenset(
+    {
+        "daily_cap_exceeded",
+        "purpose_write_budget_exceeded",
+        "ingress_write_budget_reserved",
+    }
+)
 
 # --- Cloudflare AI Gateway (direct transport only) ---------------------------------------------
 # The gateway is an observability shim, not a routing decision: it proxies to the same upstream
@@ -1876,6 +1893,7 @@ class LiteLLMBackend(Backend):
 
         prepared_jobs: list[dict[str, Any]] = []
         job_meta: list[tuple[int, InferenceJob, str | None, str, str]] = []
+        payload_writes: list[tuple[str, bytes]] = []
         storage = self._storage_client()
 
         for idx in uncached_indices:
@@ -1919,11 +1937,9 @@ class LiteLLMBackend(Backend):
             if storage is not None:
                 # Unconditional PUT (no if_none_match/if_match): job_id is a fresh UUID for
                 # every call, so there is no concurrent-writer race to guard against here.
-                storage.put_cas(
-                    payload_key,
-                    canonical_payload_str.encode("utf-8"),
-                    "application/json",
-                )
+                # Stage after the pure preparation loop so these independent B2 uploads can use
+                # a small bounded pool rather than making a 1,000-job checkpoint serial.
+                payload_writes.append((payload_key, canonical_payload_str.encode("utf-8")))
 
             messages = _messages(job)
             in_tokens = estimate_tokens(messages)
@@ -1953,23 +1969,50 @@ class LiteLLMBackend(Backend):
             )
             job_meta.append((idx, job, structured_name, logical_model, job_id))
 
+        def _stage_payload(item: tuple[str, bytes]) -> None:
+            payload_key, payload_body = item
+            storage.put_cas(payload_key, payload_body, "application/json")
+
+        if payload_writes:
+            workers = min(_BATCH_B2_IO_MAX_WORKERS, len(payload_writes))
+            if workers > 1:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    for _ in pool.map(_stage_payload, payload_writes):
+                        pass
+            else:
+                _stage_payload(payload_writes[0])
+
         headers = {"content-type": "application/json"}
         if self.config.dispatch_v2_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
 
         url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:enqueue-batch")
-        try:
-            response = self._session.post(
-                url,
-                json={"jobs": prepared_jobs},
-                headers=headers,
-                timeout=self.config.timeout_seconds,
-            )
-        except requests.RequestException as exc:
-            _emit_v2_dispatch_event(
-                "enqueue-batch", batch_size=len(prepared_jobs), unknown=len(prepared_jobs)
-            )
-            raise LLMBackendError("LLM dispatch v2 enqueue-batch request failed") from exc
+        transport_retries = 0
+        for attempt in range(2):
+            try:
+                response = self._session.post(
+                    url,
+                    json={"jobs": prepared_jobs},
+                    headers=headers,
+                    timeout=self.config.timeout_seconds,
+                )
+            except requests.RequestException as exc:
+                if attempt == 0:
+                    transport_retries = 1
+                    # The coordinator may have accepted the first request even though its response
+                    # was lost. Retry the *same* prepared envelope: its ids/payload keys are
+                    # idempotent, so this avoids re-staging every B2 payload under fresh keys.
+                    _emit_v2_dispatch_event(
+                        "enqueue-batch-transport-retry",
+                        batch_size=len(prepared_jobs),
+                        transport_retry=1,
+                    )
+                    continue
+                _emit_v2_dispatch_event(
+                    "enqueue-batch", batch_size=len(prepared_jobs), unknown=len(prepared_jobs)
+                )
+                raise LLMBackendError("LLM dispatch v2 enqueue-batch request failed") from exc
+            break
 
         if response.status_code == 429:
             self._mark_daily_ingest_exhausted()
@@ -2073,6 +2116,8 @@ class LiteLLMBackend(Backend):
         deferred_count = 0
         rejected_count = 0
         unknown_count = 0
+        rejection_reasons: dict[str, int] = {}
+        deferred_writes: list[tuple[str, JobHandle]] = []
         for idx, job, structured_name, logical_model, job_id in job_meta:
             if job_id in accepted_by_submitted_id:
                 canonical_id = accepted_by_submitted_id[job_id]
@@ -2089,27 +2134,31 @@ class LiteLLMBackend(Backend):
                     structured_output=structured_name,
                     model=logical_model,
                 )
-                write_deferred(storage, job.recipe_hash, handle)
+                deferred_writes.append((job.recipe_hash, handle))
                 out[idx] = handle
             else:
                 reason = rejected_by_id.get(job_id, "unknown")
-                if reason == "daily_cap_exceeded":
+                rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+                if reason in _DEFERRED_INGRESS_REASONS:
                     deferred_count += 1
-                    self._mark_daily_ingest_exhausted()
+                    if reason == "daily_cap_exceeded":
+                        self._mark_daily_ingest_exhausted()
                     policy = (
                         job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
                     ) or getattr(job, "policy", None)
-                    out[idx] = JobHandle(
+                    handle = JobHandle(
                         task=job.task,
                         recipe_hash=job.recipe_hash,
                         backend="llm-dispatch-v2",
-                        ref=f"deferred-cap-{job.recipe_hash}",
+                        ref=f"deferred-{reason}-{job.recipe_hash}",
                         deferred_request=DeferredLLMRequest(
                             messages=tuple(_messages(job)),
                             policy=policy or LLMRequestPolicy(),
                             output_token_budget=self._output_token_budget(job),
                         ),
                     )
+                    deferred_writes.append((job.recipe_hash, handle))
+                    out[idx] = handle
                 elif reason == "idempotency_conflict":
                     rejected_count += 1
                     out[idx] = LLMBackendError(
@@ -2124,6 +2173,19 @@ class LiteLLMBackend(Backend):
                     rejected_count += 1
                     out[idx] = LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
 
+        def _persist_deferred(item: tuple[str, JobHandle]) -> None:
+            recipe_hash, handle = item
+            write_deferred(storage, recipe_hash, handle)
+
+        if deferred_writes:
+            workers = min(_BATCH_B2_IO_MAX_WORKERS, len(deferred_writes))
+            if workers > 1:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    for _ in pool.map(_persist_deferred, deferred_writes):
+                        pass
+            else:
+                _persist_deferred(deferred_writes[0])
+
         _emit_v2_dispatch_event(
             "enqueue-batch",
             batch_size=len(prepared_jobs),
@@ -2132,6 +2194,8 @@ class LiteLLMBackend(Backend):
             deferred=deferred_count,
             rejected=rejected_count,
             unknown=unknown_count,
+            transport_retry=transport_retries,
+            **{f"rejected_{reason}": count for reason, count in sorted(rejection_reasons.items())},
         )
 
         return [cast("JobResult | JobHandle | Exception", r) for r in out]
@@ -3075,10 +3139,9 @@ def dispatch_job_batch(
     `run_inference` once per job for a `queue_only=True` policy: both check `look_up_deferred`/
     write the resulting handle back per job, and both fall through the same
     `_enqueue_durable_policy_job` dispatch path -- `enqueue_batch` just does it for N jobs in one
-    SQLite transaction and one Worker request instead of N of each. `poll_batch` already filters
-    to `backend == "llm-dispatch-v2"` handles internally, so passing it every pending handle
-    (v1-backed ones included) is exactly as safe as an explicit per-handle backend check would be
-    -- see `citypods/stages.py`'s prior 2026-08-18 fix for that exact guard, now subsumed here.
+    SQLite transaction and one Worker request instead of N of each. A handle with a
+    ``deferred_request`` was never admitted by the Worker, so it is retained for a later
+    submission attempt instead of wasting a status poll against its synthetic reference.
 
     Returns one entry per input job, in the same order, each either a `JobResult`, a `JobHandle`
     still pending, or an `Exception` if that specific job's own submission failed (the caller is
@@ -3095,7 +3158,11 @@ def dispatch_job_batch(
         chunk = jobs[chunk_start : chunk_start + _WORKER_BATCH_LIMIT]
         results.extend(_enqueue_batch_with_retry(backend, chunk))
 
-    pending_handles = [r for r in results if isinstance(r, JobHandle)]
+    pending_handles = [
+        result
+        for result in results
+        if isinstance(result, JobHandle) and result.deferred_request is None
+    ]
     if not pending_handles:
         return results
     polled = _poll_batch_with_retry(backend, pending_handles)
