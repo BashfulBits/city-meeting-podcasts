@@ -1995,12 +1995,36 @@ def _run_enrich_global_queue(
     # durable state push dominates (225s then 555s), not the local record persist (47s then 34s).
     _checkpoint_cost = {"persist": 0.0, "push": 0.0, "n": 0}
 
+    def _flush_tag_batch() -> None:
+        """Durably submit the tag jobs accumulated since the prior checkpoint."""
+        if tag_batcher is None:
+            return
+        batch_outcomes = tag_batcher.flush()
+        if not batch_outcomes:
+            return
+        from citypods.compute.base import JobHandle, JobResult
+
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = _record_tag_batch_submission_failures(prepared, batch_outcomes)
+        print(
+            f"[enrich] tag LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        if failed:
+            llm_submission_failures.append(f"tags: {failed} job(s) failed to submit")
+
     def _checkpoint_if_due() -> None:
         if mid_run_checkpoint is None:
             return
         now = time.monotonic()
         if now - _last_checkpoint["t"] < _last_checkpoint["interval"]:
             return
+        # Never push provisional batch-pending handles to durable state.  Submit them first so
+        # the checkpoint records a real Worker handle (or the submission error) for retry.
+        checkpoint_start = time.monotonic()
+        _flush_tag_batch()
         persist_start = time.monotonic()
         _persist_all()
         push_start = time.monotonic()
@@ -2009,7 +2033,7 @@ def _run_enrich_global_queue(
         _checkpoint_cost["persist"] += push_start - persist_start
         _checkpoint_cost["push"] += finished - push_start
         _checkpoint_cost["n"] += 1
-        elapsed = finished - persist_start
+        elapsed = finished - checkpoint_start
         _last_checkpoint["interval"] = max(
             _CHECKPOINT_INTERVAL_SECONDS, elapsed / _MAX_CHECKPOINT_DUTY_CYCLE
         )
@@ -2204,19 +2228,7 @@ def _run_enrich_global_queue(
                     print("[enrich] tags-only pass done", flush=True)
 
     if tag_batcher is not None:
-        from citypods.compute.base import JobHandle, JobResult
-
-        batch_outcomes = tag_batcher.flush()
-        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
-        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
-        failed = _record_tag_batch_submission_failures(prepared, batch_outcomes)
-        print(
-            f"[enrich] tag LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
-            f"completed={completed} errors={failed}",
-            flush=True,
-        )
-        if failed:
-            llm_submission_failures.append(f"tags: {failed} job(s) failed to submit")
+        _flush_tag_batch()
         ctx.tag_backend = original_tag_backend
 
     if moment_batcher is not None:
@@ -2598,6 +2610,7 @@ def _build_impl(
     # throughput bound and its ingress write budget are set side by side rather than in two
     # files that can disagree.
     tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
+    tag_prelabeler_max_dispatches = lane_for("topic-tags:prelabeler").max_dispatches_per_run
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
@@ -3017,6 +3030,7 @@ def _build_impl(
         lane=lane,
         tag_llm_deadline=tag_llm_deadline,
         tag_max_dispatches=tag_max_dispatches,
+        tag_prelabeler_max_dispatches=tag_prelabeler_max_dispatches,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,

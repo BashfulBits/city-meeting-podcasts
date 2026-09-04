@@ -272,7 +272,10 @@ def classify_unexpected_bodies(
         recipe_hash=evidence_recipe_hash(evidence),
     )
 
-    result = backend.run_inference(job)
+    try:
+        result = backend.run_inference(job)
+    except Exception as exc:
+        raise RuntimeError("Remedy classification inference failed") from exc
     if isinstance(result, JobHandle):
         raise RuntimeError(
             "Remedy classification was deferred (no route had capacity within the deadline); "

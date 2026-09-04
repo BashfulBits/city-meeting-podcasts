@@ -59,6 +59,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Topic-tag ingress now reaches the Worker before the runner timeout.** The tag lane formerly
+  retained every new queue-only job in a process-local `BatchingDispatchBackend`; its only flush
+  was in the final epilogue, so a 165-minute step timeout could cancel the run with zero accepted
+  LLM jobs. The collector now flushes before each durable checkpoint, and the pre-labeler has its
+  own 1,250-dispatch producer cap rather than continuing after tagger capacity has filled. The
+  Worker remains authoritative for ingress and daily quotas; this changes no recipe, artifact,
+  pipeline version, or backfill behavior.
+
 - **Tag/moments lanes no longer spend a whole run checkpointing.** The mid-pass checkpoint
   re-anchored its interval timer *before* doing its work, so a checkpoint slower than the 180s
   interval came due the instant it returned and the lane checkpointed continuously; and
@@ -224,6 +232,15 @@ Phase R (Research-Tool Surface)._
   starts a resumable bounded tag backfill. No output pipeline-version bump is introduced.
 
 ### Fixed
+
+- **Gemini direct AI Gateway routing and remedy workflow resilience.** Fixes 404 client errors when
+  routing direct Gemini calls through Cloudflare AI Gateway by mapping Gemini's path prefix to
+  `/v1beta` instead of `/v1beta/openai`, matching LiteLLM's native Google AI Studio adapter
+  (`VertexLLM`) which calls `{api_base}/models/{model}:generateContent`. Preserves the
+  `/v1beta/openai` base in `config/provider_limits.yml` and worker dispatch payloads for Cloudflare
+  Workers compatibility. Broadens exception handling in `classify_unexpected_bodies` and
+  `scripts/remedy_unexpected_bodies.py` to catch all inference exceptions, preventing workflow
+  crashes and guaranteeing report generation on classification failures.
 
 - **Airforce 429 retry-after guarantees are now authoritative in LLM Dispatch v2.** A parsed
   provider delay is no longer capped or jittered downward; it becomes a route-level `blocked_until`
