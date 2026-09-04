@@ -1123,6 +1123,46 @@ def test_batching_dispatch_backend_collects_dispatch_job_batch_calls_until_flush
     assert len(enqueue_calls[0]["jobs"]) == 2
 
 
+def test_batching_dispatch_backend_flushes_only_after_its_progress_threshold():
+    """A coordinator can checkpoint small durable batches without flushing every job."""
+    storage = MockStorage()
+    enqueue_calls = []
+
+    def _enqueue(url, json=None, **_kw):
+        enqueue_calls.append(json)
+        return _accept_all(url, json=json)
+
+    session = MagicMock()
+    session.post.side_effect = _router({":enqueue-batch": _enqueue, ":poll-batch": _accept_all})
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    batching = BatchingDispatchBackend(backend)
+    for index in range(2):
+        batching.run_inference(
+            InferenceJob(
+                task="tag",
+                inputs={
+                    "messages": [{"role": "user", "content": f"tag {index}"}],
+                    "llm_policy": LLMRequestPolicy(queue_only=True),
+                },
+                recipe_hash=f"threshold-{index}",
+            )
+        )
+
+    assert batching.flush_if_ready(3) == []
+    assert batching.queued_count == 2
+    assert batching.flush_if_ready(2)
+    assert batching.queued_count == 0
+    assert len(enqueue_calls) == 1
+    assert len(enqueue_calls[0]["jobs"]) == 2
+
+
 def test_batching_dispatch_backend_pairs_a_rejected_job_with_its_exception():
     """A mixed bulk response preserves the accepted handle and the rejected recipe."""
     storage = MockStorage()

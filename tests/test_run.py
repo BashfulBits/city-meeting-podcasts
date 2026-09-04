@@ -3003,6 +3003,69 @@ def test_tag_lane_pre_filters_candidate_episodes(tmp_path, monkeypatch):
     assert tag_stage.processed == [ep_dirty]
 
 
+def test_tag_lane_limits_candidate_window_to_the_largest_purpose_cap(tmp_path):
+    """A capped tag run only schedules the newest useful ingress window."""
+    from citypods.ops.workqueue import BacklogPolicy
+    from citypods.run import SourcePipeline, _run_enrich_global_queue
+    from citypods.stages import StageContext
+
+    taxonomy_file = tmp_path / "taxonomy.yml"
+    taxonomy_file.write_text(
+        "version: 1\nsource_refs: {x: 'https://example.test'}\n"
+        "tags:\n  - id: housing\n    source_refs: [x]\n    rules: {include: [housing]}\n"
+    )
+    episodes = [_dated_ep("old", 3), _dated_ep("middle", 2), _dated_ep("new", 1)]
+    city = _bare_city("test-city")
+
+    class _FakeProvider:
+        def fetch_episodes(self):
+            return episodes
+
+    class _CountingStage:
+        name = "tags"
+
+        def __init__(self):
+            self.processed = []
+
+        def process(self, provider, city, items, ctx):
+            self.processed.extend(items)
+            return StageStats(self.name)
+
+    tag_stage = _CountingStage()
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=True,
+        lane="tag",
+        taxonomy_path=taxonomy_file,
+        tag_max_dispatches=1,
+        tag_prelabeler_max_dispatches=0,
+    )
+    # The production cap applies only when an LLM producer exists. The counting stage never calls
+    # this object; it lets the runner take the same candidate-window branch as the live tag lane.
+    ctx.tag_backend = object()
+    pipeline = SourcePipeline(
+        state_dir=tmp_path / "state",
+        stages=[tag_stage],
+        ctx=ctx,
+        full_artifact_episodes=2000,
+        metadata_retention_episodes=10000,
+    )
+    pipeline.fetch_merge_from_records = lambda city, key: (_FakeProvider(), episodes, {}, 0)
+    pipeline.persist_source = lambda key, eps, persisted, notes=None: None
+
+    _run_enrich_global_queue(
+        pipeline,
+        [city],
+        source_cache=None,
+        max_workers=1,
+        policy=BacklogPolicy.from_site_config({"backlog_priority": [{"recency": "desc"}]}),
+    )
+
+    assert tag_stage.processed == [episodes[2]]
+
+
 def test_tag_batch_submission_failure_replaces_provisional_defer_with_error():
     """A rejected batched tag job must not be persisted as a pending worker handle."""
     from citypods.run import _record_tag_batch_submission_failures

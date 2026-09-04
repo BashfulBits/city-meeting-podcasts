@@ -1894,6 +1894,26 @@ def _run_enrich_global_queue(
 
     # 2) Global candidate queue: each source's materialized set, ordered across sources by policy.
     candidates = _order_global_candidates(prepared, policy)
+    if ctx.lane == "tag" and ctx.tag_backend is not None:
+        # A tag run's useful new ingress is bounded by its separately budgeted producer purposes.
+        # Do not enqueue a 24k-record backlog merely to discover the cap deep inside TagsStage:
+        # every item after this newest-first window would be deferred without creating an LLM job.
+        # The larger allowance covers both tagger work and the evaluator-only retry case.
+        tag_caps = [
+            cap
+            for cap in (ctx.tag_max_dispatches, ctx.tag_prelabeler_max_dispatches)
+            if cap is not None
+        ]
+        if tag_caps:
+            tag_candidate_limit = max(tag_caps)
+            omitted = max(0, len(candidates) - tag_candidate_limit)
+            candidates = candidates[:tag_candidate_limit]
+            if omitted:
+                print(
+                    f"[enrich] tag candidate window: limit={tag_candidate_limit} "
+                    f"deferred={omitted}",
+                    flush=True,
+                )
     # Register every alias before worker submission so new duplicate artifacts choose one
     # deterministic source prefix regardless of which candidate thread reaches AudioStage first.
     for key, ep in candidates:
@@ -1994,6 +2014,32 @@ def _run_enrich_global_queue(
     # prime suspect for the unaccounted time with no number attached to it either way. It was: the
     # durable state push dominates (225s then 555s), not the local record persist (47s then 34s).
     _checkpoint_cost = {"persist": 0.0, "push": 0.0, "n": 0}
+    # Keep at most this many newly prepared tag jobs in process memory.  Each flush is an
+    # independent durable dispatch operation, so a runner timeout can only strand the small tail
+    # accumulated since the last progress callback rather than every job prepared in the run.
+    _TAG_BATCH_FLUSH_SIZE = 100
+
+    def _flush_tag_batch(*, force: bool = False) -> None:
+        """Durably submit a bounded tag batch and surface any ingress failures."""
+        if tag_batcher is None:
+            return
+        batch_outcomes = (
+            tag_batcher.flush() if force else tag_batcher.flush_if_ready(_TAG_BATCH_FLUSH_SIZE)
+        )
+        if not batch_outcomes:
+            return
+        from citypods.compute.base import JobHandle, JobResult
+
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = _record_tag_batch_submission_failures(prepared, batch_outcomes)
+        print(
+            f"[enrich] tag LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        if failed:
+            llm_submission_failures.append(f"tags: {failed} job(s) failed to submit")
 
     def _checkpoint_if_due() -> None:
         if mid_run_checkpoint is None:
@@ -2001,6 +2047,9 @@ def _run_enrich_global_queue(
         now = time.monotonic()
         if now - _last_checkpoint["t"] < _last_checkpoint["interval"]:
             return
+        # Never push provisional batch-pending handles to durable state.  Submit them first so
+        # the checkpoint records a real Worker handle (or the submission error) for retry.
+        _flush_tag_batch(force=True)
         persist_start = time.monotonic()
         _persist_all()
         push_start = time.monotonic()
@@ -2067,6 +2116,13 @@ def _run_enrich_global_queue(
         if isinstance(ctx.tag_backend, LiteLLMBackend) and ctx.tag_backend.config.dispatch_v2_url:
             tag_batcher = BatchingDispatchBackend(ctx.tag_backend)
             ctx.tag_backend = tag_batcher
+
+    def _on_tag_progress() -> None:
+        # Flush at a small, fixed threshold instead of retaining every prepared job until the
+        # pass exits.  `_run_bounded` invokes this from its coordinator thread, never from a
+        # producer worker, so it cannot block the workers that are still constructing jobs.
+        _flush_tag_batch()
+        _checkpoint_if_due()
 
     # Chapter lanes use the same per-episode global queue as audio, but their stages already
     # know how to build/finalize a durable job independently.  Interpose the same collector used
@@ -2171,7 +2227,7 @@ def _run_enrich_global_queue(
                     _transcript_task,
                     tx,
                     max_pending=max_workers,
-                    on_progress=_checkpoint_if_due,
+                    on_progress=_on_tag_progress,
                 )
             print("[enrich] transcript pass done", flush=True)
 
@@ -2199,24 +2255,12 @@ def _run_enrich_global_queue(
                             _tags_only_task,
                             tx_tags_only,
                             max_pending=max_workers,
-                            on_progress=_checkpoint_if_due,
+                            on_progress=_on_tag_progress,
                         )
                     print("[enrich] tags-only pass done", flush=True)
 
     if tag_batcher is not None:
-        from citypods.compute.base import JobHandle, JobResult
-
-        batch_outcomes = tag_batcher.flush()
-        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
-        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
-        failed = _record_tag_batch_submission_failures(prepared, batch_outcomes)
-        print(
-            f"[enrich] tag LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
-            f"completed={completed} errors={failed}",
-            flush=True,
-        )
-        if failed:
-            llm_submission_failures.append(f"tags: {failed} job(s) failed to submit")
+        _flush_tag_batch(force=True)
         ctx.tag_backend = original_tag_backend
 
     if moment_batcher is not None:
@@ -2598,6 +2642,7 @@ def _build_impl(
     # throughput bound and its ingress write budget are set side by side rather than in two
     # files that can disagree.
     tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
+    tag_prelabeler_max_dispatches = lane_for("topic-tags:prelabeler").max_dispatches_per_run
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
@@ -3017,6 +3062,7 @@ def _build_impl(
         lane=lane,
         tag_llm_deadline=tag_llm_deadline,
         tag_max_dispatches=tag_max_dispatches,
+        tag_prelabeler_max_dispatches=tag_prelabeler_max_dispatches,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,

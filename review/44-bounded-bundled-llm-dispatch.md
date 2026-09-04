@@ -948,6 +948,16 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   recipe rather than left as a provisional deferral; the normal next run can resubmit it. This
   changes only transport request shape: no tag recipe, candidate schema, pipeline version, or
   backfill behavior changes.
+- **Corrected (2026-09-04): bounded topic-tag production and incremental durable flushes.** The
+  original topic-tag collector deferred its sole `flush()` until both tag passes completed. A
+  165-minute Actions step timeout therefore discarded its entire in-memory collection before a
+  single `enqueue-batch` request, despite the configured 2,000 tagger jobs/run and 1,250
+  pre-labeler jobs/run. The runner now limits the newest-first tag candidate queue to the larger
+  purpose allowance, enforces the pre-labeler's independent producer cap, and flushes each 100-job
+  batch from the coordinator progress path (and before any durable record checkpoint). A hard kill
+  can strand only the small post-flush tail; accepted jobs retain their normal deferred-record
+  recovery. The Worker remains the authority for per-day quota admission. No recipe, artifact,
+  pipeline version, or backfill behavior changes.
 - **Implemented (2026-08-22): run-batched chapter dispatch and complete deferred-sweep polling.**
   The chapter-agenda and chapter-locator lanes now use the same run-scoped collector around their
   existing per-episode finalizers. Each stage prepares the global queue, flushes bounded

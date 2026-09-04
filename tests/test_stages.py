@@ -1234,6 +1234,79 @@ def test_tag_no_quota_preserves_rule_tags_and_candidate_ledger(tmp_path):
     )
 
 
+def test_tag_prelabeler_quota_defers_before_storage_fetch(tmp_path):
+    """A spent evaluator allowance must stop the pass before it re-reads the backlog."""
+    from citypods.llm_evaluation import config_from_mapping, policy_fingerprint
+    from citypods.stages import TagsStage
+    from citypods.tags import TAG_PROMPT_VERSION, load_taxonomy, tag_input_fingerprint
+
+    class _CountingStorage:
+        def __init__(self, inner):
+            self._inner = inner
+            self.reads = 0
+
+        def exists(self, key):
+            self.reads += 1
+            return self._inner.exists(key)
+
+        def get_file(self, key, local_path):
+            self.reads += 1
+            return self._inner.get_file(key, local_path)
+
+    ep = _ep("prelabeler-quota")
+    ep.tags_llm_recipe_hash = "already-resolved"
+    ep.llm_tag_candidates = [
+        {
+            "candidate_id": "rule-candidate",
+            "source_kind": "rule",
+            "candidate_state": "active",
+        }
+    ]
+    ctx = _ctx(tmp_path)
+    ctx.tag_backend = object()
+    ctx.llm_evaluation_config = {
+        "prelabeler": {
+            "enabled": True,
+            "model": "gemini/gemini-3.1-flash-lite",
+            "prompt_version": "1",
+            "llm_schema_version": "1",
+        }
+    }
+    taxonomy = load_taxonomy(ctx.taxonomy_path)
+    evaluation_state = {"version": 1, "reviews": {}, "matrix": [], "trend": []}
+    ep.tags_input_fingerprint = tag_input_fingerprint(
+        ep,
+        taxonomy,
+        llm_enabled=True,
+        llm_route="litellm:",
+        prompt_version=TAG_PROMPT_VERSION,
+        admission_policy=policy_fingerprint(
+            config_from_mapping(ctx.llm_evaluation_config), evaluation_state
+        ),
+    )
+    ep.tags_spec_hash = "current"
+    ctx.tag_prelabeler_dispatch_exhausted.set()
+    ctx.storage = _CountingStorage(ctx.storage)
+
+    stats = TagsStage().process(None, _city(), [ep], ctx)
+
+    assert stats.defer_reasons.get("tag-prelabeler-no-quota") == 1
+    assert ctx.storage.reads == 0
+
+
+def test_tag_prelabeler_dispatch_cap_tracks_queued_work(tmp_path):
+    """The evaluator has an independent per-run producer allowance."""
+    ctx = _ctx(tmp_path)
+    ctx.tag_prelabeler_max_dispatches = 1
+
+    assert ctx.reserve_tag_prelabeler_dispatch()
+    ctx.settle_tag_prelabeler_dispatch(True)
+
+    assert ctx.tag_prelabeler_dispatches_count == 1
+    assert ctx.tag_prelabeler_dispatch_exhausted.is_set()
+    assert not ctx.reserve_tag_prelabeler_dispatch()
+
+
 def test_tag_dispatch_cap_is_reserved_across_concurrent_workers(tmp_path, monkeypatch):
     """Concurrent tag workers may submit at most one job when the run cap is one."""
     import threading
