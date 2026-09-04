@@ -587,19 +587,22 @@ leaves it at its `False` default.
 Each route contributes two generated fields (`ai_gateway_slug`, `ai_gateway_chat_path`, compiled
 from `config/provider_limits.yml`). The slug names the gateway's provider segment — Cloudflare
 requires a `custom-` prefix for custom providers, hence `custom-zai`, `custom-opencode`, and
-`custom-airforce`. The chat
-path matters because **LiteLLM appends `/chat/completions` itself**, so only the part *before*
-that suffix belongs in `api_base`:
+`custom-airforce`. For OpenAI-compatible providers, **LiteLLM appends `/chat/completions`
+itself**, so only the part *before* that suffix belongs in `api_base`. Gemini is distinct: LiteLLM
+routes `gemini/...` models through its native Google AI Studio adapter (`VertexLLM`), which
+appends `/models/{model}:{endpoint}` rather than `/chat/completions`, so its direct gateway path
+prefix is `…/google-ai-studio/v1beta`:
 
-| Provider | Gateway `api_base` | Resulting request URL |
+| Provider | Direct gateway `api_base` | Resulting request URL |
 |---|---|---|
-| `gemini` | `…/google-ai-studio/v1beta/openai` | `…/v1beta/openai/chat/completions` |
+| `gemini` | `…/google-ai-studio/v1beta` | `…/google-ai-studio/v1beta/models/{model}:generateContent` |
 | `mistral` | `…/mistral/v1` | `…/mistral/v1/chat/completions` |
 | `deepseek`, `zai`, … | `…/deepseek` | `…/deepseek/chat/completions` |
 
-Dropping that prefix is a silent 404 on Gemini and Mistral only — the providers whose OpenAI-compat
-endpoint is not at the root — which is why the routing tests assert the full request URL rather
-than `api_base` alone.
+Dropping the prefix is a silent 404 on Gemini and Mistral — the providers whose endpoints do not
+live at the provider root — which is why the routing tests assert the full request URL rather than
+`api_base` alone. Worker dispatch payloads (`direct=False`) retain Gemini's OpenAI-compatible
+`…/v1beta/openai` upstream, matching the Worker's own HTTP dispatch implementation.
 
 ##### Custom-provider routing: the undocumented `v1` rewrite
 
