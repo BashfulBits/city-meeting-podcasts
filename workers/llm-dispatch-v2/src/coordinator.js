@@ -978,6 +978,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return { status: "purpose_not_registered" };
       }
       const reservation = reservations[purpose] || {};
+      // ...and the same lane route allowlist, for the same reason. A retry re-admits the job
+      // against the lane's budget (it consumes today's job count and write units below), so a
+      // source whose lane has since dropped the route it names would spend that budget on a
+      // route the lane no longer declares. Checked before any budget arithmetic, matching
+      // enqueueBatch: a job that cannot legally run must not consume the day's admission.
+      if (this._modelsOutsideLane(source, reservation, this._dispatchLimits()).length > 0) {
+        return { status: "model_not_in_lane" };
+      }
       const purposeUsage = [...sql.exec(
         "SELECT write_units FROM ingress_purpose WHERE utc_day = ? AND purpose = ?",
         sched.utc_day,

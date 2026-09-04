@@ -1112,3 +1112,41 @@ test("superseding a stale row still goes through the lane route allowlist", asyn
     "a rejected supersession must not requeue the stale row"
   );
 });
+
+test("schemaRetry applies the lane route allowlist, not just the registration gate", async () => {
+  // A retry re-admits the job: it consumes the day's job count and charges write units against
+  // the lane. So a source whose lane has since dropped the route it names would spend that
+  // lane's budget on a route the lane no longer declares -- the same hole the enqueue gate
+  // closes, through a different door.
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_MODELS,
+  });
+
+  await coordinator.enqueueBatch([
+    laneModelJob("retry-source", "topic-tags:tagger", ["gemini/gemini-3.1-flash-lite"]),
+  ]);
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'retry-source'");
+
+  // The lane is narrowed to a different route between the original admission and the retry.
+  coordinator.env.INGRESS_PURPOSE_RESERVATIONS = JSON.stringify({
+    "topic-tags:tagger": {
+      reserved_write_units: 0,
+      daily_write_units: 10000,
+      models: ["some-other/model"],
+    },
+  });
+
+  assert.deepEqual(
+    await coordinator.schemaRetry("retry-source", {
+      corrected_payload_key: "payloads/retry/request.json",
+      corrected_request_digest: "retry-digest",
+      corrected_input_token_estimate: 1,
+    }),
+    { status: "model_not_in_lane" }
+  );
+  // Rejected before any budget arithmetic: no clone row, and the day's admission is untouched.
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM jobs")][0].n, 1);
+  const sched = [...sql.exec("SELECT jobs_ingested_today FROM scheduler WHERE id = 1")][0];
+  assert.equal(sched.jobs_ingested_today, 1);
+});

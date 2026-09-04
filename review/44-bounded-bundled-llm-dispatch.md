@@ -1911,7 +1911,11 @@ env var exists so an operator can reshape budgets without a redeploy and should 
 restate route lists. Both gates also run on the **supersession** path (same `idempotency_key`, new
 `request_digest`): superseding consumes no admission budget, which is precisely why it must not be
 the way around registration — a stale row whose lane has since been retired would otherwise be
-resurrected into `queued` under a purpose no reservation covers.
+resurrected into `queued` under a purpose no reservation covers. And on **`schemaRetry`**, for the
+opposite reason: a retry *does* re-admit, consuming the day's job count and charging write units,
+so a source whose lane has since dropped the route it names would spend that lane's budget on a
+route the lane no longer declares. All three admission paths now apply both gates; applying one
+half of the contract in a path that applies the other is what leaves a door open.
 
 **There is deliberately no per-run lane override.** `lane_for()` takes no `site_config`, because
 the Worker half cannot honor one: `compile_llm_lanes.py` builds `ingress_reservations.json` from
