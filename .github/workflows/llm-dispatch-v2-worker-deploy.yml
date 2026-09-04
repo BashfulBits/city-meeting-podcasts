@@ -9,7 +9,9 @@ on:
       - "workers/llm-dispatch-v2/package.json"
       - "workers/llm-dispatch-v2/package-lock.json"
       - "config/provider_limits.yml"
+      - "config/site_config.yml"
       - "scripts/compile_llm_limits.py"
+      - "scripts/compile_llm_lanes.py"
       - ".github/workflows/llm-dispatch-v2-worker-deploy.yml"
   workflow_dispatch:
 
@@ -45,6 +47,13 @@ jobs:
             echo "::error::dispatch_limits.json is out of date — recompile with 'python scripts/compile_llm_limits.py' and commit both the YAML and the JSON together."
             exit 1
           fi
+
+      # The per-purpose ingress reservation map is compiled from site_config.yml's `llm_lanes`
+      # block rather than hand-maintained as a wrangler var. The hand-maintained version had
+      # drifted to reserve capacity under purposes no client sends, silently starving the real
+      # lanes; this gate is what keeps the two halves of that contract in step.
+      - name: Compile ingress purpose reservations
+        run: python scripts/compile_llm_lanes.py --check
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:

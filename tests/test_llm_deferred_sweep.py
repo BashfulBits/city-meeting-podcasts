@@ -877,3 +877,99 @@ def test_sweep_does_not_retain_batch_poll_response_bodies_in_logs(monkeypatch, c
     err = capsys.readouterr().err
     assert "RuntimeError" in err
     assert "sensitive upstream response body" not in err
+
+
+def _queue_only_handle(index: int, purpose: str = "topic-tags") -> JobHandle:
+    return JobHandle(
+        task="tag",
+        recipe_hash=f"r-{index}",
+        backend="litellm",
+        ref=f"deferred:r-{index}",
+        structured_output="topic-tags",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "meeting text"},),
+            policy=LLMRequestPolicy(purpose=purpose),
+            output_token_budget=321,
+        ),
+    )
+
+
+def _stub_sweep_environment(monkeypatch, handles):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "make_storage",
+        lambda *_args, **_kwargs: SimpleNamespace(cas_capable=True),
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep, "load_deferred_snapshot", lambda *_args, **_kwargs: _snapshot(handles)
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
+    monkeypatch.setattr(
+        llm_deferred_sweep, "prune_expired_deferred_snapshot", lambda *_args, **_kwargs: 0
+    )
+
+
+def test_sweep_exits_non_zero_when_a_submission_is_rejected(monkeypatch, capsys):
+    """A failed enqueue queued nothing, so no later run picks it up on its own.
+
+    The sweep counted these into `failed`, printed a line, and still exited 0 -- the same silent
+    failure the producer lanes were fixed for. The Worker's registration gate makes this reachable
+    in production: a legacy record carrying the bare `topic-tags` purpose is upgraded to queue-only
+    here (see `durable_purposes`) and rejected at ingress as `purpose_not_registered`.
+    """
+    _stub_sweep_environment(monkeypatch, [_queue_only_handle(index) for index in range(3)])
+
+    class MockBackend:
+        name = "litellm"
+        config = SimpleNamespace(dispatch_v2_url="https://dispatch.example")
+
+        def enqueue_batch(self, jobs):
+            raise RuntimeError("purpose_not_registered")
+
+        def poll_batch(self, poll_handles):
+            return {handle.ref: None for handle in poll_handles}
+
+        def reconcile(self, handle):  # pragma: no cover - the batch path handles every record
+            raise AssertionError("a rejected submission must not fall through to reconcile()")
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 1
+    captured = capsys.readouterr()
+    assert '"submit_failed": 3' in captured.out
+    assert "3 record(s) failed to submit" in captured.err
+    # Still pending, not lost: a later sweep retries them.
+    assert "they remain pending" in captured.err
+
+
+def test_sweep_still_exits_zero_when_only_a_reconcile_fails(monkeypatch, capsys):
+    """A reconcile failure is an ordinary per-record outcome for a reconciler, not a run failure.
+
+    Exiting non-zero on `failed` as a whole would make this workflow permanently red on one bad
+    payload, which is why the submission count is tracked separately from it.
+    """
+    # `r6-moments` is not in `durable_purposes`, so this record is not upgraded to queue-only and
+    # takes the reconcile path rather than the batch-submission path.
+    _stub_sweep_environment(monkeypatch, [_queue_only_handle(0, purpose="r6-moments")])
+
+    class MockBackend:
+        name = "litellm"
+        config = SimpleNamespace(dispatch_v2_url="https://dispatch.example")
+
+        def enqueue_batch(self, jobs):  # pragma: no cover - nothing is queue-only here
+            raise AssertionError("a non-durable purpose must not be submitted to the Worker")
+
+        def poll_batch(self, poll_handles):
+            return {handle.ref: None for handle in poll_handles}
+
+        def reconcile(self, handle):
+            raise RuntimeError("provider returned malformed JSON")
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: MockBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    captured = capsys.readouterr()
+    assert '"failed": 1' in captured.out
+    assert '"submit_failed": 0' in captured.out
+    assert "failed to submit" not in captured.err

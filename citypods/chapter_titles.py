@@ -16,13 +16,24 @@ from dataclasses import dataclass
 
 from citypods.agenda_text import AgendaTitleCandidate, agenda_title_similarity
 from citypods.chapter_locator import select_locator_models
+from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import estimate_tokens
 
 AGENDA_ITEM_EXTRACTOR_CONTRACT = "agenda-chapter-item-extract"
 TITLE_EQUIVALENCE_CONTRACT = "agenda-chapter-title-equivalence"
-AGENDA_PRODUCTION_MODEL = "mistral/mistral-medium-latest"
-# Pinned strictly to Mistral Medium for high-fidelity agenda chapter extraction.
-AGENDA_PRODUCTION_MODELS = (AGENDA_PRODUCTION_MODEL,)
+
+# Resolved from config/site_config.yml's `llm_lanes["chapter-agenda"]` rather than hard-coded, so
+# every dispatching lane's route choice is visible in one place (review/44 Phase 4). Pinned
+# strictly to Mistral Medium for high-fidelity agenda chapter extraction.
+#
+# THESE STRINGS ARE PART OF THE RECIPE HASH (see `stages.py`'s `chapter_agenda` recipe). Changing
+# the configured model therefore re-queues every agenda artifact in the catalog. That is a
+# deliberate backfill, not a config tweak: per AGENTS.md, a change here must state its backfill
+# story in the PR and CHANGELOG. `tests/test_llm_lanes.py` pins the current values so an
+# accidental edit fails there rather than quietly rebuilding weeks of work.
+_AGENDA_LANE = lane_for("chapter-agenda")
+AGENDA_PRODUCTION_MODEL = _AGENDA_LANE.primary_model
+AGENDA_PRODUCTION_MODELS = _AGENDA_LANE.models
 
 _PROMPT_VARIANT_INSTRUCTIONS = {
     "standard": "",

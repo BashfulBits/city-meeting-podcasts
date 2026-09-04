@@ -1,0 +1,110 @@
+{
+  "_generated_by": "scripts/compile_llm_lanes.py",
+  "_source": "config/site_config.yml (llm_lanes)",
+  "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
+  "global_write_budget": 24000,
+  "reserved_total": 13000,
+  "reservations": {
+    "chapter-agenda": {
+      "reserved_write_units": 2000,
+      "daily_write_units": 4000,
+      "models": [
+        "mistral/mistral-medium-latest"
+      ],
+      "dispatch_shape": "pooled",
+      "write_units_per_job": 4
+    },
+    "chapter-locator": {
+      "reserved_write_units": 2000,
+      "daily_write_units": 4000,
+      "models": [
+        "gemini/gemini-3.5-flash-lite"
+      ],
+      "dispatch_shape": "pooled",
+      "write_units_per_job": 4
+    },
+    "r5-benchmark:judge": {
+      "reserved_write_units": 0,
+      "daily_write_units": 4000,
+      "models": [
+        "google/gemma-4-31b-it"
+      ],
+      "dispatch_shape": "pooled",
+      "write_units_per_job": 4
+    },
+    "r5-benchmark:tag": {
+      "reserved_write_units": 0,
+      "daily_write_units": 4000,
+      "models": [
+        "gemini/gemini-3.1-flash-lite",
+        "google/gemma-4-26b-a4b-it",
+        "zai/glm-4.7-flash"
+      ],
+      "dispatch_shape": "per_model",
+      "write_units_per_job": 4
+    },
+    "r6-judge": {
+      "reserved_write_units": 1000,
+      "daily_write_units": 3000,
+      "models": [
+        "qwen/qwen3.8-27b",
+        "zai/glm-4.7",
+        "gemini/gemini-3.6-flash",
+        "openai/gpt-oss-120b"
+      ],
+      "dispatch_shape": "pooled",
+      "write_units_per_job": 7
+    },
+    "r6-moments": {
+      "reserved_write_units": 1000,
+      "daily_write_units": 3000,
+      "models": [
+        "gemini/gemini-3.6-flash",
+        "gemini/gemini-3.5-flash",
+        "gemini/gemini-3.5-flash-lite",
+        "gemini/gemini-3.1-flash-lite"
+      ],
+      "dispatch_shape": "pooled",
+      "write_units_per_job": 7
+    },
+    "topic-tags:prelabeler": {
+      "reserved_write_units": 2000,
+      "daily_write_units": 5000,
+      "models": [
+        "google/gemma-4-31b-it"
+      ],
+      "dispatch_shape": "pooled",
+      "write_units_per_job": 4
+    },
+    "topic-tags:tagger": {
+      "reserved_write_units": 4000,
+      "daily_write_units": 9000,
+      "models": [
+        "gemini/gemini-3.1-flash-lite"
+      ],
+      "dispatch_shape": "pooled",
+      "write_units_per_job": 4
+    },
+    "tournament:tag": {
+      "reserved_write_units": 500,
+      "daily_write_units": 750,
+      "models": [
+        "gemini/gemini-3.1-flash-lite",
+        "deepseek/deepseek-v4-flash",
+        "zai/glm-4.7-flash",
+        "google/gemma-4-26b-a4b-it"
+      ],
+      "dispatch_shape": "per_model",
+      "write_units_per_job": 4
+    },
+    "tournament:tag-judge": {
+      "reserved_write_units": 500,
+      "daily_write_units": 2250,
+      "models": [
+        "google/gemma-4-31b-it"
+      ],
+      "dispatch_shape": "pooled",
+      "write_units_per_job": 4
+    }
+  }
+}

@@ -9,6 +9,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from citypods.compute.llm_lanes import lane_for
 from citypods.moment_evaluation import load_state, record_review, save_state, state_lock
 from citypods.review_issues import render_decision_block, require_one_decision
 
@@ -191,7 +192,9 @@ def package(args: argparse.Namespace) -> int:
     )
     manifest: dict[str, object] = {"version": 1, "children": children}
     if not children:
-        models = list((site.get("moments") or {}).get("llm_models") or [])
+        # Reads the lane registry rather than the removed `moments.llm_models` key; an empty
+        # list here would make _dispatch_blocked_reason report no blocked route at all.
+        models = list(lane_for("r6-moments").models)
         reason = _dispatch_blocked_reason(state_dir, models)
         if reason:
             manifest["reasons"] = [reason]
