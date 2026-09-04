@@ -80,6 +80,19 @@ Phase R (Research-Tool Surface)._
   - Removed an unnecessary `apt-get install -y ffmpeg` step and eliminated a redundant second
     `pull_canonical_state` invocation in Step 2.
 
+- **Chapter agenda extraction and boundary locator runtime bottlenecks eliminated.** Eliminates
+  redundant 7m 29s replay loop for deferred `JobHandle` items by recording pending status and
+  job refs directly in memory after batch flush. Short-circuits agenda text and transcript
+  artifact downloads from B2 storage when deferred jobs are already pending. Wires
+  `max_dispatches_per_run` from `config/site_config.yml` into runner `StageContext` for
+  `chapter-agenda` and `chapter-locator` producer dispatch caps (1,000 max dispatches), avoiding
+  quota breaches and Worker write rejections. Pre-filters global queue candidate episodes in
+  `_run_enrich_global_queue` down to eligible episodes needing work (dropping candidate queue
+  from 25,031 to ~1,777 items). In batch-prepare pass: enabled stats accumulation and deducted
+  provisional `llm-pending` counts for replayed `JobResult` items or submission errors to eliminate
+  double-counting while preserving accurate stage totals. No recipe, artifact, or pipeline
+  version changes.
+  
 - **Granicus Worker fallback respects slice download caps on truncated probes.**
   `download_verified` in `citypods/granicus_chunked.py` previously treated `max_bytes` solely as a
   remote media cap (`total > max_bytes`), causing truncated media-fetch probes with an 8 MB cap

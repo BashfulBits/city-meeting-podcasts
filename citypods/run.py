@@ -1865,6 +1865,32 @@ def _run_enrich_global_queue(
                         prelabeler_llm_schema_version=prelabeler_llm_schema_version,
                     )
                 ]
+    elif ctx.lane == "chapter-agenda":
+        from citypods.stages import episode_needs_chapter_agenda
+
+        for state in prepared.values():
+            state["candidate_episodes"] = [
+                ep for ep in state["candidate_episodes"] if episode_needs_chapter_agenda(ep)
+            ]
+    elif ctx.lane == "chapter-locator":
+        from citypods.stages import episode_needs_chapter_locator
+
+        for state in prepared.values():
+            state["candidate_episodes"] = [
+                ep for ep in state["candidate_episodes"] if episode_needs_chapter_locator(ep)
+            ]
+    elif ctx.lane == "chapter":
+        from citypods.stages import (
+            episode_needs_chapter_agenda,
+            episode_needs_chapter_locator,
+        )
+
+        for state in prepared.values():
+            state["candidate_episodes"] = [
+                ep
+                for ep in state["candidate_episodes"]
+                if episode_needs_chapter_agenda(ep) or episode_needs_chapter_locator(ep)
+            ]
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
     # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). Neither
     # ProviderTranscriptDiarizeStage (works purely off an already-aligned transcript's text) nor
@@ -2128,7 +2154,7 @@ def _run_enrich_global_queue(
                 with ThreadPoolExecutor(max_workers=max_workers) as pool:
                     _run_bounded(
                         pool,
-                        lambda item, stage=chapter_stage: _run_for(item, [stage], accumulate=False),
+                        lambda item, stage=chapter_stage: _run_for(item, [stage]),
                         candidates,
                         max_pending=max_workers,
                     )
@@ -2145,6 +2171,15 @@ def _run_enrich_global_queue(
                     llm_submission_failures.extend(
                         f"{chapter_stage.name}: {error}" for error in submission_errors[:5]
                     )
+                if replay_items or submission_errors:
+                    with pipeline._guard:
+                        t = pipeline.stage_totals[chapter_stage.name]
+                        deduct = len(replay_items) + len(submission_errors)
+                        t["backlog"] = max(0, t["backlog"] - deduct)
+                        if "llm-pending" in t["defer_reasons"]:
+                            t["defer_reasons"]["llm-pending"] = max(
+                                0, t["defer_reasons"]["llm-pending"] - deduct
+                            )
                 print(
                     f"[enrich] {chapter_stage.name} LLM batch flush: jobs={len(batch_outcomes)} "
                     f"replay={len(replay_items)} errors={failed}",
@@ -2353,17 +2388,27 @@ def _chapter_batch_replay_items(
     """Select queued chapter items for post-flush finalization and record failed submissions.
 
     Chapter stages intentionally keep their artifact-specific prepare/finalize logic.  During the
-    collector pass they see a provisional ``batch-pending:`` handle; after flush we replay only
-    jobs that acquired a real durable result/handle.  A failed batch submission must not leave a
-    misleading provisional ref in the persisted episode, and remains dirty for the next lane run.
+    collector pass they see a provisional ``batch-pending:`` handle; after flush we update
+    deferred handles directly in memory, and replay only jobs that acquired an immediate result.
+    A failed batch submission must not leave a misleading provisional ref in the persisted
+    episode, and remains dirty for the next lane run.
     """
+    from citypods.compute.base import JobHandle, JobResult
+
     failures = {
         outcome.job.recipe_hash: outcome.result
         for outcome in outcomes
         if isinstance(outcome.result, Exception)
     }
-    replay_recipes = {
-        outcome.job.recipe_hash for outcome in outcomes if not isinstance(outcome.result, Exception)
+    handles = {
+        outcome.job.recipe_hash: outcome.result
+        for outcome in outcomes
+        if isinstance(outcome.result, JobHandle)
+    }
+    completed_recipes = {
+        outcome.job.recipe_hash: outcome.result
+        for outcome in outcomes
+        if isinstance(outcome.result, JobResult)
     }
     replay: list[tuple[str, Episode]] = []
     recorded_failures: set[str] = set()
@@ -2393,7 +2438,18 @@ def _chapter_batch_replay_items(
                 submission_errors.append(f"{episode.uid}: chapter locator: {reason}")
             episode.generated_agenda_candidates = state
             recorded_failures.add(recipe)
-        elif recipe in replay_recipes:
+        elif recipe in handles:
+            handle = handles[recipe]
+            if stage_name == "chapter_agenda":
+                state["status"] = "pending"
+                state["job_ref"] = handle.ref
+                if handle.model:
+                    state["model"] = handle.model
+            else:
+                state["locator_status"] = "pending"
+                state["locator_job_ref"] = handle.ref
+            episode.generated_agenda_candidates = state
+        elif recipe in completed_recipes:
             replay.append(item)
 
     unrecorded = len(failures) - len(recorded_failures)
@@ -2611,6 +2667,8 @@ def _build_impl(
     # files that can disagree.
     tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
     tag_prelabeler_max_dispatches = lane_for("topic-tags:prelabeler").max_dispatches_per_run
+    chapter_agenda_max_dispatches = lane_for("chapter-agenda").max_dispatches_per_run
+    chapter_locator_max_dispatches = lane_for("chapter-locator").max_dispatches_per_run
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
@@ -3031,6 +3089,8 @@ def _build_impl(
         tag_llm_deadline=tag_llm_deadline,
         tag_max_dispatches=tag_max_dispatches,
         tag_prelabeler_max_dispatches=tag_prelabeler_max_dispatches,
+        chapter_agenda_max_dispatches=chapter_agenda_max_dispatches,
+        chapter_locator_max_dispatches=chapter_locator_max_dispatches,
     )
     pipeline = SourcePipeline(
         state_dir=state_dir,
