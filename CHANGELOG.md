@@ -59,6 +59,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Topic-tag ingress now reaches the Worker before the runner timeout.** The tag lane formerly
+  retained every new queue-only job in a process-local `BatchingDispatchBackend`; its only flush
+  was in the final epilogue, so a 165-minute step timeout could cancel the run with zero accepted
+  LLM jobs. The collector now flushes before each durable checkpoint, and the pre-labeler has its
+  own 1,250-dispatch producer cap rather than continuing after tagger capacity has filled. The
+  Worker remains authoritative for ingress and daily quotas; this changes no recipe, artifact,
+  pipeline version, or backfill behavior.
+
 - **Tag/moments lanes no longer spend a whole run checkpointing.** The mid-pass checkpoint
   re-anchored its interval timer *before* doing its work, so a checkpoint slower than the 180s
   interval came due the instant it returned and the lane checkpointed continuously; and

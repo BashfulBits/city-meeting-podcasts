@@ -484,6 +484,15 @@ class StageContext:
     tag_dispatches_count: int = 0
     tag_dispatches_reserved: int = 0
     tag_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
+    # The evaluator is a separately budgeted ingress purpose. It must have its own producer cap:
+    # sharing the tagger cap lets rule-candidate evaluation keep traversing the catalog after the
+    # tagger quota has filled, which was enough to prevent the run-level batch flush from ever
+    # reaching the Worker.
+    tag_prelabeler_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
+    tag_prelabeler_max_dispatches: int | None = None
+    tag_prelabeler_dispatches_count: int = 0
+    tag_prelabeler_dispatches_reserved: int = 0
+    tag_prelabeler_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
     # UTC wall-clock deadline handed to the LLM tag scheduler as its dispatch ``deadline_at``.
     # Topic tags use asynchronous dispatch without an artificial deadline (None), avoiding
     # runner-side sleep pacing and preventing queued worker tasks from timing out.
@@ -516,6 +525,36 @@ class StageContext:
                 and self.tag_dispatches_count >= self.tag_max_dispatches
             ):
                 self.tag_llm_dispatch_exhausted.set()
+
+    def reserve_tag_prelabeler_dispatch(self) -> bool:
+        """Atomically reserve one per-run pre-labeler dispatch slot before submitting work."""
+        with self.tag_prelabeler_dispatches_lock:
+            if self.tag_prelabeler_dispatch_exhausted.is_set():
+                return False
+            if (
+                self.tag_prelabeler_max_dispatches is not None
+                and self.tag_prelabeler_dispatches_count + self.tag_prelabeler_dispatches_reserved
+                >= self.tag_prelabeler_max_dispatches
+            ):
+                self.tag_prelabeler_dispatch_exhausted.set()
+                return False
+            self.tag_prelabeler_dispatches_reserved += 1
+            return True
+
+    def settle_tag_prelabeler_dispatch(self, dispatched: bool) -> None:
+        """Release a pre-labeler reservation and count it only when work was queued."""
+        with self.tag_prelabeler_dispatches_lock:
+            self.tag_prelabeler_dispatches_reserved = max(
+                0, self.tag_prelabeler_dispatches_reserved - 1
+            )
+            if not dispatched:
+                return
+            self.tag_prelabeler_dispatches_count += 1
+            if (
+                self.tag_prelabeler_max_dispatches is not None
+                and self.tag_prelabeler_dispatches_count >= self.tag_prelabeler_max_dispatches
+            ):
+                self.tag_prelabeler_dispatch_exhausted.set()
 
 
 @dataclass
@@ -1692,6 +1731,27 @@ class TagsStage:
                 stats.defer("tag-budget-stop", sample=ep.uid or ep.guid)
                 continue
 
+            # Once every still-needed LLM purpose has exhausted its own run allowance, this
+            # unchanged record cannot make useful progress. Do not read its agenda/transcript
+            # merely to rediscover that fact: the 2026-09-04 tag run continued doing exactly that
+            # across more than 15k records after the tagger allowance had filled.
+            tagger_unavailable = llm_pending and ctx.tag_llm_dispatch_exhausted.is_set()
+            prelabeler_unavailable = (
+                prelabeler_pending and ctx.tag_prelabeler_dispatch_exhausted.is_set()
+            )
+            if (
+                inputs_unchanged
+                and not ledger_missing
+                and (tagger_unavailable or prelabeler_unavailable)
+                and (not llm_pending or tagger_unavailable)
+                and (not prelabeler_pending or prelabeler_unavailable)
+            ):
+                stats.defer(
+                    "tag-llm-no-quota" if tagger_unavailable else "tag-prelabeler-no-quota",
+                    sample=ep.uid or ep.guid,
+                )
+                continue
+
             titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
             chapters = chapter_tag_inputs(ep, ctx.storage)
             chapter_fingerprint = [
@@ -2142,6 +2202,10 @@ class TagsStage:
                 if pending_prelabels:
                     if ctx.stop is not None and ctx.stop():
                         stats.defer("tag-prelabeler-stop", sample=ep.uid or ep.guid)
+                    elif ctx.tag_prelabeler_dispatch_exhausted.is_set():
+                        stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
+                    elif not ctx.reserve_tag_prelabeler_dispatch():
+                        stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
                     else:
                         prelabel_recipe = hashlib.sha1(
                             json.dumps(
@@ -2158,6 +2222,7 @@ class TagsStage:
                                 separators=(",", ":"),
                             ).encode()
                         ).hexdigest()[:16]
+                        dispatch_settled = False
                         try:
                             prelabel_call_metadata: dict[str, Any] = {}
                             with PROGRESS.track(
@@ -2182,6 +2247,12 @@ class TagsStage:
                                     llm_schema_version=prelabeler_llm_schema_version,
                                     call_metadata_out=prelabel_call_metadata,
                                 )
+                            queued_prelabel = bool(
+                                prelabel_dispatched
+                                and _prelabel_resolved_model != "payload-too-large"
+                            )
+                            ctx.settle_tag_prelabeler_dispatch(queued_prelabel)
+                            dispatch_settled = True
                             remember_call_attempt(
                                 ep,
                                 purpose="topic-tags:prelabeler",
@@ -2211,6 +2282,8 @@ class TagsStage:
                                     sample=ep.uid or ep.guid,
                                 )
                         except Exception as exc:  # noqa: BLE001 — evaluator is item-local
+                            if not dispatch_settled:
+                                ctx.settle_tag_prelabeler_dispatch(False)
                             remember_call_attempt(
                                 ep,
                                 purpose="topic-tags:prelabeler",
