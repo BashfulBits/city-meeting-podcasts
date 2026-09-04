@@ -53,6 +53,21 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Tag/moments lanes no longer spend a whole run checkpointing.** The mid-pass checkpoint
+  re-anchored its interval timer *before* doing its work, so a checkpoint slower than the 180s
+  interval came due the instant it returned and the lane checkpointed continuously; and
+  `_run_bounded` refilled its submission window *after* `on_progress`, so the worker pool sat empty
+  for that whole window. Measured on an instrumented run: the checkpoint takes **272s then 589s**,
+  dominated by the durable state push (225s/555s) rather than the local record persist (47s/34s).
+  Together these had the tag lane completing **one item per ~250s cycle** with eight workers
+  available — one `stage start`, one `stage done`, then 229 seconds of nothing but heartbeats,
+  repeatedly — and being cancelled at GitHub's 180-minute job timeout on three consecutive runs
+  (2026-09-03/04). The interval now re-anchors after the checkpoint, scales so checkpoint cost stays
+  under ~25% of wall clock, and the window is refilled before the callback so workers keep going
+  across it. The re-anchor alone raised measured throughput from **2.6 to 23.6 stage completions per
+  minute (9x)**. Adds a thread-activity sampler to the heartbeat, since its existing `active work:`
+  line only covers one instrumented call and reported "no tracked work active" for a busy run.
+
 - **LLM producer lanes no longer fail silently.** A failed batch submission is not a deferral —
   nothing is queued, so no later run picks it up — but the enrichment, tournament, and benchmark
   entry points counted the failures, printed a line, and exited 0. All four now report them and

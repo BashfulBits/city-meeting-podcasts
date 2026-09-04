@@ -122,6 +122,11 @@ class LaneConfig:
 
 
 def _coerce_int(raw: Any, *, purpose: str, field: str) -> int:
+    """Read one non-negative integer budget field, naming the lane and field on failure.
+
+    ``bool`` is rejected explicitly because it is an ``int`` subclass in Python, so a stray
+    ``daily_write_units: true`` would otherwise silently become a budget of 1.
+    """
     if isinstance(raw, bool) or not isinstance(raw, int):
         raise ValueError(f"llm_lanes[{purpose!r}].{field} must be an integer, got {raw!r}")
     if raw < 0:

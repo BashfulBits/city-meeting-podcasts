@@ -131,6 +131,11 @@ def compile_reservations(lanes: dict[str, LaneConfig], budget: int) -> dict[str,
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Compile the reservation map, or with ``--check`` verify the committed copy is current.
+
+    ``--check`` is what the deploy workflow runs: it never writes, and exits non-zero with a
+    ``::error::`` annotation naming the recompile command when the YAML and JSON disagree.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--check",

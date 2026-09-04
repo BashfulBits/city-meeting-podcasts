@@ -910,8 +910,9 @@ def _run_bounded(
     in ``_run_enrich_global_queue``).
 
     **The submission window is refilled BEFORE ``on_progress`` runs, not after.** ``on_progress``
-    is not necessarily cheap: the tag lane's checkpoint persists every prepared source, which
-    measured ~230 seconds against a 180-second interval in production. Refilling afterwards meant
+    is not necessarily cheap: the tag lane's checkpoint measured **272s and 589s** against a
+    180-second interval in production (run #72, 2026-09-04), dominated by the durable state push
+    (225s then 555s) rather than the local record persist (47s then 34s). Refilling afterwards meant
     the pool sat at whatever depth the drain left it -- often empty -- for that entire window, so
     a lane with eight workers completed *one* item per ~250-second cycle and spent ~90% of a
     three-hour run with idle workers (runs #70/#71/#72, 2026-09-03/04: one `stage start`, one
@@ -1979,20 +1980,27 @@ def _run_enrich_global_queue(
     # is opt-in per call site -- `None` for every other lane -- and runs from
     # `_run_bounded`'s own calling thread between drain cycles, never concurrently with itself.
     _CHECKPOINT_INTERVAL_SECONDS = 180.0
-    _last_checkpoint = {"t": time.monotonic()}
+    # A checkpoint must not cost more than this share of the run. Measured on run #72
+    # (2026-09-04), one checkpoint took 272s and the next 589s -- both far above the 180s floor --
+    # so a fixed interval would spend most of a run checkpointing even with the re-anchor below.
+    # Requiring the next interval to be at least `1/_MAX_CHECKPOINT_DUTY_CYCLE` times the last
+    # checkpoint's own duration bounds that overhead at ~25% of wall clock while still
+    # checkpointing as often as the push cost allows. The floor keeps the fast case unchanged.
+    _MAX_CHECKPOINT_DUTY_CYCLE = 0.25
+    _last_checkpoint = {"t": time.monotonic(), "interval": _CHECKPOINT_INTERVAL_SECONDS}
     # Cumulative cost of the mid-pass checkpoint, reported on every checkpoint. The per-stage
     # `seconds=` timings accounted for only 53 of a 180-minute tag run (2026-09-03) and nothing
-    # measured the checkpoint path, which runs 47 times in a run of that length -- so it was a
-    # prime suspect for the unaccounted time with no number attached to it either way.
+    # measured the checkpoint path, which runs ~41-47 times in a run of that length -- so it was a
+    # prime suspect for the unaccounted time with no number attached to it either way. It was: the
+    # durable state push dominates (225s then 555s), not the local record persist (47s then 34s).
     _checkpoint_cost = {"persist": 0.0, "push": 0.0, "n": 0}
 
     def _checkpoint_if_due() -> None:
         if mid_run_checkpoint is None:
             return
         now = time.monotonic()
-        if now - _last_checkpoint["t"] < _CHECKPOINT_INTERVAL_SECONDS:
+        if now - _last_checkpoint["t"] < _last_checkpoint["interval"]:
             return
-        _last_checkpoint["t"] = now
         persist_start = time.monotonic()
         _persist_all()
         push_start = time.monotonic()
@@ -2001,16 +2009,23 @@ def _run_enrich_global_queue(
         _checkpoint_cost["persist"] += push_start - persist_start
         _checkpoint_cost["push"] += finished - push_start
         _checkpoint_cost["n"] += 1
+        elapsed = finished - persist_start
+        _last_checkpoint["interval"] = max(
+            _CHECKPOINT_INTERVAL_SECONDS, elapsed / _MAX_CHECKPOINT_DUTY_CYCLE
+        )
         print(
             f"[enrich] checkpoint #{_checkpoint_cost['n']}: "
             f"persist={push_start - persist_start:.1f}s push={finished - push_start:.1f}s "
             f"cumulative persist={_checkpoint_cost['persist']:.0f}s "
-            f"push={_checkpoint_cost['push']:.0f}s",
+            f"push={_checkpoint_cost['push']:.0f}s "
+            f"next_interval={_last_checkpoint['interval']:.0f}s",
             flush=True,
         )
         # Re-anchor AFTER the checkpoint so its own cost is not charged against the next
         # interval; otherwise a checkpoint slower than the interval would fire back-to-back
-        # forever and the interval would silently stop meaning anything.
+        # forever and the interval would silently stop meaning anything. That is exactly what
+        # runs #70/#71 did: a 272-589s checkpoint against a 180s interval came due the instant it
+        # returned, so the lane checkpointed continuously and completed one item per cycle.
         _last_checkpoint["t"] = time.monotonic()
 
     # R6's extraction and independent judge stages are invoked one episode/candidate at a time by

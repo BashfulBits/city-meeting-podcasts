@@ -1218,7 +1218,7 @@ def test_run_bounded_keeps_the_window_full_while_on_progress_runs(monkeypatch):
     """A slow ``on_progress`` must not starve the pool.
 
     Regression for the tag lane's 180-minute runs (#70/#71/#72, 2026-09-03/04). The mid-pass
-    checkpoint persists every prepared source and measured ~230s against a 180s interval; because
+    checkpoint measured 272s and 589s against a 180s interval (run #72); because
     the window was refilled only *after* ``on_progress`` returned, eight workers completed exactly
     one item per ~250s cycle -- one `stage start`, one `stage done`, then 229 seconds of nothing
     but heartbeats. Asserting on submission ORDER (rather than timing) keeps this deterministic:
