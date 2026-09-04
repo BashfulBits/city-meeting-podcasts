@@ -191,3 +191,75 @@ def test_download_verified_rejects_range_object_over_media_cap(
 
     with pytest.raises(ChunkedDownloadError, match="media cap"):
         download_verified(fake_url, "secret", tmp_path / "media.mp4", chunk_bytes=4, max_bytes=7)
+
+
+def test_download_verified_caps_download_bytes_for_range_download(
+    monkeypatch, fake_url, tmp_path: Path
+):
+    payload = bytes(range(250)) * 40  # 10,000 bytes
+    session = _Session(payload)
+    monkeypatch.setattr("citypods.granicus_chunked.requests.Session", lambda: session)
+
+    dest = tmp_path / "media.mp4"
+    assert (
+        download_verified(
+            fake_url,
+            "secret",
+            dest,
+            chunk_bytes=100,
+            max_download_bytes=250,
+        )
+        == 250
+    )
+    assert dest.read_bytes() == payload[:250]
+    assert session.ranges == ["bytes=0-99", "bytes=100-199", "bytes=200-249"]
+
+
+def test_download_verified_caps_download_bytes_for_full_response(
+    monkeypatch, fake_url, tmp_path: Path
+):
+    payload = b"0123456789" * 100  # 1,000 bytes
+    session = _Session(payload, ignore_ranges=True)
+    monkeypatch.setattr("citypods.granicus_chunked.requests.Session", lambda: session)
+
+    dest = tmp_path / "media.mp4"
+    assert (
+        download_verified(
+            fake_url,
+            "secret",
+            dest,
+            chunk_bytes=100,
+            max_download_bytes=25,
+        )
+        == 25
+    )
+    assert dest.read_bytes() == payload[:25]
+
+
+def test_download_verified_smaller_than_max_download_bytes(monkeypatch, fake_url, tmp_path: Path):
+    payload = b"short-payload"
+    session = _Session(payload)
+    monkeypatch.setattr("citypods.granicus_chunked.requests.Session", lambda: session)
+
+    dest = tmp_path / "media.mp4"
+    assert download_verified(
+        fake_url,
+        "secret",
+        dest,
+        chunk_bytes=100,
+        max_download_bytes=5000,
+    ) == len(payload)
+    assert dest.read_bytes() == payload
+
+
+@pytest.mark.parametrize("bad_max", [0, -1])
+def test_download_verified_rejects_non_positive_max_download_bytes(
+    fake_url, tmp_path: Path, bad_max
+):
+    with pytest.raises(ValueError, match="max_download_bytes must be positive"):
+        download_verified(
+            fake_url,
+            "secret",
+            tmp_path / "media.mp4",
+            max_download_bytes=bad_max,
+        )
