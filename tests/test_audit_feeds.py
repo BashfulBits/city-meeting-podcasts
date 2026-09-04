@@ -1578,3 +1578,53 @@ def test_resolve_affected_sources_missing_or_invalid_state():
     with mock.patch.object(_mod, "_gh", return_value=_mod.json.dumps({"body": ""})):
         slugs = _resolve_affected_sources(1238, github_repo="test/repo")
     assert slugs is None
+
+
+def test_main_issue_without_evidence_scopes_cities(monkeypatch):
+    from citypods.models import City
+
+    city1 = City(
+        slug="dallas-city-council",
+        provider="granicus",
+        source={"feed_url": "u1"},
+        podcast_title="D1",
+        podcast_author="Dallas",
+        podcast_email="",
+        podcast_description="",
+    )
+    city2 = City(
+        slug="other-city",
+        provider="granicus",
+        source={"feed_url": "u2"},
+        podcast_title="O1",
+        podcast_author="Other",
+        podcast_email="",
+        podcast_description="",
+    )
+
+    monkeypatch.setattr(_mod, "load_site_config", lambda *_: {})
+    monkeypatch.setattr(_mod, "load_city_configs", lambda *_: [city1, city2])
+    monkeypatch.setattr(_mod, "pull_canonical_state", lambda *_: "docs")
+    monkeypatch.setattr(_mod, "_resolve_affected_sources", lambda *_, **__: {"dallas-city-council"})
+
+    audited_cities: list[City] = []
+    monkeypatch.setattr(
+        _mod,
+        "audit_all",
+        lambda cities, **kwargs: audited_cities.extend(cities) or [],
+    )
+    monkeypatch.setattr(_mod, "reconcile", lambda *args, **kwargs: 0)
+
+    res = _mod.main(["--issue", "1238", "--dry-run"])
+    assert res == 0
+    assert len(audited_cities) == 1
+    assert audited_cities[0].slug == "dallas-city-council"
+
+
+def test_main_issue_without_evidence_unresolvable_errors(monkeypatch):
+    monkeypatch.setattr(_mod, "load_site_config", lambda *_: {})
+    monkeypatch.setattr(_mod, "load_city_configs", lambda *_: [])
+    monkeypatch.setattr(_mod, "_resolve_affected_sources", lambda *_, **__: None)
+
+    with pytest.raises(SystemExit):
+        _mod.main(["--issue", "1238"])

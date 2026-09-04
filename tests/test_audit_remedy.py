@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 import pytest
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from citypods.audit import collect_unexpected_bodies
 from citypods.audit_remedy import (
@@ -31,6 +31,7 @@ from citypods.audit_remedy import (
     validate_proposals,
 )
 from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.structured import register_response_model
 from citypods.models import City, Episode
 from tests._cas_fake import MemStorage
 
@@ -411,6 +412,14 @@ def test_ensure_remedy_contract():
     model = ensure_remedy_contract()
     assert model is RemedyOutput
     assert ensure_remedy_contract() is RemedyOutput
+
+
+def test_ensure_remedy_contract_rejects_conflict():
+    class IncompatibleModel(BaseModel):
+        foo: str
+
+    with pytest.raises(ValueError, match="conflicting structured-output contract"):
+        register_response_model(REMEDY_CONTRACT, IncompatibleModel)
 
 
 def test_classify_raises_when_the_request_is_deferred(evidence):

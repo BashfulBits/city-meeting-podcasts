@@ -2048,7 +2048,7 @@ def audit_all(
             resolve = lambda ep, _p=provider, _s=src: _p.resolve_media_url(ep, _s)  # noqa: E731
 
         view_counts = None
-        if hasattr(provider, "fetch_view_counts"):
+        if not unexpected_evidence_only and hasattr(provider, "fetch_view_counts"):
             try:
                 view_counts = provider.fetch_view_counts(city.source)
             except ProviderError:
@@ -2090,7 +2090,9 @@ def audit_all(
             unexpected_evidence_only=unexpected_evidence_only,
         )
         findings.extend(city_findings)
-        if src_key not in unexpected_checked_sources and not any(
+        if unexpected_evidence_only:
+            unexpected_checked_sources.add(src_key)
+        elif src_key not in unexpected_checked_sources and not any(
             finding.check == "unreachable" for finding in city_findings
         ):
             unexpected_checked_sources.add(src_key)

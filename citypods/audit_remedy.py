@@ -37,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from citypods.compute.base import InferenceJob, JobHandle
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
 from citypods.compute.llm_policy import LLMRequestPolicy
-from citypods.compute.structured import register_response_model, response_model
+from citypods.compute.structured import register_response_model
 from citypods.feed_yaml_edit import add_body_any, add_body_include, assert_only_addition
 from citypods.models import City, Episode
 
@@ -94,20 +94,7 @@ class RemedyOutput(BaseModel):
 
 def ensure_remedy_contract() -> type[RemedyOutput]:
     """Register the remedy output schema for structured LLM completion."""
-    cached = getattr(ensure_remedy_contract, "model", None)
-    if cached is not None:
-        return cached
-
-    try:
-        model = response_model(REMEDY_CONTRACT)
-        ensure_remedy_contract.model = model
-        return model
-    except ValueError:
-        pass
-
-    model = register_response_model(REMEDY_CONTRACT, RemedyOutput)
-    ensure_remedy_contract.model = model
-    return model
+    return register_response_model(REMEDY_CONTRACT, RemedyOutput)
 
 
 @dataclass

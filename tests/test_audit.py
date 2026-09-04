@@ -28,6 +28,7 @@ from citypods.audit import (
 )
 from citypods.bodies import BodyInclusion
 from citypods.models import Episode, FeedLifecycle
+from citypods.providers.base import ProviderError
 
 NOW = datetime(2026, 5, 30, tzinfo=UTC)
 
@@ -975,3 +976,57 @@ def test_audit_all_unexpected_evidence_only_deduplicates_sources(monkeypatch, tm
         now=NOW,
     )
     assert len(fetch_counts) == 1
+
+
+def test_audit_all_unexpected_evidence_only_deduplicates_unreachable_sources(monkeypatch, tmp_path):
+    city1 = _city()
+    city1.slug = "c1"
+    city1.source = {"feed_url": "https://example.com/source", "body": "Council"}
+
+    city2 = _city()
+    city2.slug = "c2"
+    city2.source = {"feed_url": "https://example.com/source", "body": "Zoning"}
+
+    fetch_counts: list[str] = []
+
+    class FailingProvider:
+        def fetch_episodes(self, source, **kwargs):
+            fetch_counts.append(source.get("feed_url"))
+            raise ProviderError("Connection failed")
+
+    monkeypatch.setattr("citypods.providers.get_provider", lambda _name: FailingProvider())
+
+    audit_all(
+        [city1, city2],
+        site_config={},
+        output_dir=tmp_path,
+        unexpected_evidence_only=True,
+        now=NOW,
+    )
+    assert len(fetch_counts) == 1
+
+
+def test_audit_all_unexpected_evidence_only_skips_view_counts(monkeypatch, tmp_path):
+    city = _city()
+    city.source = {"feed_url": "https://example.com/source", "body": "Council"}
+
+    view_count_calls: list[dict] = []
+
+    class MockProviderWithViews:
+        def fetch_episodes(self, source, **kwargs):
+            return []
+
+        def fetch_view_counts(self, source):
+            view_count_calls.append(source)
+            return {}
+
+    monkeypatch.setattr("citypods.providers.get_provider", lambda _name: MockProviderWithViews())
+
+    audit_all(
+        [city],
+        site_config={},
+        output_dir=tmp_path,
+        unexpected_evidence_only=True,
+        now=NOW,
+    )
+    assert len(view_count_calls) == 0

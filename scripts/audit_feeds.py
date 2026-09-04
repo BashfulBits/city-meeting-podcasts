@@ -1907,7 +1907,7 @@ def main(argv: list[str] | None = None) -> int:
     cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
     if args.city:
         cities = [c for c in cities if c.slug == args.city or c.city_entity == args.city]
-    elif args.issue and args.unexpected_body_evidence:
+    elif args.issue:
         affected_slugs = _resolve_affected_sources(
             args.issue, github_repo=site_config.get("github_repo")
         )
@@ -1918,12 +1918,14 @@ def main(argv: list[str] | None = None) -> int:
                 f"issue #{args.issue}: scoped audit to {len(cities)} feed(s) across "
                 f"{len(affected_keys)} source(s)"
             )
-        else:
+        elif args.unexpected_body_evidence:
             cities = [
                 c
                 for c in cities
                 if source_body_filter(c.source) is not None or source_body_inclusions(c.source)
             ]
+        else:
+            ap.error(f"could not resolve affected feeds from issue #{args.issue}")
     elif args.unexpected_body_evidence:
         cities = [
             c

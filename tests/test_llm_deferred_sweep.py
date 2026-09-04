@@ -43,6 +43,7 @@ def test_sweep_registers_known_contracts_before_reconciling():
 
     assert response_model("topic-tags") is not None
     assert response_model("moment-extraction") is not None
+    assert response_model("unexpected-body-remedy") is not None
 
 
 def test_sweep_reports_zero_when_storage_is_unavailable(monkeypatch, capsys):
