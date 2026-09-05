@@ -996,10 +996,11 @@ def _mark_stage_complete(
     if stage.name == "native_diarize":
         from citypods.speakers import pilot_selected
 
+        canonical_city_slug = city.city_entity or city.slug
         episodes = [
             ep
             for ep in episodes
-            if pilot_selected(speaker_config or {}, city.slug, ep.body)
+            if pilot_selected(speaker_config or {}, canonical_city_slug, ep.body)
             and stage_output_pointer(stage.name, ep)
         ]
     state = "complete-empty" if stage.name in _STAGE_EMPTY_OK else "complete"
@@ -6760,7 +6761,7 @@ class ProviderTranscriptDiarizeStage:
             city.full_artifact_episodes,
             feed_visible_per_body=city.max_episodes,
             policy=ctx.backlog_policy,
-            city_slug=city.slug,
+            city_slug=city.city_entity or city.slug,
             work_class="provider-transcript-diarize",
         ):
             label = ep.uid or ep.guid
@@ -6915,16 +6916,17 @@ class NativeDiarizeStage:
         # of accepting a handle that no worker can complete.
         backend = LocalBackend(asr_mod)
         src_key = source_key(city)
+        canonical_city_slug = city.city_entity or city.slug
         for ep in _materialize_set(
             episodes,
             city.full_artifact_episodes,
             feed_visible_per_body=city.max_episodes,
             policy=ctx.backlog_policy,
-            city_slug=city.slug,
+            city_slug=canonical_city_slug,
             work_class="transcript-diarize",
         ):
             uid = ep.uid or ep.guid
-            if not pilot_selected(config, city.slug, ep.body):
+            if not pilot_selected(config, canonical_city_slug, ep.body):
                 # Clear stale no-output markers from the old exact-body matcher. A later pass will
                 # see newly selected bodies immediately, while valid selected artifacts reuse.
                 marker = ep.stage_completion.get(self.name)
@@ -7075,13 +7077,14 @@ class SpeakerIdentityStage:
             if ctx.speaker_turn_evidence_path is not None
             else {"episodes": {}}
         )
+        canonical_city_slug = city.city_entity or city.slug
         for ep in episodes:
-            if not pilot_selected(ctx.speaker_config or {}, city.slug, ep.body):
+            if not pilot_selected(ctx.speaker_config or {}, canonical_city_slug, ep.body):
                 continue
             if ep.minutes_roster or ep.minutes_votes:
                 observe_attendance(
                     registry,
-                    city_slug=city.slug,
+                    city_slug=canonical_city_slug,
                     body=ep.body,
                     episode_uid=ep.uid or ep.guid,
                     published=ep.published,
@@ -7096,7 +7099,7 @@ class SpeakerIdentityStage:
             except (OSError, ValueError):
                 evaluation = {"reviews": []}
         for ep in episodes:
-            if not pilot_selected(ctx.speaker_config or {}, city.slug, ep.body):
+            if not pilot_selected(ctx.speaker_config or {}, canonical_city_slug, ep.body):
                 continue
             if not ep.speakers_key:
                 continue
@@ -7116,7 +7119,9 @@ class SpeakerIdentityStage:
                 private_turns, list
             ):
                 private_turns = turns
-            capture_context = pilot_capture_context(ctx.speaker_config or {}, city.slug, ep.body)
+            capture_context = pilot_capture_context(
+                ctx.speaker_config or {}, canonical_city_slug, ep.body
+            )
             if capture_context is None:
                 continue
             embedding_recipe = str(
@@ -7159,7 +7164,7 @@ class SpeakerIdentityStage:
                         words, private_turns, known_names=known_names
                     ):
                         candidate_id = reference_candidate_id(
-                            city_slug=city.slug,
+                            city_slug=canonical_city_slug,
                             body=ep.body,
                             episode_uid=ep.uid or ep.guid,
                             recipe=engine_recipe,
@@ -7172,7 +7177,7 @@ class SpeakerIdentityStage:
                         reference_rows[candidate_id] = {
                             **candidate,
                             "candidate_id": candidate_id,
-                            "city_slug": city.slug,
+                            "city_slug": canonical_city_slug,
                             "body": ep.body or "",
                             "engine_recipe": engine_recipe,
                             "episode_uid": ep.uid or ep.guid,
@@ -7181,7 +7186,7 @@ class SpeakerIdentityStage:
                             "capture_context": capture_context,
                         }
             cell = calibration_cell(
-                city.slug, ep.body, engine_recipe, capture_context=capture_context
+                canonical_city_slug, ep.body, engine_recipe, capture_context=capture_context
             )
             publish = auto_publish_allowed(
                 evaluation,
@@ -7227,7 +7232,7 @@ class SpeakerIdentityStage:
                 if not isinstance(identity, dict) or identity.get("status") != "shadow":
                     continue
                 candidate_id = shadow_candidate_id(
-                    city_slug=city.slug,
+                    city_slug=canonical_city_slug,
                     body=ep.body,
                     episode_uid=ep.uid or ep.guid,
                     recipe=engine_recipe,
@@ -7239,7 +7244,7 @@ class SpeakerIdentityStage:
                     evaluation["candidates"] = candidate_rows
                 candidate_rows[candidate_id] = {
                     "candidate_id": candidate_id,
-                    "city_slug": city.slug,
+                    "city_slug": canonical_city_slug,
                     "body": ep.body or "",
                     "engine_recipe": engine_recipe,
                     "episode_uid": ep.uid or ep.guid,

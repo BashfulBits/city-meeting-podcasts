@@ -91,16 +91,41 @@ def body_key(city_slug: str, body: str | None) -> str:
     return f"{city_slug}:{digest}"
 
 
+def _pilot_row_matches_city(row: Mapping[str, Any], city_slug: str) -> bool:
+    """Return whether a pilot row matches the given city slug or feed slug."""
+    target = str(row.get("city") or "").strip()
+    if not target:
+        return False
+    if target == "*":
+        return True
+    if target == city_slug:
+        return True
+    # Accept feed slugs that start with entity prefix
+    # (e.g. 'denton-tx-city-council' vs 'denton-tx').
+    if city_slug.startswith(f"{target}-"):
+        return True
+    return False
+
+
 def pilot_selected(config: Mapping[str, Any], city_slug: str, body: str | None) -> bool:
     """Return whether an opt-in R7 pilot explicitly includes this city/body pair.
 
     An empty allowlist is deliberately not interpreted as "all".  Public-name calibration is a
     sensitive rollout, so enabling the subsystem without selecting a pilot stays fail-closed.
+    To explicitly allow all cities or bodies, use wildcards ('*') or allow_all_cities: true.
     """
+    if config.get("allow_all_cities") is True:
+        if config.get("allow_all_bodies") is True:
+            return True
+        for row in config.get("pilot_bodies") or []:
+            if isinstance(row, Mapping) and _pilot_row_matches(row, body):
+                return True
+        if not config.get("pilot_bodies"):
+            return True
     for row in config.get("pilot_bodies") or []:
         if not isinstance(row, Mapping):
             continue
-        if str(row.get("city") or "") != city_slug:
+        if not _pilot_row_matches_city(row, city_slug):
             continue
         if _pilot_row_matches(row, body):
             return True
@@ -109,14 +134,20 @@ def pilot_selected(config: Mapping[str, Any], city_slug: str, body: str | None) 
 
 def _pilot_row_matches(row: Mapping[str, Any], body: str | None) -> bool:
     """Match an explicit body selector against raw provider body labels."""
-    actual = _norm(body)
     exact = _norm(row.get("body"))
+    if exact == "*" or row.get("all_bodies") is True:
+        return True
+    actual = _norm(body)
     if exact and actual == exact:
         return True
     prefixes = [_norm(row.get("body_prefix"))]
     prefixes.extend(_norm(value) for value in row.get("body_prefixes") or [])
     for prefix in prefixes:
-        if not prefix or not actual.startswith(prefix):
+        if not prefix:
+            continue
+        if prefix == "*":
+            return True
+        if not actual.startswith(prefix):
             continue
         suffix = actual[len(prefix) :].lstrip(" -:;,–—")
         if suffix.split(" ", 1)[0] in {"joint", "section"}:
@@ -137,12 +168,16 @@ def pilot_capture_context(
     for row in config.get("pilot_bodies") or []:
         if not isinstance(row, Mapping):
             continue
-        if str(row.get("city") or "") != city_slug or not _pilot_row_matches(row, body):
+        if not _pilot_row_matches_city(row, city_slug) or not _pilot_row_matches(row, body):
             continue
         context = str(row.get("capture_context") or "").strip()
         if not context:
+            if row.get("city") == "*" or row.get("body") == "*":
+                return f"{city_slug}-audio-v1"
             raise ValueError("each R7 pilot body requires a non-empty capture_context")
         return context
+    if config.get("allow_all_cities") is True:
+        return f"{city_slug}-audio-v1"
     return None
 
 

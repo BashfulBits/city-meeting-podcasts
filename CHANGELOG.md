@@ -17,6 +17,21 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Resolve R7 speaker diarization pilot city entity scoping and generalize allowlisting
+  (GH#1274).** The scheduled R7 diarization workflow (`r7-diarization.yml`) completed in 30–40ms
+  reporting `0 ran, 0 errors` because `stages.py` passed feed slugs (e.g.
+  `denton-tx-board-of-ethics` or `denton-tx-city-council`) to `pilot_selected()`, while
+  `config/site_config.yml` scopes pilot bodies by city entity (`denton-tx`), resulting in every
+  episode being skipped as `pilot-not-selected`. Updated `stages.py` (`NativeDiarizeStage`,
+  `ProviderTranscriptDiarizeStage`, `SpeakerIdentityStage`, and `_mark_stage_complete`) to use
+  canonical entity slugs (`city.city_entity or city.slug`), and enhanced `citypods/speakers.py`
+  (`pilot_selected` and `pilot_capture_context`) to support entity-prefixed feed slugs, wildcard
+  city selectors (`city: "*"`), wildcard bodies (`body: "*"` or `all_bodies: true`), and global
+  allowlisting (`allow_all_cities: true`). Unconfigured capture contexts under wildcard rules
+  gracefully fall back to `{city_slug}-audio-v1` while preserving fail-closed security for empty
+  pilot lists. No pipeline version change; existing content-addressed artifacts remain valid and
+  unprocessed pilot episodes will be picked up on subsequent runs.
+
 - **Chunk the deferred sweep's queue-only v2 submission at the Worker's batch limit
   (`scripts/llm_deferred_sweep.py`).** The sweep handed `LiteLLMBackend.enqueue_batch` its entire
   queue-only backlog in one call; the ingress Worker caps a single enqueue-batch request at
