@@ -1935,7 +1935,7 @@ def _run_enrich_global_queue(
             for cap in (ctx.tag_max_dispatches, ctx.tag_prelabeler_max_dispatches)
             if cap is not None
         ]
-        if tag_caps:
+        if tag_caps and max(tag_caps) > 0:
             # Sizing the candidate queue to the larger purpose allowance plus a headroom factor
             # avoids scheduling thousands of older backlog items that would inevitably be deferred
             # once the quota caps fill.

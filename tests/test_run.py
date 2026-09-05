@@ -3089,6 +3089,98 @@ def test_tag_lane_pre_filters_candidate_episodes(tmp_path, monkeypatch):
     assert tag_stage.processed == [ep_dirty]
 
 
+def test_tag_lane_candidate_window_with_caps_and_zero_caps(tmp_path, monkeypatch):
+    """When tag caps are zero, candidate windowing must not discard candidates; when positive,
+    candidates are bounded with headroom."""
+    from citypods.run import SourcePipeline, _run_enrich_global_queue
+    from citypods.stages import StageContext, StageStats
+
+    taxonomy_file = tmp_path / "taxonomy.yml"
+    taxonomy_file.write_text(
+        "version: 1\nreviewed_at: '2026-01-01'\nsource_refs: {x: 'https://example.test'}\n"
+        "tags:\n  - id: housing\n    label: Housing\n    description: desc\n    group: land-use\n"
+        "    source_refs: [x]\n    rules: {include: [housing]}\n"
+    )
+
+    eps = [
+        Episode(
+            guid=f"g{i}",
+            uid=f"u{i}",
+            title=f"M{i}",
+            published=_NOW,
+            video_url="https://x/v.mp4",
+            media_kind="hls",
+            body="Council",
+        )
+        for i in range(5)
+    ]
+    city = _bare_city("test-city")
+
+    class _CountingStage:
+        name = "tags"
+
+        def __init__(self):
+            self.processed = []
+
+        def process(self, provider, city, episodes, ctx):
+            self.processed.extend(episodes)
+            return StageStats(self.name)
+
+    tag_stage_zero = _CountingStage()
+    ctx_zero = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=True,
+        lane="tag",
+        taxonomy_path=taxonomy_file,
+        tag_backend=object(),
+    )
+    ctx_zero.tag_max_dispatches = 0
+    ctx_zero.tag_prelabeler_max_dispatches = 0
+
+    pipeline_zero = SourcePipeline(
+        state_dir=tmp_path / "state",
+        stages=[tag_stage_zero],
+        ctx=ctx_zero,
+        full_artifact_episodes=2000,
+        metadata_retention_episodes=10000,
+    )
+    pipeline_zero.fetch_merge_from_records = lambda city, key: (None, eps, {}, 0)
+    pipeline_zero.persist_source = lambda key, eps, persisted, notes=None: None
+
+    _run_enrich_global_queue(pipeline_zero, [city], source_cache=None, max_workers=1, policy=None)
+    # With zero caps, windowing is skipped and all 5 episodes are processed for rule tagging
+    assert len(tag_stage_zero.processed) == 5
+
+    tag_stage_pos = _CountingStage()
+    ctx_pos = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=True,
+        lane="tag",
+        taxonomy_path=taxonomy_file,
+        tag_backend=object(),
+    )
+    ctx_pos.tag_max_dispatches = 2
+    ctx_pos.tag_prelabeler_max_dispatches = 2
+
+    pipeline_pos = SourcePipeline(
+        state_dir=tmp_path / "state",
+        stages=[tag_stage_pos],
+        ctx=ctx_pos,
+        full_artifact_episodes=2000,
+        metadata_retention_episodes=10000,
+    )
+    pipeline_pos.fetch_merge_from_records = lambda city, key: (None, eps, {}, 0)
+    pipeline_pos.persist_source = lambda key, eps, persisted, notes=None: None
+
+    _run_enrich_global_queue(pipeline_pos, [city], source_cache=None, max_workers=1, policy=None)
+    # With caps=2, limit = int(2 * 1.25) = 2
+    assert len(tag_stage_pos.processed) == 2
+
+
 def test_chapter_lanes_pre_filter_candidate_episodes(tmp_path):
     """In chapter-agenda and chapter-locator lanes, _run_enrich_global_queue filters
     candidate_episodes to only items needing work, while retained_episodes remains intact.
