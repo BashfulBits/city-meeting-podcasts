@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Preserve external-compute spend during lease cleanup (GH#1329).** Settlement and release
+  use the existing reservation's provider cycle when callers omit it, rather than resetting the
+  balance to a bare calendar-month key. Explicit stale-cycle callbacks and unknown owners are
+  no-ops; admission still rolls provider cycles normally. This prevents Modal/Beam reconciliation
+  from erasing settled spend and sibling reservations. Existing incorrect balances require an
+  operator correction; the fix does not infer historical charges. No pipeline version changes or
+  artifact backfill. The configured provider caps and reserves are unchanged.
+
 - **One canonical registry for every LLM dispatch lane.** `config/site_config.yml` gains an
   `llm_lanes` block keyed by the exact `LLMRequestPolicy.purpose` string, carrying both that lane's
   models and its Cloudflare Dispatch v2 ingress write budget. `scripts/compile_llm_lanes.py`

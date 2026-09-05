@@ -13,6 +13,8 @@ import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from citypods.compute import (
     DispatchCoordinator,
     DispatchTarget,
@@ -230,6 +232,43 @@ class TestBudget:
         b.release("modal:1", "modal")
         led = b.backends["modal"]
         assert led.used_gpu_seconds == 0 and led.inflight_count == 0
+
+    @pytest.mark.parametrize("backend,cycle", [("modal", "2026-06-01"), ("beam", "2026-05-18")])
+    @pytest.mark.parametrize("operation", ["settle", "release"])
+    @pytest.mark.parametrize("explicit_cycle", [False, True])
+    def test_reservation_cleanup_preserves_provider_cycle(
+        self, backend, cycle, operation, explicit_cycle
+    ):
+        b = Budget(month="2026-06")
+        b.reserve("finished", backend, 5, cycle=cycle)
+        b.settle("finished", backend, 4, cycle=cycle)
+        b.reserve("target", backend, 3, cycle=cycle)
+        b.reserve("sibling", backend, 2, cycle=cycle)
+        kwargs = {"cycle": cycle} if explicit_cycle else {}
+
+        getattr(b, operation)("target", backend, **kwargs)
+
+        led = b.backends[backend]
+        assert led.cycle_key == cycle
+        assert led.used_units == (9 if operation == "settle" else 6)
+        assert led.inflight == {"sibling": 2}
+        # Repeated/unknown-owner callbacks must be strict no-ops, including across month rollover.
+        b.roll_month(datetime(2026, 7, 1, tzinfo=UTC))
+        before = b.to_dict()
+        getattr(b, operation)("target", backend, **kwargs)
+        getattr(b, operation)("unknown", backend, **kwargs)
+        getattr(b, operation)("unknown", "absent", **kwargs)
+        assert b.to_dict() == before
+
+    @pytest.mark.parametrize("operation", ["settle", "release"])
+    def test_old_cycle_callback_cannot_reset_current_cycle(self, operation):
+        b = Budget(month="2026-07")
+        b.reserve("reused-owner", "modal", 3, cycle="2026-07-01")
+        before = b.to_dict()
+
+        getattr(b, operation)("reused-owner", "modal", cycle="2026-06-01")
+
+        assert b.to_dict() == before
 
     def test_roll_month_resets(self):
         b = Budget(month="2026-05")
@@ -499,13 +538,25 @@ class TestReconcile:
             bucket,
             "s1",
             "u1",
-            owner="dead",
+            owner="modal:dead",
             ttl_seconds=1,
             now=NOW - timedelta(hours=1),
             update_index=True,
         )
+        cycle = "2026-06-01"
 
+        def seed(b):
+            b.reserve("modal:finished", "modal", 4, cycle=cycle)
+            b.settle("modal:finished", "modal", cycle=cycle)
+            b.reserve("modal:dead", "modal", 3, cycle=cycle)
+            b.reserve("modal:live", "modal", 2, cycle=cycle)
+
+        mutate_budget(bucket, seed, now=NOW)
         summary = reconcile_compute(tmp_path, bucket, now=NOW, sweep_work_leases=True)
+        led = load_budget_cas(bucket)[0].backends["modal"]
+        assert led.cycle_key == cycle
+        assert led.used_units == 6
+        assert led.inflight == {"modal:live": 2}
 
         assert summary["leases"]["requeued"] == 1  # dead worker's claim reclaimed
         reclaimed, _etag = wl.read_lease(bucket, "s1", "u1")
@@ -849,6 +900,33 @@ class TestBudgetCAS:
         led = result.backends["modal"]
         assert set(led.inflight) == {"modal:sibling", "modal:me"}  # no lost update
         assert led.used_gpu_seconds == 140.0
+
+    def test_cleanup_cas_retry_preserves_concurrent_provider_cycle_reservation(self):
+        bucket = _MemBucket()
+        cycle = "2026-06-01"
+        mutate_budget(bucket, lambda b: b.reserve("modal:done", "modal", 3, cycle=cycle), now=NOW)
+        real = bucket.put_cas
+        conflicted = False
+
+        def conflict_once(key, data, ct, *, if_none_match=None, if_match=None):
+            nonlocal conflicted
+            if not conflicted:
+                conflicted = True
+                sibling, etag = load_budget_cas(bucket)
+                sibling.reserve("modal:sibling", "modal", 2, cycle=cycle)
+                real(key, _serialize_budget(sibling), ct, if_match=etag)
+                raise CASConflict(key)
+            return real(key, data, ct, if_none_match=if_none_match, if_match=if_match)
+
+        bucket.put_cas = conflict_once
+        result = mutate_budget(
+            bucket, lambda b: b.settle("modal:done", "modal", 1), now=NOW, sleep=lambda _: None
+        )
+        led = result.backends["modal"]
+        assert conflicted
+        assert led.cycle_key == cycle
+        assert led.used_units == 3
+        assert led.inflight == {"modal:sibling": 2}
 
     def test_reserve_if_available_refuses_on_retry_after_sibling_takes_last_slot(self):
         # The real overspend race: two shards select the same backend from a stale (empty) snapshot,

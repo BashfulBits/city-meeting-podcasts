@@ -162,7 +162,8 @@ class Budget:
 
     def current_ledger(self, backend: str, *, cycle: str | None = None) -> BackendLedger:
         """Public read path for *backend*'s ledger, applying the same stale-cycle reset check
-        ``available``/``reserve``/``settle``/``release`` apply on every real dispatch.
+        ``available``/``reserve`` apply on every real dispatch. Settlement and release instead
+        preserve the cycle of the existing reservation.
 
         Diagnostics (the ASR worker report) load a ``Budget`` straight off storage and — unlike
         dispatch — never call those methods, so they'd otherwise print whatever total was left
@@ -219,11 +220,14 @@ class Budget:
         now: datetime | None = None,
     ) -> None:
         """Reconcile a **completed** job and free its in-flight slot. With a worker-reported
-        *actual* GPU-seconds, swap the estimate for it (actuals are ≤ a conservative estimate, so
-        ``used`` can only drop). With ``actual=None`` (no actuals channel yet — H14b/c) the estimate
-        stays charged: a job that *ran* must never return budget, or the cap could be overspent.
-        Idempotent / no-op if the reservation is already gone (e.g. the month rolled)."""
-        led = self._ledger(backend, cycle=cycle)
+        *actual* cost, swap the estimate for it. With ``actual=None`` the estimate stays charged.
+        An omitted cycle uses the reservation's stored cycle; an explicit mismatch is a no-op.
+        Idempotent / no-op if the reservation is already gone (e.g. the cycle rolled)."""
+        # Cleanup cannot roll a provider cycle: reaper callbacks may omit it, and delayed
+        # callbacks may name an older cycle. Only admission/current_ledger may reset spend.
+        led = self.backends.get(backend)
+        if led is None or (cycle is not None and led.cycle_key != cycle):
+            return
         reserved = led.inflight.pop(owner, None)
         if reserved is None:
             return
@@ -250,7 +254,11 @@ class Budget:
         """Reap-on-expiry: return a **dead** worker's reservation to the pool (it never ran). No-op
         if already gone. Distinct from :meth:`settle` — only work that did *not* run returns
         budget."""
-        led = self._ledger(backend, cycle=cycle)
+        # Cleanup cannot roll a provider cycle: reaper callbacks may omit it, and delayed
+        # callbacks may name an older cycle. Only admission/current_ledger may reset spend.
+        led = self.backends.get(backend)
+        if led is None or (cycle is not None and led.cycle_key != cycle):
+            return
         reserved = led.inflight.pop(owner, None)
         if reserved is not None:
             led.used_units = max(0.0, led.used_units - reserved)
