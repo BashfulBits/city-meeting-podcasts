@@ -552,14 +552,19 @@ def chapter_id(ep: Any, chapter: dict[str, Any], index: int) -> str:
     return f"ch-{digest[:12]}"
 
 
-def chapter_tag_inputs(ep: Any, storage: Any = None) -> list[dict[str, Any]]:
+def chapter_tag_inputs(
+    ep: Any, storage: Any = None, *, transcript_data: bytes | None = None
+) -> list[dict[str, Any]]:
     """Return chapter windows with stable IDs and served-time transcript evidence."""
     chapters = [
         chapter
         for chapter in episode_served_chapters(ep, with_source_index=True)
         if isinstance(chapter, dict)
     ]
-    transcript_data = _read_storage_bytes(storage, ep.transcript_key)
+    if not chapters:
+        return []
+    if transcript_data is None:
+        transcript_data = _read_storage_bytes(storage, ep.transcript_key)
     segments = sorted(
         _timed_transcript_segments(transcript_data, ep.transcript_format),
         key=lambda x: x["start"],
@@ -691,7 +696,9 @@ def _episode_backup_text(ep: Any, storage: Any = None) -> str:
     return "\n\n".join(parts)
 
 
-def episode_tag_inputs(ep: Any, storage: Any = None) -> tuple[str, str, str]:
+def episode_tag_inputs(
+    ep: Any, storage: Any = None, *, return_transcript_data: bool = False
+) -> tuple[str, str, str] | tuple[str, str, str, bytes | None]:
     chapter_titles = [
         str(chapter.get("title") or "")
         for chapter in episode_served_chapters(ep)
@@ -711,6 +718,8 @@ def episode_tag_inputs(ep: Any, storage: Any = None) -> tuple[str, str, str]:
         agenda_text = f"{agenda_text}\n\n--- backup/attachment documents ---\n\n{backup_text}"
     transcript_data = _read_storage_bytes(storage, ep.transcript_key)
     transcript = _text_from_transcript(transcript_data, ep.transcript_format)
+    if return_transcript_data:
+        return titles, agenda_text, transcript, transcript_data
     return titles, agenda_text, transcript
 
 

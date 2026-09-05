@@ -1784,7 +1784,6 @@ class TagsStage:
             # Whether this episode still wants a *new* LLM tag is decidable purely in memory: for
             # unchanged inputs a set `tags_llm_recipe_hash` means the LLM tag is already current;
             # `None` means it never resolved (dispatched-and-deferred, quota-parked, or errored).
-            # Rules tags don't need the LLM, so an LLM-disabled run is never "pending".
             llm_pending = llm_enabled and ep.tags_llm_recipe_hash is None
 
             if (
@@ -1806,29 +1805,20 @@ class TagsStage:
                 stats.defer("tag-budget-stop", sample=ep.uid or ep.guid)
                 continue
 
-            # Once every still-needed LLM purpose has exhausted its own run allowance, this
-            # unchanged record cannot make useful progress. Do not read its agenda/transcript
-            # merely to rediscover that fact: the 2026-09-04 tag run continued doing exactly that
-            # across more than 15k records after the tagger allowance had filled.
-            tagger_unavailable = llm_pending and ctx.tag_llm_dispatch_exhausted.is_set()
             prelabeler_unavailable = (
                 prelabeler_pending and ctx.tag_prelabeler_dispatch_exhausted.is_set()
             )
-            if (
-                inputs_unchanged
-                and not ledger_missing
-                and (tagger_unavailable or prelabeler_unavailable)
-                and (not llm_pending or tagger_unavailable)
-                and (not prelabeler_pending or prelabeler_unavailable)
-            ):
-                stats.defer(
-                    "tag-llm-no-quota" if tagger_unavailable else "tag-prelabeler-no-quota",
-                    sample=ep.uid or ep.guid,
-                )
+            if inputs_unchanged and prelabeler_unavailable and not llm_pending:
+                stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
                 continue
 
-            titles, agenda_text, transcript_text = episode_tag_inputs(ep, ctx.storage)
-            chapters = chapter_tag_inputs(ep, ctx.storage)
+            (
+                titles,
+                agenda_text,
+                transcript_text,
+                transcript_data,
+            ) = episode_tag_inputs(ep, ctx.storage, return_transcript_data=True)
+            chapters = chapter_tag_inputs(ep, ctx.storage, transcript_data=transcript_data)
             chapter_fingerprint = [
                 {
                     "chapter_id": item["chapter_id"],
