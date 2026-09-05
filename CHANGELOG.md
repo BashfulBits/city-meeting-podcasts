@@ -26,6 +26,20 @@ Phase R (Research-Tool Surface)._
   PR without closing the audit issue on merge. Old remedy cache records are bypassed, not bulk
   deleted; existing audio/enrichment artifacts are unchanged and no catalog backfill is triggered.
 
+- **Resolve R7 speaker diarization pilot city entity scoping and generalize allowlisting
+  (GH#1274).** The scheduled R7 diarization workflow (`r7-diarization.yml`) completed in 30–40ms
+  reporting `0 ran, 0 errors` because `stages.py` passed feed slugs (e.g.
+  `denton-tx-board-of-ethics` or `denton-tx-city-council`) to `pilot_selected()`, while
+  `config/site_config.yml` scopes pilot bodies by city entity (`denton-tx`), resulting in every
+  episode being skipped as `pilot-not-selected`. Updated `stages.py` (`NativeDiarizeStage`,
+  `ProviderTranscriptDiarizeStage`, `SpeakerIdentityStage`, and `_mark_stage_complete`) to use
+  canonical entity slugs (`city.city_entity or city.slug`), and enhanced `citypods/speakers.py`
+  (`pilot_selected` and `pilot_capture_context`) to support entity-prefixed feed slugs, wildcard
+  city selectors (`city: "*"`), wildcard bodies (`body: "*"` or `all_bodies: true`), and global
+  allowlisting (`allow_all_cities: true`). Unconfigured capture contexts under wildcard rules
+  gracefully fall back to `{city_slug}-audio-v1` while preserving fail-closed security for empty
+  pilot lists. No pipeline version change; existing content-addressed artifacts remain valid and
+  unprocessed pilot episodes will be picked up on subsequent runs.
 
 - **Chunk the deferred sweep's queue-only v2 submission at the Worker's batch limit
   (`scripts/llm_deferred_sweep.py`).** The sweep handed `LiteLLMBackend.enqueue_batch` its entire
@@ -406,6 +420,15 @@ Phase R (Research-Tool Surface)._
   starts a resumable bounded tag backfill. No output pipeline-version bump is introduced.
 
 ### Fixed
+
+- **Debounced weekly review resolution with cohort-wide batch sweep.** Resolves an issue where
+  review sub-issues (R5, H16, H15, R6, R7) were not closing when multiple checkboxes were checked
+  in rapid succession. GitHub Actions concurrency queue collapsing (`cancel-in-progress: false`)
+  previously dropped intermediate runs and individual runs only resolved `$EVENT_ISSUE`. The
+  workflow now runs a dedicated `weekly-review-debounce` job that pends until review edits have
+  ceased for 5 minutes (resetting whenever a new review edit arrives), followed by an uninterrupted
+  `resolve` job that sweeps all open review children together, pre-filters issues with checked
+  decisions, and finalizes cleared batches without mid-run cancellation risk.
 
 - **Gemini direct AI Gateway routing and remedy workflow resilience.** Fixes 404 client errors when
   routing direct Gemini calls through Cloudflare AI Gateway by mapping Gemini's path prefix to

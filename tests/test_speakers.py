@@ -761,3 +761,116 @@ def test_speaker_review_requires_real_reference_and_is_idempotent(tmp_path):
     assert speaker_review_main(arguments) == 0
     stored = json.loads(registry.read_text())
     assert len(next(iter(stored["people"].values()))["references"]) == 1
+
+
+def test_pilot_selection_matches_feed_slug_and_entity_slug():
+    config = {
+        "pilot_bodies": [
+            {
+                "city": "denton-tx",
+                "body": "City Council",
+                "capture_context": "council-chamber-v1",
+            }
+        ]
+    }
+    # Matches entity slug directly
+    assert pilot_selected(config, "denton-tx", "City Council")
+    # Matches feed slugs that start with entity slug followed by a hyphen
+    assert pilot_selected(config, "denton-tx-city-council", "City Council")
+    assert pilot_selected(config, "denton-tx-board-of-ethics", "City Council")
+    # Capture context matches both entity slug and feed slug
+    assert pilot_capture_context(config, "denton-tx", "City Council") == "council-chamber-v1"
+    assert (
+        pilot_capture_context(config, "denton-tx-city-council", "City Council")
+        == "council-chamber-v1"
+    )
+    # Does not match unrelated cities or unhyphenated overlaps
+    assert not pilot_selected(config, "austin-tx", "City Council")
+    assert not pilot_selected(config, "denton", "City Council")
+    assert not pilot_selected(config, "denton-tx-other", "Planning Commission")
+
+
+def test_pilot_selection_wildcards_and_allow_all():
+    # Wildcard city
+    wildcard_city_config = {
+        "pilot_bodies": [
+            {
+                "city": "*",
+                "body": "City Council",
+                "capture_context": "universal-chamber-v1",
+            }
+        ]
+    }
+    assert pilot_selected(wildcard_city_config, "denton-tx", "City Council")
+    assert pilot_selected(wildcard_city_config, "austin-tx-city-council", "City Council")
+    assert not pilot_selected(wildcard_city_config, "denton-tx", "Library Board")
+    assert (
+        pilot_capture_context(wildcard_city_config, "austin-tx", "City Council")
+        == "universal-chamber-v1"
+    )
+
+    # Wildcard body and all_bodies flag
+    wildcard_body_config = {
+        "pilot_bodies": [
+            {
+                "city": "denton-tx",
+                "body": "*",
+            }
+        ]
+    }
+    assert pilot_selected(wildcard_body_config, "denton-tx", "City Council")
+    assert pilot_selected(wildcard_body_config, "denton-tx-city-council", "Ethics Board")
+    assert not pilot_selected(wildcard_body_config, "austin-tx", "Ethics Board")
+    # Context falls back to city slug audio context when capture_context omitted with wildcard
+    assert pilot_capture_context(wildcard_body_config, "denton-tx", "Any Body") == (
+        "denton-tx-audio-v1"
+    )
+
+    all_bodies_flag_config = {
+        "pilot_bodies": [
+            {
+                "city": "denton-tx",
+                "all_bodies": True,
+                "capture_context": "denton-v1",
+            }
+        ]
+    }
+    assert pilot_selected(all_bodies_flag_config, "denton-tx", "Any Body")
+    assert pilot_capture_context(all_bodies_flag_config, "denton-tx", "Any Body") == "denton-v1"
+
+    # Global allow_all_cities flag
+    allow_all_config = {"allow_all_cities": True}
+    assert pilot_selected(allow_all_config, "any-city", "Any Body")
+    assert (
+        pilot_capture_context(allow_all_config, "springfield-il", "Any Body")
+        == "springfield-il-audio-v1"
+    )
+
+    # Fail-closed default when pilot_bodies is empty or missing
+    empty_config: dict[str, object] = {"pilot_bodies": []}
+    assert not pilot_selected(empty_config, "denton-tx", "City Council")
+    assert pilot_capture_context(empty_config, "denton-tx", "City Council") is None
+    assert not pilot_selected({}, "denton-tx", "City Council")
+    assert pilot_capture_context({}, "denton-tx", "City Council") is None
+
+
+def test_pilot_selection_real_site_config_matches_denton():
+    from pathlib import Path
+
+    from citypods.config import load_site_config
+
+    site_config_path = Path(__file__).resolve().parent.parent / "config" / "site_config.yml"
+    if not site_config_path.exists():
+        pytest.skip("config/site_config.yml not found")
+    site_config = load_site_config(site_config_path)
+    speaker_cfg = site_config.get("speakers", {})
+
+    # Entity slug match
+    assert pilot_selected(speaker_cfg, "denton-tx", "City Council")
+    assert pilot_selected(speaker_cfg, "denton-tx", "Special Called City Council Meeting")
+    # Feed slug match
+    assert pilot_selected(speaker_cfg, "denton-tx-city-council", "City Council")
+    assert pilot_selected(speaker_cfg, "denton-tx-board-of-ethics", "City Council")
+    # Non-pilot bodies should still be rejected
+    assert not pilot_selected(speaker_cfg, "denton-tx", "Planning and Zoning Commission")
+    assert not pilot_selected(speaker_cfg, "austin-tx", "City Council")

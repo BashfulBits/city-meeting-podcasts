@@ -16,6 +16,7 @@ from citypods.stages import (
     StageContext,
     StageStats,
     _diarize_fits_remaining_budget,
+    _mark_stage_complete,
     default_stages,
     enrich_stages,
     render_stages,
@@ -145,6 +146,106 @@ def test_native_diarization_no_output_marker_remains_dirty():
     }
 
     assert stage_is_dirty(NativeDiarizeStage(), episode, city, speaker_config={})
+
+
+def test_native_diarize_mark_complete_respects_city_entity():
+    city = City(
+        slug="denton-tx-city-council",
+        city_entity="denton-tx",
+        provider="granicus",
+        source={"feed_url": "x"},
+        podcast_title="Denton City Council",
+        podcast_author="City of Denton",
+        podcast_email="",
+        podcast_description="d",
+    )
+    speaker_config = {
+        "pilot_bodies": [
+            {
+                "city": "denton-tx",
+                "body": "City Council",
+                "capture_context": "council-chamber-v1",
+            }
+        ]
+    }
+    ep_selected = _ep("selected")
+    ep_selected.body = "City Council"
+    ep_selected.speakers_key = "audio/speakers-selected.json"
+
+    ep_unselected = _ep("unselected")
+    ep_unselected.body = "Planning and Zoning Commission"
+    ep_unselected.speakers_key = "audio/speakers-unselected.json"
+
+    ep_no_output = _ep("no-output")
+    ep_no_output.body = "City Council"
+    ep_no_output.speakers_key = None
+
+    stage = NativeDiarizeStage()
+    stat = StageStats(stage.name)
+    _mark_stage_complete(
+        stage,
+        [ep_selected, ep_unselected, ep_no_output],
+        city,
+        stat,
+        speaker_config=speaker_config,
+    )
+
+    # ep_selected is marked complete because canonical_city_slug ("denton-tx") matches pilot config
+    assert "native_diarize" in ep_selected.stage_completion
+    assert ep_selected.stage_completion["native_diarize"]["state"] == "complete"
+    assert (
+        ep_selected.stage_completion["native_diarize"]["output"] == "audio/speakers-selected.json"
+    )
+
+    # ep_unselected is NOT marked complete because its body is not in the pilot
+    assert "native_diarize" not in ep_unselected.stage_completion
+
+    # ep_no_output is NOT marked complete because stage_output_pointer is None
+    assert "native_diarize" not in ep_no_output.stage_completion
+
+
+def test_native_diarize_process_identifies_pilot_body_with_city_entity(tmp_path):
+    city = City(
+        slug="denton-tx-city-council",
+        city_entity="denton-tx",
+        provider="granicus",
+        source={"feed_url": "x"},
+        podcast_title="Denton City Council",
+        podcast_author="City of Denton",
+        podcast_email="",
+        podcast_description="d",
+    )
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = {
+        "enabled": True,
+        "pilot_bodies": [
+            {
+                "city": "denton-tx",
+                "body": "City Council",
+                "capture_context": "council-chamber-v1",
+            }
+        ],
+    }
+    stage = NativeDiarizeStage()
+
+    # Episode with pilot body
+    ep_pilot = _ep("pilot")
+    ep_pilot.body = "City Council"
+    ep_pilot.hosted_audio_url = "https://cdn/audio.m4a"
+    ep_pilot.transcript_synced = True
+    ep_pilot.transcript_words_key = None  # Triggers missing-timed-words deferral
+
+    # Episode with unselected body
+    ep_unselected = _ep("other")
+    ep_unselected.body = "Library Board"
+
+    stats = stage.process(FakeProvider(), city, [ep_pilot, ep_unselected], ctx)
+
+    # ep_unselected records "pilot-not-selected" quality metric
+    assert stats.quality_counts.get("pilot-not-selected") == 1
+    # ep_pilot was recognized as pilot-selected, so it proceeded past pilot check and deferred
+    assert stats.skipped == 1
+    assert stats.defer_reasons.get("missing-timed-words") == 1
 
 
 def _ctx(tmp_path, *, dry_run=False, storage=True, stop=None, chapters_per_source=10_000):
