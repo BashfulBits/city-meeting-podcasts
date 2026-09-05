@@ -17,6 +17,20 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **ASR align/diarization workflows broken by a fleet-wide Python 3.14 Renovate bump.** The
+  `github-actions` PR that pinned Actions SHAs (#1353) also bumped every `setup-python`
+  step's `python-version` from `3.12`/`3.13` to `3.14`, Renovate's default behavior for that
+  input. `constraints/asr.txt`/`constraints/prod.txt` are compiled specifically for CPython 3.12
+  (`scripts/compile_constraints.sh` resolves inside `python:3.12-slim-bookworm`), and
+  `whisperx==3.8.6` has no distribution satisfying pip's resolver on 3.14 — `asr.yml`'s align
+  lane, `asr-bench.yml`, `asr-quality-eval.yml`, and `r7-diarization.yml` all install extras that
+  pull in whisperx, and failed deterministically (`ResolutionImpossible`) on every run since the
+  merge, while `asr.yml`'s transcribe lane (no whisperx) stayed green. Reverted `python-version`
+  to `"3.12"` in the four affected workflows (including `asr.yml`'s `reconcile` job, which shares
+  `constraints/prod.txt`), with a comment pointing at the constraints compile target so a future
+  blanket Python bump doesn't silently re-break these. No pipeline version change; no stored
+  artifacts affected.
+
 - **Active stop and runner budget boundaries for the LLM topic tags workflow.** Added
   `tag_run_time_budget_minutes: 140` configuration and wired `StopSignal` in `citypods/run.py`
   to actively stop `tag` lane runs as soon as tagging producer quotas (tagger and prelabeler)
