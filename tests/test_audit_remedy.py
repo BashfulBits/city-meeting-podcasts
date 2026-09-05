@@ -627,3 +627,14 @@ def test_safe_diagnostics_do_not_echo_invalid_model_text():
         diagnostic = safe_classification_error(exc)
     assert "secret-provider-text" not in diagnostic
     assert "proposals" in diagnostic and "list_type" in diagnostic
+
+
+def test_safe_diagnostics_mask_unknown_loc_parts():
+    try:
+        BodyDecisions.model_validate({"proposals": [{"secret_provider_key_xyz": "leaked-value"}]})
+    except ValidationError as exc:
+        diagnostic = safe_classification_error(exc)
+    assert "secret_provider_key_xyz" not in diagnostic
+    assert "leaked-value" not in diagnostic
+    assert "<field>" in diagnostic
+    assert "proposals" in diagnostic

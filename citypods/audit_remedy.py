@@ -347,8 +347,15 @@ def safe_classification_error(exc: Exception) -> str:
     if isinstance(exc, RemedyEvidenceError):
         return str(exc)
     if isinstance(exc, ValidationError):
+        known = set(BodyDecisions.model_fields) | set(BodyDecision.model_fields)
         fields = [
-            f"{'.'.join(map(str, e['loc']))}: {e['type']}"
+            "{}: {}".format(
+                ".".join(
+                    str(part) if isinstance(part, int) or part in known else "<field>"
+                    for part in e["loc"]
+                ),
+                e["type"],
+            )
             for e in exc.errors(include_input=False, include_context=False, include_url=False)[:8]
         ]
         return "schema validation: " + "; ".join(fields)
