@@ -116,9 +116,12 @@ jobs:
               actor="github-actions"
             fi
             rm -f result.log
-            python scripts/resolve_review_issue.py --issue-number "$issue" \
-              --issue-url "$(jq -r .url issue.json)" --actor "$actor" \
-              --body-file issue.md > result.log
+            if ! python scripts/resolve_review_issue.py --issue-number "$issue" \
+                --issue-url "$(jq -r .url issue.json)" --actor "$actor" \
+                --body-file issue.md > result.log; then
+              echo "::warning::Failed to evaluate review issue #$issue; skipping"
+              continue
+            fi
             if tail -1 result.log | jq -e '.stored == true' >/dev/null; then
               gh issue close "$issue" --comment "Stored managed review decision."
             fi

@@ -71,7 +71,12 @@ def main(argv: list[str] | None = None) -> int:
             print()
     if completed.returncode:
         combined = completed.stdout + completed.stderr
-        if "select exactly one" in combined or "exactly one primary" in combined:
+        if (
+            "select exactly one" in combined
+            or "choose exactly one" in combined
+            or "exactly one" in combined
+            or "no decision" in combined
+        ):
             print(json.dumps({"stored": False, "reason": "no_decision"}, sort_keys=True))
             return 0
         if completed.stderr:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from citypods.review_issues import (
@@ -81,3 +83,48 @@ def test_publication_summary_distinguishes_blocked_from_empty_work():
         published=0,
         reasons=("dispatch capacity exhausted",),
     )
+
+
+def test_resolve_review_issue_handles_multiple_checked_boxes_cleanly(tmp_path, capsys):
+    from scripts import resolve_review_issue
+
+    meta = {
+        "candidate": {
+            "admission": "admitted",
+            "assessment_kind": "tagger-admission",
+            "candidate_id": "llm-test",
+            "scope": "chapter",
+            "source_kind": "rule",
+        },
+        "schema_version": 1,
+    }
+    body = (
+        "# R5 rule tag candidate\n\n"
+        "Choose exactly one:\n"
+        "- [x] Correct\n"
+        "- [x] Ambiguous\n\n"
+        f"<!-- citypods:llm-review {json.dumps(meta)} -->\n\n"
+        + append_envelope(
+            "",
+            family="r5",
+            candidate_id="llm-test",
+            surface="child",
+        )
+    )
+    body_file = tmp_path / "issue.md"
+    body_file.write_text(body, encoding="utf-8")
+
+    ret = resolve_review_issue.main(
+        [
+            "--issue-number",
+            "9999",
+            "--actor",
+            "test",
+            "--body-file",
+            str(body_file),
+        ]
+    )
+    assert ret == 0
+    captured = capsys.readouterr()
+    res = json.loads(captured.out.strip().splitlines()[-1])
+    assert res["stored"] is False

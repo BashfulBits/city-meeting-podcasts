@@ -404,7 +404,9 @@ Phase R (Research-Tool Surface)._
   workflow now runs a dedicated `weekly-review-debounce` job that pends until review edits have
   ceased for 5 minutes (resetting whenever a new review edit arrives), followed by an uninterrupted
   `resolve` job that sweeps all open review children together, pre-filters issues with checked
-  decisions, and finalizes cleared batches without mid-run cancellation risk.
+  decisions, and finalizes cleared batches without mid-run cancellation risk. Also hardens
+  `llm_tag_review.py` and `resolve_review_issue.py` to safely skip issues with multiple/ambiguous
+  decisions checked instead of crashing the resolution loop.
 
 - **Gemini direct AI Gateway routing and remedy workflow resilience.** Fixes 404 client errors when
   routing direct Gemini calls through Cloudflare AI Gateway by mapping Gemini's path prefix to
