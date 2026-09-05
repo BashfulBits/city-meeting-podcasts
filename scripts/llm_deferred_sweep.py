@@ -26,10 +26,12 @@ from pathlib import Path
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import (
+    _WORKER_BATCH_LIMIT,
     LiteLLMBackend,
     LLMBackendConfig,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
+    _enqueue_batch_with_retry,
     _LLMBatchItemError,
 )
 from citypods.compute.llm_deferred import (
@@ -474,14 +476,22 @@ def main(argv: list[str] | None = None) -> int:
                     and upgraded_request.policy.queue_only
                 ):
                     v2_queue_only.append((handle, upgraded_handle))
-            if v2_queue_only and not stop_state.requested and datetime.now(UTC) < deadline_at:
-                try:
-                    queued_results = backend.enqueue_batch(
-                        [_job_from_deferred_handle(upgraded) for _handle, upgraded in v2_queue_only]
-                    )
-                except Exception as exc:  # noqa: BLE001 -- leave every durable request pending
-                    queued_results = [exc] * len(v2_queue_only)
-                for (handle, _upgraded), result in zip(v2_queue_only, queued_results, strict=True):
+            # The ingress Worker caps a single enqueue-batch request at _WORKER_BATCH_LIMIT jobs
+            # and rejects an oversized request with HTTP 400 for the *whole* batch, not just the
+            # overflow -- `BatchingDispatchBackend.flush()` already chunks for exactly this reason.
+            # This sweep's backlog can just as easily exceed the limit in one run, so it needs the
+            # identical chunking (and per-chunk retry) rather than handing the backend one
+            # unbounded list, which previously turned a single oversized batch into every queued
+            # record failing to submit at once. A chunk not yet attempted when the deadline hits
+            # is left untouched (not a failure) -- the next sweep cadence picks it up.
+            for start in range(0, len(v2_queue_only), _WORKER_BATCH_LIMIT):
+                if stop_state.requested or datetime.now(UTC) >= deadline_at:
+                    break
+                chunk = v2_queue_only[start : start + _WORKER_BATCH_LIMIT]
+                queued_results = _enqueue_batch_with_retry(
+                    backend, [_job_from_deferred_handle(upgraded) for _handle, upgraded in chunk]
+                )
+                for (handle, _upgraded), result in zip(chunk, queued_results, strict=True):
                     handled_recipe_hashes.add(handle.recipe_hash)
                     seen_pending.add(handle.recipe_hash)
                     if isinstance(result, Exception):
