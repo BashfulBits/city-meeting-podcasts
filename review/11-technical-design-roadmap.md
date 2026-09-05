@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-09-04 (review/45 system architecture evolution & refactoring roadmap detailed to L3 per workstream, see review/45; Gemini free-tier hard input ceiling + `/remedy` deferral fix, §Rate-limited LLM dispatch Worker)**
+**Status: LIVING · last updated 2026-09-05 (interactive direct remedy #1231; review/45 system architecture evolution & refactoring roadmap detailed to L3 per workstream, see review/45; Gemini free-tier hard input ceiling + `/remedy` deferral fix, §Rate-limited LLM dispatch Worker)**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -73,6 +73,16 @@ open issues) appears here, in a phase or the Deferred backlog (§6). `#NN` = rev
 GitHub development issues are cut just-in-time only for remaining Phase-H work. Auto-managed health
 signals and individual city requests may remain open as operational inputs; later-phase initiatives
 live here until their series becomes active.
+
+### Active reliability follow-up: interactive remedy (#1231)
+
+Maintainer-directed, 2026-09-05; implementation in progress: direct-only, same-Actions-run remedy
+classification, schema/evidence correction, compact complete-evidence batches, and an issue response
+within a bounded job rather than a deferred Worker/sweep handoff. Preserve free-route quota accounting;
+bypass legacy remedy result caches without deleting unrelated results or changing catalog versions.
+Accepted edits must pass the full repository gate before a PR; incomplete classifications remain
+explicit in the report. This narrows the existing interactive remedy contract, not the general
+background-dispatch roadmap. See ARCHITECTURE's Unexpected-Body Remediation execution contract.
 
 ### Shipped (foundations) — see [CHANGELOG.md](../CHANGELOG.md)
 INFRA-1..9 timeline foundation (GH#141) · #52 content permanence (absorbs **#45** self-healing

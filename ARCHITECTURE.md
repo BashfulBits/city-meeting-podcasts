@@ -523,10 +523,40 @@ a round-trip would erase them and reflow every quoted scalar. Each edit is re-pa
 (`assert_only_addition`) before the file is written, so a malformed insertion fails loudly.
 
 Evidence comes from the audit's own run (`audit_feeds.py --unexpected-body-evidence`), reusing
-`collect_unexpected_bodies` so remediation classifies exactly the rows the audit reported, with no
-second provider fetch and no second definition of "unmatched". `verify_remedy_mutations` then
-gates any applied change on config reload plus repo-wide Ruff lint, Ruff format, and `pytest -q`;
-a failure reverts the working tree instead of leaving it dirty.
+its detection and provider fetch. The evidence artifact retains every finding and provider GUID.
+Classification sends at most 12 findings and 12,000 estimated evidence tokens per batch, using
+counts, month frequencies, date ranges, and up to six representative titles per finding. Short
+finding/episode IDs map back to the full local evidence; the model can explicitly select every
+observed episode of a label for a one-off inclusion. An oversized single finding is reported,
+never silently discarded. Action-specific schema requirements reject missing targets, inclusion
+IDs, or new-feed metadata. `manual_review` records uncertainty without inventing an owning body.
+
+**Interactive execution (issue #1231).** Remedy uses `LiteLLMBackend.run_immediate`, with
+`require_direct=True`, no dispatch overflow, and no queue admission. It keeps the shared provider
+quota reservation/settlement but neither reads nor writes the deferred/result registry. Thus old
+unstructured cached answers and orphaned handles cannot poison subsequent `/remedy` runs. The
+recipe also versions evidence, prompt, and schema. AI Gateway may proxy direct HTTP for analytics;
+the LLM dispatch Worker and its sweep never own these calls. The maintainer explicitly requested
+this same-run behavior on 2026-09-05 after the stale-cache/deferral incident: bounded synchronous
+work gives immediate findings at the cost of reporting unfinished batches when free quota is spent.
+No catalog audio/stage version changes or episode backfills are involved; only remedy is affected.
+
+The backend retries malformed structured replies once locally. Remedy additionally permits one
+bounded correction for missing decisions or invalid evidence references, within a two-minute batch
+admission window and a shared 30-minute classification budget. Every batch is written to the report
+as it completes. Schema field/error types, capacity failures, and model names are reported without
+provider response bodies or credentials. Failures, rejected proposals, and manual-review decisions
+are separate outcomes; classification failures return nonzero even when other batches yield a PR.
+
+`verify_remedy_mutations` gates accepted edits on config reload, repo-wide Ruff lint/format, and
+`pytest -q`, with a nine-minute verification budget. The workflow installs the CI Python extras, research test dependencies, pinned ffmpeg, and OCR tools.
+It allows eight minutes each for Python setup and evidence collection, bounds classification/verification
+with a process deadline 55 minutes after the job starts, and reserves time for an `always()` fallback
+issue comment and artifact upload before the 58-minute job limit. GitHub runner queue time/outages
+are outside that bound. A fresh invocation cancels a superseded run for the same issue instead of
+waiting behind its entire deadline. Comments link the full artifact when the report exceeds GitHub's size limit.
+PRs contain the accepted/rejected report and reference the issue without a closing keyword; the
+subsequent audit decides whether the incident has cleared.
 
 #### Trigger: dispatched by the audit run, not by watching for the issue
 

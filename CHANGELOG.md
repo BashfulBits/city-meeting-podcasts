@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Make `/remedy` direct and bounded (issue #1231).** Classify in the Actions process with local
+  schema/evidence correction, shared quota accounting, and no dispatch/deferred cache access.
+  Version the remedy recipe by prompt/schema and preserve every finding in the evidence artifact;
+  compact batches use local evidence IDs, explicit manual-review outcomes, and action-specific
+  validation. Report partial failures honestly, install pinned verification dependencies, enforce
+  a 55-minute process deadline with fallback issue reporting, and include findings in the generated
+  PR without closing the audit issue on merge. Old remedy cache records are bypassed, not bulk
+  deleted; existing audio/enrichment artifacts are unchanged and no catalog backfill is triggered.
+
 - **Resolve R7 speaker diarization pilot city entity scoping and generalize allowlisting
   (GH#1274).** The scheduled R7 diarization workflow (`r7-diarization.yml`) completed in 30–40ms
   reporting `0 ran, 0 errors` because `stages.py` passed feed slugs (e.g.
