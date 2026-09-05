@@ -69,6 +69,14 @@
       automerge: false,
       groupName: "gh CLI (pinned, hash verified against a human-reviewed pin)",
     },
+    {
+      // Deployment tooling under review/22: track exact pins on the weekly hygiene cadence.
+      // Workflow changes still require review; do not auto-merge deployment-tool upgrades.
+      matchManagers: ["custom.regex"],
+      matchPackageNames: ["wrangler"],
+      groupName: "wrangler deployment tooling (hygiene)",
+      automerge: false,
+    },
     // ---- OUTPUT-AFFECTING LANE: one checkbox + one bot comment ----
     // Renovate lists these under "Pending Approval" on the Dashboard and opens no
     // PR until a human ticks the box. When the PR opens, dep-bump-smoke.yml proves
@@ -99,6 +107,8 @@
       // customManagers comment below). Separate rule so these actually reach the
       // approval lane (matchers of different types are AND-ed together).
       matchManagers: ["custom.regex", "dockerfile"],
+      // Wrangler has its own hygiene rule above; it does not rebuild audio/ASR artifacts.
+      matchPackageNames: ["!wrangler"],
       groupName: "output-affecting: image/ffmpeg/model (needs approval + smoke)",
       dependencyDashboardApproval: true,
       automerge: false,
@@ -116,6 +126,17 @@
   // the "7.1.5" path segment in their FFMPEG_URL to match (still output-affecting, still
   // smoke-gated — review/22).
   customManagers: [
+    {
+      // Wrangler action inputs are not package.json dependencies; track every workflow pin.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      matchStrings: [
+        "(?:^|\\n)[ \t]*wranglerVersion:[ \t]*[\"'](?<currentValue>\\d+\\.\\d+\\.\\d+)[\"']",
+      ],
+      datasourceTemplate: "npm",
+      depNameTemplate: "wrangler",
+      versioningTemplate: "npm",
+    },
     {
       // Hugging Face Whisper model revisions (GH#498). Pinned by commit SHA via git-refs;
       // output-affecting → Dashboard approval.

@@ -895,6 +895,7 @@ def _run_bounded(
     *,
     max_pending: int,
     on_progress: Callable[[], None] | None = None,
+    stop: Callable[[], bool] | None = None,
 ) -> None:
     """Run *fn* over an iterator with a rolling submission window.
 
@@ -908,6 +909,10 @@ def _run_bounded(
     (calling) thread and never concurrently with itself. Used for periodic mid-pass checkpointing
     on passes with no natural end-of-phase persist boundary (see the `tag` lane's checkpoint push
     in ``_run_enrich_global_queue``).
+
+    ``stop``, if given, tells the coordinator to stop refilling the submission window once triggered
+    (wall-clock budget expired, newer build queued, or producer quotas exhausted). In-flight tasks
+    are drained cleanly before this function exits.
 
     **The submission window is refilled BEFORE ``on_progress`` runs, not after.** ``on_progress``
     is not necessarily cheap: the tag lane's checkpoint measured **272s and 589s** against a
@@ -928,7 +933,11 @@ def _run_bounded(
     pending: set = set()
 
     def _fill() -> None:
+        if stop is not None and stop():
+            return
         while len(pending) < max(1, max_pending):
+            if stop is not None and stop():
+                return
             try:
                 item = next(iterator)
             except StopIteration:
@@ -1920,6 +1929,25 @@ def _run_enrich_global_queue(
 
     # 2) Global candidate queue: each source's materialized set, ordered across sources by policy.
     candidates = _order_global_candidates(prepared, policy)
+    if ctx.lane == "tag" and ctx.tag_backend is not None:
+        tag_caps = [
+            cap
+            for cap in (ctx.tag_max_dispatches, ctx.tag_prelabeler_max_dispatches)
+            if cap is not None
+        ]
+        if tag_caps and max(tag_caps) > 0:
+            # Sizing the candidate queue to the larger purpose allowance plus a headroom factor
+            # avoids scheduling thousands of older backlog items that would inevitably be deferred
+            # once the quota caps fill.
+            tag_candidate_limit = int(max(tag_caps) * 1.25)
+            omitted = max(0, len(candidates) - tag_candidate_limit)
+            if omitted:
+                candidates = candidates[:tag_candidate_limit]
+                print(
+                    f"[enrich] tag candidate window: limit={tag_candidate_limit} "
+                    f"deferred={omitted}",
+                    flush=True,
+                )
     # Register every alias before worker submission so new duplicate artifacts choose one
     # deterministic source prefix regardless of which candidate thread reaches AudioStage first.
     for key, ep in candidates:
@@ -2231,6 +2259,7 @@ def _run_enrich_global_queue(
                     tx,
                     max_pending=max_workers,
                     on_progress=_checkpoint_if_due,
+                    stop=ctx.stop,
                 )
             print("[enrich] transcript pass done", flush=True)
 
@@ -2259,6 +2288,7 @@ def _run_enrich_global_queue(
                             tx_tags_only,
                             max_pending=max_workers,
                             on_progress=_checkpoint_if_due,
+                            stop=ctx.stop,
                         )
                     print("[enrich] tags-only pass done", flush=True)
 
@@ -2811,6 +2841,7 @@ def _build_impl(
     asr_backstop_deadline: float | None = None
     diarize_start_deadline: float | None = None
     tag_llm_deadline: datetime | None = None
+    ctx: StageContext | None = None
     if time_bounded:
         safety = float(defaults.get("budget_safety", 0.8))
         window_min = float(defaults.get("run_time_budget_minutes", 0))
@@ -2836,12 +2867,41 @@ def _build_impl(
                 f"budget: diarize start cutoff {start_cutoff_min:.0f}m "
                 "(measured per-recipe admission + yield if superseded)"
             )
-        elif lane in {"tag", "moments"}:
-            # These lanes only prepare queue-only v2 requests. Their committed per-run count caps
-            # are the safety boundary, and the Worker owns pacing plus provider quota. A runner
-            # deadline could stop below that cap even though enqueueing the remaining durable jobs
-            # is cheap, so only a genuinely superseding run asks them to yield. Record-first source
-            # preparation above keeps this bounded pass independent of provider scrape latency.
+        elif lane == "tag":
+            lane_window_key = f"{lane}_run_time_budget_minutes"
+            lane_window_min = float(defaults.get(lane_window_key, 140))
+            lane_deadline_secs = lane_window_min * 60 * safety
+            remaining_secs = max(0.0, lane_deadline_secs - (time.monotonic() - enrich_phase_start))
+            deadline = (time.monotonic() + remaining_secs) if lane_window_min > 0 else None
+
+            # Active stop trigger: once both tagger and prelabeler quotas are exhausted, stop.
+            def _tag_quotas_exhausted() -> bool:
+                if ctx is None:
+                    return False
+                prelabeler_cfg = site_config.get("tagging", {}).get("prelabeler", {})
+                prelabeler_active = bool(prelabeler_cfg.get("enabled", False)) and bool(
+                    ctx.tag_prelabeler_max_dispatches
+                )
+                tagger_done = ctx.tag_llm_dispatch_exhausted.is_set()
+                prelabeler_done = (
+                    ctx.tag_prelabeler_dispatch_exhausted.is_set() if prelabeler_active else True
+                )
+                return tagger_done and prelabeler_done
+
+            stop = StopSignal(
+                deadline=deadline,
+                superseded=_newer_run_queued,
+                exhausted=_tag_quotas_exhausted,
+                exhausted_reason="tagging quota achieved",
+            )
+            if lane_window_min > 0:
+                print(
+                    f"budget: {lane} window {lane_window_min:.0f}m × {safety} "
+                    "(+ yield if quota exhausted or superseded)"
+                )
+            tag_llm_deadline = None
+        elif lane == "moments":
+            # Moments lane only prepares queue-only v2 requests and is count-bounded.
             stop = StopSignal(superseded=_newer_run_queued)
             print(f"budget: {lane} count-bounded (+ yield if superseded)")
             tag_llm_deadline = None
@@ -4247,12 +4307,13 @@ def install_signal_handlers() -> None:
 class StopSignal:
     """Shared, thread-safe predicate telling expensive stages when to stop starting new work.
 
-    Two triggers, both meaning "wrap up this run and deploy":
+    Triggers, all meaning "wrap up this run and deploy":
       * **wall-clock** — ``deadline`` (a ``time.monotonic()`` value) has passed; the run has used
         its time window.
       * **superseded** — a newer Build & Deploy run is queued behind this one. We yield gracefully
         so it can take over, rather than relying on a hard ``cancel-in-progress`` that could abort
         the in-flight Pages deploy.
+      * **exhausted** — dedicated producer lane quotas have been achieved; stop starting new work.
 
     Callable so stages just do ``if ctx.stop and ctx.stop(): ...``. The (network) superseded check
     is polled at most every ``poll_interval`` seconds and latches once true, so calling it per
@@ -4264,10 +4325,14 @@ class StopSignal:
         deadline: float | None = None,
         superseded: Callable[[], str | None] | None = None,
         poll_interval: float = 60.0,
+        exhausted: Callable[[], bool] | None = None,
+        exhausted_reason: str = "producer quota exhausted",
     ):
         self._deadline = deadline
         self._superseded = superseded
         self._poll_interval = poll_interval
+        self._exhausted = exhausted
+        self._exhausted_reason = exhausted_reason
         self._last_poll = 0.0
         self._latched = False
         self._latched_event: str | None = None
@@ -4283,6 +4348,9 @@ class StopSignal:
             return True
         if self._deadline is not None and time.monotonic() >= self._deadline:
             self._announce("wall-clock window spent")
+            return True
+        if self._exhausted is not None and self._exhausted():
+            self._announce(self._exhausted_reason)
             return True
         if self._superseded is None:
             return False

@@ -51,7 +51,12 @@ jobs:
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.14"
+          # Pinned to match constraints/asr.txt's compile target (scripts/compile_constraints.sh
+          # resolves inside python:3.12-slim-bookworm), not the fleet-wide "3.14" Renovate bumped
+          # every setup-python step to in #1353. whisperx==3.8.6 (asr-align) has no distribution
+          # that satisfies the 3.14 resolver, so the align lane failed ResolutionImpossible on
+          # every run since that merge while the transcribe lane (no whisperx) stayed green.
+          python-version: "3.12"
           cache: pip
 
       - name: Install
@@ -165,7 +170,8 @@ jobs:
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.14"
+          # Matches constraints/prod.txt's compile target (see the asr job above).
+          python-version: "3.12"
           cache: pip
 
       - name: Install

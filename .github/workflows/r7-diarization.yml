@@ -33,7 +33,11 @@ jobs:
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.14"
+          # Pinned to constraints/asr.txt's compile target (scripts/compile_constraints.sh
+          # resolves inside python:3.12-slim-bookworm) -- not the fleet-wide "3.14" a Renovate
+          # actions bump landed everywhere (#1353). whisperx==3.8.6 (`asr`) has no distribution
+          # satisfying the 3.14 resolver; see asr.yml for the same fix.
+          python-version: "3.12"
           cache: pip
 
       - name: Cache pyannote models

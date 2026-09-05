@@ -15,6 +15,41 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **Chunk the deferred sweep's queue-only v2 submission at the Worker's batch limit
+  (`scripts/llm_deferred_sweep.py`).** The sweep handed `LiteLLMBackend.enqueue_batch` its entire
+  queue-only backlog in one call; the ingress Worker caps a single enqueue-batch request at
+  `_WORKER_BATCH_LIMIT` (1000) jobs and rejects an oversized request with HTTP 400 for the whole
+  batch, not just the overflow. Once the backlog grew past that limit, every queue-only record in
+  the run failed to submit at once and the workflow went red (`llm-deferred-sweep.yml` failed on
+  every run once the pending backlog exceeded 1000). The sweep now chunks the same way
+  `BatchingDispatchBackend.flush()` already does — `_WORKER_BATCH_LIMIT`-sized chunks submitted via
+  `_enqueue_batch_with_retry` — and treats a chunk not yet attempted when the sweep's deadline hits
+  as still pending rather than failed, consistent with "deferred ≠ failed".
+
+- **ASR align/diarization workflows broken by a fleet-wide Python 3.14 Renovate bump.** The
+  `github-actions` PR that pinned Actions SHAs (#1353) also bumped every `setup-python`
+  step's `python-version` from `3.12`/`3.13` to `3.14`, Renovate's default behavior for that
+  input. `constraints/asr.txt`/`constraints/prod.txt` are compiled specifically for CPython 3.12
+  (`scripts/compile_constraints.sh` resolves inside `python:3.12-slim-bookworm`), and
+  `whisperx==3.8.6` has no distribution satisfying pip's resolver on 3.14 — `asr.yml`'s align
+  lane, `asr-bench.yml`, `asr-quality-eval.yml`, and `r7-diarization.yml` all install extras that
+  pull in whisperx, and failed deterministically (`ResolutionImpossible`) on every run since the
+  merge, while `asr.yml`'s transcribe lane (no whisperx) stayed green. Reverted `python-version`
+  to `"3.12"` in the four affected workflows (including `asr.yml`'s `reconcile` job, which shares
+  `constraints/prod.txt`), with a comment pointing at the constraints compile target so a future
+  blanket Python bump doesn't silently re-break these. No pipeline version change; no stored
+  artifacts affected.
+
+- **Active stop and runner budget boundaries for the LLM topic tags workflow.** Added
+  `tag_run_time_budget_minutes: 140` configuration and wired `StopSignal` in `citypods/run.py`
+  to actively stop `tag` lane runs as soon as tagging producer quotas (tagger and prelabeler)
+  are exhausted. Wired `_run_bounded` to honor `ctx.stop` immediately across enrich passes and
+  capped global candidate submissions to the purpose allowance window with headroom. In
+  `citypods/tags.py`, eliminated duplicate transcript downloads between episode and chapter
+  tag input generation.
+
 ### Changed
 
 - **Preserve external-compute spend during lease cleanup (GH#1329).** Settlement and release
@@ -24,6 +59,13 @@ Phase R (Research-Tool Surface)._
   from erasing settled spend and sibling reservations. Existing incorrect balances require an
   operator correction; the fix does not infer historical charges. No pipeline version changes or
   artifact backfill. The configured provider caps and reserves are unchanged.
+  
+- **Reproducible Worker deployments and documented shim-token rotation (GH#1328).** All five
+  Wrangler action inputs now pin `4.129.0`, with a Renovate npm regex tracker on the weekly
+  hygiene cadence and reviewed upgrades. Wrangler is excluded from the output-affecting custom
+  manager rule. The provider shim README documents coordinated secret/Base URL rotation for
+  z.ai and OpenCode, including maintenance, validation, and rollback. No pipeline version changes
+  or stored-artifact invalidation; existing artifacts are left as-is.
 
 - **One canonical registry for every LLM dispatch lane.** `config/site_config.yml` gains an
   `llm_lanes` block keyed by the exact `LLMRequestPolicy.purpose` string, carrying both that lane's
