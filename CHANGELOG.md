@@ -52,6 +52,14 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Preserve external-compute spend during lease cleanup (GH#1329).** Settlement and release
+  use the existing reservation's provider cycle when callers omit it, rather than resetting the
+  balance to a bare calendar-month key. Explicit stale-cycle callbacks and unknown owners are
+  no-ops; admission still rolls provider cycles normally. This prevents Modal/Beam reconciliation
+  from erasing settled spend and sibling reservations. Existing incorrect balances require an
+  operator correction; the fix does not infer historical charges. No pipeline version changes or
+  artifact backfill. The configured provider caps and reserves are unchanged.
+  
 - **Reproducible Worker deployments and documented shim-token rotation (GH#1328).** All five
   Wrangler action inputs now pin `4.129.0`, with a Renovate npm regex tracker on the weekly
   hygiene cadence and reviewed upgrades. Wrangler is excluded from the output-affecting custom
