@@ -60,7 +60,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_LLM_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/llm-dispatch-proxy
-          wranglerVersion: "4"
+          wranglerVersion: "4.129.0"
           # `accountId` above only configures the deploy CLI -- it does not expose
           # CLOUDFLARE_ACCOUNT_ID to the Worker at runtime. That used to be solved here with a
           # `secrets`/`env` block that made wrangler-action run `wrangler secret put

@@ -42,4 +42,4 @@ jobs:
           workingDirectory: workers/swagit-list-proxy
           # Exact pin (matches workers/swagit-list-proxy/README.md), not a floating major -- see
           # that file for the reasoning. Bump deliberately, in one PR, in both places.
-          wranglerVersion: "4.114.0"
+          wranglerVersion: "4.129.0"

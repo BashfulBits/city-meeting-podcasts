@@ -17,6 +17,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Reproducible Worker deployments and documented shim-token rotation (GH#1328).** All five
+  Wrangler action inputs now pin `4.129.0`, with a Renovate npm regex tracker on the weekly
+  hygiene cadence and reviewed upgrades. Wrangler is excluded from the output-affecting custom
+  manager rule. The provider shim README documents coordinated secret/Base URL rotation for
+  z.ai and OpenCode, including maintenance, validation, and rollback. No pipeline version changes
+  or stored-artifact invalidation; existing artifacts are left as-is.
+
 - **One canonical registry for every LLM dispatch lane.** `config/site_config.yml` gains an
   `llm_lanes` block keyed by the exact `LLMRequestPolicy.purpose` string, carrying both that lane's
   models and its Cloudflare Dispatch v2 ingress write budget. `scripts/compile_llm_lanes.py`

@@ -53,6 +53,32 @@ The token lives in the URL path because AI Gateway **strips `cf-aig-authorizatio
 upstream sees it (confirmed by the same echo probe), leaving no gateway-supplied credential to
 authenticate against. Treat the registered Base URL as a secret.
 
+## Rotating `SHIM_TOKEN`
+
+Rotation is a coupled change: update the deployed Worker's `SHIM_TOKEN` **and both** AI Gateway
+Custom Provider Base URLs (`zai` and `opencode`) to the same new token. Updating only the secret
+or only the registrations produces opaque 404s for the mismatched routes. The Worker accepts
+only one token, so these independent updates cannot provide a zero-downtime rotation.
+
+1. Schedule a short maintenance window and pause/drain dispatch traffic using both shim routes,
+   including in-flight requests and manual callers. Keep the previous secret and both complete
+   Base URLs in a secure place for rollback; never paste them into issues or logs.
+2. From `workers/llm-provider-shim`, run `npx wrangler secret put SHIM_TOKEN` and enter the new
+   token at the interactive prompt. This updates the deployed Worker; the normal deployment
+   workflow does not rotate this secret. See the [Wrangler secret documentation](https://developers.cloudflare.com/workers/wrangler/commands/general/#secret-put).
+3. In AI Gateway, replace the token segment in **both** registered Base URLs:
+   `https://<worker-host>/<new-token>/zai/x` and
+   `https://<worker-host>/<new-token>/opencode/x`. Preserve the host, provider segment, and
+   sacrificial trailing `/x`; changing provider API keys is not part of this rotation.
+4. Probe each route through AI Gateway with its existing provider credentials. The existing
+   `tests/live/test_ai_gateway_contract.py::test_custom_provider_route_reaches_its_upstream`
+   contract test is the reference for detecting routing failures. Verify both probes actually
+   ran (missing credentials cause skips), reach the expected upstream JSON response, and do not
+   return the shim's opaque 404. Also verify the old token no longer authenticates to the Worker.
+5. Resume dispatch only after both routes pass. If validation fails, restore the previous Worker
+   secret **and both** previous Base URLs, validate both routes again, then resume. Retire the old
+   secret from the rollback store after the successful rotation is confirmed.
+
 ## Safety properties
 
 This Worker forwards third-party API keys, so it must never become an open relay:
