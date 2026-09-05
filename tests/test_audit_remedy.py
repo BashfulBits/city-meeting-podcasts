@@ -15,14 +15,16 @@ from pydantic import BaseModel, ValidationError
 
 from citypods.audit import collect_unexpected_bodies
 from citypods.audit_remedy import (
+    DECISION_CONTRACT,
     EVIDENCE_TOKEN_BUDGET,
     REMEDY_CONTRACT,
+    BodyDecisions,
     BodyProposal,
     RejectedProposal,
     RemedyOutput,
     RemedyPlan,
     SourceContext,
-    _trim_evidence_to_token_budget,
+    _compact_evidence,
     apply_remedy_plan,
     classify_unexpected_bodies,
     ensure_remedy_contract,
@@ -30,14 +32,14 @@ from citypods.audit_remedy import (
     feed_paths_by_slug,
     format_remedy_markdown,
     gather_unexpected_body_evidence,
+    remedy_batches,
+    safe_classification_error,
     validate_proposals,
 )
-from citypods.compute.base import JobHandle, JobResult
-from citypods.compute.llm_deferred import look_up_deferred, write_deferred
+from citypods.compute.base import JobResult
 from citypods.compute.llm_policy import estimate_tokens
 from citypods.compute.structured import register_response_model
 from citypods.models import City, Episode
-from tests._cas_fake import MemStorage
 
 
 def make_city(slug, body, **source_extra):
@@ -382,34 +384,81 @@ def test_apply_never_writes_outside_config_feeds(evidence, repo):
 # --- classification -----------------------------------------------------------------------
 
 
-def test_classify_parses_a_fenced_response(evidence):
-    payload = {
+def decision_payload(evidence):
+    return {
         "proposals": [
             {
-                "source_key": "test-source",
-                "unexpected_body": "Special Meeting",
+                "finding_id": f"f{i}",
                 "action": "union",
                 "target_feeds": ["test-city-council"],
-                "rationale": "Recurring special session",
+                "rationale": "Council session",
             }
+            for i, _ in enumerate(evidence["unexpected_findings"])
         ]
     }
 
-    class FakeBackend:
-        def run_inference(self, job):
-            assert job.recipe_hash == evidence_recipe_hash(evidence)
-            assert job.inputs.get("structured_output") == REMEDY_CONTRACT
-            return JobResult(
-                task=job.task,
-                recipe_hash=job.recipe_hash,
-                output={
-                    "choices": [{"message": {"content": f"```json\n{json.dumps(payload)}\n```"}}]
-                },
-                model="gemini/gemini-3.6-flash",
-            )
 
-    out = classify_unexpected_bodies(evidence, storage=MemStorage(), backend=FakeBackend())
-    assert out.proposals[0].action == "union"
+class ReplyBackend:
+    def __init__(self, replies):
+        self.replies = iter(replies)
+        self.jobs = []
+
+    def run_immediate(self, job):
+        self.jobs.append(job)
+        return JobResult(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            output={"choices": [{"message": {"content": next(self.replies)}}]},
+            model="gemini/gemini-3.6-flash",
+        )
+
+
+def test_classify_direct_contract_and_resolves_local_identifiers(evidence):
+    payload = decision_payload(evidence)
+    payload["proposals"][0].update(action="single_uid_inclusion", all_observed_episodes=True)
+    backend = ReplyBackend([f"```json\n{json.dumps(payload)}\n```"])
+    out = classify_unexpected_bodies(evidence, backend=backend)
+    job = backend.jobs[0]
+    policy = job.inputs["llm_policy"]
+    assert policy.require_direct and not policy.queue_only and not policy.allow_dispatch_overflow
+    assert job.inputs["structured_output"] == DECISION_CONTRACT
+    assert job.inputs["timeout"] <= 45
+    assert job.inputs["num_retries"] == 0
+    assert out.proposals[0].source_key == evidence["source_key"]
+    assert out.proposals[0].provider_guids == [
+        e["provider_guid"] for e in evidence["unexpected_findings"][0]["episodes"]
+    ]
+
+
+def test_classify_repairs_bad_json_and_evidence_ids_in_same_process(evidence):
+    valid = decision_payload(evidence)
+    for invalid in ("not json", json.dumps({"proposals": []})):
+        backend = ReplyBackend([invalid, json.dumps(valid)])
+        result = classify_unexpected_bodies(evidence, backend=backend)
+        assert len(result.proposals) == len(evidence["unexpected_findings"])
+        assert len(backend.jobs) == 2
+        assert "Correct the response" in backend.jobs[-1].inputs["messages"][-1]["content"]
+
+
+def test_classify_rejects_invented_episode_ids_after_one_repair(evidence):
+    payload = decision_payload(evidence)
+    payload["proposals"][0].update(action="single_uid_inclusion", episode_ids=["e99999"])
+    backend = ReplyBackend([json.dumps(payload)] * 2)
+    with pytest.raises(ValueError, match="episode_ids"):
+        classify_unexpected_bodies(evidence, backend=backend)
+    assert len(backend.jobs) == 2
+
+
+def test_classify_manual_review_preserves_a_reason_for_every_label(evidence):
+    payload = {
+        "proposals": [
+            {"finding_id": f"f{i}", "action": "manual_review", "rationale": "Owner unclear"}
+            for i in range(len(evidence["unexpected_findings"]))
+        ]
+    }
+    result = classify_unexpected_bodies(evidence, backend=ReplyBackend([json.dumps(payload)]))
+    assert not result.proposals
+    assert len(result.unresolved) == len(evidence["unexpected_findings"])
 
 
 def test_ensure_remedy_contract():
@@ -426,42 +475,24 @@ def test_ensure_remedy_contract_rejects_conflict():
         register_response_model(REMEDY_CONTRACT, IncompatibleModel)
 
 
-def test_classify_raises_when_the_request_is_deferred(evidence):
-    class DeferringBackend:
-        def run_inference(self, job):
-            return JobHandle(
-                backend="litellm",
-                task=job.task,
-                recipe_hash=job.recipe_hash,
-                ref="queued-remedy",
+def test_classify_does_not_call_backend_after_shared_deadline(evidence):
+    backend = ReplyBackend([])
+    with pytest.raises(TimeoutError):
+        classify_unexpected_bodies(
+            evidence, backend=backend, deadline_at=datetime(2020, 1, 1, tzinfo=UTC)
+        )
+    assert not backend.jobs
+
+
+def test_wire_schema_requires_action_specific_fields():
+    for fields in (
+        {"action": "single_uid_inclusion", "target_feeds": ["council"]},
+        {"action": "new_feed", "new_feed_slug": "board"},
+    ):
+        with pytest.raises(ValidationError):
+            BodyDecisions.model_validate(
+                {"proposals": [{"finding_id": "f0", "rationale": "reason", **fields}]}
             )
-
-    with pytest.raises(RuntimeError, match="deferred"):
-        classify_unexpected_bodies(evidence, storage=MemStorage(), backend=DeferringBackend())
-
-
-def test_classify_raises_on_empty_content(evidence):
-    class EmptyBackend:
-        def run_inference(self, job):
-            return JobResult(
-                task=job.task,
-                recipe_hash=job.recipe_hash,
-                output={"choices": [{"message": {"content": "   "}}]},
-                model="gemini/gemini-3.6-flash",
-            )
-
-    with pytest.raises(ValueError, match="empty"):
-        classify_unexpected_bodies(evidence, storage=MemStorage(), backend=EmptyBackend())
-
-
-def test_classify_reraises_backend_inference_failure(evidence):
-    class ExplodingBackend:
-        def run_inference(self, job):
-            raise ConnectionError("Connection refused")
-
-    with pytest.raises(RuntimeError, match="^Remedy classification inference failed$") as exc_info:
-        classify_unexpected_bodies(evidence, storage=MemStorage(), backend=ExplodingBackend())
-    assert isinstance(exc_info.value.__cause__, ConnectionError)
 
 
 def test_remedy_models_exist_in_the_route_catalog():
@@ -553,107 +584,46 @@ def _big_evidence(episode_count: int) -> dict:
     }
 
 
-def test_trim_evidence_to_token_budget_shrinks_an_oversized_bundle_below_budget():
+def test_batches_preserve_all_full_evidence_and_bound_model_input():
+    import copy
+
     evidence = _big_evidence(5000)
-    over_budget = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
-    assert over_budget > EVIDENCE_TOKEN_BUDGET  # sanity: the fixture really is oversized
-
-    trimmed = _trim_evidence_to_token_budget(evidence, source_key="test-source")
-
-    assert trimmed is True
-    assert evidence["unexpected_findings"][0]["episodes_truncated"] is True
-    after = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
-    assert after <= EVIDENCE_TOKEN_BUDGET
-
-
-def test_trim_evidence_to_token_budget_is_a_no_op_when_already_under_budget():
-    evidence = _big_evidence(3)
-    before = json.dumps(evidence, sort_keys=True, default=str)
-
-    trimmed = _trim_evidence_to_token_budget(evidence, source_key="test-source")
-
-    assert trimmed is False
-    assert json.dumps(evidence, sort_keys=True, default=str) == before
+    evidence["unexpected_findings"] *= 30
+    original = copy.deepcopy(evidence)
+    batches = list(remedy_batches(evidence))
+    assert sum(len(b["unexpected_findings"]) for b in batches) == 30
+    assert evidence == original
+    for batch in batches:
+        compact = _compact_evidence(batch)
+        assert estimate_tokens([{"content": json.dumps(compact)}]) <= EVIDENCE_TOKEN_BUDGET
+        assert all(len(f["episode_samples"]) <= 6 for f in compact["unexpected_findings"])
+        assert all(len(f["episodes"]) == 5000 for f in batch["unexpected_findings"])
 
 
-def test_trim_evidence_to_token_budget_never_drops_below_the_minimum_episodes_per_finding():
-    # An adversarially tiny budget must still stop at _MIN_EPISODES_PER_FINDING rather than
-    # emptying a finding's date-range evidence out entirely.
-    evidence = _big_evidence(5000)
-    import citypods.audit_remedy as audit_remedy_module
+def test_single_oversized_finding_is_reported_not_dropped(evidence):
+    evidence["unexpected_findings"][0]["unexpected_body"] = "x" * 100000
+    batches = list(remedy_batches(evidence))
+    assert sum(len(b["unexpected_findings"]) for b in batches) == len(
+        evidence["unexpected_findings"]
+    )
+    backend = ReplyBackend([])
+    with pytest.raises(ValueError, match="budget"):
+        classify_unexpected_bodies(batches[0], backend=backend)
+    assert not backend.jobs
 
-    original_budget = audit_remedy_module.EVIDENCE_TOKEN_BUDGET
-    audit_remedy_module.EVIDENCE_TOKEN_BUDGET = 1
+
+def test_recipe_changes_with_prompt_or_schema_version(evidence, monkeypatch):
+    import citypods.audit_remedy as remedy
+
+    before = evidence_recipe_hash(evidence)
+    monkeypatch.setattr(remedy, "REMEDY_VERSION", "next-contract")
+    assert evidence_recipe_hash(evidence) != before
+
+
+def test_safe_diagnostics_do_not_echo_invalid_model_text():
     try:
-        _trim_evidence_to_token_budget(evidence, source_key="test-source")
-    finally:
-        audit_remedy_module.EVIDENCE_TOKEN_BUDGET = original_budget
-    assert len(evidence["unexpected_findings"][0]["episodes"]) == 2
-
-
-def test_trim_evidence_to_token_budget_shrinks_when_every_finding_is_already_at_the_floor():
-    # The gap CodeRabbit flagged on PR #1476: pass 1 only trims a finding with *more* than
-    # `_MIN_EPISODES_PER_FINDING` episodes, so a bundle made entirely of findings already at that
-    # floor left `candidates` empty and the oversized bundle went out untouched. Build enough
-    # two-episode findings, each with a long title, to be oversized even at the floor.
-    evidence = {
-        "source_key": "test-source",
-        "city": {"slug": "test-city", "name": "Test City"},
-        "existing_feeds": [],
-        "historical_archive": {"total_archived_count": 0, "known_archived_bodies": []},
-        "unexpected_findings": [
-            {
-                "unexpected_body": f"Special Meeting {n}",
-                "count": 2,
-                "date_range": {"earliest": "2020-01-01", "latest": "2026-01-01"},
-                "episodes": [
-                    {
-                        "provider_guid": f"guid-{n}-{i}",
-                        "published": "2020-01-01",
-                        "title": "A" * 200,
-                        "body": "B" * 200,
-                    }
-                    for i in range(2)
-                ],
-            }
-            for n in range(2000)
-        ],
-    }
-    over_budget = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
-    assert over_budget > EVIDENCE_TOKEN_BUDGET  # sanity: oversized despite every finding at floor
-
-    trimmed = _trim_evidence_to_token_budget(evidence, source_key="test-source")
-
-    assert trimmed is True
-    after = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
-    assert after <= EVIDENCE_TOKEN_BUDGET
-    # At least one finding survived -- the model still has something to classify.
-    assert len(evidence["unexpected_findings"]) >= 1
-    # Findings had to be dropped outright (pass 1/2 alone can't touch a bundle already at the
-    # episode floor), and the omission is recorded as a bounded count, not an unbounded name list.
-    assert evidence["findings_omitted_count"] == 2000 - len(evidence["unexpected_findings"])
-
-
-def test_classify_discards_the_deferred_record_so_the_sweep_never_retries_it(evidence):
-    """The deferred-sweep bug this guards against: a capacity miss must not leave a pending
-    record in the shared registry for the unrelated llm-deferred-sweep cron to retry hours later,
-    disconnected from the real-time /remedy request that produced it."""
-    storage = MemStorage()
-    recipe_hash = evidence_recipe_hash(evidence)
-    handle = JobHandle(backend="litellm", task="tag", recipe_hash=recipe_hash, ref="queued-remedy")
-    write_deferred(storage, recipe_hash, handle)
-    assert look_up_deferred(storage, recipe_hash) is not None
-
-    class DeferringBackend:
-        storage = None  # set below once we know the instance
-
-        def run_inference(self, job):
-            return handle
-
-    backend = DeferringBackend()
-    backend.storage = storage
-
-    with pytest.raises(RuntimeError, match="deferred"):
-        classify_unexpected_bodies(evidence, storage=storage, backend=backend)
-
-    assert look_up_deferred(storage, recipe_hash) is None
+        BodyDecisions.model_validate({"proposals": "secret-provider-text"})
+    except ValidationError as exc:
+        diagnostic = safe_classification_error(exc)
+    assert "secret-provider-text" not in diagnostic
+    assert "proposals" in diagnostic and "list_type" in diagnostic

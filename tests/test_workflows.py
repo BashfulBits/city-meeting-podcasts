@@ -1427,3 +1427,24 @@ def test_direct_llm_steps_that_reach_the_gateway_can_authenticate_to_it():
         and "AI_GATEWAY_AUTH_TOKEN" not in (step.get("env") or {})
     ]
     assert missing == []
+
+
+def test_remedy_has_direct_diagnostics_verification_tools_and_bounded_fallback():
+    import subprocess
+
+    workflow, job = _job("remedy-unexpected-bodies.yml", "remedy")
+    assert job["timeout-minutes"] < 60
+    install = next(s for s in job["steps"] if s.get("name") == "Install")
+    assert ".[dev,storage,wer,llm]" in install["run"]
+    assert "constraints/dev.txt" in install["run"]
+    assert "constraints/chapter-research.txt" in install["run"]
+    classify = next(s for s in job["steps"] if s.get("id") == "classify")
+    assert classify["env"]["LLM_SAFE_DIAGNOSTICS"] == "1"
+    assert not any("DISPATCH" in key for key in classify["env"])
+    assert "timeout --signal=TERM" in classify["run"]
+    fallback = next(
+        s for s in job["steps"] if s.get("name") == "Report interrupted or failed execution"
+    )
+    assert "always()" in fallback["if"]
+    assert "remedy-comment-posted" in fallback["run"]
+    subprocess.run(["bash", "-n"], input=fallback["run"], text=True, check=True)

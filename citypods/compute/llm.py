@@ -235,7 +235,11 @@ class LLMBackendError(RuntimeError):
 
 
 class LLMStructuredOutputError(LLMBackendError):
-    """A malformed model reply that a caller may safely defer and retry with fresh evidence."""
+    """A malformed model reply, with optional allowlisted diagnostic metadata."""
+
+    def __init__(self, message: str, *, diagnostic: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.diagnostic = diagnostic or {}
 
 
 class LLMDispatchTerminalError(LLMBackendError):
@@ -289,12 +293,40 @@ def _safe_structured_failure_diagnostic(
     raw = json.dumps(schema, sort_keys=True)
     attempts = getattr(exc, "failed_attempts", ()) or ()
     last = attempts[-1].exception if attempts else exc
+    fields: set[str] = set()
+
+    def collect_fields(node):
+        if isinstance(node, dict):
+            fields.update(node.get("properties", {}))
+            for child in node.values():
+                collect_fields(child)
+        elif isinstance(node, list):
+            for child in node:
+                collect_fields(child)
+
+    collect_fields(schema)
+    validation_errors = []
+    # Unknown extra keys are model text too: retain only schema-owned field names and indices.
+    from pydantic import ValidationError
+
+    if isinstance(last, ValidationError):
+        for error in last.errors(include_input=False, include_context=False, include_url=False)[:8]:
+            validation_errors.append(
+                {
+                    "loc": [
+                        part if isinstance(part, int) or part in fields else "<field>"
+                        for part in error["loc"]
+                    ],
+                    "type": error["type"],
+                }
+            )
     return {
         "event": "llm_structured_output_failure",
         "model": resolved_model,
         "task": job.task,
         "attempts": int(getattr(exc, "n_attempts", 0) or 0),
         "provider_exception_type": type(last).__name__,
+        "validation_errors": validation_errors,
         "provider_status": getattr(last, "status_code", None),
         "input_characters": sum(len(str(message.get("content", ""))) for message in _messages(job)),
         "schema_characters": len(raw),
@@ -801,7 +833,14 @@ class LiteLLMBackend(Backend):
                 api_key = os.environ.get(route.api_key_env)
                 if api_key:
                     options["api_key"] = api_key
-        for field in ("temperature", "max_tokens", "tools", "tool_choice"):
+        for field in (
+            "temperature",
+            "max_tokens",
+            "tools",
+            "tool_choice",
+            "timeout",
+            "num_retries",
+        ):
             if field in job.inputs:
                 options[field] = job.inputs[field]
         return options
@@ -955,7 +994,8 @@ class LiteLLMBackend(Backend):
             # Do not expose model text or validation feedback in workflow logs.  The caller safely
             # defers and will obtain fresh evidence on its next scheduled run.
             raise LLMStructuredOutputError(
-                "structured LLM response failed Pydantic validation"
+                "structured LLM response failed Pydantic validation",
+                diagnostic=_safe_structured_failure_diagnostic(exc, job, model, resolved_model),
             ) from None
         # Instructor returned a validated object; retain the normalized raw response contract so
         # existing task parsers and result storage remain provider-neutral.
@@ -1058,7 +1098,10 @@ class LiteLLMBackend(Backend):
                 # Do not expose model text or validation feedback in workflow logs.  The caller
                 # safely defers and will obtain fresh evidence on its next scheduled run.
                 raise LLMStructuredOutputError(
-                    "structured LLM response failed Pydantic validation"
+                    "structured LLM response failed Pydantic validation",
+                    diagnostic=_safe_structured_failure_diagnostic(
+                        _NativeStructuredRetryExhausted(failed_attempts), job, model, resolved_model
+                    ),
                 ) from None
             output = _response_mapping(raw)
             if first_attempt_usage is not None:
@@ -1170,6 +1213,31 @@ class LiteLLMBackend(Backend):
         # recipe_hash never has to pay for a real provider call again; a deferred handle means
         # the sweep (or a later call) can pick up exactly where this one left off.
         write_deferred(self.storage, job.recipe_hash, result)
+        return result
+
+    def run_immediate(self, job: InferenceJob) -> JobResult:
+        """Direct, same-process inference with quota accounting and no durable result registry.
+
+        Interactive workflows own retries and reporting. Neither old cached answers nor pending
+        handles may escape into the shared sweep. The paced implementation still reserves and
+        settles every actual provider attempt, including its local structured-output retry.
+        """
+        policy = job.inputs.get("llm_policy")
+        if not isinstance(policy, LLMRequestPolicy) or not policy.require_direct:
+            raise ValueError("immediate inference requires a direct request policy")
+        if policy.queue_only or policy.allow_dispatch_overflow or policy.deadline_at is None:
+            raise ValueError("immediate inference requires a deadline and forbids dispatch")
+        if job.task not in LLM_TASKS or not job.recipe_hash:
+            raise ValueError("immediate inference requires a supported task and recipe hash")
+        if self.storage is None or not getattr(self.storage, "cas_capable", False):
+            raise LLMBackendError("LLM scheduler requires a CAS-capable storage backend")
+        if policy.deadline_at <= self._now():
+            raise TimeoutError("Immediate inference deadline reached")
+        structured = self._response_model(job)
+        result = self._run_policy_job_paced(job, policy, structured, _messages(job))
+        if isinstance(result, JobHandle):
+            raise TimeoutError("No direct route capacity before the request deadline")
+        self._validate_reconciled(result.output, self._structured_output(job))
         return result
 
     def _enqueue_durable_policy_job(
@@ -1568,7 +1636,9 @@ class LiteLLMBackend(Backend):
             policy,
             routes=ROUTE_REGISTRY,
             ledger=ledger,
-            available_transports=self._available_transports(),
+            available_transports=(
+                frozenset({"direct"}) if policy.require_direct else self._available_transports()
+            ),
             estimated_tokens=per_attempt_tokens * max_provider_attempts,
             input_tokens=input_tokens,
             output_tokens=output_tokens,

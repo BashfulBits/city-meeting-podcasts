@@ -2057,3 +2057,132 @@ def test_backend_rejects_cleartext_dispatch_urls_before_any_request(config_name)
             http_session=Session(),
         )
     assert calls == []
+
+
+def test_immediate_direct_ignores_poisoned_cache_and_never_persists_results():
+    from citypods.compute.llm_deferred import write_deferred
+
+    storage = MemStorage()
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={"bad": "old unstructured response"}),
+    )
+    old_registry = {k: v for k, v in storage.objs.items() if "llm_deferred" in k}
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return {"choices": [{"message": {"content": "fresh"}}]}
+
+    class NoWorker:
+        def post(self, *args, **kwargs):
+            pytest.fail("immediate inference contacted the dispatch Worker")
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.5-flash",
+            mode="dispatch",
+            dispatch_url="https://dispatch.example",
+        ),
+        completion=completion,
+        storage=storage,
+        http_session=NoWorker(),
+    )
+    result = backend.run_immediate(
+        job(
+            content="test",
+            timeout=12,
+            num_retries=0,
+            llm_policy=LLMRequestPolicy(
+                require_direct=True,
+                allowed_models=("gemini/gemini-3.5-flash",),
+                deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+            ),
+        )
+    )
+    assert result.output["choices"][0]["message"]["content"] == "fresh"
+    assert calls[0]["timeout"] == 12
+    assert calls[0]["num_retries"] == 0
+    assert {k: v for k, v in storage.objs.items() if "llm_deferred" in k} == old_registry
+    budget, _ = load_llm_budget_cas(storage)
+    assert any(route.requests_minute == 1 for route in budget.routes.values())
+
+
+def test_immediate_capacity_failure_never_leaves_a_sweep_job(monkeypatch):
+    storage = MemStorage()
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3.5-flash"), storage=storage)
+    monkeypatch.setattr(
+        backend,
+        "_run_policy_job_paced",
+        lambda *args: JobHandle(
+            task="tag", recipe_hash="recipe-1", backend="litellm", ref="deferred:recipe-1"
+        ),
+    )
+    with pytest.raises(TimeoutError, match="direct route capacity"):
+        backend.run_immediate(
+            job(
+                content="test",
+                llm_policy=LLMRequestPolicy(
+                    require_direct=True, deadline_at=datetime.now(UTC) + timedelta(minutes=1)
+                ),
+            )
+        )
+    assert not storage.objs
+
+
+def test_immediate_rejects_queue_policy_before_any_io():
+    backend = LiteLLMBackend(storage=MemStorage())
+    with pytest.raises(ValueError, match="forbids dispatch"):
+        backend.run_immediate(
+            job(
+                llm_policy=LLMRequestPolicy(
+                    require_direct=True,
+                    queue_only=True,
+                    deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+                )
+            )
+        )
+
+
+def test_safe_schema_diagnostics_preserve_field_paths_but_not_extra_keys():
+    from pydantic import ValidationError
+
+    try:
+        ExampleOutput.model_validate({"value": [], "secret-key": "secret-value"})
+    except ValidationError as exc:
+        diagnostic = _safe_structured_failure_diagnostic(
+            exc, job(content="secret-prompt"), ExampleOutput, "model"
+        )
+    errors = diagnostic["validation_errors"]
+    assert errors[0]["loc"] == ["value"]
+    assert errors[1]["loc"] == ["<field>"]
+    assert "secret" not in json.dumps(diagnostic)
+
+
+def test_immediate_schema_repair_is_local_and_never_persists_a_handle():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response("not json" if len(calls) == 1 else '{"value":"fixed"}')
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3.5-flash"), completion=completion, storage=storage
+    )
+    result = backend.run_immediate(
+        job(
+            content="test",
+            structured_output="test-output",
+            llm_policy=LLMRequestPolicy(
+                require_direct=True,
+                allowed_models=("gemini/gemini-3.5-flash",),
+                deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+            ),
+        )
+    )
+    assert len(calls) == 2
+    assert "corrected JSON" in calls[1]["messages"][-1]["content"]
+    assert result.output["choices"][0]["message"]["content"] == '{"value":"fixed"}'
+    assert not any("llm_deferred" in key for key in storage.objs)
