@@ -301,6 +301,7 @@ _WORKER_ROUTE_FIELDS = (
     "upstream_model",
     "input_context_limit",
     "output_context_limit",
+    "hard_input_ceiling",
     "account_id",
     "rpm",
     "rpd",
@@ -796,6 +797,29 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"route {route.get('route_id', route.get('model'))!r} must declare a positive "
                     f"integer {limit_name}; provider defaults are not supported"
                 )
+        # Optional, opt-in only -- most providers tolerate a request above their configured `tpm`
+        # (confirmed live for NVIDIA), so this must never be inferred/defaulted from `tpm` here.
+        # Left unscaled by `token_estimate_buffer`/`split_cap_multiplier`: unlike `tpm`, this is a
+        # hard fact about what a single request can get through, not our own dispatcher-coexistence
+        # bookkeeping, and is already authored conservatively below the observed live boundary.
+        hard_ceiling = route.get("hard_input_ceiling")
+        if hard_ceiling is not None:
+            if (
+                isinstance(hard_ceiling, bool)
+                or not isinstance(hard_ceiling, (int, float))
+                or (hard_ceiling < 1)
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"hard_input_ceiling: {hard_ceiling!r}"
+                )
+            if hard_ceiling > route["input_context_limit"]:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has "
+                    f"hard_input_ceiling ({hard_ceiling}) above its own input_context_limit "
+                    f"({route['input_context_limit']}); it can never bind and should be removed"
+                )
+            route["hard_input_ceiling"] = int(hard_ceiling)
         profile_name = route.get(
             "structured_output_profile",
             provider_cfg.get("structured_output_profile", "standard_json_schema"),

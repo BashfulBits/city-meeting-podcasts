@@ -110,6 +110,64 @@ def test_direct_selection_skips_physical_routes_with_insufficient_context():
     assert ("test/model", "output context limit") in output_only.rejected
 
 
+def test_hard_input_ceiling_rejects_a_route_even_though_it_fits_the_context_limit():
+    """Distinct from `input_context_limit` above: a route's real usable per-request ceiling can
+    sit well below its context window (confirmed live against Gemini's free tier -- a single
+    request over the ceiling is rejected outright by the provider, no matter how idle the account
+    is). `hard_input_ceiling` is a second, tighter, opt-in gate for exactly that -- unset (None)
+    on every route we haven't verified behaves this way."""
+    gemini_shaped = LLMRoute(
+        model="test/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=250_000),
+        pricing=PricingPolicy(),
+        input_context_limit=1_048_576,
+        output_context_limit=65_536,
+        hard_input_ceiling=120_000,
+    )
+    result = select_route(
+        LLMRequestPolicy(allowed_models=("test/model",)),
+        routes={"gemini_shaped": gemini_shaped},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=150_000,
+        input_tokens=150_000,
+        output_tokens=1_000,
+        now=NOW,
+    )
+    assert result.route is None
+    assert ("test/model", "hard input ceiling") in result.rejected
+
+
+def test_hard_input_ceiling_unset_never_blocks_a_route_that_only_has_tpm():
+    """Regression test for the opposite failure mode: confirmed live against NVIDIA's free tier,
+    a route can accept a single request several times its configured `tpm` with no rejection at
+    all. A route with no `hard_input_ceiling` must stay eligible purely on `input_context_limit`,
+    exactly like before this field existed -- `tpm` alone must never gate admission here."""
+    nvidia_shaped = LLMRoute(
+        model="test/model",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(tpm=40_000),
+        pricing=PricingPolicy(),
+        input_context_limit=1_000_000,
+        output_context_limit=65_536,
+    )
+    result = select_route(
+        LLMRequestPolicy(allowed_models=("test/model",)),
+        routes={"nvidia_shaped": nvidia_shaped},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=115_500,
+        input_tokens=115_000,
+        output_tokens=500,
+        now=NOW,
+    )
+    assert result.route is nvidia_shaped
+    assert ("test/model", "hard input ceiling") not in result.rejected
+
+
 def test_paid_route_wins_when_free_quota_cannot_reset_before_deadline():
     result = select_route(
         LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=1)),

@@ -15,12 +15,14 @@ from pydantic import BaseModel, ValidationError
 
 from citypods.audit import collect_unexpected_bodies
 from citypods.audit_remedy import (
+    EVIDENCE_TOKEN_BUDGET,
     REMEDY_CONTRACT,
     BodyProposal,
     RejectedProposal,
     RemedyOutput,
     RemedyPlan,
     SourceContext,
+    _trim_evidence_to_token_budget,
     apply_remedy_plan,
     classify_unexpected_bodies,
     ensure_remedy_contract,
@@ -31,6 +33,8 @@ from citypods.audit_remedy import (
     validate_proposals,
 )
 from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.llm_deferred import look_up_deferred, write_deferred
+from citypods.compute.llm_policy import estimate_tokens
 from citypods.compute.structured import register_response_model
 from citypods.models import City, Episode
 from tests._cas_fake import MemStorage
@@ -522,3 +526,91 @@ def test_feed_paths_by_slug_skips_templates(repo):
         "test-city-council",
         "test-city-library-board",
     }
+
+
+def _big_evidence(episode_count: int) -> dict:
+    return {
+        "source_key": "test-source",
+        "city": {"slug": "test-city", "name": "Test City"},
+        "existing_feeds": [],
+        "historical_archive": {"total_archived_count": 0, "known_archived_bodies": []},
+        "unexpected_findings": [
+            {
+                "unexpected_body": "Special Meeting",
+                "count": episode_count,
+                "date_range": {"earliest": "2020-01-01", "latest": "2026-01-01"},
+                "episodes": [
+                    {
+                        "provider_guid": f"guid-{i}",
+                        "published": "2020-01-01",
+                        "title": "A" * 200,  # padding so this fixture is realistically oversized
+                        "body": "Special Meeting",
+                    }
+                    for i in range(episode_count)
+                ],
+            }
+        ],
+    }
+
+
+def test_trim_evidence_to_token_budget_shrinks_an_oversized_bundle_below_budget():
+    evidence = _big_evidence(5000)
+    over_budget = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
+    assert over_budget > EVIDENCE_TOKEN_BUDGET  # sanity: the fixture really is oversized
+
+    trimmed = _trim_evidence_to_token_budget(evidence, source_key="test-source")
+
+    assert trimmed is True
+    assert evidence["unexpected_findings"][0]["episodes_truncated"] is True
+    after = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
+    assert after <= EVIDENCE_TOKEN_BUDGET
+
+
+def test_trim_evidence_to_token_budget_is_a_no_op_when_already_under_budget():
+    evidence = _big_evidence(3)
+    before = json.dumps(evidence, sort_keys=True, default=str)
+
+    trimmed = _trim_evidence_to_token_budget(evidence, source_key="test-source")
+
+    assert trimmed is False
+    assert json.dumps(evidence, sort_keys=True, default=str) == before
+
+
+def test_trim_evidence_to_token_budget_never_drops_below_the_minimum_episodes_per_finding():
+    # An adversarially tiny budget must still stop at _MIN_EPISODES_PER_FINDING rather than
+    # emptying a finding's date-range evidence out entirely.
+    evidence = _big_evidence(5000)
+    import citypods.audit_remedy as audit_remedy_module
+
+    original_budget = audit_remedy_module.EVIDENCE_TOKEN_BUDGET
+    audit_remedy_module.EVIDENCE_TOKEN_BUDGET = 1
+    try:
+        _trim_evidence_to_token_budget(evidence, source_key="test-source")
+    finally:
+        audit_remedy_module.EVIDENCE_TOKEN_BUDGET = original_budget
+    assert len(evidence["unexpected_findings"][0]["episodes"]) == 2
+
+
+def test_classify_discards_the_deferred_record_so_the_sweep_never_retries_it(evidence):
+    """The deferred-sweep bug this guards against: a capacity miss must not leave a pending
+    record in the shared registry for the unrelated llm-deferred-sweep cron to retry hours later,
+    disconnected from the real-time /remedy request that produced it."""
+    storage = MemStorage()
+    recipe_hash = evidence_recipe_hash(evidence)
+    handle = JobHandle(backend="litellm", task="tag", recipe_hash=recipe_hash, ref="queued-remedy")
+    write_deferred(storage, recipe_hash, handle)
+    assert look_up_deferred(storage, recipe_hash) is not None
+
+    class DeferringBackend:
+        storage = None  # set below once we know the instance
+
+        def run_inference(self, job):
+            return handle
+
+    backend = DeferringBackend()
+    backend.storage = storage
+
+    with pytest.raises(RuntimeError, match="deferred"):
+        classify_unexpected_bodies(evidence, storage=storage, backend=backend)
+
+    assert look_up_deferred(storage, recipe_hash) is None

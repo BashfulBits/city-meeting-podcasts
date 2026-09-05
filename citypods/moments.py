@@ -19,7 +19,19 @@ from citypods.compute.structured import register_response_model, response_model
 MOMENTS_CONTRACT = "moment-extraction"
 MOMENTS_PROMPT_VERSION = "1"
 MOMENTS_PIPELINE_VERSION = "2"
-COUNCIL_MOMENT_MODELS = ("gemini/gemini-3.6-flash", "gemini/gemini-3.5-flash")
+# Council feeds run on full-meeting transcripts, which can exceed the Gemini free tier's real
+# per-request ceiling well before its 1M-token context window (confirmed live -- see
+# `hard_input_ceiling` in config/provider_limits.yml). `deepseek/deepseek-v4-pro` and
+# `moonshotai/kimi-k3` are free NVIDIA routes with no such hard cap, added as overflow so an
+# oversized council job has somewhere to go instead of a guaranteed 429. Order matters only for
+# tie-breaking (the caller's own model is still preferred when multiple routes are eligible), not
+# correctness -- the two Gemini entries stay first.
+COUNCIL_MOMENT_MODELS = (
+    "gemini/gemini-3.6-flash",
+    "gemini/gemini-3.5-flash",
+    "deepseek/deepseek-v4-pro",
+    "moonshotai/kimi-k3",
+)
 DEFAULT_MOMENT_MODELS = ("gemini/gemini-3.5-flash-lite", "gemini/gemini-3.1-flash-lite")
 MOMENTS_MIN_SECONDS = 8.0
 MOMENTS_MAX_SECONDS = 90.0

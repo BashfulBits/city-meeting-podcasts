@@ -187,6 +187,15 @@ class LLMRoute:
     # provider- or route-specific values for every physical route.
     input_context_limit: int = 32768
     output_context_limit: int = 1024
+    # A SEPARATE, tighter, opt-in ceiling from `input_context_limit`. Some providers' `tpm` is
+    # enforced as a hard per-request cap with no burst room above it, no matter how idle the
+    # account is (confirmed live against Gemini's free tier -- a single request over the usable
+    # window fails outright, and the real usable ceiling can be well below both `tpm` and the
+    # model's real context window). Others genuinely tolerate a burst well above their configured
+    # `tpm` (confirmed live against NVIDIA's free tier), so this must never be derived from `tpm`
+    # automatically -- only set it where a provider's hard-reject behavior has actually been
+    # verified. `None` (the default) means "no extra ceiling beyond `input_context_limit`."
+    hard_input_ceiling: int | None = None
 
     def __post_init__(self) -> None:
         # Hand-built fallback and test routes intentionally omit provider adapter metadata.  They
@@ -311,6 +320,11 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 ),
                 input_context_limit=max(1, int(item.get("input_context_limit", 32768) or 32768)),
                 output_context_limit=max(1, int(item.get("output_context_limit", 1024) or 1024)),
+                hard_input_ceiling=(
+                    int(item["hard_input_ceiling"])
+                    if item.get("hard_input_ceiling") is not None
+                    else None
+                ),
             )
         )
     aliases = {

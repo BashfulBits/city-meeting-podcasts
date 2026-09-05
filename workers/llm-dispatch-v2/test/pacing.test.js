@@ -158,6 +158,31 @@ test("earliestSafeStart returns null when a reservation exceeds the route's burs
   assert.equal(result, null);
 });
 
+test("earliestSafeStart returns null for a hard_input_ceiling route, well inside the normal burst window", () => {
+  // Gemini-shaped route: tpm=250000 puts the ordinary burst ceiling at 1.25M (comfortably above
+  // this reservation), but a verified hard_input_ceiling below tpm itself must still reject it --
+  // confirmed live: Gemini's free tier rejects a single oversized request outright with no burst
+  // room, unlike the ordinary FULL_TOKEN_BUDGET_WINDOWS bucket assumed above.
+  const route = freshRoute({
+    tpm: 250_000,
+    hard_input_ceiling: 120_000,
+    full_token_budget: 250_000 * FULL_TOKEN_BUDGET_WINDOWS,
+  });
+  const oversizedJob = job({ input_token_estimate: 150_000, max_output_token_estimate: 1000 });
+  const result = earliestSafeStart(route, oversizedJob, NOW, NOW);
+  assert.equal(result, null);
+});
+
+test("earliestSafeStart ignores hard_input_ceiling for a route that never set it (NVIDIA-shaped)", () => {
+  // NVIDIA-shaped route: tpm=40000 configured, but confirmed live to accept a real request nearly
+  // 3x that outright. No hard_input_ceiling set here, so the ordinary bucket math alone governs --
+  // this is the regression test for NOT over-restricting a provider we haven't verified.
+  const route = freshRoute({ tpm: 40_000, full_token_budget: 40_000 * FULL_TOKEN_BUDGET_WINDOWS });
+  const largeJob = job({ input_token_estimate: 115_000, max_output_token_estimate: 500 });
+  const result = earliestSafeStart(route, largeJob, NOW, NOW);
+  assert.ok(result !== null);
+});
+
 test("earliestSafeStart honors an additive route buffer from repeated 429s", () => {
   // The buffer now carries the moment it was raised, so it can be spent down; a buffer raised
   // right now is still owed in full.

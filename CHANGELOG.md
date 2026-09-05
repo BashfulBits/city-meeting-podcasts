@@ -66,6 +66,39 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Gemini free-tier 429s on oversized single requests, and a silently-deferred `/remedy` path.**
+  Live-tested against the real Gemini API this session: `tpm` on the free tier is a hard
+  per-request ceiling with no burst room above it — a single request over the usable window fails
+  outright no matter how idle the account is — and the real usable ceiling can sit well below both
+  `tpm` and the model's advertised context window (confirmed on an otherwise-idle model: ~125,000
+  actual, vs. the `250000` both our config and Google's own quota error report). Confirmed live
+  this is *not* universal: NVIDIA's free tier accepted a real request nearly 3x its configured
+  `tpm` outright, so a blanket scheduler rule would have broken working capacity elsewhere.
+  `LLMRoute` gains an opt-in `hard_input_ceiling` field (`citypods/compute/llm_policy.py`), set
+  only on the 14 Gemini/Gemma routes in `config/provider_limits.yml` (120,000 for the
+  250k-tpm flash family, 8,000 for the 16k-tpm Gemma routes — conservative interim values pending
+  per-model calibration), enforced as a second, tighter gate in `select_route`
+  (`citypods/compute/llm_scheduler.py`) and in the Cloudflare Worker's token-bucket pacing
+  (`workers/llm-dispatch-v2/src/pacing.js`, which previously assumed every route could burst up to
+  5 windows deep). `COUNCIL_MOMENT_MODELS` (`citypods/moments.py`) and the `chapter-locator` lane
+  (`config/site_config.yml`) gain `deepseek/deepseek-v4-pro` and `moonshotai/kimi-k3` (free NVIDIA
+  routes, no hard cap) as overflow for a full-transcript job too large for Gemini's real ceiling.
+  Separately, `citypods/audit_remedy.py`'s `/remedy`-issue-comment classification never set
+  `purpose` on its `LLMRequestPolicy`; a capacity miss silently persisted a deferred handle to the
+  shared registry (`LiteLLMBackend.run_inference` writes it before the caller's own exception path
+  runs) for the unrelated `llm-deferred-sweep` cron to retry hours later, disconnected from the
+  original request — the opposite of the real-time turnaround `/remedy` promises. It now sets
+  `purpose="audit-remedy"` and explicitly discards that handle on a capacity miss instead
+  (`discard_deferred`), and its evidence-bundle assembly is capped by a token budget
+  (`EVIDENCE_TOKEN_BUDGET = 100_000`, replacing the previous fixed `MAX_ARCHIVED_BODIES` body-count
+  cap as the real backstop) so it reliably fits under the tightest `REMEDY_MODELS` route's ceiling
+  rather than depending on a fallback model. `mistral/mistral-large-2512` (`403 tier_not_allowed`
+  live) and NVIDIA's `nemotron-3-ultra-550b-a55b` route (`404` live at its configured model id) are
+  both currently broken independent of this fix — flagged, not fixed here; Mistral is deliberately
+  not depended on for the new overflow paths, since it separately carries its own account-wide
+  monthly budget cap. No recipe hash or pipeline version changes: `models[0]` is unchanged on both
+  affected lanes, and `hard_input_ceiling`/`EVIDENCE_TOKEN_BUDGET` are scheduler/runner-side only.
+
 - **R6 accepted jobs no longer report false submission failures.** Meeting moments run #13
   accepted all 14 jobs, then treated four immediate poll errors as failed submissions. Shared
   run-scoped collectors now flush bounded enqueue batches only; durable handles retain execution

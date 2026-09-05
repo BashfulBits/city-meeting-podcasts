@@ -18,10 +18,12 @@
       "reserved_write_units": 2000,
       "daily_write_units": 4000,
       "models": [
-        "gemini/gemini-3.5-flash-lite"
+        "gemini/gemini-3.5-flash-lite",
+        "deepseek/deepseek-v4-pro",
+        "moonshotai/kimi-k3"
       ],
       "dispatch_shape": "pooled",
-      "write_units_per_job": 4
+      "write_units_per_job": 6
     },
     "r5-benchmark:judge": {
       "reserved_write_units": 0,
@@ -62,10 +64,12 @@
         "gemini/gemini-3.6-flash",
         "gemini/gemini-3.5-flash",
         "gemini/gemini-3.5-flash-lite",
-        "gemini/gemini-3.1-flash-lite"
+        "gemini/gemini-3.1-flash-lite",
+        "deepseek/deepseek-v4-pro",
+        "moonshotai/kimi-k3"
       ],
       "dispatch_shape": "pooled",
-      "write_units_per_job": 7
+      "write_units_per_job": 9
     },
     "topic-tags:prelabeler": {
       "reserved_write_units": 2000,

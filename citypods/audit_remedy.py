@@ -36,7 +36,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from citypods.compute.base import InferenceJob, JobHandle
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
-from citypods.compute.llm_policy import LLMRequestPolicy
+from citypods.compute.llm_deferred import discard_deferred
+from citypods.compute.llm_policy import LLMRequestPolicy, estimate_tokens
 from citypods.compute.structured import register_response_model
 from citypods.feed_yaml_edit import add_body_any, add_body_include, assert_only_addition
 from citypods.models import City, Episode
@@ -53,12 +54,18 @@ REMEDY_MODELS = (
     "gemini/gemini-3.5-flash-lite",
 )
 
-# Bounds on one evidence bundle. The whole point of the bundle is un-truncated context for the
-# label under review, but the *supporting* lists are open-ended (a large source has hundreds of
-# archived bodies), and a bundle over the route's input ceiling is rejected before it is ever
-# sent. Episodes carrying the label under review are never truncated.
+# Bounds on one evidence bundle. `MAX_ARCHIVED_BODIES`/`MAX_SAMPLE_TITLES` cap the two genuinely
+# open-ended supporting lists up front. `EVIDENCE_TOKEN_BUDGET` is the real backstop: even with
+# those caps, `unexpected_findings[].episodes` is never pre-bounded (frequency/spacing across the
+# *full* set is the main evidence separating a recurring series from a one-off), so a source with
+# many findings can still assemble a bundle bigger than any Gemini free-tier route can actually
+# take in one request (confirmed live: the real per-request ceiling sits well under the model's
+# advertised context window -- see `hard_input_ceiling` in `config/provider_limits.yml`). Kept
+# comfortably under the tightest REMEDY_MODELS route's `hard_input_ceiling` (120,000) to leave
+# room for the fixed prompt template and the model's own output.
 MAX_ARCHIVED_BODIES = 60
 MAX_SAMPLE_TITLES = 10
+EVIDENCE_TOKEN_BUDGET = 100_000
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -221,7 +228,7 @@ def gather_unexpected_body_evidence(
             }
         )
 
-    return {
+    evidence = {
         "source_key": source_key,
         "city": {
             "slug": city_slug,
@@ -239,6 +246,58 @@ def gather_unexpected_body_evidence(
         },
         "unexpected_findings": unexpected_findings,
     }
+    _trim_evidence_to_token_budget(evidence, source_key=source_key)
+    return evidence
+
+
+# Below this many episodes, a finding's date-range evidence (earliest/latest -- the main signal
+# distinguishing a recurring series from a one-off) starts to lose real information; trimming
+# stops here rather than emptying a finding out entirely.
+_MIN_EPISODES_PER_FINDING = 2
+
+
+def _trim_evidence_to_token_budget(evidence: dict[str, Any], *, source_key: str) -> bool:
+    """Shrink `unexpected_findings[].episodes` -- the one genuinely unbounded list left after
+    `MAX_ARCHIVED_BODIES`/`MAX_SAMPLE_TITLES` -- until the whole bundle fits under
+    `EVIDENCE_TOKEN_BUDGET`.
+
+    Trims from the finding with the most episodes first, dropping from the middle of its list so
+    the earliest/latest entries (the `date_range` evidence) survive longest. Mutates `evidence` in
+    place and returns whether any trimming happened, so a caller can log/monitor real quality
+    impact per review/24's audit-paydown convention rather than trimming silently forever.
+    """
+    findings = evidence.get("unexpected_findings") or []
+    trimmed = False
+    while True:
+        estimated = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
+        overage_tokens = estimated - EVIDENCE_TOKEN_BUDGET
+        if overage_tokens <= 0:
+            break
+        candidates = [
+            f for f in findings if len(f.get("episodes") or []) > _MIN_EPISODES_PER_FINDING
+        ]
+        if not candidates:
+            break
+        target = max(candidates, key=lambda f: len(f["episodes"]))
+        episodes = target["episodes"]
+        # Remove a batch proportional to how far over budget the whole bundle is (~1 token/char /
+        # 4, ~50 chars/episode as a rough estimate) rather than one at a time, so a bundle that's
+        # wildly oversized doesn't re-serialize the whole dict per episode removed. Always removes
+        # at least 1, so this still converges even when the estimate undershoots.
+        batch = max(1, min(len(episodes) - _MIN_EPISODES_PER_FINDING, (overage_tokens * 4) // 50))
+        mid = len(episodes) // 2
+        half = batch // 2
+        del episodes[max(0, mid - half) : mid - half + batch]
+        target["episodes_truncated"] = True
+        trimmed = True
+    if trimmed:
+        print(
+            f"audit_remedy: trimmed evidence bundle for source_key={source_key!r} to fit "
+            f"EVIDENCE_TOKEN_BUDGET={EVIDENCE_TOKEN_BUDGET} -- see episodes_truncated on affected "
+            "findings",
+            flush=True,
+        )
+    return trimmed
 
 
 def evidence_recipe_hash(evidence: dict[str, Any]) -> str:
@@ -258,11 +317,21 @@ def classify_unexpected_bodies(
     backend: LiteLLMBackend | None = None,
     deadline_minutes: int = 5,
 ) -> RemedyOutput:
-    """Classify one source's findings. Raises on a deferred or unusable response."""
+    """Classify one source's findings. Raises on a deferred or unusable response.
+
+    This backs `/remedy` on a live GitHub issue comment -- the whole point is a short turnaround
+    for the person who commented, not a background batch job. `purpose="audit-remedy"` and
+    `deadline_at` alone are not enough to guarantee that on their own: a capacity miss anywhere in
+    `run_inference` still persists a deferred handle to the shared registry before this function
+    ever sees it, and without an explicit purpose the unrelated `llm-deferred-sweep` cron would
+    otherwise pick it up and retry it hours later, completely disconnected from this request. See
+    the `discard_deferred` call below for how this stays real-time instead.
+    """
     ensure_remedy_contract()
     policy = LLMRequestPolicy(
         allow_paid=False,
         allowed_models=REMEDY_MODELS,
+        purpose="audit-remedy",
         # `batch` is not a lane the policy or the Worker implements; the long-context lane is the
         # right one for a bundle this size.
         timeout_class="long",
@@ -291,6 +360,14 @@ def classify_unexpected_bodies(
     except Exception as exc:
         raise RuntimeError("Remedy classification inference failed") from exc
     if isinstance(result, JobHandle):
+        # `run_inference` already wrote this handle to the shared deferred registry before
+        # returning it (citypods.compute.llm.LiteLLMBackend.run_inference). Left alone, the
+        # unrelated `llm-deferred-sweep` cron would retry it hours later with no connection back
+        # to this request -- the opposite of the real-time turnaround `/remedy` promises. Discard
+        # it immediately instead: the caller gets a clear, immediate failure and can just re-run.
+        discard_deferred(
+            getattr(backend, "storage", storage), job.recipe_hash, expected_ref=result.ref
+        )
         raise RuntimeError(
             "Remedy classification was deferred (no route had capacity within the deadline); "
             "re-run once quota frees up."
