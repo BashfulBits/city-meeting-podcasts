@@ -226,6 +226,22 @@ def test_shared_review_resolver_is_event_driven_and_scans_open_managed_children(
     triggers = _on(wf)
     assert set(triggers) >= {"issues", "issue_comment", "schedule", "workflow_dispatch"}
     assert wf["permissions"] == {"contents": "read", "issues": "write"}
+    assert job["needs"] == ["debounce"]
+    assert job["concurrency"] == {
+        "group": "weekly-review-resolution",
+        "cancel-in-progress": False,
+    }
+
+    _, debounce = _job("review-issue-resolve.yml", job_name="debounce")
+    assert debounce["concurrency"] == {
+        "group": "weekly-review-debounce",
+        "cancel-in-progress": True,
+    }
+    wait_step = next(
+        step for step in debounce["steps"] if step.get("name") == "Wait for review edits to cease"
+    )
+    assert "sleep 300" in wait_step["run"]
+
     resolve = next(
         step for step in job["steps"] if step.get("name") == "Resolve managed review children"
     )

@@ -397,6 +397,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Debounced weekly review resolution with cohort-wide batch sweep.** Resolves an issue where
+  review sub-issues (R5, H16, H15, R6, R7) were not closing when multiple checkboxes were checked
+  in rapid succession. GitHub Actions concurrency queue collapsing (`cancel-in-progress: false`)
+  previously dropped intermediate runs and individual runs only resolved `$EVENT_ISSUE`. The
+  workflow now runs a dedicated `weekly-review-debounce` job that pends until review edits have
+  ceased for 5 minutes (resetting whenever a new review edit arrives), followed by an uninterrupted
+  `resolve` job that sweeps all open review children together, pre-filters issues with checked
+  decisions, and finalizes cleared batches without mid-run cancellation risk.
+
 - **Gemini direct AI Gateway routing and remedy workflow resilience.** Fixes 404 client errors when
   routing direct Gemini calls through Cloudflare AI Gateway by mapping Gemini's path prefix to
   `/v1beta` instead of `/v1beta/openai`, matching LiteLLM's native Google AI Studio adapter
