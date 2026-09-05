@@ -2863,16 +2863,26 @@ class BatchingDispatchBackend:
         return {}
 
     def flush(self) -> list[BatchDispatchOutcome]:
-        """Submit every collected job in bounded enqueue/poll batches.
+        """Submit collected jobs durably; leave result reconciliation to the normal reader.
 
-        The collector is emptied before network I/O.  A failed bulk request therefore follows
-        ``dispatch_job_batch``'s existing per-job fallback, while jobs added after a flush starts
-        remain queued for a subsequent flush instead of being accidentally discarded.
+        A flush reports admission, not execution: polling an accepted/replayed job here can
+        turn a terminal or malformed result into a false "failed to submit" error. The durable
+        handle must instead reach the deferred sweep's schema-correction/terminal-retry path.
+        Cached completed results still pass through unchanged.
+
+        The collector is emptied before network I/O. Failed bulk requests retain the existing
+        bounded recovery, while jobs added after a flush starts remain queued for the next flush.
         """
         with self._lock:
             jobs = [job for job, _handle in self._queued.values()]
             self._queued.clear()
-        results = dispatch_job_batch(self._backend, jobs)
+        results: list[JobResult | JobHandle | Exception] = []
+        for chunk_start in range(0, len(jobs), _WORKER_BATCH_LIMIT):
+            results.extend(
+                _enqueue_batch_with_retry(
+                    self._backend, jobs[chunk_start : chunk_start + _WORKER_BATCH_LIMIT]
+                )
+            )
         return [
             BatchDispatchOutcome(job=job, result=result)
             for job, result in zip(jobs, results, strict=True)

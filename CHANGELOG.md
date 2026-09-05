@@ -59,6 +59,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **R6 accepted jobs no longer report false submission failures.** Meeting moments run #13
+  accepted all 14 jobs, then treated four immediate poll errors as failed submissions. Shared
+  run-scoped collectors now flush bounded enqueue batches only; durable handles retain execution
+  and schema failures for normal reconciliation and its existing bounded retry/correction policy.
+  Rejected submissions still fail the producer. This also fixes the same collector contract for
+  tags, chapters, and research lanes. No recipe/version change or artifact backfill is required.
+
 - **Remedy unexpected bodies workflow runtime, state integrity, and structured output schema.**
   `.github/workflows/remedy-unexpected-bodies.yml` previously took ~30 minutes per run due to
   several compounding issues:
