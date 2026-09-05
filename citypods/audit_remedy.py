@@ -256,23 +256,40 @@ def gather_unexpected_body_evidence(
 _MIN_EPISODES_PER_FINDING = 2
 
 
-def _trim_evidence_to_token_budget(evidence: dict[str, Any], *, source_key: str) -> bool:
-    """Shrink `unexpected_findings[].episodes` -- the one genuinely unbounded list left after
-    `MAX_ARCHIVED_BODIES`/`MAX_SAMPLE_TITLES` -- until the whole bundle fits under
-    `EVIDENCE_TOKEN_BUDGET`.
+def _over_budget_tokens(evidence: dict[str, Any]) -> int:
+    """How many tokens `evidence` currently sits above `EVIDENCE_TOKEN_BUDGET` (<= 0 if it fits)."""
+    return estimate_tokens([{"content": json.dumps(evidence, default=str)}]) - EVIDENCE_TOKEN_BUDGET
 
-    Trims from the finding with the most episodes first, dropping from the middle of its list so
-    the earliest/latest entries (the `date_range` evidence) survive longest. Mutates `evidence` in
-    place and returns whether any trimming happened, so a caller can log/monitor real quality
-    impact per review/24's audit-paydown convention rather than trimming silently forever.
+
+def _trim_evidence_to_token_budget(evidence: dict[str, Any], *, source_key: str) -> bool:
+    """Shrink the evidence bundle until it fits under `EVIDENCE_TOKEN_BUDGET`, in three escalating
+    passes, each only engaged if the previous one wasn't enough:
+
+    1. Trim `unexpected_findings[].episodes` -- the one genuinely unbounded list left after
+       `MAX_ARCHIVED_BODIES`/`MAX_SAMPLE_TITLES` -- down to `_MIN_EPISODES_PER_FINDING` each,
+       from the finding with the most episodes first, dropping from the middle of its list so the
+       earliest/latest entries (the `date_range` evidence) survive longest.
+    2. Even at that floor, many findings each holding `_MIN_EPISODES_PER_FINDING` episodes with a
+       long `body` can still overflow the budget on their own (no `candidates` left for pass 1 to
+       act on). Drop each remaining episode's `body` text -- nonessential once `title` and
+       `date_range` already carry the classification signal -- across every finding at once.
+    3. If the bundle *still* doesn't fit (many findings, or an unavoidably long `title`/label per
+       finding), drop whole findings outright, smallest `count` first, until it fits.
+       `evidence["findings_omitted_count"]` records how many, and their names are logged, so a
+       real audit-paydown followup can revisit them instead of the run just going quiet on them.
+
+    Mutates `evidence` in place and returns whether any trimming happened, so a caller can
+    log/monitor real quality impact per review/24's audit-paydown convention rather than trimming
+    silently forever.
     """
     findings = evidence.get("unexpected_findings") or []
     trimmed = False
+
+    # Pass 1: trim episode lists down to the floor.
     while True:
-        estimated = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
-        overage_tokens = estimated - EVIDENCE_TOKEN_BUDGET
+        overage_tokens = _over_budget_tokens(evidence)
         if overage_tokens <= 0:
-            break
+            return trimmed
         candidates = [
             f for f in findings if len(f.get("episodes") or []) > _MIN_EPISODES_PER_FINDING
         ]
@@ -290,11 +307,59 @@ def _trim_evidence_to_token_budget(evidence: dict[str, Any], *, source_key: str)
         del episodes[max(0, mid - half) : mid - half + batch]
         target["episodes_truncated"] = True
         trimmed = True
+
+    # Pass 2: every finding is already at the episode floor and the bundle is still too big --
+    # strip the (potentially long, free-text) `body` off every remaining episode.
+    if _over_budget_tokens(evidence) > 0:
+        for finding in findings:
+            for episode in finding.get("episodes") or []:
+                if episode.get("body"):
+                    episode["body"] = ""
+                    finding["episode_bodies_omitted"] = True
+                    trimmed = True
+
+    # Pass 3: last resort -- drop whole findings, least-evidenced first, until it fits. This is
+    # the only pass that can lose a finding's `provider_guids` entirely, so record what was cut --
+    # as a bounded count rather than the names themselves, since an unbounded list of omitted names
+    # is exactly the kind of open-ended field this whole function exists to avoid re-introducing
+    # (and, added after the loop's own budget check, could silently push the bundle back over).
+    # Mirrors the episode floor above: a single remaining finding is never itself dropped, since an
+    # empty bundle would give the model nothing to classify at all -- a single oversized finding
+    # is preferable to none.
+    if _over_budget_tokens(evidence) > 0 and len(findings) > 1:
+        omitted_names: list[str] = []
+        evidence["findings_omitted_count"] = 0
+        # Walk indices least-evidenced first, dropping one finding at a time and re-measuring
+        # against the bundle -- including the `findings_omitted_count` field itself -- as it stands
+        # after each drop. `to_drop` accumulates rather than mutating `findings` mid-walk, since
+        # `ordered` was computed over its original indices.
+        ordered = sorted(range(len(findings)), key=lambda i: len(findings[i].get("episodes") or []))
+        to_drop: set[int] = set()
+        for index in ordered:
+            if _over_budget_tokens(evidence) <= 0 or len(findings) - len(to_drop) <= 1:
+                break
+            to_drop.add(index)
+            omitted_names.append(findings[index].get("unexpected_body", ""))
+            evidence["unexpected_findings"] = [
+                f for i, f in enumerate(findings) if i not in to_drop
+            ]
+            evidence["findings_omitted_count"] = len(to_drop)
+            trimmed = True
+        findings = evidence["unexpected_findings"]
+        if to_drop:
+            print(
+                f"audit_remedy: dropped {len(to_drop)} whole finding(s) from evidence for "
+                f"source_key={source_key!r} to fit EVIDENCE_TOKEN_BUDGET: {omitted_names!r}",
+                flush=True,
+            )
+        else:
+            del evidence["findings_omitted_count"]
+
     if trimmed:
         print(
             f"audit_remedy: trimmed evidence bundle for source_key={source_key!r} to fit "
-            f"EVIDENCE_TOKEN_BUDGET={EVIDENCE_TOKEN_BUDGET} -- see episodes_truncated on affected "
-            "findings",
+            f"EVIDENCE_TOKEN_BUDGET={EVIDENCE_TOKEN_BUDGET} -- see episodes_truncated / "
+            "episode_bodies_omitted / findings_omitted_count on the bundle",
             flush=True,
         )
     return trimmed

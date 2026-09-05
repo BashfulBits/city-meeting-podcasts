@@ -591,6 +591,49 @@ def test_trim_evidence_to_token_budget_never_drops_below_the_minimum_episodes_pe
     assert len(evidence["unexpected_findings"][0]["episodes"]) == 2
 
 
+def test_trim_evidence_to_token_budget_shrinks_when_every_finding_is_already_at_the_floor():
+    # The gap CodeRabbit flagged on PR #1476: pass 1 only trims a finding with *more* than
+    # `_MIN_EPISODES_PER_FINDING` episodes, so a bundle made entirely of findings already at that
+    # floor left `candidates` empty and the oversized bundle went out untouched. Build enough
+    # two-episode findings, each with a long title, to be oversized even at the floor.
+    evidence = {
+        "source_key": "test-source",
+        "city": {"slug": "test-city", "name": "Test City"},
+        "existing_feeds": [],
+        "historical_archive": {"total_archived_count": 0, "known_archived_bodies": []},
+        "unexpected_findings": [
+            {
+                "unexpected_body": f"Special Meeting {n}",
+                "count": 2,
+                "date_range": {"earliest": "2020-01-01", "latest": "2026-01-01"},
+                "episodes": [
+                    {
+                        "provider_guid": f"guid-{n}-{i}",
+                        "published": "2020-01-01",
+                        "title": "A" * 200,
+                        "body": "B" * 200,
+                    }
+                    for i in range(2)
+                ],
+            }
+            for n in range(2000)
+        ],
+    }
+    over_budget = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
+    assert over_budget > EVIDENCE_TOKEN_BUDGET  # sanity: oversized despite every finding at floor
+
+    trimmed = _trim_evidence_to_token_budget(evidence, source_key="test-source")
+
+    assert trimmed is True
+    after = estimate_tokens([{"content": json.dumps(evidence, default=str)}])
+    assert after <= EVIDENCE_TOKEN_BUDGET
+    # At least one finding survived -- the model still has something to classify.
+    assert len(evidence["unexpected_findings"]) >= 1
+    # Findings had to be dropped outright (pass 1/2 alone can't touch a bundle already at the
+    # episode floor), and the omission is recorded as a bounded count, not an unbounded name list.
+    assert evidence["findings_omitted_count"] == 2000 - len(evidence["unexpected_findings"])
+
+
 def test_classify_discards_the_deferred_record_so_the_sweep_never_retries_it(evidence):
     """The deferred-sweep bug this guards against: a capacity miss must not leave a pending
     record in the shared registry for the unrelated llm-deferred-sweep cron to retry hours later,

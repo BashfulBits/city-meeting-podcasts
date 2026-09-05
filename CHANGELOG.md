@@ -89,10 +89,19 @@ Phase R (Research-Tool Surface)._
   runs) for the unrelated `llm-deferred-sweep` cron to retry hours later, disconnected from the
   original request — the opposite of the real-time turnaround `/remedy` promises. It now sets
   `purpose="audit-remedy"` and explicitly discards that handle on a capacity miss instead
-  (`discard_deferred`), and its evidence-bundle assembly is capped by a token budget
-  (`EVIDENCE_TOKEN_BUDGET = 100_000`, replacing the previous fixed `MAX_ARCHIVED_BODIES` body-count
-  cap as the real backstop) so it reliably fits under the tightest `REMEDY_MODELS` route's ceiling
-  rather than depending on a fallback model. `mistral/mistral-large-2512` (`403 tier_not_allowed`
+  (`discard_deferred`), and its evidence-bundle assembly is now also capped by a token budget
+  (`EVIDENCE_TOKEN_BUDGET = 100_000`) as an additional backstop alongside the existing fixed
+  `MAX_ARCHIVED_BODIES` body-count cap, so it reliably fits under the tightest `REMEDY_MODELS`
+  route's ceiling rather than depending on a fallback model. Trimming escalates in three passes so
+  a bundle made entirely of findings already at the minimum-episode floor (nothing left for the
+  first pass to touch) can still be brought under budget: strip each episode's free-text `body`
+  next, and only as a last resort drop whole findings outright (least-evidenced first, one always
+  kept so the model never gets an empty bundle), recording the count on
+  `evidence["findings_omitted_count"]`. The Cloudflare Worker's mirror of the same hard-ceiling gate
+  (`workers/llm-dispatch-v2/src/pacing.js`) now compares it against the input-token estimate alone,
+  matching `select_route`'s contract, instead of the combined input+output `reservation` — the
+  Worker was previously rejecting jobs the Python scheduler had already accepted whenever the
+  output estimate alone pushed the combined total over the ceiling. `mistral/mistral-large-2512` (`403 tier_not_allowed`
   live) and NVIDIA's `nemotron-3-ultra-550b-a55b` route (`404` live at its configured model id) are
   both currently broken independent of this fix — flagged, not fixed here; Mistral is deliberately
   not depended on for the new overflow paths, since it separately carries its own account-wide

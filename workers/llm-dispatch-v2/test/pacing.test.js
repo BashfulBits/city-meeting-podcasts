@@ -173,6 +173,22 @@ test("earliestSafeStart returns null for a hard_input_ceiling route, well inside
   assert.equal(result, null);
 });
 
+test("earliestSafeStart checks hard_input_ceiling against the input estimate alone, not reservation", () => {
+  // Mirrors the Python scheduler's `select_route` contract (llm_scheduler.py): the hard ceiling
+  // gates `input_tokens` only. A 119k-token input plus a 5k-token output estimate makes
+  // `reservation` (124k) exceed a 120k ceiling, but the input estimate alone (119k) does not --
+  // this must be admitted, not rejected, or the Worker disagrees with the scheduler that already
+  // accepted the job.
+  const route = freshRoute({
+    tpm: 250_000,
+    hard_input_ceiling: 120_000,
+    full_token_budget: 250_000 * FULL_TOKEN_BUDGET_WINDOWS,
+  });
+  const boundaryJob = job({ input_token_estimate: 119_000, max_output_token_estimate: 5000 });
+  const result = earliestSafeStart(route, boundaryJob, NOW, NOW);
+  assert.ok(result !== null);
+});
+
 test("earliestSafeStart ignores hard_input_ceiling for a route that never set it (NVIDIA-shaped)", () => {
   // NVIDIA-shaped route: tpm=40000 configured, but confirmed live to accept a real request nearly
   // 3x that outright. No hard_input_ceiling set here, so the ordinary bucket math alone governs --
