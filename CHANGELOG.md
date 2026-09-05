@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Chunk the deferred sweep's queue-only v2 submission at the Worker's batch limit
+  (`scripts/llm_deferred_sweep.py`).** The sweep handed `LiteLLMBackend.enqueue_batch` its entire
+  queue-only backlog in one call; the ingress Worker caps a single enqueue-batch request at
+  `_WORKER_BATCH_LIMIT` (1000) jobs and rejects an oversized request with HTTP 400 for the whole
+  batch, not just the overflow. Once the backlog grew past that limit, every queue-only record in
+  the run failed to submit at once and the workflow went red (`llm-deferred-sweep.yml` failed on
+  every run once the pending backlog exceeded 1000). The sweep now chunks the same way
+  `BatchingDispatchBackend.flush()` already does — `_WORKER_BATCH_LIMIT`-sized chunks submitted via
+  `_enqueue_batch_with_retry` — and treats a chunk not yet attempted when the sweep's deadline hits
+  as still pending rather than failed, consistent with "deferred ≠ failed".
+
 - **Active stop and runner budget boundaries for the LLM topic tags workflow.** Added
   `tag_run_time_budget_minutes: 140` configuration and wired `StopSignal` in `citypods/run.py`
   to actively stop `tag` lane runs as soon as tagging producer quotas (tagger and prelabeler)
