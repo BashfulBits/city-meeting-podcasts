@@ -355,8 +355,10 @@ defaults:
   # sample for a recipe is admitted to seed that profile; later starts must fit before this cutoff.
   diarize_start_cutoff_minutes: 285
   diarize_start_reserve_seconds: 900
+  # Topic tag lane budget: 140m window × 0.85 safety = 119m cutoff. Guarantees graceful persist
+  # well before tag.yml's 165m step timeout, while actively stopping as soon as quotas fill.
+  tag_run_time_budget_minutes: 140
   # Queue-only LLM lanes use each feature's max_dispatches_per_run count as their safety boundary.
-  # They read persisted records instead of polling providers and do not carry a runner deadline;
   # Cloudflare Dispatch v2 owns provider pacing and quota enforcement after the bounded batch lands.
   # (Chapter scraping is bounded only by the wall-clock window in production; the PR preview passes
   # `citypods build --chapters-cap N` to keep its sanity-check fast — see .github/workflows/preview.yml.)

@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **Active stop and runner budget boundaries for the LLM topic tags workflow.** Added
+  `tag_run_time_budget_minutes: 140` configuration and wired `StopSignal` in `citypods/run.py`
+  to actively stop `tag` lane runs as soon as tagging producer quotas (tagger and prelabeler)
+  are exhausted. Wired `_run_bounded` to honor `ctx.stop` immediately across enrich passes and
+  capped global candidate submissions to the purpose allowance window with headroom. In
+  `citypods/tags.py`, eliminated duplicate transcript downloads between episode and chapter
+  tag input generation.
+
 ### Changed
 
 - **Reproducible Worker deployments and documented shim-token rotation (GH#1328).** All five

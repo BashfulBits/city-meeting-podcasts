@@ -2148,9 +2148,45 @@ def test_stop_signal_records_fired_reason():
 
     s3 = run.StopSignal(superseded=lambda: None, poll_interval=0)
     assert s3() is False
-    assert s3.should_exit_immediately() is False
+    s4 = run.StopSignal(exhausted=lambda: True, exhausted_reason="tagging quota achieved")
+    assert s4() is True
+    assert s4.fired_reason == "tagging quota achieved"
+    assert s4.should_exit_immediately() is False
 
     assert run.StopSignal().fired_reason is None  # never fired
+
+
+def test_build_wires_stop_signal_for_tag_lane(tmp_path, fake_provider, monkeypatch):
+    import citypods.run as run_mod
+
+    captured = {}
+    real_ctx = run_mod.StageContext
+
+    def spy_ctx(*a, **kw):
+        captured["stop"] = kw.get("stop")
+        captured["ctx"] = real_ctx(*a, **kw)
+        return captured["ctx"]
+
+    monkeypatch.setattr(run_mod, "StageContext", spy_ctx)
+    cities = _setup(tmp_path)
+    (tmp_path / "site_config.yml").write_text(
+        f"state_dir: {tmp_path / 'state'}\n"
+        "defaults:\n"
+        "  audio_storage_backend: local\n"
+        "  tag_run_time_budget_minutes: 140\n"
+    )
+    run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=cities,
+        output_dir=tmp_path / "docs",
+        base_url="https://example.test",
+        lane="tag",
+    )
+    assert isinstance(captured["stop"], run_mod.StopSignal)
+    assert captured["stop"]() is False
+    captured["ctx"].tag_llm_dispatch_exhausted.set()
+    assert captured["stop"]() is True
+    assert captured["stop"].fired_reason == "tagging quota achieved"
 
 
 def test_build_wires_a_stop_signal_when_time_bounded(tmp_path, fake_provider, monkeypatch):
