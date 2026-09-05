@@ -44,6 +44,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from citypods.audit import ERROR, WARN, Finding, audit_all
+from citypods.bodies import source_body_filter, source_body_inclusions
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import source_key
 from citypods.security import iter_source_urls
@@ -527,6 +528,35 @@ def _dispatch_remedy_workflow(issue_number: int, *, github_repo: str | None) -> 
         print(f"::warning::failed to dispatch the remedy workflow: {exc}", file=sys.stderr)
         return
     print(f"dispatched remedy-unexpected-bodies.yml for issue #{issue_number}")
+
+
+def _resolve_affected_sources(
+    issue_number: int,
+    *,
+    github_repo: str | None = None,
+) -> set[str] | None:
+    """Fetch the feed-health issue and return affected feed slugs from its embedded state block."""
+    repo = github_repo or os.environ.get("GITHUB_REPOSITORY", "")
+    args = ["issue", "view", str(issue_number)]
+    if repo:
+        args.extend(["--repo", repo])
+    args.extend(["--json", "body"])
+    try:
+        stdout = _gh(*args)
+        data = json.loads(stdout)
+        body = data.get("body", "") if isinstance(data, dict) else ""
+    except Exception as exc:
+        print(
+            f"::warning::failed to fetch issue #{issue_number} state: {exc}",
+            file=sys.stderr,
+        )
+        return None
+
+    state = _parse_state(body)
+    first_seen = state.get("first_seen") if isinstance(state.get("first_seen"), dict) else {}
+    rows = state.get("rows") if isinstance(state.get("rows"), dict) else {}
+    slugs = set(first_seen.keys()) | set(rows.keys())
+    return slugs or None
 
 
 def _ensure_labels() -> None:
@@ -1854,6 +1884,11 @@ def main(argv: list[str] | None = None) -> int:
             "scripts/remedy_unexpected_bodies.py (read-only; adds no provider fetches)"
         ),
     )
+    ap.add_argument(
+        "--issue",
+        type=int,
+        help="scope audit/evidence collection to sources affected by this issue number",
+    )
     ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--config-dir", default="config")
     args = ap.parse_args(argv)
@@ -1871,7 +1906,32 @@ def main(argv: list[str] | None = None) -> int:
     site_config = load_site_config(args.site_config)
     cities = load_city_configs(args.config_dir, site_config.get("defaults", {}))
     if args.city:
-        cities = [c for c in cities if c.slug == args.city]
+        cities = [c for c in cities if c.slug == args.city or c.city_entity == args.city]
+    elif args.issue:
+        affected_slugs = _resolve_affected_sources(
+            args.issue, github_repo=site_config.get("github_repo")
+        )
+        if affected_slugs:
+            affected_keys = {source_key(c) for c in cities if c.slug in affected_slugs}
+            cities = [c for c in cities if source_key(c) in affected_keys]
+            print(
+                f"issue #{args.issue}: scoped audit to {len(cities)} feed(s) across "
+                f"{len(affected_keys)} source(s)"
+            )
+        elif args.unexpected_body_evidence:
+            cities = [
+                c
+                for c in cities
+                if source_body_filter(c.source) is not None or source_body_inclusions(c.source)
+            ]
+        else:
+            ap.error(f"could not resolve affected feeds from issue #{args.issue}")
+    elif args.unexpected_body_evidence:
+        cities = [
+            c
+            for c in cities
+            if source_body_filter(c.source) is not None or source_body_inclusions(c.source)
+        ]
 
     # Pull the canonical record store from the bucket before auditing it. Without this, the
     # audit only ever saw whatever actions/cache/restore's "build-state-" prefix match happened
@@ -1882,6 +1942,7 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = "docs"
     state_dir = pull_canonical_state(site_config, output_dir)
 
+    unexpected_evidence_only = bool(args.unexpected_body_evidence and args.dry_run)
     timeline_diagnostics: list[dict] | None = [] if args.timeline_diagnostics else None
     unexpected_evidence: list | None = [] if args.unexpected_body_evidence else None
     now = datetime.now(UTC)
@@ -1893,6 +1954,7 @@ def main(argv: list[str] | None = None) -> int:
         check_meetings_urls_net=args.meetings_urls,
         timeline_diagnostics=timeline_diagnostics,
         unexpected_evidence=unexpected_evidence,
+        unexpected_evidence_only=unexpected_evidence_only,
         persist_timeline_integrity=args.persist_timeline_integrity and not args.dry_run,
         timeline_repair_min_delta=args.timeline_repair_min_delta,
         timeline_repair_cohort=args.timeline_repair_cohort,
@@ -1919,6 +1981,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"timeline integrity: pushed {pushed} state file(s)")
     for f in findings:
         print(f"  {f.severity:5} {f.slug} [{f.check}] {f.message}")
+
+    if unexpected_evidence_only:
+        return 0
 
     if not args.dry_run:
         _ensure_labels()

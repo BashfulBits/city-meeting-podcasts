@@ -493,6 +493,19 @@ class StageContext:
     tag_prelabeler_dispatches_count: int = 0
     tag_prelabeler_dispatches_reserved: int = 0
     tag_prelabeler_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
+    # Per-run producer cap for chapter agenda candidate extraction to bound runner submissions
+    # to what the Worker's daily write budget funds (site_config.yml llm_lanes: chapter-agenda).
+    chapter_agenda_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
+    chapter_agenda_max_dispatches: int | None = None
+    chapter_agenda_dispatches_count: int = 0
+    chapter_agenda_dispatches_reserved: int = 0
+    chapter_agenda_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
+    # Per-run producer cap for chapter boundary locator jobs (llm_lanes: chapter-locator).
+    chapter_locator_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
+    chapter_locator_max_dispatches: int | None = None
+    chapter_locator_dispatches_count: int = 0
+    chapter_locator_dispatches_reserved: int = 0
+    chapter_locator_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
     # UTC wall-clock deadline handed to the LLM tag scheduler as its dispatch ``deadline_at``.
     # Topic tags use asynchronous dispatch without an artificial deadline (None), avoiding
     # runner-side sleep pacing and preventing queued worker tasks from timing out.
@@ -555,6 +568,66 @@ class StageContext:
                 and self.tag_prelabeler_dispatches_count >= self.tag_prelabeler_max_dispatches
             ):
                 self.tag_prelabeler_dispatch_exhausted.set()
+
+    def reserve_chapter_agenda_dispatch(self) -> bool:
+        """Atomically reserve one per-run chapter-agenda dispatch slot before submitting work."""
+        with self.chapter_agenda_dispatches_lock:
+            if self.chapter_agenda_dispatch_exhausted.is_set():
+                return False
+            if (
+                self.chapter_agenda_max_dispatches is not None
+                and self.chapter_agenda_dispatches_count + self.chapter_agenda_dispatches_reserved
+                >= self.chapter_agenda_max_dispatches
+            ):
+                self.chapter_agenda_dispatch_exhausted.set()
+                return False
+            self.chapter_agenda_dispatches_reserved += 1
+            return True
+
+    def settle_chapter_agenda_dispatch(self, dispatched: bool) -> None:
+        """Release an agenda reservation and count it only when work was queued."""
+        with self.chapter_agenda_dispatches_lock:
+            self.chapter_agenda_dispatches_reserved = max(
+                0, self.chapter_agenda_dispatches_reserved - 1
+            )
+            if not dispatched:
+                return
+            self.chapter_agenda_dispatches_count += 1
+            if (
+                self.chapter_agenda_max_dispatches is not None
+                and self.chapter_agenda_dispatches_count >= self.chapter_agenda_max_dispatches
+            ):
+                self.chapter_agenda_dispatch_exhausted.set()
+
+    def reserve_chapter_locator_dispatch(self) -> bool:
+        """Atomically reserve one per-run locator dispatch slot before submitting work."""
+        with self.chapter_locator_dispatches_lock:
+            if self.chapter_locator_dispatch_exhausted.is_set():
+                return False
+            if (
+                self.chapter_locator_max_dispatches is not None
+                and self.chapter_locator_dispatches_count + self.chapter_locator_dispatches_reserved
+                >= self.chapter_locator_max_dispatches
+            ):
+                self.chapter_locator_dispatch_exhausted.set()
+                return False
+            self.chapter_locator_dispatches_reserved += 1
+            return True
+
+    def settle_chapter_locator_dispatch(self, dispatched: bool) -> None:
+        """Release a locator reservation and count it only when work was queued."""
+        with self.chapter_locator_dispatches_lock:
+            self.chapter_locator_dispatches_reserved = max(
+                0, self.chapter_locator_dispatches_reserved - 1
+            )
+            if not dispatched:
+                return
+            self.chapter_locator_dispatches_count += 1
+            if (
+                self.chapter_locator_max_dispatches is not None
+                and self.chapter_locator_dispatches_count >= self.chapter_locator_max_dispatches
+            ):
+                self.chapter_locator_dispatch_exhausted.set()
 
 
 @dataclass
@@ -7281,6 +7354,7 @@ class AgendaChapterCandidatesStage:
         from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
+        from citypods.compute.llm_deferred import look_up_deferred
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
@@ -7321,7 +7395,7 @@ class AgendaChapterCandidatesStage:
         # instead of one Worker request per episode (see review/44's 2026-08-18 incident
         # retrospective -- per-job dispatch/reconcile calls were exactly the Worker-request
         # volume that incident flagged as the thing worth fixing next).
-        prepared: list[tuple[Episode, str, Any, str, str]] = []
+        prepared: list[tuple[Episode, str, Any, str, str, bool]] = []
         for ep in materialized:
             if ep.source_chapters:
                 continue
@@ -7339,8 +7413,37 @@ class AgendaChapterCandidatesStage:
                 else:
                     stats.defer("missing-agenda-artifact")
                 continue
+
+            raw_agenda = ep.generated_agenda_candidates or {}
+            agenda_status = raw_agenda.get("status")
+            if agenda_status in {"completed", "accepted", "not_applicable"}:
+                stats.reused += 1
+                continue
+
+            # Short-circuit pending jobs: if the deferred registry already records a pending
+            # handle, avoid reading the source artifact from storage and defer immediately.
+            agenda_recipe = raw_agenda.get("recipe")
+            is_new_dispatch = True
+            if agenda_status == "pending" and isinstance(agenda_recipe, str):
+                cached = look_up_deferred(ctx.storage, agenda_recipe)
+                if isinstance(cached, JobHandle):
+                    if cached.ref and cached.ref != raw_agenda.get("job_ref"):
+                        raw_agenda = dict(raw_agenda)
+                        raw_agenda["job_ref"] = cached.ref
+                        ep.generated_agenda_candidates = raw_agenda
+                    stats.defer("llm-pending")
+                    continue
+                if isinstance(cached, JobResult):
+                    is_new_dispatch = False
+
+            if is_new_dispatch and not ctx.reserve_chapter_agenda_dispatch():
+                stats.defer("producer-cap")
+                continue
+
             raw = _read_storage_bytes(ctx.storage, source_artifact)
             if raw is None:
+                if is_new_dispatch:
+                    ctx.settle_chapter_agenda_dispatch(dispatched=False)
                 # DIAGNOSTIC: a different failure mode than the one above -- the link exists but
                 # the object it points at could not be read back (deleted, wrong bucket/prefix,
                 # transient read error). Kept as its own reason so it doesn't get conflated with
@@ -7350,6 +7453,8 @@ class AgendaChapterCandidatesStage:
             agenda_text = raw.decode("utf-8", errors="replace")
             source_hash = hashlib.sha256(raw).hexdigest()
             if ctx.stop is not None and ctx.stop():
+                if is_new_dispatch:
+                    ctx.settle_chapter_agenda_dispatch(dispatched=False)
                 stats.defer("stop-signal")
                 continue
             try:
@@ -7360,20 +7465,26 @@ class AgendaChapterCandidatesStage:
                 )
             except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
                 # build pass for every other episode
+                if is_new_dispatch:
+                    ctx.settle_chapter_agenda_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: agenda chapter extraction: {exc}")
                 continue
-            prepared.append((ep, uid, job, agenda_text, source_hash))
+            prepared.append((ep, uid, job, agenda_text, source_hash, is_new_dispatch))
 
         if not prepared:
             return stats
 
         # Pass 2: one dispatch for the whole batch.
         results = dispatch_job_batch(
-            _chapter_llm_backend(ctx), [job for _, _, job, _, _ in prepared]
+            _chapter_llm_backend(ctx), [job for _, _, job, _, _, _ in prepared]
         )
 
         # Pass 3: finalize each episode against its own result, same as the old per-job code.
-        for (ep, uid, job, agenda_text, source_hash), result in zip(prepared, results, strict=True):
+        for (ep, uid, job, agenda_text, source_hash, is_new_dispatch), result in zip(
+            prepared, results, strict=True
+        ):
+            if is_new_dispatch:
+                ctx.settle_chapter_agenda_dispatch(dispatched=not isinstance(result, Exception))
             if isinstance(result, Exception):
                 stats.errors.append(f"{uid}: agenda chapter extraction: {result}")
                 continue
@@ -7428,6 +7539,7 @@ class ChapterBoundaryLocatorStage:
         from citypods.chapter_locator import build_locator_units
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
+        from citypods.compute.llm_deferred import look_up_deferred
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
@@ -7436,7 +7548,7 @@ class ChapterBoundaryLocatorStage:
         # Pass 1: validate and build every eligible episode's job without dispatching any of
         # them yet -- see AgendaChapterCandidatesStage.process for why (review/44's 2026-08-18
         # incident retrospective).
-        prepared: list[tuple[Episode, str, Any, Any, str, list, str, dict]] = []
+        prepared: list[tuple[Episode, str, Any, Any, str, list, str, dict, bool]] = []
         for ep in _materialize_set(
             episodes,
             city.full_artifact_episodes,
@@ -7469,13 +7581,41 @@ class ChapterBoundaryLocatorStage:
             if not uid or raw_agenda.get("status") not in {"completed", "accepted"}:
                 stats.defer("agenda-not-complete")
                 continue
+
+            locator_status = raw_agenda.get("locator_status")
+            if locator_status in {"completed", "accepted", "not_applicable"}:
+                stats.reused += 1
+                continue
+
+            locator_recipe = raw_agenda.get("locator_recipe")
+            is_new_dispatch = True
+            if locator_status == "pending" and isinstance(locator_recipe, str):
+                cached = look_up_deferred(ctx.storage, locator_recipe)
+                if isinstance(cached, JobHandle):
+                    if cached.ref and cached.ref != raw_agenda.get("locator_job_ref"):
+                        raw_agenda = dict(raw_agenda)
+                        raw_agenda["locator_job_ref"] = cached.ref
+                        ep.generated_agenda_candidates = raw_agenda
+                    stats.defer("llm-pending")
+                    continue
+                if isinstance(cached, JobResult):
+                    is_new_dispatch = False
+
+            if is_new_dispatch and not ctx.reserve_chapter_locator_dispatch():
+                stats.defer("producer-cap")
+                continue
+
             words = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
             vtt = _read_storage_bytes(ctx.storage, ep.transcript_key)
             units, unit_source = build_locator_units(words_data=words, vtt_data=vtt)
             if not units:
+                if is_new_dispatch:
+                    ctx.settle_chapter_locator_dispatch(dispatched=False)
                 stats.defer("missing-timed-transcript")
                 continue
             if ctx.stop is not None and ctx.stop():
+                if is_new_dispatch:
+                    ctx.settle_chapter_locator_dispatch(dispatched=False)
                 stats.defer("stop-signal")
                 continue
             try:
@@ -7490,22 +7630,46 @@ class ChapterBoundaryLocatorStage:
                 )
             except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
                 # build pass for every other episode
+                if is_new_dispatch:
+                    ctx.settle_chapter_locator_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: chapter locator: {exc}")
                 continue
-            prepared.append((ep, uid, job, agenda, transcript_hash, units, unit_source, raw_agenda))
+            prepared.append(
+                (
+                    ep,
+                    uid,
+                    job,
+                    agenda,
+                    transcript_hash,
+                    units,
+                    unit_source,
+                    raw_agenda,
+                    is_new_dispatch,
+                )
+            )
 
         if not prepared:
             return stats
 
         # Pass 2: one dispatch for the whole batch.
         results = dispatch_job_batch(
-            _chapter_llm_backend(ctx), [job for _, _, job, _, _, _, _, _ in prepared]
+            _chapter_llm_backend(ctx), [job for _, _, job, _, _, _, _, _, _ in prepared]
         )
 
         # Pass 3: finalize each episode against its own result, same as the old per-job code.
-        for (ep, uid, job, agenda, transcript_hash, units, unit_source, raw_agenda), result in zip(
-            prepared, results, strict=True
-        ):
+        for (
+            ep,
+            uid,
+            job,
+            agenda,
+            transcript_hash,
+            units,
+            unit_source,
+            raw_agenda,
+            is_new_dispatch,
+        ), result in zip(prepared, results, strict=True):
+            if is_new_dispatch:
+                ctx.settle_chapter_locator_dispatch(dispatched=not isinstance(result, Exception))
             if isinstance(result, Exception):
                 stats.errors.append(f"{uid}: chapter locator: {result}")
                 continue
@@ -7574,6 +7738,29 @@ class ChapterBoundaryLocatorStage:
                 # finalize pass for every other episode
                 stats.errors.append(f"{uid}: chapter locator: {exc}")
         return stats
+
+
+def episode_needs_chapter_agenda(ep: Episode) -> bool:
+    """Return True if episode requires agenda chapter extraction or status reconciliation."""
+    if ep.source_chapters:
+        return (ep.generated_agenda_candidates or {}).get("status") != "not_applicable"
+    if not (ep.links or {}).get("agenda_text_artifact_key"):
+        return False
+    status = (ep.generated_agenda_candidates or {}).get("status")
+    return status not in {"completed", "accepted", "not_applicable"}
+
+
+def episode_needs_chapter_locator(ep: Episode) -> bool:
+    """Return True if episode requires chapter boundary location in its timed transcript."""
+    if ep.source_chapters:
+        return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
+    raw_agenda = ep.generated_agenda_candidates or {}
+    if raw_agenda.get("status") not in {"completed", "accepted"}:
+        return False
+    if not ep.transcript_words_key and not ep.transcript_key:
+        return False
+    locator_status = raw_agenda.get("locator_status")
+    return locator_status not in {"completed", "accepted", "not_applicable"}
 
 
 def default_stages() -> list[EnrichmentStage]:
