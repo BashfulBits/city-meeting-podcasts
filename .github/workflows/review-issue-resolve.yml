@@ -9,16 +9,42 @@ on:
     - cron: "30 14 * * 1"
   workflow_dispatch:
 
-concurrency:
-  group: weekly-review-resolution
-  cancel-in-progress: false
-
 permissions:
   contents: read
   issues: write
 
 jobs:
+  debounce:
+    name: Debounce review edits
+    if: >-
+      (github.event_name == 'issues' || github.event_name == 'issue_comment') &&
+      (contains(github.event.issue.labels.*.name, 'agent:weekly-review') ||
+       contains(github.event.issue.body, '<!-- citypods-review:'))
+    concurrency:
+      group: weekly-review-debounce
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for review edits to cease
+        run: |
+          echo "Pending weekly review resolution until edits have ceased for 5 minutes..."
+          sleep 300
+
   resolve:
+    name: Resolve managed reviews
+    needs: [debounce]
+    if: |
+      always() &&
+      !cancelled() &&
+      !failure() &&
+      (
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch' ||
+        needs.debounce.result == 'success'
+      )
+    concurrency:
+      group: weekly-review-resolution
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -50,11 +76,27 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "schedule" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            issues=$(gh issue list --state open --label agent:weekly-review --limit 500 --json number --jq '.[].number')
+            issues=$(
+              gh issue list --state open --label agent:weekly-review \
+                --limit 500 --json number --jq '.[].number'
+            )
           else
-            permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$EVENT_ACTOR/permission" --jq .permission)
+            permission=$(
+              gh api "repos/$GITHUB_REPOSITORY/collaborators/$EVENT_ACTOR/permission" \
+                --jq .permission
+            )
             case "$permission" in
-              admin|maintain|write) issues="$EVENT_ISSUE" ;;
+              admin|maintain|write)
+                # Sweep all open managed review issues so any decisions checked during
+                # the debounce quiet period are resolved together in this batch.
+                issues=$(
+                  gh issue list --state open --label agent:weekly-review \
+                    --limit 500 --json number --jq '.[].number'
+                )
+                if [ -n "$EVENT_ISSUE" ]; then
+                  issues=$(printf '%s\n%s\n' "$EVENT_ISSUE" "$issues" | awk '!seen[$0]++ && NF')
+                fi
+                ;;
               *) echo "Ignoring untrusted review editor: $EVENT_ACTOR ($permission)"; exit 0 ;;
             esac
           fi
@@ -64,6 +106,10 @@ jobs:
             if ! grep -q '<!-- citypods-review:' <<<"$body"; then
               continue
             fi
+            # Skip issues with no checked decision boxes to avoid unnecessary work.
+            if ! grep -Eq '^- \[[xX]\] ' <<<"$body"; then
+              continue
+            fi
             printf '%s\n' "$body" > issue.md
             actor="$EVENT_ACTOR"
             if [ "$EVENT_NAME" = "schedule" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
@@ -71,7 +117,8 @@ jobs:
             fi
             rm -f result.log
             python scripts/resolve_review_issue.py --issue-number "$issue" \
-              --issue-url "$(jq -r .url issue.json)" --actor "$actor" --body-file issue.md > result.log
+              --issue-url "$(jq -r .url issue.json)" --actor "$actor" \
+              --body-file issue.md > result.log
             if tail -1 result.log | jq -e '.stored == true' >/dev/null; then
               gh issue close "$issue" --comment "Stored managed review decision."
             fi
