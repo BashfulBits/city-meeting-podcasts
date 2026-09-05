@@ -192,6 +192,21 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   if (Number.isFinite(tpm) && tpm > 0 && reservation > tpm * FULL_TOKEN_BUDGET_WINDOWS) {
     return null; // exceeds the route's burst/request capacity outright -- not a timing problem
   }
+  // A SEPARATE, tighter, opt-in ceiling from the bucket math above. `FULL_TOKEN_BUDGET_WINDOWS`
+  // assumes every route can burst up to several windows deep -- true for at least one provider
+  // confirmed live (NVIDIA accepted a request ~3x its configured tpm outright), but not for
+  // Gemini/Gemma: confirmed live, a single request over its real usable window is rejected
+  // outright by the provider no matter how idle the account is, and that real ceiling can sit
+  // well below both `tpm` and the model's own context window. `route.hard_input_ceiling` is only
+  // ever set (compile_llm_limits.py) where that hard-reject behavior has actually been verified,
+  // so this never over-restricts a route we haven't tested. It is an *input*-only cap -- mirror
+  // the Python scheduler's `select_route` contract (`llm_scheduler.py`) and compare it against the
+  // client's input estimate alone, not `reservation`, which also carries the output-token budget.
+  const hardCeiling = Number(route?.hard_input_ceiling);
+  const inputEstimate = Number(job?.input_token_estimate) || 0;
+  if (Number.isFinite(hardCeiling) && hardCeiling > 0 && inputEstimate > hardCeiling) {
+    return null;
+  }
 
   let notBeforeAt = Math.max(earliestCandidateTime, now);
 

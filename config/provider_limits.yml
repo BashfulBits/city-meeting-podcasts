@@ -286,6 +286,7 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   - route_id: gemini_3_5_flash_lite_secondary
@@ -298,6 +299,7 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   - route_id: gemini_3_1_flash_lite_primary
@@ -310,6 +312,7 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   - route_id: gemini_3_1_flash_lite_secondary
@@ -322,6 +325,7 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   # Gemma 4 Massive Free Quota Pools (14.4k RPD / 30 RPM each)
@@ -335,6 +339,7 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
+    hard_input_ceiling: 8000
     free: true
 
   - route_id: gemma_4_26b_secondary
@@ -347,6 +352,7 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
+    hard_input_ceiling: 8000
     free: true
 
   - route_id: gemma_4_31b_primary
@@ -359,6 +365,7 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
+    hard_input_ceiling: 8000
     free: true
 
   - route_id: gemma_4_31b_secondary
@@ -371,6 +378,7 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
+    hard_input_ceiling: 8000
     free: true
 
   # Additional Free Flash Burst Pools (20 RPD / 5-10 RPM each)
@@ -384,6 +392,7 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   - route_id: gemini_3_flash_preview_secondary
@@ -396,6 +405,7 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   - route_id: gemini_3_6_flash_primary
@@ -408,6 +418,7 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   - route_id: gemini_3_6_flash_secondary
@@ -420,6 +431,7 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   - route_id: gemini_3_5_flash_primary
@@ -432,6 +444,7 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   - route_id: gemini_3_5_flash_secondary
@@ -444,6 +457,7 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
+    hard_input_ceiling: 120000
     free: true
 
   # ==========================================

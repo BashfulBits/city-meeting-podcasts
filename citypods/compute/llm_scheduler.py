@@ -413,6 +413,17 @@ def select_route(
         if input_tokens > route.input_context_limit:
             rejected.append((model, "input context limit"))
             continue
+        # A SEPARATE, tighter, opt-in ceiling from `input_context_limit` above. Some providers'
+        # `tpm` is enforced as a hard per-request cap with no burst room above it, no matter how
+        # idle the account is (confirmed live against Gemini's free tier); others genuinely
+        # tolerate a request several times their configured `tpm` (confirmed live against NVIDIA's
+        # free tier). `route.hard_input_ceiling` is only ever set where that hard-reject behavior
+        # has actually been verified -- see its docstring in `llm_policy.py`. Without this gate, an
+        # oversized request for such a route would pass the check above (it's under the model's
+        # real context window) and only fail once it reaches the provider as a genuine 429.
+        if route.hard_input_ceiling is not None and input_tokens > route.hard_input_ceiling:
+            rejected.append((model, "hard input ceiling"))
+            continue
         if output_tokens > route.output_context_limit:
             rejected.append((model, "output context limit"))
             continue

@@ -124,9 +124,20 @@ llm_lanes:
     daily_write_units: 4000
   chapter-locator:
     # Replaces citypods/chapter_locator.py:PRODUCTION_LOCATOR_MODEL. Gemini 3.5 Flash Lite is
-    # reserved for this long-context workload and deliberately not shared with tagging.
-    models: ["gemini/gemini-3.5-flash-lite"]
-    max_dispatches_per_run: 1000
+    # reserved for this long-context workload and deliberately not shared with tagging; it stays
+    # `models[0]` (the recipe/calibration key -- see chapter_locator.py's own docstring on why
+    # changing it re-queues the whole locator catalog). The two overflow models are free NVIDIA
+    # routes with no verified hard per-request ceiling (confirmed live -- see `hard_input_ceiling`
+    # in config/provider_limits.yml), added so a full-transcript job too large for Gemini's real
+    # free-tier ceiling has somewhere to go instead of a guaranteed 429.
+    models:
+      - "gemini/gemini-3.5-flash-lite"
+      - "deepseek/deepseek-v4-pro"
+      - "moonshotai/kimi-k3"
+    # Run cap equal to what daily_write_units now funds at 3 models (3 index rows + 3 bookkeeping
+    # rows = 6 units/job; 4000/6 = 666) -- was 1000 at 1 model (4 units/job); see
+    # `LaneConfig.max_jobs_per_day`, which `parse_lanes` enforces this can never exceed.
+    max_dispatches_per_run: 666
     reserved_write_units: 2000
     daily_write_units: 4000
   topic-tags:tagger:
@@ -145,12 +156,18 @@ llm_lanes:
     daily_write_units: 5000
   r6-moments:
     # Mirrors the legacy `moments.llm_models`; the stage still filters this allowlist by
-    # meeting family before dispatching.
+    # meeting family before dispatching. The two NVIDIA free routes at the end mirror
+    # citypods/moments.py:COUNCIL_MOMENT_MODELS's overflow pair -- council feeds run full-meeting
+    # transcripts that can exceed Gemini's real free-tier per-request ceiling well before its
+    # advertised 1M-token context window (confirmed live -- see `hard_input_ceiling` in
+    # config/provider_limits.yml); the two Gemini entries above stay first/unaffected.
     models:
       - "gemini/gemini-3.6-flash"
       - "gemini/gemini-3.5-flash"
       - "gemini/gemini-3.5-flash-lite"
       - "gemini/gemini-3.1-flash-lite"
+      - "deepseek/deepseek-v4-pro"
+      - "moonshotai/kimi-k3"
     max_dispatches_per_run: 40
     reserved_write_units: 1000
     daily_write_units: 3000
