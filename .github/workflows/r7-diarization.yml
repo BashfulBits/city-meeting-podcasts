@@ -23,9 +23,6 @@ jobs:
   diarize:
     runs-on: ubuntu-latest
     timeout-minutes: 330
-    env:
-      HF_HOME: /home/runner/.cache/huggingface
-      TOKENIZERS_PARALLELISM: "false"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -40,38 +37,25 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Cache pyannote models
+      # sherpa-onnx's two ONNX models (~46MB combined) are non-gated GitHub release assets,
+      # fetched lazily by citypods.diarize into this cache dir on first use -- no HF auth, no
+      # torchcodec/shared-ffmpeg workaround the pyannote engine needed (this engine decodes
+      # audio via a plain ffmpeg subprocess, which the runner image ships already).
+      - name: Cache sherpa-onnx diarization models
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: /home/runner/.cache/huggingface
-          key: r7-pyannote-community-1-${{ runner.os }}-${{ hashFiles('constraints/asr.txt', 'config/site_config.yml') }}
-          restore-keys: |
-            r7-pyannote-community-1-${{ runner.os }}-
-
-      # pyannote.audio 4 decodes through torchcodec, which dynamically loads FFmpeg's shared
-      # libav* libraries. A standalone/static ffmpeg binary is not sufficient, and ffmpeg is no
-      # longer guaranteed to be present on the moving ubuntu-latest runner image.
-      - name: Install FFmpeg shared runtime
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends ffmpeg
-          ffmpeg -version >/dev/null
-          ldconfig -p | grep -q 'libavcodec.so'
+          path: /home/runner/.cache/citypods-diarize
+          key: r7-sherpa-titanet-small-${{ runner.os }}-${{ hashFiles('citypods/diarize.py') }}
 
       - name: Install pinned diarization runtime
-        run: pip install -e ".[asr,storage]" -c constraints/asr.txt
+        run: pip install -e ".[diarize,storage]" -c constraints/asr.txt
 
-      - name: Preflight pyannote model access
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: Preflight diarization model access
         run: python scripts/preflight_diarization.py
 
       - name: Diarize Denton pilot meetings
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}

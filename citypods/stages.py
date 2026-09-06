@@ -71,7 +71,6 @@ import collections
 import dataclasses
 import hashlib
 import json
-import os
 import re
 import tempfile
 import threading
@@ -6999,9 +6998,10 @@ class NativeDiarizeStage:
                                 "audio_path": audio_path,
                                 "model": model,
                                 "embedding_model": embedding_model,
-                                # Secret-only by design: never read a token from committed config.
-                                "token": os.environ.get("HF_TOKEN")
-                                or os.environ.get("HUGGINGFACE_HUB_TOKEN"),
+                                # No HF-gated model in this engine (review/31 §A.1a) -- neither
+                                # field means anything to sherpa-onnx, kept only so an
+                                # already-registered dispatch backend's call shape doesn't change.
+                                "token": None,
                                 "device": config.get("device"),
                             },
                             recipe_hash=spec,

@@ -50,6 +50,36 @@ _RECOGNITION_CUES: tuple[tuple[str, ...], ...] = (
     ("chair", "calls", "on"),
     ("the", "chair", "calls", "on"),
 )
+_SELF_INTRO_CUES: tuple[tuple[str, ...], ...] = (
+    ("my", "name", "is"),
+    ("this", "is"),
+    ("i'm",),
+    ("i", "am"),
+)
+# Common single-word civic staff titles, matched loosely (any token, not an exact phrase) since
+# real title wording varies too much ("Assistant Planner", "Senior Engineer", "City Attorney")
+# to enumerate as fixed sequences the way `_ANNOUNCEMENT_TITLES` does for elected titles.
+_STAFF_TITLE_WORDS = frozenset(
+    {
+        "administrator",
+        "analyst",
+        "assistant",
+        "attorney",
+        "chief",
+        "clerk",
+        "coordinator",
+        "director",
+        "engineer",
+        "manager",
+        "officer",
+        "planner",
+        "secretary",
+        "specialist",
+        "superintendent",
+        "supervisor",
+    }
+)
+_SELF_INTRODUCTION_WINDOW_SECONDS = 10.0
 _NAME_STOP_WORDS = frozenset(
     {
         "about",
@@ -449,6 +479,137 @@ def _reference_candidate(
         "end": float(target["end"]),
         "cluster": target.get("cluster"),
         "transcript_text_hash": target.get("transcript_text_hash"),
+    }
+
+
+def _name_then_title(
+    rows: list[dict[str, Any]], start: int, known: Mapping[str, str]
+) -> tuple[str | None, int] | None:
+    """Match "<Name>, <staff title>" at `start` -- a self-introduction with no framing phrase
+    (review/31 §C.3), distinct from `_name_after`'s "cue phrase, then a name" shape."""
+    collected: list[str] = []
+    end_index = start - 1
+    saw_break = False
+    for index in range(start, min(len(rows), start + 4)):
+        row = rows[index]
+        if row["token"] in _NAME_STOP_WORDS or row["token"] in _STAFF_TITLE_WORDS:
+            break
+        collected.append(row["raw"].strip(" ,:;.!?"))
+        end_index = index
+        if row["raw"].rstrip().endswith((",", ";", ":")):
+            saw_break = True
+            break
+        if row["raw"].rstrip().endswith((".", "!", "?")):
+            return None
+    if not saw_break or not collected:
+        return None
+    name = " ".join(part for part in collected if part).strip()
+    if not name or not any(char.isalpha() for char in name):
+        return None
+    # A known-attendee roster (when one parsed) corrects the raw ASR name text to the official
+    # spelling below; without one (a new city, or unparseable minutes) this signal still fires
+    # on the title check alone -- roster narrowing is a quality improvement, not a requirement.
+    normalized = " ".join(row["token"] for row in rows[start : end_index + 1])
+    title_row = next(
+        (r for r in rows[end_index + 1 : end_index + 5] if r["token"] in _STAFF_TITLE_WORDS), None
+    )
+    if title_row is None:
+        return None
+    return known.get(normalized, name), rows.index(title_row)
+
+
+def self_introduction_candidates(
+    words: Mapping[str, Any], turns: Iterable[Mapping[str, Any]], *, known_names: Iterable[str] = ()
+) -> list[dict[str, Any]]:
+    """Find a speaker naming themselves within the first ~10s of their own turn.
+
+    A second automatic evidence signal alongside `chair_reference_candidates` (review/31 §C.3):
+    staff presenters and public commenters frequently self-introduce at a podium ("MY NAME IS
+    REZA...", "MATT BODINE, ASSISTANT PLANNER...") -- not universal, so this is one more
+    candidate for human confirmation, exactly like `chair_reference_candidates`, never a direct
+    assignment. The corroborated span is the turn itself (the speaker is naming *themselves*),
+    unlike the chair-cue case, which corroborates the *next* turn after the cue.
+    """
+    rows = list(_timed_word_rows(words))
+    turn_rows = [row for row in turns if isinstance(row, Mapping)]
+    known = {_norm(name): str(name).strip() for name in known_names if str(name).strip()}
+    matches: list[dict[str, Any]] = []
+    for turn in turn_rows:
+        start, end = turn.get("start"), turn.get("end")
+        if (
+            turn.get("overlap")
+            or not isinstance(turn.get("embedding"), list)
+            or not turn.get("embedding")
+            or not isinstance(start, int | float)
+            or not isinstance(end, int | float)
+        ):
+            continue
+        window_end = min(float(end), float(start) + _SELF_INTRODUCTION_WINDOW_SECONDS)
+        window = [row for row in rows if float(start) <= row["start"] < window_end]
+        for index in range(len(window)):
+            for cue in _SELF_INTRO_CUES:
+                if not _sequence_at(window, index, cue):
+                    continue
+                name, name_end = _name_after(window, index + len(cue), known)
+                if name:
+                    matches.append(
+                        _self_introduction_candidate(
+                            window, turn, index, name_end, name, "self-stated"
+                        )
+                    )
+            title_match = _name_then_title(window, index, known)
+            if title_match:
+                name, name_end = title_match
+                matches.append(
+                    _self_introduction_candidate(
+                        window, turn, index, name_end, name, "name-then-title"
+                    )
+                )
+    unique: dict[tuple, dict[str, Any]] = {}
+    for candidate in matches:
+        # A "name-then-title" match can also fire on a shorter trailing substring of the same
+        # name anchored to the same title word (e.g. "Bodine," alone, inside "Matt Bodine,");
+        # key on the title's own position rather than the extracted name so the earliest
+        # (longest) name wins instead of both surviving as separate candidates.
+        if candidate["cue_kind"] == "name-then-title":
+            key = (
+                float(candidate["start"]),
+                float(candidate["end"]),
+                "name-then-title",
+                float(candidate["cue_end"]),
+            )
+        else:
+            key = (
+                float(candidate["start"]),
+                float(candidate["end"]),
+                _norm(candidate["display_name"]),
+            )
+        prior = unique.get(key)
+        if prior is None or float(candidate["cue_start"]) < float(prior["cue_start"]):
+            unique[key] = candidate
+    return list(unique.values())
+
+
+def _self_introduction_candidate(
+    rows: list[dict[str, Any]],
+    turn: Mapping[str, Any],
+    cue_index: int,
+    name_end_index: int,
+    name: str,
+    cue_kind: str,
+) -> dict[str, Any]:
+    cue_text = " ".join(row["raw"] for row in rows[cue_index : name_end_index + 1])
+    return {
+        "kind": "self-introduction",
+        "cue_kind": cue_kind,
+        "cue_text": cue_text,
+        "cue_start": float(rows[cue_index]["start"]),
+        "cue_end": float(rows[name_end_index]["end"]),
+        "display_name": name,
+        "start": float(turn["start"]),
+        "end": float(turn["end"]),
+        "cluster": turn.get("cluster"),
+        "transcript_text_hash": turn.get("transcript_text_hash"),
     }
 
 

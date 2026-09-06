@@ -1,18 +1,71 @@
-"""Lazy pyannote adapter for R7 native diarization."""
+"""Lazy sherpa-onnx adapter for R7 native diarization.
+
+Engine: pyannote-segmentation-3.0 (VAD/segmentation) + a swappable speaker-embedding model,
+both non-gated ONNX exports from sherpa-onnx's own model releases -- no Hugging Face auth
+needed. Superseded the pyannote-audio engine on 2026-09-06 (review/31 §A.1a): an offline
+trial found NeMo TitaNet-Small matches pyannote's measured accuracy at 8-13x its CPU speed,
+which is what actually removes the long-meeting CPU budget ceiling that motivated the switch.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import math
+import os
+import subprocess
+import tarfile
+import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_DIARIZE_MODEL = "pyannote/speaker-diarization-community-1"
-DEFAULT_EMBEDDING_MODEL = "pyannote/embedding"
+import requests
+
+# The overall recipe id: segmentation model + embedding model + clustering threshold are all
+# pinned together here, so a change to any of them changes this string, which changes the
+# content-addressed spec hash (`_diarize_spec_hash`, citypods/stages.py) -- old artifacts from
+# the prior pyannote recipe are correctly never confused with these.
+DEFAULT_DIARIZE_MODEL = "sherpa-onnx/pyannote-segmentation-3.0"
+DEFAULT_EMBEDDING_MODEL = "nemo-titanet-small"
 TIMED_WORDS_VALIDATION_VERSION = "1"
+
+_SEGMENTATION_RELEASE_URL = (
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/"
+    "speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"
+)
+
+# Every embedding recipe this project's own offline trial (2026-09-06) actually measured
+# accuracy and a calibrated clustering threshold for -- see review/31 §A.1a. The library's
+# threshold default (0.5) only ever fit wespeaker-resnet34 by coincidence; the other two
+# badly over- or under-segmented at it. Keeping all three selectable (not just the winner)
+# costs nothing and preserves the option to re-evaluate without re-deriving thresholds.
+_EMBEDDING_RECIPES: dict[str, dict[str, Any]] = {
+    "nemo-titanet-small": {
+        "url": (
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/"
+            "speaker-recongition-models/nemo_en_titanet_small.onnx"
+        ),
+        "clustering_threshold": 1.05,
+    },
+    "wespeaker-resnet34": {
+        "url": (
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/"
+            "speaker-recongition-models/wespeaker_en_voxceleb_resnet34.onnx"
+        ),
+        "clustering_threshold": 0.5,
+    },
+    "wespeaker-campp": {
+        "url": (
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/"
+            "speaker-recongition-models/wespeaker_en_voxceleb_CAM%2B%2B.onnx"
+        ),
+        "clustering_threshold": 0.65,
+    },
+}
+
+_DEFAULT_CACHE_DIR = Path.home() / ".cache" / "citypods-diarize"
 
 
 def has_valid_timed_words(value: bytes | Mapping[str, Any]) -> bool:
@@ -37,39 +90,147 @@ class DiarizeArtifacts:
     model: str
 
 
+def _cache_dir() -> Path:
+    return Path(os.environ.get("CITYPODS_DIARIZE_MODEL_CACHE") or _DEFAULT_CACHE_DIR)
+
+
+def _download(url: str, dest: Path, *, attempts: int = 3) -> None:
+    """Fetch a fixed, pinned, source-controlled release URL to `dest` atomically.
+
+    Not a caller/provider-supplied URL (every value passed here comes from the recipe
+    tables above, not request input), so this intentionally skips the SSRF-guarded
+    session machinery `citypods.stages._download_audio_file` uses for untrusted URLs.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    last_exc: Exception | None = None
+    for _ in range(attempts):
+        try:
+            with requests.get(url, stream=True, timeout=60) as response:
+                response.raise_for_status()
+                with tempfile.NamedTemporaryFile(dir=dest.parent, delete=False) as tmp:
+                    for chunk in response.iter_content(chunk_size=1 << 20):
+                        tmp.write(chunk)
+                    tmp_path = Path(tmp.name)
+            tmp_path.replace(dest)
+            return
+        except (requests.RequestException, OSError) as exc:  # noqa: PERF203
+            last_exc = exc
+    raise RuntimeError(f"failed to download {url!r} after {attempts} attempts") from last_exc
+
+
+def _ensure_segmentation_model() -> Path:
+    root = _cache_dir() / "sherpa-onnx-pyannote-segmentation-3-0"
+    dest = root / "model.onnx"
+    if dest.exists():
+        return dest
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        archive = Path(tmp_dir) / "segmentation.tar.bz2"
+        _download(_SEGMENTATION_RELEASE_URL, archive)
+        with tarfile.open(archive, "r:bz2") as tar:
+            tar.extractall(tmp_dir, filter="data")  # noqa: S202 -- fixed, pinned archive
+        extracted = Path(tmp_dir) / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"
+        root.mkdir(parents=True, exist_ok=True)
+        extracted.replace(dest)
+    return dest
+
+
+def _ensure_embedding_model(name: str) -> Path:
+    recipe = _EMBEDDING_RECIPES.get(name)
+    if recipe is None:
+        raise ValueError(
+            f"unknown diarize embedding model {name!r}; choose one of {sorted(_EMBEDDING_RECIPES)}"
+        )
+    dest = _cache_dir() / f"{name}.onnx"
+    if not dest.exists():
+        _download(recipe["url"], dest)
+    return dest
+
+
+def _load_waveform(audio_path: Path, sample_rate: int):
+    """Decode any audio format ffmpeg understands (hosted audio is AAC/M4A) to mono float32
+    PCM at the model's expected rate. Reuses the ffmpeg binary this project already requires
+    for encoding rather than adding a second audio-decoding dependency."""
+    import numpy as np
+
+    cmd = [
+        "ffmpeg",
+        "-v",
+        "error",
+        "-i",
+        str(audio_path),
+        "-f",
+        "f32le",
+        "-ac",
+        "1",
+        "-ar",
+        str(sample_rate),
+        "-",
+    ]
+    result = subprocess.run(cmd, capture_output=True, check=True)  # noqa: S603
+    return np.frombuffer(result.stdout, dtype=np.float32)
+
+
 def diarize(
     audio_path: Path,
     model: str = DEFAULT_DIARIZE_MODEL,
     *,
     embedding_model: str | None = DEFAULT_EMBEDDING_MODEL,
-    token: str | None = None,
-    device: str | None = None,
+    token: str | None = None,  # noqa: ARG001 -- kept for call-site compatibility; unused, no
+    # gated model needs auth anymore (review/31 §A.1a).
+    device: str | None = None,  # noqa: ARG001 -- unused; this engine is CPU-only by design
+    # (the throughput win is many single-threaded worker processes, not GPU/MPS offload).
+    num_threads: int = 2,
+    clustering_threshold: float | None = None,
 ) -> DiarizeArtifacts:
-    """Run pyannote lazily and normalize its labels to meeting-local clusters.
+    """Run sherpa-onnx lazily and normalize its labels to meeting-local clusters.
 
-    The pyannote model remains an implementation detail.  R7 stores no provider-specific
-    annotation object, so a later WeSpeaker benchmark/fallback can return this same shape.
+    `num_threads` defaults to 2 -- the measured single-job latency optimum (review/31 §A.4) --
+    for a bare/ad-hoc call. The concurrent worker-pool scheduler (`NativeDiarizeStage`) passes
+    `num_threads=1` explicitly: throughput across many concurrent single-threaded workers beat
+    every other split tested, including this same 2-thread-per-job optimum run four-wide.
     """
-    try:
-        from pyannote.audio import Pipeline
-    except ImportError as exc:  # pragma: no cover - exercised in ASR image, mocked in unit tests.
-        raise RuntimeError("R7 diarization requires the pinned pyannote ASR dependency") from exc
-    pipeline = Pipeline.from_pretrained(model, token=token)
-    if device:
-        try:
-            import torch
+    import sherpa_onnx
 
-            pipeline.to(torch.device(device))
-        except (ImportError, AttributeError):
-            pass
-    output = pipeline(str(audio_path))
-    # pyannote.audio 3.x returned an Annotation directly; Community-1 (pyannote.audio 4.x)
-    # returns a structured output with regular and exclusive diarization annotations.
-    annotation = getattr(output, "speaker_diarization", output)
+    embedding_name = embedding_model or DEFAULT_EMBEDDING_MODEL
+    recipe = _EMBEDDING_RECIPES.get(embedding_name)
+    if recipe is None:
+        raise ValueError(
+            f"unknown diarize embedding model {embedding_name!r}; "
+            f"choose one of {sorted(_EMBEDDING_RECIPES)}"
+        )
+    threshold = (
+        clustering_threshold if clustering_threshold is not None else recipe["clustering_threshold"]
+    )
+
+    segmentation_path = _ensure_segmentation_model()
+    embedding_path = _ensure_embedding_model(embedding_name)
+
+    config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
+        segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
+            pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(
+                model=str(segmentation_path)
+            ),
+            num_threads=num_threads,
+            provider="cpu",
+        ),
+        embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(
+            model=str(embedding_path), num_threads=num_threads, provider="cpu"
+        ),
+        # -1 = auto-detect speaker count from the distance threshold -- production doesn't
+        # know true speaker counts in advance any more than the trial did.
+        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=threshold),
+    )
+    if not config.validate():
+        raise RuntimeError(f"invalid sherpa-onnx diarize config for embedding {embedding_name!r}")
+    diarizer = sherpa_onnx.OfflineSpeakerDiarization(config)
+
+    samples = _load_waveform(audio_path, diarizer.sample_rate)
+    result = diarizer.process(samples)
+
     turns: list[dict[str, Any]] = []
     clusters: dict[str, dict[str, Any]] = {}
-    for segment, _, label in annotation.itertracks(yield_label=True):
-        cluster = str(label)
+    for segment in result.sort_by_start_time():
+        cluster = str(segment.speaker)
         turns.append(
             {
                 "start": float(segment.start),
@@ -80,10 +241,14 @@ def diarize(
         )
         clusters.setdefault(cluster, {"cluster": cluster, "turn_count": 0})["turn_count"] += 1
     _mark_overlap(turns)
-    if embedding_model:
-        _attach_embeddings(audio_path, turns, embedding_model, token=token, device=device)
+    _attach_embeddings(
+        samples, diarizer.sample_rate, turns, embedding_path, num_threads=num_threads
+    )
     return DiarizeArtifacts(
-        turns=turns, clusters=list(clusters.values()), engine="pyannote", model=model
+        turns=turns,
+        clusters=list(clusters.values()),
+        engine="sherpa-onnx",
+        model=f"{model}+{embedding_name}",
     )
 
 
@@ -157,35 +322,39 @@ def _mark_overlap(turns: list[dict[str, Any]]) -> None:
 
 
 def _attach_embeddings(
-    audio_path: Path,
+    samples,
+    sample_rate: int,
     turns: list[dict[str, Any]],
-    model: str,
+    embedding_path: Path,
     *,
-    token: str | None,
-    device: str | None,
+    num_threads: int,
 ) -> None:
     """Best-effort per-turn embeddings for the separate R7 identity layer.
 
-    Diarization is still useful when an embedding model is unavailable (for example a model
-    access approval has not yet been accepted), so this intentionally leaves turns anonymous
-    rather than failing the content-addressed diarization artifact.
+    Diarization is still useful when embedding extraction fails for any reason, so this
+    intentionally leaves turns anonymous rather than failing the content-addressed diarization
+    artifact -- same contract the prior pyannote adapter made.
     """
     try:
-        import torch
-        from pyannote.audio import Inference, Model
-        from pyannote.core import Segment
+        import sherpa_onnx
 
-        inference = Inference(
-            Model.from_pretrained(model, token=token),
-            window="whole",
-            device=torch.device(device) if device else None,
+        extractor = sherpa_onnx.SpeakerEmbeddingExtractor(
+            sherpa_onnx.SpeakerEmbeddingExtractorConfig(
+                model=str(embedding_path), num_threads=num_threads, provider="cpu"
+            )
         )
         for turn in turns:
-            vector = inference.crop(
-                str(audio_path), Segment(float(turn["start"]), float(turn["end"]))
-            )
-            values = vector.tolist() if hasattr(vector, "tolist") else list(vector)
-            if isinstance(values, list) and values and not isinstance(values[0], list):
+            start_idx = max(0, int(float(turn["start"]) * sample_rate))
+            end_idx = min(len(samples), int(float(turn["end"]) * sample_rate))
+            if end_idx <= start_idx:
+                continue
+            stream = extractor.create_stream()
+            stream.accept_waveform(sample_rate, samples[start_idx:end_idx])
+            stream.input_finished()
+            if not extractor.is_ready(stream):
+                continue
+            values = extractor.compute(stream)
+            if values:
                 turn["embedding"] = [float(value) for value in values]
     except Exception:  # noqa: BLE001 - no embedding means no identity, not failed diarization.
         return

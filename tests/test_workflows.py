@@ -186,14 +186,15 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     preflight = next(
         step for step in job["steps"] if "preflight_diarization.py" in step.get("run", "")
     )
-    assert preflight["env"]["HF_TOKEN"] == "${{ secrets.HF_TOKEN }}"
-    assert preflight["env"]["HUGGINGFACE_HUB_TOKEN"] == "${{ secrets.HF_TOKEN }}"
+    # sherpa-onnx/TitaNet-Small (review/31 §A.1a) needs no HF auth -- neither model is gated.
+    assert "env" not in preflight
     diarize = next(step for step in job["steps"] if "--lane diarize" in step.get("run", ""))
     identity = next(
         step for step in job["steps"] if "--lane speaker-identity" in step.get("run", "")
     )
     assert "--city denton-tx" in diarize["run"]
     assert "--city denton-tx" in identity["run"]
+    assert "HF_TOKEN" not in diarize.get("env", {})
     for name in (
         "GRANICUS_PROXY_BASE_URL",
         "GRANICUS_PROXY_TOKEN",
@@ -201,13 +202,10 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
         "SWAGIT_PROXY_TOKEN",
     ):
         assert identity["env"][name] == f"${{{{ secrets.{name} }}}}"
-    assert _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25") >= 0
-    ffmpeg = next(
-        step for step in job["steps"] if step.get("name") == "Install FFmpeg shared runtime"
-    )
-    assert "apt-get install -y -qq --no-install-recommends ffmpeg" in ffmpeg["run"]
-    assert "ldconfig -p | grep -q 'libavcodec.so'" in ffmpeg["run"]
-    assert job["steps"].index(ffmpeg) < job["steps"].index(preflight)
+    cache_index = _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25")
+    assert cache_index >= 0
+    assert job["steps"][cache_index]["with"]["path"] == "/home/runner/.cache/citypods-diarize"
+    assert job["steps"].index(preflight) > cache_index
 
 
 def test_speaker_calibration_review_gate_matches_packaged_titles():

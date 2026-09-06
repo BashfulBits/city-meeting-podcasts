@@ -47,15 +47,20 @@ asr-align2 = [
     "torchaudio>=2.0",
     "torchcodec>=0.1",              # torchaudio.load()'s AudioDecoder backend as of torchaudio 2.9
 ]
-# R7 calls pyannote directly for native diarization.  Keep this explicit instead of relying on
-# WhisperX's currently coincidental transitive dependency.
-diarize = ["pyannote-audio>=4.0"]
+# R7 native diarization (review/31 §A.1a, superseded pyannote-audio 2026-09-06): sherpa-onnx
+# runs pyannote-segmentation-3.0 (VAD/segmentation) + a swappable ONNX embedding model
+# (default NeMo TitaNet-Small) entirely CPU-side, with neither model gated behind Hugging
+# Face auth. numpy is listed explicitly even though sherpa-onnx pulls it transitively, same
+# reasoning as WhisperX/torch below -- an explicit pin here doesn't silently break if that
+# transitive dependency ever changes.
+diarize = ["sherpa-onnx>=1.13", "numpy>=1.24"]
 # Backward-compatible aggregate for local contributors that want every ASR surface.
 asr = [
     "faster-whisper>=1.0",
     "whisperx>=3.8",
     "jiwer>=3.0",
-    "pyannote-audio>=4.0",
+    "sherpa-onnx>=1.13",
+    "numpy>=1.24",
 ]
 # H15 Layer 3 (review/12 §H15): WER/CER for the gold-anchored calibration report. Deliberately
 # separate from asr-bench/asr — those also pull in faster-whisper/WhisperX, which the weekly

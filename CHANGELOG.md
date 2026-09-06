@@ -95,6 +95,36 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **R7 native diarization engine: pyannote-audio → sherpa-onnx + NeMo TitaNet-Small
+  (review/31 §A.1a).** Run 51 (denton-tx, 2026-09-05) exposed pyannote's real CPU cost — ~2.2s
+  of compute per second of audio, capping a single diarizable meeting at roughly 2h40m before
+  the `diarize_start_cutoff` admission window (285m) runs out, a real problem for this project's
+  many longer meetings. A same-day offline trial (two real, transcript-matched Denton City
+  Council excerpts, a purpose-built gold-labeling tool, and `citypods/speaker_benchmark.py`'s
+  own scoring extended past its prior hardcoded two-engine limit) found NeMo TitaNet-Small —
+  run through `sherpa-onnx`'s CPU-only ONNX pipeline — matches pyannote's measured accuracy
+  (turn_cluster_accuracy 0.947/0.937 vs. 0.962/0.956) at 8-13x its CPU speed, removing the
+  ceiling outright with no GPU/external dispatch. `citypods/diarize.py` now runs
+  `sherpa_onnx.OfflineSpeakerDiarization` (pyannote-segmentation-3.0 for VAD/segmentation +
+  a swappable, per-recipe-calibrated embedding model, default TitaNet-Small) instead of
+  `pyannote.audio.Pipeline`; **neither model is Hugging-Face-gated**, so `HF_TOKEN` is no longer
+  needed for this lane (`scripts/preflight_diarization.py` rewritten to validate the new
+  models are downloadable instead of checking HF auth; `r7-diarization.yml` drops the
+  `HF_TOKEN`/`HUGGINGFACE_HUB_TOKEN` secrets and the torchcodec/shared-ffmpeg workaround
+  pyannote needed). `pyproject.toml`'s `diarize` extra is now `sherpa-onnx` + `numpy` in place
+  of `pyannote-audio`. TitaNet-Large and naive INT8-quantized TitaNet-Small were both evaluated
+  and rejected (no real accuracy gain and clustering collapse respectively — see review/31);
+  WeSpeaker-ResNet34/CAM++ were also evaluated and rejected on accuracy despite being fast
+  (identity scrambling within continuous single-speaker speech). Also new:
+  `citypods.speakers.self_introduction_candidates` — a second automatic naming-evidence signal
+  (alongside the existing `chair_reference_candidates`) that scans the first ~10s of a
+  speaker's own turn for a self-identification ("MY NAME IS...") or name-then-staff-title
+  ("Matt Bodine, Assistant Planner") pattern, feeding the same identify-then-human-confirm
+  pipeline, never assigning a name directly. Concurrency/admission scheduling and memory-aware
+  worker-pool limits (also designed in this pass, review/31 §A.4) are follow-up work, not yet
+  implemented. New diarization-pipeline recipe hash — existing pyannote-produced `speakers.json`
+  artifacts remain valid or reachable; new/changed episodes re-diarize under the new recipe.
+
 - **Preserve external-compute spend during lease cleanup (GH#1329).** Settlement and release
   use the existing reservation's provider cycle when callers omit it, rather than resetting the
   balance to a bare calendar-month key. Explicit stale-cycle callbacks and unknown owners are
