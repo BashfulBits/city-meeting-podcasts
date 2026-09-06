@@ -212,6 +212,8 @@ def _record_calibration(
     reviewer: str,
     review_id: str,
     capture_context: str,
+    combination_key: str | None = None,
+    tier: str | None = None,
 ) -> None:
     rows = state.setdefault("reviews", [])
     row = {
@@ -222,6 +224,15 @@ def _record_calibration(
         "reviewer": reviewer,
         "candidate_id": candidate_id,
     }
+    # Snapshot what the reviewer actually judged. `naming_candidate_id` deliberately excludes the
+    # signal set, so a later projection rewrites that row's `combination_key` and `tier` under the
+    # same id -- and the precision table, which joins verdicts to the *current* row, would then
+    # credit this ruling to a combination nobody ever reviewed. Gaining a voice reference or
+    # receiving minutes would silently move evidence between buckets.
+    if combination_key:
+        row["combination_key"] = combination_key
+    if tier:
+        row["tier"] = tier
     prior = next((item for item in rows if item.get("review_id") == review_id), None)
     if prior:
         comparable = {key: value for key, value in row.items() if key != "reviewed_at"}
@@ -278,6 +289,9 @@ _REVIEW_CLASSES: dict[str, dict[str, Any]] = {
         # No start/end: a fused candidate is a claim about a whole cluster, not one turn.
         "fields": _COMMON_PAYLOAD_FIELDS
         + ("kind", "display_name", "cluster", "tier", "combination_key"),
+        # `turns`/`cues` are shown to the reviewer but deliberately excluded from the verified
+        # payload: they are presentation, and a re-projection may legitimately find more of them
+        # between packaging and ingest, which must not invalidate a human's ruling.
     },
     "shadow": {
         "ledger": "candidates",
@@ -337,6 +351,19 @@ def _review_body(candidate: dict) -> str:
         )
     if review_class == "naming":
         signals = ", ".join(str(item) for item in candidate.get("signals") or ()) or "none"
+        spans = (
+            ", ".join(
+                f"{row.get('start')}-{row.get('end')}s"
+                for row in candidate.get("turns") or ()
+                if isinstance(row, Mapping)
+            )
+            or "not recorded"
+        )
+        cues = "\n".join(
+            f"- **{row.get('kind')}** at {row.get('start')}s: “{row.get('text')}”"
+            for row in candidate.get("cues") or ()
+            if isinstance(row, Mapping)
+        )
         return (
             f"{header}"
             f"# R7 speaker name review: `{candidate['candidate_id']}`\n\n"
@@ -344,7 +371,9 @@ def _review_body(candidate: dict) -> str:
             f"Proposed name for speaker cluster `{candidate.get('cluster')}`: "
             f"**{candidate.get('display_name')}**\n\n"
             f"Tier: **{candidate.get('tier')}** · agreeing signals: **{signals}**\n\n"
-            f"{render_decision_block(spec['outcomes'])}\n\n"
+            f"This cluster speaks at: {spans}\n\n"
+            + (f"Supporting transcript cue(s):\n{cues}\n\n" if cues else "")
+            + f"{render_decision_block(spec['outcomes'])}\n\n"
             "Your ruling is what teaches the gate which signal combinations can be trusted "
             "unattended, so judge the name itself, not how plausible the combination looks. "
             "The issue omits voice embeddings and numerical match scores.\n"
@@ -419,6 +448,37 @@ def _review_rank(candidate: Mapping[str, object]) -> tuple:
     )
 
 
+# Share of each batch held for naming verdicts while any are waiting. References rank first
+# because one approval mints a reusable voice profile -- but *only* naming verdicts populate the
+# precision table, so a steady arrival of eight or more references per week would fill every batch
+# and no signal combination could ever become trusted. Priority still decides the ordering; this
+# only stops the top class from consuming the whole batch.
+_NAMING_BATCH_RESERVE = 0.5
+
+
+def _select_batch(candidates: list[dict], limit: int) -> list[dict]:
+    """Take `limit` candidates in rank order, reserving capacity for naming verdicts.
+
+    Without the reserve the ranking is self-defeating: approved voice profiles cannot publish
+    anything while the combination they would be used under remains untrusted, and only the
+    reviews being starved can make it trusted.
+    """
+    if limit <= 0:
+        return []
+    naming = [row for row in candidates if _review_class(row) == "naming"]
+    if not naming or len(candidates) <= limit:
+        return candidates[:limit]
+    reserved = min(len(naming), max(1, int(limit * _NAMING_BATCH_RESERVE)))
+    chosen = naming[:reserved]
+    chosen_ids = {id(row) for row in chosen}
+    for row in candidates:
+        if len(chosen) >= limit:
+            break
+        if id(row) not in chosen_ids:
+            chosen.append(row)
+    return sorted(chosen, key=_review_rank)
+
+
 def package(args: argparse.Namespace) -> int:
     from citypods.config import load_site_config
     from citypods.state import resolve_state_dir
@@ -459,7 +519,7 @@ def package(args: argparse.Namespace) -> int:
     limit = args.limit
     if limit is None:
         limit = int((site.get("speakers") or {}).get("weekly_review_limit", 8))
-    selected = candidates[: max(0, limit)]
+    selected = _select_batch(candidates, max(0, limit))
     for candidate in selected:
         candidate_id = str(candidate["candidate_id"])
         body_file = f"{candidate_id}.md"
@@ -568,6 +628,8 @@ def ingest(args: argparse.Namespace) -> int:
         reviewer=args.actor,
         review_id=f"github-issue-{args.issue_number}",
         capture_context=str(current["capture_context"]),
+        combination_key=str(current.get("combination_key") or "") or None,
+        tier=str(current.get("tier") or "") or None,
     )
     save_evaluation(state_path, state)
     push_state(

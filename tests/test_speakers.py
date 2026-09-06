@@ -563,7 +563,14 @@ def test_two_meeting_profile_can_attribute_a_single_speaker_quote():
     person["references"][0]["embedding_recipe"] = "recipe-v1"
     refresh_membership_status(registry, now=published)
     matches = profile_matches(registry, [1.0, 0.0], embedding_recipe="recipe-v1")
-    turn = assign_turn({"start": 10.0, "end": 25.0, "overlap": False}, matches, publish=True)
+    # `approved_names` is what the naming gate cleared for this cluster; publication requires the
+    # voice match to land on one of them, so clearance for one person cannot publish another.
+    turn = assign_turn(
+        {"start": 10.0, "end": 25.0, "overlap": False},
+        matches,
+        publish=True,
+        approved_names={"Alex Rivera"},
+    )
     attributed = quote_attribution({"start": 12.0, "end": 20.0}, [turn])
     assert attributed == {
         "speaker_id": person["speaker_id"],
@@ -645,6 +652,7 @@ def test_roster_constraint_accepts_confirmed_aliases_and_preserves_unparseable_m
         {"start": 1.0, "end": 2.0},
         [{"speaker_id": ident, "display_name": "Alexandra Rivera", "score": 0.99}],
         publish=True,
+        approved_names={"Alexandra Rivera"},
         confirmed=True,
     )
     assert turn["identity"]["status"] == "confirmed"
@@ -1653,3 +1661,132 @@ def test_stage_canonicalizes_registry_names_before_the_established_check(tmp_pat
         row.get("display_name") == "Jane Doee"
         for row in (evaluation.get("naming_candidates") or {}).values()
     )
+
+
+def test_clearance_for_one_name_cannot_publish_another():
+    """The gate approves a (cluster, name) pair, but `assign_turn` picks its own best voice
+    match. Applying a bare "this cluster was approved" flag to whatever that match returned let
+    clearance earned by one person publish someone else entirely."""
+    matches = [{"speaker_id": "spk-x", "display_name": "Wrong Person", "score": 0.99}]
+    turn = assign_turn(
+        {"start": 1.0, "end": 2.0}, matches, publish=True, approved_names={"Matt Bodine"}
+    )
+    # Still recorded -- that is what puts the disagreement in front of a reviewer -- but not named.
+    assert turn["identity"]["display_name"] == "Wrong Person"
+    assert turn["identity"]["status"] == "shadow"
+
+    agreeing = [{"speaker_id": "spk-m", "display_name": "Matt Bodine", "score": 0.99}]
+    assert (
+        assign_turn(
+            {"start": 1.0, "end": 2.0}, agreeing, publish=True, approved_names={"Matt Bodine"}
+        )["identity"]["status"]
+        == "provisional"
+    )
+
+
+def test_no_approval_information_publishes_nothing():
+    matches = [{"speaker_id": "spk-x", "display_name": "Anyone", "score": 0.99}]
+    turn = assign_turn({"start": 1.0, "end": 2.0}, matches, publish=True, approved_names=None)
+    assert turn["identity"]["status"] == "shadow"
+
+
+def test_a_conflicting_voice_match_cannot_borrow_a_cleared_name(tmp_path):
+    """Finding 1, end to end: the gate clears (cluster, name) pairs, but `assign_turn` picks its
+    own best voice match. Reduced to a per-cluster boolean, clearance earned by Matt Bodine's
+    introduction authorized publishing whoever the voice print ranked first."""
+    import json as _json
+
+    from citypods.speakers import body_key, speaker_id
+
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    ep.moment_pullquote_candidates = [{"candidate_id": "q1", "start": 22.0, "end": 30.0}]
+
+    # A profile for a *different* person that the staff cluster's embedding matches.
+    ident = speaker_id("denton-tx", "City Council", "Wrong Person")
+    ctx.speaker_registry_path.write_text(
+        _json.dumps(
+            {
+                "version": 1,
+                "people": {
+                    ident: {
+                        "speaker_id": ident,
+                        "display_name": "Wrong Person",
+                        "aliases": [],
+                        "body_key": body_key("denton-tx", "City Council"),
+                        "membership": {
+                            "first_seen": "2026-01-01T00:00:00+00:00",
+                            "last_seen": datetime.now(UTC).isoformat(),
+                        },
+                        # Two distinct meetings, or `qualified_profile` refuses to match at all
+                        # and no conflict would occur.
+                        "references": [
+                            {
+                                "episode_uid": "m1",
+                                "embedding": [0.3, 0.4],
+                                "embedding_recipe": "nemo-titanet-small",
+                            },
+                            {
+                                "episode_uid": "m2",
+                                "embedding": [0.3, 0.4],
+                                "embedding_recipe": "nemo-titanet-small",
+                            },
+                        ],
+                        "status": "active",
+                    }
+                },
+                "history": [],
+            }
+        )
+    )
+    key = "staff:self-introduction+title-cue"
+    ctx.speaker_evaluation_state_path.write_text(
+        _json.dumps(
+            {
+                "naming_candidates": {
+                    f"seed-{i}": {"combination_key": key, "city_slug": "denton-tx"}
+                    for i in range(20)
+                },
+                "reviews": [{"candidate_id": f"seed-{i}", "correct": True} for i in range(20)],
+            }
+        )
+    )
+    _run_identity_stage(tmp_path, city, ep, ctx)
+
+    # The voice print disagrees with the introduction that earned the clearance. Whatever else
+    # happens, the *unapproved* name must never be published: naming the wrong official is worse
+    # than naming nobody.
+    attribution = ep.moment_pullquote_candidates[0].get("speaker_attribution") or {}
+    assert attribution.get("display_name") != "Wrong Person"
+
+
+def test_another_bodys_profile_cannot_confirm_a_local_member(tmp_path):
+    """Finding 9: voice matching was body-scoped but member confirmation and id resolution were
+    not, so an approved "Jane Doe" on another city's Board of Ethics could satisfy the local
+    confirmation check and lend her opaque id to the published attribution."""
+    from citypods.naming import (
+        SIGNAL_CHAIR_CUE,
+        SIGNAL_ROSTER,
+        FusedCandidate,
+        PrecisionTable,
+        decide,
+    )
+    from citypods.speakers import TIER_MEMBER
+
+    table = PrecisionTable()
+    candidate = FusedCandidate("c1", "Jane Doe", TIER_MEMBER, (SIGNAL_CHAIR_CUE, SIGNAL_ROSTER))
+    for _ in range(20):
+        table.record(candidate.combination_key, city_slug="denton-tx", agreed=True)
+
+    # A foreign Jane Doe must not satisfy the local check -- the stage now filters
+    # `confirmed_names` by body_key, so she never reaches `decide` at all.
+    assert (
+        decide(candidate, table, city_slug="denton-tx", body="City Council").reason
+        == "member-awaiting-confirmation"
+    )
+    assert decide(
+        candidate,
+        table,
+        city_slug="denton-tx",
+        body="City Council",
+        confirmed_names=["Jane Doe"],
+    ).publish

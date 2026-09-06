@@ -141,6 +141,42 @@ _STAFF_TITLE_WORDS = frozenset(
     }
 )
 _SELF_INTRODUCTION_WINDOW_SECONDS = 10.0
+# Openers that precede a comma in ordinary speech. Without them "Thank you, Assistant Planner
+# Matt Bodine" reads as the self-introduction of a person called "Thank you" -- and because
+# `self-introduction + title-cue` is a *complete* staff combination, that name auto-publishes
+# once the combination is trusted. The greeting is the addresser, never the addressee.
+_GREETING_WORDS = frozenset(
+    {
+        "thank",
+        "thanks",
+        "thankyou",
+        "good",
+        "morning",
+        "afternoon",
+        "evening",
+        "hello",
+        "hi",
+        "hey",
+        "welcome",
+        "yes",
+        "no",
+        "okay",
+        "ok",
+        "alright",
+        "sorry",
+        "excuse",
+        "again",
+        "next",
+        "finally",
+        "so",
+        "well",
+        "now",
+        "also",
+        "and",
+        "but",
+        "then",
+    }
+)
 _NAME_STOP_WORDS = frozenset(
     {
         "about",
@@ -700,6 +736,14 @@ def _name_then_title(
     name = " ".join(part for part in collected if part).strip()
     if not name or not any(char.isalpha() for char in name):
         return None
+    # Two independent guards, because this shape is otherwise "any phrase ending in a comma".
+    # A greeting word anywhere in the span rules it out, and every token must read as a proper
+    # noun -- ASR capitalises names, so "Thank you" and "Good morning" fail on their second
+    # token while "Matt Bodine" and an all-caps "MATT BODINE" both pass.
+    if any(row["token"] in _GREETING_WORDS for row in rows[start : end_index + 1]):
+        return None
+    if not all(part[:1].isupper() for part in collected if part):
+        return None
     # A known-attendee roster (when one parsed) corrects the raw ASR name text to the official
     # spelling below; without one (a new city, or unparseable minutes) this signal still fires
     # on the title check alone -- roster narrowing is a quality improvement, not a requirement.
@@ -1033,10 +1077,20 @@ def assign_turn(
     matches: list[Mapping[str, Any]],
     *,
     publish: bool,
+    approved_names: Iterable[str] | None = None,
     confirmed: bool = False,
     minimum_score: float = 0.75,
 ) -> dict[str, Any]:
-    """Attach the best unambiguous identity without ever exposing a raw embedding."""
+    """Attach the best unambiguous identity without ever exposing a raw embedding.
+
+    `approved_names` is the set the naming gate cleared for *this cluster*. Publication requires
+    the voice print to land on one of them: the gate's decision is about a specific (cluster,
+    name) pair, so applying it to whatever name the voice match happened to rank first would let
+    clearance earned by one person publish another. A disagreement is not an error -- the match
+    is still recorded, as `shadow`, which is what puts it in front of a reviewer.
+
+    Passing `None` means "no approval information", which publishes nothing.
+    """
     result = dict(turn)
     if not matches:
         return result
@@ -1047,10 +1101,16 @@ def assign_turn(
     # becoming an identity candidate in the review queue.
     if score < minimum_score or score <= runner_up + 0.02:
         return result
+    agreed = _norm(best.get("display_name")) in {_norm(name) for name in approved_names or ()}
+    may_publish = publish and agreed
     result["identity"] = {
         "speaker_id": best.get("speaker_id"),
         "display_name": best.get("display_name"),
-        "status": "confirmed" if publish and confirmed else "provisional" if publish else "shadow",
+        "status": "confirmed"
+        if may_publish and confirmed
+        else "provisional"
+        if may_publish
+        else "shadow",
         "method": "voice-profile",
         "match_score": score,
     }

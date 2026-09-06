@@ -204,13 +204,18 @@ class PrecisionTable:
             candidate = candidates.get(str(row.get("candidate_id") or ""))
             if not isinstance(candidate, Mapping):
                 continue
-            key = str(candidate.get("combination_key") or "")
+            # The verdict's own snapshot wins over the candidate row, which is mutable: candidate
+            # ids exclude the signal set on purpose, so a later projection can rewrite a reviewed
+            # row's combination. Without the snapshot a ruling would silently migrate into a
+            # combination's precision bucket that no human ever evaluated.
+            key = str(row.get("combination_key") or candidate.get("combination_key") or "")
+            tier = str(row.get("tier") or candidate.get("tier") or "")
             city_slug = str(candidate.get("city_slug") or "")
             if not (key and city_slug):
                 continue
             agreed = bool(row.get("correct"))
             table.record(key, city_slug=city_slug, agreed=agreed)
-            if str(candidate.get("tier") or "") == TIER_MEMBER:
+            if tier == TIER_MEMBER:
                 table.record_person(
                     str(candidate.get("display_name") or ""),
                     city_slug=city_slug,

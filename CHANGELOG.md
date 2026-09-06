@@ -36,6 +36,37 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Eleven findings from an external review of #1485, each verified against the code first.**
+  Two could publish the *wrong person's* name. (1) The gate approves a `(cluster, name)` pair, but
+  the stage reduced its decisions to `dict[str, bool]` and handed that flag to `assign_turn`,
+  which independently picks its own best voice match — so clearance earned by "Matt Bodine"'s
+  introduction authorized publishing whoever the voice print ranked first. Approved *names* are
+  now carried through and the voice match must agree; a disagreement is still recorded as
+  `shadow`, which is what puts it in front of a reviewer, and two conflicting approved names for
+  one cluster publish neither. (2) `allowed_ids` was body-scoped but `confirmed_names` and
+  `person_ids` were registry-wide, so an approved profile for another city's Jane Doe satisfied
+  the local member-confirmation check and lent her opaque id to the published attribution; both
+  are now scoped. Also fixed: `cue_candidates` was initialized only inside
+  `if ep.transcript_words_key`, so a sidecar-less episode either raised `UnboundLocalError` or
+  silently inherited the *previous* episode's cues, whose cluster labels mean different speakers
+  in a different meeting; `_name_then_title` accepted any comma-terminated phrase, so
+  `"Thank you, Assistant Planner Matt Bodine"` proposed a staff member named "Thank you" — which
+  auto-publishes, since self-intro + title-cue is a complete staff combination; a memory wait
+  could outlast the runtime budget the claim was validated against, so admission is revalidated
+  before inference; verdicts joined to the mutable candidate row could migrate into a combination
+  no reviewer evaluated, so each verdict now snapshots the combination and tier it ruled on;
+  `min_member_verdicts` was missing from the projection digest, so changing it left cached
+  publications untouched; the disjoint-roster diagnostic was written into `minutes_roster`, a
+  block the speaker-identity lane does not own, so it was discarded on push — the audit now
+  derives it from records instead; cached rosters were reused on the strength of their sidecars
+  existing, so `MINUTES_ROSTER_PARSER_VERSION` now re-extracts from the stored document when the
+  parser changes; naming-review issues carried an opaque cluster id with no timestamps or cue
+  text, inviting rulings on name plausibility alone — exactly what the precision table must not
+  be trained on; and reference candidates outranked every naming candidate, so a steady arrival
+  of eight or more per week could starve naming calibration indefinitely, since only naming
+  verdicts populate the precision table.
+
+
 - **Nine defects from the CodeRabbit review of #1485, each verified against the code first.**
   *Silent misattribution:* `"ALSO PRESENT:"` — the conventional heading for the clerk, attorney
   and manager — matched no qualifier vocabulary, so it fell through as an unsectioned row, and an

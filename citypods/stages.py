@@ -3945,6 +3945,13 @@ class MinutesTextStage:
                 ep.minutes_text_url == minutes_url
                 and ep.minutes_votes_url
                 and ep.minutes_roster_url
+                # Reuse was keyed on "the sidecars exist", so a roster parsed by an older, worse
+                # extractor stayed cached forever -- including the empty and mis-sectioned ones
+                # this version fixes. Version the *parse* so a bump re-extracts from the already
+                # stored document: bounded (no re-fetch, no re-OCR) and gradual, one normal run
+                # per episode, rather than a destructive bulk backfill.
+                and ep.minutes_roster_status is not None
+                and str(ep.minutes_roster_status).endswith(f"@{MINUTES_ROSTER_PARSER_VERSION}")
             ):
                 stats.reused += 1
                 continue
@@ -4062,7 +4069,9 @@ class MinutesTextStage:
                 # can turn repeated failures into one issue, the record-only pattern
                 # `check_agenda_quality` uses. `SpeakerIdentityStage` may upgrade it to
                 # "disjoint".
-                ep.minutes_roster_status = "parsed" if roster else "empty"
+                ep.minutes_roster_status = (
+                    f"{'parsed' if roster else 'empty'}@{MINUTES_ROSTER_PARSER_VERSION}"
+                )
                 ep.minutes_votes_url = votes_url
                 ep.minutes_roster_url = roster_url
                 ep.links = updated_links
@@ -4177,6 +4186,12 @@ AGENDA_TEXT_PIPELINE_VERSION = "3"
 AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
 MINUTES_VOTES_PIPELINE_VERSION = "1"
+# Bump when roster extraction changes what it would produce from the same document -- attendance
+# patterns, section qualifiers, name validation, title stripping. Cached minutes are otherwise
+# reused on the strength of their sidecars existing, so an episode parsed by an older extractor
+# would keep its empty or mis-sectioned roster indefinitely, and the audit's "re-run the minutes
+# lane" advice would do nothing. Re-extraction reads the stored document; it does not re-fetch.
+MINUTES_ROSTER_PARSER_VERSION = "2"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
@@ -7356,6 +7371,25 @@ class NativeDiarizeStage:
                 stats.defer("memory-reservation", sample=uid)
             return
 
+        # `claim()` checked the runtime budget, but `reserve()` may then have blocked for however
+        # long another worker held the memory. The reservation's stop callback only asks whether
+        # the cutoff has arrived, not whether enough time remains to finish *this* meeting -- so
+        # revalidate before committing to a download and an inference that no longer fits.
+        fits, estimate, remaining = _diarize_fits_remaining_budget(
+            ctx, runtime_log, candidate.recording_seconds, runtime_recipe
+        )
+        if not fits:
+            if reservation is not None:
+                reservation.release(reserved_bytes)
+            with finalize_lock:
+                stats.defer("runtime-budget", sample=uid)
+            print(
+                f"[enrich] diarize defer-after-memory-wait uid={uid} "
+                f"estimate_s={estimate or 0:.1f} remaining_s={remaining or 0:.1f}",
+                flush=True,
+            )
+            return
+
         started_at = time.monotonic()
         try:
             words_raw = _read_storage_bytes(ctx.storage, candidate.words_key)
@@ -7523,6 +7557,7 @@ def _naming_run_digest(
     minimum_score: float,
     min_verdicts: int,
     min_precision: float,
+    min_member_verdicts: int,
 ) -> str:
     """Digest every run-scoped input to a naming decision (review/31 §C.5).
 
@@ -7557,7 +7592,10 @@ def _naming_run_digest(
         "people": people,
         # Verdict count is enough: the table is rebuilt from these rows, and rows are append-only.
         "verdicts": len(evaluation.get("reviews") or []),
-        "thresholds": [minimum_score, min_verdicts, min_precision],
+        # Every threshold that can change a decision. Omitting one means raising it leaves
+        # already-published names in place, and lowering it fails to release newly eligible ones,
+        # until some unrelated input happens to move.
+        "thresholds": [minimum_score, min_verdicts, min_precision, min_member_verdicts],
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -7612,6 +7650,7 @@ class SpeakerIdentityStage:
         precision_table,
         city_slug: str,
         body: str,
+        scoped_body_key: str,
         minimum_score: float,
         min_verdicts: int,
         min_precision: float,
@@ -7709,10 +7748,16 @@ class SpeakerIdentityStage:
         # against a different spelling of the same name: a member whose registry entry predates a
         # minutes spelling change would fail the established check forever, silently, despite
         # holding an approved voice profile.
+        # Scoped to this body. Registry-wide, an approved profile for a *different* city's Jane
+        # Doe would satisfy the member-confirmation check for the local Jane Doe -- publishing a
+        # name no reviewer ever confirmed for this body. `allowed_ids` was already scoped for
+        # exactly this reason (review/31 §C.4.3); this comparison was not.
         confirmed_names = [
             canonical_name(str(person.get("display_name") or ""), official_names)
             for person in (registry.get("people") or {}).values()
-            if isinstance(person, Mapping) and person.get("status") == "active"
+            if isinstance(person, Mapping)
+            and person.get("status") == "active"
+            and person.get("body_key") == scoped_body_key
         ]
         # Tiering asks "is this person on the body", which is exactly what standing membership
         # answers -- so it stands in for the roster here while minutes are pending. This is safe
@@ -7805,8 +7850,12 @@ class SpeakerIdentityStage:
                     if isinstance(row, Mapping) and str(row.get("name") or "").strip()
                 }
                 if known and incoming and not (known & incoming):
+                    # Log and count only. `minutes_roster` belongs to the audio lane, so a status
+                    # written here is dropped by the speaker-identity lane's foreign-block
+                    # protection on push -- the audit would never see it. `check_roster_quality`
+                    # derives the same signal from records instead, which is also the pattern the
+                    # other record-only checks use.
                     stats.quality("minutes-roster-disjoint-from-membership")
-                    ep.minutes_roster_status = "disjoint"
                     print(
                         f"[enrich] roster shares no member with prior meetings of this body "
                         f"uid={ep.uid or ep.guid} body={ep.body!r} "
@@ -7850,6 +7899,7 @@ class SpeakerIdentityStage:
             minimum_score=float(ctx.speaker_config.get("minimum_match_score", 0.75)),
             min_verdicts=naming_min_verdicts,
             min_precision=naming_min_precision,
+            min_member_verdicts=naming_min_member_verdicts,
         )
         projections = evaluation.get("projections")
         if not isinstance(projections, dict):
@@ -7915,13 +7965,17 @@ class SpeakerIdentityStage:
                 for item in ep.minutes_roster
                 if isinstance(item, dict) and item.get("name")
             )
+            # Per episode, before the conditional read. Scoped inside the loop it would either be
+            # undefined for the first sidecar-less episode (a provider-supplied speaker artifact
+            # has no word-sidecar prerequisite) or -- worse -- silently inherit the *previous*
+            # episode's cues, whose cluster labels mean different speakers in a different meeting.
+            cue_candidates: list[dict[str, Any]] = []
             if ep.transcript_words_key:
                 words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
                 try:
                     words = json.loads((words_raw or b"{}").decode())
                 except (UnicodeDecodeError, ValueError):
                     words = {}
-                cue_candidates: list[dict[str, Any]] = []
                 if isinstance(words, dict):
                     reference_rows = evaluation.setdefault("reference_candidates", {})
                     if not isinstance(reference_rows, dict):
@@ -8013,12 +8067,17 @@ class SpeakerIdentityStage:
                 precision_table=precision_table,
                 city_slug=canonical_city_slug,
                 body=ep.body or "",
+                scoped_body_key=episode_body_key,
                 minimum_score=minimum_score,
                 min_verdicts=naming_min_verdicts,
                 min_precision=naming_min_precision,
                 min_member_verdicts=naming_min_member_verdicts,
             )
-            publish_by_cluster: dict[str, bool] = {}
+            # Approved *names* per cluster, not a boolean. A bare flag says only "something about
+            # this cluster was approved", which `assign_turn` then applies to whichever name its
+            # own best voice match picked -- so clearance for "Matt Bodine" could publish "Wrong
+            # Person" whenever the voice print disagreed with the introduction that earned it.
+            approved_by_cluster: dict[str, set[str]] = {}
             naming_rows = evaluation.setdefault("naming_candidates", {})
             if not isinstance(naming_rows, dict):
                 naming_rows = {}
@@ -8026,9 +8085,10 @@ class SpeakerIdentityStage:
             for decision in decisions:
                 candidate = decision.candidate
                 stats.quality(f"naming-{decision.reason}")
-                publish_by_cluster[candidate.cluster] = (
-                    publish_by_cluster.get(candidate.cluster, False) or decision.publish
-                )
+                if decision.publish:
+                    approved_by_cluster.setdefault(candidate.cluster, set()).add(
+                        _norm_display(candidate.display_name)
+                    )
                 if not decision.needs_review:
                     continue
                 # Only review-bound candidates are ledgered, and they carry their own
@@ -8060,7 +8120,36 @@ class SpeakerIdentityStage:
                     "signals": list(candidate.signals),
                     "combination_key": candidate.combination_key,
                     "reason": decision.reason,
+                    # Evidence a reviewer needs to answer "is cluster 2 Jane Doe": where this
+                    # cluster speaks, and the words that proposed the name. Without them the issue
+                    # asks about an opaque id and invites a judgement on name plausibility alone,
+                    # which is exactly the ruling the precision table must not be trained on.
+                    "turns": [
+                        {"start": turn.get("start"), "end": turn.get("end")}
+                        for turn in private_turns
+                        if isinstance(turn, Mapping)
+                        and str(turn.get("cluster")) == candidate.cluster
+                    ][:5],
+                    "cues": [
+                        {
+                            "kind": row.get("cue_kind"),
+                            "text": row.get("cue_text"),
+                            "start": row.get("cue_start"),
+                        }
+                        for row in cue_candidates
+                        if str(row.get("cluster") or "") == candidate.cluster
+                        and _norm_display(row.get("display_name"))
+                        == _norm_display(candidate.display_name)
+                    ][:3],
                 }
+
+            for cluster, names in list(approved_by_cluster.items()):
+                if len(names) > 1:
+                    # Diarization merged two speakers, or two signals disagree. Either way the
+                    # gate cannot say which name belongs to this voice, and picking one would be
+                    # a coin flip recorded as a fact.
+                    stats.quality("naming-cluster-name-conflict")
+                    approved_by_cluster.pop(cluster)
 
             changed = False
             enriched_turns = []
@@ -8074,7 +8163,8 @@ class SpeakerIdentityStage:
                     assign_turn(
                         turn,
                         matches,
-                        publish=publish_by_cluster.get(str(turn.get("cluster")), False),
+                        publish=True,
+                        approved_names=approved_by_cluster.get(str(turn.get("cluster"))),
                         confirmed=roster_ids is not None,
                         minimum_score=minimum_score,
                     )
@@ -8094,7 +8184,14 @@ class SpeakerIdentityStage:
             ]
             person_ids: dict[str, str] = {}
             for ident, person in (registry.get("people") or {}).items():
-                if not isinstance(person, dict) or not person.get("display_name"):
+                if (
+                    not isinstance(person, dict)
+                    or not person.get("display_name")
+                    # Body-scoped: an identically-named person on another body would otherwise
+                    # lend their opaque id to this attribution, pointing the speaker-page link at
+                    # someone else entirely.
+                    or person.get("body_key") != episode_body_key
+                ):
                     continue
                 stored = str(person.get("display_name"))
                 person_ids.setdefault(_norm_display(stored), str(ident))
@@ -8102,7 +8199,7 @@ class SpeakerIdentityStage:
                     _norm_display(canonical_name(stored, official_names)), str(ident)
                 )
             for decision in decisions:
-                if not decision.publish:
+                if not decision.publish or decision.candidate.cluster not in approved_by_cluster:
                     continue
                 candidate = decision.candidate
                 for index, turn in enumerate(enriched_turns):

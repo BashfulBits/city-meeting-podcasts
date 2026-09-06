@@ -1033,19 +1033,31 @@ def test_audit_all_unexpected_evidence_only_skips_view_counts(monkeypatch, tmp_p
     assert len(view_count_calls) == 0
 
 
-def _roster_record(status, *, body="City Council", uid_date="2026-05-01"):
+def _roster_record(status, *, body="City Council", uid_date="2026-05-01", members=()):
     return {
         "published": uid_date,
         "body": body,
-        "minutes_roster": {"status": status},
+        "minutes_roster": {
+            "status": status,
+            "members": [{"name": name} for name in members],
+        },
         "minutes_text": {"url": "https://city.example/minutes.pdf?Signature=secret"},
     }
 
 
 def test_roster_quality_reports_a_disjoint_roster_on_sight():
-    """A disjoint roster is worse than no roster: it narrows the allowed speaker set, so it
-    actively suppresses correct attribution rather than merely failing to help. One is enough."""
-    records = {"u1": _roster_record("disjoint"), "u2": _roster_record("parsed")}
+    """A disjoint roster -- names sharing nobody with this body's own earlier meetings -- is a
+    parse that succeeded on the wrong text. It is worse than no roster, because it narrows the
+    allowed speaker set and suppresses correct attribution, so one is enough to report.
+
+    Derived from records rather than persisted by the stage: `minutes_roster` belongs to the audio
+    lane, so a diagnostic written by the speaker-identity lane never survives its push.
+    """
+    records = {
+        "u1": _roster_record("parsed", uid_date="2026-01-01", members=["Jane Doe", "Bob Chair"]),
+        "u2": _roster_record("parsed", uid_date="2026-02-01", members=["Jane Doe", "New Member"]),
+        "u3": _roster_record("parsed", uid_date="2026-03-01", members=["Wrong One", "Other Wrong"]),
+    }
     finding = check_roster_quality("council", records, body="City Council")
     assert finding is not None
     assert finding.check == "roster-quality"
@@ -1068,6 +1080,22 @@ def test_roster_quality_reports_a_feed_wide_parse_failure():
     finding = check_roster_quality("council", records, body="City Council")
     assert finding is not None
     assert "4 of 5 published minutes yielded no usable roster" in finding.message
+
+
+def test_roster_quality_does_not_flag_a_bodys_first_roster():
+    """Onboarding has nothing to be disjoint from; flagging it would fire the signal loudest
+    exactly when new cities are added."""
+    records = {"u1": _roster_record("parsed", members=["Jane Doe"])}
+    assert check_roster_quality("council", records, body="City Council") is None
+
+
+def test_roster_quality_reads_the_versioned_status_prefix():
+    """Statuses carry the parser version that produced them, so a bump can re-extract cached
+    minutes; the outcome is the part before it."""
+    records = {f"u{i}": _roster_record("empty@2") for i in range(4)}
+    records["ok"] = _roster_record("parsed@2", members=["Jane Doe"])
+    finding = check_roster_quality("council", records, body="City Council")
+    assert finding is not None and "4 of 5" in finding.message
 
 
 def test_roster_quality_is_silent_when_minutes_were_never_fetched():

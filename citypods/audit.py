@@ -814,18 +814,42 @@ def check_roster_quality(
     empty: list[tuple[str, dict]] = []
     disjoint: list[tuple[str, dict]] = []
     considered = 0
+    scoped: list[tuple[str, dict, set[str]]] = []
     for uid, record in records.items():
         if (body or inclusions) and not record_matches_body(record, body, inclusions):
             continue
         roster = record.get("minutes_roster")
-        status = (roster or {}).get("status") if isinstance(roster, dict) else None
-        if not status:
+        raw_status = (roster or {}).get("status") if isinstance(roster, dict) else None
+        if not raw_status:
             continue  # minutes never fetched: not a roster problem
+        # Statuses carry the parser version that produced them ("empty@2"), so a parser bump can
+        # re-extract cached minutes. The outcome is the part before it.
+        status = str(raw_status).split("@", 1)[0]
         considered += 1
         if status == "empty":
             empty.append((uid, record))
-        elif status == "disjoint":
+            continue
+        members = {
+            " ".join(str(row.get("name") or "").casefold().split())
+            for row in (roster or {}).get("members") or []
+            if isinstance(row, Mapping) and str(row.get("name") or "").strip()
+        }
+        if members:
+            scoped.append((uid, record, members - {""}))
+
+    # Derived here rather than persisted by the enrichment stage: `minutes_roster` belongs to the
+    # audio lane, so a diagnostic written by the speaker-identity lane is discarded by
+    # foreign-block protection before it ever reaches a record. Records already hold every
+    # roster this body has published, which is all the comparison needs.
+    seen_before: set[str] = set()
+    for uid, record, members in sorted(
+        scoped, key=lambda item: str(item[1].get("published") or "")
+    ):
+        # A body that shares nobody with its own earlier meetings did not turn over, it parsed the
+        # wrong text. The first meeting has nothing to be disjoint from and is never counted.
+        if seen_before and not (members & seen_before):
             disjoint.append((uid, record))
+        seen_before |= members
 
     affected = disjoint + empty
     # A disjoint roster is reported on sight -- it actively corrupts attribution, so one is
