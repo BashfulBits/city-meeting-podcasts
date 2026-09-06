@@ -485,10 +485,11 @@ corroboration only strengthens *within* a city as confirmed references accumulat
 
 ### C.4 Naming policy (normative, 2026-09-06) — supersedes the flat 30/30/95 publish gate
 
-Settled in review with the maintainer. This is the **normative** naming policy; where it conflicts with
-§C.2's earlier sketch or with `auto_publish_allowed`'s shipped thresholds, this section wins and the code
-is what needs to move. It exists because the earlier gate — 30 reviews × 30 days × 95% precision per
-`(city, body, engine_recipe, capture_context)` cell — multiplies as `30 × cities × bodies`, which is a
+Settled in review with the maintainer, and **implemented** in `citypods/naming.py` (policy) over
+`citypods/speakers.py` (signal producers), wired through `SpeakerIdentityStage`. This is the
+**normative** naming policy; where it conflicts with §C.2's earlier sketch, this section wins. It exists
+because the earlier gate — `auto_publish_allowed`, now deleted — required 30 reviews × 30 days × 95%
+precision per `(city, body, engine_recipe, capture_context)` cell, which multiplies as `30 × cities × bodies`, which is a
 policy threshold no amount of better detection can scale past.
 
 **C.4.1 Three speaker tiers, not one rule.** The old design treated every voice cluster identically. It
@@ -590,10 +591,35 @@ adaptive loop only starts paying off once it has verdicts to learn from.
 **C.4.8 The old calibration records are discarded, not migrated.** `r7_speaker_evaluation.json`'s
 existing `reviews` and `benchmarks` rows were produced under the superseded gate and do not record which
 *signal combination* produced each candidate — the one field §C.4.4's precision table is built on. Any
-back-fill would be guessing at the model's own training data, which is worse than an empty table. A
-one-time state migration therefore removes them; the shadow pilot has accumulated little, and the
-2026-09-06 engine swap had already invalidated those cells regardless. New statistics start empty, which
-combined with §C.4.5's fail-closed cold start means the first names in any city wait on real verdicts.
+back-fill would be guessing at the model's own training data, which is worse than an empty table. The
+shadow pilot has accumulated little, and the 2026-09-06 engine swap had already invalidated those cells
+regardless. New statistics start empty, which combined with §C.4.5's fail-closed cold start means the
+first names in any city wait on real verdicts.
+
+*As implemented:* no destructive migration was needed. The table is built by joining each verdict to the
+`naming_candidates` row it ruled on, so pre-gate verdicts — which match no such row — are inert by
+construction and stay in the file as history. This also fixed the more general case the migration would
+not have covered: a verdict whose candidate row is missing for any reason is skipped rather than counted
+somewhere convenient.
+
+**C.4.9 The precision table is derived, never stored.** It is rebuilt from the append-only review ledger
+at the start of every run rather than persisted beside it. A saved copy would be a second source of truth
+for "what humans decided" that could silently drift from the verdicts it summarizes; rebuilding costs one
+pass over a ledger measured in thousands of rows. Consequence: `PrecisionTable` has no save path, and the
+ledger row — not the table — is the thing that must be durable.
+
+**C.4.10 A cleared candidate names its cluster directly.** `assign_turn` can only name a cluster that
+matches a stored voice print, and a staff presenter appearing in one meeting never acquires one. Left
+there, "staff are named automatically" (§C.4.1) would have quietly meant "staff are named once a human
+approves a golden reference for them" — the exact review burden this policy exists to remove. So a
+published fused candidate assigns its name to the cluster's turns directly, with
+`method: "cue-fusion"` distinguishing that provenance from `"voice-profile"` in any later audit.
+
+**C.4.11 The per-cell benchmark precondition is retired with the gate.** The old policy also required a
+private gold-set benchmark per `(city, body, engine, capture context)` before that cell could publish.
+Its purpose was to pin down *which engine* a cell had been validated on; §A.1a made engine selection a
+single global decision, so the per-cell requirement now guards nothing. `calibration_cell()` itself
+survives as the reviewer-facing scope label on ledger rows.
 
 **Explicitly not building:** staff names extracted from chapter/agenda item descriptions. They appear
 there often but not reliably, and an unreliable signal would quietly poison the very precision statistics
@@ -663,6 +689,20 @@ speaker-attribution UI is an input to that redesign, not a later bolt-on.
   "just render whatever clusters exist" is the natural (wrong) shortcut.
 - Per-speaker page: a fixture speaker with turns across two episodes aggregates both, each deep-linking
   to the correct meeting-page timestamp.
+
+`tests/test_naming.py` (shipped) — the §C.4 policy, written so each test pins one settled rule and a
+later "simplification" that changes who gets named fails here rather than in production: tier resolution
+including the deliberate both-cues-fire→member tie-break; the agreement rule, including that roster never
+names anyone alone and that the title cue is a second signal *for staff only*; fusion collapsing agreeing
+signals into one reviewable candidate; the tier being part of the combination key; fail-closed cold start;
+trust requiring both enough verdicts and enough precision; global pooling letting a new city start
+trusted, and the divergence guardrail pulling a bad city back — but not on two unlucky verdicts; and the
+table rebuilding from the ledger while skipping verdicts whose candidate it cannot identify.
+
+`tests/test_speakers.py` (shipped) — the gate through `SpeakerIdentityStage`, not just in isolation:
+review-bound candidates reach the ledger carrying their `combination_key`, and a staff name publishes to
+quote attribution once that combination is trusted while a member's does not. Both exist because
+`self_introduction_candidates` shipped defined-but-uncalled once already.
 
 ---
 

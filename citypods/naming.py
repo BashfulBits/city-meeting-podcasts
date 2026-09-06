@@ -1,0 +1,315 @@
+"""R7 naming gate: signal fusion and the adaptive admission policy (review/31 §C.4).
+
+`citypods.speakers` owns the signal *producers* (chair-recognition cues, self-introduction cues,
+voice-profile matching, roster ingestion). This module owns the *policy* over them: which
+proposals agree, whether that agreement is enough to name someone, and which signal combinations
+have earned the right to be trusted without a human.
+
+It replaces the flat "30 reviews x 30 days x 95% precision per (city, body, engine, capture
+context)" gate, which multiplied as `30 x cities x bodies` -- a threshold no detection improvement
+can scale past. The model here instead *learns* which combinations are reliable from the human
+verdicts already being collected, so automation removes review items rather than reordering them.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from typing import Any
+
+from citypods.speakers import TIER_MEMBER, TIER_OTHER, TIER_STAFF, _norm
+
+# --- Signals -----------------------------------------------------------------------------------
+
+# Signals that point at a specific cluster and name it. At least one is always required: without
+# it there is no proposal, only context.
+SIGNAL_VOICE_PRINT = "voice-print"
+SIGNAL_CHAIR_CUE = "chair-reference"
+SIGNAL_SELF_INTRO = "self-introduction"
+# Corroborating signals. Roster says only "this name was in the room" -- real evidence that a
+# proposal is plausible for this meeting, but it can never name anyone by itself.
+SIGNAL_ROSTER = "roster"
+# A title spoken alongside a name ("Matt Bodine, Assistant Planner"). Counts toward agreement for
+# the staff tier only -- see `meets_agreement_rule`.
+SIGNAL_TITLE_CUE = "title-cue"
+
+ORIGINATING_SIGNALS = frozenset({SIGNAL_VOICE_PRINT, SIGNAL_CHAIR_CUE, SIGNAL_SELF_INTRO})
+_BASE_SIGNALS = ORIGINATING_SIGNALS | {SIGNAL_ROSTER}
+
+# Defaults for the adaptive gate (review/31 §C.4.4). Config, not constants: the first real verdict
+# data may well argue for moving them. There is deliberately no calendar element -- the old gate's
+# 30-day requirement existed to catch capture drift, and the per-city divergence guardrail
+# (`city_diverges`) does that job directly and faster.
+DEFAULT_MIN_VERDICTS = 20
+DEFAULT_MIN_PRECISION = 0.95
+# How far a single city's observed agreement may fall below the global prior before that city
+# falls back to human review. Pooling globally is what lets city #2 start mostly automated; this
+# is the check that stops a city with genuinely worse audio inheriting optimism it hasn't earned.
+DEFAULT_CITY_DIVERGENCE_MARGIN = 0.10
+DEFAULT_CITY_MIN_VERDICTS = 10
+
+
+@dataclass(frozen=True)
+class NameProposal:
+    """One signal's claim that `cluster` is `display_name`."""
+
+    cluster: str
+    display_name: str
+    signal: str
+
+
+@dataclass(frozen=True)
+class FusedCandidate:
+    """Every signal that independently agreed on one (cluster, name) pair."""
+
+    cluster: str
+    display_name: str
+    tier: str
+    signals: tuple[str, ...]
+
+    @property
+    def combination_key(self) -> str:
+        """Key for the precision table: tier plus the sorted signal set.
+
+        Tier is part of the key because the same combination genuinely differs in reliability
+        between tiers -- roster corroboration is strong for a member (they are on the roster by
+        definition) and weak for staff (who often are not).
+        """
+        return f"{self.tier}:{'+'.join(self.signals)}"
+
+
+def _countable_signals(signals: Iterable[str], tier: str) -> set[str]:
+    """Signals that count toward agreement for this tier.
+
+    The staff exception (review/31 §C.4.4): staff frequently appear on no parseable roster and
+    have no voice print in a new city, leaving only their own self-introduction. Under a flat
+    two-signal rule that would silently turn "staff are auto-named" into "staff are never named",
+    so a title cue counts as the second signal *for staff only*. The evidence is knowingly
+    correlated -- name and title come from one utterance and can be wrong together -- which is
+    acceptable because staff are the unverified-by-policy tier and because this combination is
+    tracked under its own `combination_key`: if it proves unreliable the gate observes that
+    directly and stops trusting it, rather than the risk being assumed away.
+    """
+    allowed = set(_BASE_SIGNALS)
+    if tier == TIER_STAFF:
+        allowed.add(SIGNAL_TITLE_CUE)
+    return {signal for signal in signals if signal in allowed}
+
+
+def meets_agreement_rule(signals: Iterable[str], tier: str) -> bool:
+    """At least two countable signals agree, at least one of which originates a proposal."""
+    countable = _countable_signals(signals, tier)
+    if len(countable) < 2:
+        return False
+    return bool(countable & ORIGINATING_SIGNALS)
+
+
+def fuse_proposals(
+    proposals: Iterable[NameProposal],
+    *,
+    tier_of: Any,
+) -> list[FusedCandidate]:
+    """Collapse per-signal proposals into one candidate per (cluster, name).
+
+    A reviewer should see one best-supported suggestion carrying which signals agreed, never
+    several half-signals each demanding their own look (review/31 §C.3). `tier_of` maps a display
+    name to its tier.
+    """
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for proposal in proposals:
+        name = str(proposal.display_name or "").strip()
+        if not name or not proposal.cluster:
+            continue
+        key = (str(proposal.cluster), _norm(name))
+        row = grouped.setdefault(key, {"display_name": name, "signals": set()})
+        row["signals"].add(proposal.signal)
+    candidates: list[FusedCandidate] = []
+    for (cluster, _), row in grouped.items():
+        candidates.append(
+            FusedCandidate(
+                cluster=cluster,
+                display_name=row["display_name"],
+                tier=tier_of(row["display_name"]),
+                signals=tuple(sorted(row["signals"])),
+            )
+        )
+    return candidates
+
+
+# --- Precision table ---------------------------------------------------------------------------
+
+
+class PrecisionTable:
+    """Agreement between automatic candidates and human verdicts, per signal combination.
+
+    Pooled **globally** across cities and bodies, which is the whole point: it is what lets a new
+    city start mostly automated instead of re-earning trust from zero. Per-city counts are kept
+    alongside purely as the divergence guardrail, not as a second gate.
+
+    Deliberately *derived*, never persisted: it is rebuilt from the append-only review ledger on
+    every run (see `from_evaluation`). A separate saved copy would be a second source of truth
+    that could silently drift from the verdicts it claims to summarize, and rebuilding costs one
+    pass over a ledger measured in thousands of rows.
+    """
+
+    def __init__(self) -> None:
+        self._global: dict[str, dict[str, int]] = {}
+        self._by_city: dict[str, dict[str, dict[str, int]]] = {}
+
+    @classmethod
+    def from_evaluation(cls, evaluation: Mapping[str, Any]) -> PrecisionTable:
+        """Rebuild the table by joining human verdicts to the candidates they ruled on.
+
+        A verdict row records only *which candidate* was judged, so the signal combination comes
+        from the candidate ledger. Rows whose candidate is unknown -- verdicts recorded against
+        pre-naming-gate candidates, or a ledger trimmed at some point -- are skipped rather than
+        guessed at: an unattributable verdict must not inflate any combination's precision.
+        """
+        table = cls()
+        candidates = evaluation.get("naming_candidates")
+        if not isinstance(candidates, Mapping):
+            return table
+        for row in evaluation.get("reviews") or ():
+            if not isinstance(row, Mapping):
+                continue
+            candidate = candidates.get(str(row.get("candidate_id") or ""))
+            if not isinstance(candidate, Mapping):
+                continue
+            key = str(candidate.get("combination_key") or "")
+            city_slug = str(candidate.get("city_slug") or "")
+            if key and city_slug:
+                table.record(key, city_slug=city_slug, agreed=bool(row.get("correct")))
+        return table
+
+    def record(self, combination_key: str, *, city_slug: str, agreed: bool) -> None:
+        """Fold one human verdict into the table."""
+        for bucket in (
+            self._global.setdefault(combination_key, {"verdicts": 0, "agreements": 0}),
+            self._by_city.setdefault(city_slug, {}).setdefault(
+                combination_key, {"verdicts": 0, "agreements": 0}
+            ),
+        ):
+            bucket["verdicts"] += 1
+            bucket["agreements"] += 1 if agreed else 0
+
+    def precision(self, combination_key: str, *, city_slug: str | None = None) -> float | None:
+        rows = self._by_city.get(city_slug or "", {}) if city_slug else self._global
+        row = rows.get(combination_key)
+        if not row or row["verdicts"] <= 0:
+            return None
+        return row["agreements"] / row["verdicts"]
+
+    def verdicts(self, combination_key: str, *, city_slug: str | None = None) -> int:
+        rows = self._by_city.get(city_slug or "", {}) if city_slug else self._global
+        return rows.get(combination_key, {}).get("verdicts", 0)
+
+    def trusted(
+        self,
+        combination_key: str,
+        *,
+        min_verdicts: int = DEFAULT_MIN_VERDICTS,
+        min_precision: float = DEFAULT_MIN_PRECISION,
+    ) -> bool:
+        """Whether this combination has earned auto-admission. Fail-closed before evidence."""
+        if self.verdicts(combination_key) < min_verdicts:
+            return False
+        precision = self.precision(combination_key)
+        return precision is not None and precision >= min_precision
+
+    def city_diverges(
+        self,
+        combination_key: str,
+        *,
+        city_slug: str,
+        margin: float = DEFAULT_CITY_DIVERGENCE_MARGIN,
+        min_verdicts: int = DEFAULT_CITY_MIN_VERDICTS,
+    ) -> bool:
+        """Whether this city under-performs the global prior enough to fall back to review.
+
+        Requires a minimum local sample first: two unlucky verdicts in a new city should not
+        revoke trust that a thousand verdicts elsewhere established.
+        """
+        if self.verdicts(combination_key, city_slug=city_slug) < min_verdicts:
+            return False
+        local = self.precision(combination_key, city_slug=city_slug)
+        overall = self.precision(combination_key)
+        if local is None or overall is None:
+            return False
+        return local < overall - margin
+
+
+# --- The gate ----------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class NamingDecision:
+    """What to do with one fused candidate."""
+
+    candidate: FusedCandidate
+    publish: bool
+    needs_review: bool
+    reason: str
+
+
+def decide(
+    candidate: FusedCandidate,
+    table: PrecisionTable,
+    *,
+    city_slug: str,
+    min_verdicts: int = DEFAULT_MIN_VERDICTS,
+    min_precision: float = DEFAULT_MIN_PRECISION,
+    confirmed_names: Iterable[str] = (),
+) -> NamingDecision:
+    """Apply the tiered naming policy to one candidate (review/31 §C.4).
+
+    Members are always human-confirmed, so automation's job for them is to put a well-supported
+    suggestion in front of a reviewer, never to publish. Staff may publish unattended once their
+    signal combination has earned it. Everyone else is never named -- their name is typically
+    already spoken in the transcript, and the point is to decline to manufacture a durable,
+    searchable speaker identity for a private citizen, not to conceal anything.
+    """
+    if candidate.tier == TIER_OTHER:
+        return NamingDecision(candidate, publish=False, needs_review=False, reason="tier-other")
+    if not meets_agreement_rule(candidate.signals, candidate.tier):
+        return NamingDecision(
+            candidate, publish=False, needs_review=False, reason="insufficient-agreement"
+        )
+    if candidate.tier == TIER_MEMBER:
+        already = {_norm(name) for name in confirmed_names}
+        if _norm(candidate.display_name) in already:
+            return NamingDecision(
+                candidate, publish=True, needs_review=False, reason="member-confirmed"
+            )
+        return NamingDecision(
+            candidate, publish=False, needs_review=True, reason="member-awaiting-confirmation"
+        )
+    key = candidate.combination_key
+    if not table.trusted(key, min_verdicts=min_verdicts, min_precision=min_precision):
+        # Fail-closed cold start: nothing publishes until the combination has evidence.
+        return NamingDecision(
+            candidate, publish=False, needs_review=True, reason="combination-untrusted"
+        )
+    if table.city_diverges(key, city_slug=city_slug):
+        return NamingDecision(candidate, publish=False, needs_review=True, reason="city-divergence")
+    return NamingDecision(candidate, publish=True, needs_review=False, reason="combination-trusted")
+
+
+__all__ = [
+    "DEFAULT_CITY_DIVERGENCE_MARGIN",
+    "DEFAULT_CITY_MIN_VERDICTS",
+    "DEFAULT_MIN_PRECISION",
+    "DEFAULT_MIN_VERDICTS",
+    "ORIGINATING_SIGNALS",
+    "SIGNAL_CHAIR_CUE",
+    "SIGNAL_ROSTER",
+    "SIGNAL_SELF_INTRO",
+    "SIGNAL_TITLE_CUE",
+    "SIGNAL_VOICE_PRINT",
+    "FusedCandidate",
+    "NameProposal",
+    "NamingDecision",
+    "PrecisionTable",
+    "decide",
+    "fuse_proposals",
+    "meets_agreement_rule",
+]

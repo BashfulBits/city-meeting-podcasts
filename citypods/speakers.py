@@ -20,9 +20,9 @@ from typing import Any
 IDENTITY_PIPELINE_VERSION = "1"
 PILOT_SCOPE_VERSION = "2"
 MIN_REFERENCE_MEETINGS = 2
-MIN_CALIBRATION_DAYS = 30
-MIN_CALIBRATION_REVIEWS = 30
-REQUIRED_PRECISION = 0.95
+# The flat "30 reviews x 30 days x 95% precision per calibration cell" gate that used to live
+# here is gone: it multiplied as `30 x cities x bodies`, so no detection improvement could scale
+# past it. `citypods.naming` now owns admission, keyed on signal combination and pooled globally.
 PROFILE_REVIEW_ONLY_AFTER_DAYS = 180
 
 _ANNOUNCEMENT_TITLES: tuple[tuple[str, ...], ...] = (
@@ -101,6 +101,76 @@ _NAME_STOP_WORDS = frozenset(
         "with",
     }
 )
+
+
+# Speaker tiers (review/31 §C.4.1). What a tier buys is deliberately asymmetric: members are
+# human-confirmed and get a cross-meeting page; staff are named automatically with no page,
+# because a page aggregates "everything this person said" and would compound an unverified
+# attribution into something that reads as authoritative; everyone else is never named at all.
+TIER_MEMBER = "member"
+TIER_STAFF = "staff"
+TIER_OTHER = "other"
+
+# Roster section labels that mean "this person is on the body" vs "this person works for it".
+# Minutes parsing (review/31 Part B) is not built yet, so nothing populates these today --
+# `classify_speaker_tier` falls back to title cues. Accepting the field now means the parser
+# can start filling it in without a second pass through this logic.
+_ROSTER_MEMBER_SECTIONS = frozenset({"member", "members", "members present", "present", "council"})
+_ROSTER_STAFF_SECTIONS = frozenset({"staff", "staff present", "administration"})
+
+# Which cue kinds carry title evidence, and what kind. `chair_reference_candidates` emits
+# "title-announcement" only when it matched `_ANNOUNCEMENT_TITLES` (elected), and
+# `self_introduction_candidates` emits "name-then-title" only when it matched
+# `_STAFF_TITLE_WORDS` -- so the producers already tell us which vocabulary fired.
+_ELECTED_TITLE_CUES = frozenset({"title-announcement"})
+_STAFF_TITLE_CUES = frozenset({"name-then-title"})
+# Every cue kind that carries a spoken title, whichever vocabulary produced it. Derived rather
+# than re-listed at the call site: a new cue kind added to either set above must not silently
+# stop counting as title evidence in the naming gate.
+TITLE_CUE_KINDS = _ELECTED_TITLE_CUES | _STAFF_TITLE_CUES
+
+
+def classify_speaker_tier(
+    display_name: str,
+    *,
+    roster: Iterable[Mapping[str, Any]] = (),
+    cue_kinds: Iterable[str] = (),
+) -> str:
+    """Return the naming tier for `display_name` (review/31 §C.4.2).
+
+    Roster *sections* first where a city's minutes separate members from staff, since that is
+    authoritative; title cues as the fallback, because plenty of cities publish one flat
+    ``Present:`` list that mixes the Clerk and Attorney in with members. When both signals fire,
+    resolve to the member tier deliberately: uncertainty should buy *more* scrutiny, never less.
+    """
+    wanted = _norm(display_name)
+    if not wanted:
+        return TIER_OTHER
+    section: str | None = None
+    in_roster = False
+    for item in roster:
+        if not isinstance(item, Mapping) or _norm(item.get("name")) != wanted:
+            continue
+        in_roster = True
+        raw_section = _norm(item.get("section") or item.get("role"))
+        if raw_section:
+            section = raw_section
+            break
+    if section in _ROSTER_MEMBER_SECTIONS:
+        return TIER_MEMBER
+    if section in _ROSTER_STAFF_SECTIONS:
+        return TIER_STAFF
+
+    kinds = set(cue_kinds)
+    elected_cue = bool(kinds & _ELECTED_TITLE_CUES)
+    staff_cue = bool(kinds & _STAFF_TITLE_CUES)
+    if elected_cue:
+        return TIER_MEMBER  # wins over a staff cue on purpose: more scrutiny, not less
+    if staff_cue:
+        return TIER_STAFF
+    # No title evidence either way. An unsectioned roster hit still means the minutes place this
+    # person on the body's attendance list, which is the best available member signal.
+    return TIER_MEMBER if in_roster else TIER_OTHER
 
 
 def _now() -> datetime:
@@ -312,6 +382,33 @@ def reference_candidate_id(
     return "r7-ref-" + hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:20]
 
 
+def naming_candidate_id(
+    *,
+    city_slug: str,
+    body: str | None,
+    episode_uid: str,
+    recipe: str,
+    cluster: str,
+    proposed_name: str,
+) -> str:
+    """Return a stable id for one fused naming candidate (review/31 §C.3).
+
+    Keyed on the *cluster*, not on a turn: the fused candidate is a claim about who a whole
+    diarization cluster is, so re-running with more turns must land on the same review item rather
+    than asking a human the same question again. Signals are excluded on purpose -- a later run
+    finding a third agreeing signal is more evidence for the same question, not a new one.
+    """
+    payload = {
+        "city": city_slug,
+        "body": _norm(body),
+        "episode_uid": episode_uid,
+        "recipe": recipe,
+        "cluster": cluster,
+        "proposed_name": _norm(proposed_name),
+    }
+    return "r7-name-" + hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:20]
+
+
 def chair_reference_candidates(
     words: Mapping[str, Any], turns: Iterable[Mapping[str, Any]], *, known_names: Iterable[str] = ()
 ) -> list[dict[str, Any]]:
@@ -333,6 +430,13 @@ def chair_reference_candidates(
                 continue
             name, end_index = _name_after(rows, index + len(cue), known)
             if name:
+                # "The chair recognizes *Council Member* Jane Doe" carries an elected title just
+                # as much as the title-led form does; `_name_after` steps over it silently, so
+                # re-check for it here. Without this the naming gate would see only a bare
+                # recognition, classify a council member as `other`, and never name them.
+                spoke_title = any(
+                    _sequence_at(rows, index + len(cue), title) for title in _ANNOUNCEMENT_TITLES
+                )
                 matches.append(
                     _reference_candidate(
                         rows,
@@ -341,6 +445,7 @@ def chair_reference_candidates(
                         end_index,
                         name,
                         "chair-recognition",
+                        "title-announcement" if spoke_title else None,
                     )
                 )
         for title in _ANNOUNCEMENT_TITLES:
@@ -355,6 +460,7 @@ def chair_reference_candidates(
                         index,
                         end_index,
                         name,
+                        "title-announcement",
                         "title-announcement",
                     )
                 )
@@ -437,6 +543,7 @@ def _reference_candidate(
     name_end_index: int,
     name: str,
     cue_kind: str,
+    title_cue: str | None,
 ) -> dict[str, Any] | None:
     cue_start = float(rows[cue_index]["start"])
     cue_end = float(rows[name_end_index]["end"])
@@ -471,6 +578,7 @@ def _reference_candidate(
     return {
         "kind": "chair-reference",
         "cue_kind": cue_kind,
+        "title_cue": title_cue,
         "cue_text": cue_text,
         "cue_start": cue_start,
         "cue_end": cue_end,
@@ -607,6 +715,8 @@ def _self_introduction_candidate(
     return {
         "kind": "self-introduction",
         "cue_kind": cue_kind,
+        # Only the name-then-title shape carries a spoken title; "my name is Reza" carries none.
+        "title_cue": cue_kind if cue_kind in TITLE_CUE_KINDS else None,
         "cue_text": cue_text,
         "cue_start": float(rows[cue_index]["start"]),
         "cue_end": float(rows[name_end_index]["end"]),
@@ -820,32 +930,6 @@ def roster_person_ids(
     return matches
 
 
-def auto_publish_allowed(
-    state: Mapping[str, Any], *, cell: str, engine: str, now: datetime | None = None
-) -> bool:
-    """Require the locked 30-day/30-review/95%-precision calibration policy."""
-    if not any(
-        isinstance(row, Mapping)
-        and row.get("cell") == cell
-        and row.get("selected_engine") == engine
-        for row in state.get("benchmarks", [])
-    ):
-        return False
-    rows = [
-        row
-        for row in state.get("reviews", [])
-        if isinstance(row, Mapping) and row.get("cell") == cell
-    ]
-    if len(rows) < MIN_CALIBRATION_REVIEWS:
-        return False
-    dates = [_parse_time(row.get("reviewed_at")) for row in rows]
-    valid_dates = [value for value in dates if value]
-    if not valid_dates or (now or _now()) - min(valid_dates) < timedelta(days=MIN_CALIBRATION_DAYS):
-        return False
-    correct = sum(bool(row.get("correct")) for row in rows)
-    return correct / len(rows) >= REQUIRED_PRECISION
-
-
 def assign_turn(
     turn: Mapping[str, Any],
     matches: list[Mapping[str, Any]],
@@ -873,6 +957,26 @@ def assign_turn(
         "match_score": score,
     }
     return result
+
+
+def cue_identity(
+    display_name: str, *, signals: Iterable[str], speaker_id: str | None = None
+) -> dict[str, Any]:
+    """Identity for a name established by fused cues rather than by a voice profile.
+
+    Without this, "staff are named automatically" would quietly mean "staff are named once a
+    human has approved a golden reference for them" -- `assign_turn` can only ever name a cluster
+    that already matches a stored voice print, and a presenter appearing in one meeting never
+    gets one. `method` distinguishes the two provenances so a later audit can tell which names
+    came from a voice match and which from agreeing cues.
+    """
+    return {
+        "speaker_id": speaker_id,
+        "display_name": display_name,
+        "status": "provisional",
+        "method": "cue-fusion",
+        "signals": sorted(signals),
+    }
 
 
 def quote_attribution(
@@ -909,14 +1013,20 @@ __all__ = [
     "IDENTITY_PIPELINE_VERSION",
     "PILOT_SCOPE_VERSION",
     "MIN_REFERENCE_MEETINGS",
+    "TITLE_CUE_KINDS",
+    "TIER_MEMBER",
+    "TIER_OTHER",
+    "TIER_STAFF",
     "assign_turn",
-    "auto_publish_allowed",
     "body_key",
     "chair_reference_candidates",
     "calibration_cell",
+    "classify_speaker_tier",
+    "cue_identity",
     "empty_registry",
     "load_registry",
     "load_turn_evidence",
+    "naming_candidate_id",
     "observe_attendance",
     "profile_matches",
     "pilot_selected",
@@ -930,6 +1040,7 @@ __all__ = [
     "save_registry",
     "save_evaluation",
     "save_turn_evidence",
+    "self_introduction_candidates",
     "shadow_candidate_id",
     "speaker_id",
     "valid_speaker_id",

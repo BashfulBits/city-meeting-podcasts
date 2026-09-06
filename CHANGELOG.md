@@ -95,6 +95,31 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **R7 speaker naming is a tiered, self-tuning gate instead of a flat per-cell threshold
+  (review/31 §C.4; new `citypods/naming.py`).** `auto_publish_allowed`'s policy — 30 reviews × 30
+  days × 95% precision per `(city, body, engine_recipe, capture_context)` cell, plus a private
+  gold-set benchmark for that cell — is deleted. It multiplied as `30 × cities × bodies`, so no
+  amount of better detection could scale past it, and it produced one publish/don't-publish flag
+  for a whole episode, unable to express "confirm this member but auto-name that staffer". The
+  replacement normalizes every signal (voice print, chair-recognition cue, self-introduction cue,
+  roster corroboration, spoken title) to one claim shape — *signal S proposes name N for cluster
+  C* — fuses agreeing signals into a single reviewable candidate, and decides per candidate by
+  tier: council/board **members** always require human confirmation, **staff** publish
+  unattended once their signal combination has earned it (≥20 verdicts at ≥95% agreement, no
+  calendar element), and **everyone else** is never named. Precision is tracked per *signal
+  combination* and pooled globally, so city #2 inherits the trust city #1 earned instead of
+  re-earning it, with a per-city divergence guardrail that returns a city with genuinely worse
+  audio to human review. Cold start is fail-closed. Three consequences worth knowing: the
+  precision table is **derived** from the append-only review ledger on every run rather than
+  persisted beside it (no second source of truth to drift, and pre-gate verdicts are inert by
+  construction instead of needing a destructive migration); a cleared candidate now names its
+  cluster **directly** via `cue_identity(method="cue-fusion")`, because `assign_turn` can only
+  name a cluster that already matches a stored voice print and a staff presenter appearing once
+  never acquires one; and `chair_reference_candidates` now reports a `title_cue` separately from
+  `cue_kind`, since "the chair recognizes *Council Member* Jane Doe" carries an elected title
+  inside a recognition cue and dropping it would have tiered a council member as `other`.
+  `calibration_cell()` survives as the reviewer-facing scope label on ledger rows.
+
 - **R7 diarization runs a concurrent, admission-controlled worker pool (review/31 §A.4).**
   `NativeDiarizeStage.process()` was a strictly serial `for ep in episodes:` loop, so one long
   meeting consumed a whole run and the backlog cleared one item at a time. It now collects every

@@ -3048,9 +3048,7 @@ def _build_impl(
     # measured), and the runner is OOM-killed as a whole, so concurrency has to be bounded by
     # predicted memory as well as by vCPU count. 0/blank disables it (a one-worker run has
     # nothing to contend with).
-    _diarize_memory_budget_mb = float(
-        (speakers_config or {}).get("memory_budget_mb", 0) or 0
-    )
+    _diarize_memory_budget_mb = float((speakers_config or {}).get("memory_budget_mb", 0) or 0)
     _diarize_memory_reservation: MemoryReservation | None = (
         MemoryReservation(
             budget_bytes=int(_diarize_memory_budget_mb * 1024 * 1024),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
@@ -19,7 +19,6 @@ from citypods.speaker_review import (
 )
 from citypods.speakers import (
     assign_turn,
-    auto_publish_allowed,
     calibration_cell,
     chair_reference_candidates,
     empty_registry,
@@ -529,54 +528,16 @@ def test_timed_words_prefer_top_level_rows_over_duplicate_segment_rows():
     assert len(turn["transcript_text_hash"]) == 64
 
 
-def test_identity_calibration_requires_30_days_30_reviews_and_95_percent():
-    now = datetime(2026, 3, 1, tzinfo=UTC)
+def test_calibration_cell_still_scopes_the_review_ledger():
+    """The per-cell *publish* gate is gone (`citypods.naming` owns admission now, and the engine
+    choice it once guarded is a single global decision). The cell survives as the reviewer-facing
+    scope label on ledger rows, so it must stay stable and capture-context-aware."""
     cell = calibration_cell(
         "demo-tx", "Council", "pyannote-v1", capture_context="council-chamber-v1"
     )
-    state = {
-        "benchmarks": [{"cell": cell, "selected_engine": "pyannote"}],
-        "reviews": [
-            {
-                "cell": cell,
-                "correct": index != 0,
-                "reviewed_at": (now - timedelta(days=31)).isoformat(),
-            }
-            for index in range(30)
-        ],
-    }
-    assert auto_publish_allowed(state, cell=cell, engine="pyannote", now=now)
-    state["reviews"][1]["correct"] = False
-    assert not auto_publish_allowed(state, cell=cell, engine="pyannote", now=now)
-
-
-def test_identity_calibration_requires_a_private_benchmark_decision():
-    now = datetime(2026, 3, 1, tzinfo=UTC)
-    cell = calibration_cell(
-        "demo-tx", "Council", "pyannote-v1", capture_context="council-chamber-v1"
-    )
-    state = {
-        "reviews": [
-            {"cell": cell, "correct": True, "reviewed_at": (now - timedelta(days=31)).isoformat()}
-            for _ in range(30)
-        ]
-    }
-    assert not auto_publish_allowed(state, cell=cell, engine="pyannote", now=now)
-
-
-def test_identity_calibration_requires_the_benchmarked_engine():
-    now = datetime(2026, 3, 1, tzinfo=UTC)
-    cell = calibration_cell(
-        "demo-tx", "Council", "pyannote-v1", capture_context="council-chamber-v1"
-    )
-    state = {
-        "benchmarks": [{"cell": cell, "selected_engine": "wespeaker"}],
-        "reviews": [
-            {"cell": cell, "correct": True, "reviewed_at": (now - timedelta(days=31)).isoformat()}
-            for _ in range(30)
-        ],
-    }
-    assert not auto_publish_allowed(state, cell=cell, engine="pyannote", now=now)
+    assert cell == "demo-tx|council|pyannote-v1|council-chamber-v1"
+    with pytest.raises(ValueError):
+        calibration_cell("demo-tx", "Council", "pyannote-v1", capture_context="  ")
 
 
 def test_shadow_candidate_and_offline_benchmark_are_engine_neutral():
@@ -904,14 +865,17 @@ def test_pilot_selection_real_site_config_matches_denton():
     assert not pilot_selected(speaker_cfg, "austin-tx", "City Council")
 
 
-def test_speaker_identity_stage_collects_both_automatic_naming_signals(tmp_path):
-    """The chair-reference and self-introduction producers must both be reachable *through the
-    stage*, not merely defined. `self_introduction_candidates` shipped unwired once already --
-    the function and its unit tests passed while nothing in the pipeline ever called it."""
+def _identity_stage_case(tmp_path):
+    """One episode carrying both automatic naming signals, wired for `SpeakerIdentityStage`.
+
+    Returns `(city, episode, ctx)`. The signal producers must be reachable *through the stage*,
+    not merely defined: `self_introduction_candidates` shipped unwired once already -- the
+    function and its unit tests passed while nothing in the pipeline ever called it.
+    """
     import json as _json
 
     from citypods.models import City, Episode
-    from citypods.stages import SpeakerIdentityStage, StageContext
+    from citypods.stages import StageContext
     from citypods.storage.local import LocalStorage
 
     city = City(
@@ -1012,9 +976,21 @@ def test_speaker_identity_stage_collects_both_automatic_naming_signals(tmp_path)
         ],
     }
 
-    SpeakerIdentityStage().process(None, city, [ep], ctx)
+    return city, ep, ctx
 
-    evaluation = _json.loads((tmp_path / "evaluation.json").read_text())
+
+def _run_identity_stage(tmp_path, city, ep, ctx):
+    import json as _json
+
+    from citypods.stages import SpeakerIdentityStage, StageContext
+
+    assert isinstance(ctx, StageContext)
+    SpeakerIdentityStage().process(None, city, [ep], ctx)
+    return _json.loads((tmp_path / "evaluation.json").read_text())
+
+
+def test_speaker_identity_stage_collects_both_automatic_naming_signals(tmp_path):
+    evaluation = _run_identity_stage(tmp_path, *_identity_stage_case(tmp_path))
     kinds = {row["kind"] for row in evaluation["reference_candidates"].values()}
     names = {row["display_name"] for row in evaluation["reference_candidates"].values()}
     assert kinds == {"chair-reference", "self-introduction"}
@@ -1023,3 +999,59 @@ def test_speaker_identity_stage_collects_both_automatic_naming_signals(tmp_path)
     assert all(
         row.get("status") != "confirmed" for row in evaluation["reference_candidates"].values()
     )
+
+
+def test_speaker_identity_stage_ledgers_fused_candidates_with_their_combination(tmp_path):
+    """The gate has to be reachable through the stage too, and each review-bound candidate must
+    carry the `combination_key` that a later verdict feeds back into the precision table -- that
+    join is the whole adaptive loop."""
+    evaluation = _run_identity_stage(tmp_path, *_identity_stage_case(tmp_path))
+    by_name = {row["display_name"]: row for row in evaluation["naming_candidates"].values()}
+    assert by_name["Matt Bodine"]["tier"] == "staff"
+    assert by_name["Matt Bodine"]["combination_key"] == "staff:self-introduction+title-cue"
+    assert by_name["Matt Bodine"]["reason"] == "combination-untrusted"  # fail-closed cold start
+    # Jane is recognised by the chair with an elected title, which tiers her as a member -- but a
+    # title cue is not a countable second signal for members, and with no minutes roster and no
+    # voice print yet she has only one. She stays out of the *naming* queue (nothing there for a
+    # human to rule on that would teach the table anything) while remaining in the existing
+    # golden-reference queue, where approving her creates the voice profile she is missing.
+    assert "Jane Doe" not in by_name
+    assert any(
+        row["display_name"] == "Jane Doe" for row in evaluation["reference_candidates"].values()
+    )
+
+
+def test_speaker_identity_stage_names_staff_once_the_combination_is_trusted(tmp_path):
+    """A staff presenter has no voice profile and never will from one meeting, so a trusted
+    combination has to name the cluster directly -- otherwise "staff are named automatically"
+    silently means "staff are named after a human approves a reference"."""
+    import json as _json
+
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    # A quote wholly inside the staff turn: attribution is how a published name actually reaches
+    # the world, so assert there rather than on an intermediate.
+    ep.moment_pullquote_candidates = [
+        {"candidate_id": "q1", "start": 22.0, "end": 30.0},
+        {"candidate_id": "q2", "start": 3.0, "end": 8.0},
+    ]
+    key = "staff:self-introduction+title-cue"
+    ctx.speaker_evaluation_state_path.write_text(
+        _json.dumps(
+            {
+                "naming_candidates": {
+                    f"seed-{index}": {"combination_key": key, "city_slug": "denton-tx"}
+                    for index in range(20)
+                },
+                "reviews": [
+                    {"candidate_id": f"seed-{index}", "correct": True} for index in range(20)
+                ],
+            }
+        )
+    )
+    _run_identity_stage(tmp_path, city, ep, ctx)
+
+    staff_quote, jane_quote = ep.moment_pullquote_candidates
+    assert staff_quote["speaker_attribution"]["display_name"] == "Matt Bodine"
+    assert staff_quote["speaker_attribution"]["method"] == "cue-fusion"
+    # Jane is a member: no amount of signal agreement names her without a human.
+    assert "speaker_attribution" not in jane_quote

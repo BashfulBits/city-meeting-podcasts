@@ -140,7 +140,7 @@ from citypods.records import (
 )
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.security import MAX_REDIRECTS, validate_source_url
-from citypods.speakers import IDENTITY_PIPELINE_VERSION
+from citypods.speakers import IDENTITY_PIPELINE_VERSION, TITLE_CUE_KINDS
 from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
 from citypods.transcript_quality import (
     TranscriptQualityRoute,
@@ -7488,15 +7488,117 @@ class SpeakerIdentityStage:
     name = "speaker_identity"
     version = IDENTITY_PIPELINE_VERSION
 
+    def _naming_decisions(
+        self,
+        private_turns: list,
+        matches_by_turn: list[list[dict[str, Any]]],
+        *,
+        cue_candidates: list[dict[str, Any]],
+        roster: list[dict[str, Any]],
+        registry: Mapping[str, Any],
+        precision_table,
+        city_slug: str,
+        minimum_score: float,
+        min_verdicts: int,
+        min_precision: float,
+    ) -> list:
+        """Decide, per fused candidate, whether a name may be published (review/31 §C.4).
+
+        Normalizes every available signal to the same claim -- *signal S proposes name N for
+        cluster C* -- fuses them, then applies the tiered policy. Replaces the single
+        `auto_publish_allowed` flag per episode, which could not express "confirm this member but
+        auto-name that staffer" and whose 30-review-per-cell threshold multiplied as
+        `30 x cities x bodies`.
+        """
+        from citypods import naming
+        from citypods.speakers import _norm as norm_name
+        from citypods.speakers import classify_speaker_tier
+
+        roster_names = {
+            norm_name(item.get("name"))
+            for item in roster or ()
+            if isinstance(item, Mapping) and str(item.get("name") or "").strip()
+        }
+        cue_kinds_by_name: dict[str, set[str]] = {}
+        proposals: list[naming.NameProposal] = []
+
+        for candidate in cue_candidates:
+            cluster = str(candidate.get("cluster") or "")
+            name = str(candidate.get("display_name") or "").strip()
+            if not cluster or not name:
+                continue
+            kinds = cue_kinds_by_name.setdefault(norm_name(name), set())
+            kinds.add(str(candidate.get("cue_kind") or ""))
+            signal = (
+                naming.SIGNAL_CHAIR_CUE
+                if str(candidate.get("kind") or "") == "chair-reference"
+                else naming.SIGNAL_SELF_INTRO
+            )
+            proposals.append(naming.NameProposal(cluster, name, signal))
+            # A spoken title alongside the name is its own observation: it tiers the speaker, and
+            # it is what lets a staff presenter with no roster entry and no voice print reach two
+            # signals at all. `title_cue` is a separate field from `cue_kind` because a title can
+            # ride inside a cue of another kind ("the chair recognizes Council Member Jane Doe").
+            title_cue = str(candidate.get("title_cue") or "")
+            if title_cue in TITLE_CUE_KINDS:
+                kinds.add(title_cue)
+                proposals.append(naming.NameProposal(cluster, name, naming.SIGNAL_TITLE_CUE))
+
+        for turn, matches in zip(private_turns, matches_by_turn, strict=True):
+            if not isinstance(turn, Mapping) or not matches:
+                continue
+            best = matches[0]
+            if float(best.get("score") or -1.0) < minimum_score:
+                continue
+            name = str(best.get("display_name") or "").strip()
+            cluster = str(turn.get("cluster") or "")
+            if name and cluster:
+                proposals.append(naming.NameProposal(cluster, name, naming.SIGNAL_VOICE_PRINT))
+
+        # Roster corroborates a name something else already proposed; it never originates one, so
+        # it is added only against existing proposals rather than iterated in its own right.
+        for proposal in list(proposals):
+            if norm_name(proposal.display_name) in roster_names:
+                proposals.append(
+                    naming.NameProposal(
+                        proposal.cluster, proposal.display_name, naming.SIGNAL_ROSTER
+                    )
+                )
+
+        confirmed_names = [
+            str(person.get("display_name") or "")
+            for person in (registry.get("people") or {}).values()
+            if isinstance(person, Mapping) and person.get("status") == "active"
+        ]
+
+        def _tier_of(name: str) -> str:
+            return classify_speaker_tier(
+                name, roster=roster or (), cue_kinds=cue_kinds_by_name.get(norm_name(name), ())
+            )
+
+        return [
+            naming.decide(
+                candidate,
+                precision_table,
+                city_slug=city_slug,
+                min_verdicts=min_verdicts,
+                min_precision=min_precision,
+                confirmed_names=confirmed_names,
+            )
+            for candidate in naming.fuse_proposals(proposals, tier_of=_tier_of)
+        ]
+
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
+        from citypods import naming
+        from citypods.speakers import _norm as _norm_display
         from citypods.speakers import (
-            auto_publish_allowed,
-            calibration_cell,
             chair_reference_candidates,
+            cue_identity,
             load_registry,
             load_turn_evidence,
+            naming_candidate_id,
             observe_attendance,
             pilot_capture_context,
             pilot_selected,
@@ -7540,6 +7642,14 @@ class SpeakerIdentityStage:
                 evaluation = json.loads(ctx.speaker_evaluation_state_path.read_text())
             except (OSError, ValueError):
                 evaluation = {"reviews": []}
+        # Rebuilt from the review ledger each run rather than persisted alongside it -- one source
+        # of truth for what humans actually ruled (review/31 §C.4.5).
+        naming_config = ctx.speaker_config.get("naming") or {}
+        precision_table = naming.PrecisionTable.from_evaluation(evaluation)
+        naming_min_verdicts = int(naming_config.get("min_verdicts", naming.DEFAULT_MIN_VERDICTS))
+        naming_min_precision = float(
+            naming_config.get("min_precision", naming.DEFAULT_MIN_PRECISION)
+        )
         for ep in episodes:
             if not pilot_selected(ctx.speaker_config or {}, canonical_city_slug, ep.body):
                 continue
@@ -7597,6 +7707,7 @@ class SpeakerIdentityStage:
                     words = json.loads((words_raw or b"{}").decode())
                 except (UnicodeDecodeError, ValueError):
                     words = {}
+                cue_candidates: list[dict[str, Any]] = []
                 if isinstance(words, dict):
                     reference_rows = evaluation.setdefault("reference_candidates", {})
                     if not isinstance(reference_rows, dict):
@@ -7610,12 +7721,13 @@ class SpeakerIdentityStage:
                     # collapse to one row via `reference_candidate_id`, so a reviewer sees one
                     # item, and agreement between signals is preserved as the `cue_kind` of
                     # whichever landed first rather than duplicating the human's work.
-                    for candidate in (
+                    cue_candidates = [
                         *chair_reference_candidates(words, private_turns, known_names=known_names),
                         *self_introduction_candidates(
                             words, private_turns, known_names=known_names
                         ),
-                    ):
+                    ]
+                    for candidate in cue_candidates:
                         candidate_id = reference_candidate_id(
                             city_slug=canonical_city_slug,
                             body=ep.body,
@@ -7638,14 +7750,6 @@ class SpeakerIdentityStage:
                             "embedding_recipe": embedding_recipe,
                             "capture_context": capture_context,
                         }
-            cell = calibration_cell(
-                canonical_city_slug, ep.body, engine_recipe, capture_context=capture_context
-            )
-            publish = auto_publish_allowed(
-                evaluation,
-                cell=cell,
-                engine=str(payload.get("engine") or ""),
-            )
             allowed_ids = {
                 ident
                 for ident, person in (registry.get("people") or {}).items()
@@ -7657,29 +7761,124 @@ class SpeakerIdentityStage:
             roster_ids = roster_person_ids(registry, ep.minutes_roster)
             if roster_ids is not None:
                 allowed_ids &= roster_ids
+
+            # First pass: what does the voice print alone propose for each turn? Needed before
+            # any publish decision, because the decision is now per *candidate name* (its tier
+            # and which signals agreed), not one flag for the whole episode (review/31 §C.4).
+            minimum_score = float(ctx.speaker_config.get("minimum_match_score", 0.75))
+            matches_by_turn: list[list[dict[str, Any]]] = []
+            for turn in private_turns:
+                if not isinstance(turn, dict) or not isinstance(turn.get("embedding"), list):
+                    matches_by_turn.append([])
+                    continue
+                matches_by_turn.append(
+                    profile_matches(
+                        registry,
+                        turn["embedding"],
+                        embedding_recipe=embedding_recipe,
+                        allowed_ids=allowed_ids,
+                    )
+                )
+            decisions = self._naming_decisions(
+                private_turns,
+                matches_by_turn,
+                cue_candidates=cue_candidates,
+                roster=ep.minutes_roster,
+                registry=registry,
+                precision_table=precision_table,
+                city_slug=canonical_city_slug,
+                minimum_score=minimum_score,
+                min_verdicts=naming_min_verdicts,
+                min_precision=naming_min_precision,
+            )
+            publish_by_cluster: dict[str, bool] = {}
+            naming_rows = evaluation.setdefault("naming_candidates", {})
+            if not isinstance(naming_rows, dict):
+                naming_rows = {}
+                evaluation["naming_candidates"] = naming_rows
+            for decision in decisions:
+                candidate = decision.candidate
+                stats.quality(f"naming-{decision.reason}")
+                publish_by_cluster[candidate.cluster] = (
+                    publish_by_cluster.get(candidate.cluster, False) or decision.publish
+                )
+                if not decision.needs_review:
+                    continue
+                # Only review-bound candidates are ledgered, and they carry their own
+                # `combination_key`: that field is the join that turns a human verdict back into
+                # evidence about the signal combination, which is what lets the gate widen over
+                # time instead of asking for the same 30 reviews in every new city.
+                candidate_id = naming_candidate_id(
+                    city_slug=canonical_city_slug,
+                    body=ep.body,
+                    episode_uid=ep.uid or ep.guid,
+                    recipe=engine_recipe,
+                    cluster=candidate.cluster,
+                    proposed_name=candidate.display_name,
+                )
+                if candidate_id not in naming_rows:
+                    stats.quality("naming-candidate")
+                naming_rows[candidate_id] = {
+                    "candidate_id": candidate_id,
+                    "city_slug": canonical_city_slug,
+                    "body": ep.body or "",
+                    "engine_recipe": engine_recipe,
+                    "episode_uid": ep.uid or ep.guid,
+                    "episode_title": ep.title,
+                    "capture_context": capture_context,
+                    "cluster": candidate.cluster,
+                    "display_name": candidate.display_name,
+                    "tier": candidate.tier,
+                    "signals": list(candidate.signals),
+                    "combination_key": candidate.combination_key,
+                    "reason": decision.reason,
+                }
+
             changed = False
             enriched_turns = []
-            for turn in private_turns:
+            for turn, matches in zip(private_turns, matches_by_turn, strict=True):
                 if not isinstance(turn, dict) or not isinstance(turn.get("embedding"), list):
                     enriched_turns.append(turn)
                     continue
-                matches = profile_matches(
-                    registry,
-                    turn["embedding"],
-                    embedding_recipe=embedding_recipe,
-                    allowed_ids=allowed_ids,
-                )
                 from citypods.speakers import assign_turn
 
                 enriched_turns.append(
                     assign_turn(
                         turn,
                         matches,
-                        publish=publish,
+                        publish=publish_by_cluster.get(str(turn.get("cluster")), False),
                         confirmed=roster_ids is not None,
-                        minimum_score=float(ctx.speaker_config.get("minimum_match_score", 0.75)),
+                        minimum_score=minimum_score,
                     )
                 )
+            # `assign_turn` can only name a cluster that matched a stored voice print. Clusters
+            # the gate cleared on agreeing cues alone -- the staff presenter with no profile yet,
+            # which is most of them -- are named here instead, or they would stay anonymous until
+            # someone hand-approved a golden reference.
+            person_ids = {
+                _norm_display(person.get("display_name")): str(ident)
+                for ident, person in (registry.get("people") or {}).items()
+                if isinstance(person, dict) and person.get("display_name")
+            }
+            for decision in decisions:
+                if not decision.publish:
+                    continue
+                candidate = decision.candidate
+                for index, turn in enumerate(enriched_turns):
+                    if (
+                        not isinstance(turn, dict)
+                        or str(turn.get("cluster")) != candidate.cluster
+                        or isinstance(turn.get("identity"), dict)
+                    ):
+                        continue
+                    enriched_turns[index] = {
+                        **turn,
+                        "identity": cue_identity(
+                            candidate.display_name,
+                            signals=candidate.signals,
+                            speaker_id=person_ids.get(_norm_display(candidate.display_name)),
+                        ),
+                    }
             for turn in enriched_turns:
                 identity = turn.get("identity") if isinstance(turn, dict) else None
                 if not isinstance(identity, dict) or identity.get("status") != "shadow":
