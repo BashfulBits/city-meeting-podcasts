@@ -1031,20 +1031,104 @@ def minutes_links(links: list[DocumentLink]) -> list[DocumentLink]:
     ]
 
 
-_ATTENDANCE_STATUS_RE = re.compile(r"^\s*(present|absent|excused|recused)\s*:\s*(.+)$", re.I | re.M)
+# An optional qualifier may precede the status word ("MEMBERS PRESENT:", "STAFF PRESENT:"). It is
+# what separates a council member from the City Attorney on the attendance list, and capturing it
+# also *widens* extraction: with the status word previously anchored to the start of the line, the
+# cities that helpfully label their sections were exactly the ones whose rosters parsed as empty.
+_ATTENDANCE_STATUS_RE = re.compile(
+    r"^[ \t]*(?P<qualifier>[A-Za-z][A-Za-z /&'-]{0,40}?)?[ \t]*"
+    r"(?P<status>present|absent|excused|recused)[ \t]*:[ \t]*(?P<names>.+)$",
+    re.I | re.M,
+)
 _ATTENDANCE_SPLIT_RE = re.compile(r",|;|\s{2,}|\s+and\s+")
 _WHITESPACE_RE = re.compile(r"\s+")
+
+# Qualifier vocabulary, matched on any contained word so "Council Members", "Board Members" and
+# "City Staff" all resolve. Emitted canonically ("members"/"staff") rather than as raw text, so
+# `citypods.speakers.classify_speaker_tier` does not have to re-derive one city's phrasing.
+_ROSTER_MEMBER_WORDS = frozenset(
+    {
+        "member",
+        "members",
+        "councilmember",
+        "councilmembers",
+        "council",
+        "board",
+        "commission",
+        "commissioners",
+        "trustees",
+        "aldermen",
+        "supervisors",
+        "directors",
+    }
+)
+_ROSTER_STAFF_WORDS = frozenset({"staff", "administration", "personnel", "employees"})
+# Attendance lines that record who was in the *room*, not who serves the body. These must not
+# enter the roster at all: it seeds the person registry and acts as a correction constraint, so an
+# audience member landing there would be enrolled as a probable official and -- because an
+# unsectioned roster hit tiers as `member` -- could be offered a cross-meeting speaker page.
+# Anchoring the status word to the start of the line used to exclude these by accident; widening
+# the pattern to capture section qualifiers means they now have to be excluded on purpose.
+_ROSTER_EXCLUDED_WORDS = frozenset(
+    {
+        "others",
+        "other",
+        "guests",
+        "guest",
+        "public",
+        "visitors",
+        "audience",
+        "applicants",
+        "applicant",
+        "petitioners",
+        "speakers",
+    }
+)
+
+
+def _roster_section(qualifier: str | None) -> str | None:
+    """Map an attendance-line qualifier to a canonical roster section, or None if unclear.
+
+    Silence beats a guess: an unrecognized qualifier leaves the row unsectioned, which
+    `classify_speaker_tier` already handles by falling back to spoken-title vocabulary.
+    """
+    words = _qualifier_words(qualifier)
+    if not words:
+        return None
+    # Staff wins a mixed qualifier ("Staff Members Present"): "members" is generic filler there,
+    # while "staff" is the discriminating word. Misfiling a staffer as a member would hand them a
+    # cross-meeting speaker page the tier policy deliberately withholds (review/31 §C.4.1).
+    if words & _ROSTER_STAFF_WORDS:
+        return "staff"
+    if words & _ROSTER_MEMBER_WORDS:
+        return "members"
+    return None
+
+
+def _qualifier_words(qualifier: str | None) -> set[str]:
+    return {word for word in _WHITESPACE_RE.split(_norm_qualifier(qualifier)) if word}
+
+
+def _norm_qualifier(value: str | None) -> str:
+    return re.sub(r"[^a-z\s]", " ", str(value or "").casefold())
 
 
 def parse_roster(text: str) -> list[dict]:
     """Conservative member extraction from attendance lines; never invents names."""
     result: list[dict] = []
     for match in _ATTENDANCE_STATUS_RE.finditer(text):
-        status = match.group(1).lower()
-        for name in _ATTENDANCE_SPLIT_RE.split(match.group(2).strip()):
+        qualifier = match.group("qualifier")
+        if _qualifier_words(qualifier) & _ROSTER_EXCLUDED_WORDS:
+            continue
+        status = match.group("status").lower()
+        section = _roster_section(qualifier)
+        for name in _ATTENDANCE_SPLIT_RE.split(match.group("names").strip()):
             name = _WHITESPACE_RE.sub(" ", name).strip(" .")
             if name and len(name) > 1:
-                result.append({"name": name, "status": status, "evidence": match.group(0)[:500]})
+                row = {"name": name, "status": status, "evidence": match.group(0)[:500]}
+                if section:
+                    row["section"] = section
+                result.append(row)
     return result
 
 

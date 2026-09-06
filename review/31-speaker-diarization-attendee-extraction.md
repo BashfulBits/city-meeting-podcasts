@@ -396,6 +396,30 @@ understanding. Returns `None` (not an empty list) when no roster-shaped text is 
 unparseable minutes format degrades to "no ground truth available" rather than a false-empty attendee
 list.
 
+**As shipped (2026-09-06), in `agenda_text.parse_roster` rather than a new module** — the attendance
+regex already lived there beside `parse_votes`, and a second parser over the same text would have been
+the duplication this section warns about. Two changes beyond the original sketch, both forced by §C.4.2's
+tier policy:
+
+- **Section labels.** An optional qualifier before the status word is now captured and mapped to a
+  canonical `members`/`staff` section ("MEMBERS PRESENT:", "STAFF PRESENT:", "Council Members Present:",
+  "City Staff Present:"). Staff wins a mixed qualifier ("Staff Members Present"), because "members" is
+  generic filler there while "staff" discriminates — and misfiling a staffer as a member would hand them
+  the cross-meeting speaker page §C.4.1 deliberately withholds. An unrecognized qualifier yields *no*
+  section rather than a guess, leaving `classify_speaker_tier` on its spoken-title fallback. Sections are
+  also stored on the registry person, so `body_membership` (§C.5.4) carries the member/staff distinction
+  through the minutes-lag window instead of reading back as an unsectioned hit.
+- **Excluded sections.** `Others/Guests/Public/Visitors Present:` lines are now dropped entirely. This
+  is a *new* requirement created by the fix: anchoring the status word to the start of the line used to
+  exclude those lines by accident, so widening the pattern to capture qualifiers meant they had to be
+  excluded on purpose. The roster seeds the person registry and acts as a correction constraint, so an
+  audience member landing in it would be enrolled as a probable official and — since an unsectioned
+  roster hit tiers as `member` — could be offered a speaker page.
+
+Net effect on coverage is *positive*, not just structural: cities that helpfully label their attendance
+sections were previously the ones whose rosters parsed as empty, because the status word was anchored to
+the start of the line.
+
 ### B.4 Data model
 
 - **New `Episode` field:** `attendees: list[str] | None = None` — a bare name list. Small and bounded
@@ -683,12 +707,28 @@ existing verdicts no longer describe the current candidates. That is the concret
 "one-time engine choice". Note what survives it: the precision table keys on `tier:signals`, not on
 recipe, so accumulated *policy* credit is engine-independent exactly as §C.4.3 intended.
 
-**Known follow-up, not yet built.** `speaker_identity`'s unconditional re-run costs two object reads plus
-a cue pass per pilot episode per run. That is correct at one body and wrong at ten cities × full history.
-The fix is a projection-level fingerprint over `(evidence spec_hash, words key, registry version, roster
-presence, naming config)` that preserves the always-revisit semantics while skipping episodes where none
-of those changed. Deferred deliberately: it is an optimization whose trigger (pilot expansion) has not
-fired, and premature caching here would risk the very staleness §C.5.2 exists to prevent.
+**C.5.7 The projection fingerprint (built).** `speaker_identity`'s unconditional re-run cost two object
+reads plus a cue pass per pilot episode per run — correct at one body, wrong at ten cities × full
+history. The skip lives *inside* the stage loop rather than in `stage_is_dirty`, which deliberately stays
+always-revisit so a human decision never waits on a media mutation: the stage still looks at every
+episode, it just does no I/O where nothing feeding a decision moved. Two digests:
+
+- **Run-scoped** (`_naming_run_digest`, computed once): every profile's id/status/section/alias-set,
+  reference *count* and recipes, the verdict count, and the thresholds. Deliberately coarse — one new
+  voice profile can change the outcome for any episode in the backlog, so there is no useful per-episode
+  slice, and the failure mode to avoid is a stale skip rather than a redundant re-projection. Reference
+  *counts*, never the vectors: embeddings must not be hashed into state that leaves the process.
+- **Episode-scoped** (`_naming_projection_fingerprint`): the run digest plus `speakers_key`,
+  `speakers_spec_hash`, `transcript_words_key`, body, the roster (name/section/status), **and the current
+  pull-quote attributions**. That last element is what stops a marker outliving its own output: quote
+  attribution is this projection's only mutation of a durable record, so a record that comes back without
+  it — a lost or rolled-back push — re-dirties instead of being skipped forever.
+
+Fingerprints are recorded *after* a successful projection, and recomputed at that point rather than
+reused from the pre-loop value (the attributions just written are part of the digest). They are **not**
+pruned against the episode list: `process()` receives the selected city/source subset, so pruning to it
+would silently drop other cities' entries from the shared state object and defeat the skip. Growth is
+bounded the same way the existing candidate ledgers are.
 
 ---
 

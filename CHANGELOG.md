@@ -95,6 +95,27 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Minutes attendance lines carry member/staff sections, and `speaker_identity` skips episodes
+  with no new work (review/31 §B.3, §C.5.7).** `parse_roster`'s status word was anchored to the
+  start of the line, so `MEMBERS PRESENT:` / `STAFF PRESENT:` matched nothing at all — the cities
+  that helpfully separate a council member from the City Attorney were exactly the ones whose
+  rosters parsed as empty. An optional qualifier is now captured and mapped to a canonical
+  `members`/`staff` section (staff wins a mixed "Staff Members Present", since "members" is filler
+  there and misfiling a staffer as a member would hand them the cross-meeting speaker page the
+  tier policy withholds), and the section is stored on the registry person so `body_membership`
+  carries the distinction through the weeks before the next minutes publish. Widening the pattern
+  created a new requirement it also satisfies: `Others/Guests/Public/Visitors Present:` lines are
+  now excluded explicitly, because the old anchor had been excluding them by accident and the
+  roster seeds the person registry — an audience member landing there would be enrolled as a
+  probable official and, since an unsectioned roster hit tiers as `member`, could be offered a
+  speaker page. Separately, `speaker_identity` stays always-revisit (a human decision must never
+  wait on a media mutation) but now does no per-episode I/O when nothing feeding a naming decision
+  moved: a coarse run-scoped digest over profiles/verdicts/thresholds, plus a per-episode digest
+  over the diarization keys, roster, and **current pull-quote attributions** — that last part so a
+  lost or rolled-back record push re-dirties the episode instead of being skipped forever on a
+  marker that outlived its own output. Measured on the stage's own fixture: two object reads on
+  the first run, zero on the second.
+
 - **R7 naming closes its feedback loop, and covers the minutes-lag window (review/31 §C.5).** Three
   fixes that together make the adaptive gate able to actually learn. (1) `naming_candidates` never
   reached the weekly review queue — `speaker_review.package` built its pool from `candidates` and

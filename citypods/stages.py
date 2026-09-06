@@ -7482,6 +7482,84 @@ class NativeDiarizeStage:
         )
 
 
+def _naming_run_digest(
+    registry: Mapping[str, Any],
+    evaluation: Mapping[str, Any],
+    *,
+    minimum_score: float,
+    min_verdicts: int,
+    min_precision: float,
+) -> str:
+    """Digest every run-scoped input to a naming decision (review/31 §C.5).
+
+    Deliberately coarse: one new voice profile can change the outcome for any episode in the
+    backlog, so there is no useful per-episode slice of this. Coarse is also what makes it safe --
+    the failure mode to avoid is a stale skip, not a redundant re-projection.
+    """
+    people = [
+        {
+            "id": str(ident),
+            "name": person.get("display_name"),
+            "status": person.get("status"),
+            "section": person.get("section"),
+            "aliases": sorted(str(alias) for alias in person.get("aliases") or []),
+            # Reference *count* rather than the vectors: adding one changes matching, and the
+            # embeddings themselves must not be hashed into state that leaves this process.
+            "references": len(person.get("references") or []),
+            "recipes": sorted(
+                {
+                    str(row.get("embedding_recipe"))
+                    for row in person.get("references") or []
+                    if isinstance(row, Mapping)
+                }
+            ),
+            "body_key": person.get("body_key"),
+        }
+        for ident, person in sorted((registry.get("people") or {}).items())
+        if isinstance(person, Mapping)
+    ]
+    payload = {
+        "version": IDENTITY_PIPELINE_VERSION,
+        "people": people,
+        # Verdict count is enough: the table is rebuilt from these rows, and rows are append-only.
+        "verdicts": len(evaluation.get("reviews") or []),
+        "thresholds": [minimum_score, min_verdicts, min_precision],
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _naming_projection_fingerprint(ep: Episode, *, run_digest: str) -> str:
+    """Digest one episode's own naming inputs, plus the run-scoped digest.
+
+    Includes the current pull-quote attributions, which are this projection's only mutation of a
+    durable record. If an episode record comes back without them -- a lost or rolled-back push --
+    the fingerprint differs and the work is redone, rather than being skipped forever on the
+    strength of a marker that outlived its output.
+    """
+    payload = {
+        "run": run_digest,
+        "speakers": ep.speakers_key,
+        "spec": ep.speakers_spec_hash,
+        "words": ep.transcript_words_key,
+        "body": ep.body,
+        "roster": sorted(
+            (str(item.get("name")), str(item.get("section") or ""), str(item.get("status") or ""))
+            for item in ep.minutes_roster or ()
+            if isinstance(item, Mapping)
+        ),
+        "attribution": sorted(
+            (
+                str(item.get("candidate_id")),
+                str((item.get("speaker_attribution") or {}).get("display_name") or ""),
+                str((item.get("speaker_attribution") or {}).get("status") or ""),
+            )
+            for item in ep.moment_pullquote_candidates or ()
+            if isinstance(item, Mapping)
+        ),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
 class SpeakerIdentityStage:
     """Observe minutes continuity and project named turns onto already-grounded R6 quotes."""
 
@@ -7669,10 +7747,34 @@ class SpeakerIdentityStage:
         naming_min_precision = float(
             naming_config.get("min_precision", naming.DEFAULT_MIN_PRECISION)
         )
+        # Everything that can change a naming decision for *any* episode, hashed once per run:
+        # profiles, membership, confirmed names, learned precision, and the thresholds. When it
+        # moves, every episode re-projects (a new voice profile can match any of them); when it
+        # does not, per-episode work reduces to the two-object read this fingerprint avoids.
+        run_digest = _naming_run_digest(
+            registry,
+            evaluation,
+            minimum_score=float(ctx.speaker_config.get("minimum_match_score", 0.75)),
+            min_verdicts=naming_min_verdicts,
+            min_precision=naming_min_precision,
+        )
+        projections = evaluation.get("projections")
+        if not isinstance(projections, dict):
+            projections = {}
+            evaluation["projections"] = projections
         for ep in episodes:
             if not pilot_selected(ctx.speaker_config or {}, canonical_city_slug, ep.body):
                 continue
             if not ep.speakers_key:
+                continue
+            # `stage_is_dirty` deliberately keeps this stage always-revisit, because a human
+            # decision must never wait on a media mutation to take effect. That is right, and it
+            # is also why the skip belongs here instead: the stage still gets to look at every
+            # episode, it just does no I/O for the ones where nothing that feeds a decision has
+            # moved -- the common case for a six-hourly cron over a long backlog.
+            projection_key = _naming_projection_fingerprint(ep, run_digest=run_digest)
+            if projections.get(ep.uid or ep.guid) == projection_key:
+                stats.reused += 1
                 continue
             raw = _read_storage_bytes(ctx.storage, ep.speakers_key)
             try:
@@ -7963,6 +8065,12 @@ class SpeakerIdentityStage:
                 # inputs. Identity is a mutable, calibrated projection, so it belongs on the
                 # durable R6 candidate ledger rather than rewriting immutable speaker bytes.
                 stats.ran += 1
+            # Recomputed rather than reused from the pre-loop value: the attributions this pass
+            # just wrote are part of the fingerprint, so recording the stale one would re-do this
+            # episode on every subsequent run and defeat the skip entirely.
+            projections[ep.uid or ep.guid] = _naming_projection_fingerprint(
+                ep, run_digest=run_digest
+            )
         save_registry(ctx.speaker_registry_path, registry)
         if ctx.speaker_evaluation_state_path is not None:
             from citypods.speakers import save_evaluation

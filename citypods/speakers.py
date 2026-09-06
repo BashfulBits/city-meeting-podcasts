@@ -112,9 +112,10 @@ TIER_STAFF = "staff"
 TIER_OTHER = "other"
 
 # Roster section labels that mean "this person is on the body" vs "this person works for it".
-# Minutes parsing (review/31 Part B) is not built yet, so nothing populates these today --
-# `classify_speaker_tier` falls back to title cues. Accepting the field now means the parser
-# can start filling it in without a second pass through this logic.
+# `agenda_text.parse_roster` emits the canonical "members"/"staff" from an attendance line's
+# qualifier ("MEMBERS PRESENT:", "STAFF PRESENT:"); the extra spellings here accept raw section
+# text from any other producer. A city publishing one flat `Present:` list yields no section at
+# all, and `classify_speaker_tier` falls back to spoken-title vocabulary for those.
 _ROSTER_MEMBER_SECTIONS = frozenset({"member", "members", "members present", "present", "council"})
 _ROSTER_STAFF_SECTIONS = frozenset({"staff", "staff present", "administration"})
 
@@ -777,12 +778,16 @@ def observe_attendance(
     New names deliberately remain un-enrolled until a reviewer creates golden voice references.
     """
     seen: dict[str, str] = {}
+    sections: dict[str, str] = {}
     for item in roster:
         if not isinstance(item, Mapping):
             continue
         name = str(item.get("name") or "").strip()
         if name:
             seen[_norm(name)] = name
+            section = _norm(item.get("section"))
+            if section:
+                sections[_norm(name)] = section
     for item in votes:
         for vote in item.get("votes", []) if isinstance(item, Mapping) else []:
             if isinstance(vote, Mapping) and vote.get("member"):
@@ -811,6 +816,14 @@ def observe_attendance(
             membership = person.setdefault("membership", {})
             membership.setdefault("first_seen", published.isoformat())
             membership["last_seen"] = published.isoformat()
+        # Remember which section of the minutes named this person, so `body_membership` can carry
+        # the member/staff distinction through the weeks before the *next* meeting's minutes
+        # publish. Without it a recurring staffer read back as an unsectioned roster hit, which
+        # `classify_speaker_tier` resolves to `member` -- the tier that earns a speaker page.
+        # Latest explicit section wins; minutes that omit sections never erase a known one.
+        section = sections.get(_norm(name))
+        if section:
+            person["section"] = section
         registry.setdefault("history", []).append(
             {
                 "kind": "attendance",
@@ -981,14 +994,25 @@ def body_membership(
     never reach `roster_person_ids`, which uses a real roster to *remove* names.
     """
     scoped = body_key(city_slug, body)
-    return [
-        {"name": str(person.get("display_name") or "").strip()}
-        for person in (registry.get("people") or {}).values()
-        if isinstance(person, Mapping)
-        and person.get("body_key") == scoped
-        and person.get("status") in {"active", "probable"}
-        and str(person.get("display_name") or "").strip()
-    ]
+    rows: list[dict[str, Any]] = []
+    for person in (registry.get("people") or {}).values():
+        if (
+            not isinstance(person, Mapping)
+            or person.get("body_key") != scoped
+            or person.get("status") not in {"active", "probable"}
+        ):
+            continue
+        name = str(person.get("display_name") or "").strip()
+        if not name:
+            continue
+        row: dict[str, Any] = {"name": name}
+        # Carried forward alongside the name: a staffer recorded under `Staff Present:` must not
+        # read back as an unsectioned roster hit, which tiers as `member`.
+        section = str(person.get("section") or "").strip()
+        if section:
+            row["section"] = section
+        rows.append(row)
+    return rows
 
 
 def cue_identity(

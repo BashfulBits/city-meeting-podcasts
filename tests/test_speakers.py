@@ -1167,6 +1167,92 @@ def _run_identity_stage(tmp_path, city, ep, ctx):
     return _json.loads((tmp_path / "evaluation.json").read_text())
 
 
+def _count_storage_reads(ctx, monkeypatch) -> list[str]:
+    """Record every object this stage pulls, so a 'skip' can be shown to be a real skip."""
+    reads: list[str] = []
+    import citypods.stages as stages_mod
+
+    original = stages_mod._read_storage_bytes
+
+    def _tracked(storage, key):
+        reads.append(key)
+        return original(storage, key)
+
+    monkeypatch.setattr(stages_mod, "_read_storage_bytes", _tracked)
+    return reads
+
+
+def test_second_run_skips_an_episode_whose_naming_inputs_have_not_moved(tmp_path, monkeypatch):
+    """`speaker_identity` is always-revisit by design (a human decision must not wait on a media
+    mutation), so the cost control has to be inside the loop: no I/O for episodes where nothing
+    that feeds a naming decision changed -- the common case for a six-hourly cron."""
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    _run_identity_stage(tmp_path, city, ep, ctx)
+
+    reads = _count_storage_reads(ctx, monkeypatch)
+    _run_identity_stage(tmp_path, city, ep, ctx)
+    assert reads == []
+
+
+def test_new_minutes_or_a_new_profile_reopen_a_skipped_episode(tmp_path, monkeypatch):
+    """The skip must never outlive its inputs. Minutes landing weeks later, and a newly approved
+    voice profile, are exactly the two events §C.5 exists to let through."""
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    _run_identity_stage(tmp_path, city, ep, ctx)
+
+    ep.minutes_roster = [{"name": "Jane Doe", "status": "present", "section": "members"}]
+    reads = _count_storage_reads(ctx, monkeypatch)
+    _run_identity_stage(tmp_path, city, ep, ctx)
+    assert reads, "minutes arriving must reopen the episode"
+
+    # Settled again...
+    reads.clear()
+    _run_identity_stage(tmp_path, city, ep, ctx)
+    assert reads == []
+
+    # ...until a reviewer approves a voice profile, which can match any episode in the backlog.
+    registry = json.loads(ctx.speaker_registry_path.read_text())
+    person = next(iter(registry["people"].values()))
+    person["references"] = [{"embedding": [0.1, 0.2], "embedding_recipe": "nemo-titanet-small"}]
+    ctx.speaker_registry_path.write_text(json.dumps(registry))
+    reads.clear()
+    _run_identity_stage(tmp_path, city, ep, ctx)
+    assert reads, "a new voice profile must reopen every episode"
+
+
+def test_a_lost_attribution_reopens_the_episode(tmp_path, monkeypatch):
+    """The projection's only durable mutation is pull-quote attribution. If a record push is lost
+    or rolled back, a fingerprint that outlived its own output would skip the episode forever."""
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    ep.moment_pullquote_candidates = [{"candidate_id": "q1", "start": 22.0, "end": 30.0}]
+    key = "staff:self-introduction+title-cue"
+    ctx.speaker_evaluation_state_path.write_text(
+        json.dumps(
+            {
+                "naming_candidates": {
+                    f"seed-{index}": {"combination_key": key, "city_slug": "denton-tx"}
+                    for index in range(20)
+                },
+                "reviews": [
+                    {"candidate_id": f"seed-{index}", "correct": True} for index in range(20)
+                ],
+            }
+        )
+    )
+    _run_identity_stage(tmp_path, city, ep, ctx)
+    assert ep.moment_pullquote_candidates[0]["speaker_attribution"]["display_name"] == (
+        "Matt Bodine"
+    )
+
+    ep.moment_pullquote_candidates[0].pop("speaker_attribution")  # a push that never landed
+    reads = _count_storage_reads(ctx, monkeypatch)
+    _run_identity_stage(tmp_path, city, ep, ctx)
+    assert reads, "a missing attribution must reopen the episode"
+    assert ep.moment_pullquote_candidates[0]["speaker_attribution"]["display_name"] == (
+        "Matt Bodine"
+    )
+
+
 def test_body_membership_carries_the_roster_forward_scoped_to_its_own_body():
     """Minutes for a meeting land weeks after the recording, so a new episode has no roster at
     all. Standing membership fills that window -- but only from the same body."""
