@@ -3506,6 +3506,18 @@ def _build_impl(
             print(f"    queued: {reasons}", flush=True)
         for msg in t.get("defer_samples", []):
             print(f"    queued sample: {msg}", flush=True)
+        if t.get("quality_counts"):
+            # These used to reach `run_summary.json` and nothing else -- no build-log line and no
+            # dashboard panel renders them -- so a stage could report a silent-failure signal
+            # every run with nobody in a position to notice. Print them where `queued:` already
+            # prints, which is where someone looks when a lane behaves oddly.
+            outcomes = ", ".join(
+                f"{outcome}={count}"
+                for outcome, count in sorted(
+                    t["quality_counts"].items(), key=lambda item: (-item[1], item[0])
+                )
+            )
+            print(f"    quality: {outcomes}", flush=True)
         if t.get("rate_limited"):
             print(f"    ! throttle: {t['rate_limited']} 403/429 errors (GH#300)", flush=True)
     for domain, values in sorted(provider_rate_limit_telemetry.items()):

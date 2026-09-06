@@ -442,11 +442,29 @@ Hudspeth" would never corroborate a chair cue proposing "Gerard Hudspeth" — fa
 people who speak most. All-junk lines now yield an empty roster, which routes back to the safe "make no
 correction" path.
 
-**B.3b The silent-failure gap is now measurable.** Downstream, "no minutes published yet" and "minutes
-published but the roster did not parse" are indistinguishable — both are an empty `minutes_roster` — yet
-only the second is a defect and only the second stalls member naming indefinitely. `MinutesTextStage`
-now counts `minutes-roster-parsed` vs `minutes-roster-empty` so the size of that gap is measurable
-*before* anyone proposes a heavier extractor to close it.
+**B.3b Roster-parse failures are surfaced where the maintainer already looks.** Three distinct
+outcomes were previously indistinguishable downstream, though only two are defects:
+
+| Outcome | `minutes_roster` | Meaning |
+|---|---|---|
+| Minutes not published yet | empty | Expected; resolves on its own |
+| Minutes present, roster unparsed | empty | Defect: member naming stalls indefinitely |
+| Roster parsed but *wrong* | populated | Worst case: narrows `allowed_ids`, suppressing correct matches |
+
+`MinutesTextStage` counts `minutes-roster-parsed` vs `minutes-roster-empty`, separating the first two.
+The third is caught by comparing each incoming roster against the body's **standing membership before
+observing it** — a body that shares no one with its own prior meetings did not turn over, it parsed the
+wrong text. A body with no history yet (onboarding) has no established set to be disjoint from and is
+deliberately not counted, or the signal would fire loudest exactly when new cities are added.
+
+Both reach the build log. `StageStats.quality_counts` previously reached `run_summary.json` and nothing
+else — no build-log line, and no template renders it, so `/admin/status` never showed it either. A stage
+could emit a silent-failure signal every run with nobody positioned to notice it. The run summary now
+prints a `quality:` line beside the existing `queued:` line, and a disjoint roster additionally prints a
+named per-episode line. **Not yet built:** a `/admin/status` panel over the same counters, and any
+active notification. Escalating to a review issue was considered and rejected for now — the weekly
+budget is 8 items and they train the naming gate, whereas a roster anomaly is a "fix the parser" signal,
+not a per-item judgement.
 
 **On an LLM fallback for unparseable rosters — not now, and the reason matters.** The tempting fix for a
 missed roster is a small LLM extraction call. Rejected at this stage: the demonstrated failure mode above

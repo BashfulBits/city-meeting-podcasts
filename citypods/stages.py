@@ -7739,6 +7739,33 @@ class SpeakerIdentityStage:
             if not pilot_selected(ctx.speaker_config or {}, canonical_city_slug, ep.body):
                 continue
             if ep.minutes_roster or ep.minutes_votes:
+                # Compare against standing membership *before* observing, or this roster's own
+                # names would be in the set it is being checked against. A roster that shares no
+                # one with an established membership is the signature of a parse that succeeded
+                # on the wrong text: name-shape validation rejects "a quorum was established",
+                # but not a well-formed name lifted from the wrong part of the document, and a
+                # plausible-but-wrong roster still narrows `allowed_ids`. A real body does not
+                # replace its entire membership between meetings; a body with no history yet
+                # (onboarding) has no established set to be disjoint from, so it is not counted.
+                known = {
+                    _norm_display(row.get("name"))
+                    for row in body_membership(
+                        registry, city_slug=canonical_city_slug, body=ep.body
+                    )
+                }
+                incoming = {
+                    _norm_display(row.get("name"))
+                    for row in ep.minutes_roster or ()
+                    if isinstance(row, Mapping) and str(row.get("name") or "").strip()
+                }
+                if known and incoming and not (known & incoming):
+                    stats.quality("minutes-roster-disjoint-from-membership")
+                    print(
+                        f"[enrich] roster shares no member with prior meetings of this body "
+                        f"uid={ep.uid or ep.guid} body={ep.body!r} "
+                        f"parsed={len(incoming)} known={len(known)}",
+                        flush=True,
+                    )
                 observe_attendance(
                     registry,
                     city_slug=canonical_city_slug,

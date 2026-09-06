@@ -34,6 +34,7 @@ from citypods.speakers import (
     self_introduction_candidates,
     shadow_candidate_id,
 )
+from citypods.stages import SpeakerIdentityStage
 
 
 def test_chair_reference_candidates_cover_formal_and_title_led_announcements():
@@ -1363,3 +1364,41 @@ def test_speaker_identity_stage_names_staff_once_the_combination_is_trusted(tmp_
     assert staff_quote["speaker_attribution"]["method"] == "cue-fusion"
     # Jane is a member: no amount of signal agreement names her without a human.
     assert "speaker_attribution" not in jane_quote
+
+
+def test_a_roster_sharing_nobody_with_prior_meetings_is_flagged(tmp_path, capsys):
+    """Name-shape validation rejects "a quorum was established", but not a well-formed name
+    lifted from the wrong part of the document -- and a plausible-but-wrong roster still narrows
+    `allowed_ids`. A real body does not replace its whole membership between meetings, so a
+    disjoint roster is the signature of a parse that succeeded on the wrong text."""
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    ep.minutes_roster = [{"name": "Jane Doe"}, {"name": "Bob Chair"}]
+    _run_identity_stage(tmp_path, city, ep, ctx)  # establishes the membership
+    capsys.readouterr()
+
+    ep.uid = "uid-ep2"
+    ep.minutes_roster = [{"name": "Wrong Person"}, {"name": "Other Wrong"}]
+    stats = SpeakerIdentityStage().process(None, city, [ep], ctx)
+    assert stats.quality_counts.get("minutes-roster-disjoint-from-membership") == 1
+    assert "shares no member with prior meetings" in capsys.readouterr().out
+
+
+def test_a_first_ever_roster_is_not_flagged_as_disjoint(tmp_path):
+    """Onboarding a new body has no established membership to be disjoint from; flagging it would
+    make the signal fire loudest exactly when new cities are added."""
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    ep.minutes_roster = [{"name": "Jane Doe"}]
+    stats = SpeakerIdentityStage().process(None, city, [ep], ctx)
+    assert "minutes-roster-disjoint-from-membership" not in stats.quality_counts
+
+
+def test_a_roster_overlapping_prior_meetings_is_not_flagged(tmp_path):
+    """Ordinary turnover keeps most of the body; only a *total* replacement is suspicious."""
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    ep.minutes_roster = [{"name": "Jane Doe"}, {"name": "Bob Chair"}]
+    _run_identity_stage(tmp_path, city, ep, ctx)
+
+    ep.uid = "uid-ep2"
+    ep.minutes_roster = [{"name": "Jane Doe"}, {"name": "New Member"}]
+    stats = SpeakerIdentityStage().process(None, city, [ep], ctx)
+    assert "minutes-roster-disjoint-from-membership" not in stats.quality_counts
