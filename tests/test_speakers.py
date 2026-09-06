@@ -1834,3 +1834,54 @@ def test_a_reprojected_candidate_still_accepts_its_verdict(tmp_path, monkeypatch
     # Credited to what the reviewer actually saw, not to the combination that replaced it.
     assert table.verdicts("staff:self-introduction+title-cue") == 1
     assert table.verdicts("staff:self-introduction+title-cue+voice-print") == 0
+
+
+def test_naming_reviews_get_reserved_capacity_against_a_reference_backlog(tmp_path, monkeypatch):
+    """References rank first because one approval mints a reusable voice profile -- but *only*
+    naming verdicts populate the precision table, so a steady arrival of more references than the
+    weekly limit would fill every batch and no combination could ever become trusted. The ranking
+    would then be self-defeating: approved profiles cannot publish anything while the combination
+    they would publish under stays untrusted."""
+    from collections import Counter
+
+    references = {
+        f"ref-{i}": {
+            "kind": "self-introduction",
+            "candidate_id": f"ref-{i}",
+            "city_slug": "demo-tx",
+            "body": "Council",
+            "engine_recipe": "sherpa:v1",
+            "capture_context": "chamber-v1",
+            "episode_uid": "one",
+            "start": 1.0,
+            "end": 2.0,
+            "display_name": f"Person {i}",
+            "cue_start": 1.0,
+            "cue_end": 1.5,
+            "cue_text": "text",
+            "cue_kind": "name-then-title",
+            "cluster": "c",
+        }
+        for i in range(12)
+    }
+    naming = {
+        f"name-{i}": _naming_row(f"name-{i}", signals=["self-introduction", "title-cue"])
+        for i in range(6)
+    }
+    batch, _ = _package(
+        tmp_path,
+        monkeypatch,
+        _review_state(reference_candidates=references, naming_candidates=naming),
+    )
+    kinds = Counter(row["kind"] for row in batch["children"])
+    assert sum(kinds.values()) == 8
+    assert kinds["naming"] == 4  # half the batch, held against a backlog twice the limit
+    assert kinds["self-introduction"] == 4
+
+
+def test_a_reference_only_queue_still_fills_the_batch():
+    """The reserve must not idle capacity when there is nothing to reserve it for."""
+    from citypods.speaker_review import _select_batch
+
+    references = [{"kind": "chair-reference", "candidate_id": f"r{i}"} for i in range(12)]
+    assert len(_select_batch(references, 8)) == 8

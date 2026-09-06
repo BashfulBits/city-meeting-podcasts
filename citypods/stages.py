@@ -3941,20 +3941,25 @@ class MinutesTextStage:
             if not minutes_url:
                 stats.reused += 1
                 continue
+            cached_text: str | None = None
             if (
                 ep.minutes_text_url == minutes_url
                 and ep.minutes_votes_url
                 and ep.minutes_roster_url
+            ):
                 # Reuse was keyed on "the sidecars exist", so a roster parsed by an older, worse
                 # extractor stayed cached forever -- including the empty and mis-sectioned ones
-                # this version fixes. Version the *parse* so a bump re-extracts from the already
-                # stored document: bounded (no re-fetch, no re-OCR) and gradual, one normal run
-                # per episode, rather than a destructive bulk backfill.
-                and ep.minutes_roster_status is not None
-                and str(ep.minutes_roster_status).endswith(f"@{MINUTES_ROSTER_PARSER_VERSION}")
-            ):
-                stats.reused += 1
-                continue
+                # this version fixes. Versioning the *parse* lets a bump reach those episodes.
+                if str(ep.minutes_roster_status or "").endswith(
+                    f"@{MINUTES_ROSTER_PARSER_VERSION}"
+                ):
+                    stats.reused += 1
+                    continue
+                # Only the parser moved, not the document: re-read the text this stage already
+                # extracted and stored. That is what makes a bump cheap -- no provider fetch and,
+                # for a scanned PDF, no second OCR pass over the whole archive. Falling through
+                # to `None` re-fetches, which is correct when the sidecar is unreadable.
+                cached_text = _stored_minutes_text(ctx, ep)
             now = datetime.now(UTC)
             if minutes_text_backoff_until(ep) and minutes_text_backoff_until(ep) > now:
                 stats.defer("minutes-text-backoff")
@@ -3963,14 +3968,17 @@ class MinutesTextStage:
                 stats.defer("wall-clock-budget", sample=ep.uid or ep.guid)
                 continue
             try:
-                content, content_type = fetch_document_bytes(
-                    session, _validated_document_url(city, minutes_url), timeout=30
-                )
-                text, _ = extract_document(
-                    content,
-                    content_type=content_type,
-                    source_url=minutes_url,
-                )
+                if cached_text is None:
+                    content, content_type = fetch_document_bytes(
+                        session, _validated_document_url(city, minutes_url), timeout=30
+                    )
+                    text, _ = extract_document(
+                        content,
+                        content_type=content_type,
+                        source_url=minutes_url,
+                    )
+                else:
+                    text = cached_text
                 roster = parse_roster(text)
                 # Downstream, "no minutes published yet" and "minutes published but the roster did
                 # not parse" are indistinguishable -- both are an empty `minutes_roster` -- yet
@@ -4185,12 +4193,38 @@ AGENDA_TEXT_PIPELINE_VERSION = "3"
 # accepted, and suspicious PDFs alone invoke OCR.
 AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
+
+
+def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
+    """Return the minutes text this stage already extracted, or None if it cannot be read.
+
+    Re-parsing a stored extraction is what keeps a `MINUTES_ROSTER_PARSER_VERSION` bump cheap:
+    the expensive half of this stage is the provider fetch and, for a scanned PDF, OCR -- both of
+    which produced this artifact in the first place and neither of which needs repeating when
+    only the roster parser changed.
+    """
+    key = (ep.links or {}).get("minutes_text_artifact_key")
+    if not key or ctx.storage is None:
+        return None
+    raw = _read_storage_bytes(ctx.storage, str(key))
+    if raw is None:
+        return None
+    try:
+        payload = json.loads(raw.decode())
+    except (UnicodeDecodeError, ValueError):
+        return None
+    text = payload.get("text") if isinstance(payload, dict) else None
+    return text if isinstance(text, str) and text.strip() else None
+
+
 MINUTES_VOTES_PIPELINE_VERSION = "1"
 # Bump when roster extraction changes what it would produce from the same document -- attendance
 # patterns, section qualifiers, name validation, title stripping. Cached minutes are otherwise
 # reused on the strength of their sidecars existing, so an episode parsed by an older extractor
 # would keep its empty or mis-sectioned roster indefinitely, and the audit's "re-run the minutes
-# lane" advice would do nothing. Re-extraction reads the stored document; it does not re-fetch.
+# lane" advice would do nothing. A bump re-parses the stored `minutes-text` artifact
+# (`_stored_minutes_text`), so it costs one object read per episode rather than a provider fetch
+# and an OCR pass; it falls back to a full re-fetch only when that artifact cannot be read.
 MINUTES_ROSTER_PARSER_VERSION = "2"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
@@ -7586,6 +7620,7 @@ def _naming_run_digest(
     min_verdicts: int,
     min_precision: float,
     min_member_verdicts: int,
+    capture_context: str,
 ) -> str:
     """Digest every run-scoped input to a naming decision (review/31 §C.5).
 
@@ -7624,6 +7659,10 @@ def _naming_run_digest(
         # already-published names in place, and lowering it fails to release newly eligible ones,
         # until some unrelated input happens to move.
         "thresholds": [minimum_score, min_verdicts, min_precision, min_member_verdicts],
+        # Written into every ledger row, so an operator editing it in `speaker_config` must
+        # re-project -- otherwise the rows keep the previous context until some unrelated input
+        # happens to move, which is the stale skip this digest exists to prevent.
+        "capture_context": capture_context,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -7928,6 +7967,9 @@ class SpeakerIdentityStage:
             min_verdicts=naming_min_verdicts,
             min_precision=naming_min_precision,
             min_member_verdicts=naming_min_member_verdicts,
+            capture_context=str(
+                pilot_capture_context(ctx.speaker_config or {}, canonical_city_slug, None) or ""
+            ),
         )
         projections = evaluation.get("projections")
         if not isinstance(projections, dict):

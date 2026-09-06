@@ -1033,9 +1033,11 @@ def test_audit_all_unexpected_evidence_only_skips_view_counts(monkeypatch, tmp_p
     assert len(view_count_calls) == 0
 
 
-def _roster_record(status, *, body="City Council", uid_date="2026-05-01", members=()):
+def _roster_record(status, *, body="City Council", uid_date=None, members=()):
+    # Recent by default: the aggregate empty test is bounded to `_ROSTER_AUDIT_RECENT_DAYS`, so a
+    # fixed historical date would silently place a fixture outside the window under test.
     return {
-        "published": uid_date,
+        "published": uid_date or datetime.now(UTC).date().isoformat(),
         "body": body,
         "minutes_roster": {
             "status": status,
@@ -1102,3 +1104,39 @@ def test_roster_quality_is_silent_when_minutes_were_never_fetched():
     """Absent minutes are not a roster defect -- they are the normal weeks-long publication lag,
     and flagging them would fire on every recent meeting in the catalog."""
     assert check_roster_quality("council", {"u1": {"published": "2026-05-01"}}) is None
+
+
+def test_roster_quality_counts_only_the_body_it_was_asked_about():
+    """One source's record store holds every body, so an unscoped count would report another
+    body's parser gap against this feed."""
+    records = {
+        f"c{i}": _roster_record("empty@2", body="City Council", uid_date="2026-09-01")
+        for i in range(4)
+    }
+    records["ok"] = _roster_record(
+        "parsed@2", body="City Council", uid_date="2026-09-02", members=["Jane Doe"]
+    )
+    records.update(
+        {
+            f"e{i}": _roster_record("empty@2", body="Board of Ethics", uid_date="2026-09-01")
+            for i in range(9)
+        }
+    )
+    finding = check_roster_quality(
+        "council", records, body="Board of Ethics", now=datetime(2026, 9, 6, tzinfo=UTC)
+    )
+    assert finding is not None and "9 of 9" in finding.message
+
+
+def test_roster_quality_bounds_the_empty_ratio_by_recency():
+    """An append-only archive would otherwise dilute the ratio permanently: hundreds of historical
+    rosters swamp a genuine regression in the last few meetings, and records left by a parser gap
+    that has since been fixed keep the finding alive until every uid is re-run."""
+    now = datetime(2026, 9, 6, tzinfo=UTC)
+    archive = {f"o{i}": _roster_record("empty@1", uid_date="2020-01-01") for i in range(50)}
+    assert check_roster_quality("council", archive, body="City Council", now=now) is None
+
+    recent = {f"r{i}": _roster_record("empty@2", uid_date="2026-09-01") for i in range(4)}
+    recent["ok"] = _roster_record("parsed@2", uid_date="2026-09-02", members=["Jane Doe"])
+    finding = check_roster_quality("council", {**archive, **recent}, body="City Council", now=now)
+    assert finding is not None and "4 of 5" in finding.message

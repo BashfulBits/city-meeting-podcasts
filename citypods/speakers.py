@@ -148,6 +148,37 @@ _SELF_INTRODUCTION_WINDOW_SECONDS = 10.0
 # Matt Bodine" reads as the self-introduction of a person called "Thank you" -- and because
 # `self-introduction + title-cue` is a *complete* staff combination, that name auto-publishes
 # once the combination is trusted. The greeting is the addresser, never the addressee.
+# Surname particles, which are conventionally lowercase. Requiring every token to be capitalised
+# would drop "Ana de la Cruz" -- and `self-introduction + title-cue` is the *only* two-signal path
+# a staff member has in a new city, so that name would simply never appear.
+_NAME_PARTICLES = frozenset(
+    {
+        "de",
+        "del",
+        "de la",
+        "della",
+        "der",
+        "van",
+        "van der",
+        "von",
+        "da",
+        "di",
+        "la",
+        "le",
+        "el",
+        "bin",
+        "ibn",
+        "al",
+        "mac",
+        "mc",
+        "st",
+        "ter",
+        "ten",
+        "dos",
+        "das",
+        "do",
+    }
+)
 _GREETING_WORDS = frozenset(
     {
         "thank",
@@ -745,7 +776,15 @@ def _name_then_title(
     # token while "Matt Bodine" and an all-caps "MATT BODINE" both pass.
     if any(row["token"] in _GREETING_WORDS for row in rows[start : end_index + 1]):
         return None
-    if not all(part[:1].isupper() for part in collected if part):
+    parts = [part for part in collected if part]
+    # The *first* token must read as a proper noun; later ones may be lowercase surname
+    # particles. Greeting rejection above already handles "Thank you," and "Good morning,"
+    # independently, so this check does not have to cover every token to be effective.
+    if not parts or not parts[0][:1].isupper():
+        return None
+    if not all(
+        part[:1].isupper() or part.casefold().strip(".") in _NAME_PARTICLES for part in parts[1:]
+    ):
         return None
     # A known-attendee roster (when one parsed) corrects the raw ASR name text to the official
     # spelling below; without one (a new city, or unparseable minutes) this signal still fires

@@ -787,6 +787,13 @@ def check_agenda_quality(
 
 _ROSTER_FEED_MIN_AFFECTED = 3
 _ROSTER_FEED_RATIO = 0.5
+# The aggregate empty-roster test is bounded by recency, like `check_agenda_quality`. Without it
+# an append-only archive dilutes the ratio permanently: hundreds of historical rosters swamp a
+# genuine regression in the last few meetings, and records left by a parser gap that has since
+# been fixed keep the finding alive until every affected uid is re-run. The `disjoint` test is
+# deliberately *not* bounded -- it reports on sight, and its correctness depends on comparing
+# against the body's full membership history.
+_ROSTER_AUDIT_RECENT_DAYS = 90
 
 
 def check_roster_quality(
@@ -797,6 +804,8 @@ def check_roster_quality(
     inclusions: Iterable[BodyInclusion] = (),
     min_affected: int = _ROSTER_FEED_MIN_AFFECTED,
     ratio: float = _ROSTER_FEED_RATIO,
+    recent_days: int = _ROSTER_AUDIT_RECENT_DAYS,
+    now: datetime | None = None,
 ) -> Finding | None:
     """Warn when minutes are published but their attendance roster does not parse usably.
 
@@ -815,6 +824,7 @@ def check_roster_quality(
     disjoint: list[tuple[str, dict]] = []
     considered = 0
     scoped: list[tuple[str, dict, set[str]]] = []
+    cutoff = (now or datetime.now(UTC)).timestamp() - recent_days * 86400
     for uid, record in records.items():
         if (body or inclusions) and not record_matches_body(record, body, inclusions):
             continue
@@ -825,10 +835,12 @@ def check_roster_quality(
         # Statuses carry the parser version that produced them ("empty@2"), so a parser bump can
         # re-extract cached minutes. The outcome is the part before it.
         status = str(raw_status).split("@", 1)[0]
-        considered += 1
         if status == "empty":
-            empty.append((uid, record))
+            if _published_timestamp(record) >= cutoff:
+                considered += 1
+                empty.append((uid, record))
             continue
+        considered += 1
         members = {
             " ".join(str(row.get("name") or "").casefold().split())
             for row in (roster or {}).get("members") or []
@@ -893,6 +905,15 @@ def check_roster_quality(
         + "; ".join(rows)
         + (f"; +{overflow} more" if overflow > 0 else ""),
     )
+
+
+def _published_timestamp(record: Mapping[str, object]) -> float:
+    """Best-effort publication time, or -inf when it cannot be read (never counted as recent)."""
+    try:
+        value = datetime.fromisoformat(str(record.get("published") or ""))
+    except ValueError:
+        return float("-inf")
+    return (value if value.tzinfo else value.replace(tzinfo=UTC)).timestamp()
 
 
 def _redact_agenda_source_url(value: object) -> str:

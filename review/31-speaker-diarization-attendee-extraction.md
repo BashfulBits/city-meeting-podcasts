@@ -600,10 +600,18 @@ plenty of cities publish a single flat `Present:` list that mixes the Clerk and 
 `citypods/speakers.py` already carries the two vocabularies this needs — `_ANNOUNCEMENT_TITLES` (elected)
 and `_STAFF_TITLE_WORDS` (staff). Resolution rule:
 
-- elected-title cue **or** members-section → **member**
-- staff-title cue **or** staff-section → **staff**
-- both fire → **member** (deliberately err toward *more* scrutiny, never less)
-- neither → **other**
+Resolution is **ordered**, not symmetric — the section is authoritative and is consulted first, so a
+staff section beats an elected-title cue even though the tie-break between two *cues* goes the other way:
+
+1. explicit **members-section** → **member**; explicit **staff-section** → **staff**
+   (an explicit section always wins; cues are not consulted)
+2. otherwise **elected-title cue** → **member**; **staff-title cue** → **staff**
+3. both cues fire, no section → **member** (deliberately err toward *more* scrutiny, never less)
+4. unsectioned roster hit, no cue → **member** (the minutes place them on the attendance list)
+5. neither → **other**
+
+Pinned by `tests/test_naming.py::test_roster_section_is_authoritative_over_title_cues`, which asserts
+`staff` for a staff-sectioned name carrying an elected cue.
 
 **C.4.3 Person trust, not engine trust — and the cell key drops the engine.** The gate's job is "is this
 specific voice really Jane Doe", so it keys on the **person profile**, with the plausible name-space

@@ -36,6 +36,31 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Eight findings from a third CodeRabbit pass on #1485.** *A false cost claim:* the
+  `MINUTES_ROSTER_PARSER_VERSION` comment promised a bump "re-extracts from the already stored
+  document (no re-fetch, no re-OCR)", but the code fell straight through to
+  `fetch_document_bytes` + `extract_document` — a full provider re-download and, for a scanned
+  PDF, a second OCR pass over the whole archive. Since that claim was the stated reason the bump
+  is safe, the cheap path is now implemented rather than the comment downgraded:
+  `_stored_minutes_text()` re-parses the `minutes-text` artifact this stage already wrote, and
+  re-fetches only when that artifact is unreadable. *A silently unnameable class of person:* the
+  proper-noun guard required every token capitalized, so "Ana de la Cruz" failed on "de" — and
+  `self-introduction + title-cue` is the *only* two-signal path a staff member has in a new city,
+  so particle surnames would never have been named at all; the first token must now read as a
+  proper noun, with known particles allowed after it. *Two stale-skip holes:* `capture_context`
+  was absent from the projection digest, so editing it left every ledger row on the previous
+  value, and the audit's empty-roster ratio had no recency bound, so a deep append-only archive
+  diluted it permanently and records from an already-fixed parser gap kept the finding alive —
+  it is now bounded to 90 days like `check_agenda_quality`, while the `disjoint` test stays
+  unbounded because its correctness depends on full membership history. *A normative doc
+  contradicting the code:* review/31 §C.4.2 listed section and cue resolution symmetrically
+  ("both fire → member"), but `classify_speaker_tier` returns on an explicit section before
+  consulting cues, so a staff section beats an elected cue — the list is now ordered and cites
+  the test that pins it. Plus three test gaps: body scoping and recency for `check_roster_quality`,
+  and the naming reserve against a reference backlog larger than the weekly limit, which the
+  previous test never actually entered.
+
+
 - **Six more findings from a second CodeRabbit pass on #1485.** *An office with no name became a
   person:* leading-only role-word stripping always spares the last word, so
   `"ALSO PRESENT: City Manager, City Attorney"` enrolled people called "Manager" and "Attorney",
