@@ -149,6 +149,7 @@ nltk==3.10.3
 numpy==2.5.2
     # via
     #   asteroid-filterbanks
+    #   citypods (pyproject.toml)
     #   contourpy
     #   ctranslate2
     #   matplotlib
@@ -274,9 +275,7 @@ protobuf==7.35.1
     #   onnxruntime
     #   opentelemetry-proto
 pyannote-audio==4.0.7
-    # via
-    #   citypods (pyproject.toml)
-    #   whisperx
+    # via whisperx
 pyannote-core==6.0.1
     # via
     #   pyannote-audio
@@ -350,6 +349,10 @@ scipy==1.18.0
     # via
     #   pyannote-metrics
     #   scikit-learn
+sherpa-onnx==1.13.7
+    # via citypods (pyproject.toml)
+sherpa-onnx-core==1.13.7
+    # via sherpa-onnx
 six==1.17.0
     # via python-dateutil
 sortedcontainers==2.4.0
