@@ -17,6 +17,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+# Bump this for any change to what the identity projection *derives* -- cue vocabularies and
+# extraction shapes, roster/section parsing, tier rules, the fusion or agreement rules. It is both
+# `SpeakerIdentityStage.version` and part of the §C.5.7 projection fingerprint, so leaving it
+# unchanged after such an edit means already-fingerprinted episodes keep their old projection and
+# never observe the improvement. (Changes to *policy thresholds* need no bump: those are hashed
+# into the fingerprint directly.)
 IDENTITY_PIPELINE_VERSION = "1"
 PILOT_SCOPE_VERSION = "2"
 MIN_REFERENCE_MEETINGS = 2

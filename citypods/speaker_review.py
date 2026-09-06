@@ -158,7 +158,13 @@ def record_calibration(args: argparse.Namespace) -> int:
 
 
 def record_benchmark(args: argparse.Namespace) -> int:
-    """Record the private gold-set comparison required before this cell can publish names."""
+    """Record a private gold-set engine comparison for this calibration cell.
+
+    No longer a publish precondition: review/31 §C.4.11 retired the per-cell benchmark gate when
+    §A.1a made engine selection a single global decision, and `citypods.naming` now owns
+    admission. Kept as the durable record of a comparison actually run — nothing reads these rows
+    to decide whether a name may be published.
+    """
     try:
         state = json.loads(args.state.read_text(encoding="utf-8"))
     except FileNotFoundError:

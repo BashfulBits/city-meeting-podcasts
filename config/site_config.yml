@@ -686,6 +686,16 @@ speakers:
   turn_evidence_path: "r7_speaker_turn_evidence.json"
   runtime_state_path: "r7_diarization_runtime.json"
   weekly_review_limit: 8
+  # Naming admission (review/31 §C.4.4). Both are thresholds on one *signal combination*, pooled
+  # globally across cities and bodies -- which is what lets a new city start mostly automated
+  # instead of re-earning trust from zero -- with a per-city divergence guardrail behind them.
+  # Members are never auto-named whatever these say; this governs the staff tier. Deliberately no
+  # calendar element: the old gate's 30-day requirement existed to catch capture drift, and the
+  # divergence guardrail does that job directly and faster. Defaults live in citypods/naming.py;
+  # uncomment only to override once real verdict data argues for a different bar.
+  # naming:
+  #   min_verdicts: 20      # human rulings on a combination before it may auto-admit
+  #   min_precision: 0.95   # required agreement between that combination and those rulings
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):
