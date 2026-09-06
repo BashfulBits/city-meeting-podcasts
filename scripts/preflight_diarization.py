@@ -40,22 +40,25 @@ def configured_models(site_config: Mapping[str, object]) -> tuple[str, str]:
 def run_preflight(site_config_path: str = "config/site_config.yml") -> tuple[str, str]:
     model, embedding_model = configured_models(load_site_config(site_config_path))
 
-    try:
-        import sherpa_onnx  # noqa: F401
-    except ImportError as exc:
-        raise RuntimeError("sherpa-onnx is required; install the pinned [diarize] runtime") from exc
-
     from citypods.diarize import (
         _EMBEDDING_RECIPES,
         _ensure_embedding_model,
         _ensure_segmentation_model,
     )
 
+    # Config checks first, then the dependency: cheapest and most specific diagnosis wins, and a
+    # config typo must not be reported as a missing install. It also lets CI exercise these
+    # branches without the `[diarize]` extra.
     if embedding_model not in _EMBEDDING_RECIPES:
         raise RuntimeError(
             f"R7 speakers.embedding_model {embedding_model!r} is not a known recipe; "
             f"choose one of {sorted(_EMBEDDING_RECIPES)}"
         )
+
+    try:
+        import sherpa_onnx  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError("sherpa-onnx is required; install the pinned [diarize] runtime") from exc
 
     try:
         _ensure_segmentation_model()
