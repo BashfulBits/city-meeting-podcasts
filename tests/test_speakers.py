@@ -1443,3 +1443,91 @@ def test_canonicalization_leaves_a_spelling_it_cannot_safely_merge():
 
     assert canonical_name("Vicky Bird", ["Vicki Byrd"]) == "Vicky Bird"
     assert canonical_name("Jane Doh", ["Jane Doe"]) == "Jane Doh"
+
+
+def _spoken(text: str) -> dict:
+    words, clock = [], 0.0
+    for word in text.split():
+        words.append({"w": word, "s": clock, "e": clock + 0.2})
+        clock += 0.25
+    return {"segments": [{"words": words}]}
+
+
+_CUE_TURNS = [
+    {"start": 0.0, "end": 5.0, "cluster": "chair", "overlap": False},
+    {
+        "start": 5.1,
+        "end": 9.0,
+        "cluster": "next",
+        "overlap": False,
+        "embedding": [0.1],
+        "transcript_text_hash": "h",
+    },
+]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Councilor Jane Doe.",
+        "Council Person Jane Doe.",
+        "Councilperson Jane Doe.",
+        "Alderman Jane Doe.",
+        "Alderperson Jane Doe.",
+        "Commissioner Jane Doe.",
+        "Selectman Jane Doe.",
+        "Freeholder Jane Doe.",
+        "Board Member Jane Doe.",
+        "Vice Chair Jane Doe.",
+    ],
+)
+def test_title_announcements_cover_the_common_civic_office_names(text):
+    """Councils, commissions, boards, New England selectboards and NJ freeholder boards all name
+    the same role differently; covering only "Council Member" would name members in one
+    convention and silently skip every other."""
+    found = chair_reference_candidates(_spoken(text), _CUE_TURNS)
+    assert [row["display_name"] for row in found] == ["Jane Doe"]
+    assert found[0]["title_cue"] == "title-announcement"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The chair recognizes Jane Doe.",
+        "The mayor recognizes Jane Doe.",
+        "The Mayor Pro Tem recognizes Jane Doe.",
+        "The vice mayor recognizes Jane Doe.",
+        "The presiding officer recognizes Jane Doe.",
+        "Chairman Smith calls on Jane Doe.",
+        "The president yields to Jane Doe.",
+        "I now recognize Jane Doe.",
+    ],
+)
+def test_recognition_cues_cover_whoever_is_presiding(text):
+    """Only "the chair recognizes" was covered, so a mayor-led council -- the common arrangement
+    -- produced no recognition cue at all. Mayor Pro Tem is its own office, the member who
+    presides in the mayor's absence, so matching only "mayor" misses exactly those meetings."""
+    found = chair_reference_candidates(_spoken(text), _CUE_TURNS)
+    assert [row["display_name"] for row in found] == ["Jane Doe"]
+
+
+def test_a_title_before_a_recognition_verb_never_becomes_a_name():
+    """Two ways this misfires, both live before the fix: the title branch would start scanning at
+    the verb and yield "recognizes Jane Doe", and a presider naming themselves ("Chairman Smith
+    calls on...") would be proposed as the name for the *next* speaker's turn."""
+    assert [
+        row["display_name"]
+        for row in chair_reference_candidates(_spoken("The mayor recognizes Jane Doe."), _CUE_TURNS)
+    ] == ["Jane Doe"]
+    found = chair_reference_candidates(
+        _spoken("Chairman Smith calls on Councilor Jane Doe."), _CUE_TURNS
+    )
+    assert [row["display_name"] for row in found] == ["Jane Doe"]
+
+
+def test_a_multi_word_office_is_not_split_by_its_shorter_prefix():
+    """ "Mayor Pro Tem" is its own office, not a qualified "Mayor" -- so it must consume all three
+    tokens. Matching ("mayor",) as well would emit a second candidate named "Pro Tem Brian Beck"
+    that dedup cannot collapse, because the two names differ."""
+    found = chair_reference_candidates(_spoken("Mayor Pro Tem Brian Beck."), _CUE_TURNS)
+    assert [row["display_name"] for row in found] == ["Brian Beck"]

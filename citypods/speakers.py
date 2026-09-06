@@ -31,30 +31,85 @@ MIN_REFERENCE_MEETINGS = 2
 # past it. `citypods.naming` now owns admission, keyed on signal combination and pooled globally.
 PROFILE_REVIEW_ONLY_AFTER_DAYS = 180
 
-_ANNOUNCEMENT_TITLES: tuple[tuple[str, ...], ...] = (
-    ("council", "member"),
-    ("councilmember",),
-    ("councilman",),
-    ("councilwoman",),
-    ("commissioner",),
-    ("mayor",),
-    ("vice", "mayor"),
-    ("alderman",),
-    ("alderwoman",),
-    ("trustee",),
-    ("supervisor",),
-    ("representative",),
-    ("senator",),
+# Titles that mean "this person sits on the body", across the naming conventions US municipal and
+# county bodies actually use -- councils, commissions, boards, New England selectboards, NJ
+# freeholder boards. Only *member* titles belong here: this vocabulary feeds `_ELECTED_TITLE_CUES`,
+# so anything staff-ish added below would tier a City Manager or Clerk as a member and hand them
+# the speaker page §C.4.1 withholds. That is why "Director", "Chief" and bare "Chair" are absent.
+#
+# Sorted longest-first because `_name_after` skips the *first* matching prefix: with ("mayor",)
+# ahead of ("mayor","pro","tem"), "Mayor Pro Tem Brian Beck" would consume only "Mayor" and
+# extract "Pro Tem Brian Beck" as the name.
+_ANNOUNCEMENT_TITLES: tuple[tuple[str, ...], ...] = tuple(
+    sorted(
+        (
+            ("council", "member"),
+            ("council", "person"),
+            ("council", "man"),
+            ("council", "woman"),
+            ("councilmember",),
+            ("councilperson",),
+            ("councilman",),
+            ("councilwoman",),
+            ("councilor",),
+            ("councillor",),
+            ("commissioner",),
+            ("commission", "member"),
+            ("committee", "member"),
+            ("board", "member"),
+            ("mayor",),
+            ("mayor", "pro", "tem"),
+            ("mayor", "pro", "tempore"),
+            ("vice", "mayor"),
+            ("deputy", "mayor"),
+            ("chairman",),
+            ("chairwoman",),
+            ("chairperson",),
+            ("vice", "chair"),
+            ("alderman",),
+            ("alderwoman",),
+            ("alderperson",),
+            ("selectman",),
+            ("selectwoman",),
+            ("selectperson",),
+            ("freeholder",),
+            ("assemblyman",),
+            ("assemblywoman",),
+            ("assemblymember",),
+            ("assembly", "member"),
+            ("trustee",),
+            ("supervisor",),
+            ("representative",),
+            ("senator",),
+            ("delegate",),
+        ),
+        key=len,
+        reverse=True,
+    )
 )
-_RECOGNITION_CUES: tuple[tuple[str, ...], ...] = (
-    ("the", "chair", "recognizes"),
-    ("chair", "recognizes"),
-    ("the", "chair", "recognised"),
-    ("chair", "recognised"),
-    ("i", "recognize"),
-    ("i", "recognise"),
-    ("chair", "calls", "on"),
-    ("the", "chair", "calls", "on"),
+# Handing the floor to someone. Deliberately keyed on the **verb alone**, never on who is
+# presiding: requiring a presider title meant the verb had to follow it directly, so "the chair
+# recognizes X" matched while "Chairman Smith calls on X" -- the presider named, which is at least
+# as common -- matched nothing. Enumerating presiders could not fix that, because a name sits
+# between the title and the verb.
+#
+# This is recall-first on purpose (maintainer direction, 2026-09-06): a spurious extraction such
+# as "recognizes that we need" carries exactly one signal, so it cannot reach the two-signal
+# agreement rule, cannot match a roster, and tiers as `other` -- it is discarded at no cost. A
+# *missed* introduction, by contrast, silently costs a member their name.
+_RECOGNITION_VERBS: tuple[tuple[str, ...], ...] = (
+    ("recognizes",),
+    ("recognises",),
+    ("recognized",),
+    ("recognised",),
+    ("recognize",),
+    ("recognise",),
+    ("calls", "on"),
+    ("yields", "to"),
+    ("turns", "it", "over", "to"),
+)
+_RECOGNITION_CUES: tuple[tuple[str, ...], ...] = tuple(
+    sorted(_RECOGNITION_VERBS, key=len, reverse=True)
 )
 _SELF_INTRO_CUES: tuple[tuple[str, ...], ...] = (
     ("my", "name", "is"),
@@ -105,6 +160,20 @@ _NAME_STOP_WORDS = frozenset(
         "to",
         "will",
         "with",
+        # Recognition verbs. A title can legitimately precede one ("the mayor recognizes Jane
+        # Doe"), and the title branch then starts scanning for a name at the verb -- yielding
+        # "recognizes Jane Doe". Stopping here makes every title token safe to add, including the
+        # chair/vice-chair variants that sit closest to these phrases. The recognition-cue branch
+        # is unaffected: it scans from *after* the verb it already matched.
+        "calls",
+        "recognise",
+        "recognises",
+        "recognize",
+        "recognizes",
+        "recognised",
+        "recognized",
+        "yields",
+        "turns",
     }
 )
 
@@ -459,6 +528,15 @@ def chair_reference_candidates(
             if not _sequence_at(rows, index, title):
                 continue
             name, end_index = _name_after(rows, index + len(title), known)
+            # A title-announcement immediately followed by a recognition verb is the presider
+            # naming *themselves* ("Chairman Smith calls on Councilor Jane Doe"), not introducing
+            # the next speaker -- so the candidate would attach Smith's name to Jane's turn.
+            if name and any(_sequence_at(rows, end_index + 1, verb) for verb in _RECOGNITION_VERBS):
+                name = None
+            # Longest match wins, and no shorter one is tried at this position. `_ANNOUNCEMENT_
+            # TITLES` is sorted longest-first, so "Mayor Pro Tem Brian Beck" matches the full
+            # title; without stopping here ("mayor",) would also match and emit a second candidate
+            # named "Pro Tem Brian Beck", which dedup cannot collapse because the names differ.
             if name:
                 matches.append(
                     _reference_candidate(
@@ -471,6 +549,7 @@ def chair_reference_candidates(
                         "title-announcement",
                     )
                 )
+            break
     unique: dict[tuple[float, float, str], dict[str, Any]] = {}
     for candidate in matches:
         if not candidate:
