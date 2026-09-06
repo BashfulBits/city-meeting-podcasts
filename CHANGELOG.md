@@ -15,6 +15,25 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **`NativeDiarizeStage` registers with `PROGRESS` and logs per-attempt start/done/error lines
+  (`citypods/stages.py`).** Investigating a live run (denton-tx, 2026-09-05) that appeared to sit
+  at `no tracked work active` for hours turned out to be a genuinely busy pyannote pipeline call
+  with no progress instrumentation at all — the diarize lane was the one long-running caller that
+  `citypods/progress.py`'s `PROGRESS` registry didn't cover, so a healthy multi-hour attempt was
+  indistinguishable from a hung one until the runner was killed. The single blocking
+  `backend.run_inference(...)` call for each candidate now runs inside `PROGRESS.track(source=
+  <city entity>, uid=<episode>, phase="diarize")`, so the heartbeat's `active work:` line shows it
+  busy with an elapsed time instead of reporting nothing. Each attempt also prints an
+  `[enrich] diarize start uid=... body=... recording_s=... estimate_s=...` line before starting
+  and a matching `diarize done`/`diarize error` line with `elapsed_s`/`ratio` afterward, naming the
+  episode's own `body` so a shared-source run (per-body feeds sharing one `source_key`, e.g.
+  `denton-tx-city-council` and `denton-tx-board-of-ethics`) is never ambiguous about which meeting
+  type is actually running. If the run is killed before the first candidate finishes, the last
+  heartbeat's `active work:` line names the stuck uid and its elapsed time directly, instead of
+  requiring a `thread activity:` stack-sample read to infer that the run was busy at all.
+
 ### Fixed
 
 - **Make `/remedy` direct and bounded (issue #1231).** Classify in the Actions process with local

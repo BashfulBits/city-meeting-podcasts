@@ -6967,14 +6967,31 @@ class NativeDiarizeStage:
                 continue
             # Do not let a prior transient error look like this attempt's outcome.
             ep.speakers_error = None
+            diarize_started_at = time.monotonic()
             try:
                 from citypods.diarize import attach_transcript_words
 
                 words = json.loads(words_raw.decode())
                 if not isinstance(words, dict):
                     raise ValueError("timed transcript words must be a JSON object")
-                diarize_started_at = time.monotonic()
-                with _download_audio(ep.hosted_audio_url) as audio_path:
+                estimate_label = f"{estimate:.1f}" if estimate is not None else "unknown"
+                print(
+                    f"[enrich] diarize start uid={uid} body={ep.body!r} "
+                    f"recording_s={recording_seconds:.1f} estimate_s={estimate_label}",
+                    flush=True,
+                )
+                # Register the in-flight attempt so the heartbeat's "active work" snapshot shows a
+                # busy diarize pass as busy instead of "no tracked work active". This one call runs
+                # serially on the ledger-pass thread for as long as one meeting's audio takes
+                # (routinely tens of minutes to hours on CPU pyannote inference), and without this
+                # the PROGRESS registry stays empty for the whole run -- a genuinely-working pass is
+                # then indistinguishable from a hung one until the runner is killed at the outer
+                # time budget, which is exactly what made run 51 (denton-tx, 2026-09-05) hard to
+                # read from its own logs.
+                with (
+                    PROGRESS.track(source=canonical_city_slug, uid=str(uid), phase="diarize"),
+                    _download_audio(ep.hosted_audio_url) as audio_path,
+                ):
                     outcome = backend.run_inference(
                         InferenceJob(
                             task="diarize",
@@ -7027,15 +7044,30 @@ class NativeDiarizeStage:
                 ep.speakers_pipeline_version = DIARIZE_PIPELINE_VERSION
                 ep.speakers_error = None
                 ep.speakers_source = "native"
+                diarize_elapsed = time.monotonic() - diarize_started_at
                 runtime_log.append(
-                    diarize_seconds=time.monotonic() - diarize_started_at,
+                    diarize_seconds=diarize_elapsed,
                     recording_seconds=recording_seconds,
                     recipe=runtime_recipe,
                 )
                 stats.ran += 1
+                ratio = (
+                    diarize_elapsed / recording_seconds if recording_seconds > 0 else float("nan")
+                )
+                print(
+                    f"[enrich] diarize done uid={uid} body={ep.body!r} "
+                    f"elapsed_s={diarize_elapsed:.1f} recording_s={recording_seconds:.1f} "
+                    f"ratio={ratio:.3f}",
+                    flush=True,
+                )
             except Exception as exc:  # noqa: BLE001 - per-item native inference must be restartable.
                 ep.speakers_error = f"native-diarize-error: {exc}"
                 stats.errors.append(f"{uid}: {exc}")
+                print(
+                    f"[enrich] diarize error uid={uid} body={ep.body!r} "
+                    f"elapsed_s={time.monotonic() - diarize_started_at:.1f} error={exc}",
+                    flush=True,
+                )
         if ctx.speaker_turn_evidence_path is not None:
             save_turn_evidence(ctx.speaker_turn_evidence_path, turn_evidence)
         return stats
