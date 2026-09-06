@@ -36,6 +36,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Suspected bad rosters are a feed-health issue with resolution steps (`roster-quality`).**
+  `MinutesTextStage`/`SpeakerIdentityStage` persist how each roster parse went on the episode
+  record (`minutes_roster.status`: parsed / empty / disjoint), and the daily audit turns a
+  repeated failure into one actionable issue — the same record-only pattern `check_agenda_quality`
+  uses, so archived episodes outside the provider's fetch window are covered and the audit does no
+  new work. A `disjoint` roster (names sharing nobody with the body's own prior meetings, i.e. a
+  parse that succeeded on the wrong text) is reported on sight because it actively suppresses
+  correct attribution; `empty` rosters only escalate as a feed-wide pattern, since one unparsed
+  civic document is normal variation. The issue body carries the effect and five numbered
+  resolution steps, with minutes URLs redacted of signed material.
+
 - **Reject roster entries that are not name-shaped, and strip leading titles (review/31 §B.3a).**
   Measured against seven realistic minutes shapes, four produced junk that entered the person
   registry as members: `"a quorum of the Council was established at 6:02 p.m"`, a run-on line
@@ -130,6 +141,30 @@ Phase R (Research-Tool Surface)._
   tag input generation.
 
 ### Changed
+
+- **Members become established rather than permanently gated, and ASR spellings are corrected
+  automatically (review/31 §C.4.12-C.4.13).** "Every member occurrence needs a human" was a
+  per-meeting tax that never fell, for the tier that appears in every meeting. A member is now
+  *established* after 4 correct rulings for that person on that body (or an approved voice
+  profile), after which the ordinary combination gate governs. Both keys are required, not
+  either: 4 rulings answer "who is this person, spelled how", while the signal combination
+  answers "is *this* cluster them, here" — confirming Jane Doe four times says nothing about
+  whether a fifth meeting's cluster is really her, and members are the tier that earns a
+  cross-meeting speaker page, so a misattribution compounds. This also tightened prior behaviour:
+  a member with an approved voice profile used to publish immediately, bypassing the combination
+  gate entirely. The cost is near zero because the same reviews feed both counters — reviewing
+  member candidates is what generates combination verdicts. Person statistics are keyed
+  `(city, body, name)` and never pooled, since a person belongs to one body, and established
+  status is revocable on the same precision bar. Separately, the premise that "later minutes
+  correct ASR spellings" turned out to be false: `fuse_proposals` groups on the normalized name,
+  so a cue heard as "Gerrard Hudspeth" and a roster reading "Gerard Hudspeth" were two candidates
+  carrying one signal each, both failing the agreement rule — a misspelled member produced *no
+  name at all*, and minutes could never correct a spelling they never met. `canonical_name()`
+  now snaps a heard name onto the official spelling before fusion at a 0.90 similarity bar
+  calibrated on real civic pairs (Gerard/Gerrard 0.97, Meltzer/Melzer 0.96, Maguire/McGuire 0.93
+  are one person; John/Jane Smith 0.80 and Watts/Watkins 0.83 are not), refusing to rewrite on a
+  tie so two similarly-named officials are never collapsed.
+
 
 - **Minutes attendance lines carry member/staff sections, and `speaker_identity` skips episodes
   with no new work (review/31 §B.3, §C.5.7).** `parse_roster`'s status word was anchored to the

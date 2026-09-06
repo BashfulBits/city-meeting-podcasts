@@ -3964,6 +3964,10 @@ class MinutesTextStage:
                 # indefinitely. Count them apart so the size of that gap is measurable before
                 # anyone proposes a heavier extractor to close it.
                 stats.quality("minutes-roster-parsed" if roster else "minutes-roster-empty")
+                # Persisted so the daily audit can turn a repeated failure into one actionable
+                # feed-health issue, the same record-only pattern `check_agenda_quality` uses.
+                # `SpeakerIdentityStage` may later upgrade this to "disjoint".
+                ep.minutes_roster_status = "parsed" if roster else "empty"
                 raw_votes = parse_votes(text, roster=roster)
                 grouped: dict[str | None, list[dict]] = {}
                 for vote in raw_votes:
@@ -7593,9 +7597,11 @@ class SpeakerIdentityStage:
         registry: Mapping[str, Any],
         precision_table,
         city_slug: str,
+        body: str,
         minimum_score: float,
         min_verdicts: int,
         min_precision: float,
+        min_member_verdicts: int,
     ) -> list:
         """Decide, per fused candidate, whether a name may be published (review/31 §C.4).
 
@@ -7607,7 +7613,7 @@ class SpeakerIdentityStage:
         """
         from citypods import naming
         from citypods.speakers import _norm as norm_name
-        from citypods.speakers import classify_speaker_tier
+        from citypods.speakers import canonical_name, classify_speaker_tier
 
         def _names(rows: Iterable[Mapping[str, Any]]) -> set[str]:
             return {
@@ -7624,9 +7630,19 @@ class SpeakerIdentityStage:
         cue_kinds_by_name: dict[str, set[str]] = {}
         proposals: list[naming.NameProposal] = []
 
+        # Official spellings this meeting can correct an ASR-heard name against. The roster is
+        # preferred (it is this meeting's own document); standing membership covers the weeks
+        # before it publishes.
+        official_names = [str(row.get("name")) for row in (roster or ()) or (membership or ())]
+
         for candidate in cue_candidates:
             cluster = str(candidate.get("cluster") or "")
-            name = str(candidate.get("display_name") or "").strip()
+            # Snap onto the official spelling before anything else looks at this name. Without it
+            # a cue heard as "Gerrard Hudspeth" and a roster reading "Gerard Hudspeth" are two
+            # candidates carrying one signal each -- so both fail the agreement rule and the
+            # member is silently never named, which is also why published minutes could not
+            # correct a misspelling they never met.
+            name = canonical_name(str(candidate.get("display_name") or "").strip(), official_names)
             if not cluster or not name:
                 continue
             kinds = cue_kinds_by_name.setdefault(norm_name(name), set())
@@ -7652,7 +7668,7 @@ class SpeakerIdentityStage:
             best = matches[0]
             if float(best.get("score") or -1.0) < minimum_score:
                 continue
-            name = str(best.get("display_name") or "").strip()
+            name = canonical_name(str(best.get("display_name") or "").strip(), official_names)
             cluster = str(turn.get("cluster") or "")
             if name and cluster:
                 proposals.append(naming.NameProposal(cluster, name, naming.SIGNAL_VOICE_PRINT))
@@ -7692,8 +7708,10 @@ class SpeakerIdentityStage:
                 candidate,
                 precision_table,
                 city_slug=city_slug,
+                body=body,
                 min_verdicts=min_verdicts,
                 min_precision=min_precision,
+                min_member_verdicts=min_member_verdicts,
                 confirmed_names=confirmed_names,
             )
             for candidate in naming.fuse_proposals(proposals, tier_of=_tier_of)
@@ -7760,6 +7778,7 @@ class SpeakerIdentityStage:
                 }
                 if known and incoming and not (known & incoming):
                     stats.quality("minutes-roster-disjoint-from-membership")
+                    ep.minutes_roster_status = "disjoint"
                     print(
                         f"[enrich] roster shares no member with prior meetings of this body "
                         f"uid={ep.uid or ep.guid} body={ep.body!r} "
@@ -7789,6 +7808,9 @@ class SpeakerIdentityStage:
         naming_min_verdicts = int(naming_config.get("min_verdicts", naming.DEFAULT_MIN_VERDICTS))
         naming_min_precision = float(
             naming_config.get("min_precision", naming.DEFAULT_MIN_PRECISION)
+        )
+        naming_min_member_verdicts = int(
+            naming_config.get("min_member_verdicts", naming.DEFAULT_MIN_MEMBER_VERDICTS)
         )
         # Everything that can change a naming decision for *any* episode, hashed once per run:
         # profiles, membership, confirmed names, learned precision, and the thresholds. When it
@@ -7959,9 +7981,11 @@ class SpeakerIdentityStage:
                 registry=registry,
                 precision_table=precision_table,
                 city_slug=canonical_city_slug,
+                body=ep.body or "",
                 minimum_score=minimum_score,
                 min_verdicts=naming_min_verdicts,
                 min_precision=naming_min_precision,
+                min_member_verdicts=naming_min_member_verdicts,
             )
             publish_by_cluster: dict[str, bool] = {}
             naming_rows = evaluation.setdefault("naming_candidates", {})

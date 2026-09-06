@@ -785,6 +785,92 @@ def check_agenda_quality(
     )
 
 
+_ROSTER_FEED_MIN_AFFECTED = 3
+_ROSTER_FEED_RATIO = 0.5
+
+
+def check_roster_quality(
+    slug: str,
+    records: dict,
+    *,
+    body: str | None = None,
+    inclusions: Iterable[BodyInclusion] = (),
+    min_affected: int = _ROSTER_FEED_MIN_AFFECTED,
+    ratio: float = _ROSTER_FEED_RATIO,
+) -> Finding | None:
+    """Warn when minutes are published but their attendance roster does not parse usably.
+
+    Record-only, like :func:`check_agenda_quality`: the enrichment stages store how each parse
+    went and the daily audit turns a repeated failure into one actionable issue, so archived
+    episodes outside the provider's fetch window are covered and the audit does no new work.
+
+    This exists because a roster failure is *silent* by nature. Downstream, "minutes not published
+    yet" and "minutes published but unparseable" are both an empty ``minutes_roster``, so R7
+    member naming simply never progresses and nothing says why. The ``disjoint`` case is worse
+    than silence: a roster that parsed names sharing nobody with the body's own prior meetings is
+    a parse that succeeded on the *wrong* text, and because a roster acts as a correction
+    constraint it then suppresses correct speaker attribution for that meeting.
+    """
+    empty: list[tuple[str, dict]] = []
+    disjoint: list[tuple[str, dict]] = []
+    considered = 0
+    for uid, record in records.items():
+        if (body or inclusions) and not record_matches_body(record, body, inclusions):
+            continue
+        roster = record.get("minutes_roster")
+        status = (roster or {}).get("status") if isinstance(roster, dict) else None
+        if not status:
+            continue  # minutes never fetched: not a roster problem
+        considered += 1
+        if status == "empty":
+            empty.append((uid, record))
+        elif status == "disjoint":
+            disjoint.append((uid, record))
+
+    affected = disjoint + empty
+    # A disjoint roster is reported on sight -- it actively corrupts attribution, so one is
+    # already worth a look. Empty rosters only matter in aggregate: a single unparsed document is
+    # normal variation, a feed-wide pattern is a parser gap.
+    if not disjoint and not (
+        len(empty) >= min_affected and considered and len(empty) / considered >= ratio
+    ):
+        return None
+
+    rows = []
+    for uid, record in affected[:10]:
+        status = (record.get("minutes_roster") or {}).get("status")
+        source = _redact_agenda_source_url((record.get("minutes_text") or {}).get("url") or "")
+        rows.append(
+            f"uid={uid}, date={record.get('published', 'unknown')}, "
+            f"body={record.get('body') or 'unknown'}, status={status}, "
+            f"minutes={source or 'unknown'}"
+        )
+    overflow = len(affected) - len(rows)
+    headline = (
+        f"{len(disjoint)} roster(s) parsed names that share nobody with this body's prior "
+        f"meetings, and {len(empty)} of {considered} published minutes yielded no usable roster"
+    )
+    return Finding(
+        slug,
+        "roster-quality",
+        WARN,
+        f"{headline}. Effect: R7 cannot name council/board members without a roster, and a "
+        "'disjoint' roster is worse than none -- it narrows the allowed speaker set and "
+        "suppresses correct attribution for that meeting. "
+        "Resolution: (1) open one of the minutes documents below and find its attendance line; "
+        "(2) if the line exists but did not parse, extend `_ATTENDANCE_STATUS_RE` / the "
+        "qualifier vocabulary in `citypods/agenda_text.py` to cover its wording; "
+        "(3) if names parsed from the wrong text ('disjoint'), tighten `_clean_roster_name` or "
+        "`_ROSTER_EXCLUDED_WORDS` so that section is skipped; "
+        "(4) if the document genuinely has no roster, no code change is needed -- R7 member "
+        "naming for this body will rely on chair/self-introduction cues plus review instead; "
+        "(5) re-run the minutes lane for the affected uids to clear the status. "
+        "Background: review/31 §B.3a-B.3b. "
+        + "; ".join(rows)
+        + (f"; +{overflow} more" if overflow > 0 else ""),
+    )
+
+
 def _redact_agenda_source_url(value: object) -> str:
     """Keep an agenda source useful for diagnosis without leaking signed URL material."""
     raw = str(value or "")
@@ -1643,6 +1729,14 @@ def audit_city(
             )
             if agenda_quality:
                 findings.append(agenda_quality)
+            roster_quality = check_roster_quality(
+                city.slug,
+                records,
+                body=body,
+                inclusions=body_inclusions,
+            )
+            if roster_quality:
+                findings.append(roster_quality)
             backlog = check_rehost_backlog(city.slug, episodes, run_history=run_history)
             if backlog:
                 findings.append(backlog)

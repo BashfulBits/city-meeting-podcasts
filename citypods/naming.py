@@ -61,6 +61,13 @@ DEFAULT_MIN_PRECISION = 0.95
 DEFAULT_CITY_DIVERGENCE_MARGIN = 0.10
 DEFAULT_CITY_MIN_VERDICTS = 10
 
+# Correct human rulings on one *person* before that person's name stops needing a human every
+# time (review/31 §C.4.12). Much smaller than `DEFAULT_MIN_VERDICTS` because it answers a much
+# narrower question -- "is this the right name, spelled the right way, for someone on this body"
+# -- and because the same rulings simultaneously feed the combination statistic, so the two
+# thresholds are paid for by one queue rather than two.
+DEFAULT_MIN_MEMBER_VERDICTS = 4
+
 
 @dataclass(frozen=True)
 class NameProposal:
@@ -173,6 +180,10 @@ class PrecisionTable:
     def __init__(self) -> None:
         self._global: dict[str, dict[str, int]] = {}
         self._by_city: dict[str, dict[str, dict[str, int]]] = {}
+        # Per *person*, scoped to one body: "have humans agreed this is who this is, spelled this
+        # way". Never pooled across cities the way combination statistics are -- a person belongs
+        # to one body, so there is nothing for a second city to inherit.
+        self._by_person: dict[str, dict[str, int]] = {}
 
     @classmethod
     def from_evaluation(cls, evaluation: Mapping[str, Any]) -> PrecisionTable:
@@ -195,9 +206,54 @@ class PrecisionTable:
                 continue
             key = str(candidate.get("combination_key") or "")
             city_slug = str(candidate.get("city_slug") or "")
-            if key and city_slug:
-                table.record(key, city_slug=city_slug, agreed=bool(row.get("correct")))
+            if not (key and city_slug):
+                continue
+            agreed = bool(row.get("correct"))
+            table.record(key, city_slug=city_slug, agreed=agreed)
+            if str(candidate.get("tier") or "") == TIER_MEMBER:
+                table.record_person(
+                    str(candidate.get("display_name") or ""),
+                    city_slug=city_slug,
+                    body=str(candidate.get("body") or ""),
+                    agreed=agreed,
+                )
         return table
+
+    @staticmethod
+    def person_key(display_name: str, *, city_slug: str, body: str) -> str:
+        return f"{city_slug}|{_norm(body)}|{_norm(display_name)}"
+
+    def record_person(self, display_name: str, *, city_slug: str, body: str, agreed: bool) -> None:
+        """Fold one human verdict about a specific person into the table."""
+        name = _norm(display_name)
+        if not name:
+            return
+        bucket = self._by_person.setdefault(
+            self.person_key(display_name, city_slug=city_slug, body=body),
+            {"verdicts": 0, "agreements": 0},
+        )
+        bucket["verdicts"] += 1
+        bucket["agreements"] += 1 if agreed else 0
+
+    def person_established(
+        self,
+        display_name: str,
+        *,
+        city_slug: str,
+        body: str,
+        min_verdicts: int = DEFAULT_MIN_MEMBER_VERDICTS,
+        min_precision: float = DEFAULT_MIN_PRECISION,
+    ) -> bool:
+        """Whether humans have settled this person's identity and spelling for this body.
+
+        Requires precision as well as a count, so a person whose rulings later go bad loses the
+        status rather than keeping it on the strength of early agreement. At the default four
+        verdicts that means four correct; a disagreement is recoverable by accumulating more.
+        """
+        row = self._by_person.get(self.person_key(display_name, city_slug=city_slug, body=body))
+        if not row or row["verdicts"] < min_verdicts:
+            return False
+        return row["agreements"] / row["verdicts"] >= min_precision
 
     def record(self, combination_key: str, *, city_slug: str, agreed: bool) -> None:
         """Fold one human verdict into the table."""
@@ -274,17 +330,29 @@ def decide(
     table: PrecisionTable,
     *,
     city_slug: str,
+    body: str = "",
     min_verdicts: int = DEFAULT_MIN_VERDICTS,
     min_precision: float = DEFAULT_MIN_PRECISION,
+    min_member_verdicts: int = DEFAULT_MIN_MEMBER_VERDICTS,
     confirmed_names: Iterable[str] = (),
 ) -> NamingDecision:
     """Apply the tiered naming policy to one candidate (review/31 §C.4).
 
-    Members are always human-confirmed, so automation's job for them is to put a well-supported
-    suggestion in front of a reviewer, never to publish. Staff may publish unattended once their
-    signal combination has earned it. Everyone else is never named -- their name is typically
-    already spoken in the transcript, and the point is to decline to manufacture a durable,
-    searchable speaker identity for a private citizen, not to conceal anything.
+    Members need **two** independent things before their name publishes unattended, because two
+    different questions are being asked and one answer does not cover the other:
+
+    * *Who is this person, spelled how?* — settled per person, by a small number of human rulings
+      (`person_established`) or by an approved voice profile. This is what a reviewer is actually
+      good at, and it is where an ASR misspelling gets corrected.
+    * *Is this cluster that person, here, in this meeting?* — carried entirely by the signals that
+      agreed, which is what the precision table measures. Confirming a member four times says
+      nothing about whether a *fifth* meeting's cluster is really them, so dropping this check
+      would let a well-known name be attached on a combination never shown to be reliable. For a
+      tier that earns a cross-meeting speaker page, that misattribution is worse than silence.
+
+    Staff need only the second, having no page and no per-person confirmation by policy. Everyone
+    else is never named -- their name is typically already spoken in the transcript, and the point
+    is to decline to manufacture a durable, searchable speaker identity for a private citizen.
     """
     if candidate.tier == TIER_OTHER:
         return NamingDecision(candidate, publish=False, needs_review=False, reason="tier-other")
@@ -293,14 +361,19 @@ def decide(
             candidate, publish=False, needs_review=False, reason="insufficient-agreement"
         )
     if candidate.tier == TIER_MEMBER:
-        already = {_norm(name) for name in confirmed_names}
-        if _norm(candidate.display_name) in already:
-            return NamingDecision(
-                candidate, publish=True, needs_review=False, reason="member-confirmed"
-            )
-        return NamingDecision(
-            candidate, publish=False, needs_review=True, reason="member-awaiting-confirmation"
+        established = _norm(candidate.display_name) in {
+            _norm(name) for name in confirmed_names
+        } or table.person_established(
+            candidate.display_name,
+            city_slug=city_slug,
+            body=body,
+            min_verdicts=min_member_verdicts,
+            min_precision=min_precision,
         )
+        if not established:
+            return NamingDecision(
+                candidate, publish=False, needs_review=True, reason="member-awaiting-confirmation"
+            )
     key = candidate.combination_key
     if not table.trusted(key, min_verdicts=min_verdicts, min_precision=min_precision):
         # Fail-closed cold start: nothing publishes until the combination has evidence.
@@ -309,12 +382,14 @@ def decide(
         )
     if table.city_diverges(key, city_slug=city_slug):
         return NamingDecision(candidate, publish=False, needs_review=True, reason="city-divergence")
-    return NamingDecision(candidate, publish=True, needs_review=False, reason="combination-trusted")
+    reason = "member-established" if candidate.tier == TIER_MEMBER else "combination-trusted"
+    return NamingDecision(candidate, publish=True, needs_review=False, reason=reason)
 
 
 __all__ = [
     "DEFAULT_CITY_DIVERGENCE_MARGIN",
     "DEFAULT_CITY_MIN_VERDICTS",
+    "DEFAULT_MIN_MEMBER_VERDICTS",
     "DEFAULT_MIN_PRECISION",
     "DEFAULT_MIN_VERDICTS",
     "ORIGINATING_SIGNALS",

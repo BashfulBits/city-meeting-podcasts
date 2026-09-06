@@ -1402,3 +1402,44 @@ def test_a_roster_overlapping_prior_meetings_is_not_flagged(tmp_path):
     ep.minutes_roster = [{"name": "Jane Doe"}, {"name": "New Member"}]
     stats = SpeakerIdentityStage().process(None, city, [ep], ctx)
     assert "minutes-roster-disjoint-from-membership" not in stats.quality_counts
+
+
+def test_a_misspelled_cue_name_fuses_with_its_official_roster_spelling(tmp_path):
+    """The correction path this project assumed it had. `fuse_proposals` groups on the normalized
+    name, so a cue heard as "Gerrard Hudspeth" and a roster reading "Gerard Hudspeth" were two
+    candidates carrying one signal each -- both failing the agreement rule, so the member was
+    silently never named and the minutes could not correct a spelling they never met."""
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    # The stage's fixture words say "Council Member Jane Doe"; the official roster carries a
+    # doubled-letter variant, the shape OCR and ASR both routinely produce on civic surnames.
+    ep.minutes_roster = [{"name": "Jane Doee", "status": "present", "section": "members"}]
+    evaluation = _run_identity_stage(tmp_path, city, ep, ctx)
+    rows = {row["display_name"]: row for row in evaluation["naming_candidates"].values()}
+    # One candidate, under the *official* spelling, carrying both signals -- not two orphans that
+    # each fail the agreement rule.
+    assert "Jane Doee" in rows
+    assert set(rows["Jane Doee"]["signals"]) >= {"chair-reference", "roster"}
+    assert "Jane Doe" not in rows
+
+
+def test_canonicalization_never_collapses_two_similar_officials():
+    """Two officials on one body must never be merged into each other -- the misattribution this
+    whole mechanism has to avoid buying."""
+    from citypods.speakers import canonical_name
+
+    roster = ["John Smith", "Jane Smith"]
+    assert canonical_name("John Smith", roster) == "John Smith"
+    assert canonical_name("Jane Smith", roster) == "Jane Smith"
+    assert canonical_name("Totally Different", roster) == "Totally Different"
+    # A realistic ASR variant still resolves to the one official spelling it is close to.
+    assert canonical_name("Gerrard Hudspeth", ["Gerard Hudspeth"]) == "Gerard Hudspeth"
+
+
+def test_canonicalization_leaves_a_spelling_it_cannot_safely_merge():
+    """Known limitations, all failing in the safe direction -- a review item, never a wrong name.
+    Homophones diverge too far to score as one name, and short names carry so little signal per
+    character that a single letter costs more ratio than the threshold allows."""
+    from citypods.speakers import canonical_name
+
+    assert canonical_name("Vicky Bird", ["Vicki Byrd"]) == "Vicky Bird"
+    assert canonical_name("Jane Doh", ["Jane Doe"]) == "Jane Doh"

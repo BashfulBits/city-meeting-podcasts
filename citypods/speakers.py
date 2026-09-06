@@ -978,6 +978,53 @@ def assign_turn(
     return result
 
 
+# Whole-string similarity at which an ASR-heard name is taken to be a misspelling of an official
+# one. Calibrated against real civic name pairs rather than picked: "Gerard/Gerrard Hudspeth"
+# (0.97), "Paul Meltzer/Melzer" (0.96), "Alison Maguire/McGuire" (0.93) and "Brian/Bryan Beck"
+# (0.90) are the same person; "John Smith"/"Jane Smith" (0.80) and "Chris Watts"/"Chris Watkins"
+# (0.83) are not. 0.90 separates them. Known limitation: homophone spellings that diverge more
+# than that ("Vicky Bird"/"Vicki Byrd", 0.80) are *not* merged -- they fail safe to a review item
+# rather than risk snapping one official's name onto another's.
+_NAME_MATCH_RATIO = 0.90
+
+
+def canonical_name(name: str, known_names: Iterable[str]) -> str:
+    """Snap an ASR-heard name onto its official spelling from the minutes, when unambiguous.
+
+    The correction path this project assumed it had, and did not: `fuse_proposals` groups on the
+    *normalized* name, so "Vicky Bird" from a chair cue and "Vicki Byrd" from the roster were two
+    separate candidates that each carried one signal and therefore both failed the agreement rule.
+    A misspelled member produced no name at all -- fail-closed, but it also meant published
+    minutes could never correct a spelling they never met.
+
+    Only rewrites on an unambiguous match: a tie between two known names leaves the input alone,
+    so two similarly-named officials on one body are never silently collapsed into one.
+    """
+    from difflib import SequenceMatcher
+
+    wanted = _norm(name)
+    if not wanted:
+        return name
+    candidates = {_norm(known): str(known).strip() for known in known_names if str(known).strip()}
+    if wanted in candidates:
+        return candidates[wanted]
+    scored = sorted(
+        (
+            (SequenceMatcher(None, wanted, candidate).ratio(), spelling)
+            for candidate, spelling in candidates.items()
+            # A differing token count is a different name shape ("Deb Armintor" vs "Deb Armintor
+            # Jr"), not a spelling variant of the same one.
+            if len(candidate.split()) == len(wanted.split())
+        ),
+        reverse=True,
+    )
+    if not scored or scored[0][0] < _NAME_MATCH_RATIO:
+        return name
+    if len(scored) > 1 and scored[1][0] >= _NAME_MATCH_RATIO:
+        return name  # ambiguous: two officials are equally plausible, so change nothing
+    return scored[0][1]
+
+
 def body_membership(
     registry: Mapping[str, Any], *, city_slug: str, body: str | None
 ) -> list[dict[str, Any]]:
@@ -1084,6 +1131,7 @@ __all__ = [
     "body_membership",
     "chair_reference_candidates",
     "calibration_cell",
+    "canonical_name",
     "classify_speaker_tier",
     "cue_identity",
     "empty_registry",

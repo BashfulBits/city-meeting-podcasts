@@ -159,25 +159,88 @@ def _staff_candidate() -> FusedCandidate:
     return FusedCandidate("c1", "Matt Bodine", TIER_STAFF, (SIGNAL_SELF_INTRO, SIGNAL_TITLE_CUE))
 
 
-def test_members_always_need_human_confirmation_however_strong_the_signals():
+def test_an_unconfirmed_member_is_never_auto_named_however_strong_the_signals():
+    """Combination evidence answers "is this cluster whoever the signals say"; it never answers
+    "is this person real, and spelled this way". A member with no human ruling and no voice
+    profile therefore stays in review no matter how well the combination performs elsewhere."""
     table = PrecisionTable()
     candidate = FusedCandidate(
         "c1", "Jane Doe", TIER_MEMBER, (SIGNAL_CHAIR_CUE, SIGNAL_ROSTER, SIGNAL_VOICE_PRINT)
     )
-    for _ in range(500):  # overwhelming history must not buy a member an automatic name
+    for _ in range(500):
         table.record(candidate.combination_key, city_slug="denton-tx", agreed=True)
-    decision = decide(candidate, table, city_slug="denton-tx")
+    decision = decide(candidate, table, city_slug="denton-tx", body="City Council")
     assert not decision.publish
     assert decision.needs_review
     assert decision.reason == "member-awaiting-confirmation"
 
 
-def test_a_confirmed_member_publishes():
+def _member_candidate() -> FusedCandidate:
+    return FusedCandidate("c1", "Jane Doe", TIER_MEMBER, (SIGNAL_CHAIR_CUE, SIGNAL_ROSTER))
+
+
+def _trust_combination(table: PrecisionTable, candidate: FusedCandidate, city="denton-tx") -> None:
+    for _ in range(20):
+        table.record(candidate.combination_key, city_slug=city, agreed=True)
+
+
+def test_a_confirmed_member_still_needs_a_proven_signal_combination():
+    """Knowing who Jane Doe is says nothing about whether *this* cluster is her. Person identity
+    and per-occurrence attribution are different questions, and only the second is what the
+    signals answer -- so an established member on an unproven combination goes to review."""
     table = PrecisionTable()
-    candidate = FusedCandidate("c1", "Jane Doe", TIER_MEMBER, (SIGNAL_CHAIR_CUE, SIGNAL_ROSTER))
+    decision = decide(
+        _member_candidate(), table, city_slug="denton-tx", confirmed_names=["Jane Doe"]
+    )
+    assert not decision.publish
+    assert decision.reason == "combination-untrusted"
+
+
+def test_a_confirmed_member_publishes_once_the_combination_is_proven():
+    table = PrecisionTable()
+    candidate = _member_candidate()
+    _trust_combination(table, candidate)
     decision = decide(candidate, table, city_slug="denton-tx", confirmed_names=["Jane Doe"])
     assert decision.publish
     assert not decision.needs_review
+    assert decision.reason == "member-established"
+
+
+def test_four_human_rulings_establish_a_member_without_a_voice_profile():
+    """The path that keeps member naming from needing a human forever: a handful of rulings settle
+    the identity and its spelling, after which the combination gate alone governs (§C.4.12)."""
+    table = PrecisionTable()
+    candidate = _member_candidate()
+    _trust_combination(table, candidate)
+    for _ in range(3):
+        table.record_person("Jane Doe", city_slug="denton-tx", body="City Council", agreed=True)
+    assert not decide(candidate, table, city_slug="denton-tx", body="City Council").publish
+
+    table.record_person("Jane Doe", city_slug="denton-tx", body="City Council", agreed=True)
+    assert decide(candidate, table, city_slug="denton-tx", body="City Council").publish
+
+
+def test_a_member_established_on_one_body_is_not_established_on_another():
+    """A person belongs to one body, so there is nothing for a second body to inherit -- unlike
+    combination statistics, which pool globally on purpose."""
+    table = PrecisionTable()
+    candidate = _member_candidate()
+    _trust_combination(table, candidate)
+    for _ in range(4):
+        table.record_person("Jane Doe", city_slug="denton-tx", body="City Council", agreed=True)
+    assert decide(candidate, table, city_slug="denton-tx", body="City Council").publish
+    assert not decide(candidate, table, city_slug="denton-tx", body="Board of Ethics").publish
+
+
+def test_a_member_whose_rulings_go_bad_loses_established_status():
+    table = PrecisionTable()
+    candidate = _member_candidate()
+    _trust_combination(table, candidate)
+    for _ in range(4):
+        table.record_person("Jane Doe", city_slug="denton-tx", body="City Council", agreed=True)
+    assert decide(candidate, table, city_slug="denton-tx", body="City Council").publish
+    table.record_person("Jane Doe", city_slug="denton-tx", body="City Council", agreed=False)
+    assert not decide(candidate, table, city_slug="denton-tx", body="City Council").publish
 
 
 def test_other_tier_is_never_named_and_never_queued():

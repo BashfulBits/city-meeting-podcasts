@@ -1272,8 +1272,12 @@ def episode_to_record(ep: Episode) -> dict:
         "minutes_votes": {"url": ep.minutes_votes_url, "items": ep.minutes_votes}
         if ep.minutes_votes_url or ep.minutes_votes
         else None,
-        "minutes_roster": {"url": ep.minutes_roster_url, "members": ep.minutes_roster}
-        if ep.minutes_roster_url or ep.minutes_roster
+        "minutes_roster": {
+            "url": ep.minutes_roster_url,
+            "members": ep.minutes_roster,
+            "status": ep.minutes_roster_status,
+        }
+        if ep.minutes_roster_url or ep.minutes_roster or ep.minutes_roster_status
         else None,
         # v2 transcript block (INFRA-8): replaces old transcript_url (external link).
         # External provider transcript links remain in ep.links["transcript"].
@@ -1552,6 +1556,7 @@ def record_to_episode(rec: dict) -> Episode:
         minutes_votes=votes.get("items") if isinstance(votes.get("items"), list) else [],
         minutes_roster_url=roster.get("url"),
         minutes_roster=roster.get("members") if isinstance(roster.get("members"), list) else [],
+        minutes_roster_status=roster.get("status"),
         source_chapters=rec.get("source_chapters") or [],
         chapters=rec.get("chapters") or [],
         generated_agenda_candidates=(
@@ -2190,6 +2195,7 @@ def merge_persisted(episodes: list[Episode], records: dict) -> None:
         ep.minutes_votes = votes.get("items") if isinstance(votes.get("items"), list) else []
         ep.minutes_roster_url = roster.get("url")
         ep.minutes_roster = roster.get("members") if isinstance(roster.get("members"), list) else []
+        ep.minutes_roster_status = roster.get("status") or ep.minutes_roster_status
         ep.source_chapters = rec.get("source_chapters") or ep.source_chapters
         ep.chapters = rec.get("chapters") or ep.chapters
         ep.chapters_basis = rec.get("chapters_basis", ep.chapters_basis)

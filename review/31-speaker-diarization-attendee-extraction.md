@@ -696,6 +696,56 @@ approves a golden reference for them" — the exact review burden this policy ex
 published fused candidate assigns its name to the cluster's turns directly, with
 `method: "cue-fusion"` distinguishing that provenance from `"voice-profile"` in any later audit.
 
+**C.4.12 Members become established, not permanently gated (2026-09-06, supersedes "always
+human-confirmed").** §C.4.1's original rule — every member occurrence needs a human — does not scale
+past a pilot: it is a per-*meeting* tax that never falls, for the tier that appears in every meeting.
+Replaced with a per-*person* threshold: **4 correct rulings** (`DEFAULT_MIN_MEMBER_VERDICTS`) settle who
+someone is and how their name is spelled, after which that person no longer needs a reviewer.
+
+**Both keys are required, not either.** A member publishes unattended only when the person is
+established *and* the signal combination is trusted, because the two answer different questions:
+
+| Question | Answered by | Scope |
+|---|---|---|
+| Who is this person, spelled how? | 4 human rulings, or an approved voice profile | per person, per body |
+| Is *this* cluster that person, here? | the signal combination's precision | per combination, pooled globally |
+
+Confirming Jane Doe four times says nothing about whether a *fifth* meeting's cluster is really her.
+Dropping the combination check would let a well-known name be attached on evidence never shown to be
+reliable — and members are the tier that earns a cross-meeting speaker page, so a misattribution
+compounds across every meeting rather than staying local. This also tightened the previous behaviour:
+a member with an approved voice profile used to publish immediately, bypassing the combination gate.
+
+The cost is near zero because **the same reviews feed both counters**. Reviewing member candidates is
+what generates combination verdicts, so the bootstrap is one queue: the first ~20 member reviews in the
+pilot city establish `member:chair-reference+roster` globally *and* confirm ~5 members. After that a new
+member costs 4 reviews, and a new city inherits the trusted combination and costs ~0.
+
+Person statistics are keyed `(city, body, name)` and never pooled — a person belongs to one body, so
+there is nothing for a second body to inherit. Established status is revocable on the same
+`min_precision` bar as combinations, so a person whose rulings later go bad returns to review rather
+than keeping status earned early.
+
+**C.4.13 Spelling is corrected by canonicalization, not by review.** The premise behind a low member
+threshold — "later minutes will correct ASR spellings" — was not true when checked: `fuse_proposals`
+groups on the *normalized* name, so a chair cue heard as "Gerrard Hudspeth" and a roster reading
+"Gerard Hudspeth" were two candidates carrying one signal each. Both then failed the agreement rule, so
+a misspelled member produced **no name at all** — fail-closed, but it also meant published minutes could
+never correct a spelling they never met.
+
+`canonical_name()` snaps a heard name onto the official spelling (roster first, standing membership
+while minutes are pending) before fusion, so the two proposals meet, the candidate carries the official
+spelling, and later minutes re-canonicalize automatically. Threshold 0.90 whole-string similarity,
+calibrated against real civic pairs rather than picked: Gerard/Gerrard Hudspeth (0.97), Paul
+Meltzer/Melzer (0.96), Alison Maguire/McGuire (0.93) and Brian/Bryan Beck (0.90) are one person, while
+John/Jane Smith (0.80) and Chris Watts/Watkins (0.83) are not. A tie between two known names rewrites
+nothing, so two similarly-named officials on one body are never collapsed. Known limitations, all
+failing toward a review item rather than a wrong name: homophones that diverge further ("Vicky
+Bird"/"Vicki Byrd", 0.80), and very short names, where one letter costs more ratio than the bar allows.
+
+This *reduces* review load rather than adding to it — misspelled members currently produce nothing at
+all, so every one of them is a member who silently never gets named.
+
 **C.4.11 The per-cell benchmark precondition is retired with the gate.** The old policy also required a
 private gold-set benchmark per `(city, body, engine, capture context)` before that cell could publish.
 Its purpose was to pin down *which engine* a cell had been validated on; §A.1a made engine selection a

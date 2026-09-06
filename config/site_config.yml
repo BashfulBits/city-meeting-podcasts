@@ -696,6 +696,7 @@ speakers:
   # naming:
   #   min_verdicts: 20      # human rulings on a combination before it may auto-admit
   #   min_precision: 0.95   # required agreement between that combination and those rulings
+  #   min_member_verdicts: 4  # correct rulings that establish one member's name/spelling
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):

@@ -20,6 +20,7 @@ from citypods.audit import (
     check_meetings_url,
     check_provider_error_rates,
     check_rehost_backlog,
+    check_roster_quality,
     check_staleness,
     check_unexpected_bodies,
     check_view_cap,
@@ -1030,3 +1031,46 @@ def test_audit_all_unexpected_evidence_only_skips_view_counts(monkeypatch, tmp_p
         now=NOW,
     )
     assert len(view_count_calls) == 0
+
+
+def _roster_record(status, *, body="City Council", uid_date="2026-05-01"):
+    return {
+        "published": uid_date,
+        "body": body,
+        "minutes_roster": {"status": status},
+        "minutes_text": {"url": "https://city.example/minutes.pdf?Signature=secret"},
+    }
+
+
+def test_roster_quality_reports_a_disjoint_roster_on_sight():
+    """A disjoint roster is worse than no roster: it narrows the allowed speaker set, so it
+    actively suppresses correct attribution rather than merely failing to help. One is enough."""
+    records = {"u1": _roster_record("disjoint"), "u2": _roster_record("parsed")}
+    finding = check_roster_quality("council", records, body="City Council")
+    assert finding is not None
+    assert finding.check == "roster-quality"
+    assert "share nobody" in finding.message
+    assert "Resolution:" in finding.message
+    # The minutes URL is diagnostic, but must not carry signed material into a public issue.
+    assert "secret" not in finding.message
+
+
+def test_roster_quality_ignores_a_single_unparsed_document():
+    """One unparsed minutes document is normal variation across civic document formats; only a
+    feed-wide pattern indicates a parser gap worth a maintainer's time."""
+    records = {"u1": _roster_record("empty"), "u2": _roster_record("parsed")}
+    assert check_roster_quality("council", records, body="City Council") is None
+
+
+def test_roster_quality_reports_a_feed_wide_parse_failure():
+    records = {f"u{i}": _roster_record("empty") for i in range(4)}
+    records["ok"] = _roster_record("parsed")
+    finding = check_roster_quality("council", records, body="City Council")
+    assert finding is not None
+    assert "4 of 5 published minutes yielded no usable roster" in finding.message
+
+
+def test_roster_quality_is_silent_when_minutes_were_never_fetched():
+    """Absent minutes are not a roster defect -- they are the normal weeks-long publication lag,
+    and flagging them would fire on every recent meeting in the catalog."""
+    assert check_roster_quality("council", {"u1": {"published": "2026-05-01"}}) is None
