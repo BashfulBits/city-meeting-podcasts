@@ -1531,3 +1531,36 @@ def test_a_multi_word_office_is_not_split_by_its_shorter_prefix():
     that dedup cannot collapse, because the two names differ."""
     found = chair_reference_candidates(_spoken("Mayor Pro Tem Brian Beck."), _CUE_TURNS)
     assert [row["display_name"] for row in found] == ["Brian Beck"]
+
+
+def test_a_minutes_spelling_change_does_not_orphan_an_approved_profile(tmp_path):
+    """Canonicalization rewrites a candidate to the *official* spelling, so every comparison made
+    against a stored name has to be canonicalized on the same basis. Otherwise a member whose
+    registry entry predates a minutes spelling change fails the established check forever --
+    silently, and despite holding an approved voice profile."""
+    from citypods.naming import (
+        SIGNAL_CHAIR_CUE,
+        SIGNAL_ROSTER,
+        FusedCandidate,
+        PrecisionTable,
+        decide,
+    )
+    from citypods.speakers import TIER_MEMBER, canonical_name
+
+    table = PrecisionTable()
+    candidate = FusedCandidate(
+        "c1", "Gerard Hudspeth", TIER_MEMBER, (SIGNAL_CHAIR_CUE, SIGNAL_ROSTER)
+    )
+    for _ in range(20):
+        table.record(candidate.combination_key, city_slug="denton-tx", agreed=True)
+
+    stored = ["Gerrard Hudspeth"]  # registry spelling, from before the minutes were corrected
+    raw = decide(candidate, table, city_slug="denton-tx", body="Council", confirmed_names=stored)
+    assert raw.reason == "member-awaiting-confirmation"  # the defect, if left uncanonicalized
+
+    official = [canonical_name(name, ["Gerard Hudspeth"]) for name in stored]
+    fixed = decide(
+        candidate, table, city_slug="denton-tx", body="Council", confirmed_names=official
+    )
+    assert fixed.publish
+    assert fixed.reason == "member-established"

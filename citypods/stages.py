@@ -7633,7 +7633,11 @@ class SpeakerIdentityStage:
         # Official spellings this meeting can correct an ASR-heard name against. The roster is
         # preferred (it is this meeting's own document); standing membership covers the weeks
         # before it publishes.
-        official_names = [str(row.get("name")) for row in (roster or ()) or (membership or ())]
+        official_names = [
+            str(row.get("name"))
+            for row in (list(roster or ()) or list(membership or ()))
+            if isinstance(row, Mapping) and str(row.get("name") or "").strip()
+        ]
 
         for candidate in cue_candidates:
             cluster = str(candidate.get("cluster") or "")
@@ -7687,8 +7691,12 @@ class SpeakerIdentityStage:
                         naming.NameProposal(proposal.cluster, proposal.display_name, signal)
                     )
 
+        # Canonicalized on the same basis as the proposals above, or the comparison is made
+        # against a different spelling of the same name: a member whose registry entry predates a
+        # minutes spelling change would fail the established check forever, silently, despite
+        # holding an approved voice profile.
         confirmed_names = [
-            str(person.get("display_name") or "")
+            canonical_name(str(person.get("display_name") or ""), official_names)
             for person in (registry.get("people") or {}).values()
             if isinstance(person, Mapping) and person.get("status") == "active"
         ]
@@ -7725,6 +7733,7 @@ class SpeakerIdentityStage:
         from citypods.speakers import (
             body_key,
             body_membership,
+            canonical_name,
             chair_reference_candidates,
             cue_identity,
             load_registry,
@@ -7972,12 +7981,15 @@ class SpeakerIdentityStage:
                         allowed_ids=allowed_ids,
                     )
                 )
+            episode_membership = body_membership(
+                registry, city_slug=canonical_city_slug, body=ep.body
+            )
             decisions = self._naming_decisions(
                 private_turns,
                 matches_by_turn,
                 cue_candidates=cue_candidates,
                 roster=ep.minutes_roster,
-                membership=body_membership(registry, city_slug=canonical_city_slug, body=ep.body),
+                membership=episode_membership,
                 registry=registry,
                 precision_table=precision_table,
                 city_slug=canonical_city_slug,
@@ -8052,11 +8064,24 @@ class SpeakerIdentityStage:
             # the gate cleared on agreeing cues alone -- the staff presenter with no profile yet,
             # which is most of them -- are named here instead, or they would stay anonymous until
             # someone hand-approved a golden reference.
-            person_ids = {
-                _norm_display(person.get("display_name")): str(ident)
-                for ident, person in (registry.get("people") or {}).items()
-                if isinstance(person, dict) and person.get("display_name")
-            }
+            # Indexed under both the stored spelling and the canonical one, for the same reason
+            # `confirmed_names` is canonicalized: a published candidate carries the official
+            # spelling, so a registry entry predating a minutes spelling change would miss here
+            # and the turn would lose its `speaker_id` -- and with it the speaker-page link.
+            official_names = [
+                str(row.get("name"))
+                for row in (list(ep.minutes_roster or ()) or list(episode_membership or ()))
+                if isinstance(row, Mapping) and str(row.get("name") or "").strip()
+            ]
+            person_ids: dict[str, str] = {}
+            for ident, person in (registry.get("people") or {}).items():
+                if not isinstance(person, dict) or not person.get("display_name"):
+                    continue
+                stored = str(person.get("display_name"))
+                person_ids.setdefault(_norm_display(stored), str(ident))
+                person_ids.setdefault(
+                    _norm_display(canonical_name(stored, official_names)), str(ident)
+                )
             for decision in decisions:
                 if not decision.publish:
                     continue

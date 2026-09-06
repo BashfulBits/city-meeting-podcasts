@@ -696,6 +696,35 @@ approves a golden reference for them" — the exact review burden this policy ex
 published fused candidate assigns its name to the cluster's turns directly, with
 `method: "cue-fusion"` distinguishing that provenance from `"voice-profile"` in any later audit.
 
+**C.3a Cue vocabularies, and why they are recall-first (2026-09-06).** Two vocabularies were too
+narrow to work outside one city's conventions:
+
+* **Titles.** Only the "Council Member" family was recognised, so commissions, boards, New England
+  selectboards and NJ freeholder boards named their own members in words the extractor did not know.
+  Now covers councilor/councillor, council person, alderperson, selectman/-woman/-person, freeholder,
+  assembly member, board/commission/committee member, the chair variants and the deputy/vice mayor
+  family. **Member titles only** — this feeds `_ELECTED_TITLE_CUES`, so a staff-ish addition would tier
+  a City Manager as a member and hand them the speaker page §C.4.1 withholds. "Mayor Pro Tem" is its own
+  office (the member who presides in the mayor's absence), not a qualified "Mayor".
+* **Recognition cues, keyed on the verb alone.** Requiring a presider title meant the verb had to follow
+  it directly, so "the chair recognizes X" matched while "Chairman Smith calls on X" — the presider
+  *named* — matched nothing. Enumerating presiders cannot fix that, because a name sits between the
+  title and the verb.
+
+**Recall-first, by maintainer direction.** A bare "Council Member Beck" is a sufficient introduction
+signal; the recogniser's own title is never required. A spurious extraction carries exactly one signal,
+so it cannot reach the two-signal agreement rule, cannot match a roster, and tiers as `other` — it is
+discarded at no cost. A *missed* introduction silently costs a member their name. Auto-admission needs a
+trusted combination on top, which in practice means the voice print agrees too, so the asymmetry is
+safe to lean on.
+
+**Two live defects found while widening this**, both of which the wider vocabulary would have
+multiplied: "the mayor recognizes Jane Doe" produced the *name* "recognizes Jane Doe" (a title matching
+before a verb starts the name scan at the verb — recognition verbs are now name stop words, which makes
+every title token safe to add); and "Chairman Smith calls on Councilor Jane Doe" proposed **Smith** for
+Jane's turn, the presider naming themselves, so a title-announcement immediately followed by a
+recognition verb is now suppressed.
+
 **C.4.12 Members become established, not permanently gated (2026-09-06, supersedes "always
 human-confirmed").** §C.4.1's original rule — every member occurrence needs a human — does not scale
 past a pilot: it is a per-*meeting* tax that never falls, for the tier that appears in every meeting.
