@@ -95,6 +95,31 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **R7 naming closes its feedback loop, and covers the minutes-lag window (review/31 §C.5).** Three
+  fixes that together make the adaptive gate able to actually learn. (1) `naming_candidates` never
+  reached the weekly review queue — `speaker_review.package` built its pool from `candidates` and
+  `reference_candidates` only — so no verdict could ever reach the precision table and no signal
+  combination could ever become trusted. The three candidate classes are now a table keyed by the
+  ledger that holds them, which also fixes a second break of the same shape: `self-introduction`
+  rows live in `reference_candidates`, but only the literal `"chair-reference"` kind was
+  recognized, so a self-introduction rendered as a shadow-match issue and then failed ingest
+  against a ledger it was never in. (2) The queue was ordered by `candidate_id` hash; with a
+  weekly limit of 8 that ordering, not the backlog, decides how fast the gate learns, so it now
+  ranks references (one approval mints a voice profile that names its subject in every past and
+  future meeting) above naming verdicts above shadow matches, better-corroborated first within
+  each class. (3) A member speaking in last night's meeting has no roster for weeks and so had
+  exactly one signal and never reached review; `body_membership()` now supplies the standing
+  "who sits on this body" that `observe_attendance` already accumulates and
+  `refresh_membership_status` already decays — no "last N meetings" window to pick or to get wrong
+  across an election. It is a **distinct** signal from `SIGNAL_ROSTER` (a roster says someone
+  attended *this* meeting; membership says they sit on the body — sharing a precision bucket would
+  blend two different-quality signals), it yields once real minutes arrive, and it never reaches
+  `roster_person_ids`, which uses a real roster to *remove* names. `UNTIMED_SIGNALS` now names the
+  invariant that roster and membership can never name anyone in any combination, however many
+  agree — previously true only as a side effect of the originating-signal rule. Also scopes
+  `allowed_ids` to the episode's own body, which review/31 §C.4.3 required and which was invisible
+  while a single body was piloted.
+
 - **R7 speaker naming is a tiered, self-tuning gate instead of a flat per-cell threshold
   (review/31 §C.4; new `citypods/naming.py`).** `auto_publish_allowed`'s policy — 30 reviews × 30
   days × 95% precision per `(city, body, engine_recipe, capture_context)` cell, plus a private

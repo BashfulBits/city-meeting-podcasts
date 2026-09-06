@@ -77,7 +77,7 @@ import re
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from concurrent.futures.process import BrokenProcessPool
@@ -7495,6 +7495,7 @@ class SpeakerIdentityStage:
         *,
         cue_candidates: list[dict[str, Any]],
         roster: list[dict[str, Any]],
+        membership: list[dict[str, Any]],
         registry: Mapping[str, Any],
         precision_table,
         city_slug: str,
@@ -7514,11 +7515,18 @@ class SpeakerIdentityStage:
         from citypods.speakers import _norm as norm_name
         from citypods.speakers import classify_speaker_tier
 
-        roster_names = {
-            norm_name(item.get("name"))
-            for item in roster or ()
-            if isinstance(item, Mapping) and str(item.get("name") or "").strip()
-        }
+        def _names(rows: Iterable[Mapping[str, Any]]) -> set[str]:
+            return {
+                norm_name(item.get("name"))
+                for item in rows or ()
+                if isinstance(item, Mapping) and str(item.get("name") or "").strip()
+            }
+
+        roster_names = _names(roster)
+        # Membership only speaks where this meeting's own minutes have not arrived yet. Once they
+        # have, the roster is both stricter and better evidence, and letting the standing list add
+        # a second untimed signal on top would only inflate the combination.
+        membership_names = set() if roster_names else _names(membership)
         cue_kinds_by_name: dict[str, set[str]] = {}
         proposals: list[naming.NameProposal] = []
 
@@ -7555,25 +7563,34 @@ class SpeakerIdentityStage:
             if name and cluster:
                 proposals.append(naming.NameProposal(cluster, name, naming.SIGNAL_VOICE_PRINT))
 
-        # Roster corroborates a name something else already proposed; it never originates one, so
-        # it is added only against existing proposals rather than iterated in its own right.
+        # Both untimed signals corroborate a name something else already proposed; neither ever
+        # originates one, so they are added only against existing proposals rather than iterated
+        # in their own right. Two of them together still cannot name anyone -- `UNTIMED_SIGNALS`.
         for proposal in list(proposals):
-            if norm_name(proposal.display_name) in roster_names:
-                proposals.append(
-                    naming.NameProposal(
-                        proposal.cluster, proposal.display_name, naming.SIGNAL_ROSTER
+            normalized = norm_name(proposal.display_name)
+            for names, signal in (
+                (roster_names, naming.SIGNAL_ROSTER),
+                (membership_names, naming.SIGNAL_MEMBERSHIP),
+            ):
+                if normalized in names:
+                    proposals.append(
+                        naming.NameProposal(proposal.cluster, proposal.display_name, signal)
                     )
-                )
 
         confirmed_names = [
             str(person.get("display_name") or "")
             for person in (registry.get("people") or {}).values()
             if isinstance(person, Mapping) and person.get("status") == "active"
         ]
+        # Tiering asks "is this person on the body", which is exactly what standing membership
+        # answers -- so it stands in for the roster here while minutes are pending. This is safe
+        # in a way feeding `roster_person_ids` would not be: tiering only decides how much
+        # scrutiny a name gets, it never removes a name or marks one confirmed.
+        tier_roster = list(roster or ()) or list(membership or ())
 
         def _tier_of(name: str) -> str:
             return classify_speaker_tier(
-                name, roster=roster or (), cue_kinds=cue_kinds_by_name.get(norm_name(name), ())
+                name, roster=tier_roster, cue_kinds=cue_kinds_by_name.get(norm_name(name), ())
             )
 
         return [
@@ -7594,6 +7611,8 @@ class SpeakerIdentityStage:
         from citypods import naming
         from citypods.speakers import _norm as _norm_display
         from citypods.speakers import (
+            body_key,
+            body_membership,
             chair_reference_candidates,
             cue_identity,
             load_registry,
@@ -7750,10 +7769,17 @@ class SpeakerIdentityStage:
                             "embedding_recipe": embedding_recipe,
                             "capture_context": capture_context,
                         }
+            # Scoped to this body, not the whole city registry: review/31 §C.4.3 rules out a
+            # global person namespace because matching against everyone the project has ever seen
+            # degrades accuracy for no benefit. Invisible while one body is piloted; wrong the
+            # moment a second body in the same city has profiles.
+            episode_body_key = body_key(canonical_city_slug, ep.body)
             allowed_ids = {
                 ident
                 for ident, person in (registry.get("people") or {}).items()
-                if isinstance(person, dict) and person.get("status") == "active"
+                if isinstance(person, dict)
+                and person.get("status") == "active"
+                and person.get("body_key") == episode_body_key
             }
             # Once minutes arrive their roster is a correction constraint.  It does not make a
             # name true by itself, but it may silently replace a previous provisional voice-only
@@ -7784,6 +7810,7 @@ class SpeakerIdentityStage:
                 matches_by_turn,
                 cue_candidates=cue_candidates,
                 roster=ep.minutes_roster,
+                membership=body_membership(registry, city_slug=canonical_city_slug, body=ep.body),
                 registry=registry,
                 precision_table=precision_table,
                 city_slug=canonical_city_slug,
@@ -7819,6 +7846,7 @@ class SpeakerIdentityStage:
                 if candidate_id not in naming_rows:
                     stats.quality("naming-candidate")
                 naming_rows[candidate_id] = {
+                    "kind": "naming",
                     "candidate_id": candidate_id,
                     "city_slug": canonical_city_slug,
                     "body": ep.body or "",

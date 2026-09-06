@@ -959,6 +959,38 @@ def assign_turn(
     return result
 
 
+def body_membership(
+    registry: Mapping[str, Any], *, city_slug: str, body: str | None
+) -> list[dict[str, Any]]:
+    """Who currently sits on this body, carried forward from earlier meetings' minutes.
+
+    A meeting's own minutes are typically published weeks after the recording, so for the whole
+    window that matters most -- a new episode -- `ep.minutes_roster` is empty and a council member
+    has no corroborating signal at all. This is the standing answer to "who is on this body",
+    accumulated by `observe_attendance` from every prior meeting's roster and votes.
+
+    Deliberately not a fixed "union of the last N meetings": `refresh_membership_status` already
+    decays a person to `review_only` after `PROFILE_REVIEW_ONLY_AFTER_DAYS` without an
+    appearance, so turnover expires on its own and there is no N to pick or to get wrong across
+    an election.
+
+    Scoped by `body_key`, so the Board of Ethics never lends its members to the City Council.
+    Returns roster-shaped rows for reuse as tier evidence -- but the signal it backs is
+    `SIGNAL_MEMBERSHIP`, never `SIGNAL_ROSTER`: this says a person belongs to the body, not that
+    they attended *this* meeting, and the two must not share a precision bucket. It must also
+    never reach `roster_person_ids`, which uses a real roster to *remove* names.
+    """
+    scoped = body_key(city_slug, body)
+    return [
+        {"name": str(person.get("display_name") or "").strip()}
+        for person in (registry.get("people") or {}).values()
+        if isinstance(person, Mapping)
+        and person.get("body_key") == scoped
+        and person.get("status") in {"active", "probable"}
+        and str(person.get("display_name") or "").strip()
+    ]
+
+
 def cue_identity(
     display_name: str, *, signals: Iterable[str], speaker_id: str | None = None
 ) -> dict[str, Any]:
@@ -1019,6 +1051,7 @@ __all__ = [
     "TIER_STAFF",
     "assign_turn",
     "body_key",
+    "body_membership",
     "chair_reference_candidates",
     "calibration_cell",
     "classify_speaker_tier",

@@ -19,6 +19,7 @@ from citypods.speaker_review import (
 )
 from citypods.speakers import (
     assign_turn,
+    body_membership,
     calibration_cell,
     chair_reference_candidates,
     empty_registry,
@@ -363,6 +364,183 @@ def test_speaker_review_package_groups_reference_and_shadow_children(tmp_path, m
     batch = json.loads((out_dir / "review-batch.json").read_text())
     assert {row["kind"] for row in batch["children"]} == {"shadow-match", "chair-reference"}
     assert (out_dir / "parent.md").exists()
+
+
+def _review_state(**ledgers) -> dict:
+    return {"reviews": [], **ledgers}
+
+
+def _package(tmp_path, monkeypatch, state: dict, limit: int = 8):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(exist_ok=True)
+    (state_dir / "evaluation.json").write_text(json.dumps(state))
+    site = {
+        "speakers": {
+            "evaluation_state_path": "evaluation.json",
+            "registry_path": "registry.json",
+            "turn_evidence_path": "evidence.json",
+            "weekly_review_limit": limit,
+        }
+    }
+    monkeypatch.setattr("citypods.config.load_site_config", lambda _: site)
+    monkeypatch.setattr("citypods.state.resolve_state_dir", lambda *_args: state_dir)
+    monkeypatch.setattr("citypods.storage.make_storage", lambda *_args: object())
+    monkeypatch.setattr("citypods.statesync.pull_state", lambda *_args, **_kwargs: None)
+    out_dir = tmp_path / "review"
+    assert speaker_review_main(["package", "--out-dir", str(out_dir)]) == 0
+    return json.loads((out_dir / "review-batch.json").read_text()), out_dir
+
+
+def _naming_row(candidate_id: str, *, signals: list[str], name: str = "Matt Bodine") -> dict:
+    return {
+        "kind": "naming",
+        "candidate_id": candidate_id,
+        "city_slug": "demo-tx",
+        "body": "Council",
+        "engine_recipe": "sherpa:v1",
+        "capture_context": "chamber-v1",
+        "episode_uid": "one",
+        "cluster": "c1",
+        "display_name": name,
+        "tier": "staff",
+        "signals": signals,
+        "combination_key": f"staff:{'+'.join(signals)}",
+    }
+
+
+def test_naming_candidates_reach_the_weekly_review_queue(tmp_path, monkeypatch):
+    """Without this the adaptive gate can never open: naming verdicts are the *only* input to the
+    precision table, so a queue that cannot show a naming candidate means no combination ever
+    becomes trusted and staff are never auto-named."""
+    batch, out_dir = _package(
+        tmp_path,
+        monkeypatch,
+        _review_state(
+            naming_candidates={"r7-name-a": _naming_row("r7-name-a", signals=["self-introduction"])}
+        ),
+    )
+    assert [row["kind"] for row in batch["children"]] == ["naming"]
+    body = (out_dir / "r7-name-a.md").read_text()
+    assert "r7-naming-candidate-b64" in body
+    assert "Matt Bodine" in body
+
+
+def test_self_introduction_candidates_round_trip_as_reference_reviews(tmp_path, monkeypatch):
+    """`self-introduction` rows live in `reference_candidates` beside `chair-reference` ones. When
+    only the latter string was recognised, a self-introduction rendered as a shadow-match issue
+    and then failed ingest against a ledger it was never in."""
+    row = {
+        "kind": "self-introduction",
+        "candidate_id": "r7-ref-intro",
+        "city_slug": "demo-tx",
+        "body": "Council",
+        "engine_recipe": "sherpa:v1",
+        "capture_context": "chamber-v1",
+        "episode_uid": "one",
+        "start": 20.0,
+        "end": 40.0,
+        "display_name": "Matt Bodine",
+        "cue_start": 20.2,
+        "cue_end": 21.7,
+        "cue_text": "Matt Bodine, Assistant Planner",
+        "cue_kind": "name-then-title",
+        "cluster": "staff",
+    }
+    batch, out_dir = _package(
+        tmp_path, monkeypatch, _review_state(reference_candidates={row["candidate_id"]: row})
+    )
+    assert [child["kind"] for child in batch["children"]] == ["self-introduction"]
+    body = (out_dir / "r7-ref-intro.md").read_text()
+    assert "r7-reference-candidate-b64" in body
+    assert "Approve as a golden voice reference" in body
+    assert "The speaker introduces themselves as" in body
+
+
+def test_a_naming_verdict_round_trips_into_the_precision_table(tmp_path, monkeypatch):
+    """End-to-end for the feedback loop the whole adaptive gate rests on: package a naming
+    candidate, rule on it, and have that ruling come back as evidence about its *combination*."""
+    from citypods.naming import PrecisionTable
+
+    row = _naming_row("r7-name-a", signals=["self-introduction", "title-cue"])
+    state = _review_state(naming_candidates={row["candidate_id"]: row})
+    _, out_dir = _package(tmp_path, monkeypatch, state)
+
+    issue = tmp_path / "issue.md"
+    body = (out_dir / "r7-name-a.md").read_text().replace("- [ ] Correct", "- [x] Correct", 1)
+    issue.write_text(body)
+    monkeypatch.setattr("citypods.statesync.push_state", lambda *_args, **_kwargs: 0)
+    assert (
+        speaker_review_main(
+            [
+                "ingest",
+                "--issue-number",
+                "7",
+                "--issue-body-file",
+                str(issue),
+                "--actor",
+                "maintainer",
+            ]
+        )
+        == 0
+    )
+
+    stored = json.loads((tmp_path / "state" / "evaluation.json").read_text())
+    assert [entry["candidate_id"] for entry in stored["reviews"]] == ["r7-name-a"]
+    table = PrecisionTable.from_evaluation(stored)
+    assert table.verdicts("staff:self-introduction+title-cue") == 1
+    assert table.precision("staff:self-introduction+title-cue") == 1.0
+
+
+def test_review_queue_is_ordered_by_expected_value_not_candidate_id(tmp_path, monkeypatch):
+    """The weekly limit is small, so this ordering -- not backlog size -- decides how fast the
+    gate learns. References mint reusable voice profiles; naming verdicts train the table;
+    shadow matches teach the least. Within a class, better-corroborated candidates come first."""
+    batch, _ = _package(
+        tmp_path,
+        monkeypatch,
+        _review_state(
+            candidates={
+                "aaa-shadow": {
+                    "candidate_id": "aaa-shadow",
+                    "city_slug": "demo-tx",
+                    "body": "Council",
+                    "episode_uid": "one",
+                    "start": 1,
+                    "end": 2,
+                    "speaker_id": "spk-a",
+                    "display_name": "Alex",
+                }
+            },
+            naming_candidates={
+                "zzz-weak": _naming_row("zzz-weak", signals=["self-introduction"]),
+                "yyy-strong": _naming_row(
+                    "yyy-strong", signals=["self-introduction", "title-cue", "voice-print"]
+                ),
+            },
+            reference_candidates={
+                "mmm-ref": {
+                    "kind": "chair-reference",
+                    "candidate_id": "mmm-ref",
+                    "city_slug": "demo-tx",
+                    "body": "Council",
+                    "episode_uid": "one",
+                    "start": 3,
+                    "end": 4,
+                    "display_name": "Jane Doe",
+                    "cue_start": 2,
+                    "cue_end": 2.5,
+                    "cue_text": "Commissioner Jane Doe",
+                    "cue_kind": "title-announcement",
+                }
+            },
+        ),
+    )
+    assert [row["candidate_id"] for row in batch["children"]] == [
+        "mmm-ref",  # reference first, despite sorting last by id
+        "yyy-strong",  # then naming, most-corroborated first
+        "zzz-weak",
+        "aaa-shadow",  # shadow last, despite sorting first by id
+    ]
 
 
 def test_two_meeting_profile_can_attribute_a_single_speaker_quote():
@@ -987,6 +1165,50 @@ def _run_identity_stage(tmp_path, city, ep, ctx):
     assert isinstance(ctx, StageContext)
     SpeakerIdentityStage().process(None, city, [ep], ctx)
     return _json.loads((tmp_path / "evaluation.json").read_text())
+
+
+def test_body_membership_carries_the_roster_forward_scoped_to_its_own_body():
+    """Minutes for a meeting land weeks after the recording, so a new episode has no roster at
+    all. Standing membership fills that window -- but only from the same body."""
+    registry = empty_registry()
+    now = datetime(2026, 5, 1, tzinfo=UTC)
+    observe_attendance(
+        registry,
+        city_slug="demo-tx",
+        body="City Council",
+        episode_uid="one",
+        published=now,
+        roster=[{"name": "Jane Doe"}, {"name": "Ann Chair"}],
+    )
+    observe_attendance(
+        registry,
+        city_slug="demo-tx",
+        body="Board of Ethics",
+        episode_uid="two",
+        published=now,
+        roster=[{"name": "Ethics Person"}],
+    )
+    refresh_membership_status(registry, now=now)
+    council = {
+        row["name"] for row in body_membership(registry, city_slug="demo-tx", body="City Council")
+    }
+    assert council == {"Jane Doe", "Ann Chair"}
+    assert "Ethics Person" not in council
+
+
+def test_body_membership_drops_people_who_stopped_appearing():
+    """Turnover expires on its own -- no N to pick, and no election to special-case."""
+    registry = empty_registry()
+    observe_attendance(
+        registry,
+        city_slug="demo-tx",
+        body="City Council",
+        episode_uid="one",
+        published=datetime(2024, 1, 1, tzinfo=UTC),
+        roster=[{"name": "Former Member"}],
+    )
+    refresh_membership_status(registry, now=datetime(2026, 5, 1, tzinfo=UTC))
+    assert body_membership(registry, city_slug="demo-tx", body="City Council") == []
 
 
 def test_speaker_identity_stage_collects_both_automatic_naming_signals(tmp_path):

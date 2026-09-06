@@ -9,11 +9,14 @@ from __future__ import annotations
 import pytest
 
 from citypods.naming import (
+    ORIGINATING_SIGNALS,
     SIGNAL_CHAIR_CUE,
+    SIGNAL_MEMBERSHIP,
     SIGNAL_ROSTER,
     SIGNAL_SELF_INTRO,
     SIGNAL_TITLE_CUE,
     SIGNAL_VOICE_PRINT,
+    UNTIMED_SIGNALS,
     FusedCandidate,
     NameProposal,
     PrecisionTable,
@@ -79,6 +82,32 @@ def test_roster_corroborates_but_can_never_name_anyone_alone():
     assert not meets_agreement_rule([SIGNAL_ROSTER], TIER_MEMBER)
     # Roster plus a signal that doesn't count for this tier is still just one countable signal.
     assert not meets_agreement_rule([SIGNAL_ROSTER, SIGNAL_TITLE_CUE], TIER_MEMBER)
+
+
+def test_untimed_signals_can_never_name_anyone_however_many_agree():
+    """The load-bearing rule (review/31 §C.4.4). Roster and membership are both *untimed*: they
+    say who plausibly belongs at this meeting and contain nothing tying a name to the voice being
+    labelled. Two of them agreeing is still zero evidence about which cluster is whom."""
+    for tier in (TIER_MEMBER, TIER_STAFF):
+        assert not meets_agreement_rule([SIGNAL_ROSTER, SIGNAL_MEMBERSHIP], tier)
+        # Adding a title cue does not rescue it either: still nothing that locates the claim.
+        assert not meets_agreement_rule([SIGNAL_ROSTER, SIGNAL_MEMBERSHIP, SIGNAL_TITLE_CUE], tier)
+    # ...but either one paired with a timed signal is exactly the intended two-signal case.
+    assert meets_agreement_rule([SIGNAL_CHAIR_CUE, SIGNAL_MEMBERSHIP], TIER_MEMBER)
+
+
+def test_every_untimed_signal_is_excluded_from_originating():
+    """Guards the invariant at the set level, so adding a future untimed signal to
+    ORIGINATING_SIGNALS by mistake fails here rather than in production."""
+    assert not (UNTIMED_SIGNALS & ORIGINATING_SIGNALS)
+
+
+def test_membership_and_roster_do_not_share_a_precision_bucket():
+    """Carried-forward membership is weaker evidence than a published roster for this meeting.
+    Pooling them would teach the gate one blended number for two different-quality signals."""
+    roster = FusedCandidate("c", "Jane Doe", TIER_MEMBER, (SIGNAL_CHAIR_CUE, SIGNAL_ROSTER))
+    membership = FusedCandidate("c", "Jane Doe", TIER_MEMBER, (SIGNAL_CHAIR_CUE, SIGNAL_MEMBERSHIP))
+    assert roster.combination_key != membership.combination_key
 
 
 def test_a_single_originating_signal_is_not_enough():

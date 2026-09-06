@@ -627,6 +627,71 @@ there often but not reliably, and an unreliable signal would quietly poison the 
 
 ---
 
+### C.5 Timing: minutes lag, voice-print accrual, and what re-processing actually costs (2026-09-06)
+
+Naming depends on three things that arrive on three different clocks: the **recording** (immediately),
+the **minutes** (weeks later), and **voice profiles** (only after a human approves references). The
+question this section settles is what has to be recomputed when the later two land — and the answer is
+that the architecture had already separated the expensive half from the mutable half, so most of the
+feared re-processing does not exist.
+
+**C.5.1 Nothing about minutes, profiles, or verdicts can trigger re-diarization.** `native_diarize`'s
+input fingerprint is `audio + transcript + word sidecar + engine recipe` (`stage_input_fingerprint`,
+`citypods/stages.py`). The roster and the registry are deliberately absent from it. Diarization output is
+content-addressed; identity is a projection over it.
+
+**C.5.2 The projection re-runs every time, by design.** `stage_is_dirty` short-circuits to `True` for
+`speaker_identity`, and `r7_speaker_turn_evidence.json` retains every turn's embedding keyed by
+`spec_hash`. So "an episode acquired minutes" and "a new voice profile exists" both resolve on the next
+scheduled run at the cost of two object reads and a cue pass — no model load, no audio decode, no GPU.
+The workflow already runs `--lane diarize` and `--lane speaker-identity` as separate steps.
+
+**C.5.3 Therefore: order the review queue, not the diarize queue.** The tempting move is to bias
+diarization toward old episodes (which have minutes) to bootstrap faster. Rejected: naming is not coupled
+to diarization order, so that would trade timeliness for nothing. Diarization keeps the catalog-wide
+`backlog_priority` (newest-first); the scarce resource is the **weekly review budget**
+(`weekly_review_limit`, 8), and that is what `_review_rank` now orders — references first (one approval
+mints a profile that names its subject in every past *and* future meeting), then naming verdicts (the
+only input to §C.4.4's precision table), then shadow matches, with better-corroborated candidates first
+inside each class. Ordering by `candidate_id` hash, as it did, wasted the scarcest input in the system.
+
+**C.5.4 Standing membership covers the minutes-lag window.** A member speaking in last night's meeting
+has no roster, so under §C.4.4 they had exactly one signal and never reached review. `body_membership()`
+supplies the standing answer to "who sits on this body", accumulated by `observe_attendance` from prior
+meetings' rosters and votes and decayed by `refresh_membership_status` after
+`PROFILE_REVIEW_ONLY_AFTER_DAYS` — so turnover expires on its own, with no "last N meetings" window to
+pick or to get wrong across an election. Three constraints, each load-bearing:
+
+- It is a **distinct signal** (`SIGNAL_MEMBERSHIP`), never `SIGNAL_ROSTER`. A published roster says "this
+  person attended *this* meeting"; membership says "this person sits on this body". Sharing a combination
+  key would teach the gate one blended precision for two different-quality signals.
+- It **yields to the roster**: once this meeting's minutes exist, membership contributes nothing.
+- It **never reaches `roster_person_ids`**, which uses a real roster to *remove* names and to mark
+  assignments confirmed. A carried-forward guess must do neither. It informs tiering and corroboration
+  only — decisions about how much scrutiny a name gets, never about deleting or confirming one.
+
+**C.5.5 Untimed signals can never name anyone, in any combination.** `SIGNAL_ROSTER` and
+`SIGNAL_MEMBERSHIP` are both *untimed*: they identify who plausibly belongs at a meeting and contain
+nothing that ties a name to the voice being labelled. `{roster, membership}` is two agreeing signals and
+must still fail the gate. `meets_agreement_rule`'s originating requirement already enforced this, but
+only as a side effect of a separate rule; `UNTIMED_SIGNALS` now names the invariant so a later
+"two corroborating signals ought to be enough" cannot quietly remove it.
+
+**C.5.6 The one case where re-processing does mean re-reviewing.** Changing the diarization engine
+redraws cluster boundaries and changes `engine_recipe`, which changes every `naming_candidate_id` — the
+existing verdicts no longer describe the current candidates. That is the concrete cost behind §A.1a's
+"one-time engine choice". Note what survives it: the precision table keys on `tier:signals`, not on
+recipe, so accumulated *policy* credit is engine-independent exactly as §C.4.3 intended.
+
+**Known follow-up, not yet built.** `speaker_identity`'s unconditional re-run costs two object reads plus
+a cue pass per pilot episode per run. That is correct at one body and wrong at ten cities × full history.
+The fix is a projection-level fingerprint over `(evidence spec_hash, words key, registry version, roster
+presence, naming config)` that preserves the always-revisit semantics while skipping episodes where none
+of those changed. Deferred deliberately: it is an optimization whose trigger (pilot expansion) has not
+fired, and premature caching here would risk the very staleness §C.5.2 exists to prevent.
+
+---
+
 ## Part D — Per-speaker pages (`review/25` §2.3 #11)
 
 **Static, generated-from-records, the same build-time mechanism as R1's meeting pages** — not gated on
@@ -702,7 +767,10 @@ table rebuilding from the ledger while skipping verdicts whose candidate it cann
 `tests/test_speakers.py` (shipped) — the gate through `SpeakerIdentityStage`, not just in isolation:
 review-bound candidates reach the ledger carrying their `combination_key`, and a staff name publishes to
 quote attribution once that combination is trusted while a member's does not. Both exist because
-`self_introduction_candidates` shipped defined-but-uncalled once already.
+`self_introduction_candidates` shipped defined-but-uncalled once already. Also the §C.5 loop end to end:
+`body_membership` scoped to its own body and expiring on its own; naming candidates reaching the weekly
+queue; a naming verdict round-tripping back into the precision table; self-introduction candidates
+round-tripping as reference reviews; and the queue ordered by expected value rather than by id hash.
 
 ---
 

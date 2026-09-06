@@ -21,20 +21,33 @@ from citypods.speakers import TIER_MEMBER, TIER_OTHER, TIER_STAFF, _norm
 
 # --- Signals -----------------------------------------------------------------------------------
 
-# Signals that point at a specific cluster and name it. At least one is always required: without
-# it there is no proposal, only context.
+# **Timed** signals: each one observes something at a specific point in the recording, so it can
+# say *this cluster, here, is N*. At least one is always required -- without it there is no
+# proposal about a voice at all, only a fact about the meeting.
 SIGNAL_VOICE_PRINT = "voice-print"
 SIGNAL_CHAIR_CUE = "chair-reference"
 SIGNAL_SELF_INTRO = "self-introduction"
-# Corroborating signals. Roster says only "this name was in the room" -- real evidence that a
-# proposal is plausible for this meeting, but it can never name anyone by itself.
+# **Untimed** signals: true of the meeting or the body, never of a moment in the audio. Roster
+# says "this name was in the room per the minutes"; membership says "this person sits on this
+# body" (carried forward from prior meetings' rosters while this meeting's minutes are still
+# unpublished -- often weeks). Both make a proposal plausible; neither can locate it in time.
 SIGNAL_ROSTER = "roster"
-# A title spoken alongside a name ("Matt Bodine, Assistant Planner"). Counts toward agreement for
-# the staff tier only -- see `meets_agreement_rule`.
+SIGNAL_MEMBERSHIP = "membership"
+# A title spoken alongside a name ("Matt Bodine, Assistant Planner"). Timed, but not originating:
+# it arrives in the same utterance as the name it qualifies, so it corroborates rather than
+# independently proposing. Counts toward agreement for the staff tier only -- see
+# `meets_agreement_rule`.
 SIGNAL_TITLE_CUE = "title-cue"
 
 ORIGINATING_SIGNALS = frozenset({SIGNAL_VOICE_PRINT, SIGNAL_CHAIR_CUE, SIGNAL_SELF_INTRO})
-_BASE_SIGNALS = ORIGINATING_SIGNALS | {SIGNAL_ROSTER}
+# The invariant this set exists to make unmissable: **no combination drawn only from here may
+# ever name anyone**, however many of them agree. `{roster, membership}` is two signals and still
+# means only "a person by this name plausibly belongs at this meeting" -- it contains nothing that
+# ties the name to the voice being labelled. `meets_agreement_rule`'s originating requirement
+# already enforces this, but it did so as a side effect of a separate rule; naming the set keeps a
+# later "just let two corroborating signals through" from quietly removing the protection.
+UNTIMED_SIGNALS = frozenset({SIGNAL_ROSTER, SIGNAL_MEMBERSHIP})
+_BASE_SIGNALS = ORIGINATING_SIGNALS | UNTIMED_SIGNALS
 
 # Defaults for the adaptive gate (review/31 §C.4.4). Config, not constants: the first real verdict
 # data may well argue for moving them. There is deliberately no calendar element -- the old gate's
@@ -97,7 +110,12 @@ def _countable_signals(signals: Iterable[str], tier: str) -> set[str]:
 
 
 def meets_agreement_rule(signals: Iterable[str], tier: str) -> bool:
-    """At least two countable signals agree, at least one of which originates a proposal."""
+    """At least two countable signals agree, at least one of them timed (originating).
+
+    The second condition is not a tie-breaker, it is the substantive one: `UNTIMED_SIGNALS` say
+    who plausibly belongs at this meeting, and no number of them agreeing says anything about
+    *which voice* is being labelled.
+    """
     countable = _countable_signals(signals, tier)
     if len(countable) < 2:
         return False
@@ -301,10 +319,12 @@ __all__ = [
     "DEFAULT_MIN_VERDICTS",
     "ORIGINATING_SIGNALS",
     "SIGNAL_CHAIR_CUE",
+    "SIGNAL_MEMBERSHIP",
     "SIGNAL_ROSTER",
     "SIGNAL_SELF_INTRO",
     "SIGNAL_TITLE_CUE",
     "SIGNAL_VOICE_PRINT",
+    "UNTIMED_SIGNALS",
     "FusedCandidate",
     "NameProposal",
     "NamingDecision",
