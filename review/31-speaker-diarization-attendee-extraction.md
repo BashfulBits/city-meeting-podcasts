@@ -54,9 +54,12 @@ issues not yet cut**
 > everyone else a generic `Speaker N` with no role claim), a **person-trust** gate keyed on the profile
 > rather than the engine (which also stops engine swaps resetting review credit), and an **adaptive gate**
 > where ≥2 of {voice print, chair cue, self-introduction, roster} must agree and human conflict rulings
-> tune which signal combinations earn auto-admission. Precision statistics **pool globally** so a new city
-> starts mostly automated, with a per-city divergence guardrail. **Fail-closed at cold start** — nothing
-> publishes until a combination's confidence is established. Ledger now; reviewer UI deferred to R8.
+> tune which signal combinations earn auto-admission (roster corroborates but never counts alone; a
+> combination earns auto-admission at **≥20 verdicts and ≥95% agreement**, with no calendar element).
+> Precision statistics **pool globally** so a new city starts mostly automated, with a per-city divergence
+> guardrail. **Fail-closed at cold start** — nothing publishes until a combination's confidence is
+> established. Old calibration records are discarded rather than migrated. Ledger now; reviewer UI
+> deferred to R8.
 
 ---
 
@@ -540,6 +543,28 @@ automation *removes* items from the queue instead of merely reordering them. Not
 this implies: member-tier review (a bounded roster, and the tier that requires humans anyway) is what
 generates the verdict history that eventually unlocks unattended staff naming.
 
+**Originating vs corroborating signals.** Voice print, chair cue and self-introduction *originate* a
+proposal — each points at a specific cluster and names it. Roster does not: it says only "this name was
+in the room", so it **corroborates but can never be one of two on its own**. A valid admission is
+therefore one originator plus a corroborator, or two originators. Without this, cold start would require
+a chair cue *and* a self-introduction for the same person (voice prints don't exist yet), which is rare
+enough that essentially nothing would ever auto-admit.
+
+**The staff exception, and why it is safe.** Staff frequently appear on no parseable roster and have no
+voice print in a new city, leaving only their own self-introduction — one signal, so `≥2` would silently
+mean "staff are never named". The resolution: for the staff tier, a self-introduction **plus its own
+title cue** ("Matt Bodine" + "Assistant Planner") counts as two. This is knowingly *correlated* evidence
+— both come from one utterance and can be wrong together — which is acceptable here for two reasons.
+First, staff are the unverified-by-policy tier, so the stakes are lower than for an elected official.
+Second, and more importantly, this combination is tracked as its own key in §C.4.4's precision table: if
+`{self-introduction, title-cue}` turns out to be unreliable in practice, the adaptive gate observes that
+directly and stops auto-admitting it. The risk is self-correcting rather than assumed away.
+
+**Thresholds.** A combination earns auto-admission at **≥20 human verdicts and ≥95% agreement**. There is
+deliberately **no calendar element** — the old gate's 30-day requirement existed to catch capture drift,
+and §C.4.6's per-city divergence guardrail does that job directly and faster. Both numbers are config,
+not constants, precisely because the first real verdict data may argue for moving them.
+
 **C.4.5 Fail-closed at cold start; confidence earns publication.** An earlier draft admitted names on
 strong agreement before any local history existed. Retracted: publishing *some* officials early is not
 much of a win, because the value arrives when the roster is recognised well as a whole — and provisional
@@ -561,6 +586,14 @@ append-only record in state; defer the reviewer-facing web interface to the site
 GitHub remaining the durable ledger. Consequence to plan around: until that UI exists, conflicts have
 nowhere to go but the existing weekly-issue path, so the bootstrap phase leans on the maintainer, and the
 adaptive loop only starts paying off once it has verdicts to learn from.
+
+**C.4.8 The old calibration records are discarded, not migrated.** `r7_speaker_evaluation.json`'s
+existing `reviews` and `benchmarks` rows were produced under the superseded gate and do not record which
+*signal combination* produced each candidate — the one field §C.4.4's precision table is built on. Any
+back-fill would be guessing at the model's own training data, which is worse than an empty table. A
+one-time state migration therefore removes them; the shadow pilot has accumulated little, and the
+2026-09-06 engine swap had already invalidated those cells regardless. New statistics start empty, which
+combined with §C.4.5's fail-closed cold start means the first names in any city wait on real verdicts.
 
 **Explicitly not building:** staff names extracted from chapter/agenda item descriptions. They appear
 there often but not reliably, and an unreliable signal would quietly poison the very precision statistics
