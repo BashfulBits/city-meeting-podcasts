@@ -232,8 +232,10 @@ def diarize(
     every other split tested, including this same 2-thread-per-job optimum run four-wide.
     """
     del token, device  # documented above; named for call-site compatibility only
-    import sherpa_onnx
 
+    # Validate the recipe name before importing sherpa-onnx: a typo in config should say so,
+    # not report the heavy optional dependency as missing (and CI, which installs `[dev]` and
+    # not `[diarize]`, can then test this branch at all).
     embedding_name = embedding_model or DEFAULT_EMBEDDING_MODEL
     recipe = _EMBEDDING_RECIPES.get(embedding_name)
     if recipe is None:
@@ -241,6 +243,8 @@ def diarize(
             f"unknown diarize embedding model {embedding_name!r}; "
             f"choose one of {sorted(_EMBEDDING_RECIPES)}"
         )
+    import sherpa_onnx
+
     threshold = (
         clustering_threshold if clustering_threshold is not None else recipe["clustering_threshold"]
     )
