@@ -5,9 +5,12 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
+import pytest
+
 from citypods.agenda_text import AgendaTextAssessment
 from citypods.models import City, Episode
 from citypods.stages import (
+    DIARIZE_DEFAULT_RUNTIME_RATIO,
     AgendaTextStage,
     AudioStage,
     DiarizeRuntimeLog,
@@ -120,6 +123,35 @@ def test_native_diarization_uses_its_own_measured_runtime_budget(tmp_path):
     assert estimate == 30.0
     assert remaining is not None and remaining <= 100
     assert _diarize_fits_remaining_budget(ctx, restored, 10.0, "recipe-b")[0]
+
+
+def test_unmeasured_diarize_recipe_is_bounded_by_the_seeded_ratio(tmp_path):
+    """Regression guard for run 51 (denton-tx, 2026-09-05): a recipe with no samples used to be
+    admitted with *no* estimate at all, so one oversized first item could eat a whole run's
+    budget. An engine swap resets every recipe's history, so this must stay bounded."""
+    log = DiarizeRuntimeLog(tmp_path / "diarize-runtime.json")
+    assert not log.has_samples_for("fresh-recipe")
+
+    # A 4-hour meeting against a 10-minute remaining window must NOT be admitted.
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 600,
+        diarize_start_reserve_seconds=60,
+    )
+    fits, estimate, _ = _diarize_fits_remaining_budget(ctx, log, 4 * 3600.0, "fresh-recipe")
+    assert not fits
+    assert estimate == pytest.approx(4 * 3600.0 * DIARIZE_DEFAULT_RUNTIME_RATIO)
+
+    # A short meeting still fits in that same window.
+    assert _diarize_fits_remaining_budget(ctx, log, 120.0, "fresh-recipe")[0]
+
+    # Once a real sample lands, the measured ratio replaces the seed.
+    log.append(diarize_seconds=10.0, recording_seconds=100.0, recipe="fresh-recipe")
+    assert log.has_samples_for("fresh-recipe")
+    assert log.estimate_seconds(100.0, recipe="fresh-recipe") == pytest.approx(10.0)
 
 
 def test_native_diarization_errors_remain_retryable():
@@ -329,7 +361,9 @@ def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, mon
 
     out = capsys.readouterr().out
     assert f"diarize start uid={ep.uid} body='City Council'" in out
-    assert "recording_s=120.0 estimate_s=unknown" in out
+    # No measured samples for this recipe yet, so the estimate is the seeded default ratio
+    # (bounded), not the old unbounded "unknown" -- see DIARIZE_DEFAULT_RUNTIME_RATIO.
+    assert "recording_s=120.0 estimate_s=24.0 (seeded)" in out
     assert f"diarize done uid={ep.uid} body='City Council'" in out
     assert "recording_s=120.0 ratio=" in out
 

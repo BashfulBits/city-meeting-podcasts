@@ -120,9 +120,13 @@ Phase R (Research-Tool Surface)._
   (alongside the existing `chair_reference_candidates`) that scans the first ~10s of a
   speaker's own turn for a self-identification ("MY NAME IS...") or name-then-staff-title
   ("Matt Bodine, Assistant Planner") pattern, feeding the same identify-then-human-confirm
-  pipeline, never assigning a name directly. Concurrency/admission scheduling and memory-aware
-  worker-pool limits (also designed in this pass, review/31 §A.4) are follow-up work, not yet
-  implemented. New diarization-pipeline recipe hash — existing pyannote-produced `speakers.json`
+  pipeline, never assigning a name directly. Also closes the run-51 cold-start hole the swap would
+  otherwise have reopened: `DiarizeRuntimeLog.estimate_seconds` now falls back to a seeded
+  `DIARIZE_DEFAULT_RUNTIME_RATIO` (0.2 s/s, rounding up the worst measured single-threaded RTF)
+  instead of returning `None`, so a recipe with no samples yet is *bounded* rather than admitted
+  with no cap — changing the engine discards every measured sample, which is exactly when that
+  matters. The worker pool, best-fit-decreasing admission ordering, and memory-pressure cap (also
+  designed in this pass, review/31 §A.4) land separately. New diarization-pipeline recipe hash — existing pyannote-produced `speakers.json`
   artifacts remain valid or reachable; new/changed episodes re-diarize under the new recipe.
 
 - **Preserve external-compute spend during lease cleanup (GH#1329).** Settlement and release

@@ -104,17 +104,23 @@ def _download(url: str, dest: Path, *, attempts: int = 3) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     last_exc: Exception | None = None
     for _ in range(attempts):
+        # Staged inside dest's own directory so the final rename is same-filesystem (atomic),
+        # and so a concurrent reader never observes a half-written model file -- the worker
+        # pool (review/31 §A.4) can have several processes racing this same cache.
+        tmp_path: Path | None = None
         try:
             with requests.get(url, stream=True, timeout=60) as response:
                 response.raise_for_status()
                 with tempfile.NamedTemporaryFile(dir=dest.parent, delete=False) as tmp:
+                    tmp_path = Path(tmp.name)
                     for chunk in response.iter_content(chunk_size=1 << 20):
                         tmp.write(chunk)
-                    tmp_path = Path(tmp.name)
             tmp_path.replace(dest)
             return
         except (requests.RequestException, OSError) as exc:  # noqa: PERF203
             last_exc = exc
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
     raise RuntimeError(f"failed to download {url!r} after {attempts} attempts") from last_exc
 
 
@@ -123,13 +129,20 @@ def _ensure_segmentation_model() -> Path:
     dest = root / "model.onnx"
     if dest.exists():
         return dest
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    root.mkdir(parents=True, exist_ok=True)
+    # Extract into the cache directory itself, not a system temp dir: Path.replace() cannot
+    # cross filesystems, and TMPDIR is routinely a different mount from the cache root
+    # (containers especially). Staging here keeps the final rename same-filesystem.
+    with tempfile.TemporaryDirectory(dir=root) as tmp_dir:
         archive = Path(tmp_dir) / "segmentation.tar.bz2"
         _download(_SEGMENTATION_RELEASE_URL, archive)
         with tarfile.open(archive, "r:bz2") as tar:
             tar.extractall(tmp_dir, filter="data")  # noqa: S202 -- fixed, pinned archive
         extracted = Path(tmp_dir) / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"
-        root.mkdir(parents=True, exist_ok=True)
+        if not extracted.exists():
+            raise RuntimeError(
+                f"segmentation archive did not contain the expected model at {extracted.name!r}"
+            )
         extracted.replace(dest)
     return dest
 
@@ -166,8 +179,19 @@ def _load_waveform(audio_path: Path, sample_rate: int):
         str(sample_rate),
         "-",
     ]
-    result = subprocess.run(cmd, capture_output=True, check=True)  # noqa: S603
-    return np.frombuffer(result.stdout, dtype=np.float32)
+    try:
+        result = subprocess.run(cmd, capture_output=True, check=True)  # noqa: S603
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "ffmpeg is required to decode audio for diarization but was not found on PATH"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or b"").decode("utf-8", "replace").strip()
+        raise RuntimeError(f"ffmpeg could not decode {audio_path.name!r}: {detail}") from exc
+    samples = np.frombuffer(result.stdout, dtype=np.float32)
+    if samples.size == 0:
+        raise RuntimeError(f"ffmpeg decoded no audio samples from {audio_path.name!r}")
+    return samples
 
 
 def diarize(
@@ -175,20 +199,24 @@ def diarize(
     model: str = DEFAULT_DIARIZE_MODEL,
     *,
     embedding_model: str | None = DEFAULT_EMBEDDING_MODEL,
-    token: str | None = None,  # noqa: ARG001 -- kept for call-site compatibility; unused, no
-    # gated model needs auth anymore (review/31 §A.1a).
-    device: str | None = None,  # noqa: ARG001 -- unused; this engine is CPU-only by design
-    # (the throughput win is many single-threaded worker processes, not GPU/MPS offload).
+    token: str | None = None,
+    device: str | None = None,
     num_threads: int = 2,
     clustering_threshold: float | None = None,
 ) -> DiarizeArtifacts:
     """Run sherpa-onnx lazily and normalize its labels to meeting-local clusters.
+
+    `token` and `device` are accepted but unused: no model here is Hugging-Face-gated, and this
+    engine is CPU-only by design (the throughput win is many single-threaded worker processes,
+    not GPU offload -- review/31 §A.4). They stay in the signature so an already-registered
+    dispatch backend's `InferenceJob` input shape doesn't have to change in lockstep.
 
     `num_threads` defaults to 2 -- the measured single-job latency optimum (review/31 §A.4) --
     for a bare/ad-hoc call. The concurrent worker-pool scheduler (`NativeDiarizeStage`) passes
     `num_threads=1` explicitly: throughput across many concurrent single-threaded workers beat
     every other split tested, including this same 2-thread-per-job optimum run four-wide.
     """
+    del token, device  # documented above; named for call-site compatibility only
     import sherpa_onnx
 
     embedding_name = embedding_model or DEFAULT_EMBEDDING_MODEL

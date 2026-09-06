@@ -510,12 +510,17 @@ def _name_then_title(
     # spelling below; without one (a new city, or unparseable minutes) this signal still fires
     # on the title check alone -- roster narrowing is a quality improvement, not a requirement.
     normalized = " ".join(row["token"] for row in rows[start : end_index + 1])
-    title_row = next(
-        (r for r in rows[end_index + 1 : end_index + 5] if r["token"] in _STAFF_TITLE_WORDS), None
+    title_index = next(
+        (
+            index
+            for index in range(end_index + 1, min(len(rows), end_index + 5))
+            if rows[index]["token"] in _STAFF_TITLE_WORDS
+        ),
+        None,
     )
-    if title_row is None:
+    if title_index is None:
         return None
-    return known.get(normalized, name), rows.index(title_row)
+    return known.get(normalized, name), title_index
 
 
 def self_introduction_candidates(

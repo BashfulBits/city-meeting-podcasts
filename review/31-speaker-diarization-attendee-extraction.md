@@ -294,13 +294,15 @@ guessed from local Apple Silicon numbers, which gave the wrong per-job thread op
   claim on a worker while there's maximum runway (no starvation); as the remaining budget shrinks, fewer
   long candidates satisfy the fits-check, so admission naturally narrows to progressively shorter meetings
   — a soft landing with no threshold to tune.
-- **Seed the runtime estimate — do not repeat run 51's cold-start bug.** `DiarizeRuntimeLog`
-  (`citypods/stages.py`) starts with zero samples, so `_diarize_fits_remaining_budget` unconditionally
-  admits the very first candidate with no cap — the exact mechanism that let one pyannote episode consume
-  an entire run's budget in run 51. Seed `r7_diarization_runtime.json` (or an equivalent config fallback)
-  with a conservative ratio derived from the measured range above (≈0.15 s/s with safety margin, i.e.
-  roughly the worst observed single-threaded RTF plus headroom) so a cold start still has a real budget
-  check from item one.
+- **Seed the runtime estimate — do not repeat run 51's cold-start bug. (Shipped 2026-09-06.)**
+  `DiarizeRuntimeLog` started with zero samples, so `_diarize_fits_remaining_budget` unconditionally
+  admitted the very first candidate with no cap — the exact mechanism that let one pyannote episode
+  consume an entire run's budget in run 51, and a hole the engine swap would otherwise have *reopened*,
+  since changing the recipe string discards every measured sample. `DIARIZE_DEFAULT_RUNTIME_RATIO = 0.2`
+  (rounding up the worst measured single-threaded RTF, ~0.137) now backs
+  `DiarizeRuntimeLog.estimate_seconds`, which no longer returns `None`; `has_samples_for()` distinguishes
+  a measured estimate from the seed, and the per-attempt log line marks which one it used. Measured
+  samples replace the seed as soon as the first item under a recipe completes.
 - **A two-tier cutoff, matching ASR's existing pattern.** Diarize today has only
   `diarize_start_cutoff_minutes` — no backstop. ASR already solved this with
   `asr_start_cutoff_minutes` + `asr_backstop_minutes` (`run.py:2848`). With concurrency, a hard backstop
@@ -323,9 +325,10 @@ guessed from local Apple Silicon numbers, which gave the wrong per-job thread op
   time; memory only binds at the long-meeting/high-concurrency extreme, but silently ignoring it risks the
   exact outcome this note exists to prevent: GitHub OOM-killing the runner mid-batch.
 
-**Implementation status (2026-09-06):** the engine swap (§A.1a) shipped. This admission/concurrency design
-is specified above but **not yet implemented** — `NativeDiarizeStage.process()` still runs its original
-strictly serial `for ep in episodes:` loop. Tracked as the next piece of this work, not a later idea.
+**Implementation status (2026-09-06):** the engine swap (§A.1a) and the seeded runtime estimate shipped
+together. The worker pool, best-fit-decreasing admission ordering, two-tier cutoff/backstop, and the
+memory-pressure cap are specified above but land separately — `NativeDiarizeStage.process()` still runs
+its original strictly serial `for ep in episodes:` loop until then.
 
 ---
 
