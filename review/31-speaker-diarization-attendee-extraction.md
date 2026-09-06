@@ -47,6 +47,19 @@ issues not yet cut**
 
 ---
 
+> **Naming-policy decision, 2026-09-06 — see §C.4 (normative).** The flat "30 reviews × 30 days × 95%
+> precision per (city, body, engine, capture_context)" publish gate is superseded: it multiplies as
+> `30 × cities × bodies`, which no detection improvement can scale past. Replacing it: **three speaker
+> tiers** (members human-confirmed with speaker pages; staff auto-named without confirmation or pages;
+> everyone else a generic `Speaker N` with no role claim), a **person-trust** gate keyed on the profile
+> rather than the engine (which also stops engine swaps resetting review credit), and an **adaptive gate**
+> where ≥2 of {voice print, chair cue, self-introduction, roster} must agree and human conflict rulings
+> tune which signal combinations earn auto-admission. Precision statistics **pool globally** so a new city
+> starts mostly automated, with a per-city divergence guardrail. **Fail-closed at cold start** — nothing
+> publishes until a combination's confidence is established. Ledger now; reviewer UI deferred to R8.
+
+---
+
 > **Weekly calibration revision, 2026-08-22.** `speaker-calibration-review.yml` packages at most
 > `speakers.weekly_review_limit` (default 8) durable shadow matches each Monday using the same
 > authenticated GitHub-issue pattern as R5/R6. A maintainer checks Correct/Incorrect and comments
@@ -416,6 +429,10 @@ already existed.
 
 ### C.2 Confirmation workflow — a review surface, not a new automation class
 
+> **Superseded in part by §C.4 (2026-09-06).** The review-surface shape below still stands, but the
+> "every cluster needs a human" premise does not: §C.4 tiers speakers (only members require
+> confirmation), and lets high-precision signal combinations auto-admit. Read §C.4 first.
+
 Modeled on `/admin/status`'s existing review-surface precedent (`review/13`'s plans, H16's operator-review
 digest pattern) rather than inventing a new UI paradigm: for each episode with unconfirmed
 `speaker_index` clusters and a non-null `attendees` list, surface a simple mapping form (cluster → name
@@ -463,15 +480,103 @@ transcript-cue signals are the right foundation to build first: they're pure tex
 work for any new city with a transcript and parseable minutes from day one, whereas voice-embedding
 corroboration only strengthens *within* a city as confirmed references accumulate over time.
 
+### C.4 Naming policy (normative, 2026-09-06) — supersedes the flat 30/30/95 publish gate
+
+Settled in review with the maintainer. This is the **normative** naming policy; where it conflicts with
+§C.2's earlier sketch or with `auto_publish_allowed`'s shipped thresholds, this section wins and the code
+is what needs to move. It exists because the earlier gate — 30 reviews × 30 days × 95% precision per
+`(city, body, engine_recipe, capture_context)` cell — multiplies as `30 × cities × bodies`, which is a
+policy threshold no amount of better detection can scale past.
+
+**C.4.1 Three speaker tiers, not one rule.** The old design treated every voice cluster identically. It
+should not, because the cost and the stakes differ by who is speaking:
+
+| Tier | Named publicly | Human-confirmed | Speaker page |
+|---|---|---|---|
+| Council / board **members** | yes | **yes** — required | yes |
+| **Staff** | yes, automatically | no | **no** |
+| **Everyone else** | no — generic `Speaker N` | n/a | no |
+
+The framing that makes this defensible: a public commenter's name is typically already spoken aloud and
+already sits in the transcript. Declining to label their turns is not concealment — it is declining to
+*manufacture a durable, searchable speaker identity* for a private citizen, and declining to spend scarce
+review effort there. It also bounds the labeling problem to a small recurring cast (a roster) instead of
+to everyone who ever approached a podium.
+
+**No role labels for the third tier.** An earlier draft proposed inferring `Public comment` from the
+agenda chapter a turn falls in. Dropped: mislabelling the City Manager or City Attorney as a "public
+commenter" is a worse outcome than saying nothing, and a plain `Speaker N` claims nothing that can be
+wrong. This deletes a feature rather than adding one.
+
+**C.4.2 Tier classification — roster sections first, title vocabulary as fallback.** Two separable facts
+live in minutes: *whether* a name appears in the roster (attendance) and *which section* it appears in
+(role). Prefer the section when a city's minutes have one; fall back to title cues when they don't, since
+plenty of cities publish a single flat `Present:` list that mixes the Clerk and Attorney in with members.
+`citypods/speakers.py` already carries the two vocabularies this needs — `_ANNOUNCEMENT_TITLES` (elected)
+and `_STAFF_TITLE_WORDS` (staff). Resolution rule:
+
+- elected-title cue **or** members-section → **member**
+- staff-title cue **or** staff-section → **staff**
+- both fire → **member** (deliberately err toward *more* scrutiny, never less)
+- neither → **other**
+
+**C.4.3 Person trust, not engine trust — and the cell key drops the engine.** The gate's job is "is this
+specific voice really Jane Doe", so it keys on the **person profile**, with the plausible name-space
+seeded per meeting from the minutes roster (`observe_attendance` / `roster_person_ids` already do this).
+Deliberately **not** a global person namespace: matching against every person the project has ever seen
+would degrade accuracy for no benefit, whereas "who do the minutes say was in this room" is both narrower
+and better evidence. A useful consequence falls out for free — a human's judgment "this voice is Jane
+Doe" does not depend on which model drew the turn boundaries, so `engine_recipe` leaves the cell key and
+a diarization-engine swap stops resetting accumulated review credit (as the 2026-09-06 swap otherwise
+would have).
+
+**C.4.4 An adaptive gate: signal agreement, tuned by human verdicts.** Four seed signals, extensible:
+voice print, chair-recognition cue, self-introduction cue, and roster corroboration. All normalize to the
+same claim — *signal S proposes name N for cluster C*. **At least two must agree**; they need not all
+agree. Human rulings on conflicts feed back as the training signal: for each *combination* of agreeing
+signals, track the historical agreement between that combination and the human verdict, and auto-admit
+combinations whose measured precision is high enough. This is the inversion that makes scale possible —
+automation *removes* items from the queue instead of merely reordering them. Note the bootstrap ordering
+this implies: member-tier review (a bounded roster, and the tier that requires humans anyway) is what
+generates the verdict history that eventually unlocks unattended staff naming.
+
+**C.4.5 Fail-closed at cold start; confidence earns publication.** An earlier draft admitted names on
+strong agreement before any local history existed. Retracted: publishing *some* officials early is not
+much of a win, because the value arrives when the roster is recognised well as a whole — and provisional
+publication would have required a retraction path (withdrawing a name already on a speaker page, in
+transcript labels, and inherited by R6 quotes), which is both more machinery and more ways to be wrong.
+So: **nothing publishes until a signal combination's confidence is established**, and once it is, the
+highest-confidence matches publish first. Simpler, and consistent with the fail-closed posture the rest
+of R7 already takes.
+
+**C.4.6 Precision statistics pool globally, with a per-city divergence guardrail.** Signal-combination
+precision is tracked **across all cities and bodies**, which is what lets city #2 start mostly automated
+instead of re-earning trust from zero. The risk is that a city with genuinely worse audio inherits
+optimism it has not earned, so: keep the global prior, but also watch each city's *observed* agreement
+against it, and when a city diverges beyond a margin, that city falls back to human review until it
+recovers. This is a health check on the feedback signal already being collected, not a second gate.
+
+**C.4.7 Ledger now, review UI later.** Build the candidate/verdict/precision data model and its
+append-only record in state; defer the reviewer-facing web interface to the site redesign (R8), with
+GitHub remaining the durable ledger. Consequence to plan around: until that UI exists, conflicts have
+nowhere to go but the existing weekly-issue path, so the bootstrap phase leans on the maintainer, and the
+adaptive loop only starts paying off once it has verdicts to learn from.
+
+**Explicitly not building:** staff names extracted from chapter/agenda item descriptions. They appear
+there often but not reliably, and an unreliable signal would quietly poison the very precision statistics
+§C.4.4 depends on.
+
 ---
 
 ## Part D — Per-speaker pages (`review/25` §2.3 #11)
 
 **Static, generated-from-records, the same build-time mechanism as R1's meeting pages** — not gated on
 the Interaction seam, since (per the L1 sketch's own reasoning) the speaker roster is bounded per city,
-like the city/body roster R1 already handles. **Only for confirmed speakers** (a non-null `speaker_id`,
-§C.1) — an anonymous "Speaker 2" cluster never gets a page, avoiding exactly the kind of unconfirmed
-attribution the identify-then-confirm rule exists to prevent.
+like the city/body roster R1 already handles. **Only for human-confirmed members** (§C.4.1) — an
+anonymous "Speaker 2" cluster never gets a page, and neither does an auto-named staff member: a page
+aggregates "everything this person has said across meetings", which would compound an unverified
+attribution into something that reads as authoritative. Pages therefore require both a non-null
+`speaker_id` (§C.1) *and* the member tier.
 
 - New `templates/speaker.html.j2` + `render_speaker_page(speaker_id, episodes: list[Episode]) -> str`,
   structurally mirroring R1's `render_meeting_page`/`meeting_page_url` pattern (`review/13` Part A).
