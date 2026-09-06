@@ -6975,6 +6975,15 @@ class NativeDiarizeStage:
                 stats.defer("wall-clock-budget", sample=uid)
                 continue
             recording_seconds = max(0.0, episode_served_duration_seconds(ep) or 0.0)
+            if recording_seconds <= 0:
+                # An unknown-length episode estimates at 0s, so it "fits" any remaining budget and
+                # reserves only the base memory footprint -- and because admission sorts longest
+                # first, it lands late, exactly when the budget is tightest. That is the run-51
+                # failure mode (an unbounded item admitted because its cost was unknown) with the
+                # cost hidden behind a default instead of a slow model. Defer until the duration
+                # lands, the same way missing timed words are handled above.
+                stats.defer("unknown-duration", sample=uid)
+                continue
             fits, estimate, remaining = _diarize_fits_remaining_budget(
                 ctx, runtime_log, recording_seconds, runtime_recipe
             )

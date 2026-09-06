@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import tarfile
 import tempfile
@@ -159,6 +160,26 @@ def _ensure_embedding_model(name: str) -> Path:
     return dest
 
 
+# Far above any legitimate decode (a 6h meeting decodes to PCM in single-digit minutes) and far
+# below the diarize job's own 330-minute timeout, so a stuck decode surfaces as an actionable
+# per-episode error instead of silently consuming the run.
+DECODE_TIMEOUT_SECONDS = 1800
+
+# ffmpeg echoes its input URL in errors. The diarize path passes a local temp file today, but a
+# stderr blob is not the place to find that out -- strip anything credential-shaped before it
+# reaches a log or a stored `speakers_error`.
+_FFMPEG_SECRET_RE = re.compile(
+    r"([?&](?:x-amz-[\w-]+|sig|signature|token|key|password|api[_-]?key)=)[^&\s]+", re.I
+)
+
+
+def _ffmpeg_detail(stderr: bytes | None, *, limit: int = 500) -> str:
+    """Return ffmpeg's error text with query-string credentials redacted and length bounded."""
+    text = (stderr or b"").decode("utf-8", "replace").strip()
+    text = _FFMPEG_SECRET_RE.sub(r"\1<redacted>", text)
+    return text[:limit]
+
+
 def _load_waveform(audio_path: Path, sample_rate: int):
     """Decode any audio format ffmpeg understands (hosted audio is AAC/M4A) to mono float32
     PCM at the model's expected rate. Reuses the ffmpeg binary this project already requires
@@ -169,6 +190,12 @@ def _load_waveform(audio_path: Path, sample_rate: int):
         "ffmpeg",
         "-v",
         "error",
+        # Every other ffmpeg call site in this project pins a protocol whitelist; this one is a
+        # local temp file, so it gets the *narrowest* form -- no network protocols at all. Without
+        # it, a downloaded artifact that is really a manifest (HLS, concat) could make ffmpeg
+        # fetch whatever URLs it names, turning a decode into an SSRF primitive.
+        "-protocol_whitelist",
+        "file,crypto,data",
         "-i",
         str(audio_path),
         "-f",
@@ -180,14 +207,24 @@ def _load_waveform(audio_path: Path, sample_rate: int):
         "-",
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, check=True)  # noqa: S603
+        result = subprocess.run(  # noqa: S603
+            cmd, capture_output=True, check=True, timeout=DECODE_TIMEOUT_SECONDS
+        )
     except FileNotFoundError as exc:
         raise RuntimeError(
             "ffmpeg is required to decode audio for diarization but was not found on PATH"
         ) from exc
+    except subprocess.TimeoutExpired as exc:
+        # This runs inside the worker before the next `ctx.stop()` check, so an unbounded decode
+        # of malformed media would hold its admission slot until the job's own 330-minute timeout.
+        raise RuntimeError(
+            f"ffmpeg did not finish decoding {audio_path.name!r} within "
+            f"{DECODE_TIMEOUT_SECONDS}s; treating the media as undecodable"
+        ) from exc
     except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or b"").decode("utf-8", "replace").strip()
-        raise RuntimeError(f"ffmpeg could not decode {audio_path.name!r}: {detail}") from exc
+        raise RuntimeError(
+            f"ffmpeg could not decode {audio_path.name!r}: {_ffmpeg_detail(exc.stderr)}"
+        ) from exc
     samples = np.frombuffer(result.stdout, dtype=np.float32)
     if samples.size == 0:
         raise RuntimeError(f"ffmpeg decoded no audio samples from {audio_path.name!r}")

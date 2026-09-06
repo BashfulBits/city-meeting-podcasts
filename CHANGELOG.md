@@ -36,6 +36,24 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Bound and sandbox the R7 diarize decode, and refuse unknown-length episodes (CodeRabbit
+  review of #1484).** Three real defects, each verified against the code before acting.
+  `_load_waveform`'s `subprocess.run` had no `timeout`, and it runs inside a worker *before* the
+  next `ctx.stop()` check — malformed media could hold its admission slot until the job's own
+  330-minute timeout, so it now bounds the decode and reports a stuck one as an actionable
+  per-episode error. It was also the only ffmpeg call site in the repo without a
+  `-protocol_whitelist` (10+ others pin one); it now pins the narrowest form, `file,crypto,data`,
+  since the diarize input is always a local temp file — without it a downloaded artifact that is
+  really a manifest could make ffmpeg fetch the URLs it names. ffmpeg's stderr, which reaches logs
+  and a stored `speakers_error`, is now credential-redacted and length-bounded. Separately,
+  `NativeDiarizeStage` converted a missing served duration to `0.0`, which estimates as 0s of
+  runtime and so "fits" any remaining budget while reserving only the base memory footprint — and
+  because admission sorts longest-first, such an episode lands late, exactly when the budget is
+  tightest. That is run 51's failure mode (an unbounded item admitted because its cost was
+  unknown) with the cost hidden behind a default instead of a slow model; those episodes now defer
+  as `unknown-duration` until the duration lands.
+
+
 - **Make `/remedy` direct and bounded (issue #1231).** Classify in the Actions process with local
   schema/evidence correction, shared quota accounting, and no dispatch/deferred cache access.
   Version the remedy recipe by prompt/schema and preserve every finding in the evidence artifact;
