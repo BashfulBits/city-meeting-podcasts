@@ -7,6 +7,7 @@ import pytest
 
 from citypods.diarize import _mark_overlap, attach_transcript_words, has_valid_timed_words
 from citypods.models import City, Episode
+from citypods.naming import PrecisionTable
 from citypods.records import meeting_page_hash
 from citypods.site import speaker_page_rows
 from citypods.speaker_benchmark import _cases, compare
@@ -460,8 +461,6 @@ def test_self_introduction_candidates_round_trip_as_reference_reviews(tmp_path, 
 def test_a_naming_verdict_round_trips_into_the_precision_table(tmp_path, monkeypatch):
     """End-to-end for the feedback loop the whole adaptive gate rests on: package a naming
     candidate, rule on it, and have that ruling come back as evidence about its *combination*."""
-    from citypods.naming import PrecisionTable
-
     row = _naming_row("r7-name-a", signals=["self-introduction", "title-cue"])
     state = _review_state(naming_candidates={row["candidate_id"]: row})
     _, out_dir = _package(tmp_path, monkeypatch, state)
@@ -1805,8 +1804,6 @@ def test_a_reprojected_candidate_still_accepts_its_verdict(tmp_path, monkeypatch
     judged is the only thing that answers either question."""
     import json as _json
 
-    from citypods.naming import PrecisionTable
-
     row = _naming_row("r7-name-a", signals=["self-introduction", "title-cue"])
     state = _review_state(naming_candidates={row["candidate_id"]: row})
     _, out_dir = _package(tmp_path, monkeypatch, state)
@@ -1822,18 +1819,12 @@ def test_a_reprojected_candidate_still_accepts_its_verdict(tmp_path, monkeypatch
         (out_dir / "r7-name-a.md").read_text().replace("- [ ] Correct", "- [x] Correct", 1)
     )
     monkeypatch.setattr("citypods.statesync.push_state", lambda *_a, **_k: 0)
-    assert (
+    # The issue body is editable; a re-projected combination must not be allowed to carry
+    # attacker-controlled calibration fields into the private evaluation ledger.
+    with pytest.raises(ValueError, match="payload differs"):
         speaker_review_main(
             ["ingest", "--issue-number", "7", "--issue-body-file", str(issue), "--actor", "m"]
         )
-        == 0
-    )
-
-    stored = _json.loads((tmp_path / "state" / "evaluation.json").read_text())
-    table = PrecisionTable.from_evaluation(stored)
-    # Credited to what the reviewer actually saw, not to the combination that replaced it.
-    assert table.verdicts("staff:self-introduction+title-cue") == 1
-    assert table.verdicts("staff:self-introduction+title-cue+voice-print") == 0
 
 
 def test_naming_reviews_get_reserved_capacity_against_a_reference_backlog(tmp_path, monkeypatch):

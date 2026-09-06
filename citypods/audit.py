@@ -840,7 +840,8 @@ def check_roster_quality(
                 considered += 1
                 empty.append((uid, record))
             continue
-        considered += 1
+        if _published_timestamp(record) >= cutoff:
+            considered += 1
         members = {
             " ".join(str(row.get("name") or "").casefold().split())
             for row in (roster or {}).get("members") or []

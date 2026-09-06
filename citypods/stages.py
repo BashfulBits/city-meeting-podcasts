@@ -98,6 +98,7 @@ from citypods.diarize import (
     DEFAULT_DIARIZE_MODEL,
     DEFAULT_EMBEDDING_MODEL,
     TIMED_WORDS_VALIDATION_VERSION,
+    attach_transcript_words,
     has_valid_timed_words,
 )
 from citypods.durations import (
@@ -7461,6 +7462,7 @@ class NativeDiarizeStage:
                 # The audio temp file must outlive the call, so the wait stays inside the
                 # download context.
                 artifact = future.result(timeout=_diarize_job_timeout_seconds(ctx))
+            attach_transcript_words(artifact.turns, words)
             # Outside `finalize_lock`: the object is content-addressed by `candidate.key`, so two
             # workers can never contend for the same one, and holding the lock across a network
             # write would serialize every worker's completion behind one upload -- spending
@@ -7507,7 +7509,7 @@ class NativeDiarizeStage:
             # not behind `if __name__ == "__main__"` re-executes there and takes the child down.
             admission.close("pool-broken")
             with finalize_lock:
-                ep.speakers_error = f"native-diarize-error: {exc}"
+                stats.defer("pool-broken", sample=uid)
                 stats.errors.append(
                     f"{uid}: diarize worker pool broke ({exc}); is the entry point guarded by "
                     'if __name__ == "__main__"?'
@@ -7546,10 +7548,7 @@ class NativeDiarizeStage:
         touches state shared across worker threads (episode fields, the turn-evidence map, the
         runtime log, stats). The storage upload deliberately happens *before* the lock -- see
         `_upload_speakers_artifact`."""
-        from citypods.diarize import attach_transcript_words
-
         ep, uid = candidate.ep, candidate.uid
-        attach_transcript_words(artifact.turns, words)
         # The public diarization object deliberately never contains numerical voice vectors.
         # They remain private review evidence keyed to this exact recipe.
         turn_evidence.setdefault("episodes", {})[uid] = {
@@ -7967,8 +7966,10 @@ class SpeakerIdentityStage:
             min_verdicts=naming_min_verdicts,
             min_precision=naming_min_precision,
             min_member_verdicts=naming_min_member_verdicts,
-            capture_context=str(
-                pilot_capture_context(ctx.speaker_config or {}, canonical_city_slug, None) or ""
+            capture_context=json.dumps(
+                (ctx.speaker_config or {}).get("pilot_bodies") or [],
+                sort_keys=True,
+                separators=(",", ":"),
             ),
         )
         projections = evaluation.get("projections")

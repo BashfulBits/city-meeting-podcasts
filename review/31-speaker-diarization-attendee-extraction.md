@@ -578,7 +578,7 @@ should not, because the cost and the stakes differ by who is speaking:
 
 | Tier | Named publicly | Human-confirmed | Speaker page |
 |---|---|---|---|
-| Council / board **members** | yes | **yes** — required | yes |
+| Council / board **members** | yes once established | required until established; then trusted ruling threshold | yes |
 | **Staff** | yes, automatically | no | **no** |
 | **Everyone else** | no — generic `Speaker N` | n/a | no |
 
@@ -606,7 +606,8 @@ staff section beats an elected-title cue even though the tie-break between two *
 1. explicit **members-section** → **member**; explicit **staff-section** → **staff**
    (an explicit section always wins; cues are not consulted)
 2. otherwise **elected-title cue** → **member**; **staff-title cue** → **staff**
-3. both cues fire, no section → **member** (deliberately err toward *more* scrutiny, never less)
+3. both cues fire, no section → **member** (deliberately err toward *more* scrutiny, never less);
+   an explicit section always takes precedence over either cue
 4. unsectioned roster hit, no cue → **member** (the minutes place them on the attendance list)
 5. neither → **other**
 

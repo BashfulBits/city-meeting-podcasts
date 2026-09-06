@@ -780,12 +780,17 @@ def _name_then_title(
     # The *first* token must read as a proper noun; later ones may be lowercase surname
     # particles. Greeting rejection above already handles "Thank you," and "Good morning,"
     # independently, so this check does not have to cover every token to be effective.
-    if not parts or not parts[0][:1].isupper():
+    if not parts:
         return None
-    if not all(
-        part[:1].isupper() or part.casefold().strip(".") in _NAME_PARTICLES for part in parts[1:]
-    ):
-        return None
+    uniformly_lowercase = all(part == part.casefold() for part in parts)
+    if not uniformly_lowercase:
+        if not parts[0][:1].isupper():
+            return None
+        if not all(
+            part[:1].isupper() or part.casefold().strip(".") in _NAME_PARTICLES
+            for part in parts[1:]
+        ):
+            return None
     # A known-attendee roster (when one parsed) corrects the raw ASR name text to the official
     # spelling below; without one (a new city, or unparseable minutes) this signal still fires
     # on the title check alone -- roster narrowing is a quality improvement, not a requirement.

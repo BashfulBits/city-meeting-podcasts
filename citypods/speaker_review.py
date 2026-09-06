@@ -287,14 +287,8 @@ _REVIEW_CLASSES: dict[str, dict[str, Any]] = {
         "outcomes": ("Correct", "Incorrect"),
         "title_prefix": "R7 speaker name",
         # No start/end: a fused candidate is a claim about a whole cluster, not one turn.
-        "fields": _COMMON_PAYLOAD_FIELDS + ("kind", "display_name", "cluster"),
-        # Carried in the issue payload but NOT verified against the ledger, and that distinction
-        # is the whole point: `naming_candidate_id` excludes the signal set on purpose, so a
-        # re-projection between packaging and ingest can legitimately change these under the same
-        # id. Verifying them would reject a reviewer's ruling as tampering for the system working
-        # as designed; omitting them entirely would leave the verdict with no record of what was
-        # judged. Carried, they answer "what did the human actually rule on".
-        "carry": ("tier", "combination_key"),
+        "fields": _COMMON_PAYLOAD_FIELDS
+        + ("kind", "display_name", "cluster", "tier", "combination_key"),
     },
     "shadow": {
         "ledger": "candidates",
@@ -638,8 +632,8 @@ def ingest(args: argparse.Namespace) -> int:
         capture_context=str(current["capture_context"]),
         # From `candidate` -- the verified issue payload the reviewer judged -- not from
         # `current`, the mutable ledger row, which a later projection may already have rewritten.
-        combination_key=str(candidate.get("combination_key") or "") or None,
-        tier=str(candidate.get("tier") or "") or None,
+        combination_key=str(current.get("combination_key") or "") or None,
+        tier=str(current.get("tier") or "") or None,
     )
     save_evaluation(state_path, state)
     push_state(
