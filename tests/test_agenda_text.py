@@ -517,3 +517,27 @@ def test_roster_labels_member_and_staff_sections():
     assert "section" not in flat[0]
     # Staff wins a mixed qualifier: "members" is filler there, "staff" discriminates.
     assert parse_roster("Staff Members Present: Sam Staffer")[0]["section"] == "staff"
+
+
+def test_also_present_is_a_staff_section_not_an_unsectioned_member_row():
+    """ "ALSO PRESENT:" is the conventional heading for the clerk, attorney and manager. It matched
+    no vocabulary, so it fell through as an unsectioned row -- and an unsectioned roster hit tiers
+    as `member`, which would hand the City Manager the speaker page reserved for officials."""
+    rows = parse_roster("ALSO PRESENT: City Manager Sara Hensley, City Attorney Mack Reinwand")
+    assert [(row["name"], row["section"]) for row in rows] == [
+        ("Sara Hensley", "staff"),
+        ("Mack Reinwand", "staff"),
+    ]
+
+
+def test_staff_titles_are_stripped_from_roster_names():
+    """Stripped word-by-word from the front, because real staff titles are open-ended phrases.
+    Leaving the title in place stores it as part of the person's name, where it matches no spoken
+    name and corroborates nothing."""
+    rows = parse_roster("Also Present: Interim Assistant City Manager Jane Doe")
+    assert [row["name"] for row in rows] == ["Jane Doe"]
+
+
+def test_a_surname_that_is_also_a_role_word_survives():
+    """Leading-only stripping: "Manager" is a title at the front and a surname at the back."""
+    assert [row["name"] for row in parse_roster("Present: Mark Manager")] == ["Mark Manager"]

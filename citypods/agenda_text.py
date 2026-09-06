@@ -1062,7 +1062,20 @@ _ROSTER_MEMBER_WORDS = frozenset(
         "directors",
     }
 )
-_ROSTER_STAFF_WORDS = frozenset({"staff", "administration", "personnel", "employees"})
+_ROSTER_STAFF_WORDS = frozenset(
+    {
+        "staff",
+        "administration",
+        "personnel",
+        "employees",
+        # "ALSO PRESENT:" is the conventional heading for the clerk, attorney and manager -- the
+        # people present who are *not* on the body. It matched no vocabulary, so it fell through
+        # as an unsectioned row, and an unsectioned roster hit tiers as `member`: the City
+        # Manager would have been handed the cross-meeting speaker page §C.4.1 withholds.
+        "also",
+        "additionally",
+    }
+)
 # Attendance lines that record who was in the *room*, not who serves the body. These must not
 # enter the roster at all: it seeds the person registry and acts as a correction constraint, so an
 # audience member landing there would be enrolled as a probable official and -- because an
@@ -1197,6 +1210,41 @@ _NON_NAME_TOKENS = frozenset(
         "yes",
     }
 )
+# Role and modifier words that can lead a staff title. Stripped from the front of a roster entry
+# one word at a time (see `_clean_roster_name`), which covers the open-ended real phrasings --
+# "City Manager", "Interim Assistant City Manager", "Deputy Chief of Police" -- without trying to
+# enumerate them. Kept separate from `_ROSTER_NAME_TITLES`, which holds whole elected offices.
+_STAFF_ROLE_WORDS = frozenset(
+    {
+        "acting",
+        "administrator",
+        "analyst",
+        "assistant",
+        "associate",
+        "attorney",
+        "chief",
+        "city",
+        "clerk",
+        "coordinator",
+        "county",
+        "deputy",
+        "director",
+        "engineer",
+        "executive",
+        "general",
+        "interim",
+        "manager",
+        "officer",
+        "planner",
+        "planning",
+        "secretary",
+        "senior",
+        "specialist",
+        "superintendent",
+        "town",
+        "village",
+    }
+)
 _MAX_ROSTER_NAME_WORDS = 5
 _MAX_ROSTER_NAME_CHARS = 60
 
@@ -1222,6 +1270,14 @@ def _clean_roster_name(raw: str) -> str | None:
                 words = words[len(title) :]
                 break
         else:
+            # Staff titles are open-ended phrases ("City Manager", "Interim Assistant Planning
+            # Director"), so they are stripped word-by-word from the front rather than enumerated.
+            # Leading-only, so a surname that happens to be a role word ("Mark Manager") survives.
+            # Without this an "ALSO PRESENT:" line enrols the *title* as part of the person's
+            # name, which then matches no spoken name and corroborates nothing.
+            if len(words) > 1 and lowered[0] in _STAFF_ROLE_WORDS:
+                words = words[1:]
+                continue
             break
     if not 0 < len(words) <= _MAX_ROSTER_NAME_WORDS:
         return None

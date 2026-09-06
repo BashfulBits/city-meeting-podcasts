@@ -594,6 +594,7 @@ def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, mon
     2026-09-05) look stalled from its logs when it was actually just slow (see GH#1274 follow-up).
     """
     import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
     from citypods.diarize import DiarizeArtifacts
     from citypods.progress import PROGRESS
 
@@ -615,6 +616,11 @@ def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, mon
         progress_during_call.extend(PROGRESS.snapshot())
         return DiarizeArtifacts(turns=[], clusters=[], engine="sherpa-onnx", model="test-model")
 
+    # In-process so the monkeypatched job is observed; production always uses a
+    # real pool, so the backstop timeout can actually fire (see _diarize_executor).
+    monkeypatch.setattr(
+        stages_mod, "_diarize_executor", lambda workers: stages_mod._InlineExecutor()
+    )
     monkeypatch.setattr(diarize_mod, "run_diarize_job", _fake_job)
     _stub_diarize_io(monkeypatch, tmp_path)
 

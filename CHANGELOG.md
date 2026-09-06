@@ -36,6 +36,35 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Nine defects from the CodeRabbit review of #1485, each verified against the code first.**
+  *Silent misattribution:* `"ALSO PRESENT:"` — the conventional heading for the clerk, attorney
+  and manager — matched no qualifier vocabulary, so it fell through as an unsectioned row, and an
+  unsectioned roster hit tiers as **member**; the City Manager would have been handed the
+  cross-meeting speaker page the tier policy withholds. Their titles were not stripped either, so
+  `"City Manager Sara Hensley"` was stored as a person's name, matching no spoken name and
+  corroborating nothing. *Unbounded work:* `_InlineExecutor` resolves its `Future` before
+  returning, so `future.result(timeout=…)` could never raise — on a single-vCPU runner (or
+  `workers: 1`) the backstop was silently unreachable and one hung inference would hold the job
+  until Actions sent SIGTERM, the exact failure the backstop exists to bound; a single worker now
+  gets a real one-process pool, and the inline executor is test-only. *Budget overrun:* the
+  diarize deadlines were anchored at lane-setup time rather than to `enrich_phase_start`, so the
+  minutes `pull_state()` spends restoring thousands of objects pushed the 320m backstop past the
+  workflow's own 330m timeout — the tag lane already subtracted that elapsed time. *False
+  provenance:* `diarize()` accepted any `model` value but always loaded the one segmentation
+  release, so a non-default `speakers.model` changed artifact fingerprints and the reported model
+  without changing inference; it is now rejected until a validated mapping exists. *Inverted
+  signal:* `minutes_roster_status` was assigned before the storage writes it describes, so a
+  failed write left `"parsed"` beside an unchanged roster and the audit read the defect as
+  healthy. *Deferred ≠ failed:* the diarize backstop wrote `speakers_error` onto the episode, so a
+  healthy long meeting that merely ran out of runway read as a broken diarization to the
+  feed-health audit until some later run overwrote it. *Unusable command:* `record-benchmark`'s
+  `--selected-engine` was pinned to `("pyannote", "wespeaker")` and so could not name the engine
+  §A.1a actually selected. Plus two test gaps: membership-signal provenance and registry-name
+  canonicalization are now asserted **through the stage**, where deleting the call fails the test.
+  Found while fixing these: the disjoint-roster check compared raw spellings, so a legitimate
+  minutes correction raised a feed-health issue for the system working as designed.
+
+
 - **Suspected bad rosters are a feed-health issue with resolution steps (`roster-quality`).**
   `MinutesTextStage`/`SpeakerIdentityStage` persist how each roster parse went on the episode
   record (`minutes_roster.status`: parsed / empty / disjoint), and the daily audit turns a

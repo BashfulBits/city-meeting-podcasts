@@ -719,7 +719,10 @@ def main(argv: list[str] | None = None) -> int:
     benchmark.add_argument("--body", required=True)
     benchmark.add_argument("--engine-recipe", required=True)
     benchmark.add_argument("--capture-context", required=True)
-    benchmark.add_argument("--selected-engine", choices=("pyannote", "wespeaker"), required=True)
+    # Free-form, not a fixed choice list: it was pinned to ("pyannote", "wespeaker") and so could
+    # not name the engine actually in use (review/31 §A.1a selected sherpa-onnx + NeMo
+    # TitaNet-Small), which made the durable record this command exists to keep unwritable.
+    benchmark.add_argument("--selected-engine", required=True)
     benchmark.add_argument("--report-hash", required=True)
     benchmark.add_argument("--reviewer", required=True)
     package_parser = sub.add_parser("package", help="package bounded weekly speaker review issues")

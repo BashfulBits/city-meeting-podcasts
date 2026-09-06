@@ -2797,9 +2797,10 @@ def _diarize_job_timeout_seconds(ctx: StageContext) -> float | None:
 class _InlineExecutor:
     """Executor that runs work on the calling thread.
 
-    Used when the pool is one worker wide (and by tests): spawning an interpreter to run one
-    job at a time buys nothing, and keeping the call in-process means a monkeypatched
-    `run_diarize_job` is actually observed.
+    Test-only: keeping the call in-process is what lets a monkeypatched `run_diarize_job` be
+    observed. Deliberately *not* used in production even for a single worker -- it resolves its
+    `Future` before returning, so `future.result(timeout=...)` cannot time out and the backstop
+    would be silently unreachable (see `_diarize_executor`).
     """
 
     def submit(self, fn, /, *args, **kwargs):
@@ -2815,14 +2816,20 @@ class _InlineExecutor:
 
 
 def _diarize_executor(workers: int):
-    """Process pool for diarize workers, or an inline executor for a single worker.
+    """Process pool for diarize workers.
 
     `spawn`, never `fork`: the enrich run always has a heartbeat thread alive, and forking a
     multi-threaded process is the documented deadlock hazard CPython warns about.
+
+    A single worker gets a real one-process pool rather than running inline. `_InlineExecutor`
+    completes its `Future` *before* returning, so `future.result(timeout=...)` can never raise
+    `TimeoutError` -- on a single-vCPU runner (or `speakers.workers: 1`) one hung inference would
+    hold the job until Actions sends SIGTERM, which is precisely the failure the backstop exists
+    to bound. Tests that need the call in-process monkeypatch this function directly.
     """
-    if workers <= 1:
-        return _InlineExecutor()
-    return ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"))
+    return ProcessPoolExecutor(
+        max_workers=max(1, workers), mp_context=multiprocessing.get_context("spawn")
+    )
 
 
 def _diarize_fits_remaining_budget(
@@ -3964,10 +3971,6 @@ class MinutesTextStage:
                 # indefinitely. Count them apart so the size of that gap is measurable before
                 # anyone proposes a heavier extractor to close it.
                 stats.quality("minutes-roster-parsed" if roster else "minutes-roster-empty")
-                # Persisted so the daily audit can turn a repeated failure into one actionable
-                # feed-health issue, the same record-only pattern `check_agenda_quality` uses.
-                # `SpeakerIdentityStage` may later upgrade this to "disjoint".
-                ep.minutes_roster_status = "parsed" if roster else "empty"
                 raw_votes = parse_votes(text, roster=roster)
                 grouped: dict[str | None, list[dict]] = {}
                 for vote in raw_votes:
@@ -4052,6 +4055,14 @@ class MinutesTextStage:
                 ep.minutes_text_last_attempt = now.isoformat()
                 ep.minutes_votes = votes
                 ep.minutes_roster = roster
+                # Set here, beside the data it describes, not at parse time: the storage writes
+                # above can raise, and a status of "parsed" sitting next to an unchanged (usually
+                # empty) roster would tell the audit the roster is fine while the real defect --
+                # a repeated storage failure -- stayed invisible. Persisted so the daily audit
+                # can turn repeated failures into one issue, the record-only pattern
+                # `check_agenda_quality` uses. `SpeakerIdentityStage` may upgrade it to
+                # "disjoint".
+                ep.minutes_roster_status = "parsed" if roster else "empty"
                 ep.minutes_votes_url = votes_url
                 ep.minutes_roster_url = roster_url
                 ep.links = updated_links
@@ -7403,8 +7414,11 @@ class NativeDiarizeStage:
             # estimate miss, and it stops the pool taking any *new* work.
             admission.close("backstop")
             with finalize_lock:
+                # Deferred, not failed -- the project-wide distinction. Writing `speakers_error`
+                # here would persist "broken diarization" onto a healthy long meeting that simply
+                # ran out of runway, where the feed-health audit and every other reader of that
+                # field would see a defect until some later run happened to overwrite it.
                 stats.defer("diarize-backstop", sample=uid)
-                ep.speakers_error = "native-diarize-error: backstop timeout"
             print(
                 f"[enrich] diarize backstop uid={uid} body={ep.body!r} "
                 f"elapsed_s={time.monotonic() - started_at:.1f}",
@@ -7774,14 +7788,19 @@ class SpeakerIdentityStage:
                 # plausible-but-wrong roster still narrows `allowed_ids`. A real body does not
                 # replace its entire membership between meetings; a body with no history yet
                 # (onboarding) has no established set to be disjoint from, so it is not counted.
-                known = {
-                    _norm_display(row.get("name"))
+                standing = [
+                    str(row.get("name"))
                     for row in body_membership(
                         registry, city_slug=canonical_city_slug, body=ep.body
                     )
-                }
+                ]
+                known = {_norm_display(name) for name in standing}
+                # Compared on canonical spellings: a minutes correction ("Gerrard" -> "Gerard") is
+                # precisely what canonicalization absorbs elsewhere, and would otherwise read here
+                # as a roster parsed from the wrong text -- raising a feed-health issue for the
+                # system working as designed.
                 incoming = {
-                    _norm_display(row.get("name"))
+                    _norm_display(canonical_name(str(row.get("name")), standing))
                     for row in ep.minutes_roster or ()
                     if isinstance(row, Mapping) and str(row.get("name") or "").strip()
                 }

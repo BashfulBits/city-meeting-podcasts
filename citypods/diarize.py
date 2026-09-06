@@ -280,6 +280,19 @@ def diarize(
             f"unknown diarize embedding model {embedding_name!r}; "
             f"choose one of {sorted(_EMBEDDING_RECIPES)}"
         )
+    # Only one segmentation model exists today, and `_ensure_segmentation_model()` loads it
+    # unconditionally -- so a different `model` value would change the content-addressed spec hash
+    # and the reported `DiarizeArtifacts.model` without changing a single inference. That is false
+    # provenance plus a pointless re-diarization of the whole catalog. Reject it until a validated
+    # segmentation-recipe mapping exists; `scripts/preflight_diarization.py` already refuses the
+    # same value, but only in the workflow, and this is the call every path goes through.
+    if model != DEFAULT_DIARIZE_MODEL:
+        raise ValueError(
+            f"unknown diarize segmentation model {model!r}; only {DEFAULT_DIARIZE_MODEL!r} is "
+            "implemented, and a different value would change artifact keys without changing "
+            "inference"
+        )
+
     import sherpa_onnx
 
     threshold = (

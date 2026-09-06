@@ -2865,9 +2865,17 @@ def _build_impl(
             # matters more than it did serially -- without it a single estimate miss can hold
             # every worker's results hostage until the runner is killed (review/31 §A.4).
             backstop_min = float(defaults.get("diarize_backstop_minutes", 320))
-            now = time.monotonic()
-            diarize_start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
-            diarize_backstop_deadline = now + backstop_min * 60 if backstop_min > 0 else None
+            # Anchored to the start of the enrich phase, not to now: `pull_state()` restores a
+            # snapshot of thousands of objects before this point, and any minutes it spends would
+            # otherwise push the 320m backstop past the workflow's own 330m timeout -- so Actions
+            # would kill the job before deferred records persist, which is the outcome the
+            # backstop exists to prevent. The tag lane already subtracts this elapsed time.
+            diarize_start_deadline = (
+                enrich_phase_start + start_cutoff_min * 60 if start_cutoff_min > 0 else None
+            )
+            diarize_backstop_deadline = (
+                enrich_phase_start + backstop_min * 60 if backstop_min > 0 else None
+            )
             deadline = diarize_start_deadline
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
             print(

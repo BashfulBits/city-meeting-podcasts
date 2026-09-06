@@ -1564,3 +1564,92 @@ def test_a_minutes_spelling_change_does_not_orphan_an_approved_profile(tmp_path)
     )
     assert fixed.publish
     assert fixed.reason == "member-established"
+
+
+def test_stage_emits_membership_not_roster_when_minutes_are_pending(tmp_path):
+    """Provenance through the stage, not just in a hand-built candidate: standing membership must
+    arrive as SIGNAL_MEMBERSHIP so it lands in its own precision bucket, and a published roster
+    must suppress it rather than stacking a second untimed signal on the same claim."""
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    ep.minutes_roster = [{"name": "Jane Doe", "section": "members"}]
+    _run_identity_stage(tmp_path, city, ep, ctx)  # establishes standing membership
+
+    ep.uid, ep.minutes_roster = "uid-ep2", []  # next meeting: minutes weeks away
+    evaluation = _run_identity_stage(tmp_path, city, ep, ctx)
+    jane = next(
+        row
+        for row in evaluation["naming_candidates"].values()
+        if row["display_name"] == "Jane Doe" and row["episode_uid"] == "uid-ep2"
+    )
+    assert "membership" in jane["signals"]
+    assert "roster" not in jane["signals"]
+
+    ep.uid, ep.minutes_roster = "uid-ep3", [{"name": "Jane Doe", "section": "members"}]
+    evaluation = _run_identity_stage(tmp_path, city, ep, ctx)
+    jane = next(
+        row
+        for row in evaluation["naming_candidates"].values()
+        if row["display_name"] == "Jane Doe" and row["episode_uid"] == "uid-ep3"
+    )
+    assert "roster" in jane["signals"]
+    assert "membership" not in jane["signals"]
+
+
+def test_stage_canonicalizes_registry_names_before_the_established_check(tmp_path):
+    """Exercises the *stage's* canonicalization of active registry names, which a test that
+    canonicalizes its own input would not: delete that call and this fails. A member holding an
+    approved profile under an older spelling must still publish once the minutes correct it."""
+    import json as _json
+
+    city, ep, ctx = _identity_stage_case(tmp_path)
+    ep.minutes_roster = [{"name": "Jane Doee", "section": "members"}]
+
+    # An approved voice profile stored under the pre-correction spelling.
+    from citypods.speakers import body_key, speaker_id
+
+    ident = speaker_id("denton-tx", "City Council", "Jane Doe")
+    ctx.speaker_registry_path.write_text(
+        _json.dumps(
+            {
+                "version": 1,
+                "people": {
+                    ident: {
+                        "speaker_id": ident,
+                        "display_name": "Jane Doe",
+                        "aliases": [],
+                        "body_key": body_key("denton-tx", "City Council"),
+                        "membership": {
+                            "first_seen": "2026-01-01T00:00:00+00:00",
+                            # `refresh_membership_status` runs first and demotes anyone with no
+                            # `last_seen` to review_only, which would drop them from
+                            # `confirmed_names` before the check under test is reached.
+                            "last_seen": datetime.now(UTC).isoformat(),
+                        },
+                        "references": [{"embedding": [0.1], "embedding_recipe": "x"}],
+                        "status": "active",
+                    }
+                },
+                "history": [],
+            }
+        )
+    )
+    # Trust the combination the roster+cue pair produces, so only the person check is in play.
+    key = "member:chair-reference+roster+title-cue"
+    ctx.speaker_evaluation_state_path.write_text(
+        _json.dumps(
+            {
+                "naming_candidates": {
+                    f"seed-{i}": {"combination_key": key, "city_slug": "denton-tx"}
+                    for i in range(20)
+                },
+                "reviews": [{"candidate_id": f"seed-{i}", "correct": True} for i in range(20)],
+            }
+        )
+    )
+    evaluation = _run_identity_stage(tmp_path, city, ep, ctx)
+    # Published, so it never reaches the review ledger under the corrected spelling.
+    # The seeded rows carry only the join fields, so read display names defensively.
+    assert not any(
+        row.get("display_name") == "Jane Doee"
+        for row in (evaluation.get("naming_candidates") or {}).values()
+    )
