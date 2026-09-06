@@ -248,6 +248,92 @@ def test_native_diarize_process_identifies_pilot_body_with_city_entity(tmp_path)
     assert stats.defer_reasons.get("missing-timed-words") == 1
 
 
+def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, monkeypatch, capsys):
+    """A running diarize attempt registers with PROGRESS (so the heartbeat's "active work"
+    snapshot shows it busy instead of "no tracked work active") and is bracketed by start/done
+    log lines carrying uid/body/timing -- the visibility gap that made run 51 (denton-tx,
+    2026-09-05) look stalled from its logs when it was actually just slow (see GH#1274 follow-up).
+    """
+    from contextlib import contextmanager
+
+    import citypods.stages as stages_mod
+    from citypods.compute.base import InferenceJob, JobResult
+    from citypods.diarize import DiarizeArtifacts
+    from citypods.progress import PROGRESS
+
+    city = City(
+        slug="denton-tx-city-council",
+        city_entity="denton-tx",
+        provider="swagit",
+        source={"list_url": "https://example.test/views/5", "body": "City Council"},
+        podcast_title="Denton City Council",
+        podcast_author="City of Denton",
+        podcast_email="",
+        podcast_description="d",
+    )
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = {
+        "enabled": True,
+        "pilot_bodies": [
+            {"city": "denton-tx", "body": "City Council", "capture_context": "council-chamber-v1"}
+        ],
+    }
+
+    ep = _ep("pilot")
+    ep.hosted_audio_url = "https://cdn/audio.m4a"
+    ep.transcript_synced = True
+    ep.transcript_words_key = "words/pilot.json"
+    ep.served_duration_seconds = 120.0
+    ctx.storage.put_file(
+        ep.transcript_words_key,
+        _write_temp(
+            tmp_path, "words.json", b'{"word_segments": [{"start": 0.0, "end": 1.0, "word": "hi"}]}'
+        ),
+        "application/json",
+    )
+
+    progress_during_call: list = []
+
+    class _FakeDiarizeBackend:
+        def __init__(self, _asr):
+            pass
+
+        def run_inference(self, job: InferenceJob) -> JobResult:
+            # Snapshot PROGRESS from *inside* the call, the way the heartbeat thread would.
+            progress_during_call.extend(PROGRESS.snapshot())
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output=DiarizeArtifacts(
+                    turns=[], clusters=[], engine="pyannote", model="test-model"
+                ),
+            )
+
+    @contextmanager
+    def _fake_download_audio(url):
+        yield tmp_path / "audio.m4a"
+
+    monkeypatch.setattr(stages_mod, "LocalBackend", _FakeDiarizeBackend)
+    monkeypatch.setattr(stages_mod, "_download_audio", _fake_download_audio)
+
+    stats = NativeDiarizeStage().process(FakeProvider(), city, [ep], ctx)
+
+    assert stats.ran == 1
+    assert progress_during_call, "diarize call must register with PROGRESS while it runs"
+    entry = progress_during_call[0]
+    assert entry.phase == "diarize"
+    assert entry.uid == str(ep.uid or ep.guid)
+    assert entry.source == "denton-tx"  # canonical entity, not the driving feed's own slug
+    # Cleared again once the call returns -- a later heartbeat tick sees an idle registry.
+    assert PROGRESS.snapshot() == []
+
+    out = capsys.readouterr().out
+    assert f"diarize start uid={ep.uid} body='City Council'" in out
+    assert "recording_s=120.0 estimate_s=unknown" in out
+    assert f"diarize done uid={ep.uid} body='City Council'" in out
+    assert "recording_s=120.0 ratio=" in out
+
+
 def _ctx(tmp_path, *, dry_run=False, storage=True, stop=None, chapters_per_source=10_000):
     return StageContext(
         storage=LocalStorage(root=tmp_path / "a", url_prefix="https://cdn") if storage else None,
