@@ -4,6 +4,15 @@ provider: swagit
 source:
   list_url: https://addisontx.new.swagit.com/views/128
   body: "Comprehensive Plan Advisory Committee"
+  body_includes:
+    - provider_guid: "316743"
+      body: "ACP Vision Plan Meeting"
+    - provider_guid: "308092"
+      body: "ACP Vision Plan Meeting"
+    - provider_guid: "308431"
+      body: "ACP Community Meeting"
+  body_any:
+    - "ACP Advisory Committee"
 lifecycle:
   status: dormant
   reason: "Temporary committee"

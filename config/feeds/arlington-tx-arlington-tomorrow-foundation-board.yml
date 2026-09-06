@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Arlington Tomorrow Foundation Board Meeting represents an independent board with recurring meetings (count: 3 across 2020), requiring a distinct feed.
+slug: arlington-tx-arlington-tomorrow-foundation-board
+city: arlington-tx
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body: Arlington Tomorrow Foundation Board Meeting
+podcast_title: 'Arlington: Arlington Tomorrow Foundation Board'
+podcast_author: City of Arlington, TX
+podcast_email: ''
+podcast_description: Meetings of the Arlington Tomorrow Foundation Board.

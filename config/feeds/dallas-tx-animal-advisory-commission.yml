@@ -4,6 +4,11 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Animal Advisory Commission"
+  body_includes:
+    - provider_guid: "203310"
+      body: "Dangerous Dog Taskforce Meeting"
+  body_any:
+    - "Animal Shelter Commission"
 podcast_title: "Dallas: Animal Advisory Commission"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

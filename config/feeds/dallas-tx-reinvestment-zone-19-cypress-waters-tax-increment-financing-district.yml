@@ -1,0 +1,14 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Observed 5 meetings from January 2020 to January 2023 for Reinvestment Zone 19 Cypress Waters Tax Increment Financing District. This is a recurring TIF district board.
+slug: dallas-tx-reinvestment-zone-19-cypress-waters-tax-increment-financing-district
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Reinvestment Zone 19 Cypress Waters Tax Increment Financing District
+podcast_title: 'Dallas: Reinvestment Zone 19 Cypress Waters Tax Increment Financing
+  District'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Reinvestment Zone 19 Cypress Waters Tax Increment
+  Financing District.

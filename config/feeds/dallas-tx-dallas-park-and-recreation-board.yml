@@ -4,6 +4,13 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Dallas Park and Recreation Board"
+  body_includes:
+    - provider_guid: "269026"
+      body: "Special Park and Recreation Board"
+    - provider_guid: "270978"
+      body: "2024 Bond Parks and Trails Subcommittee Meeting"
+    - provider_guid: "205509"
+      body: "Fair Park Foundation Press Conference"
 podcast_title: "Dallas: Dallas Park and Recreation Board"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

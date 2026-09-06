@@ -1,0 +1,13 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Recurring committee meetings spanning from Dec 2020 to Apr 2022 indicate a distinct body: Ad Hoc Committee on COVID-19 Recovery & Assistance.
+slug: dallas-tx-ad-hoc-committee-on-covid-19-recovery-and-assistance
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Ad Hoc Committee on COVID-19 Recovery & Assistance
+podcast_title: 'Dallas: Ad Hoc Committee on COVID-19 Recovery & Assistance'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Dallas Ad Hoc Committee on COVID-19 Recovery
+  & Assistance.

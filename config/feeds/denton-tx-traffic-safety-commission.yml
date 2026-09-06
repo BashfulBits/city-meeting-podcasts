@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Evidence for Traffic Safety Commission shows recurring meetings from 2018 to 2020 (f0 through f11), warranting a distinct feed.
+slug: denton-tx-traffic-safety-commission
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: Traffic Safety Commission on 2020-11-09 12:30 PM
+podcast_title: 'Denton: Traffic Safety Commission'
+podcast_author: City of Denton, TX
+podcast_email: ''
+podcast_description: Recordings of the Traffic Safety Commission meetings.

@@ -4,6 +4,19 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Housing and Homelessness Solutions"
+  body_includes:
+    - provider_guid: "205538"
+      body: "Housing Public Meeting"
+    - provider_guid: "205534"
+      body: "Virtual Town Hall Meeting Citizen Homelessness Commission - Public Input"
+    - provider_guid: "205526"
+      body: "Housing Policy Public Input Virtual Meeting Topic 4 of 4"
+    - provider_guid: "205523"
+      body: "Housing Policy Public Input Virtual Meeting Topic 3 of 4"
+    - provider_guid: "205522"
+      body: "Housing Policy Public Input Virtual Meeting Topic 2 of 4"
+    - provider_guid: "205521"
+      body: "Housing Policy Public Input Virtual Meeting Topic 1 of 4"
 podcast_title: "Dallas: Housing and Homelessness Solutions"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

@@ -1,0 +1,17 @@
+# Added by automated unexpected-body remediation.
+# Rationale: English language COVID-19 community updates spanning March to April 2020; distinct series requiring a new feed.
+slug: fort-worth-tx-covid-19-community-update-english
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body: COVID-19 Community Update (English) COVID-19 Community Update (English)
+podcast_title: 'Fort Worth: COVID-19 Community Update (English)'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: COVID-19 Community Updates in English.

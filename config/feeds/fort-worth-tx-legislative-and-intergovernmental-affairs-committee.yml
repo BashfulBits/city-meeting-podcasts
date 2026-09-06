@@ -4,6 +4,16 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Legislative and Intergovernmental Affairs Committee"
+  body_any:
+    - "Legislative Affairs Committee Special Called Meeting Legislative Affairs Committee Special Called Meeting"
+    - "Fort Worth Local Development Corporation, Research and Innovation Local Government Corporation, and Legislative Affairs Committee Fort Worth Local Development Corporation, Research and Innovation Local Government Corporation, and Legislative Affairs Committee"
+    - "Legislative Committee Legislative Committee"
+    - "Legislative & Governmental Affairs Committee Legislative & Governmental Affairs Committee"
+  body_includes:
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4718"
+      body: "Fort Worth Local Development Corporation and Legislative Affairs Committee Fort Worth Local Development Corporation and Legislative Affairs Committee"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=4718"
+      body: "Fort Worth Local Development Corporation and Legislative Affairs Committee Fort Worth Local Development Corporation and Legislative Affairs Committee"
 podcast_title: "Fort Worth: Legislative and Intergovernmental Affairs Committee"
 podcast_author: "City of Fort Worth, TX"
 podcast_email: ""

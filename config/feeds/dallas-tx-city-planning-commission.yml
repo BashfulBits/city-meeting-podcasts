@@ -4,6 +4,11 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "City Planning Commission"
+  body_includes:
+    - provider_guid: "203833"
+      body: "CPC Bus Tour"
+    - provider_guid: "203320"
+      body: "Saturday Redistricting Commission"
 podcast_title: "Dallas: City Planning Commission"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

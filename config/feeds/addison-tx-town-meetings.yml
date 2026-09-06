@@ -4,6 +4,27 @@ provider: swagit
 source:
   list_url: https://addisontx.new.swagit.com/views/128
   body: "Town Meetings"
+  body_includes:
+    - provider_guid: "208554"
+      body: "Special Community Meeting"
+    - provider_guid: "304981"
+      body: "Homelessness Education Seminar"
+    - provider_guid: "56020"
+      body: "George Herbert Walker Bush Elementary Dedication"
+    - provider_guid: "56021"
+      body: "Spruill Park Dedication Ceremony"
+    - provider_guid: "56022"
+      body: "Beckert Park Dedication Ceremony"
+    - provider_guid: "56024"
+      body: "Earth Day"
+    - provider_guid: "56025"
+      body: "Remington's Seafood Grill 30 Years Award"
+    - provider_guid: "56026"
+      body: "Destination Addison"
+    - provider_guid: "56027"
+      body: "Addison Way"
+    - provider_guid: "56028"
+      body: "Vitruvian Park"
 lifecycle:
   status: dormant
   reason: "old body name"

@@ -4,6 +4,19 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Fort Worth Housing Finance Corporation"
+  body_any:
+    - "FW Housing Finance Corp (immediately following the Council meeting beginning at 10 a.m.) FW Housing Finance Corp (immediately following the Council meeting beginning at 10 a.m.)"
+    - "Housing Finance Corporation of August 22, 2023 Housing Finance Corporation of August 22, 2023"
+    - "Housing Finance Corporation Housing Finance Corporation"
+  body_includes:
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5997"
+      body: "LDC, CCLGC, RILGC, FWHFC LDC, CCLGC, RILGC, FWHFC"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=5997"
+      body: "LDC, CCLGC, RILGC, FWHFC LDC, CCLGC, RILGC, FWHFC"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5508"
+      body: "Housing Finance Corporation of April 23, 2024 Housing Finance Corporation of April 23, 2024"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=5508"
+      body: "Housing Finance Corporation of April 23, 2024 Housing Finance Corporation of April 23, 2024"
 lifecycle:
   status: paused
   recheck_after: 2026-10-30

@@ -1,0 +1,13 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Recurring committee meetings spanning from May 2020 to Mar 2022 indicate a distinct body: Special Workforce-Education and Equity.
+slug: dallas-tx-special-workforce-education-and-equity
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Special Workforce-Education and Equity
+podcast_title: 'Dallas: Special Workforce-Education and Equity'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Dallas Special Workforce-Education and Equity
+  committee.

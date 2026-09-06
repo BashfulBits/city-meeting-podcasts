@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Observed 4 meetings from January 2019 to January 2023 for Reinvestment Zone 20 Board Mall Area Redevelopment. This is a recurring TIF district board.
+slug: dallas-tx-reinvestment-zone-20-board-mall-area-redevelopment
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Reinvestment Zone 20 Board Mall Area Redevelopment
+podcast_title: 'Dallas: Reinvestment Zone 20 Board Mall Area Redevelopment'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of Reinvestment Zone 20 Board Mall Area Redevelopment.

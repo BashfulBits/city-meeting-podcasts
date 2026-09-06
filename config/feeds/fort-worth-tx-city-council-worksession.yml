@@ -13,6 +13,9 @@ source:
       body: "Budget Work Session Budget Work Session"
     - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=6334"
       body: "Budget Work Session Budget Work Session"
+  body_any:
+    - "PRE-COUNCIL MEETING PRE-COUNCIL MEETING"
+    - "2018 VISIONING WORKSHOP 2018 VISIONING WORKSHOP"
 podcast_title: "Fort Worth: City Council Worksession"
 podcast_author: "City of Fort Worth, TX"
 podcast_email: ""

@@ -4,6 +4,13 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Public Safety"
+  body_includes:
+    - provider_guid: "205510"
+      body: "Dallas Police Memorial 2017"
+    - provider_guid: "205498"
+      body: "Dallas Ebola Case News Conference"
+    - provider_guid: "205497"
+      body: "Joint Dallas Ebola Update News Conference"
 podcast_title: "Dallas: Public Safety"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

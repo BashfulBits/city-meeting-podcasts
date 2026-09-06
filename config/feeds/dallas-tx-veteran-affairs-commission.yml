@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Veteran Affairs Commission"
+  body_includes:
+    - provider_guid: "205518"
+      body: "Veterans Day Parade"
 podcast_title: "Dallas: Veteran Affairs Commission"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

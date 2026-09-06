@@ -4,6 +4,11 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Infrastructure and Growth Committee"
+  body_includes:
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4683"
+      body: "Mobility: Infrastructure and Transportation Committee & Neighborhood Quality and Revitalization Committee Mobility: Infrastructure and Transportation Committee & Neighborhood Quality and Revitalization Committee"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=4683"
+      body: "Mobility: Infrastructure and Transportation Committee & Neighborhood Quality and Revitalization Committee Mobility: Infrastructure and Transportation Committee & Neighborhood Quality and Revitalization Committee"
 lifecycle:
   status: paused
   recheck_after: 2026-12-20

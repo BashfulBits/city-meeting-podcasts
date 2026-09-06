@@ -1,0 +1,17 @@
+# Added by automated unexpected-body remediation.
+# Rationale: CHARTER REVIEW TASK FORCE meets across multiple months (2015-09 to 2015-11) with 8 total episodes, representing a distinct recurring temporary task force body.
+slug: fort-worth-tx-charter-review-task-force
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body: CHARTER REVIEW TASK FORCE CHARTER REVIEW TASK FORCE
+podcast_title: 'Fort Worth: Charter Review Task Force'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Recordings of the Charter Review Task Force meetings.

@@ -4,6 +4,19 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Transportation and Infrastructure"
+  body_includes:
+    - provider_guid: "269612"
+      body: "2024 Bond Task Force Flood"
+    - provider_guid: "272240"
+      body: "2024 Bond Flood Protection and Storm Drainage Subcommittee Meeting"
+    - provider_guid: "269613"
+      body: "2024 Bond Task Force Streets and Transportation Subcommittee"
+    - provider_guid: "205504"
+      body: "Mill Creek Tunnel Project"
+    - provider_guid: "205502"
+      body: "Transportation for Hire"
+    - provider_guid: "205500"
+      body: "Goodbye to the Wright Amendment"
 podcast_title: "Dallas: Transportation and Infrastructure"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

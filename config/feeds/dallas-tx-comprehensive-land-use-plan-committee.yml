@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Comprehensive Land Use Plan Committee is a recurring committee with multiple observed episodes between January and March 2022.
+slug: dallas-tx-comprehensive-land-use-plan-committee
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Comprehensive Land Use Plan Committee
+podcast_title: 'Dallas: Comprehensive Land Use Plan Committee'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Comprehensive Land Use Plan Committee.

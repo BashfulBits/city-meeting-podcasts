@@ -4,6 +4,14 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Crime Control and Prevention District"
+  body_any:
+    - "CCPD CCPD"
+    - "Crime Control and Prevention Board Crime Control and Prevention Board"
+  body_includes:
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2170"
+      body: "Public Input Meeting for CCPD FY2016 Budget Public Input Meeting for CCPD FY2016 Budget"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2170"
+      body: "Public Input Meeting for CCPD FY2016 Budget Public Input Meeting for CCPD FY2016 Budget"
 lifecycle:
   status: paused
   recheck_after: 2026-12-12

@@ -4,6 +4,13 @@ provider: granicus
 source:
   feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
   body: "Planning and Zoning Commission"
+  body_any:
+    - "P&Z Regular Session"
+    - "P&Z Regular Session Meeting"
+    - "P&Z Reg. Session"
+    - "Special P&Z Regular Session"
+    - "P&Z Evening Session"
+    - "P&Z Sitting as CIPAC"
 podcast_title: "Arlington: Planning and Zoning Commission"
 podcast_author: "City of Arlington, TX"
 podcast_email: ""

@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Mobility Committee"
+  body_includes:
+    - provider_guid: "301195"
+      body: "Mobility Plan Amendment"
 lifecycle:
   status: paused
   recheck_after: 2026-09-30

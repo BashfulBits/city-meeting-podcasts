@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Observed 5 meetings between November 2022 and September 2023 for Environmental Health Committee. This is a recurring distinct committee.
+slug: dallas-tx-environmental-health-committee
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Environmental Health Committee
+podcast_title: 'Dallas: Environmental Health Committee'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Environmental Health Committee.
