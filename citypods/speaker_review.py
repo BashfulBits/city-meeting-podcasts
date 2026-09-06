@@ -287,11 +287,14 @@ _REVIEW_CLASSES: dict[str, dict[str, Any]] = {
         "outcomes": ("Correct", "Incorrect"),
         "title_prefix": "R7 speaker name",
         # No start/end: a fused candidate is a claim about a whole cluster, not one turn.
-        "fields": _COMMON_PAYLOAD_FIELDS
-        + ("kind", "display_name", "cluster", "tier", "combination_key"),
-        # `turns`/`cues` are shown to the reviewer but deliberately excluded from the verified
-        # payload: they are presentation, and a re-projection may legitimately find more of them
-        # between packaging and ingest, which must not invalidate a human's ruling.
+        "fields": _COMMON_PAYLOAD_FIELDS + ("kind", "display_name", "cluster"),
+        # Carried in the issue payload but NOT verified against the ledger, and that distinction
+        # is the whole point: `naming_candidate_id` excludes the signal set on purpose, so a
+        # re-projection between packaging and ingest can legitimately change these under the same
+        # id. Verifying them would reject a reviewer's ruling as tampering for the system working
+        # as designed; omitting them entirely would leave the verdict with no record of what was
+        # judged. Carried, they answer "what did the human actually rule on".
+        "carry": ("tier", "combination_key"),
     },
     "shadow": {
         "ledger": "candidates",
@@ -315,9 +318,14 @@ def _review_class(candidate: Mapping[str, object]) -> str:
 
 
 def _review_payload(candidate: Mapping[str, object]) -> dict[str, object]:
-    """Return only the private-ledger fields needed to recheck a review action."""
-    fields = _REVIEW_CLASSES[_review_class(candidate)]["fields"]
-    return {key: candidate[key] for key in fields if key in candidate}
+    """Return the payload embedded in a review issue.
+
+    `fields` are rechecked against the private ledger at ingest; `carry` fields ride along
+    unverified because they may legitimately change between packaging and ingest.
+    """
+    spec = _REVIEW_CLASSES[_review_class(candidate)]
+    keys = (*spec["fields"], *spec.get("carry", ()))
+    return {key: candidate[key] for key in keys if key in candidate}
 
 
 def _review_body(candidate: dict) -> str:
@@ -628,8 +636,10 @@ def ingest(args: argparse.Namespace) -> int:
         reviewer=args.actor,
         review_id=f"github-issue-{args.issue_number}",
         capture_context=str(current["capture_context"]),
-        combination_key=str(current.get("combination_key") or "") or None,
-        tier=str(current.get("tier") or "") or None,
+        # From `candidate` -- the verified issue payload the reviewer judged -- not from
+        # `current`, the mutable ledger row, which a later projection may already have rewritten.
+        combination_key=str(candidate.get("combination_key") or "") or None,
+        tier=str(candidate.get("tier") or "") or None,
     )
     save_evaluation(state_path, state)
     push_state(

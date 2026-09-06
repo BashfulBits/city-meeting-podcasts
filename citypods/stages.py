@@ -7427,6 +7427,13 @@ class NativeDiarizeStage:
                 # The audio temp file must outlive the call, so the wait stays inside the
                 # download context.
                 artifact = future.result(timeout=_diarize_job_timeout_seconds(ctx))
+            # Outside `finalize_lock`: the object is content-addressed by `candidate.key`, so two
+            # workers can never contend for the same one, and holding the lock across a network
+            # write would serialize every worker's completion behind one upload -- spending
+            # start-cutoff runway on waiting instead of inference.
+            speakers_url = _upload_speakers_artifact(
+                candidate, artifact, ctx, model=model, embedding_model=embedding_model
+            )
             with finalize_lock:
                 self._finalize(
                     candidate,
@@ -7434,6 +7441,7 @@ class NativeDiarizeStage:
                     words,
                     ctx,
                     stats,
+                    speakers_url=speakers_url,
                     turn_evidence=turn_evidence,
                     runtime_log=runtime_log,
                     runtime_recipe=runtime_recipe,
@@ -7497,13 +7505,14 @@ class NativeDiarizeStage:
         runtime_recipe: str,
         model: str,
         embedding_model: str,
+        speakers_url: str,
         elapsed: float,
     ) -> None:
-        """Publish one completed artifact. Called under `finalize_lock`: every mutation here
+        """Record one completed artifact. Called under `finalize_lock`: every mutation here
         touches state shared across worker threads (episode fields, the turn-evidence map, the
-        runtime log, stats, and the storage upload)."""
+        runtime log, stats). The storage upload deliberately happens *before* the lock -- see
+        `_upload_speakers_artifact`."""
         from citypods.diarize import attach_transcript_words
-        from citypods.speakers import public_turn
 
         ep, uid = candidate.ep, candidate.uid
         attach_transcript_words(artifact.turns, words)
@@ -7513,22 +7522,8 @@ class NativeDiarizeStage:
             "spec_hash": candidate.spec,
             "turns": [dict(turn) for turn in artifact.turns],
         }
-        payload = {
-            "schema": "2",
-            "basis": "served",
-            "source": "native",
-            "engine": getattr(artifact, "engine", "sherpa-onnx"),
-            "model": getattr(artifact, "model", model),
-            "embedding_recipe": embedding_model,
-            "clusters": getattr(artifact, "clusters", []),
-            "turns": [public_turn(turn) for turn in artifact.turns],
-        }
-        with tempfile.TemporaryDirectory() as directory:
-            dest = Path(directory) / "speakers.json"
-            dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
-            url = ctx.storage.put_file(candidate.key, dest, "application/json")
         ep.speakers_key = candidate.key
-        ep.speakers_url = url
+        ep.speakers_url = speakers_url
         ep.speakers_spec_hash = candidate.spec
         ep.speakers_format = "json"
         ep.speakers_synced = True
@@ -7548,6 +7543,39 @@ class NativeDiarizeStage:
             f"recording_s={candidate.recording_seconds:.1f} ratio={ratio:.3f}",
             flush=True,
         )
+
+
+def _upload_speakers_artifact(
+    candidate: _DiarizeCandidate,
+    artifact: Any,
+    ctx: StageContext,
+    *,
+    model: str,
+    embedding_model: str,
+) -> str:
+    """Write one public diarization object and return its URL.
+
+    Deliberately callable without `finalize_lock`. The key is content-addressed by the audio,
+    transcript and recipe, so concurrent workers never target the same object, and the payload is
+    built from this worker's own artifact -- nothing here touches shared state.
+    """
+    from citypods.speakers import public_turn
+
+    payload = {
+        "schema": "2",
+        "basis": "served",
+        "source": "native",
+        "engine": getattr(artifact, "engine", "sherpa-onnx"),
+        "model": getattr(artifact, "model", model),
+        "embedding_recipe": embedding_model,
+        # The public object deliberately never contains numerical voice vectors.
+        "clusters": getattr(artifact, "clusters", []),
+        "turns": [public_turn(turn) for turn in artifact.turns],
+    }
+    with tempfile.TemporaryDirectory() as directory:
+        dest = Path(directory) / "speakers.json"
+        dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+        return ctx.storage.put_file(candidate.key, dest, "application/json")
 
 
 def _naming_run_digest(

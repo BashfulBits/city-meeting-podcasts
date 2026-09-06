@@ -541,3 +541,15 @@ def test_staff_titles_are_stripped_from_roster_names():
 def test_a_surname_that_is_also_a_role_word_survives():
     """Leading-only stripping: "Manager" is a title at the front and a surname at the back."""
     assert [row["name"] for row in parse_roster("Present: Mark Manager")] == ["Mark Manager"]
+
+
+def test_an_office_listed_without_a_name_is_not_a_person():
+    """Leading-only role-word stripping always spares the last word, so "City Manager, City
+    Attorney" would enrol people called "Manager" and "Attorney" -- who then narrow
+    `roster_person_ids` and remove correct voice matches for the whole meeting."""
+    assert parse_roster("ALSO PRESENT: City Manager, City Attorney") == []
+    # A real name after the office still resolves, and a role-word surname still survives.
+    assert [r["name"] for r in parse_roster("ALSO PRESENT: City Manager Sara Hensley")] == [
+        "Sara Hensley"
+    ]
+    assert [r["name"] for r in parse_roster("Present: Mark Manager")] == ["Mark Manager"]

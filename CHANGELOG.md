@@ -36,6 +36,29 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Six more findings from a second CodeRabbit pass on #1485.** *An office with no name became a
+  person:* leading-only role-word stripping always spares the last word, so
+  `"ALSO PRESENT: City Manager, City Attorney"` enrolled people called "Manager" and "Attorney",
+  who then narrowed `roster_person_ids` and removed correct voice matches for the whole meeting;
+  a residue whose every word is a role word is now rejected, while "Mark Manager" still survives.
+  *The verdict snapshot had no owner:* `naming_candidate_id` excludes the signal set on purpose,
+  so a re-projection between packaging and ingest can legitimately change a candidate's
+  combination under the same id — but ingest verified that field against the ledger (rejecting
+  the reviewer's ruling as tampering for the system working as designed) while the snapshot read
+  it from the same mutable row. Those fields are now *carried* in the issue payload and not
+  verified, and the snapshot records what the human actually saw. *A stale derivation version:*
+  cue vocabularies, roster parsing, tier rules, canonicalization and the member rule all changed
+  what the projection derives from unchanged inputs, which by the rule documented on
+  `IDENTITY_PIPELINE_VERSION` requires a bump it had not received — so already-fingerprinted
+  episodes would have kept their old projections. *Throughput:* `_finalize` held `finalize_lock`
+  across the storage upload, serializing every worker's completion behind one network write; the
+  object is content-addressed so no two workers can contend for it, and the upload now happens
+  before the lock. Plus two test gaps: the single-worker executor contract is pinned directly
+  (every diarize test replaces that factory, so nothing else protected it), and a stage test's
+  negative assertion was satisfied by its own seeded rows and would have passed if the stage
+  produced nothing.
+
+
 - **Eleven findings from an external review of #1485, each verified against the code first.**
   Two could publish the *wrong person's* name. (1) The gate approves a `(cluster, name)` pair, but
   the stage reduced its decisions to `dict[str, bool]` and handed that flag to `assign_turn`,

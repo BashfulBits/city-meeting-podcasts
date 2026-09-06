@@ -23,7 +23,10 @@ from typing import Any
 # unchanged after such an edit means already-fingerprinted episodes keep their old projection and
 # never observe the improvement. (Changes to *policy thresholds* need no bump: those are hashed
 # into the fingerprint directly.)
-IDENTITY_PIPELINE_VERSION = "1"
+# 1 -> 2: cue vocabularies (titles, recognition verbs, greeting rejection), roster section and
+# name parsing, tier rules, name canonicalisation, and the member-confirmation rule all changed
+# what this projection derives from unchanged inputs -- exactly the case described above.
+IDENTITY_PIPELINE_VERSION = "2"
 PILOT_SCOPE_VERSION = "2"
 MIN_REFERENCE_MEETINGS = 2
 # The flat "30 reviews x 30 days x 95% precision per calibration cell" gate that used to live

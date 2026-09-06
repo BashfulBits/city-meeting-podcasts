@@ -1283,6 +1283,12 @@ def _clean_roster_name(raw: str) -> str | None:
         return None
     if any(word.casefold().strip(".") in _NON_NAME_TOKENS for word in words):
         return None
+    # An office listed with no name at all ("ALSO PRESENT: City Manager, City Attorney").
+    # Leading-only stripping always spares the last word, so this would otherwise enrol people
+    # called "Manager" and "Attorney" -- who then narrow `roster_person_ids` and remove correct
+    # voice matches for the whole meeting. "Mark Manager" survives: "mark" is not a role word.
+    if all(word.casefold().strip(".") in _STAFF_ROLE_WORDS for word in words):
+        return None
     cleaned = " ".join(words).strip(" .,:;")
     if len(cleaned) < 2 or not any(char.isalpha() for char in cleaned):
         return None

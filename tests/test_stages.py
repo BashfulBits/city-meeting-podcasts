@@ -1956,3 +1956,20 @@ def test_native_diarize_defers_an_episode_with_no_served_duration(tmp_path):
     assert stats.defer_reasons.get("unknown-duration") == 1
     assert stats.ran == 0
     assert ep.speakers_key is None
+
+
+def test_single_worker_still_gets_a_real_process_pool():
+    """The backstop is `future.result(timeout=...)`, which an inline executor makes unreachable by
+    resolving its Future before returning. Every diarize test replaces this factory, so nothing
+    else pins the production contract: one worker must still be a real, spawn-context pool."""
+    from concurrent.futures import ProcessPoolExecutor
+
+    import citypods.stages as stages_mod
+
+    for workers in (1, 4):
+        executor = stages_mod._diarize_executor(workers)
+        try:
+            assert isinstance(executor, ProcessPoolExecutor)
+            assert executor._mp_context.get_start_method() == "spawn"
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)

@@ -1656,11 +1656,16 @@ def test_stage_canonicalizes_registry_names_before_the_established_check(tmp_pat
     )
     evaluation = _run_identity_stage(tmp_path, city, ep, ctx)
     # Published, so it never reaches the review ledger under the corrected spelling.
-    # The seeded rows carry only the join fields, so read display names defensively.
-    assert not any(
-        row.get("display_name") == "Jane Doee"
+    # Positive first: the stage must actually have produced output, or the negative below is
+    # satisfied by the seeded rows alone and would pass even if the stage did nothing.
+    produced = {
+        row.get("display_name")
         for row in (evaluation.get("naming_candidates") or {}).values()
-    )
+        if row.get("display_name")
+    }
+    assert "Matt Bodine" in produced
+    # ...and the established member published, so she never reached the review ledger.
+    assert "Jane Doee" not in produced
 
 
 def test_clearance_for_one_name_cannot_publish_another():
@@ -1790,3 +1795,42 @@ def test_another_bodys_profile_cannot_confirm_a_local_member(tmp_path):
         body="City Council",
         confirmed_names=["Jane Doe"],
     ).publish
+
+
+def test_a_reprojected_candidate_still_accepts_its_verdict(tmp_path, monkeypatch):
+    """Finding 2's real consequence. `naming_candidate_id` excludes the signal set on purpose, so
+    a projection between packaging and ingest can change a candidate's combination under the same
+    id. Verifying that field against the ledger rejected the human's ruling as tampering, and
+    snapshotting from the ledger recorded a combination they never saw. The payload the reviewer
+    judged is the only thing that answers either question."""
+    import json as _json
+
+    from citypods.naming import PrecisionTable
+
+    row = _naming_row("r7-name-a", signals=["self-introduction", "title-cue"])
+    state = _review_state(naming_candidates={row["candidate_id"]: row})
+    _, out_dir = _package(tmp_path, monkeypatch, state)
+
+    # A later projection finds a voice print too: same candidate id, different combination.
+    reprojected = dict(row, signals=[*row["signals"], "voice-print"])
+    reprojected["combination_key"] = "staff:self-introduction+title-cue+voice-print"
+    state["naming_candidates"][row["candidate_id"]] = reprojected
+    (tmp_path / "state" / "evaluation.json").write_text(_json.dumps(state))
+
+    issue = tmp_path / "issue.md"
+    issue.write_text(
+        (out_dir / "r7-name-a.md").read_text().replace("- [ ] Correct", "- [x] Correct", 1)
+    )
+    monkeypatch.setattr("citypods.statesync.push_state", lambda *_a, **_k: 0)
+    assert (
+        speaker_review_main(
+            ["ingest", "--issue-number", "7", "--issue-body-file", str(issue), "--actor", "m"]
+        )
+        == 0
+    )
+
+    stored = _json.loads((tmp_path / "state" / "evaluation.json").read_text())
+    table = PrecisionTable.from_evaluation(stored)
+    # Credited to what the reviewer actually saw, not to the combination that replaced it.
+    assert table.verdicts("staff:self-introduction+title-cue") == 1
+    assert table.verdicts("staff:self-introduction+title-cue+voice-print") == 0
