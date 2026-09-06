@@ -205,3 +205,60 @@ def test_attach_embeddings_is_best_effort_on_extractor_failure(monkeypatch, tmp_
 def test_has_valid_timed_words_unchanged_by_the_engine_swap():
     assert has_valid_timed_words({"word_segments": [{"start": 0.0, "end": 1.0, "word": "hi"}]})
     assert not has_valid_timed_words({"word_segments": []})
+
+
+def test_decode_pins_a_narrow_protocol_whitelist_and_a_timeout(monkeypatch, tmp_path):
+    """Every other ffmpeg call site in this project pins a protocol whitelist; this one is the
+    narrowest, because the diarize input is always a local temp file. Without it a downloaded
+    artifact that is really a manifest could make ffmpeg fetch the URLs it names. The timeout
+    matters because this runs inside a worker before the next `ctx.stop()` check, so an unbounded
+    decode of malformed media would hold its admission slot until the job's own timeout.
+    """
+    import subprocess
+
+    import numpy as np
+
+    from citypods.diarize import DECODE_TIMEOUT_SECONDS, _load_waveform
+
+    seen = {}
+
+    def _fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        seen["timeout"] = kwargs.get("timeout")
+        return subprocess.CompletedProcess(cmd, 0, np.zeros(4, dtype=np.float32).tobytes(), b"")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    _load_waveform(tmp_path / "audio.m4a", 16000)
+
+    assert "-protocol_whitelist" in seen["cmd"]
+    whitelist = seen["cmd"][seen["cmd"].index("-protocol_whitelist") + 1]
+    assert set(whitelist.split(",")) == {"file", "crypto", "data"}
+    assert "http" not in whitelist and "tcp" not in whitelist
+    assert seen["timeout"] == DECODE_TIMEOUT_SECONDS
+
+
+def test_a_stuck_decode_becomes_an_actionable_error(monkeypatch, tmp_path):
+    import subprocess
+
+    from citypods.diarize import _load_waveform
+
+    def _timeout(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout") or 0)
+
+    monkeypatch.setattr(subprocess, "run", _timeout)
+    with pytest.raises(RuntimeError, match="did not finish decoding"):
+        _load_waveform(tmp_path / "audio.m4a", 16000)
+
+
+def test_ffmpeg_error_detail_redacts_credentials_and_is_bounded():
+    """ffmpeg echoes its input URL on failure, and that text reaches logs and a stored
+    `speakers_error`. A signed media URL must not survive that trip."""
+    from citypods.diarize import _ffmpeg_detail
+
+    detail = _ffmpeg_detail(
+        b"https://cdn.example/a.m4a?X-Amz-Signature=deadbeef&token=hunter2: Invalid data"
+    )
+    assert "deadbeef" not in detail
+    assert "hunter2" not in detail
+    assert detail.count("<redacted>") == 2
+    assert len(_ffmpeg_detail(b"x" * 5000)) == 500

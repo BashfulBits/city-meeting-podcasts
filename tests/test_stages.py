@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pytest
 
 from citypods.agenda_text import AgendaTextAssessment
+from citypods.durations import episode_served_duration_seconds
 from citypods.models import City, Episode
 from citypods.stages import (
     DIARIZE_DEFAULT_RUNTIME_RATIO,
@@ -1907,3 +1908,45 @@ def _write_temp(tmp_path, name, content: bytes):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
     return path
+
+
+def test_native_diarize_defers_an_episode_with_no_served_duration(tmp_path):
+    """An unknown-length episode estimates at 0s, so it "fits" any remaining budget and reserves
+    only the base memory footprint -- and since admission sorts longest-first it lands late,
+    exactly when the budget is tightest. That is run 51's failure mode (an unbounded item admitted
+    because its cost was unknown) with the cost hidden behind a default rather than a slow model.
+    """
+    import json as _json
+
+    city = City(
+        slug="denton-tx-city-council",
+        city_entity="denton-tx",
+        provider="granicus",
+        source={"feed_url": "x"},
+        podcast_title="Denton City Council",
+        podcast_author="City of Denton",
+        podcast_email="",
+        podcast_description="d",
+    )
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = {
+        "enabled": True,
+        "pilot_bodies": [
+            {"city": "denton-tx", "body": "City Council", "capture_context": "council-v1"}
+        ],
+    }
+    words = tmp_path / "words.json"
+    words.write_text(_json.dumps({"words": [{"w": "hello", "s": 0.0, "e": 0.5}]}))
+    ctx.storage.put_file("words/ep.json", words, "application/json")
+
+    ep = _ep("no-duration")
+    ep.body = "City Council"
+    ep.hosted_audio_url = "https://cdn/audio.m4a"
+    ep.transcript_synced = True
+    ep.transcript_words_key = "words/ep.json"
+    assert episode_served_duration_seconds(ep) in (None, 0, 0.0)
+
+    stats = NativeDiarizeStage().process(None, city, [ep], ctx)
+    assert stats.defer_reasons.get("unknown-duration") == 1
+    assert stats.ran == 0
+    assert ep.speakers_key is None
