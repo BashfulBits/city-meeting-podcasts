@@ -67,6 +67,21 @@ _EMBEDDING_RECIPES: dict[str, dict[str, Any]] = {
 
 _DEFAULT_CACHE_DIR = Path.home() / ".cache" / "citypods-diarize"
 
+# Predicted peak RSS for one diarize worker, fitted to measurements taken on three different
+# GH Actions runner CPUs (AMD Zen4 / Intel Xeon 6973P-C / AMD Zen3): 5min->~377MB,
+# 20min->~509MB, 60min->~929MB, near-identical on all three because the footprint tracks
+# model + decoded-audio size, not CPU microarchitecture (review/31 §A.4). Rounded up for
+# headroom. Feeds `MemoryReservation` so concurrent workers are admitted by *predicted* peak
+# rather than trailing `mem_available` -- the same leading-signal discipline H8 uses for audio.
+DIARIZE_RSS_BASE_BYTES = 350 * 1024 * 1024
+DIARIZE_RSS_PER_HOUR_BYTES = 650 * 1024 * 1024
+
+
+def estimate_diarize_rss_bytes(recording_seconds: float) -> int:
+    """Predict one diarize worker's peak RSS for `recording_seconds` of audio."""
+    hours = max(0.0, float(recording_seconds)) / 3600.0
+    return DIARIZE_RSS_BASE_BYTES + int(DIARIZE_RSS_PER_HOUR_BYTES * hours)
+
 
 def has_valid_timed_words(value: bytes | Mapping[str, Any]) -> bool:
     """Return whether a word-sidecar payload contains at least one usable timed word."""
@@ -280,6 +295,46 @@ def diarize(
     )
 
 
+def prepare_models(embedding_model: str | None = DEFAULT_EMBEDDING_MODEL) -> None:
+    """Populate the model cache once, before any worker process needs it.
+
+    The worker pool (review/31 §A.4) spawns several processes that would otherwise each miss the
+    cache and download the same ~46MB concurrently. `_download` is atomic so a race is safe, just
+    wasteful; warming here in the parent makes it a single fetch.
+    """
+    _ensure_segmentation_model()
+    _ensure_embedding_model(embedding_model or DEFAULT_EMBEDDING_MODEL)
+
+
+def run_diarize_job(
+    audio_path: str,
+    *,
+    model: str = DEFAULT_DIARIZE_MODEL,
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+    num_threads: int = 1,
+    clustering_threshold: float | None = None,
+) -> DiarizeArtifacts:
+    """Module-level worker entry point for the diarize process pool.
+
+    Must stay importable and take only picklable arguments: the pool uses a `spawn` context, so
+    this is re-imported in a fresh interpreter rather than inherited by fork (`fork` from a
+    process with live threads is exactly the deadlock hazard CPython warns about, and the enrich
+    run always has a heartbeat thread running).
+
+    Deliberately calls `diarize()` directly rather than routing through
+    `citypods.compute.local.LocalBackend`: that adapter lazily imports `citypods.asr` (and with
+    it faster-whisper) for its transcribe/align verbs, which a diarize-only worker has no reason
+    to pay for, and its dispatch seam does not yet materialize R7 artifacts anyway.
+    """
+    return diarize(
+        Path(audio_path),
+        model,
+        embedding_model=embedding_model,
+        num_threads=num_threads,
+        clustering_threshold=clustering_threshold,
+    )
+
+
 def attach_transcript_words(turns: list[dict[str, Any]], words: Mapping[str, Any]) -> None:
     """Attach transcript-derived evidence hashes to served-time turns.
 
@@ -391,6 +446,11 @@ def _attach_embeddings(
 __all__ = [
     "DEFAULT_DIARIZE_MODEL",
     "DEFAULT_EMBEDDING_MODEL",
+    "DIARIZE_RSS_BASE_BYTES",
+    "DIARIZE_RSS_PER_HOUR_BYTES",
     "DiarizeArtifacts",
     "diarize",
+    "estimate_diarize_rss_bytes",
+    "prepare_models",
+    "run_diarize_job",
 ]

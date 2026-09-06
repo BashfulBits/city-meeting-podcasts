@@ -902,3 +902,124 @@ def test_pilot_selection_real_site_config_matches_denton():
     # Non-pilot bodies should still be rejected
     assert not pilot_selected(speaker_cfg, "denton-tx", "Planning and Zoning Commission")
     assert not pilot_selected(speaker_cfg, "austin-tx", "City Council")
+
+
+def test_speaker_identity_stage_collects_both_automatic_naming_signals(tmp_path):
+    """The chair-reference and self-introduction producers must both be reachable *through the
+    stage*, not merely defined. `self_introduction_candidates` shipped unwired once already --
+    the function and its unit tests passed while nothing in the pipeline ever called it."""
+    import json as _json
+
+    from citypods.models import City, Episode
+    from citypods.stages import SpeakerIdentityStage, StageContext
+    from citypods.storage.local import LocalStorage
+
+    city = City(
+        slug="denton-tx-city-council",
+        city_entity="denton-tx",
+        provider="swagit",
+        source={"list_url": "x", "body": "City Council"},
+        podcast_title="t",
+        podcast_author="a",
+        podcast_email="",
+        podcast_description="d",
+    )
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+
+    # One turn named by the chair, one where the speaker names themselves.
+    turns = [
+        {"start": 0.0, "end": 2.0, "cluster": "chair", "overlap": False},
+        {
+            "start": 2.1,
+            "end": 9.0,
+            "cluster": "jane",
+            "overlap": False,
+            "embedding": [0.1, 0.2],
+            "transcript_text_hash": "h1",
+        },
+        {
+            "start": 20.0,
+            "end": 40.0,
+            "cluster": "staff",
+            "overlap": False,
+            "embedding": [0.3, 0.4],
+            "transcript_text_hash": "h2",
+        },
+    ]
+    speakers_payload = {
+        "schema": "2",
+        "engine": "sherpa-onnx",
+        "model": "m",
+        "embedding_recipe": "nemo-titanet-small",
+        "clusters": [],
+        "turns": turns,
+    }
+    speakers_file = tmp_path / "speakers.json"
+    speakers_file.write_text(_json.dumps(speakers_payload))
+    storage.put_file("speakers/ep.json", speakers_file, "application/json")
+
+    words = {
+        "segments": [
+            {
+                "words": [
+                    # chair names the next speaker
+                    {"w": "The", "s": 0.0, "e": 0.2},
+                    {"w": "chair", "s": 0.2, "e": 0.4},
+                    {"w": "recognizes", "s": 0.4, "e": 0.8},
+                    {"w": "Council", "s": 0.8, "e": 1.0},
+                    {"w": "Member", "s": 1.0, "e": 1.2},
+                    {"w": "Jane", "s": 1.2, "e": 1.5},
+                    {"w": "Doe.", "s": 1.5, "e": 1.8},
+                    # staff presenter names themselves at the top of their own turn
+                    {"w": "Matt", "s": 20.2, "e": 20.5},
+                    {"w": "Bodine,", "s": 20.5, "e": 20.9},
+                    {"w": "Assistant", "s": 21.0, "e": 21.3},
+                    {"w": "Planner.", "s": 21.3, "e": 21.7},
+                ]
+            }
+        ]
+    }
+    words_file = tmp_path / "words.json"
+    words_file.write_text(_json.dumps(words))
+    storage.put_file("words/ep.json", words_file, "application/json")
+
+    ep = Episode(
+        guid="g",
+        uid="uid-ep",
+        title="M",
+        published=datetime(2026, 5, 20, tzinfo=UTC),
+        video_url="https://src/x.m3u8",
+        media_kind="hls",
+        body="City Council",
+    )
+    ep.speakers_key = "speakers/ep.json"
+    ep.speakers_spec_hash = "spec"
+    ep.transcript_words_key = "words/ep.json"
+
+    ctx = StageContext(
+        storage=storage,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        speaker_registry_path=tmp_path / "registry.json",
+        speaker_evaluation_state_path=tmp_path / "evaluation.json",
+        speaker_turn_evidence_path=tmp_path / "evidence.json",
+    )
+    ctx.speaker_config = {
+        "enabled": True,
+        "pilot_bodies": [
+            {"city": "denton-tx", "body": "City Council", "capture_context": "council-v1"}
+        ],
+    }
+
+    SpeakerIdentityStage().process(None, city, [ep], ctx)
+
+    evaluation = _json.loads((tmp_path / "evaluation.json").read_text())
+    kinds = {row["kind"] for row in evaluation["reference_candidates"].values()}
+    names = {row["display_name"] for row in evaluation["reference_candidates"].values()}
+    assert kinds == {"chair-reference", "self-introduction"}
+    assert names == {"Jane Doe", "Matt Bodine"}
+    # Still evidence only -- neither signal may assign a name to a turn.
+    assert all(
+        row.get("status") != "confirmed" for row in evaluation["reference_candidates"].values()
+    )

@@ -325,10 +325,21 @@ guessed from local Apple Silicon numbers, which gave the wrong per-job thread op
   time; memory only binds at the long-meeting/high-concurrency extreme, but silently ignoring it risks the
   exact outcome this note exists to prevent: GitHub OOM-killing the runner mid-batch.
 
-**Implementation status (2026-09-06):** the engine swap (§A.1a) and the seeded runtime estimate shipped
-together. The worker pool, best-fit-decreasing admission ordering, two-tier cutoff/backstop, and the
-memory-pressure cap are specified above but land separately — `NativeDiarizeStage.process()` still runs
-its original strictly serial `for ep in episodes:` loop until then.
+**Implementation status (2026-09-06): shipped.** `NativeDiarizeStage.process()` now splits into
+candidate collection (every cheap filter, up front — admission needs the whole eligible set in hand to
+pick a best fit), then a pool: `_DiarizeAdmission` (best-fit-decreasing claim under a lock),
+`_diarize_executor` (a `spawn` `ProcessPoolExecutor`, or an inline executor when one worker wide), one
+thread per worker slot so each in-flight item gets its own `PROGRESS` entry, `MemoryReservation` for the
+predicted-peak-RSS gate, and a single `finalize_lock` around every shared-state mutation (episode fields,
+turn-evidence map, runtime log, stats, storage upload). Config: `speakers.workers` (default: one per
+vCPU) and `speakers.memory_budget_mb`; `diarize_backstop_minutes` (default 320) adds the second tier.
+
+**One residual gap, stated precisely:** the backstop marks the item deferred and closes admission, but
+does not *kill* the straggler subprocess — portably terminating a pool worker needs 3.14's
+`terminate_workers()`, and this targets 3.12. The stage still returns normally, so records/state are
+persisted as usual; only the interpreter's final exit waits on that worker, bounded by the workflow's own
+`timeout-minutes: 330`. Admission (estimate + reserve vs. remaining budget) is what actually keeps a run
+inside its window; the backstop is the net for an estimate miss, not the primary control.
 
 ---
 

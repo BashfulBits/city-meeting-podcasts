@@ -2840,6 +2840,7 @@ def _build_impl(
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
     diarize_start_deadline: float | None = None
+    diarize_backstop_deadline: float | None = None
     tag_llm_deadline: datetime | None = None
     ctx: StageContext | None = None
     if time_bounded:
@@ -2859,12 +2860,19 @@ def _build_impl(
             )
         elif lane == "diarize":
             start_cutoff_min = float(defaults.get("diarize_start_cutoff_minutes", 285))
+            # Two tiers, mirroring ASR: the cutoff bounds what may *begin*, the backstop bounds
+            # how long an already-running item may keep the job alive. With a worker pool this
+            # matters more than it did serially -- without it a single estimate miss can hold
+            # every worker's results hostage until the runner is killed (review/31 §A.4).
+            backstop_min = float(defaults.get("diarize_backstop_minutes", 320))
             now = time.monotonic()
             diarize_start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
+            diarize_backstop_deadline = now + backstop_min * 60 if backstop_min > 0 else None
             deadline = diarize_start_deadline
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
             print(
-                f"budget: diarize start cutoff {start_cutoff_min:.0f}m "
+                f"budget: diarize start cutoff {start_cutoff_min:.0f}m, "
+                f"backstop {backstop_min:.0f}m "
                 "(measured per-recipe admission + yield if superseded)"
             )
         elif lane == "tag":
@@ -3035,6 +3043,22 @@ def _build_impl(
         if time_bounded and not dry_run and _memory_budget_mb > 0
         else None
     )
+    # Same predicted-peak-RSS admission for the diarize worker pool (review/31 §A.4). Several
+    # concurrent workers each grow with their own meeting's length (~350MB + ~650MB/hour,
+    # measured), and the runner is OOM-killed as a whole, so concurrency has to be bounded by
+    # predicted memory as well as by vCPU count. 0/blank disables it (a one-worker run has
+    # nothing to contend with).
+    _diarize_memory_budget_mb = float(
+        (speakers_config or {}).get("memory_budget_mb", 0) or 0
+    )
+    _diarize_memory_reservation: MemoryReservation | None = (
+        MemoryReservation(
+            budget_bytes=int(_diarize_memory_budget_mb * 1024 * 1024),
+            log=lambda msg: print(msg, flush=True),
+        )
+        if not dry_run and _diarize_memory_budget_mb > 0
+        else None
+    )
     transcript_quality_routes = load_quality_routes(
         site_config, state_dir, storage=None if dry_run else storage
     )
@@ -3079,7 +3103,9 @@ def _build_impl(
         / str(speakers_config.get("runtime_state_path", "r7_diarization_runtime.json")),
         speaker_config=speakers_config,
         diarize_start_deadline=diarize_start_deadline,
+        diarize_backstop_deadline=diarize_backstop_deadline,
         diarize_start_reserve_seconds=float(defaults.get("diarize_start_reserve_seconds", 15 * 60)),
+        diarize_memory_reservation=_diarize_memory_reservation,
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR

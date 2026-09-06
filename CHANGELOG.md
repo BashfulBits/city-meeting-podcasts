@@ -95,6 +95,37 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **R7 diarization runs a concurrent, admission-controlled worker pool (review/31 §A.4).**
+  `NativeDiarizeStage.process()` was a strictly serial `for ep in episodes:` loop, so one long
+  meeting consumed a whole run and the backlog cleared one item at a time. It now collects every
+  candidate up front (admission needs the full eligible set to pick a best fit), then runs a pool
+  of `speakers.workers` single-threaded worker processes — measured across three different GH
+  Actions runner CPUs (AMD Zen4, Intel Xeon 6973P-C, AMD Zen3), N single-threaded processes beat
+  every other split on aggregate throughput by 65-78%, including the same 2-thread single-job
+  latency optimum run N-wide. Admission is **best-fit-decreasing**: each freed worker claims the
+  largest candidate whose estimated runtime still fits before the start cutoff, which with runway
+  means the longest meeting (so long meetings are never starved by a queue of short ones) and,
+  as the budget shrinks, narrows to progressively shorter ones on its own — no phase threshold to
+  tune. Estimates are re-read per claim, so samples from items finishing this run sharpen later
+  decisions. Memory is a second, independent constraint: each worker reserves its predicted peak
+  RSS (~350MB + ~650MB per hour of audio, measured near-identically on all three CPUs) against
+  `speakers.memory_budget_mb` via the same `MemoryReservation` accountant H8 already uses for
+  audio encodes, so several long meetings running at once cannot OOM the runner. A new
+  `diarize_backstop_minutes` (default 320) adds ASR's second tier: the start cutoff bounds what
+  may *begin*, the backstop bounds how long an in-flight item may keep the job alive, marking it
+  deferred and closing admission (it does not kill the subprocess — see review/31 §A.4 for that
+  residual and why admission, not the backstop, is the real control). The pool uses a `spawn`
+  context, never `fork`: the enrich run always has a heartbeat thread alive, and forking a
+  multi-threaded process is the documented CPython deadlock hazard. Model files are prefetched
+  once in the parent so spawned workers don't each re-download the same ~46MB, and a
+  `BrokenProcessPool` (usually an entry point that runs work at import time, which `spawn`
+  re-executes in every child) closes admission with an actionable message instead of failing
+  every remaining candidate with the same opaque one. Candidates deliberately hold their
+  timed-words *key* rather than its bytes: every candidate is now live at once, so retaining
+  each sidecar would have turned a bounded per-item read into a whole-backlog memory spike.
+  Also wires `self_introduction_candidates` into `SpeakerIdentityStage` -- it shipped defined
+  but never called -- and adds that stage's first tests, which is what surfaced the gap.
+
 - **R7 native diarization engine: pyannote-audio → sherpa-onnx + NeMo TitaNet-Small
   (review/31 §A.1a).** Run 51 (denton-tx, 2026-09-05) exposed pyannote's real CPU cost — ~2.2s
   of compute per second of audio, capping a single diarizable meeting at roughly 2h40m before
@@ -119,8 +150,9 @@ Phase R (Research-Tool Surface)._
   `citypods.speakers.self_introduction_candidates` — a second automatic naming-evidence signal
   (alongside the existing `chair_reference_candidates`) that scans the first ~10s of a
   speaker's own turn for a self-identification ("MY NAME IS...") or name-then-staff-title
-  ("Matt Bodine, Assistant Planner") pattern, feeding the same identify-then-human-confirm
-  pipeline, never assigning a name directly. Also closes the run-51 cold-start hole the swap would
+  ("Matt Bodine, Assistant Planner") pattern, for the same identify-then-human-confirm
+  pipeline, never assigning a name directly (wired into `SpeakerIdentityStage` by the
+  worker-pool change above, which also added the first tests for that stage). Also closes the run-51 cold-start hole the swap would
   otherwise have reopened: `DiarizeRuntimeLog.estimate_seconds` now falls back to a seeded
   `DIARIZE_DEFAULT_RUNTIME_RATIO` (0.2 s/s, rounding up the worst measured single-threaded RTF)
   instead of returning `None`, so a recipe with no samples yet is *bounded* rather than admitted

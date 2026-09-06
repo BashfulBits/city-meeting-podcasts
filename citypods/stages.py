@@ -71,15 +71,20 @@ import collections
 import dataclasses
 import hashlib
 import json
+import multiprocessing
+import os
 import re
 import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from math import nan
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urljoin
@@ -442,6 +447,13 @@ class StageContext:
     # fit before the diarization lane cutoff.
     diarize_start_deadline: float | None = None
     diarize_start_reserve_seconds: float = 15 * 60
+    # Second tier below the start cutoff, mirroring asr_backstop_minutes: the start cutoff bounds
+    # what may *begin*, this bounds how long an already-running item may keep the job alive
+    # (review/31 §A.4). None disables it.
+    diarize_backstop_deadline: float | None = None
+    # Predicted-peak-RSS admission for concurrent diarize workers, so several long meetings
+    # running at once cannot OOM the runner. None disables it (single-worker runs don't need it).
+    diarize_memory_reservation: MemoryReservation | None = None
     # H15 Layer 1: state dir for the capped raw-evidence log. Every successful align()/
     # transcribe() call appends a near-zero-cost coverage + word-logprob sample here (see
     # record_l1_sample). None (e.g. dry-run/tests) skips L1 recording.
@@ -2658,6 +2670,159 @@ class DiarizeRuntimeLog:
             self.path.write_text(
                 json.dumps({"version": 1, "samples": self._samples}, indent=2) + "\n"
             )
+
+
+# Threads for a diarize worker running on its own. 2 was the measured single-job latency
+# optimum on every GH Actions CPU sampled -- 3 and 4 were consistently *worse* than 2 for one
+# job, and a pool of single-threaded workers beat all of them on aggregate throughput
+# (review/31 §A.4), which is why this only applies when the pool is one worker wide.
+_DIARIZE_SOLO_THREADS = 2
+_DIARIZE_MAX_WORKERS = 8
+
+
+@dataclasses.dataclass
+class _DiarizeCandidate:
+    """One episode that passed every cheap filter and is ready for a worker.
+
+    Deliberately holds the timed-words *key*, not its bytes: unlike the serial loop this replaced,
+    every candidate is now live at once, and a backlog is thousands of episodes deep. Retaining
+    each sidecar here would trade a bounded per-item read for an unbounded whole-backlog spike.
+    The bytes are re-read once the item is actually admitted.
+    """
+
+    ep: Episode
+    uid: str
+    spec: str
+    key: str
+    words_key: str
+    recording_seconds: float
+
+
+class _DiarizeAdmission:
+    """Deadline-aware, best-fit-decreasing admission for the diarize worker pool.
+
+    One rule serves both goals in review/31 §A.4. Whenever a worker frees up it claims the
+    **largest** pending candidate whose estimated runtime still fits before the start cutoff:
+
+    * Early in a run the remaining budget is large, so "largest that fits" *is* the longest
+      meeting in the backlog. Long meetings get first claim on a worker while there is maximum
+      runway -- otherwise they starve, because a queue of short meetings will happily fill every
+      slot until nothing long can ever fit again.
+    * As the budget shrinks, fewer long candidates satisfy the fits-check, so admission narrows
+      to progressively shorter meetings on its own -- the soft landing, with no phase threshold
+      to tune.
+
+    Estimates are re-read from the runtime log on every claim, so measured samples from items
+    that already finished this run immediately sharpen later admission decisions.
+    """
+
+    def __init__(
+        self,
+        candidates: list[_DiarizeCandidate],
+        *,
+        ctx: StageContext,
+        runtime_log: DiarizeRuntimeLog,
+        recipe: str,
+    ):
+        # Longest first: claim() can then take the first candidate that fits.
+        self._pending = sorted(candidates, key=lambda item: item.recording_seconds, reverse=True)
+        self._ctx = ctx
+        self._runtime_log = runtime_log
+        self._recipe = recipe
+        self._deferred: list[tuple[_DiarizeCandidate, str]] = []
+        self._lock = threading.Lock()
+
+    @property
+    def deferred(self) -> list[tuple[_DiarizeCandidate, str]]:
+        with self._lock:
+            return list(self._deferred)
+
+    def claim(self) -> _DiarizeCandidate | None:
+        with self._lock:
+            if not self._pending:
+                return None
+            if self._ctx.stop is not None and self._ctx.stop():
+                return self._drain_locked("wall-clock-budget")
+            longest = (0.0, 0.0)
+            for index, candidate in enumerate(self._pending):
+                fits, estimate, remaining = _diarize_fits_remaining_budget(
+                    self._ctx, self._runtime_log, candidate.recording_seconds, self._recipe
+                )
+                if fits:
+                    return self._pending.pop(index)
+                if index == 0:
+                    longest = (estimate or 0.0, remaining or 0.0)
+            # Nothing fits, and the remaining budget only shrinks from here, so nothing ever
+            # will: defer the whole tail now rather than re-checking it per freed worker.
+            print(
+                f"[enrich] diarize admission closed: {len(self._pending)} candidate(s) do not fit "
+                f"(largest estimate_s={longest[0]:.1f} remaining_s={longest[1]:.1f})",
+                flush=True,
+            )
+            return self._drain_locked("runtime-budget")
+
+    def close(self, reason: str) -> None:
+        """Stop admitting new work (a backstop timeout); defer whatever is left."""
+        with self._lock:
+            self._drain_locked(reason)
+
+    def drain(self, reason: str) -> list[_DiarizeCandidate]:
+        """Defer every pending candidate and return them (setup failed before any work ran)."""
+        with self._lock:
+            pending = list(self._pending)
+            self._drain_locked(reason)
+            return pending
+
+    def _drain_locked(self, reason: str) -> None:
+        self._deferred.extend((candidate, reason) for candidate in self._pending)
+        self._pending.clear()
+        return None
+
+
+def _diarize_worker_count(ctx: StageContext) -> int:
+    """Concurrent diarize workers: one per available vCPU by default, config-overridable."""
+    configured = int((ctx.speaker_config or {}).get("workers") or 0)
+    if configured > 0:
+        return min(configured, _DIARIZE_MAX_WORKERS)
+    return max(1, min(os.cpu_count() or 1, _DIARIZE_MAX_WORKERS))
+
+
+def _diarize_job_timeout_seconds(ctx: StageContext) -> float | None:
+    """Seconds a single in-flight item may still run, bounded by the backstop deadline."""
+    if ctx.diarize_backstop_deadline is None:
+        return None
+    return max(60.0, ctx.diarize_backstop_deadline - time.monotonic())
+
+
+class _InlineExecutor:
+    """Executor that runs work on the calling thread.
+
+    Used when the pool is one worker wide (and by tests): spawning an interpreter to run one
+    job at a time buys nothing, and keeping the call in-process means a monkeypatched
+    `run_diarize_job` is actually observed.
+    """
+
+    def submit(self, fn, /, *args, **kwargs):
+        future: Future = Future()
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except BaseException as exc:  # noqa: BLE001 - mirrors Executor.submit's contract
+            future.set_exception(exc)
+        return future
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        return None
+
+
+def _diarize_executor(workers: int):
+    """Process pool for diarize workers, or an inline executor for a single worker.
+
+    `spawn`, never `fork`: the enrich run always has a heartbeat thread alive, and forking a
+    multi-threaded process is the documented deadlock hazard CPython warns about.
+    """
+    if workers <= 1:
+        return _InlineExecutor()
+    return ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"))
 
 
 def _diarize_fits_remaining_budget(
@@ -6909,8 +7074,7 @@ class NativeDiarizeStage:
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
-        from citypods.compute.base import JobHandle, JobResult
-        from citypods.records import source_key
+        from citypods.speakers import load_turn_evidence, save_turn_evidence
 
         stats = StageStats(self.name)
         config = ctx.speaker_config or {}
@@ -6919,25 +7083,63 @@ class NativeDiarizeStage:
         model = str(config.get("model") or DEFAULT_DIARIZE_MODEL)
         embedding_model = str(config.get("embedding_model") or DEFAULT_EMBEDDING_MODEL)
         runtime_recipe = _diarize_runtime_recipe(model, embedding_model)
-        from citypods.speakers import (
-            load_turn_evidence,
-            pilot_selected,
-            public_turn,
-            save_turn_evidence,
-        )
-
         turn_evidence = (
             load_turn_evidence(ctx.speaker_turn_evidence_path)
             if ctx.speaker_turn_evidence_path is not None
             else {"version": 1, "episodes": {}}
         )
         runtime_log = DiarizeRuntimeLog(ctx.diarize_runtime_log_path)
-        # External workers reserve this work class but do not yet materialize R7 artifacts.  Use
-        # the pinned local pyannote stack until their pull-worker writer is implemented instead
-        # of accepting a handle that no worker can complete.
-        backend = LocalBackend(asr_mod)
-        src_key = source_key(city)
         canonical_city_slug = city.city_entity or city.slug
+
+        candidates = self._collect_candidates(
+            city,
+            episodes,
+            ctx,
+            stats,
+            config=config,
+            model=model,
+            embedding_model=embedding_model,
+            canonical_city_slug=canonical_city_slug,
+        )
+        if candidates:
+            self._run_admitted(
+                candidates,
+                ctx,
+                stats,
+                turn_evidence=turn_evidence,
+                runtime_log=runtime_log,
+                runtime_recipe=runtime_recipe,
+                model=model,
+                embedding_model=embedding_model,
+                canonical_city_slug=canonical_city_slug,
+            )
+        if ctx.speaker_turn_evidence_path is not None:
+            save_turn_evidence(ctx.speaker_turn_evidence_path, turn_evidence)
+        return stats
+
+    def _collect_candidates(
+        self,
+        city: City,
+        episodes: list[Episode],
+        ctx: StageContext,
+        stats: StageStats,
+        *,
+        config: Mapping[str, Any],
+        model: str,
+        embedding_model: str,
+        canonical_city_slug: str,
+    ) -> list[_DiarizeCandidate]:
+        """Apply every cheap per-episode filter up front, before any worker starts.
+
+        Separating selection from execution is what lets admission reorder the work: the pool
+        needs the whole eligible set in hand to pick a *best fit* for the remaining budget
+        (review/31 §A.4), which a single fused loop consuming a generator cannot do.
+        """
+        from citypods.records import source_key
+        from citypods.speakers import pilot_selected
+
+        src_key = source_key(city)
+        candidates: list[_DiarizeCandidate] = []
         for ep in _materialize_set(
             episodes,
             city.full_artifact_episodes,
@@ -6961,8 +7163,12 @@ class NativeDiarizeStage:
             if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
                 stats.defer("missing-timed-words", sample=uid)
                 continue
+            # Validate now, but let the bytes go: see _DiarizeCandidate on why they are re-read
+            # at admission rather than retained for every pending candidate.
             words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
-            if words_raw is None or not has_valid_timed_words(words_raw):
+            words_valid = words_raw is not None and has_valid_timed_words(words_raw)
+            del words_raw
+            if not words_valid:
                 stats.defer("invalid-timed-words", sample=uid)
                 continue
             spec = _diarize_spec_hash(ep, model, embedding_model)
@@ -6971,133 +7177,309 @@ class NativeDiarizeStage:
                 ep.speakers_url = ctx.storage.public_url(key)
                 stats.reused += 1
                 continue
-            if ctx.stop is not None and ctx.stop():
-                stats.defer("wall-clock-budget", sample=uid)
-                continue
-            recording_seconds = max(0.0, episode_served_duration_seconds(ep) or 0.0)
-            fits, estimate, remaining = _diarize_fits_remaining_budget(
-                ctx, runtime_log, recording_seconds, runtime_recipe
+            candidates.append(
+                _DiarizeCandidate(
+                    ep=ep,
+                    uid=str(uid),
+                    spec=spec,
+                    key=key,
+                    words_key=str(ep.transcript_words_key),
+                    recording_seconds=max(0.0, episode_served_duration_seconds(ep) or 0.0),
+                )
             )
-            if not fits:
-                stats.defer("runtime-budget", sample=uid)
-                print(
-                    f"[enrich] diarize defer uid={uid} estimate_s={estimate or 0:.1f} "
-                    f"remaining_s={remaining or 0:.1f}",
-                    flush=True,
-                )
-                continue
-            # Do not let a prior transient error look like this attempt's outcome.
-            ep.speakers_error = None
-            diarize_started_at = time.monotonic()
-            try:
-                from citypods.diarize import attach_transcript_words
+        return candidates
 
-                words = json.loads(words_raw.decode())
-                if not isinstance(words, dict):
-                    raise ValueError("timed transcript words must be a JSON object")
-                # "seeded" marks an estimate from DIARIZE_DEFAULT_RUNTIME_RATIO rather than
-                # measured samples -- worth seeing in the log while a new recipe warms up.
-                estimate_basis = (
-                    "measured" if runtime_log.has_samples_for(runtime_recipe) else "seeded"
-                )
-                print(
-                    f"[enrich] diarize start uid={uid} body={ep.body!r} "
-                    f"recording_s={recording_seconds:.1f} "
-                    f"estimate_s={estimate or 0:.1f} ({estimate_basis})",
-                    flush=True,
-                )
-                # Register the in-flight attempt so the heartbeat's "active work" snapshot shows a
-                # busy diarize pass as busy instead of "no tracked work active". This one call runs
-                # serially on the ledger-pass thread for as long as one meeting's audio takes
-                # (routinely tens of minutes to hours on CPU pyannote inference), and without this
-                # the PROGRESS registry stays empty for the whole run -- a genuinely-working pass is
-                # then indistinguishable from a hung one until the runner is killed at the outer
-                # time budget, which is exactly what made run 51 (denton-tx, 2026-09-05) hard to
-                # read from its own logs.
-                with (
-                    PROGRESS.track(source=canonical_city_slug, uid=str(uid), phase="diarize"),
-                    _download_audio(ep.hosted_audio_url) as audio_path,
-                ):
-                    outcome = backend.run_inference(
-                        InferenceJob(
-                            task="diarize",
-                            inputs={
-                                "audio_path": audio_path,
-                                "model": model,
-                                "embedding_model": embedding_model,
-                                # No HF-gated model in this engine (review/31 §A.1a) -- neither
-                                # field means anything to sherpa-onnx, kept only so an
-                                # already-registered dispatch backend's call shape doesn't change.
-                                "token": None,
-                                "device": config.get("device"),
-                            },
-                            recipe_hash=spec,
-                        )
+    def _run_admitted(
+        self,
+        candidates: list[_DiarizeCandidate],
+        ctx: StageContext,
+        stats: StageStats,
+        *,
+        turn_evidence: dict,
+        runtime_log: DiarizeRuntimeLog,
+        runtime_recipe: str,
+        model: str,
+        embedding_model: str,
+        canonical_city_slug: str,
+    ) -> None:
+        from citypods.diarize import prepare_models
+
+        workers = _diarize_worker_count(ctx)
+        admission = _DiarizeAdmission(
+            candidates, ctx=ctx, runtime_log=runtime_log, recipe=runtime_recipe
+        )
+        # One thread per worker slot, each claiming and then blocking on its own subprocess.
+        # Threads (not a bare future-juggling loop) so every in-flight item gets its own
+        # PROGRESS entry -- that registry is keyed by thread, and the heartbeat's "active work"
+        # line is the only thing that makes a busy diarize pass distinguishable from a hung one.
+        # Each worker is single-threaded when several run at once: measured across three GH
+        # Actions CPUs, N single-threaded processes beat every other split on aggregate
+        # throughput, including the same 2-thread single-job optimum run N-wide (review/31 §A.4).
+        threads_per_worker = 1 if workers > 1 else _DIARIZE_SOLO_THREADS
+        print(
+            f"[enrich] diarize pool: {len(candidates)} candidate(s), workers={workers} "
+            f"threads_per_worker={threads_per_worker} recipe={runtime_recipe}",
+            flush=True,
+        )
+        # Warm the model cache once in the parent; otherwise every spawned worker misses the
+        # cache and re-downloads the same ~46MB concurrently.
+        try:
+            prepare_models(embedding_model)
+        except Exception as exc:  # noqa: BLE001 - a fetch failure defers the lane, never crashes it
+            for candidate in admission.drain("model-unavailable"):
+                stats.defer("model-unavailable", sample=candidate.uid)
+            stats.errors.append(f"diarize models unavailable: {exc}")
+            print(f"[enrich] diarize model preparation failed: {exc}", flush=True)
+            return
+
+        finalize_lock = threading.Lock()
+        executor = _diarize_executor(workers)
+        try:
+            if workers > 1:
+                pool_threads = [
+                    threading.Thread(
+                        target=self._worker_loop,
+                        name=f"diarize-{index}",
+                        args=(admission, executor, ctx, stats),
+                        kwargs={
+                            "finalize_lock": finalize_lock,
+                            "turn_evidence": turn_evidence,
+                            "runtime_log": runtime_log,
+                            "runtime_recipe": runtime_recipe,
+                            "model": model,
+                            "embedding_model": embedding_model,
+                            "canonical_city_slug": canonical_city_slug,
+                            "threads_per_worker": threads_per_worker,
+                        },
+                        daemon=True,
                     )
-                if isinstance(outcome, JobHandle):
-                    stats.defer("diarize-dispatched", sample=uid)
-                    continue
-                if not isinstance(outcome, JobResult):
-                    raise ValueError("diarize backend returned an invalid result")
-                artifact = outcome.output
-                attach_transcript_words(artifact.turns, words)
-                # The public diarization object deliberately never contains numerical voice
-                # vectors.  They remain private review evidence keyed to this exact recipe.
-                private_turns = [dict(turn) for turn in artifact.turns]
-                turn_evidence.setdefault("episodes", {})[uid] = {
-                    "spec_hash": spec,
-                    "turns": private_turns,
-                }
-                payload = {
-                    "schema": "2",
-                    "basis": "served",
-                    "source": "native",
-                    "engine": getattr(artifact, "engine", "pyannote"),
-                    "model": getattr(artifact, "model", model),
-                    "embedding_recipe": embedding_model,
-                    "clusters": getattr(artifact, "clusters", []),
-                    "turns": [public_turn(turn) for turn in artifact.turns],
-                }
-                with tempfile.TemporaryDirectory() as directory:
-                    dest = Path(directory) / "speakers.json"
-                    dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
-                    url = ctx.storage.put_file(key, dest, "application/json")
-                ep.speakers_key = key
-                ep.speakers_url = url
-                ep.speakers_spec_hash = spec
-                ep.speakers_format = "json"
-                ep.speakers_synced = True
-                ep.speakers_confidence = None
-                ep.speakers_pipeline_version = DIARIZE_PIPELINE_VERSION
-                ep.speakers_error = None
-                ep.speakers_source = "native"
-                diarize_elapsed = time.monotonic() - diarize_started_at
-                runtime_log.append(
-                    diarize_seconds=diarize_elapsed,
-                    recording_seconds=recording_seconds,
-                    recipe=runtime_recipe,
+                    for index in range(workers)
+                ]
+                for thread in pool_threads:
+                    thread.start()
+                for thread in pool_threads:
+                    thread.join()
+            else:
+                self._worker_loop(
+                    admission,
+                    executor,
+                    ctx,
+                    stats,
+                    finalize_lock=finalize_lock,
+                    turn_evidence=turn_evidence,
+                    runtime_log=runtime_log,
+                    runtime_recipe=runtime_recipe,
+                    model=model,
+                    embedding_model=embedding_model,
+                    canonical_city_slug=canonical_city_slug,
+                    threads_per_worker=threads_per_worker,
                 )
-                stats.ran += 1
-                ratio = (
-                    diarize_elapsed / recording_seconds if recording_seconds > 0 else float("nan")
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+        for candidate, reason in admission.deferred:
+            stats.defer(reason, sample=candidate.uid)
+
+    def _worker_loop(
+        self,
+        admission: _DiarizeAdmission,
+        executor: Any,
+        ctx: StageContext,
+        stats: StageStats,
+        **kwargs: Any,
+    ) -> None:
+        while True:
+            candidate = admission.claim()
+            if candidate is None:
+                return
+            self._run_one(candidate, admission, executor, ctx, stats, **kwargs)
+
+    def _run_one(
+        self,
+        candidate: _DiarizeCandidate,
+        admission: _DiarizeAdmission,
+        executor: Any,
+        ctx: StageContext,
+        stats: StageStats,
+        *,
+        finalize_lock: threading.Lock,
+        turn_evidence: dict,
+        runtime_log: DiarizeRuntimeLog,
+        runtime_recipe: str,
+        model: str,
+        embedding_model: str,
+        canonical_city_slug: str,
+        threads_per_worker: int,
+    ) -> None:
+        from citypods import diarize as diarize_mod
+
+        ep, uid = candidate.ep, candidate.uid
+        reservation = ctx.diarize_memory_reservation
+        # Admit by *predicted* peak RSS, not trailing mem_available: several workers each grow
+        # with their own meeting's length, and the runner is OOM-killed as a whole. The same
+        # leading-signal reservation H8 already uses for audio encodes (review/31 §A.4).
+        reserved_bytes = diarize_mod.estimate_diarize_rss_bytes(candidate.recording_seconds)
+        if reservation is not None and not reservation.reserve(
+            reserved_bytes, label=uid, stop=ctx.stop
+        ):
+            with finalize_lock:
+                stats.defer("memory-reservation", sample=uid)
+            return
+
+        started_at = time.monotonic()
+        try:
+            words_raw = _read_storage_bytes(ctx.storage, candidate.words_key)
+            if words_raw is None:
+                raise ValueError(f"timed words {candidate.words_key!r} unreadable at admission")
+            words = json.loads(words_raw.decode())
+            if not isinstance(words, dict):
+                raise ValueError("timed transcript words must be a JSON object")
+            # "seeded" marks an estimate from DIARIZE_DEFAULT_RUNTIME_RATIO rather than measured
+            # samples -- worth seeing in the log while a new recipe warms up.
+            estimate = runtime_log.estimate_seconds(
+                candidate.recording_seconds, recipe=runtime_recipe
+            )
+            basis = "measured" if runtime_log.has_samples_for(runtime_recipe) else "seeded"
+            print(
+                f"[enrich] diarize start uid={uid} body={ep.body!r} "
+                f"recording_s={candidate.recording_seconds:.1f} "
+                f"estimate_s={estimate:.1f} ({basis})",
+                flush=True,
+            )
+            # PROGRESS makes a busy pass visible on the heartbeat's "active work" line; without
+            # it a healthy multi-hour run is indistinguishable from a hung one until the runner
+            # is killed (run 51, denton-tx, 2026-09-05).
+            with (
+                PROGRESS.track(source=canonical_city_slug, uid=uid, phase="diarize"),
+                _download_audio(ep.hosted_audio_url) as audio_path,
+            ):
+                future = executor.submit(
+                    diarize_mod.run_diarize_job,
+                    str(audio_path),
+                    model=model,
+                    embedding_model=embedding_model,
+                    num_threads=threads_per_worker,
                 )
-                print(
-                    f"[enrich] diarize done uid={uid} body={ep.body!r} "
-                    f"elapsed_s={diarize_elapsed:.1f} recording_s={recording_seconds:.1f} "
-                    f"ratio={ratio:.3f}",
-                    flush=True,
+                # The audio temp file must outlive the call, so the wait stays inside the
+                # download context.
+                artifact = future.result(timeout=_diarize_job_timeout_seconds(ctx))
+            with finalize_lock:
+                self._finalize(
+                    candidate,
+                    artifact,
+                    words,
+                    ctx,
+                    stats,
+                    turn_evidence=turn_evidence,
+                    runtime_log=runtime_log,
+                    runtime_recipe=runtime_recipe,
+                    model=model,
+                    embedding_model=embedding_model,
+                    elapsed=time.monotonic() - started_at,
                 )
-            except Exception as exc:  # noqa: BLE001 - per-item native inference must be restartable.
+        except FuturesTimeoutError:
+            # The backstop fired for this item. The subprocess is abandoned rather than killed
+            # (portably terminating a pool worker needs 3.14's terminate_workers); it dies with
+            # the job. Admission is what keeps a run inside its budget -- this is the net for an
+            # estimate miss, and it stops the pool taking any *new* work.
+            admission.close("backstop")
+            with finalize_lock:
+                stats.defer("diarize-backstop", sample=uid)
+                ep.speakers_error = "native-diarize-error: backstop timeout"
+            print(
+                f"[enrich] diarize backstop uid={uid} body={ep.body!r} "
+                f"elapsed_s={time.monotonic() - started_at:.1f}",
+                flush=True,
+            )
+        except BrokenProcessPool as exc:
+            # Every other worker is about to fail the same way, so stop rather than emit one
+            # confusing error per remaining candidate. The usual cause is an entry point that
+            # runs work at import time: `spawn` re-imports __main__ in each child, so anything
+            # not behind `if __name__ == "__main__"` re-executes there and takes the child down.
+            admission.close("pool-broken")
+            with finalize_lock:
+                ep.speakers_error = f"native-diarize-error: {exc}"
+                stats.errors.append(
+                    f"{uid}: diarize worker pool broke ({exc}); is the entry point guarded by "
+                    'if __name__ == "__main__"?'
+                )
+            print(f"[enrich] diarize pool broken, admission closed: {exc}", flush=True)
+        except Exception as exc:  # noqa: BLE001 - per-item native inference must be restartable.
+            with finalize_lock:
                 ep.speakers_error = f"native-diarize-error: {exc}"
                 stats.errors.append(f"{uid}: {exc}")
-                print(
-                    f"[enrich] diarize error uid={uid} body={ep.body!r} "
-                    f"elapsed_s={time.monotonic() - diarize_started_at:.1f} error={exc}",
-                    flush=True,
-                )
-        if ctx.speaker_turn_evidence_path is not None:
-            save_turn_evidence(ctx.speaker_turn_evidence_path, turn_evidence)
-        return stats
+            print(
+                f"[enrich] diarize error uid={uid} body={ep.body!r} "
+                f"elapsed_s={time.monotonic() - started_at:.1f} error={exc}",
+                flush=True,
+            )
+        finally:
+            if reservation is not None:
+                reservation.release(reserved_bytes)
+
+    def _finalize(
+        self,
+        candidate: _DiarizeCandidate,
+        artifact: Any,
+        words: dict,
+        ctx: StageContext,
+        stats: StageStats,
+        *,
+        turn_evidence: dict,
+        runtime_log: DiarizeRuntimeLog,
+        runtime_recipe: str,
+        model: str,
+        embedding_model: str,
+        elapsed: float,
+    ) -> None:
+        """Publish one completed artifact. Called under `finalize_lock`: every mutation here
+        touches state shared across worker threads (episode fields, the turn-evidence map, the
+        runtime log, stats, and the storage upload)."""
+        from citypods.diarize import attach_transcript_words
+        from citypods.speakers import public_turn
+
+        ep, uid = candidate.ep, candidate.uid
+        attach_transcript_words(artifact.turns, words)
+        # The public diarization object deliberately never contains numerical voice vectors.
+        # They remain private review evidence keyed to this exact recipe.
+        turn_evidence.setdefault("episodes", {})[uid] = {
+            "spec_hash": candidate.spec,
+            "turns": [dict(turn) for turn in artifact.turns],
+        }
+        payload = {
+            "schema": "2",
+            "basis": "served",
+            "source": "native",
+            "engine": getattr(artifact, "engine", "sherpa-onnx"),
+            "model": getattr(artifact, "model", model),
+            "embedding_recipe": embedding_model,
+            "clusters": getattr(artifact, "clusters", []),
+            "turns": [public_turn(turn) for turn in artifact.turns],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            dest = Path(directory) / "speakers.json"
+            dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+            url = ctx.storage.put_file(candidate.key, dest, "application/json")
+        ep.speakers_key = candidate.key
+        ep.speakers_url = url
+        ep.speakers_spec_hash = candidate.spec
+        ep.speakers_format = "json"
+        ep.speakers_synced = True
+        ep.speakers_confidence = None
+        ep.speakers_pipeline_version = DIARIZE_PIPELINE_VERSION
+        ep.speakers_error = None
+        ep.speakers_source = "native"
+        runtime_log.append(
+            diarize_seconds=elapsed,
+            recording_seconds=candidate.recording_seconds,
+            recipe=runtime_recipe,
+        )
+        stats.ran += 1
+        ratio = elapsed / candidate.recording_seconds if candidate.recording_seconds > 0 else nan
+        print(
+            f"[enrich] diarize done uid={uid} body={ep.body!r} elapsed_s={elapsed:.1f} "
+            f"recording_s={candidate.recording_seconds:.1f} ratio={ratio:.3f}",
+            flush=True,
+        )
 
 
 class SpeakerIdentityStage:
@@ -7124,6 +7506,7 @@ class SpeakerIdentityStage:
             refresh_membership_status,
             roster_person_ids,
             save_registry,
+            self_introduction_candidates,
             shadow_candidate_id,
         )
 
@@ -7219,8 +7602,19 @@ class SpeakerIdentityStage:
                     if not isinstance(reference_rows, dict):
                         reference_rows = {}
                         evaluation["reference_candidates"] = reference_rows
-                    for candidate in chair_reference_candidates(
-                        words, private_turns, known_names=known_names
+                    # Two independent automatic naming signals feed one candidate ledger: the
+                    # chair naming someone else, and a speaker naming themselves within the first
+                    # ~10s of their own turn (staff presenters and public commenters routinely
+                    # do the latter -- review/31 §C.3). Both are review evidence only; neither
+                    # ever assigns a name. Identical (name, turn) proposals from both signals
+                    # collapse to one row via `reference_candidate_id`, so a reviewer sees one
+                    # item, and agreement between signals is preserved as the `cue_kind` of
+                    # whichever landed first rather than duplicating the human's work.
+                    for candidate in (
+                        *chair_reference_candidates(words, private_turns, known_names=known_names),
+                        *self_introduction_candidates(
+                            words, private_turns, known_names=known_names
+                        ),
                     ):
                         candidate_id = reference_candidate_id(
                             city_slug=canonical_city_slug,
@@ -7232,7 +7626,7 @@ class SpeakerIdentityStage:
                             turn=candidate,
                         )
                         if candidate_id not in reference_rows:
-                            stats.quality("chair-reference-candidate")
+                            stats.quality(f"{candidate['kind']}-candidate")
                         reference_rows[candidate_id] = {
                             **candidate,
                             "candidate_id": candidate_id,
