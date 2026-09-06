@@ -36,6 +36,24 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Reject roster entries that are not name-shaped, and strip leading titles (review/31 §B.3a).**
+  Measured against seven realistic minutes shapes, four produced junk that entered the person
+  registry as members: `"a quorum of the Council was established at 6:02 p.m"`, a run-on line
+  fused into one six-word "name", OCR noise, and `"Yes"`/`"Absent: None"`. Junk is strictly worse
+  than silence here — a roster name enrols a person in the body registry, carries forward as
+  standing membership, tiers as a **member**, and through `roster_person_ids` acts as a correction
+  constraint (`allowed_ids &= roster_ids`), so a roster of junk resolves to zero known people,
+  intersects `allowed_ids` to empty, and **suppresses every correct voice match for that meeting**
+  while `confirmed=` simultaneously goes true. An empty roster has no such path: it yields `None`,
+  which already means "make no correction". `_clean_roster_name` now rejects spans with digits,
+  over five words, over 60 characters, or containing parliamentary/prose tokens, and strips
+  leading honorifics longest-first (`Mayor Pro Tem` before `Mayor`). Stripping is not cosmetic:
+  corroboration compares the roster name to the *spoken* name, so a stored "Mayor Gerard
+  Hudspeth" could never corroborate a chair cue proposing "Gerard Hudspeth" — failing for exactly
+  the people who speak most. `MinutesTextStage` also now counts `minutes-roster-parsed` vs
+  `minutes-roster-empty`, because "no minutes yet" and "minutes present but unparseable" were
+  previously indistinguishable downstream though only the second is a defect.
+
 - **Bound and sandbox the R7 diarize decode, and refuse unknown-length episodes (CodeRabbit
   review of #1484).** Three real defects, each verified against the code before acting.
   `_load_waveform`'s `subprocess.run` had no `timeout`, and it runs inside a worker *before* the

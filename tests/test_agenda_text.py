@@ -477,3 +477,43 @@ def test_pdf_layout_outline_uses_existing_pypdf_layout_mode():
     assert "CALL TO ORDER" in layout
     assert layout != plain
     assert outline == layout
+
+
+def test_roster_rejects_spans_that_are_not_name_shaped():
+    """A roster entry is not merely displayed: it enrols a person in the body registry, carries
+    forward as standing membership, tiers as a *member*, and acts as a correction constraint that
+    removes voice matches outside it. One junk entry therefore suppresses correct naming for the
+    whole meeting -- strictly worse than extracting nothing, since an empty roster already means
+    "make no correction"."""
+    junk = [
+        "Present: a quorum of the Council was established at 6:02 p.m.",
+        "Present: 7",
+        "Members Present: Jane Doe Bob Chair Ann Lee",  # run-on: one 6-word "name"
+        "MEMBERS PRESENT: J4ne D0e, ., B",
+        "Present: Yes.  Absent: None",
+        "Others Present: Random Citizen",  # in the room, not on the body
+    ]
+    for text in junk:
+        assert parse_roster(text) == [], text
+
+
+def test_roster_strips_leading_titles_so_names_can_corroborate_cues():
+    """Corroboration compares the roster name to the *spoken* name, so a stored "Mayor Gerard
+    Hudspeth" would never corroborate a chair cue proposing "Gerard Hudspeth" -- failing for
+    exactly the people who speak most."""
+    rows = parse_roster(
+        "PRESENT: Mayor Gerard Hudspeth, Council Member Vicki Byrd, Mayor Pro Tem Brian Beck"
+    )
+    assert [row["name"] for row in rows] == ["Gerard Hudspeth", "Vicki Byrd", "Brian Beck"]
+
+
+def test_roster_labels_member_and_staff_sections():
+    members = parse_roster("MEMBERS PRESENT: Jane Doe")
+    staff = parse_roster("City Staff Present: Matt Bodine")
+    flat = parse_roster("Present: Alice Smith")
+    assert members[0]["section"] == "members"
+    assert staff[0]["section"] == "staff"
+    # A flat list carries no section; tiering falls back to spoken-title vocabulary.
+    assert "section" not in flat[0]
+    # Staff wins a mixed qualifier: "members" is filler there, "staff" discriminates.
+    assert parse_roster("Staff Members Present: Sam Staffer")[0]["section"] == "staff"

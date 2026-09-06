@@ -420,6 +420,45 @@ Net effect on coverage is *positive*, not just structural: cities that helpfully
 sections were previously the ones whose rosters parsed as empty, because the status word was anchored to
 the start of the line.
 
+**B.3a Name-shape validation and title stripping (2026-09-06).** Widening the pattern also widened what
+reaches the registry, which forced a question the original sketch left open: what happens when the parse
+is *wrong* rather than absent. Measured against seven realistic minutes shapes, four produced junk that
+entered as members — `"a quorum of the Council was established at 6:02 p.m"`, a run-on line fused into one
+six-word "name", OCR noise (`"J4ne D0e"`), and `"Yes"` / `"Absent: None"`.
+
+Junk is **strictly worse than silence**, and not by a little. A roster name enrols a person in the body
+registry, is carried forward as standing membership (§C.5.4), tiers as a **member** — the tier that earns
+a speaker page — and, through `roster_person_ids`, acts as a *correction constraint*: `allowed_ids &=
+roster_ids`. A roster of junk resolves to zero known people, which is not `None`, so it intersects
+`allowed_ids` down to the empty set and **suppresses every correct voice match for that meeting**, while
+`confirmed=roster_ids is not None` simultaneously marks whatever survives as confirmed. Silence has no
+such path: an empty roster yields `None`, which already means "make no correction".
+
+So `_clean_roster_name` rejects any span that is not name-shaped (digits, more than five words, over 60
+characters, or containing parliamentary/prose tokens such as `quorum`, `none`, `was`, `established`), and
+strips leading honorifics/offices longest-first (`Mayor Pro Tem` before `Mayor`). Stripping is not
+cosmetic: corroboration compares the roster name to the *spoken* name, so a stored "Mayor Gerard
+Hudspeth" would never corroborate a chair cue proposing "Gerard Hudspeth" — failing for precisely the
+people who speak most. All-junk lines now yield an empty roster, which routes back to the safe "make no
+correction" path.
+
+**B.3b The silent-failure gap is now measurable.** Downstream, "no minutes published yet" and "minutes
+published but the roster did not parse" are indistinguishable — both are an empty `minutes_roster` — yet
+only the second is a defect and only the second stalls member naming indefinitely. `MinutesTextStage`
+now counts `minutes-roster-parsed` vs `minutes-roster-empty` so the size of that gap is measurable
+*before* anyone proposes a heavier extractor to close it.
+
+**On an LLM fallback for unparseable rosters — not now, and the reason matters.** The tempting fix for a
+missed roster is a small LLM extraction call. Rejected at this stage: the demonstrated failure mode above
+is not insufficient *coverage*, it is insufficient *validation*, and an LLM raises coverage while making
+wrong output look more plausible, not less. It would still need every guard in B.3a to be safe, so those
+guards are the prerequisite either way. If B.3b's counters later show real coverage loss on formats the
+deterministic parser cannot reach, the defensible shape is narrow: run **only** where the deterministic
+parse found nothing, subject the output to the same name-shape validation, cross-check each name against
+names actually spoken in that meeting's transcript, and land the result in the **review queue** as
+candidates rather than in the registry — matching this project's standing treatment of LLM output as
+untrusted, and its evidence-gated build policy (build when the trigger fires, not on speculation).
+
 ### B.4 Data model
 
 - **New `Episode` field:** `attendees: list[str] | None = None` — a bare name list. Small and bounded

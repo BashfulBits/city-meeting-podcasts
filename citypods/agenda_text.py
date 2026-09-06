@@ -1113,6 +1113,109 @@ def _norm_qualifier(value: str | None) -> str:
     return re.sub(r"[^a-z\s]", " ", str(value or "").casefold())
 
 
+# Leading honorifics/offices to strip, longest first so "Mayor Pro Tem" beats "Mayor". Required
+# for corroboration to work at all: the roster name has to match the *spoken* name, so a stored
+# "Mayor Gerard Hudspeth" would never corroborate a chair cue proposing "Gerard Hudspeth" -- and
+# it would fail for exactly the people who speak most.
+_ROSTER_NAME_TITLES: tuple[tuple[str, ...], ...] = tuple(
+    sorted(
+        (
+            ("mayor", "pro", "tem"),
+            ("deputy", "mayor"),
+            ("vice", "mayor"),
+            ("vice", "chair"),
+            ("council", "member"),
+            ("councilmember",),
+            ("councilman",),
+            ("councilwoman",),
+            ("commissioner",),
+            ("alderman",),
+            ("alderwoman",),
+            ("trustee",),
+            ("supervisor",),
+            ("chairman",),
+            ("chairwoman",),
+            ("chairperson",),
+            ("chair",),
+            ("mayor",),
+            ("dr",),
+            ("mr",),
+            ("ms",),
+            ("mrs",),
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
+# Tokens that prove a captured span is prose or parliamentary boilerplate rather than a name.
+# An attendance line is not guaranteed to hold names at all ("Present: a quorum was established",
+# "Absent: None"), and what it holds flows straight into the person registry.
+_NON_NAME_TOKENS = frozenset(
+    {
+        "a",
+        "an",
+        "absent",
+        "all",
+        "and",
+        "at",
+        "established",
+        "excused",
+        "held",
+        "is",
+        "meeting",
+        "none",
+        "no",
+        "not",
+        "of",
+        "present",
+        "quorum",
+        "recused",
+        "the",
+        "there",
+        "total",
+        "vacant",
+        "was",
+        "were",
+        "yes",
+    }
+)
+_MAX_ROSTER_NAME_WORDS = 5
+_MAX_ROSTER_NAME_CHARS = 60
+
+
+def _clean_roster_name(raw: str) -> str | None:
+    """Return a bare person name, or ``None`` when the span is not name-shaped.
+
+    Silence beats a guess here by a wide margin. A roster name is not merely displayed: it
+    enrols a person in the body registry, is carried forward as standing membership, tiers as a
+    **member** (the tier that earns a speaker page), and — through `roster_person_ids` — acts as a
+    *correction constraint* that removes voice matches outside it. A single junk entry therefore
+    suppresses correct naming for the whole meeting, which is strictly worse than extracting
+    nothing: an empty roster already means "make no correction".
+    """
+    name = _WHITESPACE_RE.sub(" ", raw).strip(" .,:;")
+    if not name or len(name) > _MAX_ROSTER_NAME_CHARS or any(char.isdigit() for char in name):
+        return None
+    words = name.split(" ")
+    while words:
+        lowered = tuple(word.casefold().strip(".") for word in words)
+        for title in _ROSTER_NAME_TITLES:
+            if lowered[: len(title)] == title:
+                words = words[len(title) :]
+                break
+        else:
+            break
+    if not 0 < len(words) <= _MAX_ROSTER_NAME_WORDS:
+        return None
+    if any(word.casefold().strip(".") in _NON_NAME_TOKENS for word in words):
+        return None
+    cleaned = " ".join(words).strip(" .,:;")
+    if len(cleaned) < 2 or not any(char.isalpha() for char in cleaned):
+        return None
+    return cleaned
+
+
 def parse_roster(text: str) -> list[dict]:
     """Conservative member extraction from attendance lines; never invents names."""
     result: list[dict] = []
@@ -1122,13 +1225,14 @@ def parse_roster(text: str) -> list[dict]:
             continue
         status = match.group("status").lower()
         section = _roster_section(qualifier)
-        for name in _ATTENDANCE_SPLIT_RE.split(match.group("names").strip()):
-            name = _WHITESPACE_RE.sub(" ", name).strip(" .")
-            if name and len(name) > 1:
-                row = {"name": name, "status": status, "evidence": match.group(0)[:500]}
-                if section:
-                    row["section"] = section
-                result.append(row)
+        for raw_name in _ATTENDANCE_SPLIT_RE.split(match.group("names").strip()):
+            name = _clean_roster_name(raw_name)
+            if not name:
+                continue
+            row = {"name": name, "status": status, "evidence": match.group(0)[:500]}
+            if section:
+                row["section"] = section
+            result.append(row)
     return result
 
 

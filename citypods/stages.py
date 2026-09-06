@@ -3958,6 +3958,12 @@ class MinutesTextStage:
                     source_url=minutes_url,
                 )
                 roster = parse_roster(text)
+                # Downstream, "no minutes published yet" and "minutes published but the roster did
+                # not parse" are indistinguishable -- both are an empty `minutes_roster` -- yet
+                # only the second is a defect, and only the second stalls member naming
+                # indefinitely. Count them apart so the size of that gap is measurable before
+                # anyone proposes a heavier extractor to close it.
+                stats.quality("minutes-roster-parsed" if roster else "minutes-roster-empty")
                 raw_votes = parse_votes(text, roster=roster)
                 grouped: dict[str | None, list[dict]] = {}
                 for vote in raw_votes:
