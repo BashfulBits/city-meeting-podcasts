@@ -36,6 +36,24 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **A worker that claimed a too-big diarize candidate blocked instead of a smaller one that fit
+  (`citypods/stages.py`, `citypods/resources.py`).** review/31 §A.4 always specified "skip to the
+  next-largest candidate that clears both checks rather than blocking the slot" when a candidate's
+  predicted memory need doesn't currently fit, but that rule was never actually implemented: the
+  admission queue's `claim()` picked a candidate by wall-clock time-budget fit alone, and the
+  memory check happened separately afterward in `_run_one`'s unconditional, *blocking*
+  `reservation.reserve()` call. A worker that claimed a candidate too big for the memory free right
+  now therefore held its slot hostage until enough freed up for *that exact candidate* — with no
+  path back to the queue to try a smaller one instead. Confirmed in production (denton-tx,
+  2026-09-06): three of four workers sat blocked in `reserve()` for 20+ minutes on candidates
+  needing 5.9–7.3GiB against ~3.8GiB free, while one long meeting ran alone and queue order (not
+  fit) decided whether anything shorter got a turn. Added `MemoryReservation.try_reserve()`, a
+  non-blocking sibling of `reserve()`; `claim()` now tries it for each time-fitting candidate in
+  longest-first order and returns the first that fits *both* budgets, committing the reservation
+  atomically so `_run_one` never reserves it twice — falling back to the old blind-claim-and-block
+  behavior only when nothing pending fits the memory that's free right now, which is the one case
+  where blocking genuinely is the only option.
+
 - **`r7-diarization.yml` never installed ffmpeg, so every diarize candidate failed instantly
   (`.github/workflows/r7-diarization.yml`).** The job runs on plain `ubuntu-latest`, not the
   `citypods-audio-runner` image `audio.yml` uses (that image is the one that actually ships

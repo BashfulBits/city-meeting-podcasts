@@ -375,6 +375,84 @@ def test_diarize_admission_claims_longest_first_then_narrows_to_what_fits(tmp_pa
     assert admission.deferred == []
 
 
+def test_diarize_admission_skips_a_too_big_candidate_for_one_that_fits_free_memory(tmp_path):
+    """Regression (2026-09-06, denton-tx production): pre-fix, `claim()` picked the longest
+    time-fitting candidate blind to memory, so a worker claimed a huge recording that could not
+    fit the memory currently free and blocked inside `reserve()` for it -- while a much shorter
+    recording that *would* have fit sat unclaimed, because every worker was already either
+    running or stuck on a claim of its own. `claim()` must skip a too-big candidate for a
+    smaller one that fits right now, longest-first among only the ones that do, and commit that
+    reservation itself so `_run_one` never reserves it twice."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 10 * 1024**3  # 10GiB
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    # Mirrors one already-running big meeting occupying most of the budget, ~0.5GiB left free.
+    assert reservation.try_reserve(int(9.5 * 1024**3), label="already-running")
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 3600,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    candidates = [
+        # est 1440s of 3600s budget -- ample time-budget margin, so this is purely a memory test.
+        _bare_candidate("big", 7200.0),  # ~1.6GiB predicted peak -- doesn't fit 0.5GiB free
+        _bare_candidate("small", 300.0),  # ~404MiB predicted peak -- fits comfortably
+    ]
+    admission = _DiarizeAdmission(candidates, ctx=ctx, runtime_log=log, recipe="r")
+
+    claimed = admission.claim()
+    assert claimed.uid == "small"
+    assert claimed.memory_reserved is True
+
+    # "big" is the only thing left pending and still doesn't fit what's free -- the fallback
+    # hands it out anyway (unreserved) so its worker blocks in `reserve()` for it, same as
+    # before this fix, because there is genuinely no smaller work left to run instead.
+    claimed_next = admission.claim()
+    assert claimed_next.uid == "big"
+    assert claimed_next.memory_reserved is False
+
+    assert admission.claim() is None
+
+
+def test_diarize_admission_falls_back_to_longest_time_fit_when_nothing_fits_memory(tmp_path):
+    """When nothing pending fits the memory free right now, `claim()` still hands out the
+    longest time-fitting candidate unreserved, exactly as before this fix -- blocking is the
+    only option when there is no smaller work available, and one worker doing so is no worse
+    than the pre-fix behavior."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 1 * 1024**3  # 1GiB total
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    assert reservation.try_reserve(int(0.9 * 1024**3), label="already-running")  # ~100MiB free
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 3600,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    candidates = [
+        _bare_candidate("longest", 15000.0),  # ~2.99GiB predicted peak -- doesn't fit
+        _bare_candidate("medium", 3000.0),  # ~892MiB predicted peak -- doesn't fit either
+    ]
+    admission = _DiarizeAdmission(candidates, ctx=ctx, runtime_log=log, recipe="r")
+
+    claimed = admission.claim()
+    assert claimed.uid == "longest"
+    assert claimed.memory_reserved is False
+
+
 def test_diarize_admission_defers_the_tail_when_nothing_fits(tmp_path):
     from citypods.stages import _DiarizeAdmission
 
@@ -504,7 +582,15 @@ def test_diarize_pool_defers_when_the_memory_budget_cannot_admit(tmp_path, monke
 
     # A budget far below one worker's ~350MB floor: reserve() waits for headroom that never
     # arrives, and the stop signal releases it. The item must defer, never run unreserved.
-    ctx.diarize_memory_reservation = MemoryReservation(budget_bytes=1024, poll_seconds=0.01)
+    #
+    # An oversized estimate against an *empty* reservation would still be admitted -- `_clamp`
+    # caps a single huge estimate down to the whole budget so it can still run alone rather than
+    # deadlocking forever (MemoryReservation's own contract). So the budget alone doesn't force a
+    # wait; something else has to already occupy it. Pre-reserve the whole thing so the fit-check
+    # genuinely fails, then let `stop` abort the wait for it.
+    reservation = MemoryReservation(budget_bytes=1024, poll_seconds=0.01)
+    assert reservation.try_reserve(1024, label="pre-occupied")
+    ctx.diarize_memory_reservation = reservation
     stop_calls = {"n": 0}
 
     def _stop_once_waiting() -> bool:
