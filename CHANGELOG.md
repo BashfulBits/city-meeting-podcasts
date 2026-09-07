@@ -36,6 +36,18 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`r7-diarization.yml` never installed ffmpeg, so every diarize candidate failed instantly
+  (`.github/workflows/r7-diarization.yml`).** The job runs on plain `ubuntu-latest`, not the
+  `citypods-audio-runner` image `audio.yml` uses (that image is the one that actually ships
+  ffmpeg) — but a stale comment claimed "the runner image ships already," and no install step was
+  ever added. `citypods/diarize.py`'s `_load_waveform` shells out to a bare `ffmpeg` on `PATH`
+  with no fallback, so a live run surfaced this as every one of 170 queued candidates erroring in
+  ~18–30s with `ffmpeg is required to decode audio for diarization but was not found on PATH` —
+  the pilot was producing zero diarization output. Added the same checksum-pinned static-ffmpeg
+  install (matching production's `audio.yml` pin, 7.1.5) and `GITHUB_PATH` export that
+  `ci.yml`/`asr.yml` already use, rather than `apt-get install ffmpeg` (Ubuntu noble's package is a
+  major version behind).
+
 - **Eight findings from a third CodeRabbit pass on #1485.** *A false cost claim:* the
   `MINUTES_ROSTER_PARSER_VERSION` comment promised a bump "re-extracts from the already stored
   document (no re-fetch, no re-OCR)", but the code fell straight through to
