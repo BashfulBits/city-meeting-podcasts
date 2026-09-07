@@ -4,6 +4,9 @@ provider: granicus
 source:
   feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
   body: "Planning and Zoning Commission"
+  body_any:
+    - "Planning & Zoning Worksession"
+    - "Planning and Zoning"
 podcast_title: "Pflugerville: Planning and Zoning Commission"
 podcast_author: "City of Pflugerville, TX"
 podcast_email: ""

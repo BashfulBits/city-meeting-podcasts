@@ -444,9 +444,9 @@ def test_classify_rejects_invented_episode_ids_after_one_repair(evidence):
     payload = decision_payload(evidence)
     payload["proposals"][0].update(action="single_uid_inclusion", episode_ids=["e99999"])
     backend = ReplyBackend([json.dumps(payload)] * 2)
-    with pytest.raises(ValueError, match="episode_ids"):
-        classify_unexpected_bodies(evidence, backend=backend)
-    assert len(backend.jobs) == 2
+    result = classify_unexpected_bodies(evidence, backend=backend)
+    assert "Special Meeting" in result.unresolved
+    assert len(backend.jobs) == 1
 
 
 def test_classify_manual_review_preserves_a_reason_for_every_label(evidence):
@@ -484,15 +484,19 @@ def test_classify_does_not_call_backend_after_shared_deadline(evidence):
     assert not backend.jobs
 
 
-def test_wire_schema_requires_action_specific_fields():
-    for fields in (
-        {"action": "single_uid_inclusion", "target_feeds": ["council"]},
-        {"action": "new_feed", "new_feed_slug": "board"},
-    ):
-        with pytest.raises(ValidationError):
-            BodyDecisions.model_validate(
-                {"proposals": [{"finding_id": "f0", "rationale": "reason", **fields}]}
-            )
+def test_wire_schema_accepts_partial_decisions_for_local_safe_review():
+    # Conditional requirements are enforced after parsing. Gemini's structured schema validator
+    # cannot express the cross-field rules reliably and used to reject a whole batch when one
+    # proposal omitted a conditional field.
+    decisions = BodyDecisions.model_validate(
+        {
+            "proposals": [
+                {"finding_id": "f0", "action": "single_uid_inclusion", "rationale": "reason"},
+                {"finding_id": "f1", "action": "new_feed", "rationale": "reason"},
+            ]
+        }
+    )
+    assert len(decisions.proposals) == 2
 
 
 def test_remedy_models_exist_in_the_route_catalog():

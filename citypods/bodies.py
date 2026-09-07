@@ -8,6 +8,7 @@ substring), so any provider can produce "one feed per board/commission".
 from __future__ import annotations
 
 import collections
+import fnmatch
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -163,9 +164,28 @@ def _selectors(needle: BodySelector) -> tuple[str, ...]:
 
 
 def matches(body: str | None, needle: BodySelector) -> bool:
-    """True if any configured selector matches ``body``."""
+    """True if any configured selector matches ``body``.
+
+    Selectors remain normalized, case-insensitive substrings by default. A selector containing
+    ``*`` or ``?`` is a normalized glob matched against the complete body label. This covers
+    provider-generated families such as ``Purchasing Bids 7-16-2015`` without enumerating each
+    dated label.
+    """
     body_key_value = body_key(body)
-    return any(body_key(selector) in body_key_value for selector in _selectors(needle))
+    for selector in _selectors(needle):
+        # Preserve glob metacharacters while applying the same punctuation/spacing normalization
+        # as ordinary selectors. ``body_key`` deliberately removes punctuation, including ``*``.
+        normalized = (
+            body_key(selector.replace("*", " globstar ").replace("?", " globone "))
+            .replace("globstar", "*")
+            .replace("globone", "?")
+        )
+        if "*" in selector or "?" in selector:
+            if fnmatch.fnmatchcase(body_key_value, normalized):
+                return True
+        elif normalized in body_key_value:
+            return True
+    return False
 
 
 def matches_exact_body_label(body: str | None, expected: str) -> bool:

@@ -9,6 +9,7 @@ source:
     - "Work Session"
     - "Work Session and Regular Meeting"
     - "Special Meeting"
+    - "Fiscal Year * Budget Workshop"
   body_includes:
     - provider_guid: "394474"
       body: "TIRZ #1 Board Meeting"

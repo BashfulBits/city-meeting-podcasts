@@ -7,9 +7,7 @@ source:
   body: "City Council"
   body_any:
     - "Special City Council"
-  body_includes:
-    - provider_guid: "396135"
-      body: "Budget & Audit Committee Meeting"
+    - "Budget & Audit Committee Meeting"
 podcast_title: "Waco: City Council"
 podcast_author: "City of Waco, TX"
 podcast_email: ""

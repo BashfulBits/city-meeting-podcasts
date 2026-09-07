@@ -53,6 +53,13 @@ Phase R (Research-Tool Surface)._
   unknown) with the cost hidden behind a default instead of a slow model; those episodes now defer
   as `unknown-duration` until the duration lands.
 
+- **Finish the focused #1231 unexpected-body cleanup and harden its remedy contract.** Added
+  normalized `*`/`?` body globs for recurring provider-label families, used them for the seven
+  currently affected feed families (including Dallas's dated Purchasing Bids labels), and removed
+  the Waco single-GUID exception in favor of the recurring committee selector. The direct remedy
+  schema now defers conditional-field validation to the local evidence boundary, preserving valid
+  decisions and reporting only incomplete or unverifiable findings for manual review instead of
+  failing a whole batch. No pipeline versions, stored episode artifacts, or catalog backfills change.
 
 - **Make `/remedy` direct and bounded (issue #1231).** Classify in the Actions process with local
   schema/evidence correction, shared quota accounting, and no dispatch/deferred cache access.
