@@ -83,9 +83,21 @@ Phase R (Research-Tool Surface)._
   the same nearest one), producing a genuine zero-width chunk — not a coverage bug (neighbors
   already cover that instant), but a fully wasted decode+diarize+embed pass. Now dedupes
   (`sorted(set(points))`); fewer, larger chunks than requested is always a safe degradation.
-  `DIARIZE_PIPELINE_VERSION` bumped "2"→"3" to re-diarize the existing over-8h outliers under
-  the new path. See review/31 §A.4's 2026-09-07 addendum for the full run-log evidence, the
-  multi-speaker accuracy table, and the real-chapter-data validation.
+  **The same real run also corrected what chunking actually protects against.** Its first
+  ~56min chunk hit the recurring onnxruntime `Where node` error for real (3 of 292 real turns),
+  correctly caught by the fd-redirect detection (§A.1b) — genuine proof that mechanism works on
+  real audio, not just synthetic worst cases. But the longest turn in that chunk was only 114s,
+  far short of the "anomalously long turn" the original design comment blamed — on real, noisy
+  meeting audio this bug fires often enough (~1% of turns in that sample) that shrinking a
+  chunk's *duration* barely reduces how often it can trigger. **Chunking does not prevent this
+  error** (the `DIARIZE_CHUNK_THRESHOLD_SECONDS` comment claiming otherwise is now corrected).
+  What it does do, evidenced by this same run: bounds how long `process()`/`_attach_embeddings`
+  can run silently before Python regains control and the detection can raise — the giant 15.09h
+  outlier's own `process()` call never returned across three separate runs; this chunk's
+  equivalent window is roughly an hour, not fifteen. `DIARIZE_PIPELINE_VERSION` bumped "2"→"3"
+  to re-diarize the existing over-8h outliers under the new path. See review/31 §A.4's
+  2026-09-07 addendum for the full run-log evidence, the multi-speaker accuracy table, and both
+  real-Denton-audio findings.
 
 ### Fixed
 

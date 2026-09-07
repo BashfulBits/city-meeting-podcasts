@@ -118,10 +118,27 @@ DIARIZE_RSS_PER_HOUR_BYTES = 650 * 1024 * 1024
 # formula safely conservative) up to 8h; a 15.09h outlier crashed a live run (R7 runs #59/61/62/
 # 63) with a lost-comms SIGTERM ~53min in -- most likely OOM, the same historically-confirmed
 # failure mode as GH#377/review#12's H-B. Chunking bounds peak memory to one chunk's worth
-# regardless of total length, and incidentally bounds the maximum possible single continuous
-# turn to one chunk too, which directly caps the mechanism behind the recurring onnxruntime
-# "Where node" broadcast error (a degenerate, anomalously long turn fed whole into embedding
-# extraction -- see `_attach_embeddings`'s own error detection, added alongside this).
+# regardless of total length.
+#
+# Corrected 2026-09-07, against real production audio, not restated from the original design
+# reasoning above: the recurring onnxruntime "Where node" broadcast error is NOT gated by turn
+# length the way first assumed. Validating chapter-anchored splitting against a real Denton
+# recording, the *first* ~56min chunk of a real, non-synthetic meeting hit this exact error on
+# 3 of 292 real turns -- and the longest turn in that chunk was only 114s, nowhere near the
+# ~123s/12288-window internal-buffer threshold documented for `process()`'s own trigger (the
+# `window_shift_ratio` addendum above), let alone the many-minutes-long turns the "anomalously
+# long turn" framing assumed. On real, noisy meeting audio this bug fires often enough (~1% of
+# turns in that one sample) that shrinking a chunk's total *length* barely reduces how often a
+# turn inside it can trigger it. What chunking actually buys here, evidenced by that same real
+# run: `process()`/`_attach_embeddings`'s per-turn loop only has to finish (or fail) within one
+# chunk's own bounded processing time before Python gets control back and the fd-redirect
+# detection (`_run_diarize_pass`, `_attach_embeddings`) can raise -- not the full recording's.
+# The giant 15.09h outlier's own `process()` call never returned in any of runs #59/61/62/63
+# (still "elapsed=3236s and counting" in the last heartbeat before each SIGTERM); an 8h-or-under
+# chunk bounds how long that same silent wait can last before the detection gets a chance to
+# fire and mark the episode `speakers_error` instead of hanging until an external kill. The
+# broadcast error itself remains an unfixed upstream bug either way -- chunking narrows its
+# blast radius (bounded latency-to-failure, bounded peak memory), it does not prevent it.
 DIARIZE_CHUNK_THRESHOLD_SECONDS = 8 * 3600
 
 # How far from a naive even split point (duration / n_chunks) to look for an existing chapter

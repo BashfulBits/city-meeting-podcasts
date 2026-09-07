@@ -563,12 +563,16 @@ spiral. What's actually verified, directly from the three post-#1507 run logs (`
   moment each cancellation lands.
 
 Given that, chunking the outlier recording rather than chasing the exact external-kill mechanism
-further is the targeted fix: it directly shrinks both candidate causes at once — bounding any
-single onnxruntime call's continuous-audio span (the confirmed trigger for the `Where node` error,
-now doubly guarded by §A.1b's detection on both `process()` and `_attach_embeddings`) and bounding
-per-worker peak RSS to the chunk's own length under the linear model above, rather than the full
-recording's — without having to fully resolve what GitHub's control plane does internally at the
-~55min mark.
+further is the targeted fix: it bounds per-worker peak RSS to the chunk's own length under the
+linear model above, rather than the full recording's, without having to fully resolve what
+GitHub's control plane does internally at the ~55min mark. **What it does *not* do, corrected
+below after real evidence contradicted the original assumption: prevent the `Where node` error
+from occurring.** What it *does* do for that error specifically — evidenced, not assumed — is
+bound how long `process()`/`_attach_embeddings` can run *silently* before returning control to
+Python where §A.1b's fd-redirect detection gets a chance to raise, rather than requiring an
+entire 15h+ file to finish decoding first (the giant outlier's own `process()` call never
+returned in any of runs #59/61/62/63 — still "elapsed=3236s and counting" in the last heartbeat
+before each SIGTERM).
 
 **Design (per direct instruction, 2026-09-07): `DIARIZE_CHUNK_THRESHOLD_SECONDS = 8 * 3600`.** An
 8h single pass is the largest size with real production evidence it completes cleanly (run #59's
@@ -719,6 +723,34 @@ from chunking limited to as few chunks as the length actually requires, never mo
   inside this recording's own ~8500s chapter-sparse stretch (between chapters at 5061.0s and
   13610.0s — no chapter within the 45min search window) correctly fell back to the naive/silence
   path — a real exercise of *both* documented split-selection behaviors, not just the happy path.
+- **A major correction, from the same real run, to what chunking actually protects against
+  (2026-09-07).** The full chunked-vs-single-pass-baseline comparison against
+  `uid=621bfa24a31dd23e` (intended to validate cross-chunk merge quality on real, long-form,
+  sequential-turn-taking audio — the still-open question from the VoxConverse findings above)
+  did not complete: the *first* chunk (~56min of real audio, [0, 3373.0)) hit the recurring
+  onnxruntime `Where node` broadcast error during `_attach_embeddings`, on 3 of 292 real turns,
+  and §A.1b's fd-redirect detection correctly raised — a real, unprompted proof that detection
+  mechanism works on real production audio, not just the synthetic worst-case that first
+  triggered it. But the *nature* of the trigger this exposed contradicts the original design
+  reasoning above: the longest turn in that chunk was only **114 seconds** — nowhere near the
+  ~123s/12288-window internal-buffer threshold `process()`'s own `window_shift_ratio` fix
+  targets, and two orders of magnitude short of the many-minutes-long turn the "anomalously long
+  turn, bounded by chunk size" framing assumed. On this one real, noisy meeting-audio sample the
+  bug fired on roughly **1% of turns** — high enough that shrinking a chunk's total *duration*
+  barely reduces how often some turn inside it can trigger this. **Chunking does not prevent
+  this error; that framing (stated as fact in the original `DIARIZE_CHUNK_THRESHOLD_SECONDS`
+  comment, now corrected there directly) was wrong.** What chunking demonstrably *does* provide,
+  from this same real run: bounding how long `process()`/`_attach_embeddings` can keep running
+  *silently*, mid-error, before returning control to Python where the fd-redirect detection can
+  actually raise — the giant 15.09h outlier's own `process()` call never returned in any of runs
+  #59/61/62/63 (still "elapsed=3236s and counting" in the last heartbeat before each external
+  SIGTERM); this chunk's equivalent window is bounded to roughly an hour, not fifteen. The
+  broadcast error remains a live, unfixed upstream bug either way — narrowing its blast radius
+  (bounded peak memory, bounded latency-to-a-clean-failure) is what chunking buys, not immunity
+  from it, and detection-then-fail-loud (§A.1b) is now the mechanism actually doing the
+  protective work, not chunk-size bounding. Given a ~1% real-audio incidence, filing the
+  upstream k2-fsa/sherpa-onnx issue §A.1b flagged as a deferred follow-up is now a more pressing
+  candidate for prioritization than this addendum originally treated it.
 - **`DIARIZE_PIPELINE_VERSION` bumped "2"→"3"** (`citypods/stages.py`) — chunking is a genuinely
   different computation for the handful of existing over-8h artifacts, not a bookkeeping-only
   change, so they re-diarize under the new path rather than keeping a stale single-pass result.
