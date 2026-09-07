@@ -147,6 +147,53 @@ def test_diarize_lets_caller_override_the_clustering_threshold(monkeypatch, tmp_
     assert fake.FastClusteringConfig.call_args.kwargs["threshold"] == 0.42
 
 
+def test_diarize_uses_the_default_window_shift_ratio_by_default(monkeypatch, tmp_path):
+    from citypods.diarize import DEFAULT_WINDOW_SHIFT_RATIO
+
+    _install_fake_sherpa_onnx(monkeypatch, [])
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_segmentation_model", lambda: Path("/fake/seg.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_embedding_model", lambda name: Path("/fake/emb.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._load_waveform", lambda path, sr: np.zeros(sr, dtype=np.float32)
+    )
+    monkeypatch.setattr("citypods.diarize._attach_embeddings", lambda *a, **k: None)
+    fake = sys.modules["sherpa_onnx"]
+
+    diarize(tmp_path / "audio.m4a")
+
+    used_ratio = fake.OfflineSpeakerSegmentationPyannoteModelConfig.call_args.kwargs[
+        "window_shift_ratio"
+    ]
+    assert used_ratio == DEFAULT_WINDOW_SHIFT_RATIO
+    assert DEFAULT_WINDOW_SHIFT_RATIO != 0.1  # sherpa-onnx's own default -- must be overridden
+
+
+def test_diarize_lets_caller_override_the_window_shift_ratio(monkeypatch, tmp_path):
+    _install_fake_sherpa_onnx(monkeypatch, [])
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_segmentation_model", lambda: Path("/fake/seg.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_embedding_model", lambda name: Path("/fake/emb.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._load_waveform", lambda path, sr: np.zeros(sr, dtype=np.float32)
+    )
+    monkeypatch.setattr("citypods.diarize._attach_embeddings", lambda *a, **k: None)
+    fake = sys.modules["sherpa_onnx"]
+
+    diarize(tmp_path / "audio.m4a", window_shift_ratio=0.5)
+
+    used_ratio = fake.OfflineSpeakerSegmentationPyannoteModelConfig.call_args.kwargs[
+        "window_shift_ratio"
+    ]
+    assert used_ratio == 0.5
+
+
 def test_diarize_passes_num_threads_through_to_both_model_configs(monkeypatch, tmp_path):
     _install_fake_sherpa_onnx(monkeypatch, [])
     monkeypatch.setattr(

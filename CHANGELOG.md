@@ -36,6 +36,22 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **`citypods/diarize.py` raised sherpa-onnx's `window_shift_ratio` default from 0.1 to 0.3.** A
+  live production run (denton-tx run #59) logged a real onnxruntime error inside the pyannote
+  segmentation encoder (`Non-zero status code returned while running Where node ... Attempting to
+  broadcast an axis by a dimension other than 1`). Reproduced deterministically against the exact
+  pinned `sherpa-onnx==1.13.7`: any continuous span of audio with no VAD-detected pause whose
+  window count crosses a fixed internal buffer (~123s at the default shift) triggers it; no
+  upstream fix exists as of the current release (1.13.7) and no matching tracker issue was found.
+  `window_shift_ratio` is a real, publicly exposed parameter (since 1.13.5); raising it avoided
+  the error outright on synthetic continuous speech and is 2.9-3.0x faster (fewer windows to
+  run). Accuracy validated against three real, CC BY 4.0-licensed VoxConverse dev clips via
+  `citypods/speaker_benchmark.py`'s `compare()`: `turn_cluster_accuracy` at 0.3 was within noise
+  of 0.1 on every clip. `DIARIZE_PIPELINE_VERSION` bumped "1"→"2" to force re-diarization of
+  artifacts computed under the old default. See review/31 §A.1a addendum for the full comparison
+  table and the caveat that the real clips, unlike the synthetic repro, never triggered the error
+  at either ratio.
+
 - **A worker that claimed a too-big diarize candidate blocked instead of a smaller one that fit
   (`citypods/stages.py`, `citypods/resources.py`).** review/31 §A.4 always specified "skip to the
   next-largest candidate that clears both checks rather than blocking the slot" when a candidate's

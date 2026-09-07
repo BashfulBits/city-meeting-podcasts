@@ -4274,7 +4274,10 @@ MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
 PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
-DIARIZE_PIPELINE_VERSION = "1"
+# Bumped "1"->"2": citypods/diarize.py's DEFAULT_WINDOW_SHIFT_RATIO changed sherpa-onnx's
+# pyannote segmentation windowing (0.1 -> 0.3), which changes the actual computation, not just
+# bookkeeping -- artifacts diarized under the old default must be re-diarized, not reused.
+DIARIZE_PIPELINE_VERSION = "2"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 CHAPTER_AGENDA_PIPELINE_VERSION = "1"
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
