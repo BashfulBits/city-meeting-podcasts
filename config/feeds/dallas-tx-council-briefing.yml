@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Council Briefing"
+  body_includes:
+    - provider_guid: "202104"
+      body: "City Council FY 2013 – 2014 Budget Briefing"
 podcast_title: "Dallas: Council Briefing"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

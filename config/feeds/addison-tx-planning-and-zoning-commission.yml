@@ -4,6 +4,8 @@ provider: swagit
 source:
   list_url: https://addisontx.new.swagit.com/views/128
   body: "Planning and Zoning Commission"
+  body_any:
+    - "Planning and Zoning"
 podcast_title: "Addison: Planning and Zoning Commission"
 podcast_author: "City of Addison, TX"
 podcast_email: ""

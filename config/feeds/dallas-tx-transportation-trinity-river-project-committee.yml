@@ -1,0 +1,13 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Transportation & Trinity River Project Committee is a distinct committee active from 2015 to 2017.
+slug: dallas-tx-transportation-trinity-river-project-committee
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Transportation & Trinity River Project Committee
+podcast_title: 'Dallas: Transportation & Trinity River Project Committee'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Transportation & Trinity River Project Committee meetings from
+  2015 to 2017.

@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Citizen Homelessness Commission is a recurring distinct body with 36 episodes spanning 2017-11-17 to 2021-05-13.
+slug: dallas-tx-citizen-homelessness-commission
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Citizen Homelessness Commission
+podcast_title: 'Dallas: Citizen Homelessness Commission'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Recordings of the Citizen Homelessness Commission meetings.

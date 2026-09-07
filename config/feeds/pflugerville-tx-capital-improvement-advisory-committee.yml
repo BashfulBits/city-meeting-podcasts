@@ -4,6 +4,8 @@ provider: granicus
 source:
   feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
   body: "Capital Improvement Advisory Committee"
+  body_any:
+    - "CIAC"
 podcast_title: "Pflugerville: Capital Improvement Advisory Committee"
 podcast_author: "City of Pflugerville, TX"
 podcast_email: ""

@@ -1,0 +1,13 @@
+# Added by automated unexpected-body remediation.
+# Rationale: The label 'Committee on Persons with Disabilities on 2026-03-19 3:00 PM' belongs to a distinct recurring body observed across 9 meetings from 2024 to 2026. No existing feed matches this body, so a new feed 'denton-tx-committee-on-persons-with-disabilities' is proposed.
+slug: denton-tx-committee-on-persons-with-disabilities
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: Committee on Persons with Disabilities on 2026-03-19 3:00 PM
+podcast_title: 'Denton: Committee on Persons with Disabilities'
+podcast_author: City of Denton, TX
+podcast_email: ''
+podcast_description: Meetings of the Committee on Persons with Disabilities for the
+  City of Denton, TX.

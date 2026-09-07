@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Trinity River Corridor Local Government Corporation Board"
+  body_includes:
+    - provider_guid: "316193"
+      body: "Trinity River Corridor Local Government Corporation September 2024 Board Meeting"
 podcast_title: "Dallas: Trinity River Corridor Local Government Corporation Board"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Board of Ethics"
+  body_includes:
+    - provider_guid: "13776"
+      body: "City Officials Ethics Training - July 2018"
 podcast_title: "Denton: Board of Ethics"
 podcast_author: "City of Denton, TX"
 podcast_email: ""
