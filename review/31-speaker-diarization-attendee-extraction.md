@@ -549,6 +549,77 @@ closed independently of chunking (§A.4 addendum elsewhere) since none of them d
   per-candidate peak-RSS reading tight enough to actually settle the question, rather than the
   same "plausible, not provable" position this run left things in.
 
+**A live production incident, caught by the new instrumentation above and reported directly,
+2026-09-07 — `_attach_embeddings` had zero onnxruntime error detection, and it was actively
+corrupting episodes marked successful.** With #1592's peak-RSS logging live on `main`, a running
+`enrich --lane diarize` job's own log made the pattern directly visible: the recurring `Where
+node` broadcast error fired five separate times, and every single time it was immediately
+followed by that same candidate's `peak_rss_mb` print, then a normal `diarize done` completion
+— never a `diarize error`. That is proof, not inference: `process()`'s own onnxruntime check
+(§A.1b, live on `main` well before this session) would have raised and marked the episode
+`speakers_error` had the error occurred there — since every one of the five instead reported
+success, the error was firing somewhere `process()`'s check doesn't cover. `_attach_embeddings`
+is exactly that gap: its per-turn embedding-extraction loop had only a bare `try/except
+Exception: return` around itself, which catches genuine Python exceptions but not onnxruntime's
+own C++-logged, non-raising kernel failures — the identical failure mode §A.1b already
+documented for `process()`, just at a second call site nobody had covered. **What was actually
+at risk in those five (and any earlier, silently-affected) episodes, precisely, not vaguely:**
+segmentation and clustering (turn timing, which turns belong to which local speaker) are
+unaffected — proven by the same logic above, since a `process()`-level failure would have
+raised. Only the embedding vector for whichever turn(s) triggered the error is corrupted,
+feeding the separate R7 identity/naming layer with a wrong voice-print for that turn, not the
+published diarization turns themselves.
+
+- **The fix: `_attach_embeddings` restructured to match `process()`'s own contract** —
+  extractor-construction failure remains best-effort (a missing/unusable model still leaves
+  every turn anonymous rather than failing the artifact), but the per-turn loop now runs inside
+  the same `_capture_onnxruntime_stderr()` fd-redirect §A.1b already built, and raises
+  `RuntimeError` on any captured error-level line once the loop completes — no longer
+  best-effort, for the same reason `process()`'s own check isn't: a corrupted embedding can
+  merge into the wrong cluster and get published with someone else's turns attributed to it,
+  which is worse than no embedding at all. Restructured the loop itself to try each turn
+  independently in the process (a genuine, separate resilience gain, not just the error
+  detection): one Python-level turn failure no longer sacrifices every other turn's embedding,
+  where the prior single try/except around the whole loop would have.
+- **`DIARIZE_PIPELINE_VERSION` bumped "2"→"3".** Asked directly whether this needs a version
+  bump to get the affected episodes reprocessed: yes, and a *version* bump specifically, not a
+  targeted reprocess of just the five uids caught live in this one log — the failure is silent
+  by definition, so there is no way to know which other, already-`speakers_synced=True`
+  episodes hit this same gap in earlier runs without literally reprocessing everything anyway.
+  Costs re-diarizing every currently-synced episode (a real cost, most of which were already
+  fine and will produce an identical result), but matches this project's own established
+  convention (the `window_shift_ratio` fix's "1"→"2" bump above, same reasoning) and is the only
+  way to guarantee every historically-affected episode gets a chance to either succeed cleanly
+  or now correctly fail loud instead of silently corrupting.
+- **The peak-RSS numbers `#1592`'s own logging captured at each of the five incidents turned
+  out to matter, asked about directly.** Comparing each candidate's logged `peak_rss_mb` right
+  at its error against the conservative `350MB + 650MB/hr` formula (§A.4 above): two of five
+  landed close to predicted (+1%, +8%), but three ran meaningfully hotter — +24% (8.78h
+  recording), +31% (4.76h), and worst, +45% on the 15.09h outlier (14.7GiB observed vs. 10.2GiB
+  predicted, a ~4.5GiB gap on its own — already bigger than the 3GiB spike margin §A.4 shipped
+  with #1592). The overshoot scaling with recording length/turn count rather than looking like
+  one fixed-size spike is a real, different mechanistic hint from the single-incident tensor-size
+  estimate the original 3GiB margin was sized from: consistent with onnxruntime's memory arena
+  growing (and, characteristic of arena allocators, never shrinking back) a little further on
+  each degenerate kernel execution within one process — a long recording with more turns has
+  more independent chances to ratchet it up over the course of one `diarize()` call.
+  `DIARIZE_RSS_SPIKE_MARGIN_BYTES` raised 3GiB→5GiB, past the worst *observed* real gap
+  (~4.5GiB) rather than just the worst *modeled* tensor size, for headroom against a
+  still-longer recording ratcheting further. This also reframes chunking's own memory case
+  (elsewhere in this addendum) with a mechanism more durable than a fixed margin: a fresh chunk
+  gets a fresh process and a fresh onnxruntime arena, directly bounding how much any *one*
+  process's arena can ratchet up regardless of how many turns in that chunk trigger the bug —
+  where this margin is a stopgap sized for whatever runs before chunking lands or without it.
+  **Not done here, flagged as a real next step:** the per-turn loop above still runs every
+  remaining turn after the first error is detected, rather than breaking out early once the
+  job's fate (raise, fail the episode) is already sealed — on the arena-ratchet theory, stopping
+  early would directly bound how much *further* a bad file's peak RSS can climb after its first
+  bad turn, not just after the fact via a bigger margin. Deferred rather than bundled into this
+  same fix: it needs `_capture_onnxruntime_stderr()` to expose a mid-capture read (currently only
+  finalizes `captured["data"]` on context exit), a real if modest restructuring of an
+  already-shipped, already-tested function, and this fix was prioritized to ship fast given it
+  was actively corrupting production data at the time it was found.
+
 ---
 
 ## Part B — Minimal attendee extraction (Phase F #14, pulled forward)

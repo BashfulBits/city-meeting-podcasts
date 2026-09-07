@@ -326,6 +326,93 @@ def test_diarize_raises_when_onnxruntime_logs_an_error_during_process(monkeypatc
         diarize(tmp_path / "audio.m4a")
 
 
+class _FakeEmbeddingStream:
+    def accept_waveform(self, sample_rate, data):
+        pass
+
+    def input_finished(self):
+        pass
+
+
+def test_diarize_raises_when_onnxruntime_logs_an_error_during_embedding_extraction(
+    monkeypatch, tmp_path
+):
+    """`process()`'s own onnxruntime check (above) never covers `_attach_embeddings`, which
+    runs afterward. Confirmed in production, 2026-09-07 (this exact gap, on real Denton
+    meetings, before this fix): five separate long recordings each logged the identical
+    "Where node" broadcast error mid-embedding-extraction and then reported a normal `diarize
+    done` completion moments later, with no exception at all -- this must not be silently
+    accepted as "no embedding, keep going" either."""
+
+    class _NoisyExtractor:
+        def create_stream(self):
+            return _FakeEmbeddingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            os.write(
+                2,
+                b"[E:onnxruntime:, sequential_executor.cc:620 ExecuteKernel] Non-zero status "
+                b"code returned while running Where node.\n",
+            )
+            return [0.1, 0.2, 0.3]
+
+    segments = [_FakeSegment(0.0, 1.0, 0)]
+    fake = _install_fake_sherpa_onnx(monkeypatch, segments)
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_NoisyExtractor())
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_segmentation_model", lambda: Path("/fake/seg.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_embedding_model", lambda name: Path("/fake/emb.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._load_waveform", lambda path, sr: np.zeros(sr, dtype=np.float32)
+    )
+
+    with pytest.raises(RuntimeError, match="onnxruntime reported"):
+        diarize(tmp_path / "audio.m4a")
+
+
+def test_attach_embeddings_keeps_trying_other_turns_after_one_turn_fails(monkeypatch, tmp_path):
+    """One turn raising a plain (non-onnxruntime) exception during extraction must not sacrifice
+    every other turn's embedding -- a refinement made while restructuring this function for the
+    onnxruntime check above, not present in the prior implementation's single try/except around
+    the whole loop."""
+    from citypods.diarize import _attach_embeddings
+
+    calls = {"n": 0}
+
+    class _FlakyExtractor:
+        def create_stream(self):
+            return _FakeEmbeddingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("boom on the first turn only")
+            return [0.1, 0.2, 0.3]
+
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_FlakyExtractor())
+    turns = [
+        {"start": 0.0, "end": 1.0, "cluster": "0"},
+        {"start": 1.0, "end": 2.0, "cluster": "0"},
+    ]
+
+    _attach_embeddings(
+        np.zeros(32000, dtype=np.float32), 16000, turns, Path("/fake/emb.onnx"), num_threads=1
+    )
+
+    assert "embedding" not in turns[0]
+    assert turns[1]["embedding"] == [0.1, 0.2, 0.3]
+
+
 def test_diarize_logs_but_does_not_raise_on_an_onnxruntime_warning(monkeypatch, tmp_path, capsys):
     """A warning-level onnxruntime line is surfaced (at minimum logged) but is not treated as a
     job failure -- only an error/fatal-level line is."""
@@ -439,16 +526,17 @@ def test_ffmpeg_error_detail_redacts_credentials_and_is_bounded():
 
 
 def test_diarize_rss_spike_margin_matches_the_documented_broadcast_evidence():
-    """Pins DIARIZE_RSS_SPIKE_MARGIN_BYTES so a change to it is deliberate. Sized from the
-    recurring onnxruntime "Where node" broadcast error's own logged dimensions (review/31 §A.4
-    addendum): 12288 by 50599 (runs #61-63) implies an attempted allocation up to
-    12288 * 50599 * 4 bytes (float32) for that one intermediate tensor -- the margin must cover
-    at least that, rounded up for headroom."""
+    """Pins DIARIZE_RSS_SPIKE_MARGIN_BYTES so a change to it is deliberate. Sized from real,
+    directly measured `peak_rss_mb` on five production incidents (2026-09-07, review/31 §A.4
+    addendum): the worst (a 15.09h recording) ran ~4.5GiB hotter than even the conservative
+    350MB+650MB/hr formula predicts -- the margin must cover at least that gap, rounded up for
+    headroom against a still-longer recording ratcheting further (the overshoot scales with
+    recording length/turn count, not a fixed one-time spike)."""
     from citypods.diarize import DIARIZE_RSS_SPIKE_MARGIN_BYTES
 
-    worst_observed_tensor_bytes = 12288 * 50599 * 4
-    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES >= worst_observed_tensor_bytes
-    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES == 3 * 1024 * 1024 * 1024
+    worst_observed_overshoot_bytes = int(4.5 * 1024 * 1024 * 1024)
+    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES >= worst_observed_overshoot_bytes
+    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES == 5 * 1024 * 1024 * 1024
 
 
 def test_diarize_memory_ceiling_subtracts_the_spike_margin_once():

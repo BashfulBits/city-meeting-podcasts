@@ -4289,7 +4289,22 @@ PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 # Bumped "1"->"2": citypods/diarize.py's DEFAULT_WINDOW_SHIFT_RATIO changed sherpa-onnx's
 # pyannote segmentation windowing (0.1 -> 0.3), which changes the actual computation, not just
 # bookkeeping -- artifacts diarized under the old default must be re-diarized, not reused.
-DIARIZE_PIPELINE_VERSION = "2"
+#
+# Bumped "2"->"3", 2026-09-07: `_attach_embeddings` gained the same onnxruntime error-level-
+# diagnostic detection `process()` already had -- confirmed live in production (this exact gap,
+# on real Denton meetings, before this fix) as five separate episodes each silently accepting a
+# corrupted embedding for at least one turn and reporting a normal `speakers_synced=True`
+# completion. `process()`'s own check never covers this call, and the segmentation/clustering
+# each of those five episodes produced is unaffected (proven, not assumed: `process()`'s
+# existing check would have raised and marked them `speakers_error` had the error occurred
+# there instead) -- only the corrupted turn(s)' embeddings are at risk, feeding the separate R7
+# identity layer. There is no way to know which *other*, already-`speakers_synced=True`
+# episodes silently hit this same gap in earlier runs -- the failure mode is silent by
+# definition -- so a version bump (not a targeted reprocess of just the five uids caught live
+# here) is what actually guarantees every historically-affected episode gets a chance to
+# either succeed cleanly or now correctly fail loud, at the cost of also re-diarizing episodes
+# that were already fine.
+DIARIZE_PIPELINE_VERSION = "3"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 CHAPTER_AGENDA_PIPELINE_VERSION = "1"
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
