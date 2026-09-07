@@ -52,6 +52,26 @@ Phase R (Research-Tool Surface)._
   table and the caveat that the real clips, unlike the synthetic repro, never triggered the error
   at either ratio.
 
+- **A diarize job whose onnxruntime session logged an error-level kernel failure was still
+  reported as a success (`citypods/diarize.py`, review/31 §A.1b).** onnxruntime's C++ logger
+  writes error/fatal-level diagnostics straight to the process's stderr file descriptor, bypassing
+  Python's `sys.stderr`/`logging` entirely — sherpa-onnx's Python bindings expose no
+  severity/callback hook for it. Confirmed in production (R7 Diarization run #59, GH Actions run
+  34072536373, "Diarize Denton pilot meetings", 2026-09-07): a `[E:onnxruntime:,
+  sequential_executor.cc:620 ExecuteKernel] ... Attempting to broadcast an axis by a dimension
+  other than 1. 12288 by 15974` line was logged mid-inference, and ~4.2s later the same job
+  reported a normal-looking `diarize done ... ratio=0.142` completion with no Python exception and
+  no visible change to the outcome. `diarize()` now redirects fd 2 (`os.dup2`) around exactly the
+  `diarizer.process(samples)` call — safe because it only ever runs inside the isolated diarize
+  worker process, never the parent — restores it in a `finally` before any exception handling
+  runs, and scans the captured output for onnxruntime's own `[E:`/`[F:` (error/fatal, now raises
+  `RuntimeError`) and `[W:` (warning, now logged) severity markers. The raised error routes
+  through `NativeDiarizeStage._run_one()`'s existing per-item exception handling unchanged,
+  marking the episode `speakers_error` instead of silently `speakers_synced`. Independent of and
+  a safety net beneath the `window_shift_ratio` fix above: that fix targets the one reproduced
+  trigger condition, this detects *any* onnxruntime error-level log during `process()`, known
+  trigger or not.
+
 - **A worker that claimed a too-big diarize candidate blocked instead of a smaller one that fit
   (`citypods/stages.py`, `citypods/resources.py`).** review/31 §A.4 always specified "skip to the
   next-largest candidate that clears both checks rather than blocking the slot" when a candidate's

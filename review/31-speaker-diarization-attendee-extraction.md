@@ -255,6 +255,51 @@ change eliminates the error on arbitrary real audio, which remains an open quest
 production data. `DIARIZE_PIPELINE_VERSION` bumped "1"→"2" (the actual computation changed, not
 just bookkeeping) to force re-diarization of the small number of artifacts computed under 0.1.
 
+### A.1b Silent onnxruntime kernel failures — detected via fd-redirect (2026-09-07)
+
+Production evidence a session-level onnxruntime kernel failure inside `diarizer.process(samples)`
+does **not** raise a Python exception and does **not** change `process()`'s return value: R7
+Diarization run #59 (GH Actions run 34072536373, "Diarize Denton pilot meetings") logged
+
+```
+[E:onnxruntime:, sequential_executor.cc:620 ExecuteKernel] Non-zero status code returned while
+running Where node. Name:'/encoder/encoder/encoder.0/mconv.3/Where_1' Status Message:
+.../element_wise_ops.h:563 axis == 1 || axis == largest was false. Attempting to broadcast an
+axis by a dimension other than 1. 12288 by 15974
+```
+
+~4.2s before that same job reported a normal-looking `diarize done ... ratio=0.142` completion,
+indistinguishable from any other successful run in the same log — the result was accepted and
+published as if nothing had gone wrong. onnxruntime's own C++ logger writes lines like this
+straight to the process's stderr file descriptor, bypassing Python's `sys.stderr`/`logging`
+entirely, and sherpa-onnx's Python bindings expose no severity/callback hook for it anywhere
+(checked directly against the installed package's `__init__.py` and the compiled `_sherpa_onnx`
+extension — no config class, `OfflineSpeakerDiarizationConfig` included, has one).
+
+`citypods/diarize.py`'s `diarize()` now redirects the OS-level fd 2 (`os.dup2`) around exactly
+the `diarizer.process(samples)` call, captures what onnxruntime wrote to it, and scans for the
+`"[E:onnxruntime"`/`"[F:onnxruntime"` (error/fatal) and `"[W:onnxruntime"` (warning) severity
+markers. The real fd is restored in a `finally` immediately after the call, before any exception
+handling runs, so a genuine crash's own traceback is never captured and lost. A warning-level
+line is logged (`[diarize] onnxruntime warning ...`) but does not fail the job; an error/fatal-
+level line raises `RuntimeError` from `diarize()`, which `run_diarize_job` propagates unchanged —
+`NativeDiarizeStage._run_one()`'s existing per-item exception handling already turns that into
+`ep.speakers_error` (deferred/errored, not silently `speakers_synced`) with no new exception path
+needed. Safe to redirect fd 2 unconditionally here: `diarize()`/`run_diarize_job` only ever run
+inside the isolated `ProcessPoolExecutor` diarize worker (§A.4), never the parent process, so the
+redirect's scope is exactly one job's own process, not shared with any other worker or thread.
+
+This is independent of, and a safety net beneath, the `window_shift_ratio` fix in the addendum
+above: that fix targets the one condition actually reproduced (a fixed internal buffer inside
+the exported ONNX graph, ~12288, crossed by a long continuous span at the default shift), and
+raising the default avoids it outright on every case tested so far. This detection instead
+catches *any* onnxruntime error-level log during `process()` regardless of cause — known trigger,
+some other trigger, or a future regression — so a session-level kernel failure can never again be
+silently accepted as a successful `diarize done`. The specific broadcast dimensions in the run #59
+evidence above (12288 vs. 15974) were not chased further than the addendum's own root-cause
+finding; no existing k2-fsa/sherpa-onnx issue matches this exact failure signature, and filing one
+(with the exact node name and dimensions above) remains a separate, upstream-facing follow-up.
+
 ### A.2 Module plan
 
 - **`citypods/diarize.py`** — new, mirroring `citypods/asr.py`'s existing shape (model load/cache,

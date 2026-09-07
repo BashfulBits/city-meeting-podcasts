@@ -9,12 +9,14 @@ which is what actually removes the long-meeting CPU budget ceiling that motivate
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
 import os
 import re
 import subprocess
+import sys
 import tarfile
 import tempfile
 from collections.abc import Iterable, Mapping
@@ -268,6 +270,63 @@ def _load_waveform(audio_path: Path, sample_rate: int):
     return samples
 
 
+# onnxruntime's own C++ logger (inside sherpa_onnx's compiled extension) writes severity-
+# prefixed lines like "[E:onnxruntime:, sequential_executor.cc:620 ExecuteKernel] ..." straight
+# to the process's stderr file descriptor -- it bypasses Python's sys.stderr/logging entirely, and
+# there is no severity/callback hook for it anywhere in sherpa_onnx's Python bindings (checked
+# against the installed package's `__init__.py` and the compiled `_sherpa_onnx` extension: no
+# config class -- `OfflineSpeakerDiarizationConfig`, `OfflineSpeakerSegmentationModelConfig`,
+# `SpeakerEmbeddingExtractorConfig` included -- exposes one). A session-level kernel failure (a
+# broadcast-shape mismatch inside the segmentation model, seen in production: R7 Diarization run
+# #59, GH Actions run 34072536373, "Diarize Denton pilot meetings", 2026-09-07) can log an
+# "[E:onnxruntime" line here and *still* return a normal-looking result from `process()` -- no
+# Python exception, no visible change to the reported outcome. `_capture_onnxruntime_stderr`
+# redirects fd 2 around exactly that call so this module can scan for the marker itself.
+_ONNXRUNTIME_ERROR_MARKERS = ("[E:onnxruntime", "[F:onnxruntime")
+_ONNXRUNTIME_WARNING_MARKER = "[W:onnxruntime"
+
+
+@contextlib.contextmanager
+def _capture_onnxruntime_stderr():
+    """Redirect the OS-level fd 2 to a temp file for the duration of the block.
+
+    Yields a dict that gains a `"data"` key (the raw bytes written to fd 2) once the block
+    exits. Only safe to use inside the isolated diarize worker process (`run_diarize_job`,
+    run by `NativeDiarizeStage` in its own `ProcessPoolExecutor` worker) -- redirecting fd 2 in
+    the parent process would also swallow every other thread's stderr.
+
+    The real fd is restored in a `finally` immediately on exit from the `with` block, before
+    control returns to the caller -- so if the wrapped call itself raises, the exception's
+    traceback is printed to the real stderr, never captured into the temp file and lost.
+    """
+    captured: dict[str, bytes] = {}
+    sys.stderr.flush()
+    original_fd = os.dup(2)
+    capture_file = tempfile.TemporaryFile(mode="w+b")
+    try:
+        os.dup2(capture_file.fileno(), 2)
+        try:
+            yield captured
+        finally:
+            sys.stderr.flush()
+            os.dup2(original_fd, 2)
+    finally:
+        os.close(original_fd)
+        capture_file.seek(0)
+        captured["data"] = capture_file.read()
+        capture_file.close()
+
+
+def _scan_onnxruntime_log(data: bytes) -> tuple[list[str], list[str]]:
+    """Split captured stderr bytes into onnxruntime error/fatal- and warning-level lines."""
+    lines = data.decode("utf-8", "replace").splitlines()
+    errors = [
+        line for line in lines if any(marker in line for marker in _ONNXRUNTIME_ERROR_MARKERS)
+    ]
+    warnings = [line for line in lines if _ONNXRUNTIME_WARNING_MARKER in line]
+    return errors, warnings
+
+
 def diarize(
     audio_path: Path,
     model: str = DEFAULT_DIARIZE_MODEL,
@@ -351,7 +410,28 @@ def diarize(
     diarizer = sherpa_onnx.OfflineSpeakerDiarization(config)
 
     samples = _load_waveform(audio_path, diarizer.sample_rate)
-    result = diarizer.process(samples)
+    with _capture_onnxruntime_stderr() as captured:
+        result = diarizer.process(samples)
+    error_lines, warning_lines = _scan_onnxruntime_log(captured.get("data", b""))
+    if warning_lines:
+        # Not fatal on its own, but worth surfacing: at minimum a maintainer reading the job's
+        # output should see that onnxruntime itself flagged something during this run.
+        print(
+            f"[diarize] onnxruntime warning during process() for {audio_path.name!r}: "
+            f"{warning_lines[0][:500]}",
+            flush=True,
+        )
+    if error_lines:
+        # A session-level kernel failure like this does not raise a Python exception and does
+        # not change `process()`'s return value -- without this check the job below would be
+        # accepted and published as a normal success (production evidence: R7 run #59, GH
+        # Actions run 34072536373, review/31 §A.1b). Raising here routes it through the same
+        # per-item exception handling `NativeDiarizeStage._run_one()` already has for every
+        # other diarize failure, marking the episode `speakers_error` instead of `speakers_synced`.
+        raise RuntimeError(
+            f"onnxruntime reported {len(error_lines)} error-level diagnostic(s) during "
+            f"diarize() for {audio_path.name!r}: {error_lines[0][:500]}"
+        )
 
     turns: list[dict[str, Any]] = []
     clusters: dict[str, dict[str, Any]] = {}

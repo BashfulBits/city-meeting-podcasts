@@ -673,6 +673,41 @@ def test_diarize_backstop_defers_the_item_and_stops_admitting(tmp_path, monkeypa
     assert all(not ep.speakers_synced for ep in episodes)
 
 
+def test_native_diarize_reports_error_not_success_when_run_diarize_job_raises(
+    tmp_path, monkeypatch
+):
+    """`run_diarize_job` raising -- e.g. `citypods.diarize.diarize()`'s own onnxruntime
+    error-level-log detection (review/31 §A.1b) -- must route through the same per-item
+    exception handling as any other diarize failure: `speakers_error`, never a silently-accepted
+    `speakers_synced`."""
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ep = _diarize_episode(ctx, tmp_path, "pilot", seconds=120.0)
+
+    def _fake_job(audio_path, **_kwargs):
+        raise RuntimeError(
+            "onnxruntime reported 1 error-level diagnostic(s) during diarize() for "
+            "'audio.m4a': [E:onnxruntime:, sequential_executor.cc:620 ExecuteKernel] ..."
+        )
+
+    monkeypatch.setattr(
+        stages_mod, "_diarize_executor", lambda workers: stages_mod._InlineExecutor()
+    )
+    monkeypatch.setattr(diarize_mod, "run_diarize_job", _fake_job)
+    _stub_diarize_io(monkeypatch, tmp_path)
+
+    stats = NativeDiarizeStage().process(FakeProvider(), city, [ep], ctx)
+
+    assert stats.ran == 0
+    assert ep.speakers_synced is not True
+    assert ep.speakers_error is not None
+    assert "onnxruntime reported" in ep.speakers_error
+
+
 def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, monkeypatch, capsys):
     """A running diarize attempt registers with PROGRESS (so the heartbeat's "active work"
     snapshot shows it busy instead of "no tracked work active") and is bracketed by start/done
