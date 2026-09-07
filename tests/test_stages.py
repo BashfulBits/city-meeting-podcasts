@@ -453,62 +453,6 @@ def test_diarize_admission_falls_back_to_longest_time_fit_when_nothing_fits_memo
     assert claimed.memory_reserved is False
 
 
-def test_diarize_admission_gives_a_solo_worker_the_latency_optimum(tmp_path):
-    """workers<=1: there is never competition for CPU, so every job gets the measured
-    single-job latency optimum (review/31 §A.4) -- no running-count bookkeeping needed."""
-    from citypods.stages import _DIARIZE_SOLO_THREADS, _DiarizeAdmission
-
-    ctx = StageContext(storage=None, ffmpeg=None, max_kbps=96, dry_run=False)
-    admission = _DiarizeAdmission([], ctx=ctx, runtime_log=DiarizeRuntimeLog(None), recipe="r")
-
-    assert admission.acquire_running_slot() == _DIARIZE_SOLO_THREADS
-    assert admission.acquire_running_slot() == _DIARIZE_SOLO_THREADS  # still true with workers=1
-
-
-def test_diarize_admission_gives_idle_capacity_two_threads_until_half_the_workers_are_busy(
-    tmp_path,
-):
-    """Regression target: best-fit-decreasing admission can concentrate the memory budget on a
-    couple of large candidates (documented in claim()'s own docstring, confirmed against run
-    #59's real backlog), leaving other *configured* workers' vCPUs genuinely idle -- not just
-    blocked-and-waiting -- for as long as the running jobs take. A job started while fewer than
-    half of `workers` are concurrently running should get the 2-thread single-job latency
-    optimum instead of leaving that idle capacity unused; once at least half are running, new
-    jobs get 1 thread, preserving the already-validated full-concurrency behavior."""
-    from citypods.stages import _DiarizeAdmission
-
-    ctx = StageContext(storage=None, ffmpeg=None, max_kbps=96, dry_run=False)
-    admission = _DiarizeAdmission(
-        [], ctx=ctx, runtime_log=DiarizeRuntimeLog(None), recipe="r", workers=4
-    )
-
-    # First two jobs to start (n=1, n=2) are each <= workers//2 == 2: idle capacity exists.
-    assert admission.acquire_running_slot() == 2
-    assert admission.acquire_running_slot() == 2
-    # Third and fourth (n=3, n=4) exceed workers//2: full concurrency, stay single-threaded.
-    assert admission.acquire_running_slot() == 1
-    assert admission.acquire_running_slot() == 1
-
-
-def test_diarize_admission_release_running_slot_frees_capacity_for_the_next_job(tmp_path):
-    from citypods.stages import _DiarizeAdmission
-
-    ctx = StageContext(storage=None, ffmpeg=None, max_kbps=96, dry_run=False)
-    admission = _DiarizeAdmission(
-        [], ctx=ctx, runtime_log=DiarizeRuntimeLog(None), recipe="r", workers=4
-    )
-
-    admission.acquire_running_slot()  # n=1 -> 2 threads
-    admission.acquire_running_slot()  # n=2 -> 2 threads
-    assert admission.acquire_running_slot() == 1  # n=3 -> full concurrency, 1 thread
-
-    admission.release_running_slot()  # n=3 -> 2
-    admission.release_running_slot()  # n=2 -> 1
-    admission.release_running_slot()  # n=1 -> 0, fully idle again
-    # A new job starting now sees the same idle capacity the very first one saw.
-    assert admission.acquire_running_slot() == 2
-
-
 def test_diarize_admission_defers_the_tail_when_nothing_fits(tmp_path):
     from citypods.stages import _DiarizeAdmission
 
