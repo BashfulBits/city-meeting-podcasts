@@ -7,6 +7,8 @@ from citypods.resources import (
     NativeWorkGate,
     ResourceAdmission,
     ResourceSnapshot,
+    process_peak_rss_bytes,
+    process_rss_bytes,
 )
 
 
@@ -20,6 +22,20 @@ def _snap(mem_available: int, load1: float) -> ResourceSnapshot:
         cpus=2,
         thread_count=3,
     )
+
+
+def test_process_peak_rss_bytes_is_never_smaller_than_current_rss():
+    """No `/proc` on macOS (this dev environment), so this exercises the real `ru_maxrss`
+    fallback shared with `process_rss_bytes` there -- but on Linux the two read genuinely
+    different counters (`VmHWM` peak vs. `VmRSS` current), so the real invariant this pins is
+    the one that must hold on *either* platform: a process's peak can never be less than its
+    current reading, taken back-to-back on this real, live process."""
+    current = process_rss_bytes()
+    peak = process_peak_rss_bytes()
+    assert peak is not None
+    assert peak > 0
+    if current is not None:
+        assert peak >= current
 
 
 def test_resource_admission_waits_until_memory_and_load_have_headroom():

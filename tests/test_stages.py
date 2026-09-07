@@ -559,6 +559,44 @@ def test_diarize_pool_runs_every_candidate_across_concurrent_workers(tmp_path, m
     assert len(evidence["episodes"]) == 6
 
 
+def test_diarize_submit_passes_the_episode_uid_as_log_label(tmp_path, monkeypatch):
+    """`run_diarize_job`'s peak-RSS log line is only useful for diagnosing a specific candidate
+    if it's actually labeled with that candidate's own uid (review/31 §A.4 addendum) -- this pins
+    that `_run_one` threads it through the submit call rather than leaving the default empty
+    label, which would make every job's peak-RSS line indistinguishable from every other's."""
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
+    from citypods.diarize import DiarizeArtifacts
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ctx.speaker_turn_evidence_path = tmp_path / "evidence.json"
+    ep = _diarize_episode(ctx, tmp_path, "ep-label-check", seconds=60.0)
+
+    seen_labels: list[str] = []
+
+    def _fake_job(audio_path, **kwargs):
+        seen_labels.append(kwargs.get("log_label"))
+        return DiarizeArtifacts(
+            turns=[{"start": 0.0, "end": 1.0, "cluster": "0", "overlap": False}],
+            clusters=[{"cluster": "0", "turn_count": 1}],
+            engine="sherpa-onnx",
+            model="test-model",
+        )
+
+    monkeypatch.setattr(diarize_mod, "run_diarize_job", _fake_job)
+    monkeypatch.setattr(
+        stages_mod, "_diarize_executor", lambda workers: stages_mod._InlineExecutor()
+    )
+    _stub_diarize_io(monkeypatch, tmp_path)
+
+    stats = NativeDiarizeStage().process(FakeProvider(), city, [ep], ctx)
+
+    assert stats.ran == 1
+    assert seen_labels == [str(ep.uid or ep.guid)]
+
+
 def test_diarize_pool_defers_when_the_memory_budget_cannot_admit(tmp_path, monkeypatch):
     """Memory is a second, independent admission constraint: a worker that cannot reserve its
     predicted peak RSS defers rather than running and risking an OOM kill (review/31 §A.4)."""
@@ -2082,7 +2120,11 @@ def test_native_diarize_defers_an_episode_with_no_served_duration(tmp_path):
 def test_single_worker_still_gets_a_real_process_pool():
     """The backstop is `future.result(timeout=...)`, which an inline executor makes unreachable by
     resolving its Future before returning. Every diarize test replaces this factory, so nothing
-    else pins the production contract: one worker must still be a real, spawn-context pool."""
+    else pins the production contract: one worker must still be a real, spawn-context pool, with
+    a fresh process per candidate (`max_tasks_per_child=1`) so `run_diarize_job`'s peak-RSS log
+    line means "this candidate's own peak," not "the highest peak any candidate this worker has
+    ever processed reached" (`ru_maxrss`/`VmHWM` are both monotonic for a process's lifetime;
+    review/31 §A.4 addendum)."""
     from concurrent.futures import ProcessPoolExecutor
 
     import citypods.stages as stages_mod
@@ -2092,5 +2134,6 @@ def test_single_worker_still_gets_a_real_process_pool():
         try:
             assert isinstance(executor, ProcessPoolExecutor)
             assert executor._mp_context.get_start_method() == "spawn"
+            assert executor._max_tasks_per_child == 1
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
