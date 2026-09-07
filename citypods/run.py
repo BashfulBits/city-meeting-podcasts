@@ -2840,6 +2840,7 @@ def _build_impl(
     asr_start_deadline: float | None = None
     asr_backstop_deadline: float | None = None
     diarize_start_deadline: float | None = None
+    diarize_backstop_deadline: float | None = None
     tag_llm_deadline: datetime | None = None
     ctx: StageContext | None = None
     if time_bounded:
@@ -2859,12 +2860,27 @@ def _build_impl(
             )
         elif lane == "diarize":
             start_cutoff_min = float(defaults.get("diarize_start_cutoff_minutes", 285))
-            now = time.monotonic()
-            diarize_start_deadline = now + start_cutoff_min * 60 if start_cutoff_min > 0 else None
+            # Two tiers, mirroring ASR: the cutoff bounds what may *begin*, the backstop bounds
+            # how long an already-running item may keep the job alive. With a worker pool this
+            # matters more than it did serially -- without it a single estimate miss can hold
+            # every worker's results hostage until the runner is killed (review/31 §A.4).
+            backstop_min = float(defaults.get("diarize_backstop_minutes", 320))
+            # Anchored to the start of the enrich phase, not to now: `pull_state()` restores a
+            # snapshot of thousands of objects before this point, and any minutes it spends would
+            # otherwise push the 320m backstop past the workflow's own 330m timeout -- so Actions
+            # would kill the job before deferred records persist, which is the outcome the
+            # backstop exists to prevent. The tag lane already subtracts this elapsed time.
+            diarize_start_deadline = (
+                enrich_phase_start + start_cutoff_min * 60 if start_cutoff_min > 0 else None
+            )
+            diarize_backstop_deadline = (
+                enrich_phase_start + backstop_min * 60 if backstop_min > 0 else None
+            )
             deadline = diarize_start_deadline
             stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
             print(
-                f"budget: diarize start cutoff {start_cutoff_min:.0f}m "
+                f"budget: diarize start cutoff {start_cutoff_min:.0f}m, "
+                f"backstop {backstop_min:.0f}m "
                 "(measured per-recipe admission + yield if superseded)"
             )
         elif lane == "tag":
@@ -3035,6 +3051,20 @@ def _build_impl(
         if time_bounded and not dry_run and _memory_budget_mb > 0
         else None
     )
+    # Same predicted-peak-RSS admission for the diarize worker pool (review/31 §A.4). Several
+    # concurrent workers each grow with their own meeting's length (~350MB + ~650MB/hour,
+    # measured), and the runner is OOM-killed as a whole, so concurrency has to be bounded by
+    # predicted memory as well as by vCPU count. 0/blank disables it (a one-worker run has
+    # nothing to contend with).
+    _diarize_memory_budget_mb = float((speakers_config or {}).get("memory_budget_mb", 0) or 0)
+    _diarize_memory_reservation: MemoryReservation | None = (
+        MemoryReservation(
+            budget_bytes=int(_diarize_memory_budget_mb * 1024 * 1024),
+            log=lambda msg: print(msg, flush=True),
+        )
+        if not dry_run and _diarize_memory_budget_mb > 0
+        else None
+    )
     transcript_quality_routes = load_quality_routes(
         site_config, state_dir, storage=None if dry_run else storage
     )
@@ -3079,7 +3109,9 @@ def _build_impl(
         / str(speakers_config.get("runtime_state_path", "r7_diarization_runtime.json")),
         speaker_config=speakers_config,
         diarize_start_deadline=diarize_start_deadline,
+        diarize_backstop_deadline=diarize_backstop_deadline,
         diarize_start_reserve_seconds=float(defaults.get("diarize_start_reserve_seconds", 15 * 60)),
+        diarize_memory_reservation=_diarize_memory_reservation,
         stop=stop,
         # Production leaves chapters bounded only by the wall-clock window (let the backlog
         # backfill fully over runs). ``--chapters-cap`` adds a small count bound *only* for the PR
@@ -3482,6 +3514,18 @@ def _build_impl(
             print(f"    queued: {reasons}", flush=True)
         for msg in t.get("defer_samples", []):
             print(f"    queued sample: {msg}", flush=True)
+        if t.get("quality_counts"):
+            # These used to reach `run_summary.json` and nothing else -- no build-log line and no
+            # dashboard panel renders them -- so a stage could report a silent-failure signal
+            # every run with nobody in a position to notice. Print them where `queued:` already
+            # prints, which is where someone looks when a lane behaves oddly.
+            outcomes = ", ".join(
+                f"{outcome}={count}"
+                for outcome, count in sorted(
+                    t["quality_counts"].items(), key=lambda item: (-item[1], item[0])
+                )
+            )
+            print(f"    quality: {outcomes}", flush=True)
         if t.get("rate_limited"):
             print(f"    ! throttle: {t['rate_limited']} 403/429 errors (GH#300)", flush=True)
     for domain, values in sorted(provider_rate_limit_telemetry.items()):

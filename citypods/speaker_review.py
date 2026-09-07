@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import base64
+import collections
 import json
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from citypods.review_issues import render_decision_block, require_one_decision
 from citypods.speakers import (
@@ -156,7 +158,13 @@ def record_calibration(args: argparse.Namespace) -> int:
 
 
 def record_benchmark(args: argparse.Namespace) -> int:
-    """Record the private gold-set comparison required before this cell can publish names."""
+    """Record a private gold-set engine comparison for this calibration cell.
+
+    No longer a publish precondition: review/31 §C.4.11 retired the per-cell benchmark gate when
+    §A.1a made engine selection a single global decision, and `citypods.naming` now owns
+    admission. Kept as the durable record of a comparison actually run — nothing reads these rows
+    to decide whether a name may be published.
+    """
     try:
         state = json.loads(args.state.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -204,6 +212,8 @@ def _record_calibration(
     reviewer: str,
     review_id: str,
     capture_context: str,
+    combination_key: str | None = None,
+    tier: str | None = None,
 ) -> None:
     rows = state.setdefault("reviews", [])
     row = {
@@ -214,6 +224,15 @@ def _record_calibration(
         "reviewer": reviewer,
         "candidate_id": candidate_id,
     }
+    # Snapshot what the reviewer actually judged. `naming_candidate_id` deliberately excludes the
+    # signal set, so a later projection rewrites that row's `combination_key` and `tier` under the
+    # same id -- and the precision table, which joins verdicts to the *current* row, would then
+    # credit this ruling to a combination nobody ever reviewed. Gaining a voice reference or
+    # receiving minutes would silently move evidence between buckets.
+    if combination_key:
+        row["combination_key"] = combination_key
+    if tier:
+        row["tier"] = tier
     prior = next((item for item in rows if item.get("review_id") == review_id), None)
     if prior:
         comparable = {key: value for key, value in row.items() if key != "reviewed_at"}
@@ -224,63 +243,150 @@ def _record_calibration(
     return None
 
 
+# Which private ledger holds each reviewable candidate class, which fields its issue payload
+# carries (and must still match byte-for-byte at ingest), and the decision labels a reviewer sees.
+#
+# A table rather than three parallel `if kind == ...` chains, because that shape had already
+# drifted: `self-introduction` candidates are written to `reference_candidates` alongside
+# `chair-reference` ones, but only the latter string was recognised -- so a self-introduction
+# rendered as a shadow-match issue and then failed ingest against a ledger it was never in.
+# Classes are keyed by ledger membership; adding a cue kind cannot silently reopen that hole.
+_REFERENCE_KINDS = frozenset({"chair-reference", "self-introduction"})
+_COMMON_PAYLOAD_FIELDS = (
+    "candidate_id",
+    "city_slug",
+    "body",
+    "engine_recipe",
+    "capture_context",
+    "episode_uid",
+)
+_REVIEW_CLASSES: dict[str, dict[str, Any]] = {
+    "reference": {
+        "ledger": "reference_candidates",
+        "marker": "r7-reference-candidate-b64",
+        "outcomes": ("Approve as a golden voice reference", "Reject"),
+        "title_prefix": "R7 chair reference",
+        "fields": _COMMON_PAYLOAD_FIELDS
+        + (
+            "kind",
+            "display_name",
+            "start",
+            "end",
+            "cue_start",
+            "cue_end",
+            "cue_text",
+            "cue_kind",
+            "embedding_recipe",
+            "cluster",
+            "transcript_text_hash",
+        ),
+    },
+    "naming": {
+        "ledger": "naming_candidates",
+        "marker": "r7-naming-candidate-b64",
+        "outcomes": ("Correct", "Incorrect"),
+        "title_prefix": "R7 speaker name",
+        # No start/end: a fused candidate is a claim about a whole cluster, not one turn.
+        "fields": _COMMON_PAYLOAD_FIELDS
+        + ("kind", "display_name", "cluster", "tier", "combination_key"),
+    },
+    "shadow": {
+        "ledger": "candidates",
+        "marker": "r7-shadow-candidate-b64",
+        "outcomes": ("Correct", "Incorrect"),
+        "title_prefix": "R7 speaker shadow sample",
+        "fields": _COMMON_PAYLOAD_FIELDS
+        + ("start", "end", "speaker_id", "display_name", "transcript_text_hash"),
+    },
+}
+
+
+def _review_class(candidate: Mapping[str, object]) -> str:
+    """Which review class a candidate belongs to, by the ledger that holds it."""
+    kind = str(candidate.get("kind") or "")
+    if kind in _REFERENCE_KINDS:
+        return "reference"
+    if kind == "naming":
+        return "naming"
+    return "shadow"
+
+
 def _review_payload(candidate: Mapping[str, object]) -> dict[str, object]:
-    """Return only the private-ledger fields needed to recheck a review action."""
-    keys = {
-        "candidate_id",
-        "city_slug",
-        "body",
-        "engine_recipe",
-        "capture_context",
-        "episode_uid",
-        "start",
-        "end",
-    }
-    if candidate.get("kind") == "chair-reference":
-        keys.update(
-            {
-                "kind",
-                "display_name",
-                "cue_start",
-                "cue_end",
-                "cue_text",
-                "cue_kind",
-                "embedding_recipe",
-                "cluster",
-                "transcript_text_hash",
-            }
-        )
-    else:
-        keys.update({"speaker_id", "display_name", "transcript_text_hash"})
+    """Return the payload embedded in a review issue.
+
+    `fields` are rechecked against the private ledger at ingest; `carry` fields ride along
+    unverified because they may legitimately change between packaging and ingest.
+    """
+    spec = _REVIEW_CLASSES[_review_class(candidate)]
+    keys = (*spec["fields"], *spec.get("carry", ()))
     return {key: candidate[key] for key in keys if key in candidate}
 
 
 def _review_body(candidate: dict) -> str:
+    review_class = _review_class(candidate)
+    spec = _REVIEW_CLASSES[review_class]
     payload = _review_payload(candidate)
     encoded = base64.urlsafe_b64encode(json.dumps(payload, sort_keys=True).encode()).decode()
-    if candidate.get("kind") == "chair-reference":
+    header = f"<!-- {spec['marker']}: {encoded} -->\n"
+    meeting = (
+        f"Meeting: **{candidate.get('episode_title') or candidate.get('episode_uid')}** "
+        f"({candidate.get('city_slug')})\n\n"
+    )
+    if review_class == "reference":
+        cue_lead = (
+            "The chair introduces"
+            if candidate.get("kind") == "chair-reference"
+            else "The speaker introduces themselves as"
+        )
         return (
-            f"<!-- r7-reference-candidate-b64: {encoded} -->\n"
-            f"# R7 chair-introduction reference review: `{candidate['candidate_id']}`\n\n"
-            f"Meeting: **{candidate.get('episode_title') or candidate.get('episode_uid')}** "
-            f"({candidate.get('city_slug')}, {candidate.get('cue_start')}–"
-            f"{candidate.get('cue_end')} seconds)\n\n"
-            f"Cue type: **{candidate.get('cue_kind')}**\n\n"
+            f"{header}"
+            f"# R7 voice-reference review: `{candidate['candidate_id']}`\n\n"
+            f"{meeting}"
+            f"Cue type: **{candidate.get('cue_kind')}** "
+            f"({candidate.get('cue_start')}–{candidate.get('cue_end')} seconds)\n\n"
             f"Transcript cue: “{candidate.get('cue_text')}”\n\n"
-            f"Proposed official: **{candidate.get('display_name')}**\n\n"
+            f"{cue_lead}: **{candidate.get('display_name')}**\n\n"
             f"Target speaker turn: {candidate.get('start')}–{candidate.get('end')} seconds\n\n"
-            f"{render_decision_block(('Approve as a golden voice reference', 'Reject'))}\n\n"
-            "Approve only when the cue clearly introduces the person who speaks in the target "
+            f"{render_decision_block(spec['outcomes'])}\n\n"
+            "Approve only when the cue clearly identifies the person who speaks in the target "
             "turn. The issue omits voice embeddings and match scores.\n"
         )
+    if review_class == "naming":
+        signals = ", ".join(str(item) for item in candidate.get("signals") or ()) or "none"
+        spans = (
+            ", ".join(
+                f"{row.get('start')}-{row.get('end')}s"
+                for row in candidate.get("turns") or ()
+                if isinstance(row, Mapping)
+            )
+            or "not recorded"
+        )
+        cues = "\n".join(
+            f"- **{row.get('kind')}** at {row.get('start')}s: “{row.get('text')}”"
+            for row in candidate.get("cues") or ()
+            if isinstance(row, Mapping)
+        )
+        return (
+            f"{header}"
+            f"# R7 speaker name review: `{candidate['candidate_id']}`\n\n"
+            f"{meeting}"
+            f"Proposed name for speaker cluster `{candidate.get('cluster')}`: "
+            f"**{candidate.get('display_name')}**\n\n"
+            f"Tier: **{candidate.get('tier')}** · agreeing signals: **{signals}**\n\n"
+            f"This cluster speaks at: {spans}\n\n"
+            + (f"Supporting transcript cue(s):\n{cues}\n\n" if cues else "")
+            + f"{render_decision_block(spec['outcomes'])}\n\n"
+            "Your ruling is what teaches the gate which signal combinations can be trusted "
+            "unattended, so judge the name itself, not how plausible the combination looks. "
+            "The issue omits voice embeddings and numerical match scores.\n"
+        )
     return (
-        f"<!-- r7-shadow-candidate-b64: {encoded} -->\n"
+        f"{header}"
         f"# R7 speaker shadow-match review: `{candidate['candidate_id']}`\n\n"
-        f"Meeting: **{candidate.get('episode_title') or candidate.get('episode_uid')}** "
-        f"({candidate.get('city_slug')}, {candidate.get('start')}–"
-        f"{candidate.get('end')} seconds)\n\n"
+        f"{meeting}"
+        f"Speaker turn: {candidate.get('start')}–{candidate.get('end')} seconds\n\n"
         f"Proposed recurring official: **{candidate.get('display_name')}**\n\n"
-        f"{render_decision_block(('Correct', 'Incorrect'))}\n\n"
+        f"{render_decision_block(spec['outcomes'])}\n\n"
         "Check exactly one box. This issue intentionally omits "
         "voice embeddings and numerical match scores.\n"
     )
@@ -311,6 +417,70 @@ def _speaker_state_paths(
     )
 
 
+# How many verdicts a class is worth per unit of reviewer attention, most valuable first. The
+# weekly limit is small (8 by default), so this ordering -- not the size of the backlog -- is what
+# actually determines how fast the gate learns.
+_REVIEW_CLASS_RANK = {
+    # A reference approval mints a voice profile, which then names its subject in *every* past
+    # and future meeting automatically. Highest leverage per review by a wide margin.
+    "reference": 0,
+    # A naming verdict is the only input to the precision table (review/31 §C.4.4): without these
+    # no combination ever becomes trusted and staff auto-naming never opens.
+    "naming": 1,
+    # A shadow match confirms one already-matched turn. Useful, but it teaches the least.
+    "shadow": 2,
+}
+
+
+def _review_rank(candidate: Mapping[str, object]) -> tuple:
+    """Order the review queue by expected value, not by candidate-id hash.
+
+    Within a class, prefer the most-corroborated candidate: more agreeing signals means the
+    reviewer is more likely to be confirming than correcting, which is both faster for them and
+    what §C.4.5's "highest-confidence matches publish first" requires. `candidate_id` only breaks
+    ties, so the ordering stays deterministic across runs.
+    """
+    review_class = _review_class(candidate)
+    signals = candidate.get("signals")
+    signal_count = len(signals) if isinstance(signals, list) else 0
+    return (
+        _REVIEW_CLASS_RANK.get(review_class, len(_REVIEW_CLASS_RANK)),
+        -signal_count,
+        str(candidate.get("candidate_id") or ""),
+    )
+
+
+# Share of each batch held for naming verdicts while any are waiting. References rank first
+# because one approval mints a reusable voice profile -- but *only* naming verdicts populate the
+# precision table, so a steady arrival of eight or more references per week would fill every batch
+# and no signal combination could ever become trusted. Priority still decides the ordering; this
+# only stops the top class from consuming the whole batch.
+_NAMING_BATCH_RESERVE = 0.5
+
+
+def _select_batch(candidates: list[dict], limit: int) -> list[dict]:
+    """Take `limit` candidates in rank order, reserving capacity for naming verdicts.
+
+    Without the reserve the ranking is self-defeating: approved voice profiles cannot publish
+    anything while the combination they would be used under remains untrusted, and only the
+    reviews being starved can make it trusted.
+    """
+    if limit <= 0:
+        return []
+    naming = [row for row in candidates if _review_class(row) == "naming"]
+    if not naming or len(candidates) <= limit:
+        return candidates[:limit]
+    reserved = min(len(naming), max(1, int(limit * _NAMING_BATCH_RESERVE)))
+    chosen = naming[:reserved]
+    chosen_ids = {id(row) for row in chosen}
+    for row in candidates:
+        if len(chosen) >= limit:
+            break
+        if id(row) not in chosen_ids:
+            chosen.append(row)
+    return sorted(chosen, key=_review_rank)
+
+
 def package(args: argparse.Namespace) -> int:
     from citypods.config import load_site_config
     from citypods.state import resolve_state_dir
@@ -336,53 +506,47 @@ def package(args: argparse.Namespace) -> int:
         if isinstance(row, dict)
     )
     candidate_pool = [
-        value for key, value in (state.get("candidates") or {}).items() if isinstance(value, dict)
-    ]
-    candidate_pool.extend(
         value
-        for key, value in (state.get("reference_candidates") or {}).items()
+        for spec in _REVIEW_CLASSES.values()
+        for value in (state.get(spec["ledger"]) or {}).values()
         if isinstance(value, dict)
-    )
+    ]
     candidates = [
         row for row in candidate_pool if str(row.get("candidate_id") or "") not in reviewed
     ]
-    candidates.sort(key=lambda row: str(row.get("candidate_id")))
+    candidates.sort(key=_review_rank)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     children = []
     limit = args.limit
     if limit is None:
         limit = int((site.get("speakers") or {}).get("weekly_review_limit", 8))
-    selected = candidates[: max(0, limit)]
+    selected = _select_batch(candidates, max(0, limit))
     for candidate in selected:
         candidate_id = str(candidate["candidate_id"])
         body_file = f"{candidate_id}.md"
         (out_dir / body_file).write_text(_review_body(candidate), encoding="utf-8")
         kind = str(candidate.get("kind") or "shadow-match")
-        title_prefix = (
-            "R7 chair reference" if kind == "chair-reference" else "R7 speaker shadow sample"
-        )
+        review_class = _review_class(candidate)
         children.append(
             {
                 "candidate_id": candidate_id,
                 "body_file": body_file,
                 "kind": kind,
-                "title": f"{title_prefix} {candidate_id}",
+                "title": f"{_REVIEW_CLASSES[review_class]['title_prefix']} {candidate_id}",
             }
         )
-    counts = {
-        "shadow_matches": sum(row.get("kind") != "chair-reference" for row in selected),
-        "chair_references": sum(row.get("kind") == "chair-reference" for row in selected),
-    }
+    counts = collections.Counter(_review_class(row) for row in selected)
     (out_dir / "parent.md").write_text(
         "# R7 speaker calibration review batch\n\n"
-        "Review each child issue and check exactly one outcome. Shadow matches use **Correct** or "
-        "**Incorrect**. Chair/title-led introductions use **Approve as a golden voice reference** "
-        "or **Reject**.\n\n"
-        f"This batch contains {counts['shadow_matches']} shadow match(es) and "
-        f"{counts['chair_references']} chair/title reference candidate(s).\n\n"
+        "Review each child issue and check exactly one outcome. Name and shadow-match reviews use "
+        "**Correct** or **Incorrect**. Introduction cues use **Approve as a golden voice "
+        "reference** or **Reject**.\n\n"
+        f"This batch contains {counts['reference']} introduction reference candidate(s), "
+        f"{counts['naming']} proposed name(s), and {counts['shadow']} shadow match(es).\n\n"
         "Reference approval adds only the diarizer's private embedding to the city/body registry; "
-        "it does not publish a name or expose voice data.\n",
+        "it does not publish a name or expose voice data. Name rulings are what teach the gate "
+        "which signal combinations may later be trusted without a human.\n",
         encoding="utf-8",
     )
     speakers = site.get("speakers") or {}
@@ -408,19 +572,16 @@ def ingest(args: argparse.Namespace) -> int:
     from citypods.storage import make_storage
 
     body = Path(args.issue_body_file).read_text(encoding="utf-8")
-    match = re.search(r"<!-- r7-(?:shadow|reference)-candidate-b64: ([A-Za-z0-9_=-]+) -->", body)
+    match = re.search(
+        r"<!-- r7-(?:shadow|reference|naming)-candidate-b64: ([A-Za-z0-9_=-]+) -->", body
+    )
     if not match:
         raise ValueError("missing trusted R7 speaker review candidate payload")
     candidate = json.loads(base64.urlsafe_b64decode(match.group(1)).decode())
-    is_reference = candidate.get("kind") == "chair-reference"
-    outcomes = (
-        ("Approve as a golden voice reference", "Reject")
-        if is_reference
-        else (
-            "Correct",
-            "Incorrect",
-        )
-    )
+    review_class = _review_class(candidate)
+    spec = _REVIEW_CLASSES[review_class]
+    is_reference = review_class == "reference"
+    outcomes = spec["outcomes"]
     label = require_one_decision(body, outcomes)
     site = load_site_config(args.site_config)
     state_dir = resolve_state_dir(site, Path(args.output_dir))
@@ -432,34 +593,10 @@ def ingest(args: argparse.Namespace) -> int:
         if state_path.exists()
         else {"candidates": {}, "reviews": []}
     )
-    ledger = state.get("reference_candidates") if is_reference else state.get("candidates")
+    ledger = state.get(spec["ledger"])
     current = (ledger or {}).get(candidate.get("candidate_id"))
-    fields = (
-        "candidate_id",
-        "city_slug",
-        "body",
-        "engine_recipe",
-        "episode_uid",
-        "start",
-        "end",
-    )
-    if is_reference:
-        fields += (
-            "kind",
-            "display_name",
-            "cue_start",
-            "cue_end",
-            "cue_text",
-            "cue_kind",
-            "embedding_recipe",
-            "capture_context",
-            "cluster",
-            "transcript_text_hash",
-        )
-    else:
-        fields += ("speaker_id", "capture_context")
     if not isinstance(current, dict) or any(
-        current.get(key) != candidate.get(key) for key in fields
+        current.get(key) != candidate.get(key) for key in spec["fields"]
     ):
         raise ValueError("R7 review payload differs from the private candidate ledger")
     if is_reference:
@@ -493,6 +630,10 @@ def ingest(args: argparse.Namespace) -> int:
         reviewer=args.actor,
         review_id=f"github-issue-{args.issue_number}",
         capture_context=str(current["capture_context"]),
+        # From `candidate` -- the verified issue payload the reviewer judged -- not from
+        # `current`, the mutable ledger row, which a later projection may already have rewritten.
+        combination_key=str(current.get("combination_key") or "") or None,
+        tier=str(current.get("tier") or "") or None,
     )
     save_evaluation(state_path, state)
     push_state(
@@ -644,7 +785,10 @@ def main(argv: list[str] | None = None) -> int:
     benchmark.add_argument("--body", required=True)
     benchmark.add_argument("--engine-recipe", required=True)
     benchmark.add_argument("--capture-context", required=True)
-    benchmark.add_argument("--selected-engine", choices=("pyannote", "wespeaker"), required=True)
+    # Free-form, not a fixed choice list: it was pinned to ("pyannote", "wespeaker") and so could
+    # not name the engine actually in use (review/31 §A.1a selected sherpa-onnx + NeMo
+    # TitaNet-Small), which made the durable record this command exists to keep unwritable.
+    benchmark.add_argument("--selected-engine", required=True)
     benchmark.add_argument("--report-hash", required=True)
     benchmark.add_argument("--reviewer", required=True)
     package_parser = sub.add_parser("package", help="package bounded weekly speaker review issues")

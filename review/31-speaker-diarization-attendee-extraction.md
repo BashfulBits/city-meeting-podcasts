@@ -47,6 +47,22 @@ issues not yet cut**
 
 ---
 
+> **Naming-policy decision, 2026-09-06 — see §C.4 (normative).** The flat "30 reviews × 30 days × 95%
+> precision per (city, body, engine, capture_context)" publish gate is superseded: it multiplies as
+> `30 × cities × bodies`, which no detection improvement can scale past. Replacing it: **three speaker
+> tiers** (members human-confirmed with speaker pages; staff auto-named without confirmation or pages;
+> everyone else a generic `Speaker N` with no role claim), a **person-trust** gate keyed on the profile
+> rather than the engine (which also stops engine swaps resetting review credit), and an **adaptive gate**
+> where ≥2 of {voice print, chair cue, self-introduction, roster} must agree and human conflict rulings
+> tune which signal combinations earn auto-admission (roster corroborates but never counts alone; a
+> combination earns auto-admission at **≥20 verdicts and ≥95% agreement**, with no calendar element).
+> Precision statistics **pool globally** so a new city starts mostly automated, with a per-city divergence
+> guardrail. **Fail-closed at cold start** — nothing publishes until a combination's confidence is
+> established. Old calibration records are discarded rather than migrated. Ledger now; reviewer UI
+> deferred to R8.
+
+---
+
 > **Weekly calibration revision, 2026-08-22.** `speaker-calibration-review.yml` packages at most
 > `speakers.weekly_review_limit` (default 8) durable shadow matches each Monday using the same
 > authenticated GitHub-issue pattern as R5/R6. A maintainer checks Correct/Incorrect and comments
@@ -325,10 +341,21 @@ guessed from local Apple Silicon numbers, which gave the wrong per-job thread op
   time; memory only binds at the long-meeting/high-concurrency extreme, but silently ignoring it risks the
   exact outcome this note exists to prevent: GitHub OOM-killing the runner mid-batch.
 
-**Implementation status (2026-09-06):** the engine swap (§A.1a) and the seeded runtime estimate shipped
-together. The worker pool, best-fit-decreasing admission ordering, two-tier cutoff/backstop, and the
-memory-pressure cap are specified above but land separately — `NativeDiarizeStage.process()` still runs
-its original strictly serial `for ep in episodes:` loop until then.
+**Implementation status (2026-09-06): shipped.** `NativeDiarizeStage.process()` now splits into
+candidate collection (every cheap filter, up front — admission needs the whole eligible set in hand to
+pick a best fit), then a pool: `_DiarizeAdmission` (best-fit-decreasing claim under a lock),
+`_diarize_executor` (a `spawn` `ProcessPoolExecutor`, or an inline executor when one worker wide), one
+thread per worker slot so each in-flight item gets its own `PROGRESS` entry, `MemoryReservation` for the
+predicted-peak-RSS gate, and a single `finalize_lock` around every shared-state mutation (episode fields,
+turn-evidence map, runtime log, stats, storage upload). Config: `speakers.workers` (default: one per
+vCPU) and `speakers.memory_budget_mb`; `diarize_backstop_minutes` (default 320) adds the second tier.
+
+**One residual gap, stated precisely:** the backstop marks the item deferred and closes admission, but
+does not *kill* the straggler subprocess — portably terminating a pool worker needs 3.14's
+`terminate_workers()`, and this targets 3.12. The stage still returns normally, so records/state are
+persisted as usual; only the interpreter's final exit waits on that worker, bounded by the workflow's own
+`timeout-minutes: 330`. Admission (estimate + reserve vs. remaining budget) is what actually keeps a run
+inside its window; the backstop is the net for an estimate miss, not the primary control.
 
 ---
 
@@ -369,6 +396,87 @@ understanding. Returns `None` (not an empty list) when no roster-shaped text is 
 unparseable minutes format degrades to "no ground truth available" rather than a false-empty attendee
 list.
 
+**As shipped (2026-09-06), in `agenda_text.parse_roster` rather than a new module** — the attendance
+regex already lived there beside `parse_votes`, and a second parser over the same text would have been
+the duplication this section warns about. Two changes beyond the original sketch, both forced by §C.4.2's
+tier policy:
+
+- **Section labels.** An optional qualifier before the status word is now captured and mapped to a
+  canonical `members`/`staff` section ("MEMBERS PRESENT:", "STAFF PRESENT:", "Council Members Present:",
+  "City Staff Present:"). Staff wins a mixed qualifier ("Staff Members Present"), because "members" is
+  generic filler there while "staff" discriminates — and misfiling a staffer as a member would hand them
+  the cross-meeting speaker page §C.4.1 deliberately withholds. An unrecognized qualifier yields *no*
+  section rather than a guess, leaving `classify_speaker_tier` on its spoken-title fallback. Sections are
+  also stored on the registry person, so `body_membership` (§C.5.4) carries the member/staff distinction
+  through the minutes-lag window instead of reading back as an unsectioned hit.
+- **Excluded sections.** `Others/Guests/Public/Visitors Present:` lines are now dropped entirely. This
+  is a *new* requirement created by the fix: anchoring the status word to the start of the line used to
+  exclude those lines by accident, so widening the pattern to capture qualifiers meant they had to be
+  excluded on purpose. The roster seeds the person registry and acts as a correction constraint, so an
+  audience member landing in it would be enrolled as a probable official and — since an unsectioned
+  roster hit tiers as `member` — could be offered a speaker page.
+
+Net effect on coverage is *positive*, not just structural: cities that helpfully label their attendance
+sections were previously the ones whose rosters parsed as empty, because the status word was anchored to
+the start of the line.
+
+**B.3a Name-shape validation and title stripping (2026-09-06).** Widening the pattern also widened what
+reaches the registry, which forced a question the original sketch left open: what happens when the parse
+is *wrong* rather than absent. Measured against seven realistic minutes shapes, four produced junk that
+entered as members — `"a quorum of the Council was established at 6:02 p.m"`, a run-on line fused into one
+six-word "name", OCR noise (`"J4ne D0e"`), and `"Yes"` / `"Absent: None"`.
+
+Junk is **strictly worse than silence**, and not by a little. A roster name enrols a person in the body
+registry, is carried forward as standing membership (§C.5.4), tiers as a **member** — the tier that earns
+a speaker page — and, through `roster_person_ids`, acts as a *correction constraint*: `allowed_ids &=
+roster_ids`. A roster of junk resolves to zero known people, which is not `None`, so it intersects
+`allowed_ids` down to the empty set and **suppresses every correct voice match for that meeting**, while
+`confirmed=roster_ids is not None` simultaneously marks whatever survives as confirmed. Silence has no
+such path: an empty roster yields `None`, which already means "make no correction".
+
+So `_clean_roster_name` rejects any span that is not name-shaped (digits, more than five words, over 60
+characters, or containing parliamentary/prose tokens such as `quorum`, `none`, `was`, `established`), and
+strips leading honorifics/offices longest-first (`Mayor Pro Tem` before `Mayor`). Stripping is not
+cosmetic: corroboration compares the roster name to the *spoken* name, so a stored "Mayor Gerard
+Hudspeth" would never corroborate a chair cue proposing "Gerard Hudspeth" — failing for precisely the
+people who speak most. All-junk lines now yield an empty roster, which routes back to the safe "make no
+correction" path.
+
+**B.3b Roster-parse failures are surfaced where the maintainer already looks.** Three distinct
+outcomes were previously indistinguishable downstream, though only two are defects:
+
+| Outcome | `minutes_roster` | Meaning |
+|---|---|---|
+| Minutes not published yet | empty | Expected; resolves on its own |
+| Minutes present, roster unparsed | empty | Defect: member naming stalls indefinitely |
+| Roster parsed but *wrong* | populated | Worst case: narrows `allowed_ids`, suppressing correct matches |
+
+`MinutesTextStage` counts `minutes-roster-parsed` vs `minutes-roster-empty`, separating the first two.
+The third is caught by comparing each incoming roster against the body's **standing membership before
+observing it** — a body that shares no one with its own prior meetings did not turn over, it parsed the
+wrong text. A body with no history yet (onboarding) has no established set to be disjoint from and is
+deliberately not counted, or the signal would fire loudest exactly when new cities are added.
+
+Both reach the build log. `StageStats.quality_counts` previously reached `run_summary.json` and nothing
+else — no build-log line, and no template renders it, so `/admin/status` never showed it either. A stage
+could emit a silent-failure signal every run with nobody positioned to notice it. The run summary now
+prints a `quality:` line beside the existing `queued:` line, and a disjoint roster additionally prints a
+named per-episode line. **Not yet built:** a `/admin/status` panel over the same counters, and any
+active notification. Escalating to a review issue was considered and rejected for now — the weekly
+budget is 8 items and they train the naming gate, whereas a roster anomaly is a "fix the parser" signal,
+not a per-item judgement.
+
+**On an LLM fallback for unparseable rosters — not now, and the reason matters.** The tempting fix for a
+missed roster is a small LLM extraction call. Rejected at this stage: the demonstrated failure mode above
+is not insufficient *coverage*, it is insufficient *validation*, and an LLM raises coverage while making
+wrong output look more plausible, not less. It would still need every guard in B.3a to be safe, so those
+guards are the prerequisite either way. If B.3b's counters later show real coverage loss on formats the
+deterministic parser cannot reach, the defensible shape is narrow: run **only** where the deterministic
+parse found nothing, subject the output to the same name-shape validation, cross-check each name against
+names actually spoken in that meeting's transcript, and land the result in the **review queue** as
+candidates rather than in the registry — matching this project's standing treatment of LLM output as
+untrusted, and its evidence-gated build policy (build when the trigger fires, not on speculation).
+
 ### B.4 Data model
 
 - **New `Episode` field:** `attendees: list[str] | None = None` — a bare name list. Small and bounded
@@ -404,6 +512,10 @@ formalization of `Person` (§5.5) doesn't require a later migration to backfill 
 already existed.
 
 ### C.2 Confirmation workflow — a review surface, not a new automation class
+
+> **Superseded in part by §C.4 (2026-09-06).** The review-surface shape below still stands, but the
+> "every cluster needs a human" premise does not: §C.4 tiers speakers (only members require
+> confirmation), and lets high-precision signal combinations auto-admit. Read §C.4 first.
 
 Modeled on `/admin/status`'s existing review-surface precedent (`review/13`'s plans, H16's operator-review
 digest pattern) rather than inventing a new UI paradigm: for each episode with unconfirmed
@@ -452,15 +564,328 @@ transcript-cue signals are the right foundation to build first: they're pure tex
 work for any new city with a transcript and parseable minutes from day one, whereas voice-embedding
 corroboration only strengthens *within* a city as confirmed references accumulate over time.
 
+### C.4 Naming policy (normative, 2026-09-06) — supersedes the flat 30/30/95 publish gate
+
+Settled in review with the maintainer, and **implemented** in `citypods/naming.py` (policy) over
+`citypods/speakers.py` (signal producers), wired through `SpeakerIdentityStage`. This is the
+**normative** naming policy; where it conflicts with §C.2's earlier sketch, this section wins. It exists
+because the earlier gate — `auto_publish_allowed`, now deleted — required 30 reviews × 30 days × 95%
+precision per `(city, body, engine_recipe, capture_context)` cell, which multiplies as `30 × cities × bodies`, which is a
+policy threshold no amount of better detection can scale past.
+
+**C.4.1 Three speaker tiers, not one rule.** The old design treated every voice cluster identically. It
+should not, because the cost and the stakes differ by who is speaking:
+
+| Tier | Named publicly | Human-confirmed | Speaker page |
+|---|---|---|---|
+| Council / board **members** | yes once established | required until established; then trusted ruling threshold | yes |
+| **Staff** | yes, automatically | no | **no** |
+| **Everyone else** | no — generic `Speaker N` | n/a | no |
+
+The framing that makes this defensible: a public commenter's name is typically already spoken aloud and
+already sits in the transcript. Declining to label their turns is not concealment — it is declining to
+*manufacture a durable, searchable speaker identity* for a private citizen, and declining to spend scarce
+review effort there. It also bounds the labeling problem to a small recurring cast (a roster) instead of
+to everyone who ever approached a podium.
+
+**No role labels for the third tier.** An earlier draft proposed inferring `Public comment` from the
+agenda chapter a turn falls in. Dropped: mislabelling the City Manager or City Attorney as a "public
+commenter" is a worse outcome than saying nothing, and a plain `Speaker N` claims nothing that can be
+wrong. This deletes a feature rather than adding one.
+
+**C.4.2 Tier classification — roster sections first, title vocabulary as fallback.** Two separable facts
+live in minutes: *whether* a name appears in the roster (attendance) and *which section* it appears in
+(role). Prefer the section when a city's minutes have one; fall back to title cues when they don't, since
+plenty of cities publish a single flat `Present:` list that mixes the Clerk and Attorney in with members.
+`citypods/speakers.py` already carries the two vocabularies this needs — `_ANNOUNCEMENT_TITLES` (elected)
+and `_STAFF_TITLE_WORDS` (staff). Resolution rule:
+
+Resolution is **ordered**, not symmetric — the section is authoritative and is consulted first, so a
+staff section beats an elected-title cue even though the tie-break between two *cues* goes the other way:
+
+1. explicit **members-section** → **member**; explicit **staff-section** → **staff**
+   (an explicit section always wins; cues are not consulted)
+2. otherwise **elected-title cue** → **member**; **staff-title cue** → **staff**
+3. both cues fire, no section → **member** (deliberately err toward *more* scrutiny, never less);
+   an explicit section always takes precedence over either cue
+4. unsectioned roster hit, no cue → **member** (the minutes place them on the attendance list)
+5. neither → **other**
+
+Pinned by `tests/test_naming.py::test_roster_section_is_authoritative_over_title_cues`, which asserts
+`staff` for a staff-sectioned name carrying an elected cue.
+
+**C.4.3 Person trust, not engine trust — and the cell key drops the engine.** The gate's job is "is this
+specific voice really Jane Doe", so it keys on the **person profile**, with the plausible name-space
+seeded per meeting from the minutes roster (`observe_attendance` / `roster_person_ids` already do this).
+Deliberately **not** a global person namespace: matching against every person the project has ever seen
+would degrade accuracy for no benefit, whereas "who do the minutes say was in this room" is both narrower
+and better evidence. A useful consequence falls out for free — a human's judgment "this voice is Jane
+Doe" does not depend on which model drew the turn boundaries, so `engine_recipe` leaves the cell key and
+a diarization-engine swap stops resetting accumulated review credit (as the 2026-09-06 swap otherwise
+would have).
+
+**C.4.4 An adaptive gate: signal agreement, tuned by human verdicts.** Four seed signals, extensible:
+voice print, chair-recognition cue, self-introduction cue, and roster corroboration. All normalize to the
+same claim — *signal S proposes name N for cluster C*. **At least two must agree**; they need not all
+agree. Human rulings on conflicts feed back as the training signal: for each *combination* of agreeing
+signals, track the historical agreement between that combination and the human verdict, and auto-admit
+combinations whose measured precision is high enough. This is the inversion that makes scale possible —
+automation *removes* items from the queue instead of merely reordering them. Note the bootstrap ordering
+this implies: member-tier review (a bounded roster, and the tier that requires humans anyway) is what
+generates the verdict history that eventually unlocks unattended staff naming.
+
+**Originating vs corroborating signals.** Voice print, chair cue and self-introduction *originate* a
+proposal — each points at a specific cluster and names it. Roster does not: it says only "this name was
+in the room", so it **corroborates but can never be one of two on its own**. A valid admission is
+therefore one originator plus a corroborator, or two originators. Without this, cold start would require
+a chair cue *and* a self-introduction for the same person (voice prints don't exist yet), which is rare
+enough that essentially nothing would ever auto-admit.
+
+**The staff exception, and why it is safe.** Staff frequently appear on no parseable roster and have no
+voice print in a new city, leaving only their own self-introduction — one signal, so `≥2` would silently
+mean "staff are never named". The resolution: for the staff tier, a self-introduction **plus its own
+title cue** ("Matt Bodine" + "Assistant Planner") counts as two. This is knowingly *correlated* evidence
+— both come from one utterance and can be wrong together — which is acceptable here for two reasons.
+First, staff are the unverified-by-policy tier, so the stakes are lower than for an elected official.
+Second, and more importantly, this combination is tracked as its own key in §C.4.4's precision table: if
+`{self-introduction, title-cue}` turns out to be unreliable in practice, the adaptive gate observes that
+directly and stops auto-admitting it. The risk is self-correcting rather than assumed away.
+
+**Thresholds.** A combination earns auto-admission at **≥20 human verdicts and ≥95% agreement**. There is
+deliberately **no calendar element** — the old gate's 30-day requirement existed to catch capture drift,
+and §C.4.6's per-city divergence guardrail does that job directly and faster. Both numbers are config,
+not constants, precisely because the first real verdict data may argue for moving them.
+
+**C.4.5 Fail-closed at cold start; confidence earns publication.** An earlier draft admitted names on
+strong agreement before any local history existed. Retracted: publishing *some* officials early is not
+much of a win, because the value arrives when the roster is recognised well as a whole — and provisional
+publication would have required a retraction path (withdrawing a name already on a speaker page, in
+transcript labels, and inherited by R6 quotes), which is both more machinery and more ways to be wrong.
+So: **nothing publishes until a signal combination's confidence is established**, and once it is, the
+highest-confidence matches publish first. Simpler, and consistent with the fail-closed posture the rest
+of R7 already takes.
+
+**C.4.6 Precision statistics pool globally, with a per-city divergence guardrail.** Signal-combination
+precision is tracked **across all cities and bodies**, which is what lets city #2 start mostly automated
+instead of re-earning trust from zero. The risk is that a city with genuinely worse audio inherits
+optimism it has not earned, so: keep the global prior, but also watch each city's *observed* agreement
+against it, and when a city diverges beyond a margin, that city falls back to human review until it
+recovers. This is a health check on the feedback signal already being collected, not a second gate.
+
+**C.4.7 Ledger now, review UI later.** Build the candidate/verdict/precision data model and its
+append-only record in state; defer the reviewer-facing web interface to the site redesign (R8), with
+GitHub remaining the durable ledger. Consequence to plan around: until that UI exists, conflicts have
+nowhere to go but the existing weekly-issue path, so the bootstrap phase leans on the maintainer, and the
+adaptive loop only starts paying off once it has verdicts to learn from.
+
+**C.4.8 The old calibration records are discarded, not migrated.** `r7_speaker_evaluation.json`'s
+existing `reviews` and `benchmarks` rows were produced under the superseded gate and do not record which
+*signal combination* produced each candidate — the one field §C.4.4's precision table is built on. Any
+back-fill would be guessing at the model's own training data, which is worse than an empty table. The
+shadow pilot has accumulated little, and the 2026-09-06 engine swap had already invalidated those cells
+regardless. New statistics start empty, which combined with §C.4.5's fail-closed cold start means the
+first names in any city wait on real verdicts.
+
+*As implemented:* no destructive migration was needed. The table is built by joining each verdict to the
+`naming_candidates` row it ruled on, so pre-gate verdicts — which match no such row — are inert by
+construction and stay in the file as history. This also fixed the more general case the migration would
+not have covered: a verdict whose candidate row is missing for any reason is skipped rather than counted
+somewhere convenient.
+
+**C.4.9 The precision table is derived, never stored.** It is rebuilt from the append-only review ledger
+at the start of every run rather than persisted beside it. A saved copy would be a second source of truth
+for "what humans decided" that could silently drift from the verdicts it summarizes; rebuilding costs one
+pass over a ledger measured in thousands of rows. Consequence: `PrecisionTable` has no save path, and the
+ledger row — not the table — is the thing that must be durable.
+
+**C.4.10 A cleared candidate names its cluster directly.** `assign_turn` can only name a cluster that
+matches a stored voice print, and a staff presenter appearing in one meeting never acquires one. Left
+there, "staff are named automatically" (§C.4.1) would have quietly meant "staff are named once a human
+approves a golden reference for them" — the exact review burden this policy exists to remove. So a
+published fused candidate assigns its name to the cluster's turns directly, with
+`method: "cue-fusion"` distinguishing that provenance from `"voice-profile"` in any later audit.
+
+**C.3a Cue vocabularies, and why they are recall-first (2026-09-06).** Two vocabularies were too
+narrow to work outside one city's conventions:
+
+* **Titles.** Only the "Council Member" family was recognised, so commissions, boards, New England
+  selectboards and NJ freeholder boards named their own members in words the extractor did not know.
+  Now covers councilor/councillor, council person, alderperson, selectman/-woman/-person, freeholder,
+  assembly member, board/commission/committee member, the chair variants and the deputy/vice mayor
+  family. **Member titles only** — this feeds `_ELECTED_TITLE_CUES`, so a staff-ish addition would tier
+  a City Manager as a member and hand them the speaker page §C.4.1 withholds. "Mayor Pro Tem" is its own
+  office (the member who presides in the mayor's absence), not a qualified "Mayor".
+* **Recognition cues, keyed on the verb alone.** Requiring a presider title meant the verb had to follow
+  it directly, so "the chair recognizes X" matched while "Chairman Smith calls on X" — the presider
+  *named* — matched nothing. Enumerating presiders cannot fix that, because a name sits between the
+  title and the verb.
+
+**Recall-first, by maintainer direction.** A bare "Council Member Beck" is a sufficient introduction
+signal; the recogniser's own title is never required. A spurious extraction carries exactly one signal,
+so it cannot reach the two-signal agreement rule, cannot match a roster, and tiers as `other` — it is
+discarded at no cost. A *missed* introduction silently costs a member their name. Auto-admission needs a
+trusted combination on top, which in practice means the voice print agrees too, so the asymmetry is
+safe to lean on.
+
+**Two live defects found while widening this**, both of which the wider vocabulary would have
+multiplied: "the mayor recognizes Jane Doe" produced the *name* "recognizes Jane Doe" (a title matching
+before a verb starts the name scan at the verb — recognition verbs are now name stop words, which makes
+every title token safe to add); and "Chairman Smith calls on Councilor Jane Doe" proposed **Smith** for
+Jane's turn, the presider naming themselves, so a title-announcement immediately followed by a
+recognition verb is now suppressed.
+
+**C.4.12 Members become established, not permanently gated (2026-09-06, supersedes "always
+human-confirmed").** §C.4.1's original rule — every member occurrence needs a human — does not scale
+past a pilot: it is a per-*meeting* tax that never falls, for the tier that appears in every meeting.
+Replaced with a per-*person* threshold: **4 correct rulings** (`DEFAULT_MIN_MEMBER_VERDICTS`) settle who
+someone is and how their name is spelled, after which that person no longer needs a reviewer.
+
+**Both keys are required, not either.** A member publishes unattended only when the person is
+established *and* the signal combination is trusted, because the two answer different questions:
+
+| Question | Answered by | Scope |
+|---|---|---|
+| Who is this person, spelled how? | 4 human rulings, or an approved voice profile | per person, per body |
+| Is *this* cluster that person, here? | the signal combination's precision | per combination, pooled globally |
+
+Confirming Jane Doe four times says nothing about whether a *fifth* meeting's cluster is really her.
+Dropping the combination check would let a well-known name be attached on evidence never shown to be
+reliable — and members are the tier that earns a cross-meeting speaker page, so a misattribution
+compounds across every meeting rather than staying local. This also tightened the previous behaviour:
+a member with an approved voice profile used to publish immediately, bypassing the combination gate.
+
+The cost is near zero because **the same reviews feed both counters**. Reviewing member candidates is
+what generates combination verdicts, so the bootstrap is one queue: the first ~20 member reviews in the
+pilot city establish `member:chair-reference+roster` globally *and* confirm ~5 members. After that a new
+member costs 4 reviews, and a new city inherits the trusted combination and costs ~0.
+
+Person statistics are keyed `(city, body, name)` and never pooled — a person belongs to one body, so
+there is nothing for a second body to inherit. Established status is revocable on the same
+`min_precision` bar as combinations, so a person whose rulings later go bad returns to review rather
+than keeping status earned early.
+
+**C.4.13 Spelling is corrected by canonicalization, not by review.** The premise behind a low member
+threshold — "later minutes will correct ASR spellings" — was not true when checked: `fuse_proposals`
+groups on the *normalized* name, so a chair cue heard as "Gerrard Hudspeth" and a roster reading
+"Gerard Hudspeth" were two candidates carrying one signal each. Both then failed the agreement rule, so
+a misspelled member produced **no name at all** — fail-closed, but it also meant published minutes could
+never correct a spelling they never met.
+
+`canonical_name()` snaps a heard name onto the official spelling (roster first, standing membership
+while minutes are pending) before fusion, so the two proposals meet, the candidate carries the official
+spelling, and later minutes re-canonicalize automatically. Threshold 0.90 whole-string similarity,
+calibrated against real civic pairs rather than picked: Gerard/Gerrard Hudspeth (0.97), Paul
+Meltzer/Melzer (0.96), Alison Maguire/McGuire (0.93) and Brian/Bryan Beck (0.90) are one person, while
+John/Jane Smith (0.80) and Chris Watts/Watkins (0.83) are not. A tie between two known names rewrites
+nothing, so two similarly-named officials on one body are never collapsed. Known limitations, all
+failing toward a review item rather than a wrong name: homophones that diverge further ("Vicky
+Bird"/"Vicki Byrd", 0.80), and very short names, where one letter costs more ratio than the bar allows.
+
+This *reduces* review load rather than adding to it — misspelled members currently produce nothing at
+all, so every one of them is a member who silently never gets named.
+
+**C.4.11 The per-cell benchmark precondition is retired with the gate.** The old policy also required a
+private gold-set benchmark per `(city, body, engine, capture context)` before that cell could publish.
+Its purpose was to pin down *which engine* a cell had been validated on; §A.1a made engine selection a
+single global decision, so the per-cell requirement now guards nothing. `calibration_cell()` itself
+survives as the reviewer-facing scope label on ledger rows.
+
+**Explicitly not building:** staff names extracted from chapter/agenda item descriptions. They appear
+there often but not reliably, and an unreliable signal would quietly poison the very precision statistics
+§C.4.4 depends on.
+
+---
+
+### C.5 Timing: minutes lag, voice-print accrual, and what re-processing actually costs (2026-09-06)
+
+Naming depends on three things that arrive on three different clocks: the **recording** (immediately),
+the **minutes** (weeks later), and **voice profiles** (only after a human approves references). The
+question this section settles is what has to be recomputed when the later two land — and the answer is
+that the architecture had already separated the expensive half from the mutable half, so most of the
+feared re-processing does not exist.
+
+**C.5.1 Nothing about minutes, profiles, or verdicts can trigger re-diarization.** `native_diarize`'s
+input fingerprint is `audio + transcript + word sidecar + engine recipe` (`stage_input_fingerprint`,
+`citypods/stages.py`). The roster and the registry are deliberately absent from it. Diarization output is
+content-addressed; identity is a projection over it.
+
+**C.5.2 The projection re-runs every time, by design.** `stage_is_dirty` short-circuits to `True` for
+`speaker_identity`, and `r7_speaker_turn_evidence.json` retains every turn's embedding keyed by
+`spec_hash`. So "an episode acquired minutes" and "a new voice profile exists" both resolve on the next
+scheduled run at the cost of two object reads and a cue pass — no model load, no audio decode, no GPU.
+The workflow already runs `--lane diarize` and `--lane speaker-identity` as separate steps.
+
+**C.5.3 Therefore: order the review queue, not the diarize queue.** The tempting move is to bias
+diarization toward old episodes (which have minutes) to bootstrap faster. Rejected: naming is not coupled
+to diarization order, so that would trade timeliness for nothing. Diarization keeps the catalog-wide
+`backlog_priority` (newest-first); the scarce resource is the **weekly review budget**
+(`weekly_review_limit`, 8), and that is what `_review_rank` now orders — references first (one approval
+mints a profile that names its subject in every past *and* future meeting), then naming verdicts (the
+only input to §C.4.4's precision table), then shadow matches, with better-corroborated candidates first
+inside each class. Ordering by `candidate_id` hash, as it did, wasted the scarcest input in the system.
+
+**C.5.4 Standing membership covers the minutes-lag window.** A member speaking in last night's meeting
+has no roster, so under §C.4.4 they had exactly one signal and never reached review. `body_membership()`
+supplies the standing answer to "who sits on this body", accumulated by `observe_attendance` from prior
+meetings' rosters and votes and decayed by `refresh_membership_status` after
+`PROFILE_REVIEW_ONLY_AFTER_DAYS` — so turnover expires on its own, with no "last N meetings" window to
+pick or to get wrong across an election. Three constraints, each load-bearing:
+
+- It is a **distinct signal** (`SIGNAL_MEMBERSHIP`), never `SIGNAL_ROSTER`. A published roster says "this
+  person attended *this* meeting"; membership says "this person sits on this body". Sharing a combination
+  key would teach the gate one blended precision for two different-quality signals.
+- It **yields to the roster**: once this meeting's minutes exist, membership contributes nothing.
+- It **never reaches `roster_person_ids`**, which uses a real roster to *remove* names and to mark
+  assignments confirmed. A carried-forward guess must do neither. It informs tiering and corroboration
+  only — decisions about how much scrutiny a name gets, never about deleting or confirming one.
+
+**C.5.5 Untimed signals can never name anyone, in any combination.** `SIGNAL_ROSTER` and
+`SIGNAL_MEMBERSHIP` are both *untimed*: they identify who plausibly belongs at a meeting and contain
+nothing that ties a name to the voice being labelled. `{roster, membership}` is two agreeing signals and
+must still fail the gate. `meets_agreement_rule`'s originating requirement already enforced this, but
+only as a side effect of a separate rule; `UNTIMED_SIGNALS` now names the invariant so a later
+"two corroborating signals ought to be enough" cannot quietly remove it.
+
+**C.5.6 The one case where re-processing does mean re-reviewing.** Changing the diarization engine
+redraws cluster boundaries and changes `engine_recipe`, which changes every `naming_candidate_id` — the
+existing verdicts no longer describe the current candidates. That is the concrete cost behind §A.1a's
+"one-time engine choice". Note what survives it: the precision table keys on `tier:signals`, not on
+recipe, so accumulated *policy* credit is engine-independent exactly as §C.4.3 intended.
+
+**C.5.7 The projection fingerprint (built).** `speaker_identity`'s unconditional re-run cost two object
+reads plus a cue pass per pilot episode per run — correct at one body, wrong at ten cities × full
+history. The skip lives *inside* the stage loop rather than in `stage_is_dirty`, which deliberately stays
+always-revisit so a human decision never waits on a media mutation: the stage still looks at every
+episode, it just does no I/O where nothing feeding a decision moved. Two digests:
+
+- **Run-scoped** (`_naming_run_digest`, computed once): every profile's id/status/section/alias-set,
+  reference *count* and recipes, the verdict count, and the thresholds. Deliberately coarse — one new
+  voice profile can change the outcome for any episode in the backlog, so there is no useful per-episode
+  slice, and the failure mode to avoid is a stale skip rather than a redundant re-projection. Reference
+  *counts*, never the vectors: embeddings must not be hashed into state that leaves the process.
+- **Episode-scoped** (`_naming_projection_fingerprint`): the run digest plus `speakers_key`,
+  `speakers_spec_hash`, `transcript_words_key`, body, the roster (name/section/status), **and the current
+  pull-quote attributions**. That last element is what stops a marker outliving its own output: quote
+  attribution is this projection's only mutation of a durable record, so a record that comes back without
+  it — a lost or rolled-back push — re-dirties instead of being skipped forever.
+
+Fingerprints are recorded *after* a successful projection, and recomputed at that point rather than
+reused from the pre-loop value (the attributions just written are part of the digest). They are **not**
+pruned against the episode list: `process()` receives the selected city/source subset, so pruning to it
+would silently drop other cities' entries from the shared state object and defeat the skip. Growth is
+bounded the same way the existing candidate ledgers are.
+
 ---
 
 ## Part D — Per-speaker pages (`review/25` §2.3 #11)
 
 **Static, generated-from-records, the same build-time mechanism as R1's meeting pages** — not gated on
 the Interaction seam, since (per the L1 sketch's own reasoning) the speaker roster is bounded per city,
-like the city/body roster R1 already handles. **Only for confirmed speakers** (a non-null `speaker_id`,
-§C.1) — an anonymous "Speaker 2" cluster never gets a page, avoiding exactly the kind of unconfirmed
-attribution the identify-then-confirm rule exists to prevent.
+like the city/body roster R1 already handles. **Only for human-confirmed members** (§C.4.1) — an
+anonymous "Speaker 2" cluster never gets a page, and neither does an auto-named staff member: a page
+aggregates "everything this person has said across meetings", which would compound an unverified
+attribution into something that reads as authoritative. Pages therefore require both a non-null
+`speaker_id` (§C.1) *and* the member tier.
 
 - New `templates/speaker.html.j2` + `render_speaker_page(speaker_id, episodes: list[Episode]) -> str`,
   structurally mirroring R1's `render_meeting_page`/`meeting_page_url` pattern (`review/13` Part A).
@@ -514,6 +939,23 @@ speaker-attribution UI is an input to that redesign, not a later bolt-on.
   "just render whatever clusters exist" is the natural (wrong) shortcut.
 - Per-speaker page: a fixture speaker with turns across two episodes aggregates both, each deep-linking
   to the correct meeting-page timestamp.
+
+`tests/test_naming.py` (shipped) — the §C.4 policy, written so each test pins one settled rule and a
+later "simplification" that changes who gets named fails here rather than in production: tier resolution
+including the deliberate both-cues-fire→member tie-break; the agreement rule, including that roster never
+names anyone alone and that the title cue is a second signal *for staff only*; fusion collapsing agreeing
+signals into one reviewable candidate; the tier being part of the combination key; fail-closed cold start;
+trust requiring both enough verdicts and enough precision; global pooling letting a new city start
+trusted, and the divergence guardrail pulling a bad city back — but not on two unlucky verdicts; and the
+table rebuilding from the ledger while skipping verdicts whose candidate it cannot identify.
+
+`tests/test_speakers.py` (shipped) — the gate through `SpeakerIdentityStage`, not just in isolation:
+review-bound candidates reach the ledger carrying their `combination_key`, and a staff name publishes to
+quote attribution once that combination is trusted while a member's does not. Both exist because
+`self_introduction_candidates` shipped defined-but-uncalled once already. Also the §C.5 loop end to end:
+`body_membership` scoped to its own body and expiring on its own; naming candidates reaching the weekly
+queue; a naming verdict round-tripping back into the precision table; self-introduction candidates
+round-tripping as reference reviews; and the queue ordered by expected value rather than by id hash.
 
 ---
 

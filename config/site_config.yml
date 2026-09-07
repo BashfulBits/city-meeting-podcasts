@@ -368,9 +368,16 @@ defaults:
   asr_handoff_minutes: 300
   asr_handoff_reserve_minutes: 10
   asr_backstop_minutes: 350
-  # R7 diarization runs on its own cadence and records a recipe-specific runtime ratio.  The first
-  # sample for a recipe is admitted to seed that profile; later starts must fit before this cutoff.
+  # R7 diarization runs on its own cadence and records a recipe-specific runtime ratio. An
+  # unmeasured recipe is estimated from DIARIZE_DEFAULT_RUNTIME_RATIO rather than admitted
+  # uncapped (that gap is what let one pyannote episode eat a whole run in run 51); starts must
+  # fit before this cutoff. Two tiers, like ASR, and they must stay ordered
+  # start_cutoff < backstop < r7-diarization.yml's own timeout-minutes (330): the cutoff bounds
+  # what may *begin*, the backstop bounds how long an in-flight item may keep the job alive, and
+  # the gap to timeout-minutes is what lets the run still persist its records. Pinned by
+  # tests/test_workflows.py so the ordering cannot drift silently.
   diarize_start_cutoff_minutes: 285
+  diarize_backstop_minutes: 320
   diarize_start_reserve_seconds: 900
   # Topic tag lane budget: 140m window × 0.85 safety = 119m cutoff. Guarantees graceful persist
   # well before tag.yml's 165m step timeout, while actively stopping as soon as quotas fill.
@@ -661,12 +668,35 @@ speakers:
   # calibrated-threshold table, not a Hugging Face repo id.
   model: "sherpa-onnx/pyannote-segmentation-3.0"
   embedding_model: "nemo-titanet-small"
+  # Concurrent diarize worker processes (review/31 §A.4). Blank/0 = one per available vCPU.
+  # Measured across three GH Actions runner CPUs: N single-threaded worker processes beat every
+  # other split on aggregate throughput -- including the same 2-thread single-job optimum run
+  # N-wide -- because thread-coordination overhead on a model this small outweighs the sharing.
+  # Throughput is what matters here (clearing a backlog), not one meeting's latency.
+  workers: 4
+  # Predicted-peak-RSS budget for those workers, in MB. Each worker is ~350MB + ~650MB per hour
+  # of audio (measured, near-identical across CPU vendors). The standard 4-vCPU runner has 16GB;
+  # this leaves ~2GB for the OS/runner/other steps. 0 disables the reservation entirely.
+  # At 4 workers this only binds for unusually long meetings running simultaneously -- vCPU
+  # count is the effective ceiling the rest of the time.
+  memory_budget_mb: 14000
   minimum_match_score: 0.75
   registry_path: "r7_speaker_registry.json"
   evaluation_state_path: "r7_speaker_evaluation.json"
   turn_evidence_path: "r7_speaker_turn_evidence.json"
   runtime_state_path: "r7_diarization_runtime.json"
   weekly_review_limit: 8
+  # Naming admission (review/31 §C.4.4). Both are thresholds on one *signal combination*, pooled
+  # globally across cities and bodies -- which is what lets a new city start mostly automated
+  # instead of re-earning trust from zero -- with a per-city divergence guardrail behind them.
+  # Members are never auto-named whatever these say; this governs the staff tier. Deliberately no
+  # calendar element: the old gate's 30-day requirement existed to catch capture drift, and the
+  # divergence guardrail does that job directly and faster. Defaults live in citypods/naming.py;
+  # uncomment only to override once real verdict data argues for a different bar.
+  # naming:
+  #   min_verdicts: 20      # human rulings on a combination before it may auto-admit
+  #   min_precision: 0.95   # required agreement between that combination and those rulings
+  #   min_member_verdicts: 4  # correct rulings that establish one member's name/spelling
 
 # Audio materialization (CivicPlus always; Granicus when extract_audio).
 # Set GitHub Actions secrets for the selected backend (S3-compatible, zero/free egress):

@@ -207,6 +207,17 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     assert job["steps"][cache_index]["with"]["path"] == "/home/runner/.cache/citypods-diarize"
     assert job["steps"].index(preflight) > cache_index
 
+    # The two diarize budget tiers only work if they stay ordered inside the job's own timeout:
+    # the cutoff bounds what may start, the backstop bounds how long an in-flight item may keep
+    # the job alive, and the remaining gap is what lets the run persist its records before
+    # GitHub kills the runner (review/31 §A.4).
+    import yaml
+
+    defaults = yaml.safe_load(Path("config/site_config.yml").read_text())["defaults"]
+    start_cutoff = float(defaults["diarize_start_cutoff_minutes"])
+    backstop = float(defaults["diarize_backstop_minutes"])
+    assert start_cutoff < backstop < float(job["timeout-minutes"])
+
 
 def test_speaker_calibration_review_gate_matches_packaged_titles():
     workflow, package = _job("speaker-calibration-review.yml", "package")

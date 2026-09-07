@@ -1031,20 +1031,287 @@ def minutes_links(links: list[DocumentLink]) -> list[DocumentLink]:
     ]
 
 
-_ATTENDANCE_STATUS_RE = re.compile(r"^\s*(present|absent|excused|recused)\s*:\s*(.+)$", re.I | re.M)
+# An optional qualifier may precede the status word ("MEMBERS PRESENT:", "STAFF PRESENT:"). It is
+# what separates a council member from the City Attorney on the attendance list, and capturing it
+# also *widens* extraction: with the status word previously anchored to the start of the line, the
+# cities that helpfully label their sections were exactly the ones whose rosters parsed as empty.
+_ATTENDANCE_STATUS_RE = re.compile(
+    r"^[ \t]*(?P<qualifier>[A-Za-z][A-Za-z /&'-]{0,40}?)?[ \t]*"
+    r"(?P<status>present|absent|excused|recused)[ \t]*:[ \t]*(?P<names>.+)$",
+    re.I | re.M,
+)
 _ATTENDANCE_SPLIT_RE = re.compile(r",|;|\s{2,}|\s+and\s+")
 _WHITESPACE_RE = re.compile(r"\s+")
+
+# Qualifier vocabulary, matched on any contained word so "Council Members", "Board Members" and
+# "City Staff" all resolve. Emitted canonically ("members"/"staff") rather than as raw text, so
+# `citypods.speakers.classify_speaker_tier` does not have to re-derive one city's phrasing.
+_ROSTER_MEMBER_WORDS = frozenset(
+    {
+        "member",
+        "members",
+        "councilmember",
+        "councilmembers",
+        "council",
+        "board",
+        "commission",
+        "commissioners",
+        "trustees",
+        "aldermen",
+        "supervisors",
+        "directors",
+    }
+)
+_ROSTER_STAFF_WORDS = frozenset(
+    {
+        "staff",
+        "administration",
+        "personnel",
+        "employees",
+        # "ALSO PRESENT:" is the conventional heading for the clerk, attorney and manager -- the
+        # people present who are *not* on the body. It matched no vocabulary, so it fell through
+        # as an unsectioned row, and an unsectioned roster hit tiers as `member`: the City
+        # Manager would have been handed the cross-meeting speaker page §C.4.1 withholds.
+        "also",
+        "additionally",
+    }
+)
+# Attendance lines that record who was in the *room*, not who serves the body. These must not
+# enter the roster at all: it seeds the person registry and acts as a correction constraint, so an
+# audience member landing there would be enrolled as a probable official and -- because an
+# unsectioned roster hit tiers as `member` -- could be offered a cross-meeting speaker page.
+# Anchoring the status word to the start of the line used to exclude these by accident; widening
+# the pattern to capture section qualifiers means they now have to be excluded on purpose.
+_ROSTER_EXCLUDED_WORDS = frozenset(
+    {
+        "others",
+        "other",
+        "guests",
+        "guest",
+        "public",
+        "visitors",
+        "audience",
+        "applicants",
+        "applicant",
+        "petitioners",
+        "speakers",
+    }
+)
+
+
+def _roster_section(qualifier: str | None) -> str | None:
+    """Map an attendance-line qualifier to a canonical roster section, or None if unclear.
+
+    Silence beats a guess: an unrecognized qualifier leaves the row unsectioned, which
+    `classify_speaker_tier` already handles by falling back to spoken-title vocabulary.
+    """
+    words = _qualifier_words(qualifier)
+    if not words:
+        return None
+    # Staff wins a mixed qualifier ("Staff Members Present"): "members" is generic filler there,
+    # while "staff" is the discriminating word. Misfiling a staffer as a member would hand them a
+    # cross-meeting speaker page the tier policy deliberately withholds (review/31 §C.4.1).
+    if words & _ROSTER_STAFF_WORDS:
+        return "staff"
+    if words & _ROSTER_MEMBER_WORDS:
+        return "members"
+    return None
+
+
+def _qualifier_words(qualifier: str | None) -> set[str]:
+    return {word for word in _WHITESPACE_RE.split(_norm_qualifier(qualifier)) if word}
+
+
+def _norm_qualifier(value: str | None) -> str:
+    return re.sub(r"[^a-z\s]", " ", str(value or "").casefold())
+
+
+# Leading honorifics/offices to strip, longest first so "Mayor Pro Tem" beats "Mayor". Required
+# for corroboration to work at all: the roster name has to match the *spoken* name, so a stored
+# "Mayor Gerard Hudspeth" would never corroborate a chair cue proposing "Gerard Hudspeth" -- and
+# it would fail for exactly the people who speak most.
+_ROSTER_NAME_TITLES: tuple[tuple[str, ...], ...] = tuple(
+    sorted(
+        (
+            ("mayor", "pro", "tem"),
+            ("deputy", "mayor"),
+            ("vice", "mayor"),
+            ("vice", "chair"),
+            ("council", "member"),
+            ("council", "person"),
+            ("council", "man"),
+            ("council", "woman"),
+            ("councilmember",),
+            ("councilperson",),
+            ("councilman",),
+            ("councilwoman",),
+            ("councilor",),
+            ("councillor",),
+            ("commissioner",),
+            ("alderman",),
+            ("alderwoman",),
+            ("alderperson",),
+            ("selectman",),
+            ("selectwoman",),
+            ("selectperson",),
+            ("freeholder",),
+            ("assemblyman",),
+            ("assemblywoman",),
+            ("assemblymember",),
+            ("trustee",),
+            ("supervisor",),
+            ("representative",),
+            ("senator",),
+            ("delegate",),
+            ("chairman",),
+            ("chairwoman",),
+            ("chairperson",),
+            ("chair",),
+            ("mayor",),
+            ("dr",),
+            ("mr",),
+            ("ms",),
+            ("mrs",),
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
+# Tokens that prove a captured span is prose or parliamentary boilerplate rather than a name.
+# An attendance line is not guaranteed to hold names at all ("Present: a quorum was established",
+# "Absent: None"), and what it holds flows straight into the person registry.
+_NON_NAME_TOKENS = frozenset(
+    {
+        "a",
+        "an",
+        "absent",
+        "all",
+        "and",
+        "at",
+        "established",
+        "excused",
+        "held",
+        "is",
+        "meeting",
+        "none",
+        "no",
+        "not",
+        "of",
+        "present",
+        "quorum",
+        "recused",
+        "the",
+        "there",
+        "total",
+        "vacant",
+        "was",
+        "were",
+        "yes",
+    }
+)
+# Role and modifier words that can lead a staff title. Stripped from the front of a roster entry
+# one word at a time (see `_clean_roster_name`), which covers the open-ended real phrasings --
+# "City Manager", "Interim Assistant City Manager", "Deputy Chief of Police" -- without trying to
+# enumerate them. Kept separate from `_ROSTER_NAME_TITLES`, which holds whole elected offices.
+_STAFF_ROLE_WORDS = frozenset(
+    {
+        "acting",
+        "administrator",
+        "analyst",
+        "assistant",
+        "associate",
+        "attorney",
+        "chief",
+        "city",
+        "clerk",
+        "coordinator",
+        "county",
+        "deputy",
+        "director",
+        "engineer",
+        "executive",
+        "general",
+        "interim",
+        "manager",
+        "officer",
+        "planner",
+        "planning",
+        "secretary",
+        "senior",
+        "specialist",
+        "superintendent",
+        "town",
+        "village",
+    }
+)
+_MAX_ROSTER_NAME_WORDS = 5
+_MAX_ROSTER_NAME_CHARS = 60
+
+
+def _clean_roster_name(raw: str) -> str | None:
+    """Return a bare person name, or ``None`` when the span is not name-shaped.
+
+    Silence beats a guess here by a wide margin. A roster name is not merely displayed: it
+    enrols a person in the body registry, is carried forward as standing membership, tiers as a
+    **member** (the tier that earns a speaker page), and — through `roster_person_ids` — acts as a
+    *correction constraint* that removes voice matches outside it. A single junk entry therefore
+    suppresses correct naming for the whole meeting, which is strictly worse than extracting
+    nothing: an empty roster already means "make no correction".
+    """
+    name = _WHITESPACE_RE.sub(" ", raw).strip(" .,:;")
+    if not name or len(name) > _MAX_ROSTER_NAME_CHARS or any(char.isdigit() for char in name):
+        return None
+    words = name.split(" ")
+    while words:
+        lowered = tuple(word.casefold().strip(".") for word in words)
+        for title in _ROSTER_NAME_TITLES:
+            if lowered[: len(title)] == title:
+                words = words[len(title) :]
+                break
+        else:
+            # Staff titles are open-ended phrases ("City Manager", "Interim Assistant Planning
+            # Director"), so they are stripped word-by-word from the front rather than enumerated.
+            # Leading-only, so a surname that happens to be a role word ("Mark Manager") survives.
+            # Without this an "ALSO PRESENT:" line enrols the *title* as part of the person's
+            # name, which then matches no spoken name and corroborates nothing.
+            if len(words) > 1 and lowered[0] in _STAFF_ROLE_WORDS:
+                words = words[1:]
+                continue
+            break
+    if not 0 < len(words) <= _MAX_ROSTER_NAME_WORDS:
+        return None
+    if any(word.casefold().strip(".") in _NON_NAME_TOKENS for word in words):
+        return None
+    # An office listed with no name at all ("ALSO PRESENT: City Manager, City Attorney").
+    # Leading-only stripping always spares the last word, so this would otherwise enrol people
+    # called "Manager" and "Attorney" -- who then narrow `roster_person_ids` and remove correct
+    # voice matches for the whole meeting. "Mark Manager" survives: "mark" is not a role word.
+    if all(word.casefold().strip(".") in _STAFF_ROLE_WORDS for word in words):
+        return None
+    cleaned = " ".join(words).strip(" .,:;")
+    if len(cleaned) < 2 or not any(char.isalpha() for char in cleaned):
+        return None
+    return cleaned
 
 
 def parse_roster(text: str) -> list[dict]:
     """Conservative member extraction from attendance lines; never invents names."""
     result: list[dict] = []
     for match in _ATTENDANCE_STATUS_RE.finditer(text):
-        status = match.group(1).lower()
-        for name in _ATTENDANCE_SPLIT_RE.split(match.group(2).strip()):
-            name = _WHITESPACE_RE.sub(" ", name).strip(" .")
-            if name and len(name) > 1:
-                result.append({"name": name, "status": status, "evidence": match.group(0)[:500]})
+        qualifier = match.group("qualifier")
+        if _qualifier_words(qualifier) & _ROSTER_EXCLUDED_WORDS:
+            continue
+        status = match.group("status").lower()
+        section = _roster_section(qualifier)
+        for raw_name in _ATTENDANCE_SPLIT_RE.split(match.group("names").strip()):
+            name = _clean_roster_name(raw_name)
+            if not name:
+                continue
+            row = {"name": name, "status": status, "evidence": match.group(0)[:500]}
+            if section:
+                row["section"] = section
+            result.append(row)
     return result
 
 

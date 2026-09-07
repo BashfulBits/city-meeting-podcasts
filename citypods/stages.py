@@ -71,15 +71,20 @@ import collections
 import dataclasses
 import hashlib
 import json
+import multiprocessing
+import os
 import re
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Mapping
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Iterable, Mapping
+from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from math import nan
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urljoin
@@ -93,6 +98,7 @@ from citypods.diarize import (
     DEFAULT_DIARIZE_MODEL,
     DEFAULT_EMBEDDING_MODEL,
     TIMED_WORDS_VALIDATION_VERSION,
+    attach_transcript_words,
     has_valid_timed_words,
 )
 from citypods.durations import (
@@ -135,7 +141,7 @@ from citypods.records import (
 )
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.security import MAX_REDIRECTS, validate_source_url
-from citypods.speakers import IDENTITY_PIPELINE_VERSION
+from citypods.speakers import IDENTITY_PIPELINE_VERSION, TITLE_CUE_KINDS
 from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
 from citypods.transcript_quality import (
     TranscriptQualityRoute,
@@ -442,6 +448,13 @@ class StageContext:
     # fit before the diarization lane cutoff.
     diarize_start_deadline: float | None = None
     diarize_start_reserve_seconds: float = 15 * 60
+    # Second tier below the start cutoff, mirroring asr_backstop_minutes: the start cutoff bounds
+    # what may *begin*, this bounds how long an already-running item may keep the job alive
+    # (review/31 §A.4). None disables it.
+    diarize_backstop_deadline: float | None = None
+    # Predicted-peak-RSS admission for concurrent diarize workers, so several long meetings
+    # running at once cannot OOM the runner. None disables it (single-worker runs don't need it).
+    diarize_memory_reservation: MemoryReservation | None = None
     # H15 Layer 1: state dir for the capped raw-evidence log. Every successful align()/
     # transcribe() call appends a near-zero-cost coverage + word-logprob sample here (see
     # record_l1_sample). None (e.g. dry-run/tests) skips L1 recording.
@@ -2660,6 +2673,166 @@ class DiarizeRuntimeLog:
             )
 
 
+# Threads for a diarize worker running on its own. 2 was the measured single-job latency
+# optimum on every GH Actions CPU sampled -- 3 and 4 were consistently *worse* than 2 for one
+# job, and a pool of single-threaded workers beat all of them on aggregate throughput
+# (review/31 §A.4), which is why this only applies when the pool is one worker wide.
+_DIARIZE_SOLO_THREADS = 2
+_DIARIZE_MAX_WORKERS = 8
+
+
+@dataclasses.dataclass
+class _DiarizeCandidate:
+    """One episode that passed every cheap filter and is ready for a worker.
+
+    Deliberately holds the timed-words *key*, not its bytes: unlike the serial loop this replaced,
+    every candidate is now live at once, and a backlog is thousands of episodes deep. Retaining
+    each sidecar here would trade a bounded per-item read for an unbounded whole-backlog spike.
+    The bytes are re-read once the item is actually admitted.
+    """
+
+    ep: Episode
+    uid: str
+    spec: str
+    key: str
+    words_key: str
+    recording_seconds: float
+
+
+class _DiarizeAdmission:
+    """Deadline-aware, best-fit-decreasing admission for the diarize worker pool.
+
+    One rule serves both goals in review/31 §A.4. Whenever a worker frees up it claims the
+    **largest** pending candidate whose estimated runtime still fits before the start cutoff:
+
+    * Early in a run the remaining budget is large, so "largest that fits" *is* the longest
+      meeting in the backlog. Long meetings get first claim on a worker while there is maximum
+      runway -- otherwise they starve, because a queue of short meetings will happily fill every
+      slot until nothing long can ever fit again.
+    * As the budget shrinks, fewer long candidates satisfy the fits-check, so admission narrows
+      to progressively shorter meetings on its own -- the soft landing, with no phase threshold
+      to tune.
+
+    Estimates are re-read from the runtime log on every claim, so measured samples from items
+    that already finished this run immediately sharpen later admission decisions.
+    """
+
+    def __init__(
+        self,
+        candidates: list[_DiarizeCandidate],
+        *,
+        ctx: StageContext,
+        runtime_log: DiarizeRuntimeLog,
+        recipe: str,
+    ):
+        # Longest first: claim() can then take the first candidate that fits.
+        self._pending = sorted(candidates, key=lambda item: item.recording_seconds, reverse=True)
+        self._ctx = ctx
+        self._runtime_log = runtime_log
+        self._recipe = recipe
+        self._deferred: list[tuple[_DiarizeCandidate, str]] = []
+        self._lock = threading.Lock()
+
+    @property
+    def deferred(self) -> list[tuple[_DiarizeCandidate, str]]:
+        with self._lock:
+            return list(self._deferred)
+
+    def claim(self) -> _DiarizeCandidate | None:
+        with self._lock:
+            if not self._pending:
+                return None
+            if self._ctx.stop is not None and self._ctx.stop():
+                return self._drain_locked("wall-clock-budget")
+            longest = (0.0, 0.0)
+            for index, candidate in enumerate(self._pending):
+                fits, estimate, remaining = _diarize_fits_remaining_budget(
+                    self._ctx, self._runtime_log, candidate.recording_seconds, self._recipe
+                )
+                if fits:
+                    return self._pending.pop(index)
+                if index == 0:
+                    longest = (estimate or 0.0, remaining or 0.0)
+            # Nothing fits, and the remaining budget only shrinks from here, so nothing ever
+            # will: defer the whole tail now rather than re-checking it per freed worker.
+            print(
+                f"[enrich] diarize admission closed: {len(self._pending)} candidate(s) do not fit "
+                f"(largest estimate_s={longest[0]:.1f} remaining_s={longest[1]:.1f})",
+                flush=True,
+            )
+            return self._drain_locked("runtime-budget")
+
+    def close(self, reason: str) -> None:
+        """Stop admitting new work (a backstop timeout); defer whatever is left."""
+        with self._lock:
+            self._drain_locked(reason)
+
+    def drain(self, reason: str) -> list[_DiarizeCandidate]:
+        """Defer every pending candidate and return them (setup failed before any work ran)."""
+        with self._lock:
+            pending = list(self._pending)
+            self._drain_locked(reason)
+            return pending
+
+    def _drain_locked(self, reason: str) -> None:
+        self._deferred.extend((candidate, reason) for candidate in self._pending)
+        self._pending.clear()
+        return None
+
+
+def _diarize_worker_count(ctx: StageContext) -> int:
+    """Concurrent diarize workers: one per available vCPU by default, config-overridable."""
+    configured = int((ctx.speaker_config or {}).get("workers") or 0)
+    if configured > 0:
+        return min(configured, _DIARIZE_MAX_WORKERS)
+    return max(1, min(os.cpu_count() or 1, _DIARIZE_MAX_WORKERS))
+
+
+def _diarize_job_timeout_seconds(ctx: StageContext) -> float | None:
+    """Seconds a single in-flight item may still run, bounded by the backstop deadline."""
+    if ctx.diarize_backstop_deadline is None:
+        return None
+    return max(60.0, ctx.diarize_backstop_deadline - time.monotonic())
+
+
+class _InlineExecutor:
+    """Executor that runs work on the calling thread.
+
+    Test-only: keeping the call in-process is what lets a monkeypatched `run_diarize_job` be
+    observed. Deliberately *not* used in production even for a single worker -- it resolves its
+    `Future` before returning, so `future.result(timeout=...)` cannot time out and the backstop
+    would be silently unreachable (see `_diarize_executor`).
+    """
+
+    def submit(self, fn, /, *args, **kwargs):
+        future: Future = Future()
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except BaseException as exc:  # noqa: BLE001 - mirrors Executor.submit's contract
+            future.set_exception(exc)
+        return future
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        return None
+
+
+def _diarize_executor(workers: int):
+    """Process pool for diarize workers.
+
+    `spawn`, never `fork`: the enrich run always has a heartbeat thread alive, and forking a
+    multi-threaded process is the documented deadlock hazard CPython warns about.
+
+    A single worker gets a real one-process pool rather than running inline. `_InlineExecutor`
+    completes its `Future` *before* returning, so `future.result(timeout=...)` can never raise
+    `TimeoutError` -- on a single-vCPU runner (or `speakers.workers: 1`) one hung inference would
+    hold the job until Actions sends SIGTERM, which is precisely the failure the backstop exists
+    to bound. Tests that need the call in-process monkeypatch this function directly.
+    """
+    return ProcessPoolExecutor(
+        max_workers=max(1, workers), mp_context=multiprocessing.get_context("spawn")
+    )
+
+
 def _diarize_fits_remaining_budget(
     ctx: StageContext, runtime_log: DiarizeRuntimeLog, recording_seconds: float, recipe: str
 ) -> tuple[bool, float | None, float | None]:
@@ -3769,13 +3942,25 @@ class MinutesTextStage:
             if not minutes_url:
                 stats.reused += 1
                 continue
+            cached_text: str | None = None
             if (
                 ep.minutes_text_url == minutes_url
                 and ep.minutes_votes_url
                 and ep.minutes_roster_url
             ):
-                stats.reused += 1
-                continue
+                # Reuse was keyed on "the sidecars exist", so a roster parsed by an older, worse
+                # extractor stayed cached forever -- including the empty and mis-sectioned ones
+                # this version fixes. Versioning the *parse* lets a bump reach those episodes.
+                if str(ep.minutes_roster_status or "").endswith(
+                    f"@{MINUTES_ROSTER_PARSER_VERSION}"
+                ):
+                    stats.reused += 1
+                    continue
+                # Only the parser moved, not the document: re-read the text this stage already
+                # extracted and stored. That is what makes a bump cheap -- no provider fetch and,
+                # for a scanned PDF, no second OCR pass over the whole archive. Falling through
+                # to `None` re-fetches, which is correct when the sidecar is unreadable.
+                cached_text = _stored_minutes_text(ctx, ep)
             now = datetime.now(UTC)
             if minutes_text_backoff_until(ep) and minutes_text_backoff_until(ep) > now:
                 stats.defer("minutes-text-backoff")
@@ -3784,15 +3969,24 @@ class MinutesTextStage:
                 stats.defer("wall-clock-budget", sample=ep.uid or ep.guid)
                 continue
             try:
-                content, content_type = fetch_document_bytes(
-                    session, _validated_document_url(city, minutes_url), timeout=30
-                )
-                text, _ = extract_document(
-                    content,
-                    content_type=content_type,
-                    source_url=minutes_url,
-                )
+                if cached_text is None:
+                    content, content_type = fetch_document_bytes(
+                        session, _validated_document_url(city, minutes_url), timeout=30
+                    )
+                    text, _ = extract_document(
+                        content,
+                        content_type=content_type,
+                        source_url=minutes_url,
+                    )
+                else:
+                    text = cached_text
                 roster = parse_roster(text)
+                # Downstream, "no minutes published yet" and "minutes published but the roster did
+                # not parse" are indistinguishable -- both are an empty `minutes_roster` -- yet
+                # only the second is a defect, and only the second stalls member naming
+                # indefinitely. Count them apart so the size of that gap is measurable before
+                # anyone proposes a heavier extractor to close it.
+                stats.quality("minutes-roster-parsed" if roster else "minutes-roster-empty")
                 raw_votes = parse_votes(text, roster=roster)
                 grouped: dict[str | None, list[dict]] = {}
                 for vote in raw_votes:
@@ -3877,6 +4071,16 @@ class MinutesTextStage:
                 ep.minutes_text_last_attempt = now.isoformat()
                 ep.minutes_votes = votes
                 ep.minutes_roster = roster
+                # Set here, beside the data it describes, not at parse time: the storage writes
+                # above can raise, and a status of "parsed" sitting next to an unchanged (usually
+                # empty) roster would tell the audit the roster is fine while the real defect --
+                # a repeated storage failure -- stayed invisible. Persisted so the daily audit
+                # can turn repeated failures into one issue, the record-only pattern
+                # `check_agenda_quality` uses. `SpeakerIdentityStage` may upgrade it to
+                # "disjoint".
+                ep.minutes_roster_status = (
+                    f"{'parsed' if roster else 'empty'}@{MINUTES_ROSTER_PARSER_VERSION}"
+                )
                 ep.minutes_votes_url = votes_url
                 ep.minutes_roster_url = roster_url
                 ep.links = updated_links
@@ -3990,7 +4194,39 @@ AGENDA_TEXT_PIPELINE_VERSION = "3"
 # accepted, and suspicious PDFs alone invoke OCR.
 AGENDA_BACKUP_PIPELINE_VERSION = "2"
 MINUTES_TEXT_PIPELINE_VERSION = "1"
+
+
+def _stored_minutes_text(ctx: StageContext, ep: Episode) -> str | None:
+    """Return the minutes text this stage already extracted, or None if it cannot be read.
+
+    Re-parsing a stored extraction is what keeps a `MINUTES_ROSTER_PARSER_VERSION` bump cheap:
+    the expensive half of this stage is the provider fetch and, for a scanned PDF, OCR -- both of
+    which produced this artifact in the first place and neither of which needs repeating when
+    only the roster parser changed.
+    """
+    key = (ep.links or {}).get("minutes_text_artifact_key")
+    if not key or ctx.storage is None:
+        return None
+    raw = _read_storage_bytes(ctx.storage, str(key))
+    if raw is None:
+        return None
+    try:
+        payload = json.loads(raw.decode())
+    except (UnicodeDecodeError, ValueError):
+        return None
+    text = payload.get("text") if isinstance(payload, dict) else None
+    return text if isinstance(text, str) and text.strip() else None
+
+
 MINUTES_VOTES_PIPELINE_VERSION = "1"
+# Bump when roster extraction changes what it would produce from the same document -- attendance
+# patterns, section qualifiers, name validation, title stripping. Cached minutes are otherwise
+# reused on the strength of their sidecars existing, so an episode parsed by an older extractor
+# would keep its empty or mis-sectioned roster indefinitely, and the audit's "re-run the minutes
+# lane" advice would do nothing. A bump re-parses the stored `minutes-text` artifact
+# (`_stored_minutes_text`), so it costs one object read per episode rather than a provider fetch
+# and an OCR pass; it falls back to a full re-fetch only when that artifact cannot be read.
+MINUTES_ROSTER_PARSER_VERSION = "2"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
@@ -6909,8 +7145,7 @@ class NativeDiarizeStage:
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
-        from citypods.compute.base import JobHandle, JobResult
-        from citypods.records import source_key
+        from citypods.speakers import load_turn_evidence, save_turn_evidence
 
         stats = StageStats(self.name)
         config = ctx.speaker_config or {}
@@ -6919,25 +7154,63 @@ class NativeDiarizeStage:
         model = str(config.get("model") or DEFAULT_DIARIZE_MODEL)
         embedding_model = str(config.get("embedding_model") or DEFAULT_EMBEDDING_MODEL)
         runtime_recipe = _diarize_runtime_recipe(model, embedding_model)
-        from citypods.speakers import (
-            load_turn_evidence,
-            pilot_selected,
-            public_turn,
-            save_turn_evidence,
-        )
-
         turn_evidence = (
             load_turn_evidence(ctx.speaker_turn_evidence_path)
             if ctx.speaker_turn_evidence_path is not None
             else {"version": 1, "episodes": {}}
         )
         runtime_log = DiarizeRuntimeLog(ctx.diarize_runtime_log_path)
-        # External workers reserve this work class but do not yet materialize R7 artifacts.  Use
-        # the pinned local pyannote stack until their pull-worker writer is implemented instead
-        # of accepting a handle that no worker can complete.
-        backend = LocalBackend(asr_mod)
-        src_key = source_key(city)
         canonical_city_slug = city.city_entity or city.slug
+
+        candidates = self._collect_candidates(
+            city,
+            episodes,
+            ctx,
+            stats,
+            config=config,
+            model=model,
+            embedding_model=embedding_model,
+            canonical_city_slug=canonical_city_slug,
+        )
+        if candidates:
+            self._run_admitted(
+                candidates,
+                ctx,
+                stats,
+                turn_evidence=turn_evidence,
+                runtime_log=runtime_log,
+                runtime_recipe=runtime_recipe,
+                model=model,
+                embedding_model=embedding_model,
+                canonical_city_slug=canonical_city_slug,
+            )
+        if ctx.speaker_turn_evidence_path is not None:
+            save_turn_evidence(ctx.speaker_turn_evidence_path, turn_evidence)
+        return stats
+
+    def _collect_candidates(
+        self,
+        city: City,
+        episodes: list[Episode],
+        ctx: StageContext,
+        stats: StageStats,
+        *,
+        config: Mapping[str, Any],
+        model: str,
+        embedding_model: str,
+        canonical_city_slug: str,
+    ) -> list[_DiarizeCandidate]:
+        """Apply every cheap per-episode filter up front, before any worker starts.
+
+        Separating selection from execution is what lets admission reorder the work: the pool
+        needs the whole eligible set in hand to pick a *best fit* for the remaining budget
+        (review/31 §A.4), which a single fused loop consuming a generator cannot do.
+        """
+        from citypods.records import source_key
+        from citypods.speakers import pilot_selected
+
+        src_key = source_key(city)
+        candidates: list[_DiarizeCandidate] = []
         for ep in _materialize_set(
             episodes,
             city.full_artifact_episodes,
@@ -6961,8 +7234,12 @@ class NativeDiarizeStage:
             if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
                 stats.defer("missing-timed-words", sample=uid)
                 continue
+            # Validate now, but let the bytes go: see _DiarizeCandidate on why they are re-read
+            # at admission rather than retained for every pending candidate.
             words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
-            if words_raw is None or not has_valid_timed_words(words_raw):
+            words_valid = words_raw is not None and has_valid_timed_words(words_raw)
+            del words_raw
+            if not words_valid:
                 stats.defer("invalid-timed-words", sample=uid)
                 continue
             spec = _diarize_spec_hash(ep, model, embedding_model)
@@ -6971,142 +7248,454 @@ class NativeDiarizeStage:
                 ep.speakers_url = ctx.storage.public_url(key)
                 stats.reused += 1
                 continue
-            if ctx.stop is not None and ctx.stop():
-                stats.defer("wall-clock-budget", sample=uid)
-                continue
             recording_seconds = max(0.0, episode_served_duration_seconds(ep) or 0.0)
             if recording_seconds <= 0:
                 # An unknown-length episode estimates at 0s, so it "fits" any remaining budget and
-                # reserves only the base memory footprint -- and because admission sorts longest
-                # first, it lands late, exactly when the budget is tightest. That is the run-51
-                # failure mode (an unbounded item admitted because its cost was unknown) with the
-                # cost hidden behind a default instead of a slow model. Defer until the duration
-                # lands, the same way missing timed words are handled above.
+                # reserves only the base memory footprint -- and because best-fit-decreasing sorts
+                # longest first, it lands late, exactly when the budget is tightest. That is the
+                # run-51 failure mode (an unbounded item admitted because its cost was unknown)
+                # with the cost hidden behind a default instead of a slow model. Defer until the
+                # duration lands, the same way missing timed words are handled above.
                 stats.defer("unknown-duration", sample=uid)
                 continue
-            fits, estimate, remaining = _diarize_fits_remaining_budget(
-                ctx, runtime_log, recording_seconds, runtime_recipe
-            )
-            if not fits:
-                stats.defer("runtime-budget", sample=uid)
-                print(
-                    f"[enrich] diarize defer uid={uid} estimate_s={estimate or 0:.1f} "
-                    f"remaining_s={remaining or 0:.1f}",
-                    flush=True,
-                )
-                continue
-            # Do not let a prior transient error look like this attempt's outcome.
-            ep.speakers_error = None
-            diarize_started_at = time.monotonic()
-            try:
-                from citypods.diarize import attach_transcript_words
-
-                words = json.loads(words_raw.decode())
-                if not isinstance(words, dict):
-                    raise ValueError("timed transcript words must be a JSON object")
-                # "seeded" marks an estimate from DIARIZE_DEFAULT_RUNTIME_RATIO rather than
-                # measured samples -- worth seeing in the log while a new recipe warms up.
-                estimate_basis = (
-                    "measured" if runtime_log.has_samples_for(runtime_recipe) else "seeded"
-                )
-                print(
-                    f"[enrich] diarize start uid={uid} body={ep.body!r} "
-                    f"recording_s={recording_seconds:.1f} "
-                    f"estimate_s={estimate or 0:.1f} ({estimate_basis})",
-                    flush=True,
-                )
-                # Register the in-flight attempt so the heartbeat's "active work" snapshot shows a
-                # busy diarize pass as busy instead of "no tracked work active". This one call runs
-                # serially on the ledger-pass thread for as long as one meeting's audio takes
-                # (routinely tens of minutes to hours on CPU pyannote inference), and without this
-                # the PROGRESS registry stays empty for the whole run -- a genuinely-working pass is
-                # then indistinguishable from a hung one until the runner is killed at the outer
-                # time budget, which is exactly what made run 51 (denton-tx, 2026-09-05) hard to
-                # read from its own logs.
-                with (
-                    PROGRESS.track(source=canonical_city_slug, uid=str(uid), phase="diarize"),
-                    _download_audio(ep.hosted_audio_url) as audio_path,
-                ):
-                    outcome = backend.run_inference(
-                        InferenceJob(
-                            task="diarize",
-                            inputs={
-                                "audio_path": audio_path,
-                                "model": model,
-                                "embedding_model": embedding_model,
-                                # No HF-gated model in this engine (review/31 §A.1a) -- neither
-                                # field means anything to sherpa-onnx, kept only so an
-                                # already-registered dispatch backend's call shape doesn't change.
-                                "token": None,
-                                "device": config.get("device"),
-                            },
-                            recipe_hash=spec,
-                        )
-                    )
-                if isinstance(outcome, JobHandle):
-                    stats.defer("diarize-dispatched", sample=uid)
-                    continue
-                if not isinstance(outcome, JobResult):
-                    raise ValueError("diarize backend returned an invalid result")
-                artifact = outcome.output
-                attach_transcript_words(artifact.turns, words)
-                # The public diarization object deliberately never contains numerical voice
-                # vectors.  They remain private review evidence keyed to this exact recipe.
-                private_turns = [dict(turn) for turn in artifact.turns]
-                turn_evidence.setdefault("episodes", {})[uid] = {
-                    "spec_hash": spec,
-                    "turns": private_turns,
-                }
-                payload = {
-                    "schema": "2",
-                    "basis": "served",
-                    "source": "native",
-                    "engine": getattr(artifact, "engine", "pyannote"),
-                    "model": getattr(artifact, "model", model),
-                    "embedding_recipe": embedding_model,
-                    "clusters": getattr(artifact, "clusters", []),
-                    "turns": [public_turn(turn) for turn in artifact.turns],
-                }
-                with tempfile.TemporaryDirectory() as directory:
-                    dest = Path(directory) / "speakers.json"
-                    dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
-                    url = ctx.storage.put_file(key, dest, "application/json")
-                ep.speakers_key = key
-                ep.speakers_url = url
-                ep.speakers_spec_hash = spec
-                ep.speakers_format = "json"
-                ep.speakers_synced = True
-                ep.speakers_confidence = None
-                ep.speakers_pipeline_version = DIARIZE_PIPELINE_VERSION
-                ep.speakers_error = None
-                ep.speakers_source = "native"
-                diarize_elapsed = time.monotonic() - diarize_started_at
-                runtime_log.append(
-                    diarize_seconds=diarize_elapsed,
+            candidates.append(
+                _DiarizeCandidate(
+                    ep=ep,
+                    uid=str(uid),
+                    spec=spec,
+                    key=key,
+                    words_key=str(ep.transcript_words_key),
                     recording_seconds=recording_seconds,
-                    recipe=runtime_recipe,
                 )
-                stats.ran += 1
-                ratio = (
-                    diarize_elapsed / recording_seconds if recording_seconds > 0 else float("nan")
+            )
+        return candidates
+
+    def _run_admitted(
+        self,
+        candidates: list[_DiarizeCandidate],
+        ctx: StageContext,
+        stats: StageStats,
+        *,
+        turn_evidence: dict,
+        runtime_log: DiarizeRuntimeLog,
+        runtime_recipe: str,
+        model: str,
+        embedding_model: str,
+        canonical_city_slug: str,
+    ) -> None:
+        from citypods.diarize import prepare_models
+
+        workers = _diarize_worker_count(ctx)
+        admission = _DiarizeAdmission(
+            candidates, ctx=ctx, runtime_log=runtime_log, recipe=runtime_recipe
+        )
+        # One thread per worker slot, each claiming and then blocking on its own subprocess.
+        # Threads (not a bare future-juggling loop) so every in-flight item gets its own
+        # PROGRESS entry -- that registry is keyed by thread, and the heartbeat's "active work"
+        # line is the only thing that makes a busy diarize pass distinguishable from a hung one.
+        # Each worker is single-threaded when several run at once: measured across three GH
+        # Actions CPUs, N single-threaded processes beat every other split on aggregate
+        # throughput, including the same 2-thread single-job optimum run N-wide (review/31 §A.4).
+        threads_per_worker = 1 if workers > 1 else _DIARIZE_SOLO_THREADS
+        print(
+            f"[enrich] diarize pool: {len(candidates)} candidate(s), workers={workers} "
+            f"threads_per_worker={threads_per_worker} recipe={runtime_recipe}",
+            flush=True,
+        )
+        # Warm the model cache once in the parent; otherwise every spawned worker misses the
+        # cache and re-downloads the same ~46MB concurrently.
+        try:
+            prepare_models(embedding_model)
+        except Exception as exc:  # noqa: BLE001 - a fetch failure defers the lane, never crashes it
+            for candidate in admission.drain("model-unavailable"):
+                stats.defer("model-unavailable", sample=candidate.uid)
+            stats.errors.append(f"diarize models unavailable: {exc}")
+            print(f"[enrich] diarize model preparation failed: {exc}", flush=True)
+            return
+
+        finalize_lock = threading.Lock()
+        executor = _diarize_executor(workers)
+        try:
+            if workers > 1:
+                pool_threads = [
+                    threading.Thread(
+                        target=self._worker_loop,
+                        name=f"diarize-{index}",
+                        args=(admission, executor, ctx, stats),
+                        kwargs={
+                            "finalize_lock": finalize_lock,
+                            "turn_evidence": turn_evidence,
+                            "runtime_log": runtime_log,
+                            "runtime_recipe": runtime_recipe,
+                            "model": model,
+                            "embedding_model": embedding_model,
+                            "canonical_city_slug": canonical_city_slug,
+                            "threads_per_worker": threads_per_worker,
+                        },
+                        daemon=True,
+                    )
+                    for index in range(workers)
+                ]
+                for thread in pool_threads:
+                    thread.start()
+                for thread in pool_threads:
+                    thread.join()
+            else:
+                self._worker_loop(
+                    admission,
+                    executor,
+                    ctx,
+                    stats,
+                    finalize_lock=finalize_lock,
+                    turn_evidence=turn_evidence,
+                    runtime_log=runtime_log,
+                    runtime_recipe=runtime_recipe,
+                    model=model,
+                    embedding_model=embedding_model,
+                    canonical_city_slug=canonical_city_slug,
+                    threads_per_worker=threads_per_worker,
                 )
-                print(
-                    f"[enrich] diarize done uid={uid} body={ep.body!r} "
-                    f"elapsed_s={diarize_elapsed:.1f} recording_s={recording_seconds:.1f} "
-                    f"ratio={ratio:.3f}",
-                    flush=True,
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+        for candidate, reason in admission.deferred:
+            stats.defer(reason, sample=candidate.uid)
+
+    def _worker_loop(
+        self,
+        admission: _DiarizeAdmission,
+        executor: Any,
+        ctx: StageContext,
+        stats: StageStats,
+        **kwargs: Any,
+    ) -> None:
+        while True:
+            candidate = admission.claim()
+            if candidate is None:
+                return
+            self._run_one(candidate, admission, executor, ctx, stats, **kwargs)
+
+    def _run_one(
+        self,
+        candidate: _DiarizeCandidate,
+        admission: _DiarizeAdmission,
+        executor: Any,
+        ctx: StageContext,
+        stats: StageStats,
+        *,
+        finalize_lock: threading.Lock,
+        turn_evidence: dict,
+        runtime_log: DiarizeRuntimeLog,
+        runtime_recipe: str,
+        model: str,
+        embedding_model: str,
+        canonical_city_slug: str,
+        threads_per_worker: int,
+    ) -> None:
+        from citypods import diarize as diarize_mod
+
+        ep, uid = candidate.ep, candidate.uid
+        reservation = ctx.diarize_memory_reservation
+        # Admit by *predicted* peak RSS, not trailing mem_available: several workers each grow
+        # with their own meeting's length, and the runner is OOM-killed as a whole. The same
+        # leading-signal reservation H8 already uses for audio encodes (review/31 §A.4).
+        reserved_bytes = diarize_mod.estimate_diarize_rss_bytes(candidate.recording_seconds)
+        if reservation is not None and not reservation.reserve(
+            reserved_bytes, label=uid, stop=ctx.stop
+        ):
+            with finalize_lock:
+                stats.defer("memory-reservation", sample=uid)
+            return
+
+        # `claim()` checked the runtime budget, but `reserve()` may then have blocked for however
+        # long another worker held the memory. The reservation's stop callback only asks whether
+        # the cutoff has arrived, not whether enough time remains to finish *this* meeting -- so
+        # revalidate before committing to a download and an inference that no longer fits.
+        fits, estimate, remaining = _diarize_fits_remaining_budget(
+            ctx, runtime_log, candidate.recording_seconds, runtime_recipe
+        )
+        if not fits:
+            if reservation is not None:
+                reservation.release(reserved_bytes)
+            with finalize_lock:
+                stats.defer("runtime-budget", sample=uid)
+            print(
+                f"[enrich] diarize defer-after-memory-wait uid={uid} "
+                f"estimate_s={estimate or 0:.1f} remaining_s={remaining or 0:.1f}",
+                flush=True,
+            )
+            return
+
+        started_at = time.monotonic()
+        try:
+            words_raw = _read_storage_bytes(ctx.storage, candidate.words_key)
+            if words_raw is None:
+                raise ValueError(f"timed words {candidate.words_key!r} unreadable at admission")
+            words = json.loads(words_raw.decode())
+            if not isinstance(words, dict):
+                raise ValueError("timed transcript words must be a JSON object")
+            # "seeded" marks an estimate from DIARIZE_DEFAULT_RUNTIME_RATIO rather than measured
+            # samples -- worth seeing in the log while a new recipe warms up.
+            estimate = runtime_log.estimate_seconds(
+                candidate.recording_seconds, recipe=runtime_recipe
+            )
+            basis = "measured" if runtime_log.has_samples_for(runtime_recipe) else "seeded"
+            print(
+                f"[enrich] diarize start uid={uid} body={ep.body!r} "
+                f"recording_s={candidate.recording_seconds:.1f} "
+                f"estimate_s={estimate:.1f} ({basis})",
+                flush=True,
+            )
+            # PROGRESS makes a busy pass visible on the heartbeat's "active work" line; without
+            # it a healthy multi-hour run is indistinguishable from a hung one until the runner
+            # is killed (run 51, denton-tx, 2026-09-05).
+            with (
+                PROGRESS.track(source=canonical_city_slug, uid=uid, phase="diarize"),
+                _download_audio(ep.hosted_audio_url) as audio_path,
+            ):
+                future = executor.submit(
+                    diarize_mod.run_diarize_job,
+                    str(audio_path),
+                    model=model,
+                    embedding_model=embedding_model,
+                    num_threads=threads_per_worker,
                 )
-            except Exception as exc:  # noqa: BLE001 - per-item native inference must be restartable.
+                # The audio temp file must outlive the call, so the wait stays inside the
+                # download context.
+                artifact = future.result(timeout=_diarize_job_timeout_seconds(ctx))
+            attach_transcript_words(artifact.turns, words)
+            # Outside `finalize_lock`: the object is content-addressed by `candidate.key`, so two
+            # workers can never contend for the same one, and holding the lock across a network
+            # write would serialize every worker's completion behind one upload -- spending
+            # start-cutoff runway on waiting instead of inference.
+            speakers_url = _upload_speakers_artifact(
+                candidate, artifact, ctx, model=model, embedding_model=embedding_model
+            )
+            with finalize_lock:
+                self._finalize(
+                    candidate,
+                    artifact,
+                    words,
+                    ctx,
+                    stats,
+                    speakers_url=speakers_url,
+                    turn_evidence=turn_evidence,
+                    runtime_log=runtime_log,
+                    runtime_recipe=runtime_recipe,
+                    model=model,
+                    embedding_model=embedding_model,
+                    elapsed=time.monotonic() - started_at,
+                )
+        except FuturesTimeoutError:
+            # The backstop fired for this item. The subprocess is abandoned rather than killed
+            # (portably terminating a pool worker needs 3.14's terminate_workers); it dies with
+            # the job. Admission is what keeps a run inside its budget -- this is the net for an
+            # estimate miss, and it stops the pool taking any *new* work.
+            admission.close("backstop")
+            with finalize_lock:
+                # Deferred, not failed -- the project-wide distinction. Writing `speakers_error`
+                # here would persist "broken diarization" onto a healthy long meeting that simply
+                # ran out of runway, where the feed-health audit and every other reader of that
+                # field would see a defect until some later run happened to overwrite it.
+                stats.defer("diarize-backstop", sample=uid)
+            print(
+                f"[enrich] diarize backstop uid={uid} body={ep.body!r} "
+                f"elapsed_s={time.monotonic() - started_at:.1f}",
+                flush=True,
+            )
+        except BrokenProcessPool as exc:
+            # Every other worker is about to fail the same way, so stop rather than emit one
+            # confusing error per remaining candidate. The usual cause is an entry point that
+            # runs work at import time: `spawn` re-imports __main__ in each child, so anything
+            # not behind `if __name__ == "__main__"` re-executes there and takes the child down.
+            admission.close("pool-broken")
+            with finalize_lock:
+                stats.defer("pool-broken", sample=uid)
+                stats.errors.append(
+                    f"{uid}: diarize worker pool broke ({exc}); is the entry point guarded by "
+                    'if __name__ == "__main__"?'
+                )
+            print(f"[enrich] diarize pool broken, admission closed: {exc}", flush=True)
+        except Exception as exc:  # noqa: BLE001 - per-item native inference must be restartable.
+            with finalize_lock:
                 ep.speakers_error = f"native-diarize-error: {exc}"
                 stats.errors.append(f"{uid}: {exc}")
-                print(
-                    f"[enrich] diarize error uid={uid} body={ep.body!r} "
-                    f"elapsed_s={time.monotonic() - diarize_started_at:.1f} error={exc}",
-                    flush=True,
-                )
-        if ctx.speaker_turn_evidence_path is not None:
-            save_turn_evidence(ctx.speaker_turn_evidence_path, turn_evidence)
-        return stats
+            print(
+                f"[enrich] diarize error uid={uid} body={ep.body!r} "
+                f"elapsed_s={time.monotonic() - started_at:.1f} error={exc}",
+                flush=True,
+            )
+        finally:
+            if reservation is not None:
+                reservation.release(reserved_bytes)
+
+    def _finalize(
+        self,
+        candidate: _DiarizeCandidate,
+        artifact: Any,
+        words: dict,
+        ctx: StageContext,
+        stats: StageStats,
+        *,
+        turn_evidence: dict,
+        runtime_log: DiarizeRuntimeLog,
+        runtime_recipe: str,
+        model: str,
+        embedding_model: str,
+        speakers_url: str,
+        elapsed: float,
+    ) -> None:
+        """Record one completed artifact. Called under `finalize_lock`: every mutation here
+        touches state shared across worker threads (episode fields, the turn-evidence map, the
+        runtime log, stats). The storage upload deliberately happens *before* the lock -- see
+        `_upload_speakers_artifact`."""
+        ep, uid = candidate.ep, candidate.uid
+        # The public diarization object deliberately never contains numerical voice vectors.
+        # They remain private review evidence keyed to this exact recipe.
+        turn_evidence.setdefault("episodes", {})[uid] = {
+            "spec_hash": candidate.spec,
+            "turns": [dict(turn) for turn in artifact.turns],
+        }
+        ep.speakers_key = candidate.key
+        ep.speakers_url = speakers_url
+        ep.speakers_spec_hash = candidate.spec
+        ep.speakers_format = "json"
+        ep.speakers_synced = True
+        ep.speakers_confidence = None
+        ep.speakers_pipeline_version = DIARIZE_PIPELINE_VERSION
+        ep.speakers_error = None
+        ep.speakers_source = "native"
+        runtime_log.append(
+            diarize_seconds=elapsed,
+            recording_seconds=candidate.recording_seconds,
+            recipe=runtime_recipe,
+        )
+        stats.ran += 1
+        ratio = elapsed / candidate.recording_seconds if candidate.recording_seconds > 0 else nan
+        print(
+            f"[enrich] diarize done uid={uid} body={ep.body!r} elapsed_s={elapsed:.1f} "
+            f"recording_s={candidate.recording_seconds:.1f} ratio={ratio:.3f}",
+            flush=True,
+        )
+
+
+def _upload_speakers_artifact(
+    candidate: _DiarizeCandidate,
+    artifact: Any,
+    ctx: StageContext,
+    *,
+    model: str,
+    embedding_model: str,
+) -> str:
+    """Write one public diarization object and return its URL.
+
+    Deliberately callable without `finalize_lock`. The key is content-addressed by the audio,
+    transcript and recipe, so concurrent workers never target the same object, and the payload is
+    built from this worker's own artifact -- nothing here touches shared state.
+    """
+    from citypods.speakers import public_turn
+
+    payload = {
+        "schema": "2",
+        "basis": "served",
+        "source": "native",
+        "engine": getattr(artifact, "engine", "sherpa-onnx"),
+        "model": getattr(artifact, "model", model),
+        "embedding_recipe": embedding_model,
+        # The public object deliberately never contains numerical voice vectors.
+        "clusters": getattr(artifact, "clusters", []),
+        "turns": [public_turn(turn) for turn in artifact.turns],
+    }
+    with tempfile.TemporaryDirectory() as directory:
+        dest = Path(directory) / "speakers.json"
+        dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+        return ctx.storage.put_file(candidate.key, dest, "application/json")
+
+
+def _naming_run_digest(
+    registry: Mapping[str, Any],
+    evaluation: Mapping[str, Any],
+    *,
+    minimum_score: float,
+    min_verdicts: int,
+    min_precision: float,
+    min_member_verdicts: int,
+    capture_context: str,
+) -> str:
+    """Digest every run-scoped input to a naming decision (review/31 §C.5).
+
+    Deliberately coarse: one new voice profile can change the outcome for any episode in the
+    backlog, so there is no useful per-episode slice of this. Coarse is also what makes it safe --
+    the failure mode to avoid is a stale skip, not a redundant re-projection.
+    """
+    people = [
+        {
+            "id": str(ident),
+            "name": person.get("display_name"),
+            "status": person.get("status"),
+            "section": person.get("section"),
+            "aliases": sorted(str(alias) for alias in person.get("aliases") or []),
+            # Reference *count* rather than the vectors: adding one changes matching, and the
+            # embeddings themselves must not be hashed into state that leaves this process.
+            "references": len(person.get("references") or []),
+            "recipes": sorted(
+                {
+                    str(row.get("embedding_recipe"))
+                    for row in person.get("references") or []
+                    if isinstance(row, Mapping)
+                }
+            ),
+            "body_key": person.get("body_key"),
+        }
+        for ident, person in sorted((registry.get("people") or {}).items())
+        if isinstance(person, Mapping)
+    ]
+    payload = {
+        "version": IDENTITY_PIPELINE_VERSION,
+        "people": people,
+        # Verdict count is enough: the table is rebuilt from these rows, and rows are append-only.
+        "verdicts": len(evaluation.get("reviews") or []),
+        # Every threshold that can change a decision. Omitting one means raising it leaves
+        # already-published names in place, and lowering it fails to release newly eligible ones,
+        # until some unrelated input happens to move.
+        "thresholds": [minimum_score, min_verdicts, min_precision, min_member_verdicts],
+        # Written into every ledger row, so an operator editing it in `speaker_config` must
+        # re-project -- otherwise the rows keep the previous context until some unrelated input
+        # happens to move, which is the stale skip this digest exists to prevent.
+        "capture_context": capture_context,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _naming_projection_fingerprint(ep: Episode, *, run_digest: str) -> str:
+    """Digest one episode's own naming inputs, plus the run-scoped digest.
+
+    Includes the current pull-quote attributions, which are this projection's only mutation of a
+    durable record. If an episode record comes back without them -- a lost or rolled-back push --
+    the fingerprint differs and the work is redone, rather than being skipped forever on the
+    strength of a marker that outlived its output.
+    """
+    payload = {
+        "run": run_digest,
+        "speakers": ep.speakers_key,
+        "spec": ep.speakers_spec_hash,
+        "words": ep.transcript_words_key,
+        "body": ep.body,
+        "roster": sorted(
+            (str(item.get("name")), str(item.get("section") or ""), str(item.get("status") or ""))
+            for item in ep.minutes_roster or ()
+            if isinstance(item, Mapping)
+        ),
+        "attribution": sorted(
+            (
+                str(item.get("candidate_id")),
+                str((item.get("speaker_attribution") or {}).get("display_name") or ""),
+                str((item.get("speaker_attribution") or {}).get("status") or ""),
+            )
+            for item in ep.moment_pullquote_candidates or ()
+            if isinstance(item, Mapping)
+        ),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
 class SpeakerIdentityStage:
@@ -7115,15 +7704,166 @@ class SpeakerIdentityStage:
     name = "speaker_identity"
     version = IDENTITY_PIPELINE_VERSION
 
+    def _naming_decisions(
+        self,
+        private_turns: list,
+        matches_by_turn: list[list[dict[str, Any]]],
+        *,
+        cue_candidates: list[dict[str, Any]],
+        roster: list[dict[str, Any]],
+        membership: list[dict[str, Any]],
+        registry: Mapping[str, Any],
+        precision_table,
+        city_slug: str,
+        body: str,
+        scoped_body_key: str,
+        minimum_score: float,
+        min_verdicts: int,
+        min_precision: float,
+        min_member_verdicts: int,
+    ) -> list:
+        """Decide, per fused candidate, whether a name may be published (review/31 §C.4).
+
+        Normalizes every available signal to the same claim -- *signal S proposes name N for
+        cluster C* -- fuses them, then applies the tiered policy. Replaces the single
+        `auto_publish_allowed` flag per episode, which could not express "confirm this member but
+        auto-name that staffer" and whose 30-review-per-cell threshold multiplied as
+        `30 x cities x bodies`.
+        """
+        from citypods import naming
+        from citypods.speakers import _norm as norm_name
+        from citypods.speakers import canonical_name, classify_speaker_tier
+
+        def _names(rows: Iterable[Mapping[str, Any]]) -> set[str]:
+            return {
+                norm_name(item.get("name"))
+                for item in rows or ()
+                if isinstance(item, Mapping) and str(item.get("name") or "").strip()
+            }
+
+        roster_names = _names(roster)
+        # Membership only speaks where this meeting's own minutes have not arrived yet. Once they
+        # have, the roster is both stricter and better evidence, and letting the standing list add
+        # a second untimed signal on top would only inflate the combination.
+        membership_names = set() if roster_names else _names(membership)
+        cue_kinds_by_name: dict[str, set[str]] = {}
+        proposals: list[naming.NameProposal] = []
+
+        # Official spellings this meeting can correct an ASR-heard name against. The roster is
+        # preferred (it is this meeting's own document); standing membership covers the weeks
+        # before it publishes.
+        official_names = [
+            str(row.get("name"))
+            for row in (list(roster or ()) or list(membership or ()))
+            if isinstance(row, Mapping) and str(row.get("name") or "").strip()
+        ]
+
+        for candidate in cue_candidates:
+            cluster = str(candidate.get("cluster") or "")
+            # Snap onto the official spelling before anything else looks at this name. Without it
+            # a cue heard as "Gerrard Hudspeth" and a roster reading "Gerard Hudspeth" are two
+            # candidates carrying one signal each -- so both fail the agreement rule and the
+            # member is silently never named, which is also why published minutes could not
+            # correct a misspelling they never met.
+            name = canonical_name(str(candidate.get("display_name") or "").strip(), official_names)
+            if not cluster or not name:
+                continue
+            kinds = cue_kinds_by_name.setdefault(norm_name(name), set())
+            kinds.add(str(candidate.get("cue_kind") or ""))
+            signal = (
+                naming.SIGNAL_CHAIR_CUE
+                if str(candidate.get("kind") or "") == "chair-reference"
+                else naming.SIGNAL_SELF_INTRO
+            )
+            proposals.append(naming.NameProposal(cluster, name, signal))
+            # A spoken title alongside the name is its own observation: it tiers the speaker, and
+            # it is what lets a staff presenter with no roster entry and no voice print reach two
+            # signals at all. `title_cue` is a separate field from `cue_kind` because a title can
+            # ride inside a cue of another kind ("the chair recognizes Council Member Jane Doe").
+            title_cue = str(candidate.get("title_cue") or "")
+            if title_cue in TITLE_CUE_KINDS:
+                kinds.add(title_cue)
+                proposals.append(naming.NameProposal(cluster, name, naming.SIGNAL_TITLE_CUE))
+
+        for turn, matches in zip(private_turns, matches_by_turn, strict=True):
+            if not isinstance(turn, Mapping) or not matches:
+                continue
+            best = matches[0]
+            if float(best.get("score") or -1.0) < minimum_score:
+                continue
+            name = canonical_name(str(best.get("display_name") or "").strip(), official_names)
+            cluster = str(turn.get("cluster") or "")
+            if name and cluster:
+                proposals.append(naming.NameProposal(cluster, name, naming.SIGNAL_VOICE_PRINT))
+
+        # Both untimed signals corroborate a name something else already proposed; neither ever
+        # originates one, so they are added only against existing proposals rather than iterated
+        # in their own right. Two of them together still cannot name anyone -- `UNTIMED_SIGNALS`.
+        for proposal in list(proposals):
+            normalized = norm_name(proposal.display_name)
+            for names, signal in (
+                (roster_names, naming.SIGNAL_ROSTER),
+                (membership_names, naming.SIGNAL_MEMBERSHIP),
+            ):
+                if normalized in names:
+                    proposals.append(
+                        naming.NameProposal(proposal.cluster, proposal.display_name, signal)
+                    )
+
+        # Canonicalized on the same basis as the proposals above, or the comparison is made
+        # against a different spelling of the same name: a member whose registry entry predates a
+        # minutes spelling change would fail the established check forever, silently, despite
+        # holding an approved voice profile.
+        # Scoped to this body. Registry-wide, an approved profile for a *different* city's Jane
+        # Doe would satisfy the member-confirmation check for the local Jane Doe -- publishing a
+        # name no reviewer ever confirmed for this body. `allowed_ids` was already scoped for
+        # exactly this reason (review/31 §C.4.3); this comparison was not.
+        confirmed_names = [
+            canonical_name(str(person.get("display_name") or ""), official_names)
+            for person in (registry.get("people") or {}).values()
+            if isinstance(person, Mapping)
+            and person.get("status") == "active"
+            and person.get("body_key") == scoped_body_key
+        ]
+        # Tiering asks "is this person on the body", which is exactly what standing membership
+        # answers -- so it stands in for the roster here while minutes are pending. This is safe
+        # in a way feeding `roster_person_ids` would not be: tiering only decides how much
+        # scrutiny a name gets, it never removes a name or marks one confirmed.
+        tier_roster = list(roster or ()) or list(membership or ())
+
+        def _tier_of(name: str) -> str:
+            return classify_speaker_tier(
+                name, roster=tier_roster, cue_kinds=cue_kinds_by_name.get(norm_name(name), ())
+            )
+
+        return [
+            naming.decide(
+                candidate,
+                precision_table,
+                city_slug=city_slug,
+                body=body,
+                min_verdicts=min_verdicts,
+                min_precision=min_precision,
+                min_member_verdicts=min_member_verdicts,
+                confirmed_names=confirmed_names,
+            )
+            for candidate in naming.fuse_proposals(proposals, tier_of=_tier_of)
+        ]
+
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
+        from citypods import naming
+        from citypods.speakers import _norm as _norm_display
         from citypods.speakers import (
-            auto_publish_allowed,
-            calibration_cell,
+            body_key,
+            body_membership,
+            canonical_name,
             chair_reference_candidates,
+            cue_identity,
             load_registry,
             load_turn_evidence,
+            naming_candidate_id,
             observe_attendance,
             pilot_capture_context,
             pilot_selected,
@@ -7133,6 +7873,7 @@ class SpeakerIdentityStage:
             refresh_membership_status,
             roster_person_ids,
             save_registry,
+            self_introduction_candidates,
             shadow_candidate_id,
         )
 
@@ -7150,6 +7891,43 @@ class SpeakerIdentityStage:
             if not pilot_selected(ctx.speaker_config or {}, canonical_city_slug, ep.body):
                 continue
             if ep.minutes_roster or ep.minutes_votes:
+                # Compare against standing membership *before* observing, or this roster's own
+                # names would be in the set it is being checked against. A roster that shares no
+                # one with an established membership is the signature of a parse that succeeded
+                # on the wrong text: name-shape validation rejects "a quorum was established",
+                # but not a well-formed name lifted from the wrong part of the document, and a
+                # plausible-but-wrong roster still narrows `allowed_ids`. A real body does not
+                # replace its entire membership between meetings; a body with no history yet
+                # (onboarding) has no established set to be disjoint from, so it is not counted.
+                standing = [
+                    str(row.get("name"))
+                    for row in body_membership(
+                        registry, city_slug=canonical_city_slug, body=ep.body
+                    )
+                ]
+                known = {_norm_display(name) for name in standing}
+                # Compared on canonical spellings: a minutes correction ("Gerrard" -> "Gerard") is
+                # precisely what canonicalization absorbs elsewhere, and would otherwise read here
+                # as a roster parsed from the wrong text -- raising a feed-health issue for the
+                # system working as designed.
+                incoming = {
+                    _norm_display(canonical_name(str(row.get("name")), standing))
+                    for row in ep.minutes_roster or ()
+                    if isinstance(row, Mapping) and str(row.get("name") or "").strip()
+                }
+                if known and incoming and not (known & incoming):
+                    # Log and count only. `minutes_roster` belongs to the audio lane, so a status
+                    # written here is dropped by the speaker-identity lane's foreign-block
+                    # protection on push -- the audit would never see it. `check_roster_quality`
+                    # derives the same signal from records instead, which is also the pattern the
+                    # other record-only checks use.
+                    stats.quality("minutes-roster-disjoint-from-membership")
+                    print(
+                        f"[enrich] roster shares no member with prior meetings of this body "
+                        f"uid={ep.uid or ep.guid} body={ep.body!r} "
+                        f"parsed={len(incoming)} known={len(known)}",
+                        flush=True,
+                    )
                 observe_attendance(
                     registry,
                     city_slug=canonical_city_slug,
@@ -7166,10 +7944,51 @@ class SpeakerIdentityStage:
                 evaluation = json.loads(ctx.speaker_evaluation_state_path.read_text())
             except (OSError, ValueError):
                 evaluation = {"reviews": []}
+        # Rebuilt from the review ledger each run rather than persisted alongside it -- one source
+        # of truth for what humans actually ruled (review/31 §C.4.5).
+        naming_config = ctx.speaker_config.get("naming") or {}
+        precision_table = naming.PrecisionTable.from_evaluation(evaluation)
+        naming_min_verdicts = int(naming_config.get("min_verdicts", naming.DEFAULT_MIN_VERDICTS))
+        naming_min_precision = float(
+            naming_config.get("min_precision", naming.DEFAULT_MIN_PRECISION)
+        )
+        naming_min_member_verdicts = int(
+            naming_config.get("min_member_verdicts", naming.DEFAULT_MIN_MEMBER_VERDICTS)
+        )
+        # Everything that can change a naming decision for *any* episode, hashed once per run:
+        # profiles, membership, confirmed names, learned precision, and the thresholds. When it
+        # moves, every episode re-projects (a new voice profile can match any of them); when it
+        # does not, per-episode work reduces to the two-object read this fingerprint avoids.
+        run_digest = _naming_run_digest(
+            registry,
+            evaluation,
+            minimum_score=float(ctx.speaker_config.get("minimum_match_score", 0.75)),
+            min_verdicts=naming_min_verdicts,
+            min_precision=naming_min_precision,
+            min_member_verdicts=naming_min_member_verdicts,
+            capture_context=json.dumps(
+                (ctx.speaker_config or {}).get("pilot_bodies") or [],
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
+        projections = evaluation.get("projections")
+        if not isinstance(projections, dict):
+            projections = {}
+            evaluation["projections"] = projections
         for ep in episodes:
             if not pilot_selected(ctx.speaker_config or {}, canonical_city_slug, ep.body):
                 continue
             if not ep.speakers_key:
+                continue
+            # `stage_is_dirty` deliberately keeps this stage always-revisit, because a human
+            # decision must never wait on a media mutation to take effect. That is right, and it
+            # is also why the skip belongs here instead: the stage still gets to look at every
+            # episode, it just does no I/O for the ones where nothing that feeds a decision has
+            # moved -- the common case for a six-hourly cron over a long backlog.
+            projection_key = _naming_projection_fingerprint(ep, run_digest=run_digest)
+            if projections.get(ep.uid or ep.guid) == projection_key:
+                stats.reused += 1
                 continue
             raw = _read_storage_bytes(ctx.storage, ep.speakers_key)
             try:
@@ -7217,6 +8036,11 @@ class SpeakerIdentityStage:
                 for item in ep.minutes_roster
                 if isinstance(item, dict) and item.get("name")
             )
+            # Per episode, before the conditional read. Scoped inside the loop it would either be
+            # undefined for the first sidecar-less episode (a provider-supplied speaker artifact
+            # has no word-sidecar prerequisite) or -- worse -- silently inherit the *previous*
+            # episode's cues, whose cluster labels mean different speakers in a different meeting.
+            cue_candidates: list[dict[str, Any]] = []
             if ep.transcript_words_key:
                 words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
                 try:
@@ -7228,9 +8052,21 @@ class SpeakerIdentityStage:
                     if not isinstance(reference_rows, dict):
                         reference_rows = {}
                         evaluation["reference_candidates"] = reference_rows
-                    for candidate in chair_reference_candidates(
-                        words, private_turns, known_names=known_names
-                    ):
+                    # Two independent automatic naming signals feed one candidate ledger: the
+                    # chair naming someone else, and a speaker naming themselves within the first
+                    # ~10s of their own turn (staff presenters and public commenters routinely
+                    # do the latter -- review/31 §C.3). Both are review evidence only; neither
+                    # ever assigns a name. Identical (name, turn) proposals from both signals
+                    # collapse to one row via `reference_candidate_id`, so a reviewer sees one
+                    # item, and agreement between signals is preserved as the `cue_kind` of
+                    # whichever landed first rather than duplicating the human's work.
+                    cue_candidates = [
+                        *chair_reference_candidates(words, private_turns, known_names=known_names),
+                        *self_introduction_candidates(
+                            words, private_turns, known_names=known_names
+                        ),
+                    ]
+                    for candidate in cue_candidates:
                         candidate_id = reference_candidate_id(
                             city_slug=canonical_city_slug,
                             body=ep.body,
@@ -7241,7 +8077,7 @@ class SpeakerIdentityStage:
                             turn=candidate,
                         )
                         if candidate_id not in reference_rows:
-                            stats.quality("chair-reference-candidate")
+                            stats.quality(f"{candidate['kind']}-candidate")
                         reference_rows[candidate_id] = {
                             **candidate,
                             "candidate_id": candidate_id,
@@ -7253,18 +8089,17 @@ class SpeakerIdentityStage:
                             "embedding_recipe": embedding_recipe,
                             "capture_context": capture_context,
                         }
-            cell = calibration_cell(
-                canonical_city_slug, ep.body, engine_recipe, capture_context=capture_context
-            )
-            publish = auto_publish_allowed(
-                evaluation,
-                cell=cell,
-                engine=str(payload.get("engine") or ""),
-            )
+            # Scoped to this body, not the whole city registry: review/31 §C.4.3 rules out a
+            # global person namespace because matching against everyone the project has ever seen
+            # degrades accuracy for no benefit. Invisible while one body is piloted; wrong the
+            # moment a second body in the same city has profiles.
+            episode_body_key = body_key(canonical_city_slug, ep.body)
             allowed_ids = {
                 ident
                 for ident, person in (registry.get("people") or {}).items()
-                if isinstance(person, dict) and person.get("status") == "active"
+                if isinstance(person, dict)
+                and person.get("status") == "active"
+                and person.get("body_key") == episode_body_key
             }
             # Once minutes arrive their roster is a correction constraint.  It does not make a
             # name true by itself, but it may silently replace a previous provisional voice-only
@@ -7272,29 +8107,187 @@ class SpeakerIdentityStage:
             roster_ids = roster_person_ids(registry, ep.minutes_roster)
             if roster_ids is not None:
                 allowed_ids &= roster_ids
+
+            # First pass: what does the voice print alone propose for each turn? Needed before
+            # any publish decision, because the decision is now per *candidate name* (its tier
+            # and which signals agreed), not one flag for the whole episode (review/31 §C.4).
+            minimum_score = float(ctx.speaker_config.get("minimum_match_score", 0.75))
+            matches_by_turn: list[list[dict[str, Any]]] = []
+            for turn in private_turns:
+                if not isinstance(turn, dict) or not isinstance(turn.get("embedding"), list):
+                    matches_by_turn.append([])
+                    continue
+                matches_by_turn.append(
+                    profile_matches(
+                        registry,
+                        turn["embedding"],
+                        embedding_recipe=embedding_recipe,
+                        allowed_ids=allowed_ids,
+                    )
+                )
+            episode_membership = body_membership(
+                registry, city_slug=canonical_city_slug, body=ep.body
+            )
+            decisions = self._naming_decisions(
+                private_turns,
+                matches_by_turn,
+                cue_candidates=cue_candidates,
+                roster=ep.minutes_roster,
+                membership=episode_membership,
+                registry=registry,
+                precision_table=precision_table,
+                city_slug=canonical_city_slug,
+                body=ep.body or "",
+                scoped_body_key=episode_body_key,
+                minimum_score=minimum_score,
+                min_verdicts=naming_min_verdicts,
+                min_precision=naming_min_precision,
+                min_member_verdicts=naming_min_member_verdicts,
+            )
+            # Approved *names* per cluster, not a boolean. A bare flag says only "something about
+            # this cluster was approved", which `assign_turn` then applies to whichever name its
+            # own best voice match picked -- so clearance for "Matt Bodine" could publish "Wrong
+            # Person" whenever the voice print disagreed with the introduction that earned it.
+            approved_by_cluster: dict[str, set[str]] = {}
+            naming_rows = evaluation.setdefault("naming_candidates", {})
+            if not isinstance(naming_rows, dict):
+                naming_rows = {}
+                evaluation["naming_candidates"] = naming_rows
+            for decision in decisions:
+                candidate = decision.candidate
+                stats.quality(f"naming-{decision.reason}")
+                if decision.publish:
+                    approved_by_cluster.setdefault(candidate.cluster, set()).add(
+                        _norm_display(candidate.display_name)
+                    )
+                if not decision.needs_review:
+                    continue
+                # Only review-bound candidates are ledgered, and they carry their own
+                # `combination_key`: that field is the join that turns a human verdict back into
+                # evidence about the signal combination, which is what lets the gate widen over
+                # time instead of asking for the same 30 reviews in every new city.
+                candidate_id = naming_candidate_id(
+                    city_slug=canonical_city_slug,
+                    body=ep.body,
+                    episode_uid=ep.uid or ep.guid,
+                    recipe=engine_recipe,
+                    cluster=candidate.cluster,
+                    proposed_name=candidate.display_name,
+                )
+                if candidate_id not in naming_rows:
+                    stats.quality("naming-candidate")
+                naming_rows[candidate_id] = {
+                    "kind": "naming",
+                    "candidate_id": candidate_id,
+                    "city_slug": canonical_city_slug,
+                    "body": ep.body or "",
+                    "engine_recipe": engine_recipe,
+                    "episode_uid": ep.uid or ep.guid,
+                    "episode_title": ep.title,
+                    "capture_context": capture_context,
+                    "cluster": candidate.cluster,
+                    "display_name": candidate.display_name,
+                    "tier": candidate.tier,
+                    "signals": list(candidate.signals),
+                    "combination_key": candidate.combination_key,
+                    "reason": decision.reason,
+                    # Evidence a reviewer needs to answer "is cluster 2 Jane Doe": where this
+                    # cluster speaks, and the words that proposed the name. Without them the issue
+                    # asks about an opaque id and invites a judgement on name plausibility alone,
+                    # which is exactly the ruling the precision table must not be trained on.
+                    "turns": [
+                        {"start": turn.get("start"), "end": turn.get("end")}
+                        for turn in private_turns
+                        if isinstance(turn, Mapping)
+                        and str(turn.get("cluster")) == candidate.cluster
+                    ][:5],
+                    "cues": [
+                        {
+                            "kind": row.get("cue_kind"),
+                            "text": row.get("cue_text"),
+                            "start": row.get("cue_start"),
+                        }
+                        for row in cue_candidates
+                        if str(row.get("cluster") or "") == candidate.cluster
+                        and _norm_display(row.get("display_name"))
+                        == _norm_display(candidate.display_name)
+                    ][:3],
+                }
+
+            for cluster, names in list(approved_by_cluster.items()):
+                if len(names) > 1:
+                    # Diarization merged two speakers, or two signals disagree. Either way the
+                    # gate cannot say which name belongs to this voice, and picking one would be
+                    # a coin flip recorded as a fact.
+                    stats.quality("naming-cluster-name-conflict")
+                    approved_by_cluster.pop(cluster)
+
             changed = False
             enriched_turns = []
-            for turn in private_turns:
+            for turn, matches in zip(private_turns, matches_by_turn, strict=True):
                 if not isinstance(turn, dict) or not isinstance(turn.get("embedding"), list):
                     enriched_turns.append(turn)
                     continue
-                matches = profile_matches(
-                    registry,
-                    turn["embedding"],
-                    embedding_recipe=embedding_recipe,
-                    allowed_ids=allowed_ids,
-                )
                 from citypods.speakers import assign_turn
 
                 enriched_turns.append(
                     assign_turn(
                         turn,
                         matches,
-                        publish=publish,
+                        publish=True,
+                        approved_names=approved_by_cluster.get(str(turn.get("cluster"))),
                         confirmed=roster_ids is not None,
-                        minimum_score=float(ctx.speaker_config.get("minimum_match_score", 0.75)),
+                        minimum_score=minimum_score,
                     )
                 )
+            # `assign_turn` can only name a cluster that matched a stored voice print. Clusters
+            # the gate cleared on agreeing cues alone -- the staff presenter with no profile yet,
+            # which is most of them -- are named here instead, or they would stay anonymous until
+            # someone hand-approved a golden reference.
+            # Indexed under both the stored spelling and the canonical one, for the same reason
+            # `confirmed_names` is canonicalized: a published candidate carries the official
+            # spelling, so a registry entry predating a minutes spelling change would miss here
+            # and the turn would lose its `speaker_id` -- and with it the speaker-page link.
+            official_names = [
+                str(row.get("name"))
+                for row in (list(ep.minutes_roster or ()) or list(episode_membership or ()))
+                if isinstance(row, Mapping) and str(row.get("name") or "").strip()
+            ]
+            person_ids: dict[str, str] = {}
+            for ident, person in (registry.get("people") or {}).items():
+                if (
+                    not isinstance(person, dict)
+                    or not person.get("display_name")
+                    # Body-scoped: an identically-named person on another body would otherwise
+                    # lend their opaque id to this attribution, pointing the speaker-page link at
+                    # someone else entirely.
+                    or person.get("body_key") != episode_body_key
+                ):
+                    continue
+                stored = str(person.get("display_name"))
+                person_ids.setdefault(_norm_display(stored), str(ident))
+                person_ids.setdefault(
+                    _norm_display(canonical_name(stored, official_names)), str(ident)
+                )
+            for decision in decisions:
+                if not decision.publish or decision.candidate.cluster not in approved_by_cluster:
+                    continue
+                candidate = decision.candidate
+                for index, turn in enumerate(enriched_turns):
+                    if (
+                        not isinstance(turn, dict)
+                        or str(turn.get("cluster")) != candidate.cluster
+                        or isinstance(turn.get("identity"), dict)
+                    ):
+                        continue
+                    enriched_turns[index] = {
+                        **turn,
+                        "identity": cue_identity(
+                            candidate.display_name,
+                            signals=candidate.signals,
+                            speaker_id=person_ids.get(_norm_display(candidate.display_name)),
+                        ),
+                    }
             for turn in enriched_turns:
                 identity = turn.get("identity") if isinstance(turn, dict) else None
                 if not isinstance(identity, dict) or identity.get("status") != "shadow":
@@ -7351,6 +8344,12 @@ class SpeakerIdentityStage:
                 # inputs. Identity is a mutable, calibrated projection, so it belongs on the
                 # durable R6 candidate ledger rather than rewriting immutable speaker bytes.
                 stats.ran += 1
+            # Recomputed rather than reused from the pre-loop value: the attributions this pass
+            # just wrote are part of the fingerprint, so recording the stale one would re-do this
+            # episode on every subsequent run and defeat the skip entirely.
+            projections[ep.uid or ep.guid] = _naming_projection_fingerprint(
+                ep, run_digest=run_digest
+            )
         save_registry(ctx.speaker_registry_path, registry)
         if ctx.speaker_evaluation_state_path is not None:
             from citypods.speakers import save_evaluation

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import threading
 import time
+from concurrent.futures import Future
 from datetime import UTC, datetime
 
 import pytest
@@ -281,20 +284,8 @@ def test_native_diarize_process_identifies_pilot_body_with_city_entity(tmp_path)
     assert stats.defer_reasons.get("missing-timed-words") == 1
 
 
-def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, monkeypatch, capsys):
-    """A running diarize attempt registers with PROGRESS (so the heartbeat's "active work"
-    snapshot shows it busy instead of "no tracked work active") and is bracketed by start/done
-    log lines carrying uid/body/timing -- the visibility gap that made run 51 (denton-tx,
-    2026-09-05) look stalled from its logs when it was actually just slow (see GH#1274 follow-up).
-    """
-    from contextlib import contextmanager
-
-    import citypods.stages as stages_mod
-    from citypods.compute.base import InferenceJob, JobResult
-    from citypods.diarize import DiarizeArtifacts
-    from citypods.progress import PROGRESS
-
-    city = City(
+def _pilot_city() -> City:
+    return City(
         slug="denton-tx-city-council",
         city_entity="denton-tx",
         provider="swagit",
@@ -304,50 +295,334 @@ def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, mon
         podcast_email="",
         podcast_description="d",
     )
-    ctx = _ctx(tmp_path)
-    ctx.speaker_config = {
+
+
+def _pilot_speaker_config(**overrides) -> dict:
+    config = {
         "enabled": True,
         "pilot_bodies": [
             {"city": "denton-tx", "body": "City Council", "capture_context": "council-chamber-v1"}
         ],
     }
+    config.update(overrides)
+    return config
 
-    ep = _ep("pilot")
-    ep.hosted_audio_url = "https://cdn/audio.m4a"
-    ep.transcript_synced = True
-    ep.transcript_words_key = "words/pilot.json"
-    ep.served_duration_seconds = 120.0
+
+def _put_words(ctx, tmp_path, key: str) -> None:
     ctx.storage.put_file(
-        ep.transcript_words_key,
+        key,
         _write_temp(
             tmp_path, "words.json", b'{"word_segments": [{"start": 0.0, "end": 1.0, "word": "hi"}]}'
         ),
         "application/json",
     )
 
-    progress_during_call: list = []
 
-    class _FakeDiarizeBackend:
-        def __init__(self, _asr):
-            pass
+def _stub_diarize_io(monkeypatch, tmp_path) -> None:
+    """Stub the two real-world touchpoints of the diarize pool: the audio download and the
+    model prefetch. Leaves admission, the worker loop, and finalize running for real."""
+    from contextlib import contextmanager
 
-        def run_inference(self, job: InferenceJob) -> JobResult:
-            # Snapshot PROGRESS from *inside* the call, the way the heartbeat thread would.
-            progress_during_call.extend(PROGRESS.snapshot())
-            return JobResult(
-                task=job.task,
-                recipe_hash=job.recipe_hash,
-                output=DiarizeArtifacts(
-                    turns=[], clusters=[], engine="pyannote", model="test-model"
-                ),
-            )
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
 
     @contextmanager
     def _fake_download_audio(url):
         yield tmp_path / "audio.m4a"
 
-    monkeypatch.setattr(stages_mod, "LocalBackend", _FakeDiarizeBackend)
     monkeypatch.setattr(stages_mod, "_download_audio", _fake_download_audio)
+    monkeypatch.setattr(diarize_mod, "prepare_models", lambda *_a, **_k: None)
+
+
+def _diarize_episode(ctx, tmp_path, name: str, *, seconds: float):
+    ep = _ep(name)
+    ep.hosted_audio_url = f"https://cdn/{name}.m4a"
+    ep.transcript_synced = True
+    ep.transcript_words_key = f"words/{name}.json"
+    ep.served_duration_seconds = seconds
+    _put_words(ctx, tmp_path, ep.transcript_words_key)
+    return ep
+
+
+def test_diarize_admission_claims_longest_first_then_narrows_to_what_fits(tmp_path):
+    """Best-fit-decreasing (review/31 §A.4): with runway, the longest meeting is claimed first so
+    it is never starved by a queue of short ones; once the budget shrinks, only shorter ones are
+    admitted and the rest are deferred rather than re-checked forever."""
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)  # unmeasured recipe -> seeded 0.2 ratio
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        # 1h of runway, no reserve, so the fits-check is purely estimate vs. remaining.
+        diarize_start_deadline=time.monotonic() + 3600,
+        diarize_start_reserve_seconds=0,
+    )
+    candidates = [
+        _bare_candidate("short", 600.0),  # est 120s
+        _bare_candidate("longest", 15000.0),  # est 3000s
+        _bare_candidate("medium", 3000.0),  # est 600s
+    ]
+    admission = _DiarizeAdmission(candidates, ctx=ctx, runtime_log=log, recipe="r")
+
+    # Plenty of runway: longest first, then descending.
+    assert admission.claim().uid == "longest"
+    assert admission.claim().uid == "medium"
+    assert admission.claim().uid == "short"
+    assert admission.claim() is None
+    assert admission.deferred == []
+
+
+def test_diarize_admission_defers_the_tail_when_nothing_fits(tmp_path):
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 60,  # only a minute of runway
+        diarize_start_reserve_seconds=0,
+    )
+    candidates = [
+        _bare_candidate("huge", 15000.0),  # est 3000s -- never fits
+        _bare_candidate("big", 3000.0),  # est 600s -- never fits
+        _bare_candidate("tiny", 120.0),  # est 24s -- fits
+    ]
+    admission = _DiarizeAdmission(candidates, ctx=ctx, runtime_log=log, recipe="r")
+
+    # The only one that fits is admitted even though it is the shortest.
+    assert admission.claim().uid == "tiny"
+    assert admission.claim() is None
+    assert {uid for (candidate, _), uid in ((d, d[0].uid) for d in admission.deferred)} == {
+        "huge",
+        "big",
+    }
+    assert {reason for _, reason in admission.deferred} == {"runtime-budget"}
+
+
+def test_diarize_admission_stops_on_the_stop_signal(tmp_path):
+    from citypods.stages import _DiarizeAdmission
+
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        stop=lambda: True,
+        diarize_start_deadline=time.monotonic() + 3600,
+    )
+    admission = _DiarizeAdmission(
+        [_bare_candidate("a", 600.0)], ctx=ctx, runtime_log=DiarizeRuntimeLog(None), recipe="r"
+    )
+    assert admission.claim() is None
+    assert [reason for _, reason in admission.deferred] == ["wall-clock-budget"]
+
+
+def _bare_candidate(uid: str, seconds: float):
+    from citypods.stages import _DiarizeCandidate
+
+    return _DiarizeCandidate(
+        ep=_ep(uid),
+        uid=uid,
+        spec="spec",
+        key=f"k/{uid}",
+        words_key=f"words/{uid}.json",
+        recording_seconds=seconds,
+    )
+
+
+def test_diarize_pool_runs_every_candidate_across_concurrent_workers(tmp_path, monkeypatch):
+    """Several workers claim from one admission queue and every artifact is published exactly
+    once, with the shared turn-evidence map and stats surviving concurrent finalize."""
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
+    from citypods.diarize import DiarizeArtifacts
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=4)
+    ctx.speaker_turn_evidence_path = tmp_path / "evidence.json"
+    episodes = [
+        _diarize_episode(ctx, tmp_path, f"ep{index}", seconds=60.0 * (index + 1))
+        for index in range(6)
+    ]
+
+    seen: list[str] = []
+    seen_lock = threading.Lock()
+
+    def _fake_job(audio_path, **_kwargs):
+        with seen_lock:
+            seen.append(str(audio_path))
+        return DiarizeArtifacts(
+            turns=[{"start": 0.0, "end": 1.0, "cluster": "0", "overlap": False}],
+            clusters=[{"cluster": "0", "turn_count": 1}],
+            engine="sherpa-onnx",
+            model="test-model",
+        )
+
+    monkeypatch.setattr(diarize_mod, "run_diarize_job", _fake_job)
+    # Real threads, real admission, real finalize -- only the subprocess boundary is collapsed.
+    monkeypatch.setattr(
+        stages_mod, "_diarize_executor", lambda workers: stages_mod._InlineExecutor()
+    )
+    _stub_diarize_io(monkeypatch, tmp_path)
+
+    stats = NativeDiarizeStage().process(FakeProvider(), city, episodes, ctx)
+
+    assert stats.ran == 6
+    assert len(seen) == 6
+    assert all(ep.speakers_synced and ep.speakers_source == "native" for ep in episodes)
+    assert all(ep.speakers_key for ep in episodes)
+    evidence = json.loads(ctx.speaker_turn_evidence_path.read_text())
+    assert len(evidence["episodes"]) == 6
+
+
+def test_diarize_pool_defers_when_the_memory_budget_cannot_admit(tmp_path, monkeypatch):
+    """Memory is a second, independent admission constraint: a worker that cannot reserve its
+    predicted peak RSS defers rather than running and risking an OOM kill (review/31 §A.4)."""
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
+    from citypods.resources import MemoryReservation
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ep = _diarize_episode(ctx, tmp_path, "pilot", seconds=120.0)
+
+    called: list[str] = []
+    monkeypatch.setattr(
+        diarize_mod, "run_diarize_job", lambda *a, **k: called.append("ran") or None
+    )
+    monkeypatch.setattr(
+        stages_mod, "_diarize_executor", lambda workers: stages_mod._InlineExecutor()
+    )
+    _stub_diarize_io(monkeypatch, tmp_path)
+
+    # A budget far below one worker's ~350MB floor: reserve() waits for headroom that never
+    # arrives, and the stop signal releases it. The item must defer, never run unreserved.
+    ctx.diarize_memory_reservation = MemoryReservation(budget_bytes=1024, poll_seconds=0.01)
+    stop_calls = {"n": 0}
+
+    def _stop_once_waiting() -> bool:
+        stop_calls["n"] += 1
+        return stop_calls["n"] > 1  # let admission claim the item, then abort the reservation
+
+    ctx.stop = _stop_once_waiting
+    stats = NativeDiarizeStage().process(FakeProvider(), city, [ep], ctx)
+
+    assert called == []
+    assert not ep.speakers_synced
+    assert stats.ran == 0
+    assert stats.defer_reasons.get("memory-reservation") == 1
+
+
+def test_diarize_candidates_do_not_retain_timed_words_for_the_whole_backlog(tmp_path, monkeypatch):
+    """Collecting candidates up front makes every one live at once, so the sidecar bytes must be
+    validated and dropped, not carried. A backlog is thousands of episodes deep; retaining each
+    one's timed words would turn a bounded per-item read into a whole-backlog memory spike."""
+    import citypods.stages as stages_mod
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    episodes = [_diarize_episode(ctx, tmp_path, f"ep{index}", seconds=60.0) for index in range(3)]
+
+    stage = NativeDiarizeStage()
+    candidates = stage._collect_candidates(
+        city,
+        episodes,
+        ctx,
+        StageStats(stage.name),
+        config=ctx.speaker_config,
+        model="m",
+        embedding_model="e",
+        canonical_city_slug="denton-tx",
+    )
+
+    assert len(candidates) == 3
+    assert not any(isinstance(value, bytes) for value in vars(candidates[0]).values())
+    assert candidates[0].words_key == "words/ep0.json"
+    assert stages_mod._DiarizeCandidate.__doc__  # documents why, so it is not "simplified" back
+
+
+def test_diarize_backstop_defers_the_item_and_stops_admitting(tmp_path, monkeypatch):
+    """An item still running at the backstop is abandoned and admission closes, so one estimate
+    miss cannot hold the whole job past its runner timeout (review/31 §A.4)."""
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ctx.diarize_backstop_deadline = time.monotonic()  # already expired -> minimum 60s timeout
+    episodes = [
+        _diarize_episode(ctx, tmp_path, "first", seconds=600.0),
+        _diarize_episode(ctx, tmp_path, "second", seconds=60.0),
+    ]
+
+    class _NeverFinishes:
+        def submit(self, fn, /, *args, **kwargs):
+            future: Future = Future()
+            return future  # never resolved -> result(timeout=...) raises
+
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            return None
+
+    monkeypatch.setattr(stages_mod, "_diarize_executor", lambda workers: _NeverFinishes())
+    monkeypatch.setattr(stages_mod, "_diarize_job_timeout_seconds", lambda ctx: 0.05)
+    monkeypatch.setattr(diarize_mod, "run_diarize_job", lambda *a, **k: None)
+    _stub_diarize_io(monkeypatch, tmp_path)
+
+    stats = NativeDiarizeStage().process(FakeProvider(), city, episodes, ctx)
+
+    assert stats.ran == 0
+    # The timed-out item is deferred under its own reason, and the *other* candidate is deferred
+    # too rather than being started after the backstop already fired.
+    assert stats.defer_reasons.get("diarize-backstop") == 1
+    assert stats.defer_reasons.get("backstop") == 1
+    assert all(not ep.speakers_synced for ep in episodes)
+
+
+def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, monkeypatch, capsys):
+    """A running diarize attempt registers with PROGRESS (so the heartbeat's "active work"
+    snapshot shows it busy instead of "no tracked work active") and is bracketed by start/done
+    log lines carrying uid/body/timing -- the visibility gap that made run 51 (denton-tx,
+    2026-09-05) look stalled from its logs when it was actually just slow (see GH#1274 follow-up).
+    """
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
+    from citypods.diarize import DiarizeArtifacts
+    from citypods.progress import PROGRESS
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+
+    ep = _ep("pilot")
+    ep.hosted_audio_url = "https://cdn/audio.m4a"
+    ep.transcript_synced = True
+    ep.transcript_words_key = "words/pilot.json"
+    ep.served_duration_seconds = 120.0
+    _put_words(ctx, tmp_path, ep.transcript_words_key)
+
+    progress_during_call: list = []
+
+    def _fake_job(audio_path, **_kwargs):
+        # Snapshot PROGRESS from *inside* the call, the way the heartbeat thread would.
+        progress_during_call.extend(PROGRESS.snapshot())
+        return DiarizeArtifacts(turns=[], clusters=[], engine="sherpa-onnx", model="test-model")
+
+    # In-process so the monkeypatched job is observed; production always uses a
+    # real pool, so the backstop timeout can actually fire (see _diarize_executor).
+    monkeypatch.setattr(
+        stages_mod, "_diarize_executor", lambda workers: stages_mod._InlineExecutor()
+    )
+    monkeypatch.setattr(diarize_mod, "run_diarize_job", _fake_job)
+    _stub_diarize_io(monkeypatch, tmp_path)
 
     stats = NativeDiarizeStage().process(FakeProvider(), city, [ep], ctx)
 
@@ -1681,3 +1956,20 @@ def test_native_diarize_defers_an_episode_with_no_served_duration(tmp_path):
     assert stats.defer_reasons.get("unknown-duration") == 1
     assert stats.ran == 0
     assert ep.speakers_key is None
+
+
+def test_single_worker_still_gets_a_real_process_pool():
+    """The backstop is `future.result(timeout=...)`, which an inline executor makes unreachable by
+    resolving its Future before returning. Every diarize test replaces this factory, so nothing
+    else pins the production contract: one worker must still be a real, spawn-context pool."""
+    from concurrent.futures import ProcessPoolExecutor
+
+    import citypods.stages as stages_mod
+
+    for workers in (1, 4):
+        executor = stages_mod._diarize_executor(workers)
+        try:
+            assert isinstance(executor, ProcessPoolExecutor)
+            assert executor._mp_context.get_start_method() == "spawn"
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)

@@ -477,3 +477,79 @@ def test_pdf_layout_outline_uses_existing_pypdf_layout_mode():
     assert "CALL TO ORDER" in layout
     assert layout != plain
     assert outline == layout
+
+
+def test_roster_rejects_spans_that_are_not_name_shaped():
+    """A roster entry is not merely displayed: it enrols a person in the body registry, carries
+    forward as standing membership, tiers as a *member*, and acts as a correction constraint that
+    removes voice matches outside it. One junk entry therefore suppresses correct naming for the
+    whole meeting -- strictly worse than extracting nothing, since an empty roster already means
+    "make no correction"."""
+    junk = [
+        "Present: a quorum of the Council was established at 6:02 p.m.",
+        "Present: 7",
+        "Members Present: Jane Doe Bob Chair Ann Lee",  # run-on: one 6-word "name"
+        "MEMBERS PRESENT: J4ne D0e, ., B",
+        "Present: Yes.  Absent: None",
+        "Others Present: Random Citizen",  # in the room, not on the body
+    ]
+    for text in junk:
+        assert parse_roster(text) == [], text
+
+
+def test_roster_strips_leading_titles_so_names_can_corroborate_cues():
+    """Corroboration compares the roster name to the *spoken* name, so a stored "Mayor Gerard
+    Hudspeth" would never corroborate a chair cue proposing "Gerard Hudspeth" -- failing for
+    exactly the people who speak most."""
+    rows = parse_roster(
+        "PRESENT: Mayor Gerard Hudspeth, Council Member Vicki Byrd, Mayor Pro Tem Brian Beck"
+    )
+    assert [row["name"] for row in rows] == ["Gerard Hudspeth", "Vicki Byrd", "Brian Beck"]
+
+
+def test_roster_labels_member_and_staff_sections():
+    members = parse_roster("MEMBERS PRESENT: Jane Doe")
+    staff = parse_roster("City Staff Present: Matt Bodine")
+    flat = parse_roster("Present: Alice Smith")
+    assert members[0]["section"] == "members"
+    assert staff[0]["section"] == "staff"
+    # A flat list carries no section; tiering falls back to spoken-title vocabulary.
+    assert "section" not in flat[0]
+    # Staff wins a mixed qualifier: "members" is filler there, "staff" discriminates.
+    assert parse_roster("Staff Members Present: Sam Staffer")[0]["section"] == "staff"
+
+
+def test_also_present_is_a_staff_section_not_an_unsectioned_member_row():
+    """ "ALSO PRESENT:" is the conventional heading for the clerk, attorney and manager. It matched
+    no vocabulary, so it fell through as an unsectioned row -- and an unsectioned roster hit tiers
+    as `member`, which would hand the City Manager the speaker page reserved for officials."""
+    rows = parse_roster("ALSO PRESENT: City Manager Sara Hensley, City Attorney Mack Reinwand")
+    assert [(row["name"], row["section"]) for row in rows] == [
+        ("Sara Hensley", "staff"),
+        ("Mack Reinwand", "staff"),
+    ]
+
+
+def test_staff_titles_are_stripped_from_roster_names():
+    """Stripped word-by-word from the front, because real staff titles are open-ended phrases.
+    Leaving the title in place stores it as part of the person's name, where it matches no spoken
+    name and corroborates nothing."""
+    rows = parse_roster("Also Present: Interim Assistant City Manager Jane Doe")
+    assert [row["name"] for row in rows] == ["Jane Doe"]
+
+
+def test_a_surname_that_is_also_a_role_word_survives():
+    """Leading-only stripping: "Manager" is a title at the front and a surname at the back."""
+    assert [row["name"] for row in parse_roster("Present: Mark Manager")] == ["Mark Manager"]
+
+
+def test_an_office_listed_without_a_name_is_not_a_person():
+    """Leading-only role-word stripping always spares the last word, so "City Manager, City
+    Attorney" would enrol people called "Manager" and "Attorney" -- who then narrow
+    `roster_person_ids` and remove correct voice matches for the whole meeting."""
+    assert parse_roster("ALSO PRESENT: City Manager, City Attorney") == []
+    # A real name after the office still resolves, and a role-word surname still survives.
+    assert [r["name"] for r in parse_roster("ALSO PRESENT: City Manager Sara Hensley")] == [
+        "Sara Hensley"
+    ]
+    assert [r["name"] for r in parse_roster("Present: Mark Manager")] == ["Mark Manager"]

@@ -17,38 +17,102 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-IDENTITY_PIPELINE_VERSION = "1"
+# Bump this for any change to what the identity projection *derives* -- cue vocabularies and
+# extraction shapes, roster/section parsing, tier rules, the fusion or agreement rules. It is both
+# `SpeakerIdentityStage.version` and part of the §C.5.7 projection fingerprint, so leaving it
+# unchanged after such an edit means already-fingerprinted episodes keep their old projection and
+# never observe the improvement. (Changes to *policy thresholds* need no bump: those are hashed
+# into the fingerprint directly.)
+# 1 -> 2: cue vocabularies (titles, recognition verbs, greeting rejection), roster section and
+# name parsing, tier rules, name canonicalisation, and the member-confirmation rule all changed
+# what this projection derives from unchanged inputs -- exactly the case described above.
+IDENTITY_PIPELINE_VERSION = "2"
 PILOT_SCOPE_VERSION = "2"
 MIN_REFERENCE_MEETINGS = 2
-MIN_CALIBRATION_DAYS = 30
-MIN_CALIBRATION_REVIEWS = 30
-REQUIRED_PRECISION = 0.95
+# The flat "30 reviews x 30 days x 95% precision per calibration cell" gate that used to live
+# here is gone: it multiplied as `30 x cities x bodies`, so no detection improvement could scale
+# past it. `citypods.naming` now owns admission, keyed on signal combination and pooled globally.
 PROFILE_REVIEW_ONLY_AFTER_DAYS = 180
 
-_ANNOUNCEMENT_TITLES: tuple[tuple[str, ...], ...] = (
-    ("council", "member"),
-    ("councilmember",),
-    ("councilman",),
-    ("councilwoman",),
-    ("commissioner",),
-    ("mayor",),
-    ("vice", "mayor"),
-    ("alderman",),
-    ("alderwoman",),
-    ("trustee",),
-    ("supervisor",),
-    ("representative",),
-    ("senator",),
+# Titles that mean "this person sits on the body", across the naming conventions US municipal and
+# county bodies actually use -- councils, commissions, boards, New England selectboards, NJ
+# freeholder boards. Only *member* titles belong here: this vocabulary feeds `_ELECTED_TITLE_CUES`,
+# so anything staff-ish added below would tier a City Manager or Clerk as a member and hand them
+# the speaker page §C.4.1 withholds. That is why "Director", "Chief" and bare "Chair" are absent.
+#
+# Sorted longest-first because `_name_after` skips the *first* matching prefix: with ("mayor",)
+# ahead of ("mayor","pro","tem"), "Mayor Pro Tem Brian Beck" would consume only "Mayor" and
+# extract "Pro Tem Brian Beck" as the name.
+_ANNOUNCEMENT_TITLES: tuple[tuple[str, ...], ...] = tuple(
+    sorted(
+        (
+            ("council", "member"),
+            ("council", "person"),
+            ("council", "man"),
+            ("council", "woman"),
+            ("councilmember",),
+            ("councilperson",),
+            ("councilman",),
+            ("councilwoman",),
+            ("councilor",),
+            ("councillor",),
+            ("commissioner",),
+            ("commission", "member"),
+            ("committee", "member"),
+            ("board", "member"),
+            ("mayor",),
+            ("mayor", "pro", "tem"),
+            ("mayor", "pro", "tempore"),
+            ("vice", "mayor"),
+            ("deputy", "mayor"),
+            ("chairman",),
+            ("chairwoman",),
+            ("chairperson",),
+            ("vice", "chair"),
+            ("alderman",),
+            ("alderwoman",),
+            ("alderperson",),
+            ("selectman",),
+            ("selectwoman",),
+            ("selectperson",),
+            ("freeholder",),
+            ("assemblyman",),
+            ("assemblywoman",),
+            ("assemblymember",),
+            ("assembly", "member"),
+            ("trustee",),
+            ("supervisor",),
+            ("representative",),
+            ("senator",),
+            ("delegate",),
+        ),
+        key=len,
+        reverse=True,
+    )
 )
-_RECOGNITION_CUES: tuple[tuple[str, ...], ...] = (
-    ("the", "chair", "recognizes"),
-    ("chair", "recognizes"),
-    ("the", "chair", "recognised"),
-    ("chair", "recognised"),
-    ("i", "recognize"),
-    ("i", "recognise"),
-    ("chair", "calls", "on"),
-    ("the", "chair", "calls", "on"),
+# Handing the floor to someone. Deliberately keyed on the **verb alone**, never on who is
+# presiding: requiring a presider title meant the verb had to follow it directly, so "the chair
+# recognizes X" matched while "Chairman Smith calls on X" -- the presider named, which is at least
+# as common -- matched nothing. Enumerating presiders could not fix that, because a name sits
+# between the title and the verb.
+#
+# This is recall-first on purpose (maintainer direction, 2026-09-06): a spurious extraction such
+# as "recognizes that we need" carries exactly one signal, so it cannot reach the two-signal
+# agreement rule, cannot match a roster, and tiers as `other` -- it is discarded at no cost. A
+# *missed* introduction, by contrast, silently costs a member their name.
+_RECOGNITION_VERBS: tuple[tuple[str, ...], ...] = (
+    ("recognizes",),
+    ("recognises",),
+    ("recognized",),
+    ("recognised",),
+    ("recognize",),
+    ("recognise",),
+    ("calls", "on"),
+    ("yields", "to"),
+    ("turns", "it", "over", "to"),
+)
+_RECOGNITION_CUES: tuple[tuple[str, ...], ...] = tuple(
+    sorted(_RECOGNITION_VERBS, key=len, reverse=True)
 )
 _SELF_INTRO_CUES: tuple[tuple[str, ...], ...] = (
     ("my", "name", "is"),
@@ -80,6 +144,73 @@ _STAFF_TITLE_WORDS = frozenset(
     }
 )
 _SELF_INTRODUCTION_WINDOW_SECONDS = 10.0
+# Openers that precede a comma in ordinary speech. Without them "Thank you, Assistant Planner
+# Matt Bodine" reads as the self-introduction of a person called "Thank you" -- and because
+# `self-introduction + title-cue` is a *complete* staff combination, that name auto-publishes
+# once the combination is trusted. The greeting is the addresser, never the addressee.
+# Surname particles, which are conventionally lowercase. Requiring every token to be capitalised
+# would drop "Ana de la Cruz" -- and `self-introduction + title-cue` is the *only* two-signal path
+# a staff member has in a new city, so that name would simply never appear.
+_NAME_PARTICLES = frozenset(
+    {
+        "de",
+        "del",
+        "de la",
+        "della",
+        "der",
+        "van",
+        "van der",
+        "von",
+        "da",
+        "di",
+        "la",
+        "le",
+        "el",
+        "bin",
+        "ibn",
+        "al",
+        "mac",
+        "mc",
+        "st",
+        "ter",
+        "ten",
+        "dos",
+        "das",
+        "do",
+    }
+)
+_GREETING_WORDS = frozenset(
+    {
+        "thank",
+        "thanks",
+        "thankyou",
+        "good",
+        "morning",
+        "afternoon",
+        "evening",
+        "hello",
+        "hi",
+        "hey",
+        "welcome",
+        "yes",
+        "no",
+        "okay",
+        "ok",
+        "alright",
+        "sorry",
+        "excuse",
+        "again",
+        "next",
+        "finally",
+        "so",
+        "well",
+        "now",
+        "also",
+        "and",
+        "but",
+        "then",
+    }
+)
 _NAME_STOP_WORDS = frozenset(
     {
         "about",
@@ -99,8 +230,93 @@ _NAME_STOP_WORDS = frozenset(
         "to",
         "will",
         "with",
+        # Recognition verbs. A title can legitimately precede one ("the mayor recognizes Jane
+        # Doe"), and the title branch then starts scanning for a name at the verb -- yielding
+        # "recognizes Jane Doe". Stopping here makes every title token safe to add, including the
+        # chair/vice-chair variants that sit closest to these phrases. The recognition-cue branch
+        # is unaffected: it scans from *after* the verb it already matched.
+        "calls",
+        "recognise",
+        "recognises",
+        "recognize",
+        "recognizes",
+        "recognised",
+        "recognized",
+        "yields",
+        "turns",
     }
 )
+
+
+# Speaker tiers (review/31 §C.4.1). What a tier buys is deliberately asymmetric: members are
+# human-confirmed and get a cross-meeting page; staff are named automatically with no page,
+# because a page aggregates "everything this person said" and would compound an unverified
+# attribution into something that reads as authoritative; everyone else is never named at all.
+TIER_MEMBER = "member"
+TIER_STAFF = "staff"
+TIER_OTHER = "other"
+
+# Roster section labels that mean "this person is on the body" vs "this person works for it".
+# `agenda_text.parse_roster` emits the canonical "members"/"staff" from an attendance line's
+# qualifier ("MEMBERS PRESENT:", "STAFF PRESENT:"); the extra spellings here accept raw section
+# text from any other producer. A city publishing one flat `Present:` list yields no section at
+# all, and `classify_speaker_tier` falls back to spoken-title vocabulary for those.
+_ROSTER_MEMBER_SECTIONS = frozenset({"member", "members", "members present", "present", "council"})
+_ROSTER_STAFF_SECTIONS = frozenset({"staff", "staff present", "administration"})
+
+# Which cue kinds carry title evidence, and what kind. `chair_reference_candidates` emits
+# "title-announcement" only when it matched `_ANNOUNCEMENT_TITLES` (elected), and
+# `self_introduction_candidates` emits "name-then-title" only when it matched
+# `_STAFF_TITLE_WORDS` -- so the producers already tell us which vocabulary fired.
+_ELECTED_TITLE_CUES = frozenset({"title-announcement"})
+_STAFF_TITLE_CUES = frozenset({"name-then-title"})
+# Every cue kind that carries a spoken title, whichever vocabulary produced it. Derived rather
+# than re-listed at the call site: a new cue kind added to either set above must not silently
+# stop counting as title evidence in the naming gate.
+TITLE_CUE_KINDS = _ELECTED_TITLE_CUES | _STAFF_TITLE_CUES
+
+
+def classify_speaker_tier(
+    display_name: str,
+    *,
+    roster: Iterable[Mapping[str, Any]] = (),
+    cue_kinds: Iterable[str] = (),
+) -> str:
+    """Return the naming tier for `display_name` (review/31 §C.4.2).
+
+    Roster *sections* first where a city's minutes separate members from staff, since that is
+    authoritative; title cues as the fallback, because plenty of cities publish one flat
+    ``Present:`` list that mixes the Clerk and Attorney in with members. When both signals fire,
+    resolve to the member tier deliberately: uncertainty should buy *more* scrutiny, never less.
+    """
+    wanted = _norm(display_name)
+    if not wanted:
+        return TIER_OTHER
+    section: str | None = None
+    in_roster = False
+    for item in roster:
+        if not isinstance(item, Mapping) or _norm(item.get("name")) != wanted:
+            continue
+        in_roster = True
+        raw_section = _norm(item.get("section") or item.get("role"))
+        if raw_section:
+            section = raw_section
+            break
+    if section in _ROSTER_MEMBER_SECTIONS:
+        return TIER_MEMBER
+    if section in _ROSTER_STAFF_SECTIONS:
+        return TIER_STAFF
+
+    kinds = set(cue_kinds)
+    elected_cue = bool(kinds & _ELECTED_TITLE_CUES)
+    staff_cue = bool(kinds & _STAFF_TITLE_CUES)
+    if elected_cue:
+        return TIER_MEMBER  # wins over a staff cue on purpose: more scrutiny, not less
+    if staff_cue:
+        return TIER_STAFF
+    # No title evidence either way. An unsectioned roster hit still means the minutes place this
+    # person on the body's attendance list, which is the best available member signal.
+    return TIER_MEMBER if in_roster else TIER_OTHER
 
 
 def _now() -> datetime:
@@ -312,6 +528,33 @@ def reference_candidate_id(
     return "r7-ref-" + hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:20]
 
 
+def naming_candidate_id(
+    *,
+    city_slug: str,
+    body: str | None,
+    episode_uid: str,
+    recipe: str,
+    cluster: str,
+    proposed_name: str,
+) -> str:
+    """Return a stable id for one fused naming candidate (review/31 §C.3).
+
+    Keyed on the *cluster*, not on a turn: the fused candidate is a claim about who a whole
+    diarization cluster is, so re-running with more turns must land on the same review item rather
+    than asking a human the same question again. Signals are excluded on purpose -- a later run
+    finding a third agreeing signal is more evidence for the same question, not a new one.
+    """
+    payload = {
+        "city": city_slug,
+        "body": _norm(body),
+        "episode_uid": episode_uid,
+        "recipe": recipe,
+        "cluster": cluster,
+        "proposed_name": _norm(proposed_name),
+    }
+    return "r7-name-" + hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:20]
+
+
 def chair_reference_candidates(
     words: Mapping[str, Any], turns: Iterable[Mapping[str, Any]], *, known_names: Iterable[str] = ()
 ) -> list[dict[str, Any]]:
@@ -333,6 +576,13 @@ def chair_reference_candidates(
                 continue
             name, end_index = _name_after(rows, index + len(cue), known)
             if name:
+                # "The chair recognizes *Council Member* Jane Doe" carries an elected title just
+                # as much as the title-led form does; `_name_after` steps over it silently, so
+                # re-check for it here. Without this the naming gate would see only a bare
+                # recognition, classify a council member as `other`, and never name them.
+                spoke_title = any(
+                    _sequence_at(rows, index + len(cue), title) for title in _ANNOUNCEMENT_TITLES
+                )
                 matches.append(
                     _reference_candidate(
                         rows,
@@ -341,12 +591,22 @@ def chair_reference_candidates(
                         end_index,
                         name,
                         "chair-recognition",
+                        "title-announcement" if spoke_title else None,
                     )
                 )
         for title in _ANNOUNCEMENT_TITLES:
             if not _sequence_at(rows, index, title):
                 continue
             name, end_index = _name_after(rows, index + len(title), known)
+            # A title-announcement immediately followed by a recognition verb is the presider
+            # naming *themselves* ("Chairman Smith calls on Councilor Jane Doe"), not introducing
+            # the next speaker -- so the candidate would attach Smith's name to Jane's turn.
+            if name and any(_sequence_at(rows, end_index + 1, verb) for verb in _RECOGNITION_VERBS):
+                name = None
+            # Longest match wins, and no shorter one is tried at this position. `_ANNOUNCEMENT_
+            # TITLES` is sorted longest-first, so "Mayor Pro Tem Brian Beck" matches the full
+            # title; without stopping here ("mayor",) would also match and emit a second candidate
+            # named "Pro Tem Brian Beck", which dedup cannot collapse because the names differ.
             if name:
                 matches.append(
                     _reference_candidate(
@@ -356,8 +616,10 @@ def chair_reference_candidates(
                         end_index,
                         name,
                         "title-announcement",
+                        "title-announcement",
                     )
                 )
+            break
     unique: dict[tuple[float, float, str], dict[str, Any]] = {}
     for candidate in matches:
         if not candidate:
@@ -437,6 +699,7 @@ def _reference_candidate(
     name_end_index: int,
     name: str,
     cue_kind: str,
+    title_cue: str | None,
 ) -> dict[str, Any] | None:
     cue_start = float(rows[cue_index]["start"])
     cue_end = float(rows[name_end_index]["end"])
@@ -471,6 +734,7 @@ def _reference_candidate(
     return {
         "kind": "chair-reference",
         "cue_kind": cue_kind,
+        "title_cue": title_cue,
         "cue_text": cue_text,
         "cue_start": cue_start,
         "cue_end": cue_end,
@@ -506,6 +770,27 @@ def _name_then_title(
     name = " ".join(part for part in collected if part).strip()
     if not name or not any(char.isalpha() for char in name):
         return None
+    # Two independent guards, because this shape is otherwise "any phrase ending in a comma".
+    # A greeting word anywhere in the span rules it out, and every token must read as a proper
+    # noun -- ASR capitalises names, so "Thank you" and "Good morning" fail on their second
+    # token while "Matt Bodine" and an all-caps "MATT BODINE" both pass.
+    if any(row["token"] in _GREETING_WORDS for row in rows[start : end_index + 1]):
+        return None
+    parts = [part for part in collected if part]
+    # The *first* token must read as a proper noun; later ones may be lowercase surname
+    # particles. Greeting rejection above already handles "Thank you," and "Good morning,"
+    # independently, so this check does not have to cover every token to be effective.
+    if not parts:
+        return None
+    uniformly_lowercase = all(part == part.casefold() for part in parts)
+    if not uniformly_lowercase:
+        if not parts[0][:1].isupper():
+            return None
+        if not all(
+            part[:1].isupper() or part.casefold().strip(".") in _NAME_PARTICLES
+            for part in parts[1:]
+        ):
+            return None
     # A known-attendee roster (when one parsed) corrects the raw ASR name text to the official
     # spelling below; without one (a new city, or unparseable minutes) this signal still fires
     # on the title check alone -- roster narrowing is a quality improvement, not a requirement.
@@ -607,6 +892,8 @@ def _self_introduction_candidate(
     return {
         "kind": "self-introduction",
         "cue_kind": cue_kind,
+        # Only the name-then-title shape carries a spoken title; "my name is Reza" carries none.
+        "title_cue": cue_kind if cue_kind in TITLE_CUE_KINDS else None,
         "cue_text": cue_text,
         "cue_start": float(rows[cue_index]["start"]),
         "cue_end": float(rows[name_end_index]["end"]),
@@ -667,12 +954,16 @@ def observe_attendance(
     New names deliberately remain un-enrolled until a reviewer creates golden voice references.
     """
     seen: dict[str, str] = {}
+    sections: dict[str, str] = {}
     for item in roster:
         if not isinstance(item, Mapping):
             continue
         name = str(item.get("name") or "").strip()
         if name:
             seen[_norm(name)] = name
+            section = _norm(item.get("section"))
+            if section:
+                sections[_norm(name)] = section
     for item in votes:
         for vote in item.get("votes", []) if isinstance(item, Mapping) else []:
             if isinstance(vote, Mapping) and vote.get("member"):
@@ -701,6 +992,14 @@ def observe_attendance(
             membership = person.setdefault("membership", {})
             membership.setdefault("first_seen", published.isoformat())
             membership["last_seen"] = published.isoformat()
+        # Remember which section of the minutes named this person, so `body_membership` can carry
+        # the member/staff distinction through the weeks before the *next* meeting's minutes
+        # publish. Without it a recurring staffer read back as an unsectioned roster hit, which
+        # `classify_speaker_tier` resolves to `member` -- the tier that earns a speaker page.
+        # Latest explicit section wins; minutes that omit sections never erase a known one.
+        section = sections.get(_norm(name))
+        if section:
+            person["section"] = section
         registry.setdefault("history", []).append(
             {
                 "kind": "attendance",
@@ -820,41 +1119,25 @@ def roster_person_ids(
     return matches
 
 
-def auto_publish_allowed(
-    state: Mapping[str, Any], *, cell: str, engine: str, now: datetime | None = None
-) -> bool:
-    """Require the locked 30-day/30-review/95%-precision calibration policy."""
-    if not any(
-        isinstance(row, Mapping)
-        and row.get("cell") == cell
-        and row.get("selected_engine") == engine
-        for row in state.get("benchmarks", [])
-    ):
-        return False
-    rows = [
-        row
-        for row in state.get("reviews", [])
-        if isinstance(row, Mapping) and row.get("cell") == cell
-    ]
-    if len(rows) < MIN_CALIBRATION_REVIEWS:
-        return False
-    dates = [_parse_time(row.get("reviewed_at")) for row in rows]
-    valid_dates = [value for value in dates if value]
-    if not valid_dates or (now or _now()) - min(valid_dates) < timedelta(days=MIN_CALIBRATION_DAYS):
-        return False
-    correct = sum(bool(row.get("correct")) for row in rows)
-    return correct / len(rows) >= REQUIRED_PRECISION
-
-
 def assign_turn(
     turn: Mapping[str, Any],
     matches: list[Mapping[str, Any]],
     *,
     publish: bool,
+    approved_names: Iterable[str] | None = None,
     confirmed: bool = False,
     minimum_score: float = 0.75,
 ) -> dict[str, Any]:
-    """Attach the best unambiguous identity without ever exposing a raw embedding."""
+    """Attach the best unambiguous identity without ever exposing a raw embedding.
+
+    `approved_names` is the set the naming gate cleared for *this cluster*. Publication requires
+    the voice print to land on one of them: the gate's decision is about a specific (cluster,
+    name) pair, so applying it to whatever name the voice match happened to rank first would let
+    clearance earned by one person publish another. A disagreement is not an error -- the match
+    is still recorded, as `shadow`, which is what puts it in front of a reviewer.
+
+    Passing `None` means "no approval information", which publishes nothing.
+    """
     result = dict(turn)
     if not matches:
         return result
@@ -865,14 +1148,130 @@ def assign_turn(
     # becoming an identity candidate in the review queue.
     if score < minimum_score or score <= runner_up + 0.02:
         return result
+    agreed = _norm(best.get("display_name")) in {_norm(name) for name in approved_names or ()}
+    may_publish = publish and agreed
     result["identity"] = {
         "speaker_id": best.get("speaker_id"),
         "display_name": best.get("display_name"),
-        "status": "confirmed" if publish and confirmed else "provisional" if publish else "shadow",
+        "status": "confirmed"
+        if may_publish and confirmed
+        else "provisional"
+        if may_publish
+        else "shadow",
         "method": "voice-profile",
         "match_score": score,
     }
     return result
+
+
+# Whole-string similarity at which an ASR-heard name is taken to be a misspelling of an official
+# one. Calibrated against real civic name pairs rather than picked: "Gerard/Gerrard Hudspeth"
+# (0.97), "Paul Meltzer/Melzer" (0.96), "Alison Maguire/McGuire" (0.93) and "Brian/Bryan Beck"
+# (0.90) are the same person; "John Smith"/"Jane Smith" (0.80) and "Chris Watts"/"Chris Watkins"
+# (0.83) are not. 0.90 separates them. Known limitation: homophone spellings that diverge more
+# than that ("Vicky Bird"/"Vicki Byrd", 0.80) are *not* merged -- they fail safe to a review item
+# rather than risk snapping one official's name onto another's.
+_NAME_MATCH_RATIO = 0.90
+
+
+def canonical_name(name: str, known_names: Iterable[str]) -> str:
+    """Snap an ASR-heard name onto its official spelling from the minutes, when unambiguous.
+
+    The correction path this project assumed it had, and did not: `fuse_proposals` groups on the
+    *normalized* name, so "Vicky Bird" from a chair cue and "Vicki Byrd" from the roster were two
+    separate candidates that each carried one signal and therefore both failed the agreement rule.
+    A misspelled member produced no name at all -- fail-closed, but it also meant published
+    minutes could never correct a spelling they never met.
+
+    Only rewrites on an unambiguous match: a tie between two known names leaves the input alone,
+    so two similarly-named officials on one body are never silently collapsed into one.
+    """
+    from difflib import SequenceMatcher
+
+    wanted = _norm(name)
+    if not wanted:
+        return name
+    candidates = {_norm(known): str(known).strip() for known in known_names if str(known).strip()}
+    if wanted in candidates:
+        return candidates[wanted]
+    scored = sorted(
+        (
+            (SequenceMatcher(None, wanted, candidate).ratio(), spelling)
+            for candidate, spelling in candidates.items()
+            # A differing token count is a different name shape ("Deb Armintor" vs "Deb Armintor
+            # Jr"), not a spelling variant of the same one.
+            if len(candidate.split()) == len(wanted.split())
+        ),
+        reverse=True,
+    )
+    if not scored or scored[0][0] < _NAME_MATCH_RATIO:
+        return name
+    if len(scored) > 1 and scored[1][0] >= _NAME_MATCH_RATIO:
+        return name  # ambiguous: two officials are equally plausible, so change nothing
+    return scored[0][1]
+
+
+def body_membership(
+    registry: Mapping[str, Any], *, city_slug: str, body: str | None
+) -> list[dict[str, Any]]:
+    """Who currently sits on this body, carried forward from earlier meetings' minutes.
+
+    A meeting's own minutes are typically published weeks after the recording, so for the whole
+    window that matters most -- a new episode -- `ep.minutes_roster` is empty and a council member
+    has no corroborating signal at all. This is the standing answer to "who is on this body",
+    accumulated by `observe_attendance` from every prior meeting's roster and votes.
+
+    Deliberately not a fixed "union of the last N meetings": `refresh_membership_status` already
+    decays a person to `review_only` after `PROFILE_REVIEW_ONLY_AFTER_DAYS` without an
+    appearance, so turnover expires on its own and there is no N to pick or to get wrong across
+    an election.
+
+    Scoped by `body_key`, so the Board of Ethics never lends its members to the City Council.
+    Returns roster-shaped rows for reuse as tier evidence -- but the signal it backs is
+    `SIGNAL_MEMBERSHIP`, never `SIGNAL_ROSTER`: this says a person belongs to the body, not that
+    they attended *this* meeting, and the two must not share a precision bucket. It must also
+    never reach `roster_person_ids`, which uses a real roster to *remove* names.
+    """
+    scoped = body_key(city_slug, body)
+    rows: list[dict[str, Any]] = []
+    for person in (registry.get("people") or {}).values():
+        if (
+            not isinstance(person, Mapping)
+            or person.get("body_key") != scoped
+            or person.get("status") not in {"active", "probable"}
+        ):
+            continue
+        name = str(person.get("display_name") or "").strip()
+        if not name:
+            continue
+        row: dict[str, Any] = {"name": name}
+        # Carried forward alongside the name: a staffer recorded under `Staff Present:` must not
+        # read back as an unsectioned roster hit, which tiers as `member`.
+        section = str(person.get("section") or "").strip()
+        if section:
+            row["section"] = section
+        rows.append(row)
+    return rows
+
+
+def cue_identity(
+    display_name: str, *, signals: Iterable[str], speaker_id: str | None = None
+) -> dict[str, Any]:
+    """Identity for a name established by fused cues rather than by a voice profile.
+
+    Without this, "staff are named automatically" would quietly mean "staff are named once a
+    human has approved a golden reference for them" -- `assign_turn` can only ever name a cluster
+    that already matches a stored voice print, and a presenter appearing in one meeting never
+    gets one. `method` distinguishes the two provenances so a later audit can tell which names
+    came from a voice match and which from agreeing cues.
+    """
+    return {
+        "speaker_id": speaker_id,
+        "display_name": display_name,
+        "status": "provisional",
+        "method": "cue-fusion",
+        "signals": sorted(signals),
+    }
 
 
 def quote_attribution(
@@ -909,14 +1308,22 @@ __all__ = [
     "IDENTITY_PIPELINE_VERSION",
     "PILOT_SCOPE_VERSION",
     "MIN_REFERENCE_MEETINGS",
+    "TITLE_CUE_KINDS",
+    "TIER_MEMBER",
+    "TIER_OTHER",
+    "TIER_STAFF",
     "assign_turn",
-    "auto_publish_allowed",
     "body_key",
+    "body_membership",
     "chair_reference_candidates",
     "calibration_cell",
+    "canonical_name",
+    "classify_speaker_tier",
+    "cue_identity",
     "empty_registry",
     "load_registry",
     "load_turn_evidence",
+    "naming_candidate_id",
     "observe_attendance",
     "profile_matches",
     "pilot_selected",
@@ -930,6 +1337,7 @@ __all__ = [
     "save_registry",
     "save_evaluation",
     "save_turn_evidence",
+    "self_introduction_candidates",
     "shadow_candidate_id",
     "speaker_id",
     "valid_speaker_id",

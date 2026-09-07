@@ -20,6 +20,7 @@ from citypods.audit import (
     check_meetings_url,
     check_provider_error_rates,
     check_rehost_backlog,
+    check_roster_quality,
     check_staleness,
     check_unexpected_bodies,
     check_view_cap,
@@ -1030,3 +1031,112 @@ def test_audit_all_unexpected_evidence_only_skips_view_counts(monkeypatch, tmp_p
         now=NOW,
     )
     assert len(view_count_calls) == 0
+
+
+def _roster_record(status, *, body="City Council", uid_date=None, members=()):
+    # Recent by default: the aggregate empty test is bounded to `_ROSTER_AUDIT_RECENT_DAYS`, so a
+    # fixed historical date would silently place a fixture outside the window under test.
+    return {
+        "published": uid_date or datetime.now(UTC).date().isoformat(),
+        "body": body,
+        "minutes_roster": {
+            "status": status,
+            "members": [{"name": name} for name in members],
+        },
+        "minutes_text": {"url": "https://city.example/minutes.pdf?Signature=secret"},
+    }
+
+
+def test_roster_quality_reports_a_disjoint_roster_on_sight():
+    """A disjoint roster -- names sharing nobody with this body's own earlier meetings -- is a
+    parse that succeeded on the wrong text. It is worse than no roster, because it narrows the
+    allowed speaker set and suppresses correct attribution, so one is enough to report.
+
+    Derived from records rather than persisted by the stage: `minutes_roster` belongs to the audio
+    lane, so a diagnostic written by the speaker-identity lane never survives its push.
+    """
+    records = {
+        "u1": _roster_record("parsed", uid_date="2026-01-01", members=["Jane Doe", "Bob Chair"]),
+        "u2": _roster_record("parsed", uid_date="2026-02-01", members=["Jane Doe", "New Member"]),
+        "u3": _roster_record("parsed", uid_date="2026-03-01", members=["Wrong One", "Other Wrong"]),
+    }
+    finding = check_roster_quality("council", records, body="City Council")
+    assert finding is not None
+    assert finding.check == "roster-quality"
+    assert "share nobody" in finding.message
+    assert "Resolution:" in finding.message
+    # The minutes URL is diagnostic, but must not carry signed material into a public issue.
+    assert "secret" not in finding.message
+
+
+def test_roster_quality_ignores_a_single_unparsed_document():
+    """One unparsed minutes document is normal variation across civic document formats; only a
+    feed-wide pattern indicates a parser gap worth a maintainer's time."""
+    records = {"u1": _roster_record("empty"), "u2": _roster_record("parsed")}
+    assert check_roster_quality("council", records, body="City Council") is None
+
+
+def test_roster_quality_reports_a_feed_wide_parse_failure():
+    records = {f"u{i}": _roster_record("empty") for i in range(4)}
+    records["ok"] = _roster_record("parsed")
+    finding = check_roster_quality("council", records, body="City Council")
+    assert finding is not None
+    assert "4 of 5 published minutes yielded no usable roster" in finding.message
+
+
+def test_roster_quality_does_not_flag_a_bodys_first_roster():
+    """Onboarding has nothing to be disjoint from; flagging it would fire the signal loudest
+    exactly when new cities are added."""
+    records = {"u1": _roster_record("parsed", members=["Jane Doe"])}
+    assert check_roster_quality("council", records, body="City Council") is None
+
+
+def test_roster_quality_reads_the_versioned_status_prefix():
+    """Statuses carry the parser version that produced them, so a bump can re-extract cached
+    minutes; the outcome is the part before it."""
+    records = {f"u{i}": _roster_record("empty@2") for i in range(4)}
+    records["ok"] = _roster_record("parsed@2", members=["Jane Doe"])
+    finding = check_roster_quality("council", records, body="City Council")
+    assert finding is not None and "4 of 5" in finding.message
+
+
+def test_roster_quality_is_silent_when_minutes_were_never_fetched():
+    """Absent minutes are not a roster defect -- they are the normal weeks-long publication lag,
+    and flagging them would fire on every recent meeting in the catalog."""
+    assert check_roster_quality("council", {"u1": {"published": "2026-05-01"}}) is None
+
+
+def test_roster_quality_counts_only_the_body_it_was_asked_about():
+    """One source's record store holds every body, so an unscoped count would report another
+    body's parser gap against this feed."""
+    records = {
+        f"c{i}": _roster_record("empty@2", body="City Council", uid_date="2026-09-01")
+        for i in range(4)
+    }
+    records["ok"] = _roster_record(
+        "parsed@2", body="City Council", uid_date="2026-09-02", members=["Jane Doe"]
+    )
+    records.update(
+        {
+            f"e{i}": _roster_record("empty@2", body="Board of Ethics", uid_date="2026-09-01")
+            for i in range(9)
+        }
+    )
+    finding = check_roster_quality(
+        "council", records, body="Board of Ethics", now=datetime(2026, 9, 6, tzinfo=UTC)
+    )
+    assert finding is not None and "9 of 9" in finding.message
+
+
+def test_roster_quality_bounds_the_empty_ratio_by_recency():
+    """An append-only archive would otherwise dilute the ratio permanently: hundreds of historical
+    rosters swamp a genuine regression in the last few meetings, and records left by a parser gap
+    that has since been fixed keep the finding alive until every uid is re-run."""
+    now = datetime(2026, 9, 6, tzinfo=UTC)
+    archive = {f"o{i}": _roster_record("empty@1", uid_date="2020-01-01") for i in range(50)}
+    assert check_roster_quality("council", archive, body="City Council", now=now) is None
+
+    recent = {f"r{i}": _roster_record("empty@2", uid_date="2026-09-01") for i in range(4)}
+    recent["ok"] = _roster_record("parsed@2", uid_date="2026-09-02", members=["Jane Doe"])
+    finding = check_roster_quality("council", {**archive, **recent}, body="City Council", now=now)
+    assert finding is not None and "4 of 5" in finding.message

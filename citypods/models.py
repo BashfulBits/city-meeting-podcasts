@@ -123,6 +123,12 @@ class Episode:
     minutes_roster_url: str | None = None
     minutes_votes: list[dict] = field(default_factory=list)
     minutes_roster: list[dict] = field(default_factory=list)
+    # How the last roster parse went, so the daily audit can tell three cases apart that all look
+    # like an empty `minutes_roster` downstream: minutes not published yet (None), parsed cleanly
+    # ("parsed"), minutes present but nothing name-shaped found ("empty"), and parsed names that
+    # share nobody with this body's own prior meetings ("disjoint" -- a parse that succeeded on
+    # the wrong text). Only the last two are defects. See review/31 §B.3b.
+    minutes_roster_status: str | None = None
     # Source-time provider chapter markers retained durably so a later timeline change can
     # reproject them onto a new served clock. Empty for synthetic served-only planners like concat.
     source_chapters: list = field(default_factory=list)
