@@ -2697,13 +2697,20 @@ class _DiarizeCandidate:
     key: str
     words_key: str
     recording_seconds: float
+    # Set by `_DiarizeAdmission.claim()` when it already committed the memory reservation as
+    # part of picking this candidate (the memory-aware fast path below) -- `_run_one` must not
+    # reserve it a second time. Left False for the fallback path, where `claim()` deliberately
+    # hands out a candidate it could *not* currently reserve and `_run_one`'s blocking
+    # `reserve()` call is still what makes the worker wait for it.
+    memory_reserved: bool = False
 
 
 class _DiarizeAdmission:
     """Deadline-aware, best-fit-decreasing admission for the diarize worker pool.
 
     One rule serves both goals in review/31 §A.4. Whenever a worker frees up it claims the
-    **largest** pending candidate whose estimated runtime still fits before the start cutoff:
+    **largest** pending candidate whose estimated runtime still fits before the start cutoff
+    *and* whose predicted peak memory fits what is currently free:
 
     * Early in a run the remaining budget is large, so "largest that fits" *is* the longest
       meeting in the backlog. Long meetings get first claim on a worker while there is maximum
@@ -2712,6 +2719,18 @@ class _DiarizeAdmission:
     * As the budget shrinks, fewer long candidates satisfy the fits-check, so admission narrows
       to progressively shorter meetings on its own -- the soft landing, with no phase threshold
       to tune.
+    * The memory check exists because claiming is otherwise blind to it: a worker that claimed a
+      candidate too big for the memory currently free would simply block inside `reserve()`,
+      holding that worker slot hostage while a *smaller* candidate further back in the queue --
+      one that would fit the free headroom right now -- sits unclaimed, because no other worker
+      is free to reach it. Observed in production (2026-09-06, denton-tx): three of four workers
+      parked in `reserve()` for 20+ minutes on candidates needing 5.9-7.3GiB against ~3.8GiB
+      free, while a single long meeting ran alone -- whether anything shorter was starved behind
+      them depended entirely on queue order, not on whether it would have fit. `claim()` now
+      scans for the longest candidate that fits *both* budgets before falling back to the
+      longest that only fits the time budget (today's behavior, and still correct: if nothing
+      pending fits the memory that's free right now, blocking is the only option, and one worker
+      block-waiting for it is no worse than before).
 
     Estimates are re-read from the runtime log on every claim, so measured samples from items
     that already finished this run immediately sharpen later admission decisions.
@@ -2739,22 +2758,46 @@ class _DiarizeAdmission:
             return list(self._deferred)
 
     def claim(self) -> _DiarizeCandidate | None:
+        from citypods.diarize import estimate_diarize_rss_bytes
+
         with self._lock:
             if not self._pending:
                 return None
             if self._ctx.stop is not None and self._ctx.stop():
                 return self._drain_locked("wall-clock-budget")
+            reservation = self._ctx.diarize_memory_reservation
             longest = (0.0, 0.0)
+            fallback_index: int | None = None
             for index, candidate in enumerate(self._pending):
                 fits, estimate, remaining = _diarize_fits_remaining_budget(
                     self._ctx, self._runtime_log, candidate.recording_seconds, self._recipe
                 )
-                if fits:
+                if not fits:
+                    if index == 0:
+                        longest = (estimate or 0.0, remaining or 0.0)
+                    continue
+                if reservation is None:
+                    # No memory gate configured (`memory_budget_mb: 0`) -- time budget alone
+                    # decides, exactly as before this candidate ever considered memory.
                     return self._pending.pop(index)
-                if index == 0:
-                    longest = (estimate or 0.0, remaining or 0.0)
-            # Nothing fits, and the remaining budget only shrinks from here, so nothing ever
-            # will: defer the whole tail now rather than re-checking it per freed worker.
+                if fallback_index is None:
+                    # Longest time-fitting candidate seen so far: the forward-progress fallback
+                    # if nothing pending fits the memory that's free right now.
+                    fallback_index = index
+                need = estimate_diarize_rss_bytes(candidate.recording_seconds)
+                if reservation.try_reserve(need, label=candidate.uid):
+                    claimed = self._pending.pop(index)
+                    claimed.memory_reserved = True
+                    return claimed
+            if fallback_index is not None:
+                # Every time-fitting candidate was too big for the memory free right now.
+                # Hand out the longest one anyway (unreserved) so its worker blocks in
+                # `reserve()` -- there is genuinely no smaller work available to run instead,
+                # and blocking is what lets it start the moment another job frees enough.
+                return self._pending.pop(fallback_index)
+            # Nothing fits the *time* budget at all, and the remaining budget only shrinks from
+            # here, so nothing ever will: defer the whole tail now rather than re-checking it
+            # per freed worker.
             print(
                 f"[enrich] diarize admission closed: {len(self._pending)} candidate(s) do not fit "
                 f"(largest estimate_s={longest[0]:.1f} remaining_s={longest[1]:.1f})",
@@ -7399,12 +7442,15 @@ class NativeDiarizeStage:
         # with their own meeting's length, and the runner is OOM-killed as a whole. The same
         # leading-signal reservation H8 already uses for audio encodes (review/31 §A.4).
         reserved_bytes = diarize_mod.estimate_diarize_rss_bytes(candidate.recording_seconds)
-        if reservation is not None and not reservation.reserve(
-            reserved_bytes, label=uid, stop=ctx.stop
-        ):
-            with finalize_lock:
-                stats.defer("memory-reservation", sample=uid)
-            return
+        # `claim()` already committed this reservation when it found a candidate that fit the
+        # memory free at claim time (the memory-aware fast path) -- reserving again here would
+        # double-count it. Only the fallback path (claim() handed out a candidate that did *not*
+        # currently fit, because nothing pending did) still needs to block for it.
+        if not candidate.memory_reserved and reservation is not None:
+            if not reservation.reserve(reserved_bytes, label=uid, stop=ctx.stop):
+                with finalize_lock:
+                    stats.defer("memory-reservation", sample=uid)
+                return
 
         # `claim()` checked the runtime budget, but `reserve()` may then have blocked for however
         # long another worker held the memory. The reservation's stop callback only asks whether

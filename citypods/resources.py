@@ -421,6 +421,7 @@ class MemoryReservation:
 
     An estimate larger than the whole budget is clamped to the budget so it can still run — alone —
     instead of deadlocking. Thread-safe; ``reserve`` blocks until headroom exists or ``stop`` fires.
+    ``try_reserve`` is the non-blocking sibling for a caller picking among several candidates.
     """
 
     def __init__(
@@ -442,6 +443,32 @@ class MemoryReservation:
         # Never reserve more than the whole budget (a single huge estimate must still run, alone).
         return max(0, min(int(estimate_bytes), self._budget))
 
+    def _try_once_locked(self, need: int) -> bool:
+        """Commit ``need`` if it fits *right now*. Caller must hold ``self._cond``."""
+        if self._reserved + need <= self._budget:
+            self._reserved += need
+            return True
+        return False
+
+    def try_reserve(self, estimate_bytes: int, *, label: str) -> bool:
+        """Reserve ``estimate_bytes`` only if it fits the budget immediately; never blocks.
+
+        For a caller choosing *among several* candidates (the diarize admission queue) rather
+        than committed to one already -- ``reserve`` would make that caller block on whichever
+        candidate it happened to pick first, even while a smaller one that fits the currently
+        free headroom sits unclaimed right behind it.
+        """
+        need = self._clamp(estimate_bytes)
+        with self._cond:
+            if self._try_once_locked(need):
+                self._emit(
+                    f"[enrich] memory reserved label={label} "
+                    f"need={format_bytes(need)} "
+                    f"reserved={format_bytes(self._reserved)}/{format_bytes(self._budget)}"
+                )
+                return True
+            return False
+
     def reserve(
         self, estimate_bytes: int, *, label: str, stop: Callable[[], bool] | None = None
     ) -> bool:
@@ -456,8 +483,7 @@ class MemoryReservation:
                         self._total_wait_seconds += time.monotonic() - wait_start
                 return False
             with self._cond:
-                if self._reserved + need <= self._budget:
-                    self._reserved += need
+                if self._try_once_locked(need):
                     if announced:
                         with self._wait_lock:
                             self._total_wait_seconds += time.monotonic() - (wait_start or 0.0)

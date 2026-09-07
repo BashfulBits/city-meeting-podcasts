@@ -350,6 +350,20 @@ predicted-peak-RSS gate, and a single `finalize_lock` around every shared-state 
 turn-evidence map, runtime log, stats, storage upload). Config: `speakers.workers` (default: one per
 vCPU) and `speakers.memory_budget_mb`; `diarize_backstop_minutes` (default 320) adds the second tier.
 
+**Gap found and closed (2026-09-06): the "skip to the next-largest candidate" rule above was never
+actually implemented.** The shipped `claim()` picked a candidate by time-budget fit alone; the memory
+check happened separately and later, in `_run_one`'s unconditional `reservation.reserve()` call — which
+*blocks* until headroom exists rather than trying a different, smaller candidate. A worker that claimed
+a too-big candidate therefore held its slot hostage for however long the memory took to free, exactly the
+outcome bullet (3) above says to avoid. Confirmed in production (denton-tx, 2026-09-06): three of four
+workers sat blocked in `reserve()` for 20+ minutes on candidates needing 5.9-7.3GiB against ~3.8GiB free,
+one long meeting running alone, while queue order — not fit — decided whether anything shorter got to
+run in the meantime. Fixed by making `claim()` itself memory-aware: it now tries `MemoryReservation`'s
+new non-blocking `try_reserve()` for each time-fitting candidate in longest-first order, returns the
+first one that fits *both* budgets (committing the reservation atomically, so `_run_one` never reserves
+it twice), and only falls back to the old blind-claim-and-block behavior when nothing pending fits the
+memory that's free right now — at which point blocking genuinely is the only option.
+
 **One residual gap, stated precisely:** the backstop marks the item deferred and closes admission, but
 does not *kill* the straggler subprocess — portably terminating a pool worker needs 3.14's
 `terminate_workers()`, and this targets 3.12. The stage still returns normally, so records/state are
