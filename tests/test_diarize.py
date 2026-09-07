@@ -63,6 +63,48 @@ def _install_fake_sherpa_onnx(monkeypatch, segments: list[_FakeSegment]):
     return fake
 
 
+def test_estimate_diarize_rss_bytes_matches_the_documented_constants():
+    """Pins DIARIZE_RSS_BASE_BYTES/DIARIZE_RSS_PER_HOUR_BYTES so a change to either is a
+    deliberate, documented act, not a silent drift -- this formula gates the admission
+    MemoryReservation, and an unnoticed change there is a memory-safety regression, not a
+    cosmetic one.
+
+    review/31 §A.4's 2026-09-07 addendum re-validated (not re-derived) this formula against real
+    measurements from 5min to 8h -- under DEFAULT_WINDOW_SHIFT_RATIO, real peak RSS fit
+    368MB + 461MB/hr (R^2=0.9954, genuinely linear) with no evidence of accelerating growth, and
+    the shipped 350MB + 650MB/hr overestimates it at every point past 5min. Left unchanged
+    deliberately: that re-validation ran on local Apple Silicon, not the GH Actions Linux runners
+    production uses, and this file's own §A.1a already documents a case where Apple Silicon
+    numbers gave the wrong answer against real runner hardware -- so the formula stays exactly
+    what it was, proven conservative rather than tightened on unvalidated-platform data.
+    """
+    from citypods.diarize import (
+        DIARIZE_RSS_BASE_BYTES,
+        DIARIZE_RSS_PER_HOUR_BYTES,
+        estimate_diarize_rss_bytes,
+    )
+
+    assert DIARIZE_RSS_BASE_BYTES == 350 * 1024 * 1024
+    assert DIARIZE_RSS_PER_HOUR_BYTES == 650 * 1024 * 1024
+
+    # Spot-check at the durations actually measured (review/31 §A.4 addendum), converted to MiB
+    # for readable tolerances. The formula only needs to stay at or above real measured usage.
+    measured_mb = {
+        300: 425,  # 5min
+        1200: 553,  # 20min
+        3600: 714,  # 60min
+        7200: 1428,  # 2h
+        14400: 2112,  # 4h
+        28800: 4082,  # 8h
+    }
+    for recording_seconds, measured in measured_mb.items():
+        predicted_mb = estimate_diarize_rss_bytes(recording_seconds) / (1024 * 1024)
+        assert predicted_mb >= measured * 0.9, (
+            f"formula predicts {predicted_mb:.0f}MiB at {recording_seconds}s, "
+            f"real measured usage was {measured}MiB -- formula should stay conservative"
+        )
+
+
 def test_ensure_embedding_model_rejects_unknown_recipe():
     with pytest.raises(ValueError, match="unknown diarize embedding model"):
         _ensure_embedding_model("not-a-real-model")

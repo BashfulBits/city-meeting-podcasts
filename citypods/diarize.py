@@ -98,6 +98,18 @@ DEFAULT_WINDOW_SHIFT_RATIO = 0.3
 # model + decoded-audio size, not CPU microarchitecture (review/31 §A.4). Rounded up for
 # headroom. Feeds `MemoryReservation` so concurrent workers are admitted by *predicted* peak
 # rather than trailing `mem_available` -- the same leading-signal discipline H8 uses for audio.
+#
+# Re-validated, not re-derived, 2026-09-07 (review/31 §A.4 addendum): the original data only
+# went to 60min, and run #59's crash near 15h raised the question of whether real usage
+# accelerates past that. Measured 5min-8h under DEFAULT_WINDOW_SHIFT_RATIO=0.3: the true
+# relationship is 368MB + 461MB/hr (R^2=0.9954, i.e. genuinely linear, not accelerating) -- this
+# formula's own 350MB + 650MB/hr overestimates real usage at every point past 5min (up to +40%),
+# so it stays conservative rather than needing tightening upward. Left unchanged rather than
+# tightened toward the measured fit: that re-validation ran on local Apple Silicon, not the GH
+# Actions Linux runners production actually uses, and this same section's own §A.4 already
+# documents a case where Apple Silicon numbers gave the wrong answer when cross-checked against
+# real runner hardware -- tightening a memory-safety budget on unvalidated-platform data would
+# repeat exactly that mistake. The genuinely untested point is real GH Actions data past 60min.
 DIARIZE_RSS_BASE_BYTES = 350 * 1024 * 1024
 DIARIZE_RSS_PER_HOUR_BYTES = 650 * 1024 * 1024
 
