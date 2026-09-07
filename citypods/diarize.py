@@ -10,6 +10,7 @@ which is what actually removes the long-meeting CPU budget ceiling that motivate
 from __future__ import annotations
 
 import contextlib
+import errno
 import hashlib
 import json
 import math
@@ -113,11 +114,39 @@ DEFAULT_WINDOW_SHIFT_RATIO = 0.3
 DIARIZE_RSS_BASE_BYTES = 350 * 1024 * 1024
 DIARIZE_RSS_PER_HOUR_BYTES = 650 * 1024 * 1024
 
+# A single onnxruntime kernel failure can attempt a large, transient allocation before it fails
+# or logs an error -- on top of whatever steady-state RSS the job already holds at that moment,
+# which the linear model above has no way to see coming. Concrete evidence this isn't
+# hypothetical: R7 runs #59/#61/#62/#63 each logged the same "Where node" broadcast error with
+# dimensions large enough to imply a sizeable attempted allocation -- run #59's `12288 by 15974`
+# and runs #61-63's `12288 by 50599` would each need up to `12288 * 50599 * 4` bytes (float32)
+# =~ 2.49GiB for that one intermediate tensor, and run #63's own heartbeat showed only ~3.0GiB of
+# genuinely free memory at the moment its error fired -- close enough to that figure that a spike
+# of roughly this size landing right then plausibly would have been the tipping point. Subtracted
+# once from the diarize memory ceiling (not once per worker -- the trigger is data-dependent and
+# rare, not a certainty every worker hits simultaneously) so admission always keeps this much
+# genuinely spare, regardless of how full the steady-state accounting says the budget already is.
+DIARIZE_RSS_SPIKE_MARGIN_BYTES = 3 * 1024 * 1024 * 1024
+
 
 def estimate_diarize_rss_bytes(recording_seconds: float) -> int:
     """Predict one diarize worker's peak RSS for `recording_seconds` of audio."""
     hours = max(0.0, float(recording_seconds)) / 3600.0
     return DIARIZE_RSS_BASE_BYTES + int(DIARIZE_RSS_PER_HOUR_BYTES * hours)
+
+
+def diarize_memory_ceiling_bytes(configured_budget_mb: float) -> int:
+    """The diarize `MemoryReservation` ceiling actually used, after reserving
+    `DIARIZE_RSS_SPIKE_MARGIN_BYTES` of headroom for a spike the steady-state model can't see
+    coming (that constant's own comment has the evidence). `configured_budget_mb <= 0` means
+    "admission disabled" (the existing `speakers.memory_budget_mb: 0` contract) and passes
+    through unchanged -- it is not a budget to apply a safety margin to. A configured budget
+    smaller than the margin clamps to 0 (also disabled) rather than going negative.
+    """
+    if configured_budget_mb <= 0:
+        return 0
+    margin_mb = DIARIZE_RSS_SPIKE_MARGIN_BYTES / (1024 * 1024)
+    return int(max(0.0, configured_budget_mb - margin_mb) * 1024 * 1024)
 
 
 def has_valid_timed_words(value: bytes | Mapping[str, Any]) -> bool:
@@ -481,6 +510,15 @@ def prepare_models(embedding_model: str | None = DEFAULT_EMBEDDING_MODEL) -> Non
     _ensure_embedding_model(embedding_model or DEFAULT_EMBEDDING_MODEL)
 
 
+def _peak_rss_mb() -> float | None:
+    """This worker process's peak RSS so far, in MiB, or `None` if unavailable (see
+    `citypods.resources.process_peak_rss_bytes` for why peak rather than current RSS)."""
+    from citypods.resources import process_peak_rss_bytes
+
+    peak_bytes = process_peak_rss_bytes()
+    return peak_bytes / (1024 * 1024) if peak_bytes is not None else None
+
+
 def run_diarize_job(
     audio_path: str,
     *,
@@ -489,6 +527,7 @@ def run_diarize_job(
     num_threads: int = 1,
     clustering_threshold: float | None = None,
     window_shift_ratio: float | None = None,
+    log_label: str = "",
 ) -> DiarizeArtifacts:
     """Module-level worker entry point for the diarize process pool.
 
@@ -501,15 +540,43 @@ def run_diarize_job(
     `citypods.compute.local.LocalBackend`: that adapter lazily imports `citypods.asr` (and with
     it faster-whisper) for its transcribe/align verbs, which a diarize-only worker has no reason
     to pay for, and its dispatch seam does not yet materialize R7 artifacts anyway.
+
+    `log_label` (normally the episode `uid`) is only for the peak-RSS log line below -- purely
+    diagnostic, no effect on the diarize call itself, so existing callers that don't pass it are
+    unaffected. Peak RSS is logged (not just returned) because a hard kernel OOM-kill of this
+    process never lets any of this code run at all -- the log line only covers the case where
+    the process survives long enough to return or raise normally; see the accompanying
+    workflow-level `dmesg` capture for the case where it doesn't (review/31 §A.4 addendum).
     """
-    return diarize(
-        Path(audio_path),
-        model,
-        embedding_model=embedding_model,
-        num_threads=num_threads,
-        clustering_threshold=clustering_threshold,
-        window_shift_ratio=window_shift_ratio,
+    try:
+        artifact = diarize(
+            Path(audio_path),
+            model,
+            embedding_model=embedding_model,
+            num_threads=num_threads,
+            clustering_threshold=clustering_threshold,
+            window_shift_ratio=window_shift_ratio,
+        )
+    except (MemoryError, OSError) as exc:
+        # `MemoryError` is CPython failing to satisfy a `malloc` and recovering enough to raise
+        # it -- genuine evidence of memory exhaustion, not a guess. `OSError` is included for the
+        # same allocation failure surfacing from native code (numpy/onnxruntime) as errno ENOMEM
+        # instead of a Python-level MemoryError; any other OSError re-raises unchanged rather than
+        # being misreported as a memory issue it may have nothing to do with.
+        if isinstance(exc, OSError) and getattr(exc, "errno", None) != errno.ENOMEM:
+            raise
+        peak_mb = _peak_rss_mb()
+        raise RuntimeError(
+            f"diarize worker {log_label!r} hit {type(exc).__name__} "
+            f"(peak_rss_mb={peak_mb if peak_mb is None else round(peak_mb, 1)}): {exc}"
+        ) from exc
+    peak_mb = _peak_rss_mb()
+    print(
+        f"[diarize] peak_rss_mb={peak_mb if peak_mb is None else round(peak_mb, 1)} "
+        f"label={log_label!r}",
+        flush=True,
     )
+    return artifact
 
 
 def attach_transcript_words(turns: list[dict[str, Any]], words: Mapping[str, Any]) -> None:
@@ -625,7 +692,9 @@ __all__ = [
     "DEFAULT_EMBEDDING_MODEL",
     "DIARIZE_RSS_BASE_BYTES",
     "DIARIZE_RSS_PER_HOUR_BYTES",
+    "DIARIZE_RSS_SPIKE_MARGIN_BYTES",
     "DiarizeArtifacts",
+    "diarize_memory_ceiling_bytes",
     "diarize",
     "estimate_diarize_rss_bytes",
     "prepare_models",

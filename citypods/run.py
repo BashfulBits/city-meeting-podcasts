@@ -3056,13 +3056,24 @@ def _build_impl(
     # measured), and the runner is OOM-killed as a whole, so concurrency has to be bounded by
     # predicted memory as well as by vCPU count. 0/blank disables it (a one-worker run has
     # nothing to contend with).
+    #
+    # `diarize_memory_ceiling_bytes` reduces the configured budget once by
+    # `DIARIZE_RSS_SPIKE_MARGIN_BYTES` before it ever reaches `MemoryReservation` -- a fixed
+    # amount of headroom the steady-state linear model can't see coming (a transient allocation
+    # spike from an onnxruntime kernel failure, sized from real production evidence; see that
+    # constant's own comment), kept spare regardless of how full the steady-state accounting
+    # says the budget already is. Subtracted once from the *ceiling*, not once per worker: the
+    # trigger is data-dependent and rare, not a certainty every concurrent worker hits at once.
+    from citypods.diarize import diarize_memory_ceiling_bytes
+
     _diarize_memory_budget_mb = float((speakers_config or {}).get("memory_budget_mb", 0) or 0)
+    _diarize_ceiling_bytes = diarize_memory_ceiling_bytes(_diarize_memory_budget_mb)
     _diarize_memory_reservation: MemoryReservation | None = (
         MemoryReservation(
-            budget_bytes=int(_diarize_memory_budget_mb * 1024 * 1024),
+            budget_bytes=_diarize_ceiling_bytes,
             log=lambda msg: print(msg, flush=True),
         )
-        if not dry_run and _diarize_memory_budget_mb > 0
+        if not dry_run and _diarize_ceiling_bytes > 0
         else None
     )
     transcript_quality_routes = load_quality_routes(

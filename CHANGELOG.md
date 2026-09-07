@@ -34,6 +34,39 @@ Phase R (Research-Tool Surface)._
   heartbeat's `active work:` line names the stuck uid and its elapsed time directly, instead of
   requiring a `thread activity:` stack-sample read to infer that the run was busy at all.
 
+- **OOM proof instrumentation and a fixed memory-spike margin for diarize workers
+  (`.github/workflows/r7-diarization.yml`, `citypods/diarize.py`, `citypods/stages.py`,
+  `citypods/resources.py`).** The recurring diarize SIGTERM (runs #59, #61-63) has always been
+  "OOM most likely, not proven" — this closes the proof gap and adds a defense-in-depth
+  mitigation, both asked for directly, rather than continuing to reason from indirect evidence.
+  `r7-diarization.yml` now captures `dmesg`/`free -h`/`/proc/meminfo` in an `if: always()` step
+  right after the diarize step, so a genuine kernel OOM-kill leaves its own unambiguous log line
+  even through an external cancellation (GH Actions runs `always()` steps during its own
+  cancellation sequence, before the runner is torn down) — the one signal this project's own
+  app-level logging structurally cannot produce, since a hard kernel kill reaps the process
+  before any of that code runs. `run_diarize_job` now logs each candidate's own `peak_rss_mb`
+  (Linux's `VmHWM` high-water-mark counter, via the new `citypods.resources.
+  process_peak_rss_bytes`, deliberately *peak* rather than the existing `process_rss_bytes()`'s
+  *current* reading, which a since-freed spike would never show), and `_diarize_executor` now
+  sets `max_tasks_per_child=1` so that reading means "this candidate's own peak," not "the
+  highest peak any candidate this reused worker process has ever seen" (`VmHWM`/`ru_maxrss` are
+  both monotonic for a process's whole lifetime). A genuine `MemoryError` or
+  `OSError(errno=ENOMEM)` is now caught and re-raised with that same peak-RSS reading attached,
+  rather than reported as an unremarkable generic diarize error. Separately, asked directly
+  whether reserving more memory could simply avert this: the recurring onnxruntime `Where node`
+  broadcast error's own logged dimensions (`12288 by 50599`) imply an attempted allocation up to
+  `12288 * 50599 * 4` bytes (float32) ≈ 2.49GiB for that one intermediate tensor alone, on top of
+  whatever steady-state RSS a job already holds — and run #63's own heartbeat showed only
+  `~3.0GiB` genuinely free at the exact moment its error fired, close enough to that figure to be
+  a plausible tipping point. `DIARIZE_RSS_SPIKE_MARGIN_BYTES = 3GiB` is now subtracted once from
+  the diarize memory ceiling (`diarize_memory_ceiling_bytes()`) — once from the ceiling, not once
+  per concurrent worker, since the trigger is data-dependent and rare rather than a certainty
+  every worker hits simultaneously. Stated as plainly as the gap that motivated this: none of it
+  proves OOM was run #63's actual cause after the fact — only that the next occurrence will
+  produce evidence tight enough to actually settle the question. See review/31 §A.4's
+  2026-09-07 addendum (the entry immediately after the RSS re-validation one) for the full
+  reasoning.
+
 ### Fixed
 
 - **Diarize RSS memory model re-validated at 5min-8h (`citypods/diarize.py`, `tests/test_diarize.py`).**

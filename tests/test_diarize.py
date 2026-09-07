@@ -436,3 +436,112 @@ def test_ffmpeg_error_detail_redacts_credentials_and_is_bounded():
     assert "hunter2" not in detail
     assert detail.count("<redacted>") == 2
     assert len(_ffmpeg_detail(b"x" * 5000)) == 500
+
+
+def test_diarize_rss_spike_margin_matches_the_documented_broadcast_evidence():
+    """Pins DIARIZE_RSS_SPIKE_MARGIN_BYTES so a change to it is deliberate. Sized from the
+    recurring onnxruntime "Where node" broadcast error's own logged dimensions (review/31 §A.4
+    addendum): 12288 by 50599 (runs #61-63) implies an attempted allocation up to
+    12288 * 50599 * 4 bytes (float32) for that one intermediate tensor -- the margin must cover
+    at least that, rounded up for headroom."""
+    from citypods.diarize import DIARIZE_RSS_SPIKE_MARGIN_BYTES
+
+    worst_observed_tensor_bytes = 12288 * 50599 * 4
+    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES >= worst_observed_tensor_bytes
+    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES == 3 * 1024 * 1024 * 1024
+
+
+def test_diarize_memory_ceiling_subtracts_the_spike_margin_once():
+    from citypods.diarize import DIARIZE_RSS_SPIKE_MARGIN_BYTES, diarize_memory_ceiling_bytes
+
+    margin_mb = DIARIZE_RSS_SPIKE_MARGIN_BYTES / (1024 * 1024)
+    # Production's actual configured value (config/site_config.yml `speakers.memory_budget_mb`).
+    assert diarize_memory_ceiling_bytes(14000) == int((14000 - margin_mb) * 1024 * 1024)
+
+
+def test_diarize_memory_ceiling_passes_through_the_disabled_sentinel_unchanged():
+    """`memory_budget_mb: 0` (or blank) means "admission disabled" -- not a budget to apply a
+    safety margin to. Must stay exactly 0, not go negative or become some other sentinel."""
+    from citypods.diarize import diarize_memory_ceiling_bytes
+
+    assert diarize_memory_ceiling_bytes(0) == 0
+    assert diarize_memory_ceiling_bytes(-5) == 0
+
+
+def test_diarize_memory_ceiling_clamps_a_budget_smaller_than_the_margin_to_zero():
+    """A configured budget smaller than the spike margin must clamp to 0 (disabled), never go
+    negative -- `MemoryReservation` isn't built for a negative budget."""
+    from citypods.diarize import diarize_memory_ceiling_bytes
+
+    assert diarize_memory_ceiling_bytes(1024) == 0
+
+
+def test_run_diarize_job_logs_peak_rss_and_the_log_label_on_success(monkeypatch, tmp_path, capsys):
+    from citypods.diarize import DiarizeArtifacts, run_diarize_job
+
+    fake_artifact = DiarizeArtifacts(turns=[], clusters=[], engine="sherpa-onnx", model="x")
+    monkeypatch.setattr("citypods.diarize.diarize", lambda *a, **k: fake_artifact)
+    monkeypatch.setattr("citypods.diarize._peak_rss_mb", lambda: 512.3)
+
+    result = run_diarize_job(str(tmp_path / "audio.m4a"), log_label="uid-123")
+
+    assert result is fake_artifact
+    out = capsys.readouterr().out
+    assert "peak_rss_mb=512.3" in out
+    assert "label='uid-123'" in out
+
+
+def test_run_diarize_job_reports_none_peak_rss_without_crashing(monkeypatch, tmp_path, capsys):
+    """`_peak_rss_mb` returning `None` (platform without `/proc` or `resource`) must not crash
+    the log line or the round() call on it."""
+    from citypods.diarize import DiarizeArtifacts, run_diarize_job
+
+    fake_artifact = DiarizeArtifacts(turns=[], clusters=[], engine="sherpa-onnx", model="x")
+    monkeypatch.setattr("citypods.diarize.diarize", lambda *a, **k: fake_artifact)
+    monkeypatch.setattr("citypods.diarize._peak_rss_mb", lambda: None)
+
+    run_diarize_job(str(tmp_path / "audio.m4a"))
+    assert "peak_rss_mb=None" in capsys.readouterr().out
+
+
+def test_run_diarize_job_wraps_memory_error_with_peak_rss_and_label(monkeypatch, tmp_path):
+    """A genuine `MemoryError` -- CPython failing to satisfy a malloc and recovering enough to
+    raise it -- is real evidence of memory exhaustion, not a guess. It must not be swallowed or
+    reported as a generic diarize error indistinguishable from any other failure."""
+    from citypods.diarize import run_diarize_job
+
+    def _boom(*a, **k):
+        raise MemoryError("could not allocate 2.5 GiB")
+
+    monkeypatch.setattr("citypods.diarize.diarize", _boom)
+    monkeypatch.setattr("citypods.diarize._peak_rss_mb", lambda: 13500.0)
+
+    with pytest.raises(RuntimeError, match=r"uid-999.*MemoryError.*peak_rss_mb=13500\.0") as exc:
+        run_diarize_job(str(tmp_path / "audio.m4a"), log_label="uid-999")
+    assert isinstance(exc.value.__cause__, MemoryError)
+
+
+def test_run_diarize_job_wraps_oserror_enomem_but_not_other_oserrors(monkeypatch, tmp_path):
+    """A native allocation failure (numpy/onnxruntime) can surface as `OSError(errno=ENOMEM)`
+    instead of a Python-level `MemoryError` -- same underlying cause, must get the same
+    enriched-and-re-raised treatment. Any *other* `OSError` (a real filesystem/IO problem) must
+    pass through unchanged rather than being misreported as a memory issue it has nothing to do
+    with."""
+    import errno
+
+    from citypods.diarize import run_diarize_job
+
+    def _enomem(*a, **k):
+        raise OSError(errno.ENOMEM, "Cannot allocate memory")
+
+    monkeypatch.setattr("citypods.diarize.diarize", _enomem)
+    monkeypatch.setattr("citypods.diarize._peak_rss_mb", lambda: 8000.0)
+    with pytest.raises(RuntimeError, match=r"OSError.*peak_rss_mb=8000\.0"):
+        run_diarize_job(str(tmp_path / "audio.m4a"))
+
+    def _enoent(*a, **k):
+        raise OSError(errno.ENOENT, "No such file or directory")
+
+    monkeypatch.setattr("citypods.diarize.diarize", _enoent)
+    with pytest.raises(OSError, match="No such file or directory"):
+        run_diarize_job(str(tmp_path / "audio.m4a"))

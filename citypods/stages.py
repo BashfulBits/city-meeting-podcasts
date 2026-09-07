@@ -2870,9 +2870,21 @@ def _diarize_executor(workers: int):
     `TimeoutError` -- on a single-vCPU runner (or `speakers.workers: 1`) one hung inference would
     hold the job until Actions sends SIGTERM, which is precisely the failure the backstop exists
     to bound. Tests that need the call in-process monkeypatch this function directly.
+
+    `max_tasks_per_child=1`: without it, `ProcessPoolExecutor` reuses a worker process across
+    every candidate it's ever handed, for the pool's whole lifetime. `run_diarize_job`'s
+    peak-RSS log line (review/31 §A.4 addendum) needs to mean "this candidate's own peak," not
+    "the highest peak any candidate this worker has ever processed reached" -- `ru_maxrss`/
+    `VmHWM` are both monotonic for the life of a process, so without a fresh process per
+    candidate a small job scheduled after a huge one would silently inherit and report the
+    huge one's number. The extra `spawn` (re-import citypods + sherpa_onnx + numpy) this costs
+    per candidate is on the order of seconds against diarize runtimes measured in minutes to
+    hours -- immaterial.
     """
     return ProcessPoolExecutor(
-        max_workers=max(1, workers), mp_context=multiprocessing.get_context("spawn")
+        max_workers=max(1, workers),
+        mp_context=multiprocessing.get_context("spawn"),
+        max_tasks_per_child=1,
     )
 
 
@@ -7507,6 +7519,7 @@ class NativeDiarizeStage:
                     model=model,
                     embedding_model=embedding_model,
                     num_threads=threads_per_worker,
+                    log_label=uid,
                 )
                 # The audio temp file must outlive the call, so the wait stays inside the
                 # download context.

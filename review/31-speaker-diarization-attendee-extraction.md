@@ -490,6 +490,65 @@ the crash happened — not measured here (estimated ~50min of compute for that o
 for a future pass if it becomes worth the runner time, e.g. via a throwaway `workflow_dispatch` probe
 matching how §A.1a's original CPU comparison was done.
 
+**OOM proof instrumentation + a fixed spike margin, 2026-09-07 — narrowing "more likely
+attributable to..." above from a plausible story to something the next occurrence can actually
+confirm.** The reframing two paragraphs up is reasoned from indirect evidence (a stale ratio, a
+pre-fix scheduler) — neither run #59 nor its own log directly proves memory exhaustion was the
+proximate cause, and asked directly "can we prove this," the honest answer was no. Three gaps,
+closed independently of chunking (§A.4 addendum elsewhere) since none of them depend on it:
+
+- **The only genuinely authoritative signal was never being captured.** Every log so far is this
+  project's own app-level view (the 60s heartbeat, `MemoryReservation`'s bookkeeping) — real, but
+  a *trailing*, coarse-grained approximation of what the OS actually did, and silent entirely if
+  the kernel OOM-killer fires between two 60s samples or reaps the process before the next line
+  of Python ever runs. Only the kernel's own log (`dmesg`'s `Out of memory: Killed process ...`)
+  names the actual victim and its RSS at time of death, unambiguously. `r7-diarization.yml` now
+  captures `dmesg`/`free -h`/`/proc/meminfo` in an `if: always()` step immediately after the
+  diarize step — GH Actions runs `always()` steps during its own cancellation sequence, before
+  the runner is torn down, so this should still fire even on an external SIGTERM. Its *absence*
+  of an OOM line is equally informative: it would mean the kernel killer never fired at all,
+  pointing back toward an external/control-plane cause (H-A's family) instead.
+- **Peak-RSS attribution was too coarse to pin a specific candidate.** The heartbeat samples the
+  whole runner every 60s, aggregating every concurrent worker together — exactly why run #63's
+  own numbers (`mem_avail` flat at `3.0GiB` for the final 10+ minutes, load pinned at `~2.0/4`)
+  could neither confirm nor rule out a transient spike between samples. `run_diarize_job` now
+  logs `peak_rss_mb` (from Linux's own `VmHWM` "high water mark" counter, added as
+  `citypods.resources.process_peak_rss_bytes` — deliberately *peak*, not `process_rss_bytes()`'s
+  existing *current* reading, which a since-freed spike would never show) for every candidate,
+  and a genuine Python-level `MemoryError` or `OSError(errno=ENOMEM)` is now caught and re-raised
+  with that same reading attached rather than reported as a generic, unremarkable diarize error.
+  For this to attribute a peak to one specific candidate rather than "the highest peak any
+  candidate this worker process has ever seen" (`ru_maxrss`/`VmHWM` are both monotonic for a
+  process's whole lifetime, and the diarize pool reuses worker processes across many candidates
+  by default), `_diarize_executor` now sets `max_tasks_per_child=1` — a fresh `spawn` per
+  candidate, costing on the order of a couple of seconds against runtimes measured in minutes to
+  hours. **Caveat stated plainly: a hard kernel OOM-kill still runs none of this** — the process
+  is reaped from outside before any Python code, including this logging, gets to execute. That
+  gap is exactly what the `dmesg` capture above exists to cover instead.
+- **A fixed spike margin, sized from concrete evidence already in hand, not a guess.** Asked
+  directly whether reserving more memory could simply avert this: the recurring `Where node`
+  broadcast error's own logged dimensions (run #59: `12288 by 15974`; runs #61-63: `12288 by
+  50599`) imply an attempted allocation up to `12288 * 50599 * 4` bytes (float32) for that one
+  intermediate tensor alone — **≈2.49GiB** — on top of whatever steady-state RSS a job already
+  holds when it happens, which the linear model above has no way to anticipate. Run #63's own
+  heartbeat showed only `~3.0GiB` genuinely free at the exact moment its error fired: close
+  enough to that figure that a spike landing right then plausibly would have been the tipping
+  point. `DIARIZE_RSS_SPIKE_MARGIN_BYTES = 3GiB` (`citypods/diarize.py`) is now subtracted once
+  from the diarize `MemoryReservation` ceiling via `diarize_memory_ceiling_bytes()` — once from
+  the *ceiling*, deliberately not once per concurrent worker, since the trigger is data-dependent
+  and rare, not a certainty every worker hits in lockstep; multiplying it by worker count would
+  have cost far more admitted concurrency than the risk being defended against justifies. This is
+  a defense-in-depth mitigation, not a fix for the broadcast bug itself — chunking (elsewhere in
+  this addendum) and the fd-redirect error detection (§A.1b) are what actually address that; this
+  bounds the *consequence* of it recurring before either lands, or of some other, unrelated
+  future spike doing the same thing.
+- **Not proven by this PR, stated as plainly as the instrumentation gap that motivated it:** none
+  of the above establishes, after the fact, that OOM was run #63's actual cause — it could only
+  have done that if it had already been in place *before* run #63. What it does is close the gap
+  so the *next* occurrence (this bug is not otherwise fixed yet) produces a `dmesg` line and a
+  per-candidate peak-RSS reading tight enough to actually settle the question, rather than the
+  same "plausible, not provable" position this run left things in.
+
 ---
 
 ## Part B — Minimal attendee extraction (Phase F #14, pulled forward)
