@@ -619,10 +619,43 @@ from chunking limited to as few chunks as the length actually requires, never mo
   confirmed the `_attach_embeddings` error-detection hypothesis on a worst-case input. A second,
   more realistic file (2000s, real silence gaps every ~8s, threshold forced to force 4 chunks)
   then completed cleanly: 181/181 turns extracted with embeddings, all four chunks' independently-
-  clustered speakers correctly merged into the one real global speaker (validating
-  `CHUNK_MERGE_MIN_COSINE=0.45` against real audio, not just the calibration clips), and turn
-  coverage exactly matching the recording's true `[0, 2000s)` range with no gap or duplication at
-  any of the three internal boundaries.
+  clustered speakers correctly merged into the one real global speaker, and turn coverage exactly
+  matching the recording's true `[0, 2000s)` range with no gap or duplication at any of the three
+  internal boundaries. **Both files were single-speaker** (a single macOS `say` voice) — this
+  validates the chunking *plumbing* end-to-end against real sherpa_onnx, but not the merge
+  threshold's actual discriminating power, which the next finding corrects.
+- **Real multi-speaker validation (2026-09-07, run directly in response to being asked "did you
+  test against audio with different speakers" — the answer, honestly, was "not for the
+  chunking-specific end-to-end runs above," and this is what closing that gap found): chunking
+  measurably *hurts* accuracy on real multi-speaker audio at the chunk sizes tested.** Using this
+  project's own `citypods/speaker_benchmark.py:compare()` (`turn_cluster_accuracy`, the identical
+  metric behind §A.1a's `window_shift_ratio` table) against real VoxConverse clips, chunked vs.
+  single-pass on the *same* audio:
+
+  | clip | real speakers | single-pass accuracy | chunked accuracy | global clusters (chunked vs. single) | chunk size |
+  |---|---|---|---|---|---|
+  | `vc_complex` | 17 | 0.861 | 0.522 | 6 vs. 9 | ~243s × 3 |
+  | `vc_typical` | 4 | 0.825 | 0.702 | 6 vs. 4 | ~60s × 3 |
+
+  Chunking produced *fewer* distinct global speaker IDs than single-pass did on the same audio (6
+  vs. 9, for 17 real speakers) — the cross-chunk cosine merge at `CHUNK_MERGE_MIN_COSINE=0.45` is
+  conflating genuinely distinct speakers, not only reuniting the same one across chunks (confirmed
+  directly: one merged global cluster in the `complex` run combined three different real
+  speakers' turns). The likely mechanism: at these chunk sizes, a speaker gets very few turns
+  inside any one chunk, so that chunk's `(chunk_idx, local_cluster)` mean embedding averages over
+  too few samples to be stable, and spurious cosine agreement between two different people's noisy
+  means becomes common enough to cross 0.45.
+  **This is not yet resolved, stated plainly:** whether the same failure mode recurs at real
+  production chunk scale (4-8h, where a city-council speaker has far more turns per chunk to
+  average over, and the turn-taking pattern is sequential and much less densely interleaved than
+  VoxConverse's crosstalk-heavy clips) is a real open question, not a settled "confounded, so
+  fine" dismissal — no long, real, gold-labeled multi-speaker recording was available to test that
+  regime directly, and building a synthetic one long enough to be conclusive was not done in this
+  pass. The calibration of `0.45` itself (§ above) remains sound for what it measured (real
+  same-/different-speaker cosine separation on same-clip pairs); what this finding adds is that
+  the *chunked* application of that same threshold, at short chunk sizes, does not preserve that
+  separation as well as hoped, and the direction of the open question is squarely "does chunk
+  duration fix this," not "is 0.45 simply wrong."
 - **Not yet validated: chapter-anchored and silence-refined split *selection* against real, long
   production audio.** `_nearest_chapter_time`/`_detect_silences_local`/`_find_split_point` each
   have direct unit coverage (including one test asserting a real episode chapter wins over the
