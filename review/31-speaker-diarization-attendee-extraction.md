@@ -656,6 +656,45 @@ from chunking limited to as few chunks as the length actually requires, never mo
   the *chunked* application of that same threshold, at short chunk sizes, does not preserve that
   separation as well as hoped, and the direction of the open question is squarely "does chunk
   duration fix this," not "is 0.45 simply wrong."
+- **Root cause found and fixed (2026-09-07): `_merge_chunk_clusters` was single-linkage
+  clustering, not complete-linkage — switched to sherpa-onnx's own `FastClustering`.** A
+  literature/codebase research pass (asked for directly) found that this project's *own*
+  single-pass clustering already uses complete-linkage agglomerative clustering
+  (`sherpa_onnx.FastClusteringConfig`, confirmed directly against its C++ source:
+  `hclust_fast(..., HCLUST_METHOD_COMPLETE, ...)`, cutting the tree via `cutree_cdist` at a
+  `1 - cosine_similarity` distance threshold) — specifically because complete-linkage resists
+  the "chaining" failure single-linkage is known for: single-linkage merges transitively through
+  the single *closest* pair at each step (A-B close, B-C close → A and C end up merged even when
+  directly dissimilar), where complete-linkage requires *every* pair within a merged group to
+  clear the threshold. The union-find `_merge_chunk_clusters` used above is exactly single-
+  linkage. Confirmed directly, not just by citing the general case: three synthetic points at
+  cosine similarities A-B=0.707, B-C=0.707, A-C=0.0 (the textbook chaining setup) cluster as
+  `[0, 0, 1]` under `sherpa_onnx.FastClustering` — C correctly stays separate — where the
+  replaced union-find would chain all three together. `sherpa_onnx.FastClustering` normalizes
+  rows and clusters on `1 - cosine_similarity` internally (also confirmed against its C++
+  source), so `threshold=1.0 - CHUNK_MERGE_MIN_COSINE` is an exact, lossless translation of the
+  already-calibrated cosine value — not a re-derivation, and not the previously-checked-and-
+  rejected `clustering_threshold`/`minimum_match_score` (those remain a different, unrelated
+  comparison; the fix here is the *algorithm*, not a threshold swap).
+
+  **Re-ran the same real VoxConverse benchmark above after the fix:**
+
+  | clip | single-pass accuracy | chunked accuracy (single-linkage, before) | chunked accuracy (complete-linkage, after) | global clusters (after, vs. single-pass) |
+  |---|---|---|---|---|
+  | `vc_complex` (17 speakers, ~243s × 3 chunks) | 0.861 | 0.522 | **0.793** | 8 vs. 9 |
+  | `vc_typical` (4 speakers, ~60s × 3 chunks) | 0.825 | 0.702 | **0.702** (unchanged) | 6 vs. 4 |
+
+  The harder, denser clip closed most of the gap (0.522→0.793, most of the way to single-pass's
+  0.861) and now produces 8 global clusters instead of 6 — much closer to single-pass's 9,
+  confirming chaining was a real, substantial contributor there. The `typical` clip shows *no*
+  improvement at all — expected, not a sign the fix didn't work: with only 4 real speakers and
+  3 tiny 60s chunks, its false merges are plausibly direct pairwise false-positive edges (two
+  distinct speakers' own chunk-mean-embeddings landing within threshold of each other directly),
+  which single- and complete-linkage handle identically since chaining only differs when a third
+  point bridges two others. This narrows, rather than closes, the still-open question above:
+  chunk-size-driven mean-embedding noise (not chaining) looks like the dominant remaining factor,
+  which is exactly what production's real 4-8h chunks (far more turns per speaker per chunk than
+  these 60-250s test chunks) would need to be measured against to settle — still not done here.
 - **Not yet validated: chapter-anchored and silence-refined split *selection* against real, long
   production audio.** `_nearest_chapter_time`/`_detect_silences_local`/`_find_split_point` each
   have direct unit coverage (including one test asserting a real episode chapter wins over the

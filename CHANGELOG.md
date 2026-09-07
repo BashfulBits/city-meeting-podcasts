@@ -51,25 +51,33 @@ Phase R (Research-Tool Surface)._
   boundary and end up double-labeled, then refined to the nearest real detected silence within
   6min so the actual cut never lands mid-utterance. Chunks decode with 20s of overlap padding on
   internal boundaries only, diarize and embed independently, and merge back into one global
-  speaker list via union-find over per-chunk cluster-centroid cosine similarity
-  (`CHUNK_MERGE_MIN_COSINE = 0.45`, calibrated against real VoxConverse clips for this project's
-  embedding pipeline — the existing `clustering_threshold`/`minimum_match_score` were checked and
-  don't transfer to this different comparison). Validated against real (non-mocked) `sherpa_onnx`
-  on single-speaker audio: a worst-case 60min continuous-speech file correctly exercised the
-  chunked path and also crashed with the `_attach_embeddings` error below on a genuinely
-  degenerate turn (see that entry); a realistic 2000s file with real silence gaps then completed
-  cleanly across 4 chunks with all 181 turns embedded and correctly merged into the one real
-  speaker. **Real multi-speaker validation surfaced a genuine, unresolved regression**: against
-  real VoxConverse clips, using this project's own `speaker_benchmark.py` `turn_cluster_accuracy`
-  metric, chunked diarization scored meaningfully worse than single-pass on the *same* audio
-  (17-speaker clip: 0.522 chunked vs. 0.861 single-pass; 4-speaker clip: 0.702 vs. 0.825) —
-  chunking produced fewer global speaker IDs than single-pass on identical audio, meaning the
-  cross-chunk merge is conflating some genuinely distinct speakers, most likely because these test
-  chunks (60–250s) are far shorter than production's 4–8h chunks and leave too few turns per
-  speaker per chunk for a stable mean embedding. Whether this attenuates at real production scale
-  is not yet known — no long, real, gold-labeled multi-speaker recording was available to test
-  that regime. Not yet validated: chapter-anchored split selection, and real silence detection,
-  against genuine long production audio — both have direct unit coverage but the real end-to-end
+  speaker list via complete-linkage agglomerative clustering (`sherpa_onnx.FastClustering` --
+  the identical algorithm this project's own single-pass clustering already uses) over per-chunk
+  cluster-centroid cosine similarity (`CHUNK_MERGE_MIN_COSINE = 0.45`, calibrated against real
+  VoxConverse clips for this project's embedding pipeline — the existing
+  `clustering_threshold`/`minimum_match_score` were checked and don't transfer to this different
+  comparison). Validated against real (non-mocked) `sherpa_onnx` on single-speaker audio: a
+  worst-case 60min continuous-speech file correctly exercised the chunked path and also crashed
+  with the `_attach_embeddings` error below on a genuinely degenerate turn (see that entry); a
+  realistic 2000s file with real silence gaps then completed cleanly across 4 chunks with all
+  181 turns embedded and correctly merged into the one real speaker. **Real multi-speaker
+  validation initially surfaced a genuine regression, then found and fixed its root cause**:
+  against real VoxConverse clips, using this project's own `speaker_benchmark.py`
+  `turn_cluster_accuracy` metric, the merge step's first implementation (single-linkage
+  union-find) scored meaningfully worse than single-pass on the *same* audio (17-speaker clip:
+  0.522 vs. 0.861 single-pass; 4-speaker clip: 0.702 vs. 0.825) — chunking produced fewer global
+  speaker IDs than single-pass on identical audio. Root cause: single-linkage clustering is
+  known to "chain" distinct items together transitively through a weak intermediate link, and
+  this project's own single-pass clustering already avoids exactly that by using complete-
+  linkage (confirmed against `sherpa_onnx`'s C++ source) — switching the merge step to the same
+  algorithm (via `sherpa_onnx.FastClustering`, not a from-scratch reimplementation) recovered
+  most of the gap on the harder clip (0.522→0.793 of 0.861, global clusters 6→8 of 9), with no
+  change on the smaller/tinier-chunked clip (0.702, unchanged) — consistent with that residual
+  gap being chunk-size-driven embedding noise rather than chaining, and pointing squarely at
+  chunk duration (not the algorithm) as what production's real 4-8h chunks still need measuring
+  against, which no long, real, gold-labeled multi-speaker recording was available to do here.
+  Not yet validated: chapter-anchored split selection, and real silence detection, against
+  genuine long production audio — both have direct unit coverage but the real end-to-end
   runs above used the naive/silence path only. `DIARIZE_PIPELINE_VERSION` bumped "2"→"3" to
   re-diarize the existing over-8h outliers under the new path. See review/31 §A.4's 2026-09-07
   addendum for the full run-log evidence and the multi-speaker accuracy table.

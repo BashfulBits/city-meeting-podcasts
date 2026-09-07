@@ -509,56 +509,69 @@ def _mean_embedding(vectors: list[list[float]]):
     return np.mean(np.array(vectors), axis=0)
 
 
-def _cosine_similarity(a, b) -> float:
-    import numpy as np
-
-    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
-    return float(np.dot(a, b) / denom) if denom else -1.0
-
-
 def _merge_chunk_clusters(
     chunk_cluster_embeddings: dict[tuple[int, str], Any],
 ) -> dict[tuple[int, str], str]:
-    """Union-find over a cosine-similarity graph: connect `(chunk_idx, local_cluster)` pairs
-    whose mean embeddings are similar enough (`CHUNK_MERGE_MIN_COSINE`), then take connected
-    components as global speaker ids. A pair with no embedding at all (extraction failed, or was
-    never attempted, for every turn in that cluster) never gets an edge, so it always keeps its
-    own unmerged id -- conservative, matching "no embedding, no identity" elsewhere in this
-    module rather than guessing at a merge with nothing to compare.
+    """Complete-linkage agglomerative clustering over each `(chunk_idx, local_cluster)` pair's
+    mean embedding, cut at `CHUNK_MERGE_MIN_COSINE`, via sherpa-onnx's own `FastClustering` --
+    the identical algorithm and cosine-distance metric its `FastClusteringConfig` already uses
+    for this project's own within-chunk clustering (`_build_diarize_config`), not a from-scratch
+    implementation. `FastClustering` normalizes rows and clusters on `1 - cosine_similarity`
+    internally (confirmed directly against its C++ source), so `threshold=1.0 -
+    CHUNK_MERGE_MIN_COSINE` is an exact, lossless translation of the calibrated cosine value,
+    not a re-derivation.
+
+    Deliberately not the single-linkage union-find this replaced (2026-09-07, review/31 §A.4
+    addendum): single-linkage merges transitively through the single *closest* pair at each
+    step ("chaining") -- A merges with B, B merges with C, so A and C end up in one cluster even
+    when directly dissimilar. Complete-linkage requires *every* pair within a merged group to
+    clear the threshold. Confirmed directly (not just by citing the general literature): three
+    synthetic points at cosine similarities A-B=0.707, B-C=0.707, A-C=0.0 (the textbook chaining
+    setup) cluster as `[0, 0, 1]` under this implementation -- A and B merge, C correctly stays
+    separate -- where the union-find this replaced would have chained all three together. A real
+    multi-speaker accuracy regression found while validating the chunking feature this belongs
+    to (review/31 §A.4 addendum) is consistent with exactly that failure mode: chunking produced
+    *fewer* global speaker ids than single-pass diarization on identical audio.
+
+    A `(chunk_idx, local_cluster)` pair with no embedding at all (extraction failed, or was
+    never attempted, for every turn in that cluster) is excluded from clustering entirely and
+    keeps its own unmerged id -- conservative, matching "no embedding, no identity" elsewhere in
+    this module rather than guessing at a merge with nothing to compare.
     """
+    import numpy as np
+    import sherpa_onnx
+
     keys = list(chunk_cluster_embeddings.keys())
-    parent: dict[tuple[int, str], tuple[int, str]] = {k: k for k in keys}
+    clusterable_keys = [k for k in keys if chunk_cluster_embeddings[k] is not None]
 
-    def find(k: tuple[int, str]) -> tuple[int, str]:
-        while parent[k] != k:
-            parent[k] = parent[parent[k]]
-            k = parent[k]
-        return k
+    labels: list[int] = []
+    if clusterable_keys:
+        if len(clusterable_keys) == 1:
+            # hclust_fast's C++ implementation is not guaranteed against a single-row input;
+            # a lone point trivially forms its own cluster without needing the library at all.
+            labels = [0]
+        else:
+            features = np.asarray(
+                [chunk_cluster_embeddings[k] for k in clusterable_keys], dtype=np.float32
+            )
+            config = sherpa_onnx.FastClusteringConfig(
+                num_clusters=-1, threshold=1.0 - CHUNK_MERGE_MIN_COSINE
+            )
+            labels = sherpa_onnx.FastClustering(config)(features)
 
-    def union(a: tuple[int, str], b: tuple[int, str]) -> None:
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-
-    for i in range(len(keys)):
-        embedding_i = chunk_cluster_embeddings[keys[i]]
-        if embedding_i is None:
-            continue
-        for j in range(i + 1, len(keys)):
-            embedding_j = chunk_cluster_embeddings[keys[j]]
-            if embedding_j is None:
-                continue
-            if _cosine_similarity(embedding_i, embedding_j) >= CHUNK_MERGE_MIN_COSINE:
-                union(keys[i], keys[j])
-
-    # Stable, readable global ids in order of first appearance, not the arbitrary root key.
-    global_id_by_root: dict[tuple[int, str], str] = {}
+    # Stable, readable global ids in order of first appearance, not the raw cluster label.
     result: dict[tuple[int, str], str] = {}
-    for k in keys:
-        root = find(k)
-        if root not in global_id_by_root:
-            global_id_by_root[root] = str(len(global_id_by_root))
-        result[k] = global_id_by_root[root]
+    global_id_by_label: dict[int, str] = {}
+    for key, label in zip(clusterable_keys, labels, strict=True):
+        if label not in global_id_by_label:
+            global_id_by_label[label] = str(len(global_id_by_label))
+        result[key] = global_id_by_label[label]
+
+    next_id = len(global_id_by_label)
+    for key in keys:
+        if key not in result:
+            result[key] = str(next_id)
+            next_id += 1
     return result
 
 

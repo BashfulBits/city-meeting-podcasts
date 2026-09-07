@@ -51,13 +51,70 @@ class _FakeDiarizer:
         return _FakeResult(self._segments)
 
 
+class _FakeFastClusteringConfig:
+    """Real attributes, not a `MagicMock()` -- `_merge_chunk_clusters` reads `.threshold` back
+    off the instance it constructs, which a bare `MagicMock()` call wouldn't actually store."""
+
+    def __init__(self, num_clusters: int = -1, threshold: float = 0.5):
+        self.num_clusters = num_clusters
+        self.threshold = threshold
+
+
+class _FakeFastClustering:
+    """A correct (if naive, O(n^3)) complete-linkage clustering over cosine distance --
+    genuinely exercises the same algorithm/threshold semantics `_merge_chunk_clusters` relies
+    on from the real `sherpa_onnx.FastClustering`, rather than a stub that can't catch a
+    clustering regression at all. Fine for the tiny (n<10) inputs every test using this uses."""
+
+    def __init__(self, config):
+        self._threshold = config.threshold
+
+    def __call__(self, features):
+        import numpy as np
+
+        n = len(features)
+        if n <= 1:
+            return [0] * n
+        norms = [np.asarray(f, dtype=np.float64) for f in features]
+        norms = [v / np.linalg.norm(v) if np.linalg.norm(v) else v for v in norms]
+
+        def pair_distance(i: int, j: int) -> float:
+            return max(0.0, 1.0 - float(np.dot(norms[i], norms[j])))
+
+        clusters = [{i} for i in range(n)]
+        while len(clusters) > 1:
+            best_pair, best_distance = None, None
+            for a in range(len(clusters)):
+                for b in range(a + 1, len(clusters)):
+                    # Complete linkage: the *worst* (largest) pairwise distance between the
+                    # two candidate clusters, not the closest -- that's the whole point.
+                    distance = max(pair_distance(i, j) for i in clusters[a] for j in clusters[b])
+                    if best_distance is None or distance < best_distance:
+                        best_distance, best_pair = distance, (a, b)
+            if best_pair is None or best_distance > self._threshold:
+                break
+            a, b = best_pair
+            clusters[a] |= clusters.pop(b)
+
+        labels = [0] * n
+        for label, members in enumerate(clusters):
+            for index in members:
+                labels[index] = label
+        return labels
+
+
 def _install_fake_sherpa_onnx(monkeypatch, segments: list[_FakeSegment]):
     fake = types.ModuleType("sherpa_onnx")
     fake.OfflineSpeakerDiarizationConfig = MagicMock(return_value=MagicMock(validate=lambda: True))
     fake.OfflineSpeakerSegmentationModelConfig = MagicMock()
     fake.OfflineSpeakerSegmentationPyannoteModelConfig = MagicMock()
     fake.SpeakerEmbeddingExtractorConfig = MagicMock()
-    fake.FastClusteringConfig = MagicMock()
+    # `side_effect`, not the bare class: existing tests inspect `.call_args.kwargs["threshold"]`
+    # on this mock, which a plain class swapped in for it wouldn't record -- `side_effect` keeps
+    # that call-tracking while still returning a real `_FakeFastClusteringConfig` instance (with
+    # a genuine, readable `.threshold`) rather than another `MagicMock`.
+    fake.FastClusteringConfig = MagicMock(side_effect=_FakeFastClusteringConfig)
+    fake.FastClustering = _FakeFastClustering
     fake.OfflineSpeakerDiarization = MagicMock(return_value=_FakeDiarizer(segments))
     monkeypatch.setitem(sys.modules, "sherpa_onnx", fake)
     return fake
@@ -598,6 +655,40 @@ def test_merge_chunk_clusters_never_merges_an_embeddingless_cluster():
     mapping = _merge_chunk_clusters({(0, "0"): None, (1, "0"): None})
 
     assert mapping[(0, "0")] != mapping[(1, "0")]
+
+
+def test_merge_chunk_clusters_does_not_chain_through_a_weak_intermediate_link():
+    """The regression this replaced a single-linkage union-find to fix (2026-09-07, review/31
+    §A.4 addendum): three points at cosine similarities A-B=0.707, B-C=0.707, A-C=0.0 -- the
+    textbook chaining setup. Single-linkage would merge A-B (clears threshold), then B-C
+    (clears threshold), transitively chaining A and C together despite them being maximally
+    dissimilar. Complete-linkage (this implementation, via sherpa-onnx's own `FastClustering`)
+    requires every pair *within* a merged group to clear the threshold, so C must stay separate
+    from {A, B} even though it chains through B."""
+    import math
+
+    from citypods.diarize import _merge_chunk_clusters
+
+    a = [1.0, 0.0]
+    theta = math.pi / 4  # cos(A, B) = cos(B, C) = cos(pi/4) ~= 0.707
+    b = [math.cos(theta), math.sin(theta)]
+    c = [0.0, 1.0]  # cos(A, C) = 0.0 -- maximally dissimilar from A
+
+    mapping = _merge_chunk_clusters({(0, "0"): a, (1, "0"): b, (2, "0"): c})
+
+    assert mapping[(0, "0")] == mapping[(1, "0")]  # A and B: direct pairwise similarity clears it
+    assert mapping[(2, "0")] != mapping[(0, "0")]  # C must not chain in through B alone
+
+
+def test_merge_chunk_clusters_handles_a_single_clusterable_pair():
+    """A recording with only one (chunk, cluster) pair overall (e.g. every other cluster's
+    embedding extraction failed) must not crash the clustering call -- `hclust_fast` isn't
+    guaranteed against a single-row input, so this is handled before ever reaching it."""
+    from citypods.diarize import _merge_chunk_clusters
+
+    mapping = _merge_chunk_clusters({(0, "0"): [1.0, 0.0, 0.0]})
+
+    assert mapping == {(0, "0"): "0"}
 
 
 def test_diarize_dispatches_to_the_chunked_path_above_the_threshold(monkeypatch, tmp_path):
