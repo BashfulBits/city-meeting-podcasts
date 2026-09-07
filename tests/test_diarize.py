@@ -8,6 +8,7 @@ overlap marking, and the best-effort embedding contract.
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 from pathlib import Path
@@ -247,6 +248,90 @@ def test_attach_embeddings_is_best_effort_on_extractor_failure(monkeypatch, tmp_
     artifact = diarize(tmp_path / "audio.m4a")
 
     assert "embedding" not in artifact.turns[0]
+
+
+def test_diarize_raises_when_onnxruntime_logs_an_error_during_process(monkeypatch, tmp_path):
+    """Regression (R7 Diarization run #59, GH Actions run 34072536373, "Diarize Denton pilot
+    meetings", 2026-09-07; review/31 §A.1b): onnxruntime's own C++ logger can write an
+    "[E:onnxruntime" line straight to the process's stderr fd -- bypassing Python's
+    sys.stderr/logging entirely -- while `process()` still returns a normal-looking result: no
+    Python exception, no visible change to the reported outcome. A job like that must not be
+    silently accepted and published as a success."""
+
+    class _NoisyDiarizer(_FakeDiarizer):
+        def process(self, samples):
+            os.write(
+                2,
+                b"2026-09-07 02:49:35.9310813 [E:onnxruntime:, sequential_executor.cc:620 "
+                b"ExecuteKernel] Non-zero status code returned while running Where node. "
+                b"Name:'/encoder/encoder/encoder.0/mconv.3/Where_1'\n",
+            )
+            return super().process(samples)
+
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.OfflineSpeakerDiarization = MagicMock(return_value=_NoisyDiarizer([]))
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_segmentation_model", lambda: Path("/fake/seg.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_embedding_model", lambda name: Path("/fake/emb.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._load_waveform", lambda path, sr: np.zeros(sr, dtype=np.float32)
+    )
+
+    with pytest.raises(RuntimeError, match="onnxruntime reported"):
+        diarize(tmp_path / "audio.m4a")
+
+
+def test_diarize_logs_but_does_not_raise_on_an_onnxruntime_warning(monkeypatch, tmp_path, capsys):
+    """A warning-level onnxruntime line is surfaced (at minimum logged) but is not treated as a
+    job failure -- only an error/fatal-level line is."""
+
+    class _WarningDiarizer(_FakeDiarizer):
+        def process(self, samples):
+            os.write(2, b"[W:onnxruntime:, some_file.cc:1 SomeFunc] a non-fatal warning\n")
+            return super().process(samples)
+
+    segments = [_FakeSegment(0.0, 1.0, 0)]
+    fake = _install_fake_sherpa_onnx(monkeypatch, segments)
+    fake.OfflineSpeakerDiarization = MagicMock(return_value=_WarningDiarizer(segments))
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_segmentation_model", lambda: Path("/fake/seg.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_embedding_model", lambda name: Path("/fake/emb.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._load_waveform", lambda path, sr: np.zeros(sr, dtype=np.float32)
+    )
+    monkeypatch.setattr("citypods.diarize._attach_embeddings", lambda *a, **k: None)
+
+    artifact = diarize(tmp_path / "audio.m4a")
+
+    assert artifact.turns  # a warning does not turn a successful diarize into an error
+    assert "onnxruntime warning" in capsys.readouterr().out
+
+
+def test_diarize_restores_the_real_stderr_fd_after_capturing(monkeypatch, tmp_path, capfd):
+    """The fd-2 redirect used to catch onnxruntime's own logging must not leak: once `diarize()`
+    returns, fd 2 must point at the real stderr again, not the (by-then-closed) temp file."""
+    _install_fake_sherpa_onnx(monkeypatch, [])
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_segmentation_model", lambda: Path("/fake/seg.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_embedding_model", lambda name: Path("/fake/emb.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._load_waveform", lambda path, sr: np.zeros(sr, dtype=np.float32)
+    )
+    monkeypatch.setattr("citypods.diarize._attach_embeddings", lambda *a, **k: None)
+
+    diarize(tmp_path / "audio.m4a")
+    os.write(2, b"after-diarize\n")
+
+    assert "after-diarize" in capfd.readouterr().err
 
 
 def test_has_valid_timed_words_unchanged_by_the_engine_swap():
