@@ -494,11 +494,13 @@ both, so neither podcast loses it; when only one is configured it attaches there
 is *not* a session of the target feed's own body — an independent advisory board, say — belongs on
 its own feed or a boards/commissions feed, never on a City Council feed.
 
-Selectors match by **normalized substring**, which makes a broader selector strictly subsume a
-narrower one: `body: "TIRZ"` already matches `"TIRZ Board"`, so adding the latter to `body_any`
-is dead config. Conversely a bare label like `"Special Meeting"` is only safe when no sibling
-feed on the same source carries it as a substring — worth checking, because per-body feeds share
-one source.
+Selectors match by **normalized substring** by default, or by a normalized glob when the selector
+contains `*` or `?`. A glob is matched against the complete body label, so
+`body_any: ["Purchasing Bids *"]` covers provider-generated dated variants without enumerating
+each one. A broader ordinary selector strictly subsumes a narrower one: `body: "TIRZ"` already
+matches `"TIRZ Board"`, so adding the latter to `body_any` is dead config. Conversely a bare label
+like `"Special Meeting"` is only safe when no sibling feed on the same source carries it as a
+substring — worth checking, because per-body feeds share one source.
 
 #### Trust boundary
 
@@ -528,8 +530,10 @@ Classification sends at most 12 findings and 12,000 estimated evidence tokens pe
 counts, month frequencies, date ranges, and up to six representative titles per finding. Short
 finding/episode IDs map back to the full local evidence; the model can explicitly select every
 observed episode of a label for a one-off inclusion. An oversized single finding is reported,
-never silently discarded. Action-specific schema requirements reject missing targets, inclusion
-IDs, or new-feed metadata. `manual_review` records uncertainty without inventing an owning body.
+never silently discarded. The wire schema deliberately accepts partially populated decisions;
+action-specific requirements are checked locally per finding, so one incomplete provider object
+becomes manual review instead of invalidating the entire batch. `manual_review` records uncertainty
+without inventing an owning body.
 
 **Interactive execution (issue #1231).** Remedy uses `LiteLLMBackend.run_immediate`, with
 `require_direct=True`, no dispatch overflow, and no queue admission. It keeps the shared provider

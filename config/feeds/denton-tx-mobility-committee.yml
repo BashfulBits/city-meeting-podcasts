@@ -4,6 +4,8 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Mobility Committee"
+  body_any:
+    - "35Express Community Outreach Meeting"
 lifecycle:
   status: paused
   recheck_after: 2026-09-30

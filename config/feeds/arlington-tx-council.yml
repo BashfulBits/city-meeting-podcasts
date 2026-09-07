@@ -5,6 +5,10 @@ meeting_family: council
 source:
   feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
   body: "Council"
+  body_any:
+    - "Budget Town Hall Meeting"
+    - "Special and Budget Town Hall Meeting"
+    - "Special Meeting and Budget Town Hall Meeting"
   body_includes:
     - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4890"
       body: "Special Joint Meeting"
