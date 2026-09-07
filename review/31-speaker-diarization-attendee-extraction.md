@@ -215,6 +215,46 @@ needed for diarize anymore**, a real operational simplification (`scripts/prefli
 gated-model preflight check becomes dead code for this lane). `pyproject.toml`'s `diarize` extra becomes
 `sherpa-onnx` in place of `pyannote-audio`.
 
+**Addendum, 2026-09-07 — `window_shift_ratio` raised to 0.3 (sherpa-onnx default 0.1).** A live
+production run (denton-tx run #59) logged a real onnxruntime error inside the segmentation
+encoder: `Non-zero status code returned while running Where node ... Attempting to broadcast an
+axis by a dimension other than 1`. Reproduced deterministically against the exact pinned
+`sherpa-onnx==1.13.7`: any continuous span of audio with no VAD-detected pause whose window
+count (audio-seconds ÷ (10s window × shift ratio)) crosses a fixed internal buffer (~12288,
+~123s at the default 0.1 shift) triggers it. No upstream fix exists as of 1.13.7 (current
+release, checked 2026-09-07) and no matching issue was found in k2-fsa/sherpa-onnx's tracker.
+`window_shift_ratio` is a real, publicly exposed C-API parameter (since 1.13.5, not an
+undocumented workaround); raising it reduces window count for the same audio, which avoided the
+error outright on synthetic continuous speech (tested 0.3/0.5/1.0 against spans up to 300s) and
+is faster (fewer windows to run).
+
+Accuracy validated against three real, CC BY 4.0-licensed VoxConverse dev clips (not committed —
+same "no reference audio in the repo" convention as this doc's original gold set) via
+`citypods/speaker_benchmark.py`'s existing `compare()`:
+
+| clip | gold shape | ratio | elapsed_s | turn_cluster_accuracy | boundary_recall |
+|---|---|---|---|---|---|
+| typical | 4 speakers, 23 turns, 178.8s | 0.1 | 27.7 | 0.814 | 0.804 |
+| typical | | 0.3 | 9.4 | 0.825 | 0.804 |
+| complex | 17 speakers, 100 turns, 728.4s | 0.1 | 114.3 | 0.868 | 0.670 |
+| complex | | 0.3 | 38.6 | 0.861 | 0.675 |
+| longturn | 1 speaker, one 305.8s continuous turn, 1019.4s total | 0.1 | 169.7 | 1.000 | 0.125 |
+| longturn | | 0.3 | 56.9 | 1.000 | 0.125 |
+
+`turn_cluster_accuracy` at 0.3 is within noise of 0.1 on every clip (+0.011, -0.007, 0.0); speed
+improved 2.9-3.0x consistently. `longturn`'s low `boundary_recall` at both ratios is expected,
+not a regression: its gold turns are 8 fragments of one continuous single-speaker span (probably
+scene-cut boundaries in the source video, not speaker changes), so a diarizer correctly reporting
+"one speaker throughout" scores a perfect `turn_cluster_accuracy` but necessarily misses most of
+those fragment edges regardless of `window_shift_ratio`. Notably, `longturn` never triggered the
+onnxruntime error at either ratio despite its 305.8s span exceeding the ~123s condition — unlike
+the synthetic repro, where a gapless span reliably triggered it past ~123s. Real speech apparently
+carries enough micro-pauses that the exact gapless-span condition is harder to hit than the
+synthetic worst case. This validates 0.3 as a safe, faster default; it does not confirm the
+change eliminates the error on arbitrary real audio, which remains an open question pending more
+production data. `DIARIZE_PIPELINE_VERSION` bumped "1"→"2" (the actual computation changed, not
+just bookkeeping) to force re-diarization of the small number of artifacts computed under 0.1.
+
 ### A.2 Module plan
 
 - **`citypods/diarize.py`** — new, mirroring `citypods/asr.py`'s existing shape (model load/cache,

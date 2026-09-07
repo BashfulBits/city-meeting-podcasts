@@ -68,6 +68,28 @@ _EMBEDDING_RECIPES: dict[str, dict[str, Any]] = {
 
 _DEFAULT_CACHE_DIR = Path.home() / ".cache" / "citypods-diarize"
 
+# sherpa-onnx's own default (0.1 -- a 1s shift over pyannote's 10s window, 90% overlap) batches
+# roughly one window per audio-second into the segmentation encoder. Any continuous span of
+# audio (no VAD-detected pause) whose window count crosses a fixed internal buffer inside the
+# exported ONNX graph (~12288, empirically ~123s at the default shift) makes onnxruntime log a
+# "Where node" broadcast failure (sequential_executor.cc, BroadcastIterator::Init) -- reproduced
+# locally against the exact pinned sherpa-onnx==1.13.7, and observed in production (denton-tx run
+# #59, 2026-09-07) on a 5.16h meeting. No upstream fix exists as of 1.13.7 (the current release);
+# no matching issue was found in k2-fsa/sherpa-onnx's tracker. `window_shift_ratio` is a real,
+# publicly exposed C-API parameter (since 1.13.5) rather than an undocumented workaround: fewer,
+# less-overlapping windows for the same audio avoids the error outright on synthetic continuous
+# speech (confirmed locally at 0.3/0.5/1.0, spans up to 300s) and is 2.9-3.0x faster (fewer
+# windows to run). Accuracy validated against three real, licensed (CC BY 4.0) VoxConverse dev
+# clips via speaker_benchmark.compare() -- turn_cluster_accuracy at 0.3 was within noise of 0.1
+# on all three (typical: 0.814->0.825; complex, 17 speakers: 0.868->0.861; a 305.8s single-
+# speaker continuous span: 1.0->1.0 both). That last clip never triggered the onnxruntime error
+# at either ratio despite exceeding the ~123s condition, unlike the synthetic repro -- real
+# speech apparently carries enough micro-pauses that the exact gapless-span condition is harder
+# to hit than a synthetic worst case, so this default is validated as a safe, faster baseline,
+# not confirmed to eliminate the error on arbitrary real audio. See review/31 §A.1a addendum
+# (2026-09-07) for the full comparison table.
+DEFAULT_WINDOW_SHIFT_RATIO = 0.3
+
 # Predicted peak RSS for one diarize worker, fitted to measurements taken on three different
 # GH Actions runner CPUs (AMD Zen4 / Intel Xeon 6973P-C / AMD Zen3): 5min->~377MB,
 # 20min->~509MB, 60min->~929MB, near-identical on all three because the footprint tracks
@@ -255,6 +277,7 @@ def diarize(
     device: str | None = None,
     num_threads: int = 2,
     clustering_threshold: float | None = None,
+    window_shift_ratio: float | None = None,
 ) -> DiarizeArtifacts:
     """Run sherpa-onnx lazily and normalize its labels to meeting-local clusters.
 
@@ -267,6 +290,9 @@ def diarize(
     for a bare/ad-hoc call. The concurrent worker-pool scheduler (`NativeDiarizeStage`) passes
     `num_threads=1` explicitly: throughput across many concurrent single-threaded workers beat
     every other split tested, including this same 2-thread-per-job optimum run four-wide.
+
+    `window_shift_ratio` defaults to `DEFAULT_WINDOW_SHIFT_RATIO`, not sherpa-onnx's own 0.1 --
+    see that constant's comment for why.
     """
     del token, device  # documented above; named for call-site compatibility only
 
@@ -298,6 +324,9 @@ def diarize(
     threshold = (
         clustering_threshold if clustering_threshold is not None else recipe["clustering_threshold"]
     )
+    shift_ratio = (
+        window_shift_ratio if window_shift_ratio is not None else DEFAULT_WINDOW_SHIFT_RATIO
+    )
 
     segmentation_path = _ensure_segmentation_model()
     embedding_path = _ensure_embedding_model(embedding_name)
@@ -305,7 +334,7 @@ def diarize(
     config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
         segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
             pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(
-                model=str(segmentation_path)
+                model=str(segmentation_path), window_shift_ratio=shift_ratio
             ),
             num_threads=num_threads,
             provider="cpu",
@@ -367,6 +396,7 @@ def run_diarize_job(
     embedding_model: str = DEFAULT_EMBEDDING_MODEL,
     num_threads: int = 1,
     clustering_threshold: float | None = None,
+    window_shift_ratio: float | None = None,
 ) -> DiarizeArtifacts:
     """Module-level worker entry point for the diarize process pool.
 
@@ -386,6 +416,7 @@ def run_diarize_job(
         embedding_model=embedding_model,
         num_threads=num_threads,
         clustering_threshold=clustering_threshold,
+        window_shift_ratio=window_shift_ratio,
     )
 
 
