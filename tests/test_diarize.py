@@ -851,3 +851,29 @@ def test_diarize_chunked_uses_a_nearby_episode_chapter_as_the_split_anchor(monke
     # The naive split is 100.0; a chapter at 97.0 is within the search window and closer than
     # the naive point itself, so it should be the anchor handed to _find_split_point.
     assert seen_anchors == [97.0]
+
+
+def test_pick_split_points_dedupes_when_naive_points_snap_to_the_same_chapter(monkeypatch):
+    """Real, observed case validating against a genuine production recording (2026-09-07): a
+    short run of tightly-packed agenda items can put more than one naive even-split point
+    within the search window of the *same* nearby chapter. Without deduping, two identical
+    split values reach `_diarize_chunk_ranges` and produce a genuine zero-width chunk between
+    them -- not a coverage bug (neighbors already cover that instant), but pure wasted work.
+    Fewer, larger chunks than requested is the correct, safe degradation instead."""
+    import citypods.diarize as diarize_mod
+
+    duration = 900.0
+    monkeypatch.setattr(diarize_mod, "DIARIZE_CHUNK_THRESHOLD_SECONDS", 100.0)
+    # _find_split_point returns its anchor unchanged (no silence refinement) -- both naive
+    # points near the one real chapter (at 300.0) snap to it identically.
+    monkeypatch.setattr(diarize_mod, "_find_split_point", lambda audio_path, anchor, dur: anchor)
+
+    # n_chunks=4 -> naive points at 225, 450, 675; a chapter at 300.0 is within the search
+    # window of both 225 and 450 (closer to each than the other candidate), so both collapse
+    # to the same split point.
+    points = diarize_mod._pick_split_points(Path("/fake.m4a"), duration, 4, [300.0])
+
+    assert points == sorted(set(points))  # already implied by the assertion below, stated plainly
+    assert len(points) < 3  # fewer than the naively-requested n_chunks - 1
+    ranges = diarize_mod._diarize_chunk_ranges(duration, points)
+    assert all(end > start for start, end in ranges)  # no zero-width chunk survives

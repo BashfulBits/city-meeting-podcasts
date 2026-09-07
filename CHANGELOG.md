@@ -76,11 +76,16 @@ Phase R (Research-Tool Surface)._
   gap being chunk-size-driven embedding noise rather than chaining, and pointing squarely at
   chunk duration (not the algorithm) as what production's real 4-8h chunks still need measuring
   against, which no long, real, gold-labeled multi-speaker recording was available to do here.
-  Not yet validated: chapter-anchored split selection, and real silence detection, against
-  genuine long production audio — both have direct unit coverage but the real end-to-end
-  runs above used the naive/silence path only. `DIARIZE_PIPELINE_VERSION` bumped "2"→"3" to
-  re-diarize the existing over-8h outliers under the new path. See review/31 §A.4's 2026-09-07
-  addendum for the full run-log evidence and the multi-speaker accuracy table.
+  **Real chapter-anchored split validation against a genuine production Denton recording**
+  (pulled from durable storage per direct instruction) found and fixed a real bug:
+  `_pick_split_points` could hand `_diarize_chunk_ranges` two identical split points (several
+  naive even-split points inside a short run of tightly-packed real chapters all snapping to
+  the same nearest one), producing a genuine zero-width chunk — not a coverage bug (neighbors
+  already cover that instant), but a fully wasted decode+diarize+embed pass. Now dedupes
+  (`sorted(set(points))`); fewer, larger chunks than requested is always a safe degradation.
+  `DIARIZE_PIPELINE_VERSION` bumped "2"→"3" to re-diarize the existing over-8h outliers under
+  the new path. See review/31 §A.4's 2026-09-07 addendum for the full run-log evidence, the
+  multi-speaker accuracy table, and the real-chapter-data validation.
 
 ### Fixed
 

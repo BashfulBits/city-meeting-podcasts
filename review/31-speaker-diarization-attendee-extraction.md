@@ -695,14 +695,30 @@ from chunking limited to as few chunks as the length actually requires, never mo
   chunk-size-driven mean-embedding noise (not chaining) looks like the dominant remaining factor,
   which is exactly what production's real 4-8h chunks (far more turns per speaker per chunk than
   these 60-250s test chunks) would need to be measured against to settle — still not done here.
-- **Not yet validated: chapter-anchored and silence-refined split *selection* against real, long
-  production audio.** `_nearest_chapter_time`/`_detect_silences_local`/`_find_split_point` each
-  have direct unit coverage (including one test asserting a real episode chapter wins over the
-  naive split point), but the end-to-end real-`sherpa_onnx` runs above both used the naive/silence
-  path only (`chapter_times=None`) — genuine chapter-anchored splitting on a real multi-hour
-  recording, and real `ffmpeg silencedetect` output on audio long enough to actually need
-  chunking, remain unexercised outside mocks until this ships and a real 8h+ recording (the
-  15.09h outlier itself, first) goes through the pipeline in production.
+- **Real chapter-anchored split validation (2026-09-07), against a genuine production Denton
+  recording pulled from durable storage — and a real bug it found and fixed.** Per direct
+  instruction: pulled `uid=621bfa24a31dd23e` ("City Council on 2021-12-07 3:00 PM",
+  18568.953s ≈ 5.16h, 19 real chapters, `speakers.synced=True` under the existing single-pass
+  pipeline — one of the two candidates that completes cleanly in every one of runs #59/#61-63)
+  from the live state store via `citypods.statesync.fetch_remote_records`, then its actual audio
+  and its own already-published `speakers.json` from the public CDN (`audio.citymeetings.fyi`,
+  no credentials needed for either — only the state-store *listing* needed B2 access). Calling
+  `_pick_split_points` directly against this file's real 19 chapter timestamps (forcing a low
+  `DIARIZE_CHUNK_THRESHOLD_SECONDS` to exercise multiple real splits) found a genuine bug: with
+  `n_chunks=11`, several naive even-split points inside a short run of tightly-packed chapters
+  all snapped to the *same* nearest chapter, handing `_diarize_chunk_ranges` a repeated split
+  value and producing a genuine zero-width chunk between two identical bounds. Not a coverage
+  bug — the neighboring real chunks already cover that same instant on either side, so nothing
+  was lost or duplicated — but a fully wasted decode+diarize+embed pass for zero benefit.
+  `_pick_split_points` now returns `sorted(set(points))` instead of `sorted(points)`: fewer,
+  correspondingly larger chunks than naively requested is always a safe degradation. New
+  regression test (`test_pick_split_points_dedupes_when_naive_points_snap_to_the_same_chapter`)
+  pins it directly against a small synthetic case with the same shape as the real bug. Separately
+  confirmed on the same real chapter data (`n_chunks=6`, no dedup needed there): most splits
+  landed exactly on a real chapter (delta `0.0s`) as designed, and the one naive point that fell
+  inside this recording's own ~8500s chapter-sparse stretch (between chapters at 5061.0s and
+  13610.0s — no chapter within the 45min search window) correctly fell back to the naive/silence
+  path — a real exercise of *both* documented split-selection behaviors, not just the happy path.
 - **`DIARIZE_PIPELINE_VERSION` bumped "2"→"3"** (`citypods/stages.py`) — chunking is a genuinely
   different computation for the handful of existing over-8h artifacts, not a bookkeeping-only
   change, so they re-diarize under the new path rather than keeping a stale single-pass result.

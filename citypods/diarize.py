@@ -483,9 +483,22 @@ def _pick_split_points(
     n_chunks: int,
     chapter_times: Sequence[float] | None,
 ) -> list[float]:
-    """Return `n_chunks - 1` sorted internal split points: for each naive even split, prefer a
-    nearby chapter boundary as the anchor (falling back to the naive point itself), then the
-    longest detected silence near that anchor (falling back to the anchor itself)."""
+    """Return up to `n_chunks - 1` sorted, distinct internal split points: for each naive even
+    split, prefer a nearby chapter boundary as the anchor (falling back to the naive point
+    itself), then the longest detected silence near that anchor (falling back to the anchor
+    itself).
+
+    Fewer than `n_chunks - 1` distinct points is a real, observed case with real chapter data
+    (2026-09-07, validating against a genuine production Denton City Council recording), not a
+    hypothetical: several closely-spaced naive points inside a short run of tightly-packed
+    agenda items all snap to the *same* nearby chapter, which without deduping would hand
+    `_diarize_chunk_ranges` a repeated split point and produce a genuine zero-width chunk
+    between two identical bounds. That chunk isn't a coverage bug on its own -- its neighbors
+    already cover the same instant either side of it, so nothing is lost or duplicated -- but it
+    is a wasted decode+diarize+embed pass for zero benefit. Deduping here means "one fewer,
+    correspondingly larger chunk" instead, which is always a safe degradation from what was
+    requested.
+    """
     chapters = sorted(t for t in (chapter_times or []) if 0 < t < duration_seconds)
     points = []
     for naive in _naive_split_points(duration_seconds, n_chunks):
@@ -493,7 +506,7 @@ def _pick_split_points(
         if anchor is None:
             anchor = naive
         points.append(_find_split_point(audio_path, anchor, duration_seconds))
-    return sorted(points)
+    return sorted(set(points))
 
 
 def _diarize_chunk_ranges(
