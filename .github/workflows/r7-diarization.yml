@@ -23,6 +23,12 @@ jobs:
   diarize:
     runs-on: ubuntu-latest
     timeout-minutes: 330
+    env:
+      # Same checksum-pinned build audio.yml's host fallback uses -- NOT `apt-get install ffmpeg`,
+      # which on ubuntu-latest (24.04 "noble") resolves to 6.1.1, a full major version behind the
+      # 7.1.5 production actually decodes audio with (see ci.yml).
+      FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
+      FFMPEG_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -39,8 +45,8 @@ jobs:
 
       # sherpa-onnx's two ONNX models (~46MB combined) are non-gated GitHub release assets,
       # fetched lazily by citypods.diarize into this cache dir on first use -- no HF auth, no
-      # torchcodec/shared-ffmpeg workaround the pyannote engine needed (this engine decodes
-      # audio via a plain ffmpeg subprocess, which the runner image ships already).
+      # torchcodec workaround the pyannote engine needed (this engine decodes audio via a plain
+      # ffmpeg subprocess -- installed below, same as every other lane that decodes audio).
       - name: Cache sherpa-onnx diarization models
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
@@ -49,6 +55,33 @@ jobs:
 
       - name: Install pinned diarization runtime
         run: pip install -e ".[diarize,storage]" -c constraints/asr.txt
+
+      - name: Cache pinned ffmpeg
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ffmpeg-static-linux64-7.1.5-v2
+
+      - name: Install pinned ffmpeg (matches production's audio.yml pin)
+        # Self-built (scripts/build_ffmpeg_static.sh), vendored to our own B2 bucket -- not an
+        # upstream/mirror host. FFMPEG_URL built from the B2 secret rather than hardcoded so it's
+        # not duplicated across the workflows that pin ffmpeg (review/22). citypods/diarize.py
+        # shells out to a bare `ffmpeg` on PATH, so this must land on PATH, not just be built --
+        # this workflow never installed ffmpeg at all, so every diarize candidate failed
+        # immediately with "ffmpeg ... was not found on PATH".
+        env:
+          FFMPEG_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+          python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${FFMPEG_DIR}"
+          "${FFMPEG_DIR}/bin/ffmpeg" -version >/dev/null
+          "${FFMPEG_DIR}/bin/ffprobe" -version >/dev/null
+          echo "${FFMPEG_DIR}/bin" >> "$GITHUB_PATH"
 
       - name: Preflight diarization model access
         run: python scripts/preflight_diarization.py
