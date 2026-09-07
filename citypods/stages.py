@@ -2743,7 +2743,6 @@ class _DiarizeAdmission:
         ctx: StageContext,
         runtime_log: DiarizeRuntimeLog,
         recipe: str,
-        workers: int = 1,
     ):
         # Longest first: claim() can then take the first candidate that fits.
         self._pending = sorted(candidates, key=lambda item: item.recording_seconds, reverse=True)
@@ -2752,48 +2751,11 @@ class _DiarizeAdmission:
         self._recipe = recipe
         self._deferred: list[tuple[_DiarizeCandidate, str]] = []
         self._lock = threading.Lock()
-        self._workers = max(1, workers)
-        self._running = 0
 
     @property
     def deferred(self) -> list[tuple[_DiarizeCandidate, str]]:
         with self._lock:
             return list(self._deferred)
-
-    def acquire_running_slot(self) -> int:
-        """Claim a running slot and return how many onnxruntime threads the job starting now
-        should use.
-
-        Not a fixed value for the whole run: review/31 §A.4 measured that many single-threaded
-        workers beat fewer multi-threaded ones in *aggregate* throughput when every worker has
-        real work (full concurrency), but also that 2 threads is the single-job *latency*
-        optimum when a worker has no competition for CPU. Those two findings describe different
-        situations, not a contradiction -- and best-fit-decreasing admission provably produces
-        both: it concentrates the memory budget on a *few* large candidates whenever the backlog
-        is dense with outliers (documented above; confirmed against run #59's own candidate set,
-        which admits exactly 2 of 4 configured workers), which leaves the other configured
-        workers' vCPUs genuinely unused -- not just blocked-and-waiting -- for as long as the
-        running jobs take. `claim()` has no way to know that in advance (memory fit is the only
-        thing it reasons about), so this is decided separately, at the moment a job is actually
-        about to start: if fewer than half the configured workers are concurrently running, this
-        job gets the single-job latency optimum (2 threads) instead of leaving idle cores
-        unused; once concurrency reaches half of `workers` or more, it gets 1 thread, preserving
-        the already-validated full-concurrency behavior exactly. A solo-configured pool
-        (`workers <= 1`) always gets `_DIARIZE_SOLO_THREADS` -- there is never competition to
-        reserve capacity against, so the decision doesn't depend on a running count at all.
-        """
-        if self._workers <= 1:
-            return _DIARIZE_SOLO_THREADS
-        with self._lock:
-            self._running += 1
-            n = self._running
-        return 2 if n <= self._workers // 2 else 1
-
-    def release_running_slot(self) -> None:
-        if self._workers <= 1:
-            return
-        with self._lock:
-            self._running = max(0, self._running - 1)
 
     def claim(self) -> _DiarizeCandidate | None:
         from citypods.diarize import estimate_diarize_rss_bytes
@@ -7371,23 +7333,19 @@ class NativeDiarizeStage:
 
         workers = _diarize_worker_count(ctx)
         admission = _DiarizeAdmission(
-            candidates, ctx=ctx, runtime_log=runtime_log, recipe=runtime_recipe, workers=workers
+            candidates, ctx=ctx, runtime_log=runtime_log, recipe=runtime_recipe
         )
         # One thread per worker slot, each claiming and then blocking on its own subprocess.
         # Threads (not a bare future-juggling loop) so every in-flight item gets its own
         # PROGRESS entry -- that registry is keyed by thread, and the heartbeat's "active work"
         # line is the only thing that makes a busy diarize pass distinguishable from a hung one.
-        # Per-job thread count is decided adaptively at start time, not fixed here for the whole
-        # run: N single-threaded workers beat fewer multi-threaded ones on aggregate throughput
-        # when every worker has real work (review/31 §A.4), but best-fit-decreasing admission
-        # provably leaves *other* configured workers' vCPUs genuinely idle whenever the backlog
-        # is dense with outliers (same section) -- so a job started while fewer than half the
-        # configured workers are concurrently running gets the 2-thread single-job latency
-        # optimum instead, via `_DiarizeAdmission.acquire_running_slot()`. See that method's
-        # docstring for the full reasoning; each "diarize start" line below logs the value used.
+        # Each worker is single-threaded when several run at once: measured across three GH
+        # Actions CPUs, N single-threaded processes beat every other split on aggregate
+        # throughput, including the same 2-thread single-job optimum run N-wide (review/31 §A.4).
+        threads_per_worker = 1 if workers > 1 else _DIARIZE_SOLO_THREADS
         print(
             f"[enrich] diarize pool: {len(candidates)} candidate(s), workers={workers} "
-            f"threads_per_worker=adaptive(1-2) recipe={runtime_recipe}",
+            f"threads_per_worker={threads_per_worker} recipe={runtime_recipe}",
             flush=True,
         )
         # Warm the model cache once in the parent; otherwise every spawned worker misses the
@@ -7418,6 +7376,7 @@ class NativeDiarizeStage:
                             "model": model,
                             "embedding_model": embedding_model,
                             "canonical_city_slug": canonical_city_slug,
+                            "threads_per_worker": threads_per_worker,
                         },
                         daemon=True,
                     )
@@ -7440,6 +7399,7 @@ class NativeDiarizeStage:
                     model=model,
                     embedding_model=embedding_model,
                     canonical_city_slug=canonical_city_slug,
+                    threads_per_worker=threads_per_worker,
                 )
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
@@ -7475,6 +7435,7 @@ class NativeDiarizeStage:
         model: str,
         embedding_model: str,
         canonical_city_slug: str,
+        threads_per_worker: int,
     ) -> None:
         from citypods import diarize as diarize_mod
 
@@ -7514,11 +7475,6 @@ class NativeDiarizeStage:
             return
 
         started_at = time.monotonic()
-        # Decided now, not once for the whole run: see acquire_running_slot()'s docstring. Must
-        # happen before the try block so the finally clause below always knows whether a running
-        # slot was actually claimed (and needs releasing) versus an earlier return path that
-        # never reached this point.
-        job_threads = admission.acquire_running_slot()
         try:
             words_raw = _read_storage_bytes(ctx.storage, candidate.words_key)
             if words_raw is None:
@@ -7535,7 +7491,7 @@ class NativeDiarizeStage:
             print(
                 f"[enrich] diarize start uid={uid} body={ep.body!r} "
                 f"recording_s={candidate.recording_seconds:.1f} "
-                f"estimate_s={estimate:.1f} ({basis}) threads={job_threads}",
+                f"estimate_s={estimate:.1f} ({basis})",
                 flush=True,
             )
             # PROGRESS makes a busy pass visible on the heartbeat's "active work" line; without
@@ -7550,7 +7506,7 @@ class NativeDiarizeStage:
                     str(audio_path),
                     model=model,
                     embedding_model=embedding_model,
-                    num_threads=job_threads,
+                    num_threads=threads_per_worker,
                 )
                 # The audio temp file must outlive the call, so the wait stays inside the
                 # download context.
@@ -7620,7 +7576,6 @@ class NativeDiarizeStage:
         finally:
             if reservation is not None:
                 reservation.release(reserved_bytes)
-            admission.release_running_slot()
 
     def _finalize(
         self,
