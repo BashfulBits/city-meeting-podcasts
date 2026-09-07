@@ -34,6 +34,22 @@ Phase R (Research-Tool Surface)._
   heartbeat's `active work:` line names the stuck uid and its elapsed time directly, instead of
   requiring a `thread activity:` stack-sample read to infer that the run was busy at all.
 
+- **Diarize worker thread count is now adaptive, not fixed for the whole run
+  (`citypods/stages.py`).** Best-fit-decreasing admission provably concentrates the memory
+  budget on a few large candidates whenever the backlog is dense with outliers — simulating
+  `claim()`'s real algorithm against run #59's own 6-candidate backlog confirms it admits
+  exactly 2 of 4 configured workers (99.4% of the budget from the 15.09h and 5.28h meetings),
+  leaving the other 2 workers' vCPUs genuinely idle at the OS level, not just blocked-and-waiting,
+  for as long as those two jobs run. Confirmed `num_threads=2` is still a real single-job
+  speedup under the new `window_shift_ratio=0.3` (1.39x on a 60min clip), so that idle capacity
+  is worth using. `_DiarizeAdmission` now tracks a running-job count
+  (`acquire_running_slot()`/`release_running_slot()`): a job started while fewer than half the
+  configured workers are concurrently running gets 2 threads instead of leaving cores idle; once
+  concurrency reaches half of `workers` or more, new jobs get 1 thread, preserving the
+  already-validated full-concurrency behavior (review/31 §A.4: many single-threaded workers beat
+  fewer multi-threaded ones when every worker has real work) exactly. See review/31 §A.4's
+  2026-09-07 addendum for the full reasoning and measurements.
+
 ### Fixed
 
 - **Diarize RSS memory model re-validated at 5min-8h (`citypods/diarize.py`, `tests/test_diarize.py`).**

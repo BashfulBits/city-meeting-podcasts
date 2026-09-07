@@ -490,6 +490,44 @@ the crash happened — not measured here (estimated ~50min of compute for that o
 for a future pass if it becomes worth the runner time, e.g. via a throwaway `workflow_dispatch` probe
 matching how §A.1a's original CPU comparison was done.
 
+**Per-job thread count made adaptive, 2026-09-07: idle configured workers get a second onnxruntime
+thread instead of sitting unused.** Best-fit-decreasing admission (above) provably concentrates the
+memory budget on a *few* large candidates whenever the backlog is dense with outliers — confirmed by
+simulating `claim()`'s real algorithm against run #59's own candidate set (six real durations: 15.09h,
+10.9h, 9.12h, 5.28h, 5.16h, 5.0h): it admits exactly the 15.09h and 5.28h meetings (99.4% of the 13.7GiB
+budget from two candidates) and leaves the other two configured workers blocked, unable to claim
+anything. That's not "blocked-but-consuming" — with `workers=4` but only 2 candidates admitted, 2 vCPUs
+sit genuinely idle at the OS level for as long as those two jobs run (the 15.09h one alone: ~51min at
+`num_threads=1`). Separately confirmed `num_threads=2` is still a real single-job speedup under the new
+`window_shift_ratio=0.3` (unmeasured territory — review/31's original 2-thread finding predates that
+change): 146.0s vs. 203.6s on the same 60min clip, a 1.39x speedup, so there is idle capacity worth using
+and a real payoff for using it.
+
+The existing "N single-threaded workers beat fewer multi-threaded ones" finding (§A.4 above) is not
+contradicted by this — it describes a different situation (*every* configured worker has real work,
+i.e. full concurrency), which is exactly when the fix below leaves thread count at 1. A static switch to
+`workers=2 × threads=2` would help the idle-capacity case and actively lose 65-78% aggregate throughput
+whenever the backlog is short-meeting-dense enough to keep all 4 workers busy — the two situations need
+different answers, not one blanket default.
+
+**Fix:** `threads_per_worker` is no longer a single value fixed for the whole run. `_DiarizeAdmission`
+now tracks a running-job count (`acquire_running_slot()` / `release_running_slot()`, incremented/
+decremented around each job's actual execution, not its claim): a job started while fewer than half of
+`workers` are concurrently running gets 2 threads; once concurrency reaches half of `workers` or more,
+new jobs get 1 thread, preserving the full-concurrency case exactly. A solo-configured pool
+(`workers<=1`) always gets `_DIARIZE_SOLO_THREADS` (2) as before — there's never competition to reserve
+capacity against. The decision is made once per job, at the moment it actually starts (not at claim
+time, since a claimed-but-still-blocked job isn't consuming a core yet) — onnxruntime's intra-op thread
+count is fixed at session creation, so a running job can't be retroactively upgraded once other workers
+free up; the heuristic only needs to be locally reasonable at start time, not globally optimal at every
+instant. Each `[enrich] diarize start ...` line now logs the `threads=` value chosen, for observability.
+
+Not measured: aggregate throughput improvement on a real mixed backlog (only the algorithmic behavior
+against run #59's real candidate set, and the per-job speedup, were verified — both real measurements,
+not projections). This is a genuine optimization, not a bugfix for broken behavior; if it doesn't pay
+off in practice the fallback is simply reverting to the prior fixed `1 if workers > 1 else
+_DIARIZE_SOLO_THREADS`.
+
 ---
 
 ## Part B — Minimal attendee extraction (Phase F #14, pulled forward)
