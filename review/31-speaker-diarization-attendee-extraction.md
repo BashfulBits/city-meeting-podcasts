@@ -19,6 +19,34 @@ issues not yet cut**
 
 ---
 
+> **Superseding R7 decision, 2026-09-06 — engine swap, pyannote → sherpa-onnx + NeMo TitaNet-Small.**
+> Run 51 (denton-tx, 2026-09-05) exposed the real cost of the 2026-08-22 pyannote-first decision: pyannote
+> measures ~2.2s of CPU compute per second of audio (review/31 §A.1's own re-verified number), which on a
+> GitHub Actions CPU runner caps a single diarizable meeting at roughly 2h40m before the `diarize_start_cutoff`
+> admission window (285m) is exhausted — and this project has many longer meetings. Two paths were evaluated
+> to fix it: (a) chunked/resumable CPU diarization spanning multiple CI runs, or (b) finishing the
+> already-reserved external GPU dispatch path (`work_class="transcript-diarize"`, `citypods/stages.py`'s
+> `NativeDiarizeStage`) the way `transcript-asr` already uses Modal/Beam. Neither was pursued: a same-day
+> offline trial (two real, transcript-matched Denton City Council excerpts, a purpose-built gold-labeling
+> tool, and `citypods/speaker_benchmark.py`'s own scoring metrics extended to more than two engines) found
+> that **NeMo TitaNet-Small — run through `sherpa-onnx`'s CPU-only ONNX pipeline (pyannote-segmentation-3.0
+> for VAD/segmentation, TitaNet-Small for embeddings, threshold-calibrated agglomerative clustering) —
+> matches pyannote's real accuracy** (turn_cluster_accuracy 0.947/0.937 vs. pyannote's 0.962/0.956 on the
+> two excerpts) **at 8-13× pyannote's CPU speed**, eliminating the ceiling outright with no GPU, no
+> external dispatch, and no HF-gated model download. Two same-family alternatives were tested and
+> rejected: TitaNet-Large scored statistically the same as Small (0.960/0.936) for ~60% more compute — no
+> real win; naive INT8 dynamic quantization of TitaNet-Small collapsed clustering entirely (1 speaker
+> detected on both clips) and was *slower* on the test hardware (Apple Silicon lacks the AVX-512/VNNI path
+> the "faster on CPU" quantization literature assumes) — not adopted. WeSpeaker-ResNet34 and WeSpeaker-CAM++
+> (also via sherpa-onnx) were tested and rejected on accuracy (0.31-0.55 turn_cluster_accuracy even after
+> clustering-threshold calibration) despite being fast — root-caused to identity scrambling/merging within
+> continuous single-speaker speech, not a threshold-tuning problem. Full trial data, the gold set, and the
+> scoring tool are session-local (not committed — mirrors this doc's existing "no reference audio in the
+> repo" constraint); this callout is the durable record of the decision and why. See §A.1a (engine),
+> §A.4 (concurrency/admission/memory), and §C.3 (self-introduction naming signal) below for what changed.
+
+---
+
 > **Weekly calibration revision, 2026-08-22.** `speaker-calibration-review.yml` packages at most
 > `speakers.weekly_review_limit` (default 8) durable shadow matches each Monday using the same
 > authenticated GitHub-issue pattern as R5/R6. A maintainer checks Correct/Incorrect and comments
@@ -158,6 +186,19 @@ no track record here. This research is retained to define the WeSpeaker benchmar
 possible future fallback; it does not select the production stack. The superseding decision above selects
 pyannote first, with a recipe-content-addressed gradual re-diarization path.
 
+### A.1a Engine (2026-09-06, supersedes pyannote-first) — sherpa-onnx + NeMo TitaNet-Small
+
+`citypods/diarize.py`'s `diarize()` now runs `sherpa_onnx.OfflineSpeakerDiarization`: segmentation via the
+non-gated `sherpa-onnx-pyannote-segmentation-3-0` ONNX export (same segmentation architecture pyannote's own
+pipeline used, just not requiring HF auth), embeddings via `nemo_en_titanet_small.onnx`, agglomerative
+clustering via sherpa-onnx's `FastClusteringConfig` at a **calibrated threshold of 1.05** (the library
+default of 0.5 badly over-segmented TitaNet's embedding-distance scale — 50+ spurious clusters on an
+18-minute clip; 0.5 only ever fit WeSpeaker-ResNet34 by coincidence). Both model files are small (~46MB
+combined) and fetched from sherpa-onnx's own GitHub release, not the Hugging Face Hub — **no `HF_TOKEN` is
+needed for diarize anymore**, a real operational simplification (`scripts/preflight_diarization.py`'s
+gated-model preflight check becomes dead code for this lane). `pyproject.toml`'s `diarize` extra becomes
+`sherpa-onnx` in place of `pyannote-audio`.
+
 ### A.2 Module plan
 
 - **`citypods/diarize.py`** — new, mirroring `citypods/asr.py`'s existing shape (model load/cache,
@@ -221,13 +262,73 @@ produced it. Concrete additions:
   `speaker_index` is meeting-local only (§A.2's reconciliation output), **not** the cross-meeting stable
   identifier (§3 introduces that separately, only once a human confirms a name).
 
-### A.4 Budget — its own profile, not ASR's borrowed
+### A.4 Budget, concurrency, and memory (2026-09-06, supersedes "not designed further here")
 
-Per the sketch's own explicit note (carried forward, not new): diarize must **not** reuse ASR's H14d
-budget coefficients, admission thresholds, or VRAM-vs-host-RSS guard ratio — it needs its own measured
-profile once real telemetry exists, following the exact same "measure from live runs, don't estimate
-upfront" discipline H14d itself was built on (`review/11` H14d row). Not designed further here — this is
-a statement of what H14d-for-diarize will need to do once diarization is live, not a number to guess now.
+Per the sketch's own explicit note (carried forward): diarize does **not** reuse ASR's H14d budget
+coefficients — but unlike the pyannote-first design, TitaNet-Small's speed makes *concurrency* the real
+lever, not just a single-item admission check, so this needed real design rather than deferral to
+telemetry. Measured on three genuinely different GH Actions runner CPUs (AMD EPYC 9V74/Zen4, Intel Xeon
+6973P-C, AMD EPYC 7763/Zen3 — sampled via a throwaway `workflow_dispatch`-adjacent probe branch, not
+guessed from local Apple Silicon numbers, which gave the wrong per-job thread optimum when cross-checked):
+
+- **Per-job thread count is not "more is better."** Single-job latency is minimized around **2
+  onnxruntime threads** on every sampled chip (RTF 0.072-0.089) — 3 and 4 threads were consistently
+  *worse* than 2 (diminishing, then negative, returns from thread-coordination overhead on a model this
+  small). This held on both VNNI-capable chips and the older Zen3 chip without AVX-512 at all.
+- **Throughput (backlog clearing) wants a different number than latency does.** Four independent
+  single-threaded worker processes running concurrently beat every other split tested — including 2
+  workers × 2 threads — for aggregate audio-seconds-processed-per-wall-second, by 65-78% over one process
+  using all 4 threads on a single meeting, consistently across all three chips. **Production target: a
+  pool of `W` single-threaded sherpa-onnx workers, `W` = available vCPUs (4 on the standard GH Actions
+  runner), not fewer workers with more threads each.** This is a real architecture change to
+  `NativeDiarizeStage.process()` — from its current strictly serial `for ep in episodes:` loop to a small
+  scheduler around `concurrent.futures.ProcessPoolExecutor(max_workers=W)`.
+- **Admission ordering: best-fit-decreasing, one rule serving two goals.** The concern driving this design
+  (raised directly, not incidental): naively processing the backlog in existing newest-first order risks
+  either (a) a long meeting getting starved indefinitely if short meetings keep filling free slots as the
+  deadline approaches, or (b) the opposite failure of one long meeting blocking short ones from ever
+  starting. **Whenever a worker slot frees, admit the largest not-yet-admitted candidate whose estimated
+  runtime still fits before the deadline** — not just the next one in queue order. This single rule
+  produces both required behaviors without an explicit phase switch: early in the run, when the remaining
+  budget is large, "largest that fits" *is* the longest meeting in the backlog, so long meetings get first
+  claim on a worker while there's maximum runway (no starvation); as the remaining budget shrinks, fewer
+  long candidates satisfy the fits-check, so admission naturally narrows to progressively shorter meetings
+  — a soft landing with no threshold to tune.
+- **Seed the runtime estimate — do not repeat run 51's cold-start bug. (Shipped 2026-09-06.)**
+  `DiarizeRuntimeLog` started with zero samples, so `_diarize_fits_remaining_budget` unconditionally
+  admitted the very first candidate with no cap — the exact mechanism that let one pyannote episode
+  consume an entire run's budget in run 51, and a hole the engine swap would otherwise have *reopened*,
+  since changing the recipe string discards every measured sample. `DIARIZE_DEFAULT_RUNTIME_RATIO = 0.2`
+  (rounding up the worst measured single-threaded RTF, ~0.137) now backs
+  `DiarizeRuntimeLog.estimate_seconds`, which no longer returns `None`; `has_samples_for()` distinguishes
+  a measured estimate from the seed, and the per-attempt log line marks which one it used. Measured
+  samples replace the seed as soon as the first item under a recipe completes.
+- **A two-tier cutoff, matching ASR's existing pattern.** Diarize today has only
+  `diarize_start_cutoff_minutes` — no backstop. ASR already solved this with
+  `asr_start_cutoff_minutes` + `asr_backstop_minutes` (`run.py:2848`). With concurrency, a hard backstop
+  matters more: it must stop *admitting new work* with enough margin below the job's real 6h
+  `timeout-minutes` that every already-admitted worker can finish (or be cleanly cancelled) before GitHub
+  kills the job and every in-flight worker's progress is lost, not just the newest one.
+- **Memory pressure is a second, independent admission constraint — measured, not assumed.** Peak RSS per
+  single worker fit a clean, near-hardware-independent linear model across all three sampled chips:
+  **≈350MB base (model + onnxruntime arena) + ≈650MB per hour of audio** (measured points: 5min→~377MB,
+  20min→~509MB, 60min→~929MB; identical within noise on Zen4/Intel/Zen3 alike, confirming memory scales
+  with audio/model size, not CPU microarchitecture). The standard runner has 16GB total; reserving ~2GB
+  for the OS/runner/other job steps leaves **~14GB usable**. At `W=4`, four workers each diarizing a
+  typical 1-3h meeting use only ~6-9GB — comfortable — but four *simultaneous* 6h+ meetings would approach
+  ~17GB, over budget. **The admission loop must therefore check both constraints before assigning a
+  candidate to a free slot**: (1) a worker slot is free, (2) the candidate's time-estimate fits before the
+  deadline (existing check, generalized to best-fit-decreasing above), and (3) `sum of (350MB + 650MB ×
+  hours) across all currently in-flight workers, plus this candidate's own estimate, stays under the
+  ~14GB ceiling`. When (3) fails despite a free slot, skip to the next-largest candidate that clears both
+  checks rather than blocking the slot — CPU concurrency (4) is the binding constraint almost all of the
+  time; memory only binds at the long-meeting/high-concurrency extreme, but silently ignoring it risks the
+  exact outcome this note exists to prevent: GitHub OOM-killing the runner mid-batch.
+
+**Implementation status (2026-09-06):** the engine swap (§A.1a) and the seeded runtime estimate shipped
+together. The worker pool, best-fit-decreasing admission ordering, two-tier cutoff/backstop, and the
+memory-pressure cap are specified above but land separately — `NativeDiarizeStage.process()` still runs
+its original strictly serial `for ep in episodes:` loop until then.
 
 ---
 
@@ -313,6 +414,43 @@ subsequent episode's clusters whose embedding matches closely enough — a soft,
 carry-forward, not automatic — flagged as a real design detail to firm up at implementation time, not
 resolved further in this pass since it depends on how well cross-meeting embedding matching actually
 performs once real data exists).
+
+### C.3 Self-introduction cue extraction (2026-09-06) — a second automatic evidence signal
+
+**Goal restated: reduce dependence on manual human labeling as this scales to more cities, without
+weakening the identify-then-confirm rule (§C).** `chair_reference_candidates` (`citypods/speakers.py:285`)
+already extracts one automatic evidence signal — the *chair* (or another speaker) naming someone else
+("the chair recognizes...", "Council Member Jane Doe"). Video-based signals (nameplate OCR, face
+recognition) were considered and explicitly **declined** for now: fused text-based signals (roster +
+chair-reference + this new one) are expected to suffice, and both video approaches would need a per-city,
+per-`capture_context` calibration step of their own (nameplate legibility/position; a curated reference
+photo gallery, plus real biometric-privacy exposure for face recognition specifically, since it would also
+capture public commenters, not just officials) — a materially larger ongoing cost than the marginal
+accuracy gain justifies given the text-based signals below.
+
+**New signal: the speaker naming *themselves*.** Staff presenters and public commenters frequently
+self-introduce at a podium ("MY NAME IS REZA...", "MATT BODINE, ASSISTANT PLANNER..." — both observed
+directly in this project's own real transcripts) — a distinct pattern from `chair_reference_candidates`'s
+"someone else names them" cue, and not universal, so it is one more *candidate* signal, never a direct
+assignment. New `citypods/speakers.py`: `self_introduction_candidates(words, turns, *, known_names=())`,
+structurally mirroring `chair_reference_candidates`'s output shape (same candidate schema, so it feeds the
+identical §C confirmation pipeline uniformly) but triggered differently: for every non-overlapped turn
+with an embedding, scan only the **first ~10 seconds of that turn's own words** (a speaker-change boundary,
+not a cue phrase elsewhere in the transcript) for a self-identification pattern — `"MY NAME IS <name>"` /
+`"I'M <name>"` / `"I AM <name>"` / `"THIS IS <name>"`, or a name-then-title construction against the same
+title vocabulary `_ANNOUNCEMENT_TITLES` already recognizes. The corroborated turn is the *current* turn
+itself (unlike the chair-cue case, which corroborates the *next* turn after the cue), since the speaker is
+identifying themselves, not someone about to speak next.
+
+**Fusion, not parallel systems.** Roster (§B) narrows the plausible name-space for a meeting; chair-cues
+and self-introduction cues each independently propose a name for a cluster; cross-meeting voice-embedding
+similarity (§C.1's eventual matching) corroborates once *any* confirmed reference exists for that person.
+A single fused candidate — carrying which signals agreed, not several separate half-signals each needing
+its own human look — is what should reach the §C.2 confirmation surface: a reviewer taps yes/no/other on
+one best-supported suggestion, never types a name from a blank field. This is also why roster + both
+transcript-cue signals are the right foundation to build first: they're pure text/transcript signals that
+work for any new city with a transcript and parseable minutes from day one, whereas voice-embedding
+corroboration only strengthens *within* a city as confirmed references accumulate over time.
 
 ---
 

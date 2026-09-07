@@ -654,8 +654,13 @@ speakers:
         - "Special Called City Council"
       # Calibration is intentionally invalidated if this meeting-audio setup changes.
       capture_context: "denton-council-chamber-audio-v1"
-  model: "pyannote/speaker-diarization-community-1"
-  embedding_model: "pyannote/embedding"
+  # sherpa-onnx + NeMo TitaNet-Small superseded pyannote-audio 2026-09-06 (review/31 §A.1a):
+  # matched measured accuracy at 8-13x pyannote's CPU speed on this project's own gold-labeled
+  # trial, removing the ~2h40m CPU-budget ceiling a single pyannote meeting could hit. Neither
+  # model needs HF auth. embedding_model selects a recipe key from citypods.diarize's own
+  # calibrated-threshold table, not a Hugging Face repo id.
+  model: "sherpa-onnx/pyannote-segmentation-3.0"
+  embedding_model: "nemo-titanet-small"
   minimum_match_score: 0.75
   registry_path: "r7_speaker_registry.json"
   evaluation_state_path: "r7_speaker_evaluation.json"

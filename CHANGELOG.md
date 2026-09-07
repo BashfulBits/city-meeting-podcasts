@@ -36,6 +36,23 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Bound and sandbox the R7 diarize decode, and refuse unknown-length episodes (CodeRabbit
+  review of #1484).** Three real defects, each verified against the code before acting.
+  `_load_waveform`'s `subprocess.run` had no `timeout`, and it runs inside a worker *before* the
+  next `ctx.stop()` check — malformed media could hold its admission slot until the job's own
+  330-minute timeout, so it now bounds the decode and reports a stuck one as an actionable
+  per-episode error. It was also the only ffmpeg call site in the repo without a
+  `-protocol_whitelist` (10+ others pin one); it now pins the narrowest form, `file,crypto,data`,
+  since the diarize input is always a local temp file — without it a downloaded artifact that is
+  really a manifest could make ffmpeg fetch the URLs it names. ffmpeg's stderr, which reaches logs
+  and a stored `speakers_error`, is now credential-redacted and length-bounded. Separately,
+  `NativeDiarizeStage` converted a missing served duration to `0.0`, which estimates as 0s of
+  runtime and so "fits" any remaining budget while reserving only the base memory footprint — and
+  because admission sorts longest-first, such an episode lands late, exactly when the budget is
+  tightest. That is run 51's failure mode (an unbounded item admitted because its cost was
+  unknown) with the cost hidden behind a default instead of a slow model; those episodes now defer
+  as `unknown-duration` until the duration lands.
+
 - **Finish the focused #1231 unexpected-body cleanup and harden its remedy contract.** Added
   normalized `*`/`?` body globs for recurring provider-label families, used them for the seven
   currently affected feed families (including Dallas's dated Purchasing Bids labels), and removed
@@ -102,6 +119,40 @@ Phase R (Research-Tool Surface)._
   tag input generation.
 
 ### Changed
+
+- **R7 native diarization engine: pyannote-audio → sherpa-onnx + NeMo TitaNet-Small
+  (review/31 §A.1a).** Run 51 (denton-tx, 2026-09-05) exposed pyannote's real CPU cost — ~2.2s
+  of compute per second of audio, capping a single diarizable meeting at roughly 2h40m before
+  the `diarize_start_cutoff` admission window (285m) runs out, a real problem for this project's
+  many longer meetings. A same-day offline trial (two real, transcript-matched Denton City
+  Council excerpts, a purpose-built gold-labeling tool, and `citypods/speaker_benchmark.py`'s
+  own scoring extended past its prior hardcoded two-engine limit) found NeMo TitaNet-Small —
+  run through `sherpa-onnx`'s CPU-only ONNX pipeline — matches pyannote's measured accuracy
+  (turn_cluster_accuracy 0.947/0.937 vs. 0.962/0.956) at 8-13x its CPU speed, removing the
+  ceiling outright with no GPU/external dispatch. `citypods/diarize.py` now runs
+  `sherpa_onnx.OfflineSpeakerDiarization` (pyannote-segmentation-3.0 for VAD/segmentation +
+  a swappable, per-recipe-calibrated embedding model, default TitaNet-Small) instead of
+  `pyannote.audio.Pipeline`; **neither model is Hugging-Face-gated**, so `HF_TOKEN` is no longer
+  needed for this lane (`scripts/preflight_diarization.py` rewritten to validate the new
+  models are downloadable instead of checking HF auth; `r7-diarization.yml` drops the
+  `HF_TOKEN`/`HUGGINGFACE_HUB_TOKEN` secrets and the torchcodec/shared-ffmpeg workaround
+  pyannote needed). `pyproject.toml`'s `diarize` extra is now `sherpa-onnx` + `numpy` in place
+  of `pyannote-audio`. TitaNet-Large and naive INT8-quantized TitaNet-Small were both evaluated
+  and rejected (no real accuracy gain and clustering collapse respectively — see review/31);
+  WeSpeaker-ResNet34/CAM++ were also evaluated and rejected on accuracy despite being fast
+  (identity scrambling within continuous single-speaker speech). Also new:
+  `citypods.speakers.self_introduction_candidates` — a second automatic naming-evidence signal
+  (alongside the existing `chair_reference_candidates`) that scans the first ~10s of a
+  speaker's own turn for a self-identification ("MY NAME IS...") or name-then-staff-title
+  ("Matt Bodine, Assistant Planner") pattern, feeding the same identify-then-human-confirm
+  pipeline, never assigning a name directly. Also closes the run-51 cold-start hole the swap would
+  otherwise have reopened: `DiarizeRuntimeLog.estimate_seconds` now falls back to a seeded
+  `DIARIZE_DEFAULT_RUNTIME_RATIO` (0.2 s/s, rounding up the worst measured single-threaded RTF)
+  instead of returning `None`, so a recipe with no samples yet is *bounded* rather than admitted
+  with no cap — changing the engine discards every measured sample, which is exactly when that
+  matters. The worker pool, best-fit-decreasing admission ordering, and memory-pressure cap (also
+  designed in this pass, review/31 §A.4) land separately. New diarization-pipeline recipe hash — existing pyannote-produced `speakers.json`
+  artifacts remain valid or reachable; new/changed episodes re-diarize under the new recipe.
 
 - **Preserve external-compute spend during lease cleanup (GH#1329).** Settlement and release
   use the existing reservation's provider cycle when callers omit it, rather than resetting the

@@ -5,9 +5,13 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
+import pytest
+
 from citypods.agenda_text import AgendaTextAssessment
+from citypods.durations import episode_served_duration_seconds
 from citypods.models import City, Episode
 from citypods.stages import (
+    DIARIZE_DEFAULT_RUNTIME_RATIO,
     AgendaTextStage,
     AudioStage,
     DiarizeRuntimeLog,
@@ -120,6 +124,35 @@ def test_native_diarization_uses_its_own_measured_runtime_budget(tmp_path):
     assert estimate == 30.0
     assert remaining is not None and remaining <= 100
     assert _diarize_fits_remaining_budget(ctx, restored, 10.0, "recipe-b")[0]
+
+
+def test_unmeasured_diarize_recipe_is_bounded_by_the_seeded_ratio(tmp_path):
+    """Regression guard for run 51 (denton-tx, 2026-09-05): a recipe with no samples used to be
+    admitted with *no* estimate at all, so one oversized first item could eat a whole run's
+    budget. An engine swap resets every recipe's history, so this must stay bounded."""
+    log = DiarizeRuntimeLog(tmp_path / "diarize-runtime.json")
+    assert not log.has_samples_for("fresh-recipe")
+
+    # A 4-hour meeting against a 10-minute remaining window must NOT be admitted.
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 600,
+        diarize_start_reserve_seconds=60,
+    )
+    fits, estimate, _ = _diarize_fits_remaining_budget(ctx, log, 4 * 3600.0, "fresh-recipe")
+    assert not fits
+    assert estimate == pytest.approx(4 * 3600.0 * DIARIZE_DEFAULT_RUNTIME_RATIO)
+
+    # A short meeting still fits in that same window.
+    assert _diarize_fits_remaining_budget(ctx, log, 120.0, "fresh-recipe")[0]
+
+    # Once a real sample lands, the measured ratio replaces the seed.
+    log.append(diarize_seconds=10.0, recording_seconds=100.0, recipe="fresh-recipe")
+    assert log.has_samples_for("fresh-recipe")
+    assert log.estimate_seconds(100.0, recipe="fresh-recipe") == pytest.approx(10.0)
 
 
 def test_native_diarization_errors_remain_retryable():
@@ -329,7 +362,9 @@ def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, mon
 
     out = capsys.readouterr().out
     assert f"diarize start uid={ep.uid} body='City Council'" in out
-    assert "recording_s=120.0 estimate_s=unknown" in out
+    # No measured samples for this recipe yet, so the estimate is the seeded default ratio
+    # (bounded), not the old unbounded "unknown" -- see DIARIZE_DEFAULT_RUNTIME_RATIO.
+    assert "recording_s=120.0 estimate_s=24.0 (seeded)" in out
     assert f"diarize done uid={ep.uid} body='City Council'" in out
     assert "recording_s=120.0 ratio=" in out
 
@@ -1604,3 +1639,45 @@ def _write_temp(tmp_path, name, content: bytes):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
     return path
+
+
+def test_native_diarize_defers_an_episode_with_no_served_duration(tmp_path):
+    """An unknown-length episode estimates at 0s, so it "fits" any remaining budget and reserves
+    only the base memory footprint -- and since admission sorts longest-first it lands late,
+    exactly when the budget is tightest. That is run 51's failure mode (an unbounded item admitted
+    because its cost was unknown) with the cost hidden behind a default rather than a slow model.
+    """
+    import json as _json
+
+    city = City(
+        slug="denton-tx-city-council",
+        city_entity="denton-tx",
+        provider="granicus",
+        source={"feed_url": "x"},
+        podcast_title="Denton City Council",
+        podcast_author="City of Denton",
+        podcast_email="",
+        podcast_description="d",
+    )
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = {
+        "enabled": True,
+        "pilot_bodies": [
+            {"city": "denton-tx", "body": "City Council", "capture_context": "council-v1"}
+        ],
+    }
+    words = tmp_path / "words.json"
+    words.write_text(_json.dumps({"words": [{"w": "hello", "s": 0.0, "e": 0.5}]}))
+    ctx.storage.put_file("words/ep.json", words, "application/json")
+
+    ep = _ep("no-duration")
+    ep.body = "City Council"
+    ep.hosted_audio_url = "https://cdn/audio.m4a"
+    ep.transcript_synced = True
+    ep.transcript_words_key = "words/ep.json"
+    assert episode_served_duration_seconds(ep) in (None, 0, 0.0)
+
+    stats = NativeDiarizeStage().process(None, city, [ep], ctx)
+    assert stats.defer_reasons.get("unknown-duration") == 1
+    assert stats.ran == 0
+    assert ep.speakers_key is None

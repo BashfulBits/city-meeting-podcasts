@@ -71,7 +71,6 @@ import collections
 import dataclasses
 import hashlib
 import json
-import os
 import re
 import tempfile
 import threading
@@ -2587,13 +2586,24 @@ class AsrRuntimeLog:
         self.path.write_text(json.dumps(payload, indent=2) + "\n")
 
 
+# Conservative seed for a recipe with no measured samples yet, in runtime-seconds per
+# audio-second. Measured worst case across three GH Actions runner CPUs for the shipped
+# sherpa-onnx/TitaNet-Small recipe was ~0.137 single-threaded (review/31 §A.4); this rounds
+# up for headroom. It exists so a *cold start does not admit an unbounded first item*: that
+# gap is exactly what let one pyannote episode consume an entire run's budget in run 51
+# (denton-tx, 2026-09-05), and swapping engines resets every recipe's sample history, which
+# would otherwise reopen the same hole on the first run after the swap.
+DIARIZE_DEFAULT_RUNTIME_RATIO = 0.2
+
+
 class DiarizeRuntimeLog:
-    """Rolling, recipe-specific pyannote runtime observations for the R7 pilot."""
+    """Rolling, recipe-specific diarization runtime observations for the R7 pilot."""
 
     max_samples = 100
 
-    def __init__(self, path: Path | None):
+    def __init__(self, path: Path | None, *, default_ratio: float = DIARIZE_DEFAULT_RUNTIME_RATIO):
         self.path = path
+        self.default_ratio = max(0.001, float(default_ratio))
         self._samples: list[dict[str, float | str]] = []
         if path is not None and path.exists():
             try:
@@ -2611,15 +2621,24 @@ class DiarizeRuntimeLog:
             except (OSError, ValueError):
                 self._samples = []
 
-    def estimate_seconds(self, recording_seconds: float, *, recipe: str) -> float | None:
+    def estimate_seconds(self, recording_seconds: float, *, recipe: str) -> float:
+        """Estimated runtime for `recording_seconds` of audio under `recipe`.
+
+        Falls back to `default_ratio` when this recipe has no measured samples yet, so an
+        unmeasured recipe is still *bounded* rather than admitted blind. Measured samples
+        replace the seed as soon as the first item under this recipe completes.
+        """
         ratios = [
             float(row["diarize_seconds"]) / float(row["recording_seconds"])
             for row in self._samples
             if row.get("recipe") == recipe
         ]
-        if not ratios:
-            return None
-        return max(0.0, recording_seconds) * (sum(ratios) / len(ratios))
+        ratio = (sum(ratios) / len(ratios)) if ratios else self.default_ratio
+        return max(0.0, recording_seconds) * ratio
+
+    def has_samples_for(self, recipe: str) -> bool:
+        """Whether `recipe`'s estimate is measured rather than the seeded default."""
+        return any(row.get("recipe") == recipe for row in self._samples)
 
     def append(self, *, diarize_seconds: float, recording_seconds: float, recipe: str) -> None:
         if diarize_seconds <= 0 or recording_seconds <= 0:
@@ -2644,16 +2663,18 @@ class DiarizeRuntimeLog:
 def _diarize_fits_remaining_budget(
     ctx: StageContext, runtime_log: DiarizeRuntimeLog, recording_seconds: float, recipe: str
 ) -> tuple[bool, float | None, float | None]:
-    """Return whether a measured R7 profile says another meeting fits before the cutoff."""
-    if ctx.diarize_start_deadline is None:
-        return True, runtime_log.estimate_seconds(recording_seconds, recipe=recipe), None
-    remaining = ctx.diarize_start_deadline - time.monotonic()
+    """Return whether the R7 runtime profile says another meeting fits before the cutoff.
+
+    The estimate is measured once a recipe has samples and seeded from
+    `DIARIZE_DEFAULT_RUNTIME_RATIO` before that, so an unmeasured recipe (a fresh engine swap,
+    a fresh runtime-state file) is still bounded instead of admitting one unbounded item.
+    """
     estimate = runtime_log.estimate_seconds(recording_seconds, recipe=recipe)
+    if ctx.diarize_start_deadline is None:
+        return True, estimate, None
+    remaining = ctx.diarize_start_deadline - time.monotonic()
     if remaining <= 0:
         return False, estimate, remaining
-    if estimate is None:
-        # Seed one observation per recipe; afterwards admission is measured rather than guessed.
-        return True, None, remaining
     return estimate + ctx.diarize_start_reserve_seconds <= remaining, estimate, remaining
 
 
@@ -6954,6 +6975,15 @@ class NativeDiarizeStage:
                 stats.defer("wall-clock-budget", sample=uid)
                 continue
             recording_seconds = max(0.0, episode_served_duration_seconds(ep) or 0.0)
+            if recording_seconds <= 0:
+                # An unknown-length episode estimates at 0s, so it "fits" any remaining budget and
+                # reserves only the base memory footprint -- and because admission sorts longest
+                # first, it lands late, exactly when the budget is tightest. That is the run-51
+                # failure mode (an unbounded item admitted because its cost was unknown) with the
+                # cost hidden behind a default instead of a slow model. Defer until the duration
+                # lands, the same way missing timed words are handled above.
+                stats.defer("unknown-duration", sample=uid)
+                continue
             fits, estimate, remaining = _diarize_fits_remaining_budget(
                 ctx, runtime_log, recording_seconds, runtime_recipe
             )
@@ -6974,10 +7004,15 @@ class NativeDiarizeStage:
                 words = json.loads(words_raw.decode())
                 if not isinstance(words, dict):
                     raise ValueError("timed transcript words must be a JSON object")
-                estimate_label = f"{estimate:.1f}" if estimate is not None else "unknown"
+                # "seeded" marks an estimate from DIARIZE_DEFAULT_RUNTIME_RATIO rather than
+                # measured samples -- worth seeing in the log while a new recipe warms up.
+                estimate_basis = (
+                    "measured" if runtime_log.has_samples_for(runtime_recipe) else "seeded"
+                )
                 print(
                     f"[enrich] diarize start uid={uid} body={ep.body!r} "
-                    f"recording_s={recording_seconds:.1f} estimate_s={estimate_label}",
+                    f"recording_s={recording_seconds:.1f} "
+                    f"estimate_s={estimate or 0:.1f} ({estimate_basis})",
                     flush=True,
                 )
                 # Register the in-flight attempt so the heartbeat's "active work" snapshot shows a
@@ -6999,9 +7034,10 @@ class NativeDiarizeStage:
                                 "audio_path": audio_path,
                                 "model": model,
                                 "embedding_model": embedding_model,
-                                # Secret-only by design: never read a token from committed config.
-                                "token": os.environ.get("HF_TOKEN")
-                                or os.environ.get("HUGGINGFACE_HUB_TOKEN"),
+                                # No HF-gated model in this engine (review/31 §A.1a) -- neither
+                                # field means anything to sherpa-onnx, kept only so an
+                                # already-registered dispatch backend's call shape doesn't change.
+                                "token": None,
                                 "device": config.get("device"),
                             },
                             recipe_hash=spec,

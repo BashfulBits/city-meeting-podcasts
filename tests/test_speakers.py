@@ -1,18 +1,11 @@
 from __future__ import annotations
 
 import json
-import sys
 from datetime import UTC, datetime, timedelta
-from types import ModuleType
 
 import pytest
 
-from citypods.diarize import (
-    _attach_embeddings,
-    _mark_overlap,
-    attach_transcript_words,
-    has_valid_timed_words,
-)
+from citypods.diarize import _mark_overlap, attach_transcript_words, has_valid_timed_words
 from citypods.models import City, Episode
 from citypods.records import meeting_page_hash
 from citypods.site import speaker_page_rows
@@ -38,60 +31,9 @@ from citypods.speakers import (
     quote_attribution,
     refresh_membership_status,
     roster_person_ids,
+    self_introduction_candidates,
     shadow_candidate_id,
 )
-
-
-def test_embedding_inference_receives_the_selected_diarization_device(monkeypatch, tmp_path):
-    inference_instance = type("InferenceInstance", (), {})()
-    inference_instance.crop = lambda *_args: [0.25, 0.75]
-    received: dict[str, object] = {}
-
-    class FakeInference:
-        def __init__(self, _model, *, window, device):
-            received.update({"window": window, "device": device})
-
-        def crop(self, *_args):
-            return inference_instance.crop()
-
-    class FakeModel:
-        @staticmethod
-        def from_pretrained(model, *, token):
-            received.update({"model": model, "token": token})
-            return object()
-
-    class FakeSegment:
-        def __init__(self, start, end):
-            self.start = start
-            self.end = end
-
-    pyannote = ModuleType("pyannote")
-    audio = ModuleType("pyannote.audio")
-    core = ModuleType("pyannote.core")
-    audio.Inference = FakeInference
-    audio.Model = FakeModel
-    core.Segment = FakeSegment
-    pyannote.audio = audio
-    pyannote.core = core
-    torch = ModuleType("torch")
-    torch.device = lambda value: f"device:{value}"
-    monkeypatch.setitem(sys.modules, "pyannote", pyannote)
-    monkeypatch.setitem(sys.modules, "pyannote.audio", audio)
-    monkeypatch.setitem(sys.modules, "pyannote.core", core)
-    monkeypatch.setitem(sys.modules, "torch", torch)
-
-    turns = [{"start": 1.0, "end": 2.0}]
-    _attach_embeddings(
-        tmp_path / "meeting.m4a", turns, "embedding-v1", token="hf-test", device="cuda"
-    )
-
-    assert received == {
-        "model": "embedding-v1",
-        "token": "hf-test",
-        "window": "whole",
-        "device": "device:cuda",
-    }
-    assert turns[0]["embedding"] == [0.25, 0.75]
 
 
 def test_chair_reference_candidates_cover_formal_and_title_led_announcements():
@@ -145,6 +87,92 @@ def test_chair_reference_candidates_cover_formal_and_title_led_announcements():
     assert len(title) == 1
     assert title[0]["display_name"] == "Jane Doe"
     assert title[0]["cue_kind"] == "title-announcement"
+
+
+def test_self_introduction_candidates_finds_a_stated_name():
+    """Matches a real pattern from this project's own transcripts: a public commenter stating
+    their name near the start of their turn ("MY NAME IS REZA")."""
+    words = {
+        "segments": [
+            {
+                "words": [
+                    {"w": "My", "s": 0.5, "e": 0.7},
+                    {"w": "name", "s": 0.7, "e": 0.9},
+                    {"w": "is", "s": 0.9, "e": 1.0},
+                    {"w": "Reza.", "s": 1.0, "e": 1.4},
+                    {"w": "To", "s": 1.5, "e": 1.7},
+                    {"w": "answer", "s": 1.7, "e": 2.0},
+                ]
+            }
+        ]
+    }
+    turns = [{"start": 0.0, "end": 20.0, "cluster": "0", "embedding": [0.1], "overlap": False}]
+    candidates = self_introduction_candidates(words, turns)
+    assert len(candidates) == 1
+    assert candidates[0]["display_name"] == "Reza"
+    assert candidates[0]["cue_kind"] == "self-stated"
+    assert candidates[0]["kind"] == "self-introduction"
+    # Unlike chair_reference_candidates, the corroborated span is the turn itself.
+    assert candidates[0]["start"] == 0.0
+    assert candidates[0]["end"] == 20.0
+
+
+def test_self_introduction_candidates_finds_a_name_then_staff_title():
+    """Matches this project's other observed real pattern: a staff presenter naming themselves
+    with no framing phrase before their title ("MATT BODINE, ASSISTANT PLANNER")."""
+    words = {
+        "segments": [
+            {
+                "words": [
+                    {"w": "Matt", "s": 2.0, "e": 2.3},
+                    {"w": "Bodine,", "s": 2.3, "e": 2.7},
+                    {"w": "Assistant", "s": 2.8, "e": 3.1},
+                    {"w": "Planner.", "s": 3.1, "e": 3.5},
+                ]
+            }
+        ]
+    }
+    turns = [{"start": 2.0, "end": 30.0, "cluster": "1", "embedding": [0.2], "overlap": False}]
+    candidates = self_introduction_candidates(words, turns)
+    assert len(candidates) == 1
+    assert candidates[0]["display_name"] == "Matt Bodine"
+    assert candidates[0]["cue_kind"] == "name-then-title"
+
+
+def test_self_introduction_candidates_ignores_turns_without_embeddings_or_overlap():
+    words = {
+        "segments": [
+            {
+                "words": [
+                    {"w": "My", "s": 0.0, "e": 0.1},
+                    {"w": "name", "s": 0.1, "e": 0.2},
+                    {"w": "is", "s": 0.2, "e": 0.3},
+                    {"w": "Sam.", "s": 0.3, "e": 0.5},
+                ]
+            }
+        ]
+    }
+    no_embedding = [{"start": 0.0, "end": 10.0, "cluster": "0", "overlap": False}]
+    overlapped = [{"start": 0.0, "end": 10.0, "cluster": "0", "embedding": [0.1], "overlap": True}]
+    assert self_introduction_candidates(words, no_embedding) == []
+    assert self_introduction_candidates(words, overlapped) == []
+
+
+def test_self_introduction_candidates_ignores_a_name_stated_outside_the_ten_second_window():
+    words = {
+        "segments": [
+            {
+                "words": [
+                    {"w": "My", "s": 15.0, "e": 15.1},
+                    {"w": "name", "s": 15.1, "e": 15.2},
+                    {"w": "is", "s": 15.2, "e": 15.3},
+                    {"w": "Sam.", "s": 15.3, "e": 15.5},
+                ]
+            }
+        ]
+    }
+    turns = [{"start": 0.0, "end": 30.0, "cluster": "0", "embedding": [0.1], "overlap": False}]
+    assert self_introduction_candidates(words, turns) == []
 
 
 def test_approved_chair_reference_adds_private_embedding_only():

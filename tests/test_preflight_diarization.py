@@ -1,134 +1,108 @@
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
-from requests import ConnectionError, Timeout
-from requests.exceptions import ChunkedEncodingError
 
-from scripts.preflight_diarization import _load_model, _verify_hf_token
+from scripts.preflight_diarization import configured_models, run_preflight
 
 
-class FakeHubHTTPError(Exception):
-    def __init__(self, status_code: int | None = None):
-        self.response = type("Response", (), {"status_code": status_code})()
+@pytest.fixture
+def sherpa_installed(monkeypatch):
+    """Satisfy the preflight's sherpa-onnx presence probe without the `[diarize]` extra.
+
+    CI installs `[dev,wer,llm]`, not the diarize runtime, so the tests past that probe -- which
+    are about model download/validation, not about sherpa's own behaviour -- would otherwise
+    fail there while passing on any developer machine that happens to have it. A stub keeps them
+    honest in both places; the probe only asks whether the import succeeds.
+    """
+    if "sherpa_onnx" not in sys.modules:
+        monkeypatch.setitem(sys.modules, "sherpa_onnx", types.ModuleType("sherpa_onnx"))
 
 
-class FakeGatedRepoError(FakeHubHTTPError):
-    pass
+def test_configured_models_requires_speakers_enabled():
+    with pytest.raises(RuntimeError, match="speakers.enabled must be true"):
+        configured_models({"speakers": {"enabled": False}})
 
 
-class FakeRepositoryNotFoundError(FakeHubHTTPError):
-    pass
-
-
-def test_verify_hf_token_explains_an_invalid_token():
-    class FakeApi:
-        @staticmethod
-        def whoami():
-            raise FakeHubHTTPError(401)
-
-    with pytest.raises(RuntimeError, match="HF_TOKEN is invalid or no longer authorized"):
-        _verify_hf_token(FakeApi(), FakeHubHTTPError)
-
-
-def test_verify_hf_token_separates_hub_availability_from_token_validity():
-    class FakeApi:
-        @staticmethod
-        def whoami():
-            raise FakeHubHTTPError(503)
-
-    with pytest.raises(RuntimeError, match="Hugging Face could not verify HF_TOKEN"):
-        _verify_hf_token(FakeApi(), FakeHubHTTPError)
-
-
-def test_load_model_explains_gated_model_access():
-    def loader(_model, *, token):
-        assert token == "hf-test"
-        raise FakeGatedRepoError()
-
-    with pytest.raises(RuntimeError, match="lacks access to the gated diarization pipeline"):
-        _load_model(
-            loader,
-            "pyannote/speaker-diarization-community-1",
-            label="diarization pipeline",
-            token="hf-test",
-            gated_repo_error=FakeGatedRepoError,
-            repository_not_found_error=FakeRepositoryNotFoundError,
-            hub_http_error=FakeHubHTTPError,
+def test_configured_models_requires_expected_diarize_model():
+    with pytest.raises(RuntimeError, match="R7 model must be"):
+        configured_models(
+            {"speakers": {"enabled": True, "model": "wrong-model", "embedding_model": "x"}}
         )
 
 
-def test_load_model_explains_unknown_or_inaccessible_model():
-    def loader(_model, *, token):
-        assert token == "hf-test"
-        raise FakeRepositoryNotFoundError()
+def test_configured_models_requires_embedding_model():
+    from citypods.diarize import DEFAULT_DIARIZE_MODEL
 
-    with pytest.raises(RuntimeError, match="was not found or is not accessible to HF_TOKEN"):
-        _load_model(
-            loader,
-            "pyannote/embedding",
-            label="embedding model",
-            token="hf-test",
-            gated_repo_error=FakeGatedRepoError,
-            repository_not_found_error=FakeRepositoryNotFoundError,
-            hub_http_error=FakeHubHTTPError,
+    with pytest.raises(RuntimeError, match="embedding_model is required"):
+        configured_models(
+            {"speakers": {"enabled": True, "model": DEFAULT_DIARIZE_MODEL, "embedding_model": ""}}
         )
 
 
-@pytest.mark.parametrize(
-    ("status_code", "message"),
-    [
-        (403, "Hugging Face denied download access"),
-        (429, "Hugging Face rate-limited download"),
-    ],
-)
-def test_load_model_separates_access_denial_and_rate_limits(status_code, message):
-    def loader(_model, *, token):
-        assert token == "hf-test"
-        raise FakeHubHTTPError(status_code)
+def test_configured_models_returns_the_pair():
+    from citypods.diarize import DEFAULT_DIARIZE_MODEL
 
-    with pytest.raises(RuntimeError, match=message):
-        _load_model(
-            loader,
-            "pyannote/embedding",
-            label="embedding model",
-            token="hf-test",
-            gated_repo_error=FakeGatedRepoError,
-            repository_not_found_error=FakeRepositoryNotFoundError,
-            hub_http_error=FakeHubHTTPError,
-        )
+    model, embedding_model = configured_models(
+        {
+            "speakers": {
+                "enabled": True,
+                "model": DEFAULT_DIARIZE_MODEL,
+                "embedding_model": "nemo-titanet-small",
+            }
+        }
+    )
+    assert model == DEFAULT_DIARIZE_MODEL
+    assert embedding_model == "nemo-titanet-small"
 
 
-@pytest.mark.parametrize("transport_error", [Timeout, ConnectionError, ChunkedEncodingError])
-def test_load_model_separates_hugging_face_transport_failures(transport_error):
-    def loader(_model, *, token):
-        assert token == "hf-test"
-        raise transport_error()
+def test_run_preflight_rejects_unknown_embedding_recipe(tmp_path, monkeypatch):
+    from citypods.diarize import DEFAULT_DIARIZE_MODEL
 
-    with pytest.raises(RuntimeError, match="Network transport failed"):
-        _load_model(
-            loader,
-            "pyannote/embedding",
-            label="embedding model",
-            token="hf-test",
-            gated_repo_error=FakeGatedRepoError,
-            repository_not_found_error=FakeRepositoryNotFoundError,
-            hub_http_error=FakeHubHTTPError,
-            transport_errors=(Timeout, ConnectionError, ChunkedEncodingError),
-        )
+    site_config = tmp_path / "site_config.yml"
+    site_config.write_text(
+        f"speakers:\n  enabled: true\n  model: {DEFAULT_DIARIZE_MODEL}\n"
+        "  embedding_model: not-a-real-recipe\n"
+    )
+    with pytest.raises(RuntimeError, match="is not a known recipe"):
+        run_preflight(str(site_config))
 
 
-def test_load_model_preserves_runtime_failure_after_access_succeeds():
-    def loader(_model, *, token):
-        assert token == "hf-test"
-        raise ValueError("incompatible model")
+def test_run_preflight_downloads_and_validates_both_models(tmp_path, monkeypatch, sherpa_installed):
+    from citypods.diarize import DEFAULT_DIARIZE_MODEL
 
-    with pytest.raises(RuntimeError, match="after Hugging Face access succeeded"):
-        _load_model(
-            loader,
-            "pyannote/embedding",
-            label="embedding model",
-            token="hf-test",
-            gated_repo_error=FakeGatedRepoError,
-            repository_not_found_error=FakeRepositoryNotFoundError,
-            hub_http_error=FakeHubHTTPError,
-        )
+    site_config = tmp_path / "site_config.yml"
+    site_config.write_text(
+        f"speakers:\n  enabled: true\n  model: {DEFAULT_DIARIZE_MODEL}\n"
+        "  embedding_model: nemo-titanet-small\n"
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_segmentation_model", lambda: calls.append("segmentation")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_embedding_model", lambda name: calls.append(f"embedding:{name}")
+    )
+    model, embedding_model = run_preflight(str(site_config))
+    assert model == DEFAULT_DIARIZE_MODEL
+    assert embedding_model == "nemo-titanet-small"
+    assert calls == ["segmentation", "embedding:nemo-titanet-small"]
+
+
+def test_run_preflight_explains_a_download_failure(tmp_path, monkeypatch, sherpa_installed):
+    from citypods.diarize import DEFAULT_DIARIZE_MODEL
+
+    site_config = tmp_path / "site_config.yml"
+    site_config.write_text(
+        f"speakers:\n  enabled: true\n  model: {DEFAULT_DIARIZE_MODEL}\n"
+        "  embedding_model: nemo-titanet-small\n"
+    )
+
+    def _boom():
+        raise RuntimeError("network unreachable")
+
+    monkeypatch.setattr("citypods.diarize._ensure_segmentation_model", _boom)
+    with pytest.raises(RuntimeError, match="Could not download/validate the pyannote-segmentation"):
+        run_preflight(str(site_config))
