@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMStructuredOutputError
@@ -128,22 +128,6 @@ class BodyDecision(BaseModel):
     new_feed_title: str = ""
     new_feed_description: str = ""
     rationale: str
-
-    @model_validator(mode="after")
-    def required_action_fields(self):
-        if not self.rationale.strip():
-            raise ValueError("rationale is required")
-        if self.action in {"union", "single_uid_inclusion"} and not self.target_feeds:
-            raise ValueError("this action requires target_feeds")
-        if self.action == "single_uid_inclusion":
-            if not self.episode_ids and not self.all_observed_episodes:
-                raise ValueError("select episode_ids or explicitly all_observed_episodes")
-        if self.action == "new_feed" and not all(
-            value.strip()
-            for value in (self.new_feed_slug, self.new_feed_title, self.new_feed_description)
-        ):
-            raise ValueError("new_feed requires slug, title, and description")
-        return self
 
 
 class BodyDecisions(BaseModel):
@@ -379,16 +363,42 @@ def _resolve_decisions(decisions, evidence, compact):
         index = ids[decision.finding_id]
         finding = evidence["unexpected_findings"][index]
         label = finding["unexpected_body"]
+        if not decision.rationale.strip():
+            unresolved[label] = "The classifier returned no rationale."
+            continue
         if decision.action == "manual_review":
             unresolved[label] = decision.rationale
             continue
-        if any(slug not in feeds for slug in decision.target_feeds):
-            raise RemedyEvidenceError("target_feeds must be configured in this batch")
+        if decision.action in {"union", "single_uid_inclusion"} and not decision.target_feeds:
+            unresolved[label] = f"The classifier selected {decision.action} without a target feed."
+            continue
+        if decision.action == "single_uid_inclusion" and not (
+            decision.episode_ids or decision.all_observed_episodes
+        ):
+            unresolved[label] = "The classifier selected a one-off without selecting episodes."
+            continue
+        if decision.action == "new_feed" and not all(
+            value.strip()
+            for value in (
+                decision.new_feed_slug,
+                decision.new_feed_title,
+                decision.new_feed_description,
+            )
+        ):
+            unresolved[label] = "The classifier selected a new feed without complete metadata."
+            continue
+        unknown_feeds = [slug for slug in decision.target_feeds if slug not in feeds]
+        if unknown_feeds:
+            unresolved[label] = "The classifier selected a feed not present in this evidence batch."
+            continue
         samples = {
             e["episode_id"] for e in compact["unexpected_findings"][index]["episode_samples"]
         }
         if any(e not in samples for e in decision.episode_ids):
-            raise RemedyEvidenceError("episode_ids must be sampled IDs for this finding")
+            unresolved[label] = (
+                "The classifier selected an episode that was not in the evidence samples."
+            )
+            continue
         episodes = finding["episodes"]
         guids = (
             [e["provider_guid"] for e in episodes]

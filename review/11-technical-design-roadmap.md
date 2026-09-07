@@ -77,7 +77,8 @@ live here until their series becomes active.
 ### Active reliability follow-up: interactive remedy (#1231)
 
 Maintainer-directed, 2026-09-05; implementation in progress: direct-only, same-Actions-run remedy
-classification, schema/evidence correction, compact complete-evidence batches, and an issue response
+classification, local per-finding schema/evidence correction, wildcard selectors for recurring
+provider labels, compact complete-evidence batches, and an issue response
 within a bounded job rather than a deferred Worker/sweep handoff. Preserve free-route quota accounting;
 bypass legacy remedy result caches without deleting unrelated results or changing catalog versions.
 Accepted edits must pass the full repository gate before a PR; incomplete classifications remain

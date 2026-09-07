@@ -98,6 +98,12 @@ def test_matches_is_variant_tolerant():
     )
 
 
+def test_matches_supports_normalized_globs_for_provider_label_families():
+    assert matches("Purchasing Bids 7-16-2015", "Purchasing Bids *")
+    assert matches("Purchasing Bids_4-4-2013", "Purchasing Bids *")
+    assert not matches("Purchasing Committee", "Purchasing Bids *")
+
+
 def test_filter_by_body():
     eps = [_ep("City Council"), _ep("Planning and Zoning"), _ep("City Council Briefing")]
     assert [e.body for e in filter_by_body(eps, "City Council")] == [
