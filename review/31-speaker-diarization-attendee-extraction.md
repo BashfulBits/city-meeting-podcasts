@@ -300,6 +300,34 @@ evidence above (12288 vs. 15974) were not chased further than the addendum's own
 finding; no existing k2-fsa/sherpa-onnx issue matches this exact failure signature, and filing one
 (with the exact node name and dimensions above) remains a separate, upstream-facing follow-up.
 
+**Extended to `_attach_embeddings`, 2026-09-07.** The fd-redirect above wraps only
+`diarizer.process(samples)` — the pyannote segmentation pass. `_attach_embeddings` runs a second,
+independent onnxruntime session per turn (NeMo TitaNet-Small, on that turn's own waveform slice)
+and had no equivalent guard: a construction failure for the extractor itself was already
+best-effort (silently skip embeddings for the episode), but a failure *inside* the per-turn
+extraction loop was not — one bad turn's exception would abort embedding for every other turn in
+the episode, and, more importantly, the same class of onnxruntime C++-logger error the fd-redirect
+above catches for `process()` could equally occur here and go silently unnoticed, one call site
+removed from the mechanism meant to catch it. Reproduced directly (not just reasoned about): a
+local, real (non-mocked) `sherpa_onnx` run over a 60-minute file of continuous synthetic speech
+with zero VAD-detectable pauses — built to validate the chunking feature below — raised `RuntimeError:
+onnxruntime reported 1 error-level diagnostic(s) during embedding extraction: ...Where node...`
+from inside `_attach_embeddings`, the same broadcast-axis failure signature as run #59's, but on
+the *embedding* extractor rather than the segmentation encoder: an anomalously long, pause-free
+turn handed whole to TitaNet crosses the same kind of fixed internal buffer this addendum's
+`window_shift_ratio`/fd-redirect fixes were built for `process()`, just on the second model in the
+pipeline. `_attach_embeddings` now: (1) tries each turn's extraction independently — one failing
+turn no longer sacrifices the rest, a genuine resilience improvement over the prior all-or-nothing
+loop; (2) wraps the whole per-turn loop in the same `_capture_onnxruntime_stderr()` context
+manager `process()` uses; (3) raises `RuntimeError` on any captured error/fatal-level line once the
+loop completes — deliberately *not* best-effort, matching `process()`'s own contract, because a
+degenerate embedding is worse than a missing one: a corrupted embedding can still merge into some
+cluster and get published with unrelated speakers' turns misattributed to it, where a construction-
+time failure (still best-effort) degrades cleanly to "no embeddings, no cross-chunk merge
+possible." This is one of the two structural reasons per-chunk turn length is now bounded at all
+(§A.4 addendum below) — a 15h-long unbroken turn is a real, hit risk under either encoder; an 8h
+chunk with a hard split at a real detected silence never contains one.
+
 ### A.2 Module plan
 
 - **`citypods/diarize.py`** — new, mirroring `citypods/asr.py`'s existing shape (model load/cache,
@@ -489,6 +517,123 @@ genuinely open question is real GH Actions measurement past 60min, including the
 the crash happened — not measured here (estimated ~50min of compute for that one point alone) and left
 for a future pass if it becomes worth the runner time, e.g. via a throwaway `workflow_dispatch` probe
 matching how §A.1a's original CPU comparison was done.
+
+**Long-recording chunking, 2026-09-07 — closing the actual open question above.** #1496 ("give
+idle configured workers a second onnxruntime thread") shipped, then had to be reverted as #1507
+after both R7 Diarization runs since it merged (#61, #62) failed with zero candidates completed —
+diagnosed there as CPU oversubscription (onnxruntime's inter-op pool spending more than the
+requested 2 threads/job) starving the runner agent's own heartbeat to GitHub's control plane,
+producing an external `SIGTERM` at a consistent ~55m35s–55m51s mark. That revert shipped, restoring
+the fixed `threads=1`-per-worker-when-`workers>1` config run #59 used. **The very next run (#63,
+2026-09-07, `threads=1` throughout, the reverted config confirmed in effect) failed the same way —
+external cancellation, zero candidates completed** — which rules out CPU oversubscription as a
+*sufficient* explanation on its own, since the fix for it was already in place: run #63's own
+telemetry shows `load=2.00-2.13/4` and `mem_avail` flat at exactly `3.0GiB` for the entire final
+10+ minutes before the kill, neither signature of oversubscription nor of a classic OOM death
+spiral. What's actually verified, directly from the three post-#1507 run logs (`run61.log`,
+`run62.log`, `run63.log`):
+
+- **The recurring onnxruntime `Where node` broadcast error is pinned to one specific recording's
+  own content, not to a race with any other concurrent job.** All three runs admit the same
+  15.09h outlier (`uid=1117de8e39612576`, `recording_s=54310.3`) alongside a ~5.1-5.3h second
+  candidate that completes normally every time. The error fires at elapsed-time-since-*that job's
+  own start* of 2641.2s / 2640.6s / 2631.2s across runs #61/#62/#63 respectively — a ~10s-wide
+  window despite the three runs having very different wall-clock start times and different
+  concurrent-job pairings (the second candidate's own completion time actually varies by more).
+  That tight a clustering, referenced against one job's own elapsed decode time rather than the
+  run's wall clock, means the trigger is a fixed point in decoding that file's own audio content
+  — deterministic, not a scheduling artifact — consistent with §A.1b's fixed-internal-buffer
+  finding, just crossed deeper into this longer file (`12288 by 50599` here vs. run #59's
+  `12288 by 15974` — same node, a larger overflow).
+- **External cancellation follows 8.5-10.75 minutes after that error in every run** (07:19:36→
+  07:28:12; 13:41:20→13:50:48; 14:57:00→15:07:45) — and, independent of the error, run #63's
+  cancellation lands at 55m40s after the job's own "budget" line, inside the same ~55m35s-55m51s
+  window #1507 measured for the pre-revert runs. Whatever the exact GitHub-side mechanism is, it
+  recurs at a consistent mark regardless of the thread-count change that was reverted between
+  these runs — the giant recording's own presence in the batch, not the threading config, is the
+  one thing common to every failure.
+- **Stated plainly, since this doc's own standard is verified numbers over assumed causes:**
+  run #63's local telemetry does not by itself confirm memory exhaustion — `mem_avail` never
+  drains, it sits flat. Memory pressure remains a live hypothesis for *why* an external actor
+  would kill this specific job (GitHub Actions' hosted-runner-level accounting is opaque from
+  inside the job, and this file is exactly the kind of outlier the §A.4 RSS model above was
+  built to bound), but it is not independently proven by this run's own visible metrics the way
+  H-A's CPU-oversubscription evidence was proven for #1507. What *is* proven is that this one
+  15.09h recording is present at every failure and is mid-decode, elapsed and unfinished, at the
+  moment each cancellation lands.
+
+Given that, chunking the outlier recording rather than chasing the exact external-kill mechanism
+further is the targeted fix: it directly shrinks both candidate causes at once — bounding any
+single onnxruntime call's continuous-audio span (the confirmed trigger for the `Where node` error,
+now doubly guarded by §A.1b's detection on both `process()` and `_attach_embeddings`) and bounding
+per-worker peak RSS to the chunk's own length under the linear model above, rather than the full
+recording's — without having to fully resolve what GitHub's control plane does internally at the
+~55min mark.
+
+**Design (per direct instruction, 2026-09-07): `DIARIZE_CHUNK_THRESHOLD_SECONDS = 8 * 3600`.** An
+8h single pass is the largest size with real production evidence it completes cleanly (run #59's
+own successful candidates plus the RSS re-validation table above, both measured through the 8h
+row). Above that threshold, a recording splits into `ceil(L / 8h)` chunks — the minimum count that
+brings every chunk back under the passing size, keeping the "blast radius" of any accuracy cost
+from chunking limited to as few chunks as the length actually requires, never more.
+
+- **Split placement, chapter-anchored then silence-refined, per direct instruction.** Naive
+  even-sized splits (`_naive_split_points`) are only the starting point. Each is snapped to the
+  nearest episode chapter boundary within `_CHAPTER_SEARCH_WINDOW_SECONDS` (45min) —
+  `_nearest_chapter_time`, reading `_episode_chapter_times()`'s union of provider `ep.chapters`
+  and this project's own agenda-derived `ep.generated_chapters` (`citypods/stages.py`) — so a
+  split lands at an agenda-item boundary where a chapter exists nearby, rather than mid-item; this
+  is the concrete mechanism for the stated goal ("non-board-members don't get different labels
+  within a single chapter"), since a speaker who appears only within one chapter never has their
+  turns split across the merge boundary in the first place when the chapter itself isn't split.
+  Whether or not a chapter anchor was found, the split is then refined to the nearest real
+  silence within `_SILENCE_SEARCH_WINDOW_SECONDS` (6min) of that anchor —
+  `_detect_silences_local`, reusing `citypods/silence.py`'s existing `parse_silences()` ffmpeg-
+  stderr parser against a short local ffmpeg-silencedetect probe rather than duplicating that
+  parsing logic — at `_SILENCE_NOISE_DB=-35.0`/`_SILENCE_MIN_DURATION_SECONDS=1.5s`, so the actual
+  cut point never lands mid-utterance even when the nearest chapter boundary itself doesn't
+  correspond to a clean pause. No silence found in-window falls back to the chapter-anchored (or
+  naive) point unchanged — chunking always succeeds, split quality only ever improves when
+  evidence for a better point exists.
+- **Decode and diarize per chunk independently, then reconcile speaker identity across the
+  boundary.** Each chunk decodes with `_CHUNK_OVERLAP_SECONDS=20.0` of padding on internal
+  boundaries only (never at the recording's true start/end), diarizes and embeds in chunk-local
+  time (so turn times line up with that chunk's own `samples` array through
+  `_attach_embeddings`), then turns whose *global* start falls outside the chunk's true
+  (unpadded) region are dropped — the overlap exists only to give the segmentation model real
+  audio context across the cut, never to double-count a turn in two chunks. Per-chunk cluster IDs
+  are meaningless across chunks (each chunk's `OfflineSpeakerDiarization` clusters independently
+  starting from 0), so `_merge_chunk_clusters` computes a mean embedding per `(chunk_idx,
+  local_cluster)` pair and union-finds pairs whose cosine similarity clears
+  `CHUNK_MERGE_MIN_COSINE=0.45` into one global speaker ID (stable, ordered by first appearance);
+  a cluster with no embedding (extraction failed or skipped) never merges with anything, erring
+  toward more distinct speakers rather than a false merge. `0.45` is empirically calibrated
+  directly against real VoxConverse clips for this project's actual embedding pipeline — not
+  reused from `clustering_threshold`/`minimum_match_score`, which are tuned for a different
+  comparison (single-pass, same-clip) and were confirmed not to transfer when checked.
+- **Validated with real (non-mocked) `sherpa_onnx`, not just unit tests with mocked internals.**
+  A 60min continuous-speech synthetic file (zero pauses, threshold forced low to exercise the
+  chunked path) crashed with exactly the `_attach_embeddings` `Where node` error this addendum's
+  companion §A.1b fix now catches — a genuine dual confirmation, not a test bug: the chunking
+  plumbing itself ran correctly end-to-end against real sherpa_onnx, and the crash independently
+  confirmed the `_attach_embeddings` error-detection hypothesis on a worst-case input. A second,
+  more realistic file (2000s, real silence gaps every ~8s, threshold forced to force 4 chunks)
+  then completed cleanly: 181/181 turns extracted with embeddings, all four chunks' independently-
+  clustered speakers correctly merged into the one real global speaker (validating
+  `CHUNK_MERGE_MIN_COSINE=0.45` against real audio, not just the calibration clips), and turn
+  coverage exactly matching the recording's true `[0, 2000s)` range with no gap or duplication at
+  any of the three internal boundaries.
+- **Not yet validated: chapter-anchored and silence-refined split *selection* against real, long
+  production audio.** `_nearest_chapter_time`/`_detect_silences_local`/`_find_split_point` each
+  have direct unit coverage (including one test asserting a real episode chapter wins over the
+  naive split point), but the end-to-end real-`sherpa_onnx` runs above both used the naive/silence
+  path only (`chapter_times=None`) — genuine chapter-anchored splitting on a real multi-hour
+  recording, and real `ffmpeg silencedetect` output on audio long enough to actually need
+  chunking, remain unexercised outside mocks until this ships and a real 8h+ recording (the
+  15.09h outlier itself, first) goes through the pipeline in production.
+- **`DIARIZE_PIPELINE_VERSION` bumped "2"→"3"** (`citypods/stages.py`) — chunking is a genuinely
+  different computation for the handful of existing over-8h artifacts, not a bookkeeping-only
+  change, so they re-diarize under the new path rather than keeping a stale single-pass result.
 
 ---
 

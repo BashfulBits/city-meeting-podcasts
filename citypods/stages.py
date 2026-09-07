@@ -2823,6 +2823,24 @@ class _DiarizeAdmission:
         return None
 
 
+def _episode_chapter_times(ep: Episode) -> list[float]:
+    """Chapter-start seconds (served/audio-relative, same clock as diarization) for a long
+    recording's chunk-boundary selection (`citypods.diarize.DIARIZE_CHUNK_THRESHOLD_SECONDS`).
+    Combines `chapters` (provider-native markers -- usually available immediately, not
+    dependent on the separate generated-chaptering lane) and `generated_chapters` (this
+    project's own agenda-derived ones, when that lane has already run for this episode): more
+    candidate boundaries only helps the nearest-anchor search, never hurts it.
+    """
+    times: list[float] = []
+    for source in (ep.chapters, ep.generated_chapters):
+        for row in source or []:
+            if isinstance(row, Mapping):
+                start = row.get("start")
+                if isinstance(start, int | float) and not isinstance(start, bool):
+                    times.append(float(start))
+    return times
+
+
 def _diarize_worker_count(ctx: StageContext) -> int:
     """Concurrent diarize workers: one per available vCPU by default, config-overridable."""
     configured = int((ctx.speaker_config or {}).get("workers") or 0)
@@ -4277,7 +4295,10 @@ PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 # Bumped "1"->"2": citypods/diarize.py's DEFAULT_WINDOW_SHIFT_RATIO changed sherpa-onnx's
 # pyannote segmentation windowing (0.1 -> 0.3), which changes the actual computation, not just
 # bookkeeping -- artifacts diarized under the old default must be re-diarized, not reused.
-DIARIZE_PIPELINE_VERSION = "2"
+# Bumped "2"->"3": recordings over DIARIZE_CHUNK_THRESHOLD_SECONDS (8h) now diarize in multiple
+# chunks with cross-chunk speaker merging instead of one pass -- a different computation for
+# the handful of existing outlier-length artifacts, not just bookkeeping.
+DIARIZE_PIPELINE_VERSION = "3"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 CHAPTER_AGENDA_PIPELINE_VERSION = "1"
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
@@ -7507,6 +7528,8 @@ class NativeDiarizeStage:
                     model=model,
                     embedding_model=embedding_model,
                     num_threads=threads_per_worker,
+                    recording_seconds=candidate.recording_seconds,
+                    chapter_times=_episode_chapter_times(ep),
                 )
                 # The audio temp file must outlive the call, so the wait stays inside the
                 # download context.

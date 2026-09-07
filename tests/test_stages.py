@@ -344,6 +344,28 @@ def _diarize_episode(ctx, tmp_path, name: str, *, seconds: float):
     return ep
 
 
+def test_episode_chapter_times_combines_provider_and_generated_chapters():
+    """Feeds citypods.diarize's chunk-boundary anchor search (review/31 §A.4's 2026-09-07
+    chunking addendum) -- provider-native markers and this project's own agenda-derived ones
+    are both real candidate boundaries, so both are collected."""
+    from citypods.stages import _episode_chapter_times
+
+    ep = _ep("uid")
+    ep.chapters = [{"start": 10.0, "title": "Item 1"}]
+    ep.generated_chapters = [{"start": 500.5, "title": "Item 2"}]
+
+    assert sorted(_episode_chapter_times(ep)) == [10.0, 500.5]
+
+
+def test_episode_chapter_times_ignores_malformed_rows():
+    from citypods.stages import _episode_chapter_times
+
+    ep = _ep("uid")
+    ep.chapters = [{"title": "no start"}, {"start": "not-a-number"}, "not-even-a-dict"]
+
+    assert _episode_chapter_times(ep) == []
+
+
 def test_diarize_admission_claims_longest_first_then_narrows_to_what_fits(tmp_path):
     """Best-fit-decreasing (review/31 §A.4): with runway, the longest meeting is claimed first so
     it is never starved by a queue of short ones; once the budget shrinks, only shorter ones are

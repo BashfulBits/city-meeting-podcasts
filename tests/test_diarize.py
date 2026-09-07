@@ -326,6 +326,92 @@ def test_diarize_raises_when_onnxruntime_logs_an_error_during_process(monkeypatc
         diarize(tmp_path / "audio.m4a")
 
 
+class _FakeEmbeddingStream:
+    def accept_waveform(self, sample_rate, data):
+        pass
+
+    def input_finished(self):
+        pass
+
+
+def test_diarize_raises_when_onnxruntime_logs_an_error_during_embedding_extraction(
+    monkeypatch, tmp_path
+):
+    """`process()`'s own onnxruntime check (above) never covers `_attach_embeddings`, which
+    runs afterward -- and a degenerate, anomalously long turn fed whole into one
+    embedding-extraction call is the most likely real source of the recurring "Where node"
+    error in production (review/31 §A.4's 2026-09-07 chunking addendum), not `process()` itself.
+    This must not be silently accepted as "no embedding, keep going" either."""
+
+    class _NoisyExtractor:
+        def create_stream(self):
+            return _FakeEmbeddingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            os.write(
+                2,
+                b"[E:onnxruntime:, sequential_executor.cc:620 ExecuteKernel] Non-zero status "
+                b"code returned while running Where node.\n",
+            )
+            return [0.1, 0.2, 0.3]
+
+    segments = [_FakeSegment(0.0, 1.0, 0)]
+    fake = _install_fake_sherpa_onnx(monkeypatch, segments)
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_NoisyExtractor())
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_segmentation_model", lambda: Path("/fake/seg.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_embedding_model", lambda name: Path("/fake/emb.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._load_waveform", lambda path, sr: np.zeros(sr, dtype=np.float32)
+    )
+
+    with pytest.raises(RuntimeError, match="onnxruntime reported"):
+        diarize(tmp_path / "audio.m4a")
+
+
+def test_attach_embeddings_keeps_trying_other_turns_after_one_turn_fails(monkeypatch, tmp_path):
+    """One turn raising a plain (non-onnxruntime) exception during extraction must not sacrifice
+    every other turn's embedding -- a refinement made while restructuring this function for the
+    onnxruntime check above, not present in the prior implementation's single try/except around
+    the whole loop."""
+    from citypods.diarize import _attach_embeddings
+
+    calls = {"n": 0}
+
+    class _FlakyExtractor:
+        def create_stream(self):
+            return _FakeEmbeddingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("boom on the first turn only")
+            return [0.1, 0.2, 0.3]
+
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_FlakyExtractor())
+    turns = [
+        {"start": 0.0, "end": 1.0, "cluster": "0"},
+        {"start": 1.0, "end": 2.0, "cluster": "0"},
+    ]
+
+    _attach_embeddings(
+        np.zeros(32000, dtype=np.float32), 16000, turns, Path("/fake/emb.onnx"), num_threads=1
+    )
+
+    assert "embedding" not in turns[0]
+    assert turns[1]["embedding"] == [0.1, 0.2, 0.3]
+
+
 def test_diarize_logs_but_does_not_raise_on_an_onnxruntime_warning(monkeypatch, tmp_path, capsys):
     """A warning-level onnxruntime line is surfaced (at minimum logged) but is not treated as a
     job failure -- only an error/fatal-level line is."""
@@ -436,3 +522,241 @@ def test_ffmpeg_error_detail_redacts_credentials_and_is_bounded():
     assert "hunter2" not in detail
     assert detail.count("<redacted>") == 2
     assert len(_ffmpeg_detail(b"x" * 5000)) == 500
+
+
+# ---------------------------------------------------------------------------
+# Long-recording chunking (review/31 §A.4's 2026-09-07 addendum)
+# ---------------------------------------------------------------------------
+
+
+def test_diarize_chunk_count_matches_ceil_of_duration_over_threshold():
+    from citypods.diarize import DIARIZE_CHUNK_THRESHOLD_SECONDS, _diarize_chunk_count
+
+    threshold = DIARIZE_CHUNK_THRESHOLD_SECONDS
+    assert _diarize_chunk_count(threshold) == 1  # exactly at the ceiling: still one pass
+    assert _diarize_chunk_count(threshold + 1) == 2  # one second over: now two chunks
+    assert _diarize_chunk_count(threshold * 2) == 2
+    assert _diarize_chunk_count(threshold * 2 + 1) == 3
+
+
+def test_naive_split_points_divide_evenly_not_fixed_size():
+    from citypods.diarize import _naive_split_points
+
+    # A 15h recording split into 2 chunks: ~7.5h each, not one 8h chunk plus a leftover.
+    points = _naive_split_points(15 * 3600, 2)
+    assert points == [7.5 * 3600]
+    assert _naive_split_points(30 * 3600, 3) == [10 * 3600, 20 * 3600]
+
+
+def test_nearest_chapter_time_prefers_the_closest_within_the_search_window():
+    from citypods.diarize import _CHAPTER_SEARCH_WINDOW_SECONDS, _nearest_chapter_time
+
+    naive = 10_000.0
+    chapters = [naive - 500, naive + 200, naive + 5000]
+    assert _nearest_chapter_time(naive, chapters) == naive + 200
+
+    # Nothing within the window at all -> no chapter anchor, caller falls back to naive.
+    far = [naive + _CHAPTER_SEARCH_WINDOW_SECONDS + 1]
+    assert _nearest_chapter_time(naive, far) is None
+
+
+def test_diarize_chunk_ranges_are_contiguous_and_cover_the_whole_duration():
+    from citypods.diarize import _diarize_chunk_ranges
+
+    ranges = _diarize_chunk_ranges(300.0, [100.0, 220.0])
+    assert ranges == [(0.0, 100.0), (100.0, 220.0), (220.0, 300.0)]
+
+
+def test_merge_chunk_clusters_connects_similar_embeddings_across_chunks():
+    """The actual cross-chunk speaker-identity decision: two (chunk, cluster) pairs with
+    near-identical mean embeddings must land under the same global id; a third, clearly
+    different embedding must not be pulled in with them."""
+    from citypods.diarize import _merge_chunk_clusters
+
+    same_a = [1.0, 0.0, 0.0]
+    same_b = [0.99, 0.01, 0.0]  # cosine ~0.9999 with same_a -- clearly the same speaker
+    different = [0.0, 1.0, 0.0]  # cosine 0.0 with same_a -- clearly a different speaker
+
+    mapping = _merge_chunk_clusters(
+        {
+            (0, "0"): same_a,
+            (1, "1"): same_b,
+            (1, "0"): different,
+        }
+    )
+
+    assert mapping[(0, "0")] == mapping[(1, "1")]
+    assert mapping[(1, "0")] != mapping[(0, "0")]
+
+
+def test_merge_chunk_clusters_never_merges_an_embeddingless_cluster():
+    """A cluster with no successful embedding extraction (every turn in it failed) must keep
+    its own identity rather than being guessed into someone else's -- conservative, matching
+    "no embedding, no identity" elsewhere in this module."""
+    from citypods.diarize import _merge_chunk_clusters
+
+    mapping = _merge_chunk_clusters({(0, "0"): None, (1, "0"): None})
+
+    assert mapping[(0, "0")] != mapping[(1, "0")]
+
+
+def test_diarize_dispatches_to_the_chunked_path_above_the_threshold(monkeypatch, tmp_path):
+    """`recording_seconds` above the threshold must take the chunked path; at or below it (or
+    when not supplied at all) must not -- the exact same single-pass behavior as before this
+    parameter existed."""
+    import citypods.diarize as diarize_mod
+
+    called = {"chunked": False}
+    monkeypatch.setattr(
+        diarize_mod,
+        "_diarize_chunked",
+        lambda *a, **k: (
+            called.update(chunked=True)
+            or diarize_mod.DiarizeArtifacts(turns=[], clusters=[], engine="sherpa-onnx", model="x")
+        ),
+    )
+    _install_fake_sherpa_onnx(monkeypatch, [])
+    monkeypatch.setattr(diarize_mod, "_ensure_segmentation_model", lambda: Path("/fake/seg.onnx"))
+    monkeypatch.setattr(diarize_mod, "_ensure_embedding_model", lambda name: Path("/fake/emb.onnx"))
+    monkeypatch.setattr(
+        diarize_mod, "_load_waveform", lambda path, sr: np.zeros(sr, dtype=np.float32)
+    )
+    monkeypatch.setattr(diarize_mod, "_attach_embeddings", lambda *a, **k: None)
+
+    diarize_mod.diarize(tmp_path / "audio.m4a", recording_seconds=None)
+    assert called["chunked"] is False
+
+    diarize_mod.diarize(
+        tmp_path / "audio.m4a",
+        recording_seconds=diarize_mod.DIARIZE_CHUNK_THRESHOLD_SECONDS,
+    )
+    assert called["chunked"] is False
+
+    diarize_mod.diarize(
+        tmp_path / "audio.m4a",
+        recording_seconds=diarize_mod.DIARIZE_CHUNK_THRESHOLD_SECONDS + 1,
+    )
+    assert called["chunked"] is True
+
+
+def test_diarize_chunked_merges_speakers_across_chunks_and_offsets_turn_times(
+    monkeypatch, tmp_path
+):
+    """End-to-end (mocked) walk of the chunked path: two chunks, each with its own local
+    cluster labels, merged by embedding similarity into global speaker ids, with turn times
+    remapped from chunk-local back to the full recording's own timeline."""
+    import citypods.diarize as diarize_mod
+
+    duration = 200.0
+    monkeypatch.setattr(diarize_mod, "DIARIZE_CHUNK_THRESHOLD_SECONDS", 100.0)
+    monkeypatch.setattr(diarize_mod, "_pick_split_points", lambda *a, **k: [100.0])
+
+    # Chunk 0 (decoded [0, 100+overlap)): one turn, local cluster "0".
+    # Chunk 1 decodes from (100 - overlap) -- its own "true" region starts at local time
+    # `overlap` (global 100). A local start past that, e.g. overlap+5, lands safely inside
+    # chunk 1's true region rather than its own leading padding.
+    overlap = diarize_mod._CHUNK_OVERLAP_SECONDS
+    chunk0_segments = [_FakeSegment(10.0, 20.0, "0")]
+    chunk1_segments = [_FakeSegment(overlap + 5, overlap + 15, "0")]  # local to chunk 1's window
+    diarizers = [_FakeDiarizer(chunk0_segments), _FakeDiarizer(chunk1_segments)]
+
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.OfflineSpeakerDiarization = MagicMock(side_effect=diarizers)
+
+    # Same real speaker in both chunks -> near-identical embeddings; _attach_embeddings is
+    # swapped for a fake that assigns a fixed vector per call, driven by which diarizer (chunk)
+    # is currently active.
+    embedding_by_diarizer_id = {id(diarizers[0]): [1.0, 0.0], id(diarizers[1]): [0.99, 0.01]}
+
+    def _fake_attach_embeddings(samples, sample_rate, turns, embedding_path, *, num_threads):
+        vector = embedding_by_diarizer_id.get(id(diarizers[len(all_calls)]))
+        for turn in turns:
+            turn["embedding"] = vector
+        all_calls.append(None)
+
+    all_calls: list[None] = []
+    monkeypatch.setattr(diarize_mod, "_ensure_segmentation_model", lambda: Path("/fake/seg.onnx"))
+    monkeypatch.setattr(diarize_mod, "_ensure_embedding_model", lambda name: Path("/fake/emb.onnx"))
+    monkeypatch.setattr(
+        diarize_mod,
+        "_load_waveform",
+        lambda path, sr, **kwargs: np.zeros(sr, dtype=np.float32),
+    )
+    monkeypatch.setattr(diarize_mod, "_attach_embeddings", _fake_attach_embeddings)
+
+    artifact = diarize_mod.diarize(tmp_path / "audio.m4a", recording_seconds=duration)
+
+    assert len(artifact.turns) == 2
+    by_start = {round(t["start"]): t for t in artifact.turns}
+    # Chunk 0's turn started at local 10.0s with decode_start=0 -> global 10.0.
+    assert 10 in by_start
+    # Chunk 1's turn started at local 15.0s; chunk 1's decode_start is offset by its own
+    # padded start (100 - overlap) -- global time is decode_start + 15.0, which must land
+    # inside chunk 1's true region [100, 200), not chunk 0's.
+    global_starts = sorted(round(t["start"]) for t in artifact.turns)
+    assert global_starts[0] == 10
+    assert 100 <= global_starts[1] < 200
+    # The two turns' clusters must have been merged to the SAME global id -- same real speaker,
+    # two different chunk-local labels, both "0".
+    assert artifact.turns[0]["cluster"] == artifact.turns[1]["cluster"]
+
+
+def test_diarize_chunked_drops_turns_starting_in_the_overlap_padding(monkeypatch, tmp_path):
+    """A turn detected in a chunk's overlap padding (added only so segmentation has context at
+    the boundary) must not be kept -- the neighboring chunk that actually owns that region
+    already covers it, and keeping both would duplicate the turn."""
+    import citypods.diarize as diarize_mod
+
+    duration = 200.0
+    monkeypatch.setattr(diarize_mod, "DIARIZE_CHUNK_THRESHOLD_SECONDS", 100.0)
+    monkeypatch.setattr(diarize_mod, "_pick_split_points", lambda *a, **k: [100.0])
+
+    overlap = diarize_mod._CHUNK_OVERLAP_SECONDS
+    # Chunk 1 decodes starting at (100 - overlap); a segment at local time (overlap / 2) sits
+    # in the padding (global time < 100, chunk 1's true start) and must be dropped by chunk 1.
+    # A segment at local time (overlap + 5) sits past the padding (global time >= 100) and must
+    # be kept.
+    chunk0_segments: list[_FakeSegment] = []
+    chunk1_segments = [
+        _FakeSegment(overlap / 2, overlap / 2 + 1, "0"),  # in the leading padding -- drop
+        _FakeSegment(overlap + 5, overlap + 6, "0"),  # past the padding -- keep
+    ]
+    diarizers = [_FakeDiarizer(chunk0_segments), _FakeDiarizer(chunk1_segments)]
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.OfflineSpeakerDiarization = MagicMock(side_effect=diarizers)
+
+    monkeypatch.setattr(diarize_mod, "_ensure_segmentation_model", lambda: Path("/fake/seg.onnx"))
+    monkeypatch.setattr(diarize_mod, "_ensure_embedding_model", lambda name: Path("/fake/emb.onnx"))
+    monkeypatch.setattr(
+        diarize_mod,
+        "_load_waveform",
+        lambda path, sr, **kwargs: np.zeros(sr, dtype=np.float32),
+    )
+    monkeypatch.setattr(diarize_mod, "_attach_embeddings", lambda *a, **k: None)
+
+    artifact = diarize_mod.diarize(tmp_path / "audio.m4a", recording_seconds=duration)
+
+    assert len(artifact.turns) == 1
+    kept_start = artifact.turns[0]["start"]
+    assert kept_start >= 100.0  # only the one past the padding survived
+
+
+def test_diarize_chunked_uses_a_nearby_episode_chapter_as_the_split_anchor(monkeypatch, tmp_path):
+    """`chapter_times` should steer where the internal split lands -- confirmed by checking what
+    `_find_split_point` is actually called with, not by re-implementing the search itself."""
+    import citypods.diarize as diarize_mod
+
+    duration = 200.0
+    monkeypatch.setattr(diarize_mod, "DIARIZE_CHUNK_THRESHOLD_SECONDS", 100.0)
+    seen_anchors: list[float] = []
+    monkeypatch.setattr(
+        diarize_mod,
+        "_find_split_point",
+        lambda audio_path, anchor, dur: seen_anchors.append(anchor) or anchor,
+    )
+
+    diarize_mod._pick_split_points(Path("/fake.m4a"), duration, 2, [97.0])
+
+    # The naive split is 100.0; a chapter at 97.0 is within the search window and closer than
+    # the naive point itself, so it should be the anchor handed to _find_split_point.
+    assert seen_anchors == [97.0]

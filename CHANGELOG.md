@@ -34,6 +34,36 @@ Phase R (Research-Tool Surface)._
   heartbeat's `active work:` line names the stuck uid and its elapsed time directly, instead of
   requiring a `thread activity:` stack-sample read to infer that the run was busy at all.
 
+- **Recordings over 8h now diarize in chunks instead of one pass (`citypods/diarize.py`,
+  `citypods/stages.py`).** #1507 reverted #1496's adaptive per-job threading after it caused two
+  runs to fail outright, but the very next run (#63, back on the reverted single-thread config)
+  failed the same way anyway: an external cancellation at the same ~55m40s mark #1507 measured,
+  with a 15.09h outlier recording (`uid=1117de8e39612576`) mid-decode at every one of the three
+  failures. That recording's own onnxruntime `Where node` broadcast error (the same failure
+  signature as run #59's, see the `window_shift_ratio`/fd-redirect entries below) fired within a
+  ~10s-wide window of that job's own elapsed decode time across all three runs, despite different
+  wall-clock timing and different concurrent-job pairings — pinning the trigger to that
+  recording's own content, not a scheduling race. `DIARIZE_CHUNK_THRESHOLD_SECONDS = 8 * 3600`
+  (8h is the largest size with real production evidence it completes cleanly) now splits anything
+  longer into `ceil(duration / 8h)` chunks, each split point snapped first to the nearest episode
+  chapter boundary within 45min (provider `ep.chapters` + this project's own
+  `ep.generated_chapters`) so a non-recurring speaker's turns don't get split across the merge
+  boundary and end up double-labeled, then refined to the nearest real detected silence within
+  6min so the actual cut never lands mid-utterance. Chunks decode with 20s of overlap padding on
+  internal boundaries only, diarize and embed independently, and merge back into one global
+  speaker list via union-find over per-chunk cluster-centroid cosine similarity
+  (`CHUNK_MERGE_MIN_COSINE = 0.45`, calibrated against real VoxConverse clips for this project's
+  embedding pipeline — the existing `clustering_threshold`/`minimum_match_score` were checked and
+  don't transfer to this different comparison). Validated against real (non-mocked) `sherpa_onnx`:
+  a worst-case 60min continuous-speech file correctly exercised the chunked path and also crashed
+  with the `_attach_embeddings` error below on a genuinely degenerate turn (see that entry); a
+  realistic 2000s file with real silence gaps then completed cleanly across 4 chunks with all
+  181 turns embedded and correctly merged into the one real speaker. Not yet validated: real
+  chapter-anchored split selection, and real silence detection, against genuine long production
+  audio — both have direct unit coverage but the real end-to-end runs above used the naive/silence
+  path only. `DIARIZE_PIPELINE_VERSION` bumped "2"→"3" to re-diarize the existing over-8h outliers
+  under the new path. See review/31 §A.4's 2026-09-07 addendum for the full run-log evidence.
+
 ### Fixed
 
 - **Diarize RSS memory model re-validated at 5min-8h (`citypods/diarize.py`, `tests/test_diarize.py`).**
@@ -84,6 +114,22 @@ Phase R (Research-Tool Surface)._
   a safety net beneath the `window_shift_ratio` fix above: that fix targets the one reproduced
   trigger condition, this detects *any* onnxruntime error-level log during `process()`, known
   trigger or not.
+
+- **The same silent onnxruntime failure mode existed in `_attach_embeddings` too, one call site
+  the fix above didn't cover (`citypods/diarize.py`, review/31 §A.1b addendum).** Found while
+  building the chunking feature above, not as a separate report: `_attach_embeddings` runs its
+  own independent onnxruntime session per turn (NeMo TitaNet-Small) with no fd-redirect guard, and
+  a real (non-mocked) local reproduction — a 60min continuous-speech file with zero pauses, fed to
+  `sherpa_onnx` while validating chunking — raised the exact same `Where node` broadcast error
+  from inside embedding extraction that run #59 hit inside `process()`. `_attach_embeddings` now
+  wraps its per-turn extraction loop in the same `_capture_onnxruntime_stderr()` fd-redirect and
+  raises `RuntimeError` on any captured error/fatal line once the loop completes, matching
+  `process()`'s own contract — deliberately not best-effort, since a corrupted embedding can merge
+  into the wrong cluster and get published with someone else's turns attributed to it. Also
+  restructured the loop itself to try each turn's extraction independently, so one bad turn no
+  longer sacrifices embeddings for every other turn in the episode — a genuine resilience gain,
+  separate from the new error-surfacing. Extractor-construction failure (a missing/incompatible
+  model) is unchanged and stays best-effort.
 
 - **A worker that claimed a too-big diarize candidate blocked instead of a smaller one that fit
   (`citypods/stages.py`, `citypods/resources.py`).** review/31 §A.4 always specified "skip to the

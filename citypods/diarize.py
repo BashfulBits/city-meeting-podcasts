@@ -19,7 +19,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -112,6 +112,57 @@ DEFAULT_WINDOW_SHIFT_RATIO = 0.3
 # repeat exactly that mistake. The genuinely untested point is real GH Actions data past 60min.
 DIARIZE_RSS_BASE_BYTES = 350 * 1024 * 1024
 DIARIZE_RSS_PER_HOUR_BYTES = 650 * 1024 * 1024
+
+# Recordings longer than this get processed in multiple chunks instead of one call, each at or
+# under this ceiling. review/31 §A.4's 2026-09-07 re-validation only measured (and found the RSS
+# formula safely conservative) up to 8h; a 15.09h outlier crashed a live run (R7 runs #59/61/62/
+# 63) with a lost-comms SIGTERM ~53min in -- most likely OOM, the same historically-confirmed
+# failure mode as GH#377/review#12's H-B. Chunking bounds peak memory to one chunk's worth
+# regardless of total length, and incidentally bounds the maximum possible single continuous
+# turn to one chunk too, which directly caps the mechanism behind the recurring onnxruntime
+# "Where node" broadcast error (a degenerate, anomalously long turn fed whole into embedding
+# extraction -- see `_attach_embeddings`'s own error detection, added alongside this).
+DIARIZE_CHUNK_THRESHOLD_SECONDS = 8 * 3600
+
+# How far from a naive even split point (duration / n_chunks) to look for an existing chapter
+# boundary (an agenda-item change) before giving up on chapter-awareness for that split and
+# falling back to the naive point itself. Splitting near a chapter change rather than at an
+# arbitrary timestamp keeps a non-recurring speaker (a public commenter, a one-time staff
+# presenter) from having their few turns land on both sides of a chunk boundary, where
+# cross-chunk speaker merging (`CHUNK_MERGE_MIN_COSINE`) is least reliable for someone who never
+# appears more than once.
+_CHAPTER_SEARCH_WINDOW_SECONDS = 45 * 60
+
+# Once an anchor is chosen (a nearby chapter boundary, or the naive split point if none
+# qualified), how far around it to search for the longest detected silence to actually cut on.
+# Splitting mid-utterance is worth avoiding even at an otherwise-good anchor.
+_SILENCE_SEARCH_WINDOW_SECONDS = 6 * 60
+_SILENCE_MIN_DURATION_SECONDS = 1.5
+_SILENCE_NOISE_DB = -35.0
+
+# Extra audio decoded on each side of an internal chunk boundary so the segmentation model has
+# real context right at the cut. Turns starting in this padding are discarded during merge, not
+# kept twice -- the neighboring chunk that actually owns that region already covers it.
+_CHUNK_OVERLAP_SECONDS = 20.0
+
+# Cosine similarity between two chunks' per-cluster mean embeddings, at or above which they are
+# merged into one global speaker. A new, separately-calibrated threshold -- NOT
+# `clustering_threshold` (sherpa-onnx's internal FastClusteringConfig value, e.g. 1.05 for
+# nemo-titanet-small): that is a distance over a different internal embedding pathway and does
+# not transfer here, confirmed empirically (same/different-speaker separation on real per-turn
+# embeddings under that metric was barely better than chance). Also NOT
+# `speakers.minimum_match_score` (0.75, site_config default): that is calibrated for matching a
+# single turn's embedding against an established multi-meeting *reference* embedding, a cleaner
+# signal than one chunk-half's mean of a handful of turns. Calibrated instead directly against
+# this comparison -- per-chunk cluster-centroid cosine similarity -- on real, licensed (CC BY
+# 4.0) VoxConverse speakers split into two halves to simulate two chunk appearances:
+# same-speaker-half-pairs mean cosine 0.642, different-speaker mean 0.111, clean separation in
+# that range (n=13 same-pairs across 2 clips -- real but small; revisit with more data if
+# cross-chunk merge quality becomes a concern). Set on the conservative side of that range
+# (favoring precision over recall): a false *merge* of two different people into one identity is
+# worse for downstream naming than a false split, which just leaves the same person under two
+# anonymous labels -- no worse than clustering already occasionally does within one chunk.
+CHUNK_MERGE_MIN_COSINE = 0.45
 
 
 def estimate_diarize_rss_bytes(recording_seconds: float) -> int:
@@ -231,16 +282,30 @@ def _ffmpeg_detail(stderr: bytes | None, *, limit: int = 500) -> str:
     return text[:limit]
 
 
-def _load_waveform(audio_path: Path, sample_rate: int):
+def _load_waveform(
+    audio_path: Path,
+    sample_rate: int,
+    *,
+    start_seconds: float = 0.0,
+    duration_seconds: float | None = None,
+):
     """Decode any audio format ffmpeg understands (hosted audio is AAC/M4A) to mono float32
     PCM at the model's expected rate. Reuses the ffmpeg binary this project already requires
-    for encoding rather than adding a second audio-decoding dependency."""
+    for encoding rather than adding a second audio-decoding dependency.
+
+    `start_seconds`/`duration_seconds` decode only that slice, via ffmpeg's own input-side seek
+    (`-ss`/`-t` placed before `-i`) -- the chunked path (`DIARIZE_CHUNK_THRESHOLD_SECONDS`) uses
+    this so a long recording is never decoded, and held, in full; the default (the whole file)
+    is unchanged from before this parameter existed.
+    """
     import numpy as np
 
-    cmd = [
-        "ffmpeg",
-        "-v",
-        "error",
+    cmd = ["ffmpeg", "-v", "error"]
+    if start_seconds > 0:
+        cmd += ["-ss", f"{start_seconds:.3f}"]
+    if duration_seconds is not None:
+        cmd += ["-t", f"{max(0.0, duration_seconds):.3f}"]
+    cmd += [
         # Every other ffmpeg call site in this project pins a protocol whitelist; this one is a
         # local temp file, so it gets the *narrowest* form -- no network protocols at all. Without
         # it, a downloaded artifact that is really a manifest (HLS, concat) could make ffmpeg
@@ -339,6 +404,344 @@ def _scan_onnxruntime_log(data: bytes) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def _diarize_chunk_count(duration_seconds: float) -> int:
+    """ceil(duration / threshold) chunks, so a recording just over the threshold still splits,
+    and each chunk lands at or under it -- divided evenly rather than fixed-size, so e.g. a 9h
+    file becomes two ~4.5h chunks, not one 8h chunk plus a 1h leftover."""
+    return max(1, math.ceil(duration_seconds / DIARIZE_CHUNK_THRESHOLD_SECONDS))
+
+
+def _naive_split_points(duration_seconds: float, n_chunks: int) -> list[float]:
+    return [duration_seconds * k / n_chunks for k in range(1, n_chunks)]
+
+
+def _nearest_chapter_time(naive: float, chapter_times: Sequence[float]) -> float | None:
+    candidates = [t for t in chapter_times if abs(t - naive) <= _CHAPTER_SEARCH_WINDOW_SECONDS]
+    return min(candidates, key=lambda t: abs(t - naive)) if candidates else None
+
+
+def _detect_silences_local(
+    audio_path: Path, start: float, duration: float
+) -> list[tuple[float, float]]:
+    """`ffmpeg silencedetect` over a narrow local window, offset back to the full recording's
+    own timeline. A local, already-downloaded temp file, not a remote URL, so this is
+    deliberately its own minimal call rather than `citypods.silence.detect_silences` -- that
+    carries PTS/container-duration correction machinery for hosted-URL fetches this doesn't
+    need. Reuses that module's pure parser (`parse_silences`) for the actual stderr parsing.
+    Returns `[]` on any failure (timeout, missing ffmpeg) rather than raising -- a silence probe
+    that can't run is not a reason to fail the whole chunk split; the caller falls back to
+    splitting at the anchor point directly.
+    """
+    from citypods.silence import parse_silences
+
+    window_start = max(0.0, start)
+    cmd = [
+        "ffmpeg",
+        "-v",
+        "error",
+        "-ss",
+        f"{window_start:.3f}",
+        "-t",
+        f"{max(0.0, duration):.3f}",
+        "-protocol_whitelist",
+        "file,crypto,data",
+        "-i",
+        str(audio_path),
+        "-af",
+        f"silencedetect=noise={_SILENCE_NOISE_DB}dB:d={_SILENCE_MIN_DURATION_SECONDS}",
+        "-f",
+        "null",
+        "-",
+    ]
+    try:
+        result = subprocess.run(  # noqa: S603
+            cmd, capture_output=True, timeout=DECODE_TIMEOUT_SECONDS
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return []
+    pairs = parse_silences(result.stderr.decode("utf-8", "replace"))
+    return [(s + window_start, e + window_start) for s, e in pairs]
+
+
+def _find_split_point(audio_path: Path, anchor: float, duration_seconds: float) -> float:
+    """The midpoint of the longest detected silence within `_SILENCE_SEARCH_WINDOW_SECONDS` of
+    `anchor`, or `anchor` itself if none is found -- splitting somewhere is always better than
+    not chunking a recording this long, but silence-free audio right around the exact anchor
+    should not block it."""
+    window_start = max(0.0, anchor - _SILENCE_SEARCH_WINDOW_SECONDS)
+    window_end = min(duration_seconds, anchor + _SILENCE_SEARCH_WINDOW_SECONDS)
+    silences = _detect_silences_local(audio_path, window_start, window_end - window_start)
+    if not silences:
+        return anchor
+    longest = max(silences, key=lambda pair: pair[1] - pair[0])
+    return (longest[0] + longest[1]) / 2.0
+
+
+def _pick_split_points(
+    audio_path: Path,
+    duration_seconds: float,
+    n_chunks: int,
+    chapter_times: Sequence[float] | None,
+) -> list[float]:
+    """Return `n_chunks - 1` sorted internal split points: for each naive even split, prefer a
+    nearby chapter boundary as the anchor (falling back to the naive point itself), then the
+    longest detected silence near that anchor (falling back to the anchor itself)."""
+    chapters = sorted(t for t in (chapter_times or []) if 0 < t < duration_seconds)
+    points = []
+    for naive in _naive_split_points(duration_seconds, n_chunks):
+        anchor = _nearest_chapter_time(naive, chapters)
+        if anchor is None:
+            anchor = naive
+        points.append(_find_split_point(audio_path, anchor, duration_seconds))
+    return sorted(points)
+
+
+def _diarize_chunk_ranges(
+    duration_seconds: float, split_points: Sequence[float]
+) -> list[tuple[float, float]]:
+    bounds = [0.0, *split_points, duration_seconds]
+    return list(zip(bounds[:-1], bounds[1:], strict=True))
+
+
+def _mean_embedding(vectors: list[list[float]]):
+    import numpy as np
+
+    return np.mean(np.array(vectors), axis=0)
+
+
+def _cosine_similarity(a, b) -> float:
+    import numpy as np
+
+    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
+    return float(np.dot(a, b) / denom) if denom else -1.0
+
+
+def _merge_chunk_clusters(
+    chunk_cluster_embeddings: dict[tuple[int, str], Any],
+) -> dict[tuple[int, str], str]:
+    """Union-find over a cosine-similarity graph: connect `(chunk_idx, local_cluster)` pairs
+    whose mean embeddings are similar enough (`CHUNK_MERGE_MIN_COSINE`), then take connected
+    components as global speaker ids. A pair with no embedding at all (extraction failed, or was
+    never attempted, for every turn in that cluster) never gets an edge, so it always keeps its
+    own unmerged id -- conservative, matching "no embedding, no identity" elsewhere in this
+    module rather than guessing at a merge with nothing to compare.
+    """
+    keys = list(chunk_cluster_embeddings.keys())
+    parent: dict[tuple[int, str], tuple[int, str]] = {k: k for k in keys}
+
+    def find(k: tuple[int, str]) -> tuple[int, str]:
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    def union(a: tuple[int, str], b: tuple[int, str]) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for i in range(len(keys)):
+        embedding_i = chunk_cluster_embeddings[keys[i]]
+        if embedding_i is None:
+            continue
+        for j in range(i + 1, len(keys)):
+            embedding_j = chunk_cluster_embeddings[keys[j]]
+            if embedding_j is None:
+                continue
+            if _cosine_similarity(embedding_i, embedding_j) >= CHUNK_MERGE_MIN_COSINE:
+                union(keys[i], keys[j])
+
+    # Stable, readable global ids in order of first appearance, not the arbitrary root key.
+    global_id_by_root: dict[tuple[int, str], str] = {}
+    result: dict[tuple[int, str], str] = {}
+    for k in keys:
+        root = find(k)
+        if root not in global_id_by_root:
+            global_id_by_root[root] = str(len(global_id_by_root))
+        result[k] = global_id_by_root[root]
+    return result
+
+
+def _run_diarize_pass(diarizer: Any, samples: Any, audio_path: Path) -> list[Any]:
+    """`diarizer.process(samples)` with onnxruntime error detection; returns the segments,
+    sorted by start time. Shared by the single-pass and chunked paths so both get the exact
+    same check."""
+    with _capture_onnxruntime_stderr() as captured:
+        result = diarizer.process(samples)
+    error_lines, warning_lines = _scan_onnxruntime_log(captured.get("data", b""))
+    if warning_lines:
+        # Not fatal on its own, but worth surfacing: at minimum a maintainer reading the job's
+        # output should see that onnxruntime itself flagged something during this run.
+        print(
+            f"[diarize] onnxruntime warning during process() for {audio_path.name!r}: "
+            f"{warning_lines[0][:500]}",
+            flush=True,
+        )
+    if error_lines:
+        # A session-level kernel failure like this does not raise a Python exception and does
+        # not change `process()`'s return value -- without this check the job below would be
+        # accepted and published as a normal success (production evidence: R7 run #59, GH
+        # Actions run 34072536373, review/31 §A.1b). Raising here routes it through the same
+        # per-item exception handling `NativeDiarizeStage._run_one()` already has for every
+        # other diarize failure, marking the episode `speakers_error` instead of `speakers_synced`.
+        raise RuntimeError(
+            f"onnxruntime reported {len(error_lines)} error-level diagnostic(s) during "
+            f"diarize() for {audio_path.name!r}: {error_lines[0][:500]}"
+        )
+    return list(result.sort_by_start_time())
+
+
+def _segments_to_turns(segments: list[Any]) -> tuple[list[dict[str, Any]], dict[str, dict]]:
+    turns: list[dict[str, Any]] = []
+    clusters: dict[str, dict[str, Any]] = {}
+    for segment in segments:
+        cluster = str(segment.speaker)
+        turns.append(
+            {
+                "start": float(segment.start),
+                "end": float(segment.end),
+                "cluster": cluster,
+                "overlap": False,
+            }
+        )
+        clusters.setdefault(cluster, {"cluster": cluster, "turn_count": 0})["turn_count"] += 1
+    return turns, clusters
+
+
+def _build_diarize_config(
+    segmentation_path: Path,
+    embedding_path: Path,
+    *,
+    threshold: float,
+    shift_ratio: float,
+    num_threads: int,
+) -> Any:
+    import sherpa_onnx
+
+    return sherpa_onnx.OfflineSpeakerDiarizationConfig(
+        segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
+            pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(
+                model=str(segmentation_path), window_shift_ratio=shift_ratio
+            ),
+            num_threads=num_threads,
+            provider="cpu",
+        ),
+        embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(
+            model=str(embedding_path), num_threads=num_threads, provider="cpu"
+        ),
+        # -1 = auto-detect speaker count from the distance threshold -- production doesn't
+        # know true speaker counts in advance any more than the trial did.
+        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=threshold),
+    )
+
+
+def _diarize_chunked(
+    audio_path: Path,
+    *,
+    model: str,
+    embedding_name: str,
+    config: Any,
+    embedding_path: Path,
+    num_threads: int,
+    recording_seconds: float,
+    chapter_times: Sequence[float] | None,
+) -> DiarizeArtifacts:
+    """Process a recording longer than `DIARIZE_CHUNK_THRESHOLD_SECONDS` in multiple chunks, so
+    peak memory (and the maximum possible single continuous turn) is bounded to one chunk's
+    worth regardless of total length -- see that constant's comment for why. External contract
+    is identical to the single-pass path: one `DiarizeArtifacts` for the whole recording, same
+    content-addressed shape; chunking is entirely internal to this function.
+    """
+    import sherpa_onnx
+
+    n_chunks = _diarize_chunk_count(recording_seconds)
+    split_points = _pick_split_points(audio_path, recording_seconds, n_chunks, chapter_times)
+    ranges = _diarize_chunk_ranges(recording_seconds, split_points)
+    print(
+        f"[diarize] {recording_seconds:.0f}s recording split into {len(ranges)} chunk(s) at "
+        f"{[round(p, 1) for p in split_points]}",
+        flush=True,
+    )
+
+    all_turns: list[dict[str, Any]] = []
+    # (chunk_idx, local_cluster) -> mean embedding (or None if that cluster never got one), fed
+    # to _merge_chunk_clusters once every chunk has run.
+    chunk_cluster_embeddings: dict[tuple[int, str], Any] = {}
+
+    for chunk_idx, (true_start, true_end) in enumerate(ranges):
+        # Padding on internal boundaries only -- the recording's own true start/end never need
+        # extra context, and padding either would just decode past the recording's own edges.
+        pad_before = 0.0 if chunk_idx == 0 else _CHUNK_OVERLAP_SECONDS
+        pad_after = 0.0 if chunk_idx == len(ranges) - 1 else _CHUNK_OVERLAP_SECONDS
+        decode_start = max(0.0, true_start - pad_before)
+        decode_end = min(recording_seconds, true_end + pad_after)
+
+        diarizer = sherpa_onnx.OfflineSpeakerDiarization(config)
+        sample_rate = diarizer.sample_rate
+        samples = _load_waveform(
+            audio_path,
+            sample_rate,
+            start_seconds=decode_start,
+            duration_seconds=decode_end - decode_start,
+        )
+        segments = _run_diarize_pass(diarizer, samples, audio_path)
+
+        # Keep chunk-local times (matching `samples`' own indexing) through embedding
+        # extraction; only remap to the full recording's timeline afterward.
+        local_turns: list[dict[str, Any]] = []
+        for segment in segments:
+            local_start = float(segment.start)
+            global_start = local_start + decode_start
+            # Drop anything starting in this chunk's own overlap padding -- the neighboring
+            # chunk that actually owns that region already covers it (or will).
+            if global_start < true_start or global_start >= true_end:
+                continue
+            local_turns.append(
+                {
+                    "start": local_start,
+                    "end": float(segment.end),
+                    "cluster": str(segment.speaker),
+                }
+            )
+        _attach_embeddings(
+            samples, sample_rate, local_turns, embedding_path, num_threads=num_threads
+        )
+
+        by_local_cluster: dict[str, list] = {}
+        for turn in local_turns:
+            if "embedding" in turn:
+                by_local_cluster.setdefault(turn["cluster"], []).append(turn["embedding"])
+            turn["start"] += decode_start
+            turn["end"] += decode_start
+            turn["overlap"] = False
+            turn["_chunk_idx"] = chunk_idx
+        for local_cluster in {t["cluster"] for t in local_turns}:
+            embeddings = by_local_cluster.get(local_cluster)
+            chunk_cluster_embeddings[(chunk_idx, local_cluster)] = (
+                _mean_embedding(embeddings) if embeddings else None
+            )
+        all_turns.extend(local_turns)
+
+    global_id_by_key = _merge_chunk_clusters(chunk_cluster_embeddings)
+    clusters: dict[str, dict[str, Any]] = {}
+    for turn in all_turns:
+        key = (turn.pop("_chunk_idx"), turn["cluster"])
+        turn["cluster"] = global_id_by_key[key]
+        clusters.setdefault(turn["cluster"], {"cluster": turn["cluster"], "turn_count": 0})[
+            "turn_count"
+        ] += 1
+    all_turns.sort(key=lambda t: t["start"])
+    # Assessed globally, once, on the fully merged timeline -- a per-chunk pass would miss a
+    # turn from one chunk overlapping a turn from its neighbor right at the boundary.
+    _mark_overlap(all_turns)
+    return DiarizeArtifacts(
+        turns=all_turns,
+        clusters=list(clusters.values()),
+        engine="sherpa-onnx",
+        model=f"{model}+{embedding_name}",
+    )
+
+
 def diarize(
     audio_path: Path,
     model: str = DEFAULT_DIARIZE_MODEL,
@@ -349,6 +752,8 @@ def diarize(
     num_threads: int = 2,
     clustering_threshold: float | None = None,
     window_shift_ratio: float | None = None,
+    recording_seconds: float | None = None,
+    chapter_times: Sequence[float] | None = None,
 ) -> DiarizeArtifacts:
     """Run sherpa-onnx lazily and normalize its labels to meeting-local clusters.
 
@@ -364,6 +769,13 @@ def diarize(
 
     `window_shift_ratio` defaults to `DEFAULT_WINDOW_SHIFT_RATIO`, not sherpa-onnx's own 0.1 --
     see that constant's comment for why.
+
+    `recording_seconds`, when supplied and above `DIARIZE_CHUNK_THRESHOLD_SECONDS`, switches to
+    the chunked path (`_diarize_chunked`) instead of this function's own single-pass one --
+    `None` (an ad-hoc/test call with no duration hint) always takes the single-pass path,
+    the same safe, already-validated behavior as before this parameter existed.
+    `chapter_times` (episode chapter-marker seconds, if any) only affects where chunk
+    boundaries land when chunking is used; it is otherwise ignored.
     """
     del token, device  # documented above; named for call-site compatibility only
 
@@ -390,8 +802,6 @@ def diarize(
             "inference"
         )
 
-    import sherpa_onnx
-
     threshold = (
         clustering_threshold if clustering_threshold is not None else recipe["clustering_threshold"]
     )
@@ -401,63 +811,34 @@ def diarize(
 
     segmentation_path = _ensure_segmentation_model()
     embedding_path = _ensure_embedding_model(embedding_name)
-
-    config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
-        segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
-            pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(
-                model=str(segmentation_path), window_shift_ratio=shift_ratio
-            ),
-            num_threads=num_threads,
-            provider="cpu",
-        ),
-        embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(
-            model=str(embedding_path), num_threads=num_threads, provider="cpu"
-        ),
-        # -1 = auto-detect speaker count from the distance threshold -- production doesn't
-        # know true speaker counts in advance any more than the trial did.
-        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=threshold),
+    config = _build_diarize_config(
+        segmentation_path,
+        embedding_path,
+        threshold=threshold,
+        shift_ratio=shift_ratio,
+        num_threads=num_threads,
     )
     if not config.validate():
         raise RuntimeError(f"invalid sherpa-onnx diarize config for embedding {embedding_name!r}")
+
+    if recording_seconds is not None and recording_seconds > DIARIZE_CHUNK_THRESHOLD_SECONDS:
+        return _diarize_chunked(
+            audio_path,
+            model=model,
+            embedding_name=embedding_name,
+            config=config,
+            embedding_path=embedding_path,
+            num_threads=num_threads,
+            recording_seconds=recording_seconds,
+            chapter_times=chapter_times,
+        )
+
+    import sherpa_onnx
+
     diarizer = sherpa_onnx.OfflineSpeakerDiarization(config)
-
     samples = _load_waveform(audio_path, diarizer.sample_rate)
-    with _capture_onnxruntime_stderr() as captured:
-        result = diarizer.process(samples)
-    error_lines, warning_lines = _scan_onnxruntime_log(captured.get("data", b""))
-    if warning_lines:
-        # Not fatal on its own, but worth surfacing: at minimum a maintainer reading the job's
-        # output should see that onnxruntime itself flagged something during this run.
-        print(
-            f"[diarize] onnxruntime warning during process() for {audio_path.name!r}: "
-            f"{warning_lines[0][:500]}",
-            flush=True,
-        )
-    if error_lines:
-        # A session-level kernel failure like this does not raise a Python exception and does
-        # not change `process()`'s return value -- without this check the job below would be
-        # accepted and published as a normal success (production evidence: R7 run #59, GH
-        # Actions run 34072536373, review/31 §A.1b). Raising here routes it through the same
-        # per-item exception handling `NativeDiarizeStage._run_one()` already has for every
-        # other diarize failure, marking the episode `speakers_error` instead of `speakers_synced`.
-        raise RuntimeError(
-            f"onnxruntime reported {len(error_lines)} error-level diagnostic(s) during "
-            f"diarize() for {audio_path.name!r}: {error_lines[0][:500]}"
-        )
-
-    turns: list[dict[str, Any]] = []
-    clusters: dict[str, dict[str, Any]] = {}
-    for segment in result.sort_by_start_time():
-        cluster = str(segment.speaker)
-        turns.append(
-            {
-                "start": float(segment.start),
-                "end": float(segment.end),
-                "cluster": cluster,
-                "overlap": False,
-            }
-        )
-        clusters.setdefault(cluster, {"cluster": cluster, "turn_count": 0})["turn_count"] += 1
+    segments = _run_diarize_pass(diarizer, samples, audio_path)
+    turns, clusters = _segments_to_turns(segments)
     _mark_overlap(turns)
     _attach_embeddings(
         samples, diarizer.sample_rate, turns, embedding_path, num_threads=num_threads
@@ -489,13 +870,16 @@ def run_diarize_job(
     num_threads: int = 1,
     clustering_threshold: float | None = None,
     window_shift_ratio: float | None = None,
+    recording_seconds: float | None = None,
+    chapter_times: Sequence[float] | None = None,
 ) -> DiarizeArtifacts:
     """Module-level worker entry point for the diarize process pool.
 
     Must stay importable and take only picklable arguments: the pool uses a `spawn` context, so
     this is re-imported in a fresh interpreter rather than inherited by fork (`fork` from a
     process with live threads is exactly the deadlock hazard CPython warns about, and the enrich
-    run always has a heartbeat thread running).
+    run always has a heartbeat thread running). `recording_seconds`/`chapter_times` are plain
+    `float`s, so they stay picklable too.
 
     Deliberately calls `diarize()` directly rather than routing through
     `citypods.compute.local.LocalBackend`: that adapter lazily imports `citypods.asr` (and with
@@ -509,6 +893,8 @@ def run_diarize_job(
         num_threads=num_threads,
         clustering_threshold=clustering_threshold,
         window_shift_ratio=window_shift_ratio,
+        recording_seconds=recording_seconds,
+        chapter_times=chapter_times,
     )
 
 
@@ -589,11 +975,21 @@ def _attach_embeddings(
     *,
     num_threads: int,
 ) -> None:
-    """Best-effort per-turn embeddings for the separate R7 identity layer.
+    """Best-effort per-turn embeddings for the separate R7 identity layer -- except for an
+    onnxruntime-internal error, which is not best-effort here.
 
-    Diarization is still useful when embedding extraction fails for any reason, so this
-    intentionally leaves turns anonymous rather than failing the content-addressed diarization
-    artifact -- same contract the prior pyannote adapter made.
+    A missing/unusable embedding model, or a turn too short to extract from, leaves that turn
+    (or, for a model failure, every turn) anonymous rather than failing the content-addressed
+    diarization artifact -- same contract the prior pyannote adapter made. An onnxruntime
+    error-level diagnostic during extraction is different and is deliberately NOT swallowed:
+    the same reasoning as `diarize()`'s own check on `process()` (below) applies here too -- a
+    session-level kernel failure can log to stderr without raising a catchable exception or
+    changing the call's return value, so "no embedding, keep going" would silently accept a
+    corrupted result. That is not just a lost identity signal here: a degenerate, anomalously
+    long turn (a segmentation artifact) fed whole into one embedding-extraction call is the
+    most likely real source of the recurring "Where node" broadcast error production has seen
+    (review/31 §A.4's 2026-09-07 chunking addendum) -- `process()`'s own check never covers this
+    call, since it happens afterward, so this was silently unprotected until now.
     """
     try:
         import sherpa_onnx
@@ -603,26 +999,45 @@ def _attach_embeddings(
                 model=str(embedding_path), num_threads=num_threads, provider="cpu"
             )
         )
-        for turn in turns:
-            start_idx = max(0, int(float(turn["start"]) * sample_rate))
-            end_idx = min(len(samples), int(float(turn["end"]) * sample_rate))
-            if end_idx <= start_idx:
-                continue
-            stream = extractor.create_stream()
-            stream.accept_waveform(sample_rate, samples[start_idx:end_idx])
-            stream.input_finished()
-            if not extractor.is_ready(stream):
-                continue
-            values = extractor.compute(stream)
-            if values:
-                turn["embedding"] = [float(value) for value in values]
-    except Exception:  # noqa: BLE001 - no embedding means no identity, not failed diarization.
+    except Exception:  # noqa: BLE001 - no extractor means no embeddings, not failed diarization.
         return
+
+    with _capture_onnxruntime_stderr() as captured:
+        for turn in turns:
+            try:
+                start_idx = max(0, int(float(turn["start"]) * sample_rate))
+                end_idx = min(len(samples), int(float(turn["end"]) * sample_rate))
+                if end_idx <= start_idx:
+                    continue
+                stream = extractor.create_stream()
+                stream.accept_waveform(sample_rate, samples[start_idx:end_idx])
+                stream.input_finished()
+                if not extractor.is_ready(stream):
+                    continue
+                values = extractor.compute(stream)
+                if values:
+                    turn["embedding"] = [float(value) for value in values]
+            except Exception:  # noqa: BLE001 - one bad turn stays anonymous; others still try.
+                continue
+
+    error_lines, warning_lines = _scan_onnxruntime_log(captured.get("data", b""))
+    if warning_lines:
+        print(
+            f"[diarize] onnxruntime warning during embedding extraction: {warning_lines[0][:500]}",
+            flush=True,
+        )
+    if error_lines:
+        raise RuntimeError(
+            f"onnxruntime reported {len(error_lines)} error-level diagnostic(s) during "
+            f"embedding extraction: {error_lines[0][:500]}"
+        )
 
 
 __all__ = [
+    "CHUNK_MERGE_MIN_COSINE",
     "DEFAULT_DIARIZE_MODEL",
     "DEFAULT_EMBEDDING_MODEL",
+    "DIARIZE_CHUNK_THRESHOLD_SECONDS",
     "DIARIZE_RSS_BASE_BYTES",
     "DIARIZE_RSS_PER_HOUR_BYTES",
     "DiarizeArtifacts",
