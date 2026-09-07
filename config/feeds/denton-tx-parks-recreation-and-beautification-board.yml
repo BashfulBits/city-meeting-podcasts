@@ -1,0 +1,13 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Parks, Recreation and Beautification Board is a recurring distinct municipal body appearing across multiple dates from 2020-12 to 2021-05 with no existing feed.
+slug: denton-tx-parks-recreation-and-beautification-board
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: Parks, Recreation and Beautification Board on 2021-05-17 3:00 PM
+podcast_title: 'Denton: Parks, Recreation and Beautification Board'
+podcast_author: City of Denton, TX
+podcast_email: ''
+podcast_description: Meetings of the Parks, Recreation and Beautification Board in
+  Denton, TX.

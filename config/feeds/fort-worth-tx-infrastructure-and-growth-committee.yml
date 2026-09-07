@@ -4,6 +4,19 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Infrastructure and Growth Committee"
+  body_includes:
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3772"
+      body: "Water Dpt Wholesale Water and Wastewater Advisory Committee Meeting of June 25, 2020 Water Dpt Wholesale Water and Wastewater Advisory Committee Meeting of June 25, 2020"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=3772"
+      body: "Water Dpt Wholesale Water and Wastewater Advisory Committee Meeting of June 25, 2020 Water Dpt Wholesale Water and Wastewater Advisory Committee Meeting of June 25, 2020"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5596"
+      body: "Mobility: Infrastructure and Transportation Committee August 13, 2024 Mobility: Infrastructure and Transportation Committee August 13, 2024"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=5596"
+      body: "Mobility: Infrastructure and Transportation Committee August 13, 2024 Mobility: Infrastructure and Transportation Committee August 13, 2024"
+  body_any:
+    - "Mobility: Infrastructure and Transportation Committee Mobility: Infrastructure and Transportation Committee"
+    - "Infrastructure and Transportation Committee Infrastructure and Transportation Committee"
+    - "Water and Wastewater Capital Improvements Citizens Advisory Committee Water and Wastewater Capital Improvements Citizens Advisory Committee"
 lifecycle:
   status: paused
   recheck_after: 2026-12-20

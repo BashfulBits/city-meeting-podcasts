@@ -4,6 +4,21 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Planning and Zoning Commission"
+  body_includes:
+    - provider_guid: "13677"
+      body: "Development Code Review Committee on 2018-04-26 10:00 AM"
+    - provider_guid: "13676"
+      body: "Development Code Review Committee on 2018-04-18 9:00 AM"
+    - provider_guid: "13675"
+      body: "Development Code Review Committee on 2018-04-06 11:00 AM"
+    - provider_guid: "271866"
+      body: "Denton Short Term Rental"
+  body_any:
+    - "Planning and Zoning Meeting"
+    - "Planning and Zoning Workshop"
+    - "Planning and Zoning Special Meeting"
+    - "Planning and Zoning Meeting 2"
+    - "Planning and Zoning Work Session"
 podcast_title: "Denton: Planning and Zoning Commission"
 podcast_author: "City of Denton, TX"
 podcast_email: ""

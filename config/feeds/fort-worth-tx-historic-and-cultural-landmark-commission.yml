@@ -4,6 +4,12 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Historic and Cultural Landmark Commission"
+  body_any:
+    - "Historic Preservation Presentation Historic Preservation Presentation"
+    - "Historic Cultural Landmarks Commission Historic Cultural Landmarks Commission"
+    - "Historic and Cultural Landmarks Special Public Hearing Historic and Cultural Landmarks Special Public Hearing"
+    - "Historic Cultural and Landmarks Commission Historic Cultural and Landmarks Commission"
+    - "Historic and Cultural Landmarks Historic and Cultural Landmarks"
 podcast_title: "Fort Worth: Historic and Cultural Landmark Commission"
 podcast_author: "City of Fort Worth, TX"
 podcast_email: ""

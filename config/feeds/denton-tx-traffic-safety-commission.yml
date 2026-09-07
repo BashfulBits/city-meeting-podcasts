@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Traffic Safety Commission session on 2018-09-17. Across findings f0 through f8, this body met 9 times between 2017-08-07 and 2018-09-17, establishing a recurring, distinct municipal commission.
+slug: denton-tx-traffic-safety-commission
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: Traffic Safety Commission on 2018-09-17 5:30 PM
+podcast_title: 'Denton: Traffic Safety Commission'
+podcast_author: City of Denton, TX
+podcast_email: ''
+podcast_description: Public meetings of the Traffic Safety Commission of Denton, TX.
