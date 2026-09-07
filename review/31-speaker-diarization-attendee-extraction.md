@@ -456,6 +456,40 @@ persisted as usual; only the interpreter's final exit waits on that worker, boun
 `timeout-minutes: 330`. Admission (estimate + reserve vs. remaining budget) is what actually keeps a run
 inside its window; the backstop is the net for an estimate miss, not the primary control.
 
+**RSS model re-validated at longer durations, 2026-09-07.** The original memory model (above) was only
+measured up to 60min; run #59 crashed with a `BrokenProcessPool` on a 15h outlier, raising the question
+of whether real peak RSS accelerates past that range in a way the linear model would dangerously
+underestimate. Re-measured 5min-8h locally (macOS, `sherpa_onnx==1.13.7`, `num_threads=1`, under the new
+`DEFAULT_WINDOW_SHIFT_RATIO=0.3` from the addendum above — not the stale 0.1 the crashed run used):
+
+| hours | measured peak RSS | shipped formula (350MB+650MB/hr) | formula vs. measured |
+|---|---|---|---|
+| 0.083 (5min) | 425MB | 404MB | −4.9% |
+| 0.333 (20min) | 553MB | 567MB | +2.5% |
+| 1.0 (60min) | 714MB | 1000MB | +40.1% |
+| 2.0 | 1428MB | 1650MB | +15.6% |
+| 4.0 | 2112MB | 2950MB | +39.7% |
+| 8.0 | 4082MB | 5550MB | +36.0% |
+
+Best-fit across all six points: **368MB + 461MB/hr, R²=0.9954** — a genuinely linear relationship, no
+accelerating/superlinear growth through 8h. The shipped formula overestimates real usage at every point
+past 5min (that one point's −4.9% gap is 20MB absolute, immaterial), so it remains conservative rather
+than unsafe. If the same linear trend held to run #59's actual 15h outlier, it would predict ≈7.3GB —
+nowhere near exhausting a 16GB runner alone, which reframes that crash: more likely attributable to the
+stale 0.1 window-shift ratio (fixed above) and/or two large jobs co-admitted under the pre-fix blind
+scheduler (fixed by the memory-aware `claim()` above) than to the RSS model itself being wrong.
+
+**Formula left unchanged, not tightened toward the new fit**, and this is a deliberate methodology
+call, not an oversight: this re-validation ran on local Apple Silicon, not the GH Actions Linux runners
+production actually uses — and §A.1a's engine-selection trial explicitly warned that Apple Silicon
+numbers "gave the wrong per-job thread optimum when cross-checked" against real runner hardware.
+Tightening a memory-safety budget on unvalidated-platform data would repeat that exact mistake, and the
+existing formula is already proven safe against the new data, so there is no forcing reason to. The
+genuinely open question is real GH Actions measurement past 60min, including the actual 15h scale where
+the crash happened — not measured here (estimated ~50min of compute for that one point alone) and left
+for a future pass if it becomes worth the runner time, e.g. via a throwaway `workflow_dispatch` probe
+matching how §A.1a's original CPU comparison was done.
+
 **Per-job thread count made adaptive, 2026-09-07: idle configured workers get a second onnxruntime
 thread instead of sitting unused.** Best-fit-decreasing admission (above) provably concentrates the
 memory budget on a *few* large candidates whenever the backlog is dense with outliers — confirmed by

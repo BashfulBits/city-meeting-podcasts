@@ -52,6 +52,19 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Diarize RSS memory model re-validated at 5min-8h (`citypods/diarize.py`, `tests/test_diarize.py`).**
+  Run #59's `BrokenProcessPool` crash on a 15h outlier raised the question of whether the shipped
+  350MB + 650MB/hr formula (only ever measured up to 60min) dangerously underestimates real usage
+  at long durations. Measured locally under the corrected `window_shift_ratio=0.3`: real peak RSS
+  fit 368MB + 461MB/hr (R²=0.9954, genuinely linear, no acceleration through 8h), and the shipped
+  formula overestimates real usage at every point past 5min — it stays conservative, not unsafe.
+  Left unchanged rather than tightened toward the new fit: the re-validation ran on local Apple
+  Silicon, not the GH Actions Linux runners production uses, and review/31 §A.1a already
+  documents a case where Apple Silicon numbers gave the wrong answer against real runner hardware.
+  Added a regression test pinning the current constants and spot-checking the formula stays at or
+  above every measured point, so a future change to either is deliberate. See review/31 §A.4's
+  2026-09-07 addendum for the full comparison table and reasoning.
+
 - **`citypods/diarize.py` raised sherpa-onnx's `window_shift_ratio` default from 0.1 to 0.3.** A
   live production run (denton-tx run #59) logged a real onnxruntime error inside the pyannote
   segmentation encoder (`Non-zero status code returned while running Where node ... Attempting to
