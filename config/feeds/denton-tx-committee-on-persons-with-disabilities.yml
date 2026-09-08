@@ -5,7 +5,7 @@ city: denton-tx
 provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
-  body: Committee on Persons with Disabilities on 2026-03-19 3:00 PM
+  body: "Committee on Persons with Disabilities on *"
 podcast_title: 'Denton: Committee on Persons with Disabilities'
 podcast_author: City of Denton, TX
 podcast_email: ''

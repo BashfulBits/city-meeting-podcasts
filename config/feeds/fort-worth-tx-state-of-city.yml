@@ -10,7 +10,7 @@ source:
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
-  body: State of City State of City
+  body: State of City
 podcast_title: 'Fort Worth: State of the City'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

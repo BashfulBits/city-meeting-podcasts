@@ -5,7 +5,7 @@ city: denton-tx
 provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
-  body: Civil Service Commission on 2020-06-15 11:00 AM
+  body: "Civil Service Commission on *"
 podcast_title: 'Denton: Civil Service Commission'
 podcast_author: City of Denton, TX
 podcast_email: ''

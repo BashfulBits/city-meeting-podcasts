@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from citypods.audit_remedy import (
+    MAX_BATCHES_PER_RUN,
     SourceContext,
     _markdown_table_cell,
     apply_remedy_plan,
@@ -74,6 +75,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--repo-root", default=".", help="Repository root directory")
     parser.add_argument(
         "--output", help="Also write the rendered markdown report to this path", default=""
+    )
+    parser.add_argument(
+        "--max-batches",
+        type=int,
+        default=MAX_BATCHES_PER_RUN,
+        help="Maximum number of bounded classification batches to process in one run",
     )
     return parser.parse_args(argv)
 
@@ -140,8 +147,16 @@ def main(argv: list[str] | None = None) -> int:
     accepted_total = rejected_total = 0
 
     failed_total = unresolved_total = 0
+    if args.max_batches < 1:
+        _log("Error: --max-batches must be at least 1")
+        return 1
+    processed_batches = deferred_batches = 0
     for source in bundles:
         for batch_number, bundle in enumerate(remedy_batches(source), 1):
+            if processed_batches >= args.max_batches:
+                deferred_batches += 1
+                continue
+            processed_batches += 1
             source_key = bundle.get("source_key", "")
             city = bundle.get("city", {}).get("slug", source_key)
             labels = [f["unexpected_body"] for f in bundle.get("unexpected_findings", [])]
@@ -202,6 +217,13 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 # New slugs become reserved immediately, preventing collisions across batches.
                 feed_paths = feed_paths_by_slug(repo_root)
+
+    if deferred_batches:
+        reports.append(
+            f"Deferred {deferred_batches} classification batch(es) after the per-run limit of "
+            f"{args.max_batches}. Re-run `/remedy` after merging this pass to continue the "
+            "historical backlog."
+        )
 
     report_md = "\n\n".join(reports)
     print(report_md)

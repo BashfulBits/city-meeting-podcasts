@@ -5,7 +5,7 @@ city: denton-tx
 provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
-  body: Traffic Safety Commission on 2018-09-17 5:30 PM
+  body: "Traffic Safety Commission on *"
 podcast_title: 'Denton: Traffic Safety Commission'
 podcast_author: City of Denton, TX
 podcast_email: ''

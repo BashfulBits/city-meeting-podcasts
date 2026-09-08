@@ -5,7 +5,7 @@ city: denton-tx
 provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
-  body: Parks, Recreation and Beautification Board on 2021-05-17 3:00 PM
+  body: "Parks, Recreation and Beautification Board on *"
 podcast_title: 'Denton: Parks, Recreation and Beautification Board'
 podcast_author: City of Denton, TX
 podcast_email: ''

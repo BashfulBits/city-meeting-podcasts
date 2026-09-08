@@ -5,7 +5,7 @@ city: denton-tx
 provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
-  body: Use-Of-Force Ad Hoc Committee on 2020-09-24 6:00 PM
+  body: "Use-Of-Force Ad Hoc Committee on *"
 podcast_title: 'Denton: Use-Of-Force Ad Hoc Committee'
 podcast_author: City of Denton, TX
 podcast_email: ''

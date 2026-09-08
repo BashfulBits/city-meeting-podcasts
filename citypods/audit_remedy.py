@@ -35,6 +35,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from citypods.bodies import body_key
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMStructuredOutputError
 from citypods.compute.llm_policy import LLMRequestPolicy, estimate_tokens
@@ -59,7 +60,8 @@ MAX_ARCHIVED_BODIES = 60
 MAX_SAMPLE_TITLES = 10
 MAX_BATCH_FINDINGS = 12
 EVIDENCE_TOKEN_BUDGET = 12_000
-REMEDY_VERSION = "direct-v2"
+MAX_BATCHES_PER_RUN = 12
+REMEDY_VERSION = "direct-v3"
 DECISION_CONTRACT = "unexpected-body-decisions-v2"
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -81,6 +83,10 @@ class BodyProposal(BaseModel):
     provider_guids: list[str] = Field(
         default_factory=list,
         description="For single_uid_inclusion: the exact provider GUID(s) to pin.",
+    )
+    body_selector: str = Field(
+        default="",
+        description="A locally derived selector; never supplied by the classifier.",
     )
     new_feed_slug: str = Field(default="", description="For new_feed: proposed slug.")
     new_feed_title: str = Field(default="", description="For new_feed: podcast title.")
@@ -292,6 +298,29 @@ def _compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_DATED_BODY_RE = re.compile(r"^(?P<prefix>.+?)\s+on\s+\d{4}-\d{2}-\d{2}\b.*$", re.IGNORECASE)
+
+
+def stable_body_selector(label: str, candidates: list[str] | tuple[str, ...]) -> str:
+    """Collapse a recurring dated label family to one safe local wildcard.
+
+    The classifier never gets to invent this selector. A wildcard is emitted only when at least
+    two observed labels share the same ``<body> on`` prefix; an isolated dated label remains an
+    exact selector and therefore still requires a UUID inclusion or manual review.
+    """
+    match = _DATED_BODY_RE.match(label.strip())
+    if not match:
+        return label
+    prefix = match.group("prefix").strip()
+    prefix_key = body_key(prefix)
+    family = [
+        body_key(candidate_match.group("prefix").strip())
+        for candidate in candidates
+        if (candidate_match := _DATED_BODY_RE.match(candidate.strip()))
+    ]
+    return f"{prefix} on *" if family.count(prefix_key) >= 2 else label
+
+
 def remedy_batches(evidence: dict[str, Any]):
     """Yield bounded full-evidence batches; preserve every finding for local validation/reporting.
 
@@ -299,15 +328,26 @@ def remedy_batches(evidence: dict[str, Any]):
     It is never silently omitted or repeatedly sent to a provider that cannot accept it.
     """
     batch: list[dict[str, Any]] = []
+    selector_candidates = [
+        finding["unexpected_body"] for finding in evidence.get("unexpected_findings", [])
+    ]
     for finding in evidence.get("unexpected_findings", []):
         candidate = {**evidence, "unexpected_findings": [*batch, finding]}
         size = estimate_tokens([{"content": json.dumps(_compact_evidence(candidate))}])
         if batch and (len(batch) >= MAX_BATCH_FINDINGS or size > EVIDENCE_TOKEN_BUDGET):
-            yield {**evidence, "unexpected_findings": batch}
+            yield {
+                **evidence,
+                "_selector_candidates": selector_candidates,
+                "unexpected_findings": batch,
+            }
             batch = []
         batch.append(finding)
     if batch:
-        yield {**evidence, "unexpected_findings": batch}
+        yield {
+            **evidence,
+            "_selector_candidates": selector_candidates,
+            "unexpected_findings": batch,
+        }
 
 
 def evidence_recipe_hash(evidence: dict[str, Any]) -> str:
@@ -409,6 +449,13 @@ def _resolve_decisions(decisions, evidence, compact):
             BodyProposal(
                 source_key=evidence["source_key"],
                 unexpected_body=label,
+                body_selector=stable_body_selector(
+                    label,
+                    evidence.get(
+                        "_selector_candidates",
+                        [item["unexpected_body"] for item in evidence["unexpected_findings"]],
+                    ),
+                ),
                 **decision.model_dump(
                     exclude={"finding_id", "episode_ids", "all_observed_episodes"}
                 ),
@@ -657,13 +704,12 @@ def apply_remedy_plan(
             path = feed_paths[slug]
             before = path.read_text(encoding="utf-8")
 
+            selector = proposal.body_selector or proposal.unexpected_body
             if proposal.action == "union":
-                if _already_has_body_any(path, proposal.unexpected_body):
+                if _already_has_body_any(path, selector):
                     continue
-                after = add_body_any(before, proposal.unexpected_body)
-                assert_only_addition(
-                    before, after, ("source", "body_any"), proposal.unexpected_body
-                )
+                after = add_body_any(before, selector)
+                assert_only_addition(before, after, ("source", "body_any"), selector)
             else:
                 after = before
                 for provider_guid in proposal.provider_guids:
@@ -690,7 +736,7 @@ def apply_remedy_plan(
 def _render_new_feed(proposal: BodyProposal, context: SourceContext) -> str:
     """A minimal feed YAML. Selectors are the observed label; the transport is the sibling's."""
     source: dict[str, Any] = dict(context.transport)
-    source["body"] = proposal.unexpected_body
+    source["body"] = proposal.body_selector or proposal.unexpected_body
     document = {
         "slug": proposal.new_feed_slug,
         "city": context.city_entity,

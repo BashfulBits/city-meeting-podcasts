@@ -18,6 +18,7 @@ _spec.loader.exec_module(_mod)
 
 def test_issue_number_accepts_only_ascii_decimal_values():
     assert _mod.parse_args(["--evidence-file", "evidence.json", "--issue", "123"]).issue == "123"
+    assert _mod.parse_args(["--evidence-file", "evidence.json"]).max_batches == 12
     with pytest.raises(SystemExit):
         _mod.parse_args(["--evidence-file", "evidence.json", "--issue", "--repo"])
     with pytest.raises(SystemExit):
