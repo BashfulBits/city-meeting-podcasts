@@ -122,11 +122,44 @@ DIARIZE_RSS_PER_HOUR_BYTES = 650 * 1024 * 1024
 # and runs #61-63's `12288 by 50599` would each need up to `12288 * 50599 * 4` bytes (float32)
 # =~ 2.49GiB for that one intermediate tensor, and run #63's own heartbeat showed only ~3.0GiB of
 # genuinely free memory at the moment its error fired -- close enough to that figure that a spike
-# of roughly this size landing right then plausibly would have been the tipping point. Subtracted
-# once from the diarize memory ceiling (not once per worker -- the trigger is data-dependent and
-# rare, not a certainty every worker hits simultaneously) so admission always keeps this much
-# genuinely spare, regardless of how full the steady-state accounting says the budget already is.
-DIARIZE_RSS_SPIKE_MARGIN_BYTES = 3 * 1024 * 1024 * 1024
+# of roughly this size landing right then plausibly would have been the tipping point.
+#
+# Re-sized 2026-09-07 against five more real incidents (production, `main`, same run, all in
+# `_attach_embeddings` this time -- see that function's own comment) with directly measured
+# `peak_rss_mb` right at the error: three of five ran meaningfully hotter than even this
+# conservative RSS_BASE/RSS_PER_HOUR formula predicts (+24%, +31%, and worst +45% on the
+# 15.09h outlier -- 14.7GiB observed vs. 10.2GiB predicted, a ~4.5GiB gap on its own, already
+# bigger than the previous 3GiB margin). The overshoot scales with recording length/turn count
+# rather than looking like one fixed-size spike, consistent with onnxruntime's memory arena
+# growing (and never shrinking) a little further on each degenerate kernel execution within one
+# process -- a long recording with more turns has more chances to ratchet it up. Chunking
+# (review/31 §A.4, separate PR) is the more durable fix for *that* mechanism specifically, since
+# a fresh chunk gets a fresh process and a fresh arena; this margin is the stopgap for whatever
+# runs before or without it. Rounded up past the worst *observed* real gap (~4.5GiB), not just
+# the worst *modeled* one, for headroom against a still-longer recording ratcheting further.
+# Subtracted once from the diarize memory ceiling (not once per worker -- the trigger is
+# data-dependent and rare, not a certainty every worker hits simultaneously) so admission always
+# keeps this much genuinely spare, regardless of how full the steady-state accounting already is.
+DIARIZE_RSS_SPIKE_MARGIN_BYTES = 5 * 1024 * 1024 * 1024
+
+# The recurring "Where node" broadcast error during embedding extraction (`_attach_embeddings`
+# below) is root-caused, not just detected: NeMo TitaNet-Small's exported ONNX graph has a fixed
+# internal buffer of exactly 12288 frames at a 100fps (10ms hop) frame rate = 122.88s, baked in
+# at export time and never generalized to longer inputs. Any turn's audio handed to the embedding
+# extractor whole, past that length, hits a hard, deterministic cliff -- confirmed 2026-09-07
+# against a corpus of 13 real turns isolated from 5 real production Denton recordings (each an
+# independent `speaker_identity`-eligible episode, pulled from durable storage): every one of the
+# 13 failed with `X = duration_seconds * 100` exactly (to rounding) in its broadcast dimensions,
+# and a direct truncation experiment on the closest-margin case (124.20s, 1.32s over) confirmed
+# the exact boundary -- 122.88s succeeds, 123.00s fails, every time. This is not about "content":
+# a synthetic 60min continuous-speech clip fails the identical way, and the same 13 real turns,
+# split into 15s sub-windows and compared pairwise by cosine similarity, stayed consistently
+# similar (0.75-0.95, no cliff) end to end -- genuine single-speaker monologues, not a
+# segmentation failure merging two people into one turn, so truncating one is safe: the first two
+# minutes of a real monologue is already a fully representative sample of that same one speaker.
+# Set below the exact 122.88s cliff, not on it, for margin against the frame-count arithmetic
+# ever landing a hair different (a different sample rate, a rounding edge in start_idx/end_idx).
+DIARIZE_MAX_EMBEDDING_TURN_SECONDS = 120.0
 
 
 def estimate_diarize_rss_bytes(recording_seconds: float) -> int:
@@ -656,11 +689,34 @@ def _attach_embeddings(
     *,
     num_threads: int,
 ) -> None:
-    """Best-effort per-turn embeddings for the separate R7 identity layer.
+    """Best-effort per-turn embeddings for the separate R7 identity layer -- except for an
+    onnxruntime-internal error, which is not best-effort here.
 
-    Diarization is still useful when embedding extraction fails for any reason, so this
-    intentionally leaves turns anonymous rather than failing the content-addressed diarization
-    artifact -- same contract the prior pyannote adapter made.
+    A missing/unusable embedding model, or a turn too short to extract from, leaves that turn
+    (or, for a model failure, every turn) anonymous rather than failing the content-addressed
+    diarization artifact -- same contract the prior pyannote adapter made. An onnxruntime
+    error-level diagnostic during extraction is different and is deliberately NOT swallowed:
+    the same reasoning as `diarize()`'s own check on `process()` (above) applies here too -- a
+    session-level kernel failure can log to stderr without raising a catchable exception or
+    changing the call's return value, so "no embedding, keep going" would silently accept a
+    corrupted result. Confirmed in production, 2026-09-07 (this exact call site, on real Denton
+    meetings, on `main` before this fix): five separate long recordings each logged the
+    identical "Where node" broadcast error mid-embedding-extraction and then reported a normal
+    `diarize done` completion moments later, with no exception at all -- `process()`'s own
+    check (above) never covers this call, since it runs afterward, so this was completely
+    unprotected until now.
+
+    A turn longer than `DIARIZE_MAX_EMBEDDING_TURN_SECONDS` is truncated to that length before
+    extraction -- see that constant's own comment for the root-caused, experimentally-confirmed
+    reason (a hard 122.88s limit baked into the exported ONNX graph) and why truncating a real
+    long turn is safe (confirmed single-speaker, not a merged-turn artifact). This is a
+    prevention, not just detection: it stops the crash for every case in the corpus that
+    motivated it, rather than only failing cleanly once it happens. The error-level check below
+    stays as the safety net underneath -- for any other, not-yet-characterized trigger of this
+    same broadcast error, and for a bug in the truncation logic itself. Truncating changes
+    nothing about the turn's own recorded `start`/`end` (still the full segmentation-determined
+    span) or which turns follow it -- only the audio window handed to the extractor for *this*
+    turn's own embedding.
     """
     try:
         import sherpa_onnx
@@ -670,26 +726,48 @@ def _attach_embeddings(
                 model=str(embedding_path), num_threads=num_threads, provider="cpu"
             )
         )
-        for turn in turns:
-            start_idx = max(0, int(float(turn["start"]) * sample_rate))
-            end_idx = min(len(samples), int(float(turn["end"]) * sample_rate))
-            if end_idx <= start_idx:
-                continue
-            stream = extractor.create_stream()
-            stream.accept_waveform(sample_rate, samples[start_idx:end_idx])
-            stream.input_finished()
-            if not extractor.is_ready(stream):
-                continue
-            values = extractor.compute(stream)
-            if values:
-                turn["embedding"] = [float(value) for value in values]
-    except Exception:  # noqa: BLE001 - no embedding means no identity, not failed diarization.
+    except Exception:  # noqa: BLE001 - no extractor means no embeddings, not failed diarization.
         return
+
+    max_samples = int(DIARIZE_MAX_EMBEDDING_TURN_SECONDS * sample_rate)
+    with _capture_onnxruntime_stderr() as captured:
+        for turn in turns:
+            try:
+                start_idx = max(0, int(float(turn["start"]) * sample_rate))
+                end_idx = min(len(samples), int(float(turn["end"]) * sample_rate))
+                if end_idx <= start_idx:
+                    continue
+                if end_idx - start_idx > max_samples:
+                    end_idx = start_idx + max_samples
+                    turn["embedding_truncated"] = True
+                stream = extractor.create_stream()
+                stream.accept_waveform(sample_rate, samples[start_idx:end_idx])
+                stream.input_finished()
+                if not extractor.is_ready(stream):
+                    continue
+                values = extractor.compute(stream)
+                if values:
+                    turn["embedding"] = [float(value) for value in values]
+            except Exception:  # noqa: BLE001 - one bad turn stays anonymous; others still try.
+                continue
+
+    error_lines, warning_lines = _scan_onnxruntime_log(captured.get("data", b""))
+    if warning_lines:
+        print(
+            f"[diarize] onnxruntime warning during embedding extraction: {warning_lines[0][:500]}",
+            flush=True,
+        )
+    if error_lines:
+        raise RuntimeError(
+            f"onnxruntime reported {len(error_lines)} error-level diagnostic(s) during "
+            f"embedding extraction: {error_lines[0][:500]}"
+        )
 
 
 __all__ = [
     "DEFAULT_DIARIZE_MODEL",
     "DEFAULT_EMBEDDING_MODEL",
+    "DIARIZE_MAX_EMBEDDING_TURN_SECONDS",
     "DIARIZE_RSS_BASE_BYTES",
     "DIARIZE_RSS_PER_HOUR_BYTES",
     "DIARIZE_RSS_SPIKE_MARGIN_BYTES",

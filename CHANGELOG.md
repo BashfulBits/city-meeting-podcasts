@@ -67,6 +67,60 @@ Phase R (Research-Tool Surface)._
   2026-09-07 addendum (the entry immediately after the RSS re-validation one) for the full
   reasoning.
 
+- **`_attach_embeddings` had zero onnxruntime error detection, and it was actively corrupting
+  episodes marked successful in production (`citypods/diarize.py`, `citypods/stages.py`).**
+  Caught live via #1592's new peak-RSS logging: a running production `enrich --lane diarize`
+  job's own log showed the recurring `Where node` broadcast error firing five separate times,
+  every time immediately followed by that same candidate's `peak_rss_mb` print, then a normal
+  `diarize done` — never `diarize error`. That's proof, not inference: `process()`'s own
+  onnxruntime check (already live on `main`) would have raised and marked the episode
+  `speakers_error` had the error occurred there — since all five instead reported success, the
+  error was firing somewhere that check doesn't cover. `_attach_embeddings`'s per-turn embedding
+  loop had only a bare `try/except Exception: return` around itself, which catches genuine
+  Python exceptions but not onnxruntime's own C++-logged, non-raising kernel failures — the
+  identical failure mode already fixed for `process()`, just at a second, uncovered call site.
+  Segmentation/clustering for those five (and any other silently-affected) episodes are
+  unaffected (proven by the same logic: a `process()`-level failure would have raised) — only
+  the corrupted turn's embedding, feeding the separate R7 identity layer, is at risk.
+  `_attach_embeddings` now runs its per-turn loop inside the same fd-redirect capture
+  `process()` uses and raises on any captured error-level line, no longer best-effort for that
+  case specifically (a corrupted embedding merging into the wrong cluster is worse than none);
+  also restructured to try each turn independently, so one Python-level turn failure no longer
+  sacrifices every other turn's embedding. `DIARIZE_PIPELINE_VERSION` bumped "2"→"3": the
+  failure is silent by definition, so a version bump (not a targeted reprocess of the five uids
+  caught live here) is the only way to guarantee every historically-affected episode, not just
+  these five, gets a chance to either succeed cleanly or now correctly fail loud. Separately,
+  the peak-RSS numbers at each of the five incidents mattered: three of five ran meaningfully
+  hotter than the conservative RSS formula predicts (+24%, +31%, worst +45% on a 15.09h
+  recording — a ~4.5GiB gap, already bigger than the 3GiB spike margin #1592 shipped), scaling
+  with recording length/turn count rather than looking like one fixed-size spike — consistent
+  with onnxruntime's memory arena growing (and never shrinking) further on each degenerate
+  kernel execution within one process. `DIARIZE_RSS_SPIKE_MARGIN_BYTES` raised 3GiB→5GiB past
+  the worst *observed* gap, not just the worst *modeled* one. See review/31 §A.4's 2026-09-07
+  addendum (the entry after the OOM-proof one) for the full incident evidence and reasoning.
+
+- **Root-caused the recurring "Where node" embedding-extraction error and fixed it at the
+  source, not just detected it (`citypods/diarize.py`).** Built a real corpus — 13 individually
+  isolated failing turns from 5 real production recordings, saved durably outside `/tmp` — and
+  found the exact cause: every one of the 13 satisfies `broadcast_dimension = duration_seconds
+  × 100`, which pins the fixed side of the mismatch (`12288`) to exactly `122.88 seconds`.
+  NeMo TitaNet-Small's exported ONNX graph has a hard internal buffer sized for at most 12288
+  frames, never generalized to longer inputs — confirmed experimentally (not just by
+  regression): the real turn closest to the boundary succeeds truncated to 122.88s and fails at
+  123.00s, every time, a hard cliff. Checked whether truncating a long turn risks attaching the
+  wrong voice-print (a >120s turn could plausibly be a segmentation failure merging two
+  different speakers, not one continuous monologue): split all 13 into 15s sub-windows and
+  compared pairwise cosine similarity end to end — every window stayed consistently similar
+  (0.75-0.95, no case showing the sharp drop a real speaker change would produce) — genuine
+  monologues, safe to truncate. `_attach_embeddings` now truncates any turn past
+  `DIARIZE_MAX_EMBEDDING_TURN_SECONDS` (120s) *before* extraction rather than only detecting the
+  failure after the fact; re-ran the real corpus against the fix and all 13 previously-failing
+  turns now succeed. Turn boundaries and every other turn are untouched — only the audio window
+  sent for *that turn's own* embedding is capped; `embedding_truncated: true` records which
+  turns were affected. The detect-and-raise safety net (above) stays underneath for any other,
+  not-yet-characterized trigger of this error. See review/31 §A.4's 2026-09-07 addendum (the
+  entry after the peak-RSS one) for the full corpus methodology and evidence.
+
 ### Fixed
 
 - **Diarize RSS memory model re-validated at 5min-8h (`citypods/diarize.py`, `tests/test_diarize.py`).**
