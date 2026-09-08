@@ -215,6 +215,91 @@ needed for diarize anymore**, a real operational simplification (`scripts/prefli
 gated-model preflight check becomes dead code for this lane). `pyproject.toml`'s `diarize` extra becomes
 `sherpa-onnx` in place of `pyannote-audio`.
 
+**Addendum, 2026-09-07 — `window_shift_ratio` raised to 0.3 (sherpa-onnx default 0.1).** A live
+production run (denton-tx run #59) logged a real onnxruntime error inside the segmentation
+encoder: `Non-zero status code returned while running Where node ... Attempting to broadcast an
+axis by a dimension other than 1`. Reproduced deterministically against the exact pinned
+`sherpa-onnx==1.13.7`: any continuous span of audio with no VAD-detected pause whose window
+count (audio-seconds ÷ (10s window × shift ratio)) crosses a fixed internal buffer (~12288,
+~123s at the default 0.1 shift) triggers it. No upstream fix exists as of 1.13.7 (current
+release, checked 2026-09-07) and no matching issue was found in k2-fsa/sherpa-onnx's tracker.
+`window_shift_ratio` is a real, publicly exposed C-API parameter (since 1.13.5, not an
+undocumented workaround); raising it reduces window count for the same audio, which avoided the
+error outright on synthetic continuous speech (tested 0.3/0.5/1.0 against spans up to 300s) and
+is faster (fewer windows to run).
+
+Accuracy validated against three real, CC BY 4.0-licensed VoxConverse dev clips (not committed —
+same "no reference audio in the repo" convention as this doc's original gold set) via
+`citypods/speaker_benchmark.py`'s existing `compare()`:
+
+| clip | gold shape | ratio | elapsed_s | turn_cluster_accuracy | boundary_recall |
+|---|---|---|---|---|---|
+| typical | 4 speakers, 23 turns, 178.8s | 0.1 | 27.7 | 0.814 | 0.804 |
+| typical | | 0.3 | 9.4 | 0.825 | 0.804 |
+| complex | 17 speakers, 100 turns, 728.4s | 0.1 | 114.3 | 0.868 | 0.670 |
+| complex | | 0.3 | 38.6 | 0.861 | 0.675 |
+| longturn | 1 speaker, one 305.8s continuous turn, 1019.4s total | 0.1 | 169.7 | 1.000 | 0.125 |
+| longturn | | 0.3 | 56.9 | 1.000 | 0.125 |
+
+`turn_cluster_accuracy` at 0.3 is within noise of 0.1 on every clip (+0.011, -0.007, 0.0); speed
+improved 2.9-3.0x consistently. `longturn`'s low `boundary_recall` at both ratios is expected,
+not a regression: its gold turns are 8 fragments of one continuous single-speaker span (probably
+scene-cut boundaries in the source video, not speaker changes), so a diarizer correctly reporting
+"one speaker throughout" scores a perfect `turn_cluster_accuracy` but necessarily misses most of
+those fragment edges regardless of `window_shift_ratio`. Notably, `longturn` never triggered the
+onnxruntime error at either ratio despite its 305.8s span exceeding the ~123s condition — unlike
+the synthetic repro, where a gapless span reliably triggered it past ~123s. Real speech apparently
+carries enough micro-pauses that the exact gapless-span condition is harder to hit than the
+synthetic worst case. This validates 0.3 as a safe, faster default; it does not confirm the
+change eliminates the error on arbitrary real audio, which remains an open question pending more
+production data. `DIARIZE_PIPELINE_VERSION` bumped "1"→"2" (the actual computation changed, not
+just bookkeeping) to force re-diarization of the small number of artifacts computed under 0.1.
+
+### A.1b Silent onnxruntime kernel failures — detected via fd-redirect (2026-09-07)
+
+Production evidence a session-level onnxruntime kernel failure inside `diarizer.process(samples)`
+does **not** raise a Python exception and does **not** change `process()`'s return value: R7
+Diarization run #59 (GH Actions run 34072536373, "Diarize Denton pilot meetings") logged
+
+```
+[E:onnxruntime:, sequential_executor.cc:620 ExecuteKernel] Non-zero status code returned while
+running Where node. Name:'/encoder/encoder/encoder.0/mconv.3/Where_1' Status Message:
+.../element_wise_ops.h:563 axis == 1 || axis == largest was false. Attempting to broadcast an
+axis by a dimension other than 1. 12288 by 15974
+```
+
+~4.2s before that same job reported a normal-looking `diarize done ... ratio=0.142` completion,
+indistinguishable from any other successful run in the same log — the result was accepted and
+published as if nothing had gone wrong. onnxruntime's own C++ logger writes lines like this
+straight to the process's stderr file descriptor, bypassing Python's `sys.stderr`/`logging`
+entirely, and sherpa-onnx's Python bindings expose no severity/callback hook for it anywhere
+(checked directly against the installed package's `__init__.py` and the compiled `_sherpa_onnx`
+extension — no config class, `OfflineSpeakerDiarizationConfig` included, has one).
+
+`citypods/diarize.py`'s `diarize()` now redirects the OS-level fd 2 (`os.dup2`) around exactly
+the `diarizer.process(samples)` call, captures what onnxruntime wrote to it, and scans for the
+`"[E:onnxruntime"`/`"[F:onnxruntime"` (error/fatal) and `"[W:onnxruntime"` (warning) severity
+markers. The real fd is restored in a `finally` immediately after the call, before any exception
+handling runs, so a genuine crash's own traceback is never captured and lost. A warning-level
+line is logged (`[diarize] onnxruntime warning ...`) but does not fail the job; an error/fatal-
+level line raises `RuntimeError` from `diarize()`, which `run_diarize_job` propagates unchanged —
+`NativeDiarizeStage._run_one()`'s existing per-item exception handling already turns that into
+`ep.speakers_error` (deferred/errored, not silently `speakers_synced`) with no new exception path
+needed. Safe to redirect fd 2 unconditionally here: `diarize()`/`run_diarize_job` only ever run
+inside the isolated `ProcessPoolExecutor` diarize worker (§A.4), never the parent process, so the
+redirect's scope is exactly one job's own process, not shared with any other worker or thread.
+
+This is independent of, and a safety net beneath, the `window_shift_ratio` fix in the addendum
+above: that fix targets the one condition actually reproduced (a fixed internal buffer inside
+the exported ONNX graph, ~12288, crossed by a long continuous span at the default shift), and
+raising the default avoids it outright on every case tested so far. This detection instead
+catches *any* onnxruntime error-level log during `process()` regardless of cause — known trigger,
+some other trigger, or a future regression — so a session-level kernel failure can never again be
+silently accepted as a successful `diarize done`. The specific broadcast dimensions in the run #59
+evidence above (12288 vs. 15974) were not chased further than the addendum's own root-cause
+finding; no existing k2-fsa/sherpa-onnx issue matches this exact failure signature, and filing one
+(with the exact node name and dimensions above) remains a separate, upstream-facing follow-up.
+
 ### A.2 Module plan
 
 - **`citypods/diarize.py`** — new, mirroring `citypods/asr.py`'s existing shape (model load/cache,
@@ -370,6 +455,367 @@ does not *kill* the straggler subprocess — portably terminating a pool worker 
 persisted as usual; only the interpreter's final exit waits on that worker, bounded by the workflow's own
 `timeout-minutes: 330`. Admission (estimate + reserve vs. remaining budget) is what actually keeps a run
 inside its window; the backstop is the net for an estimate miss, not the primary control.
+
+**RSS model re-validated at longer durations, 2026-09-07.** The original memory model (above) was only
+measured up to 60min; run #59 crashed with a `BrokenProcessPool` on a 15h outlier, raising the question
+of whether real peak RSS accelerates past that range in a way the linear model would dangerously
+underestimate. Re-measured 5min-8h locally (macOS, `sherpa_onnx==1.13.7`, `num_threads=1`, under the new
+`DEFAULT_WINDOW_SHIFT_RATIO=0.3` from the addendum above — not the stale 0.1 the crashed run used):
+
+| hours | measured peak RSS | shipped formula (350MB+650MB/hr) | formula vs. measured |
+|---|---|---|---|
+| 0.083 (5min) | 425MB | 404MB | −4.9% |
+| 0.333 (20min) | 553MB | 567MB | +2.5% |
+| 1.0 (60min) | 714MB | 1000MB | +40.1% |
+| 2.0 | 1428MB | 1650MB | +15.6% |
+| 4.0 | 2112MB | 2950MB | +39.7% |
+| 8.0 | 4082MB | 5550MB | +36.0% |
+
+Best-fit across all six points: **368MB + 461MB/hr, R²=0.9954** — a genuinely linear relationship, no
+accelerating/superlinear growth through 8h. The shipped formula overestimates real usage at every point
+past 5min (that one point's −4.9% gap is 20MB absolute, immaterial), so it remains conservative rather
+than unsafe. If the same linear trend held to run #59's actual 15h outlier, it would predict ≈7.3GB —
+nowhere near exhausting a 16GB runner alone, which reframes that crash: more likely attributable to the
+stale 0.1 window-shift ratio (fixed above) and/or two large jobs co-admitted under the pre-fix blind
+scheduler (fixed by the memory-aware `claim()` above) than to the RSS model itself being wrong.
+
+**Formula left unchanged, not tightened toward the new fit**, and this is a deliberate methodology
+call, not an oversight: this re-validation ran on local Apple Silicon, not the GH Actions Linux runners
+production actually uses — and §A.1a's engine-selection trial explicitly warned that Apple Silicon
+numbers "gave the wrong per-job thread optimum when cross-checked" against real runner hardware.
+Tightening a memory-safety budget on unvalidated-platform data would repeat that exact mistake, and the
+existing formula is already proven safe against the new data, so there is no forcing reason to. The
+genuinely open question is real GH Actions measurement past 60min, including the actual 15h scale where
+the crash happened — not measured here (estimated ~50min of compute for that one point alone) and left
+for a future pass if it becomes worth the runner time, e.g. via a throwaway `workflow_dispatch` probe
+matching how §A.1a's original CPU comparison was done.
+
+**OOM proof instrumentation + a fixed spike margin, 2026-09-07 — narrowing "more likely
+attributable to..." above from a plausible story to something the next occurrence can actually
+confirm.** The reframing two paragraphs up is reasoned from indirect evidence (a stale ratio, a
+pre-fix scheduler) — neither run #59 nor its own log directly proves memory exhaustion was the
+proximate cause, and asked directly "can we prove this," the honest answer was no. Three gaps,
+closed independently of chunking (§A.4 addendum elsewhere) since none of them depend on it:
+
+- **The only genuinely authoritative signal was never being captured.** Every log so far is this
+  project's own app-level view (the 60s heartbeat, `MemoryReservation`'s bookkeeping) — real, but
+  a *trailing*, coarse-grained approximation of what the OS actually did, and silent entirely if
+  the kernel OOM-killer fires between two 60s samples or reaps the process before the next line
+  of Python ever runs. Only the kernel's own log (`dmesg`'s `Out of memory: Killed process ...`)
+  names the actual victim and its RSS at time of death, unambiguously. `r7-diarization.yml` now
+  captures `dmesg`/`free -h`/`/proc/meminfo` in an `if: always()` step immediately after the
+  diarize step — GH Actions runs `always()` steps during its own cancellation sequence, before
+  the runner is torn down, so this should still fire even on an external SIGTERM. Its *absence*
+  of an OOM line is equally informative: it would mean the kernel killer never fired at all,
+  pointing back toward an external/control-plane cause (H-A's family) instead.
+- **Peak-RSS attribution was too coarse to pin a specific candidate.** The heartbeat samples the
+  whole runner every 60s, aggregating every concurrent worker together — exactly why run #63's
+  own numbers (`mem_avail` flat at `3.0GiB` for the final 10+ minutes, load pinned at `~2.0/4`)
+  could neither confirm nor rule out a transient spike between samples. `run_diarize_job` now
+  logs `peak_rss_mb` (from Linux's own `VmHWM` "high water mark" counter, added as
+  `citypods.resources.process_peak_rss_bytes` — deliberately *peak*, not `process_rss_bytes()`'s
+  existing *current* reading, which a since-freed spike would never show) for every candidate,
+  and a genuine Python-level `MemoryError` or `OSError(errno=ENOMEM)` is now caught and re-raised
+  with that same reading attached rather than reported as a generic, unremarkable diarize error.
+  For this to attribute a peak to one specific candidate rather than "the highest peak any
+  candidate this worker process has ever seen" (`ru_maxrss`/`VmHWM` are both monotonic for a
+  process's whole lifetime, and the diarize pool reuses worker processes across many candidates
+  by default), `_diarize_executor` now sets `max_tasks_per_child=1` — a fresh `spawn` per
+  candidate, costing on the order of a couple of seconds against runtimes measured in minutes to
+  hours. **Caveat stated plainly: a hard kernel OOM-kill still runs none of this** — the process
+  is reaped from outside before any Python code, including this logging, gets to execute. That
+  gap is exactly what the `dmesg` capture above exists to cover instead.
+- **A fixed spike margin, sized from concrete evidence already in hand, not a guess.** Asked
+  directly whether reserving more memory could simply avert this: the recurring `Where node`
+  broadcast error's own logged dimensions (run #59: `12288 by 15974`; runs #61-63: `12288 by
+  50599`) imply an attempted allocation up to `12288 * 50599 * 4` bytes (float32) for that one
+  intermediate tensor alone — **≈2.49GiB** — on top of whatever steady-state RSS a job already
+  holds when it happens, which the linear model above has no way to anticipate. Run #63's own
+  heartbeat showed only `~3.0GiB` genuinely free at the exact moment its error fired: close
+  enough to that figure that a spike landing right then plausibly would have been the tipping
+  point. `DIARIZE_RSS_SPIKE_MARGIN_BYTES = 3GiB` (`citypods/diarize.py`) is now subtracted once
+  from the diarize `MemoryReservation` ceiling via `diarize_memory_ceiling_bytes()` — once from
+  the *ceiling*, deliberately not once per concurrent worker, since the trigger is data-dependent
+  and rare, not a certainty every worker hits in lockstep; multiplying it by worker count would
+  have cost far more admitted concurrency than the risk being defended against justifies. This is
+  a defense-in-depth mitigation, not a fix for the broadcast bug itself — chunking (elsewhere in
+  this addendum) and the fd-redirect error detection (§A.1b) are what actually address that; this
+  bounds the *consequence* of it recurring before either lands, or of some other, unrelated
+  future spike doing the same thing.
+- **Not proven by this PR, stated as plainly as the instrumentation gap that motivated it:** none
+  of the above establishes, after the fact, that OOM was run #63's actual cause — it could only
+  have done that if it had already been in place *before* run #63. What it does is close the gap
+  so the *next* occurrence (this bug is not otherwise fixed yet) produces a `dmesg` line and a
+  per-candidate peak-RSS reading tight enough to actually settle the question, rather than the
+  same "plausible, not provable" position this run left things in.
+
+**A live production incident, caught by the new instrumentation above and reported directly,
+2026-09-07 — `_attach_embeddings` had zero onnxruntime error detection, and it was actively
+corrupting episodes marked successful.** With #1592's peak-RSS logging live on `main`, a running
+`enrich --lane diarize` job's own log made the pattern directly visible: the recurring `Where
+node` broadcast error fired five separate times, and every single time it was immediately
+followed by that same candidate's `peak_rss_mb` print, then a normal `diarize done` completion
+— never a `diarize error`. That is proof, not inference: `process()`'s own onnxruntime check
+(§A.1b, live on `main` well before this session) would have raised and marked the episode
+`speakers_error` had the error occurred there — since every one of the five instead reported
+success, the error was firing somewhere `process()`'s check doesn't cover. `_attach_embeddings`
+is exactly that gap: its per-turn embedding-extraction loop had only a bare `try/except
+Exception: return` around itself, which catches genuine Python exceptions but not onnxruntime's
+own C++-logged, non-raising kernel failures — the identical failure mode §A.1b already
+documented for `process()`, just at a second call site nobody had covered. **What was actually
+at risk in those five (and any earlier, silently-affected) episodes, precisely, not vaguely:**
+segmentation and clustering (turn timing, which turns belong to which local speaker) are
+unaffected — proven by the same logic above, since a `process()`-level failure would have
+raised. Only the embedding vector for whichever turn(s) triggered the error is corrupted,
+feeding the separate R7 identity/naming layer with a wrong voice-print for that turn, not the
+published diarization turns themselves.
+
+- **The fix: `_attach_embeddings` restructured to match `process()`'s own contract** —
+  extractor-construction failure remains best-effort (a missing/unusable model still leaves
+  every turn anonymous rather than failing the artifact), but the per-turn loop now runs inside
+  the same `_capture_onnxruntime_stderr()` fd-redirect §A.1b already built, and raises
+  `RuntimeError` on any captured error-level line once the loop completes — no longer
+  best-effort, for the same reason `process()`'s own check isn't: a corrupted embedding can
+  merge into the wrong cluster and get published with someone else's turns attributed to it,
+  which is worse than no embedding at all. Restructured the loop itself to try each turn
+  independently in the process (a genuine, separate resilience gain, not just the error
+  detection): one Python-level turn failure no longer sacrifices every other turn's embedding,
+  where the prior single try/except around the whole loop would have.
+- **`DIARIZE_PIPELINE_VERSION` bumped "2"→"3".** Asked directly whether this needs a version
+  bump to get the affected episodes reprocessed: yes, and a *version* bump specifically, not a
+  targeted reprocess of just the five uids caught live in this one log — the failure is silent
+  by definition, so there is no way to know which other, already-`speakers_synced=True`
+  episodes hit this same gap in earlier runs without literally reprocessing everything anyway.
+  Costs re-diarizing every currently-synced episode (a real cost, most of which were already
+  fine and will produce an identical result), but matches this project's own established
+  convention (the `window_shift_ratio` fix's "1"→"2" bump above, same reasoning) and is the only
+  way to guarantee every historically-affected episode gets a chance to either succeed cleanly
+  or now correctly fail loud instead of silently corrupting.
+- **The peak-RSS numbers `#1592`'s own logging captured at each of the five incidents turned
+  out to matter, asked about directly.** Comparing each candidate's logged `peak_rss_mb` right
+  at its error against the conservative `350MB + 650MB/hr` formula (§A.4 above): two of five
+  landed close to predicted (+1%, +8%), but three ran meaningfully hotter — +24% (8.78h
+  recording), +31% (4.76h), and worst, +45% on the 15.09h outlier (14.7GiB observed vs. 10.2GiB
+  predicted, a ~4.5GiB gap on its own — already bigger than the 3GiB spike margin §A.4 shipped
+  with #1592). The overshoot scaling with recording length/turn count rather than looking like
+  one fixed-size spike is a real, different mechanistic hint from the single-incident tensor-size
+  estimate the original 3GiB margin was sized from: consistent with onnxruntime's memory arena
+  growing (and, characteristic of arena allocators, never shrinking back) a little further on
+  each degenerate kernel execution within one process — a long recording with more turns has
+  more independent chances to ratchet it up over the course of one `diarize()` call.
+  `DIARIZE_RSS_SPIKE_MARGIN_BYTES` raised 3GiB→5GiB, past the worst *observed* real gap
+  (~4.5GiB) rather than just the worst *modeled* tensor size, for headroom against a
+  still-longer recording ratcheting further. This also reframes chunking's own memory case
+  (elsewhere in this addendum) with a mechanism more durable than a fixed margin: a fresh chunk
+  gets a fresh process and a fresh onnxruntime arena, directly bounding how much any *one*
+  process's arena can ratchet up regardless of how many turns in that chunk trigger the bug —
+  where this margin is a stopgap sized for whatever runs before chunking lands or without it.
+  **Not done here, flagged as a real next step:** the per-turn loop above still runs every
+  remaining turn after the first error is detected, rather than breaking out early once the
+  job's fate (raise, fail the episode) is already sealed — on the arena-ratchet theory, stopping
+  early would directly bound how much *further* a bad file's peak RSS can climb after its first
+  bad turn, not just after the fact via a bigger margin. Deferred rather than bundled into this
+  same fix: it needs `_capture_onnxruntime_stderr()` to expose a mid-capture read (currently only
+  finalizes `captured["data"]` on context exit), a real if modest restructuring of an
+  already-shipped, already-tested function, and this fix was prioritized to ship fast given it
+  was actively corrupting production data at the time it was found.
+
+**Root-caused, then fixed at the source, 2026-09-07 — not just detected anymore.** Per direct
+instruction, built a durable local corpus (`~/citypods-onnx-repro-corpus/`, outside `/tmp` and
+outside any git worktree so it survives a reboot) from real production audio: pulled the 5
+episodes behind the incident above from durable storage (public CDN, no B2 credentials needed
+for the audio itself), located every individual turn in each that actually triggers the error
+(not just "the file"), and isolated each as a standalone clip. **13 real failing turns, across
+5 independent real recordings**, none synthetic.
+
+- **The exact root cause.** Every one of the 13 turns' broadcast-error dimensions satisfy
+  `X = duration_seconds × 100` (to rounding) — the mismatched dimension is simply the turn's own
+  frame count at a 100fps/10ms-hop rate. The fixed side of the mismatch, `12288`, is therefore
+  `12288 ÷ 100 = 122.88 seconds`: NeMo TitaNet-Small's exported ONNX graph has a hard internal
+  buffer sized for at most 12288 frames, baked in at export time and never generalized to a
+  longer input. **Confirmed experimentally, not just by regression:** truncated the
+  closest-margin real failing turn (124.20s, only 1.32s over) to several lengths and re-ran
+  extraction on each — 122.50s and exactly 122.88s both succeed; 123.00s and the original
+  124.20s both fail, identically, every time. This is a hard cliff, not a fuzzy or
+  content-dependent threshold, and it fully explains the ~1% real-audio incidence found earlier
+  and the num_threads/chunk-0 discrepancy noted above (that window simply didn't happen to
+  contain a turn past 122.88s — not a threading effect, a red herring since resolved).
+- **This corrects the "command-line option / different threshold" question directly:** checked
+  `SpeakerEmbeddingExtractorConfig` (`model`, `num_threads`, `debug`, `provider` only — no
+  shift/window parameter analogous to `window_shift_ratio`), so there is no tunable to nudge.
+  `window_shift_ratio` only affects where *segmentation* draws turn boundaries; even if a
+  different value shifted some borderline turn a few frames either way, a turn genuinely 30s,
+  90s, or 3400s past the 122.88s cliff (several of the 13 are) would fail regardless. The
+  trigger is duration, full stop, not "content" in any sense a shift ratio could routinely dodge.
+- **The merge-vs-monologue question, checked, not assumed.** A turn this long (average real
+  turn length ~10.5s, so 120s+ is already a 10x+ outlier) could plausibly be a segmentation
+  failure merging two different speakers into one turn rather than one person talking
+  continuously — which would make truncating it and using the result as *the* turn's identity
+  actively wrong for whichever speaker falls in the untruncated remainder. Checked directly: for
+  every one of the 13 real turns, split into 15s sub-windows and compared pairwise by cosine
+  similarity end to end — every window stayed consistently similar to every other (0.75-0.95
+  across all 13 turns, no case showing a sharp drop), well above `CHUNK_MERGE_MIN_COSINE=0.45`'s
+  same/different-speaker separation calibrated elsewhere in this addendum. All 13 are genuine
+  single-speaker continuous monologues (most plausibly extended staff presentations or council
+  remarks) — a segmentation merge artifact would show a cliff partway through and none did.
+- **The fix: `_attach_embeddings` truncates any turn past `DIARIZE_MAX_EMBEDDING_TURN_SECONDS`
+  (120.0s — under the measured 122.88s cliff for margin) before extraction, not after.** This is
+  prevention, not just the detect-and-raise safety net above: re-ran the *actual, unmocked*
+  `_attach_embeddings` against all 13 real corpus clips post-fix, and all 13 now produce a real
+  embedding with no error — zero of thirteen still fail. The safety net stays underneath, for
+  any other, not-yet-characterized trigger of this same broadcast error and for a bug in the
+  truncation logic itself. Truncation changes nothing about the turn's own recorded `start`/
+  `end` (still the full segmentation-determined span, so downstream transcript/turn timing is
+  untouched) or any other turn's boundaries — only the audio window handed to the extractor for
+  *that turn's own* embedding. `turn["embedding_truncated"] = True` records which turns were
+  affected, so this stays visible in the stored artifact rather than silent.
+- **Corpus preserved for future work**, not thrown away after use: the 13 real clips (each with
+  a manifest recording the source recording, exact turn boundaries, and the original error text)
+  live at `~/citypods-onnx-repro-corpus/onnx_repro_corpus/`, deliberately outside `/tmp` (wiped
+  on reboot, learned the hard way mid-investigation) and outside any git worktree. Useful for:
+  validating any future change to this code path against real failure cases directly rather than
+  only mocks, and as the evidence base for an upstream k2-fsa/sherpa-onnx bug report (not yet
+  filed) — the exact node name, the precise 122.88s/12288-frame threshold, and confirmation this
+  reproduces on the pinned `sherpa-onnx==1.13.7` are all now in hand for that report.
+
+**Memory margin cut back down, and a memory-dominant candidate given adaptive threads,
+2026-09-07 — a live production run surfaced a real, self-inflicted throughput regression from
+the previous addendum's own 5GiB spike margin.**
+
+- **What the log showed.** With #1593 merged, a run admitted the 15.09h outlier
+  (`uid=1117de8e39612576`) and reserved `8.7GiB` against an `8.7GiB` ceiling — 100% of the
+  budget, from one candidate. Three other candidates (5.9-7.3GiB each) sat blocked in
+  `reserve()` for the giant file's *entire* runtime. `need=8.7GiB` was not this candidate's real
+  need: `MemoryReservation._clamp()` caps any single request at the whole budget ("a single huge
+  estimate must still run alone instead of deadlocking") — its actual steady-state estimate,
+  `350MB + 650MB/hr × 15.09h ≈ 9.92GiB`, already exceeded the `14000MB − 5120MB(margin) =
+  8.67GiB` ceiling on its own, so the clamp fired and the bookkeeping understated it.
+- **But the margin wasn't the primary cause — checked directly, not assumed.** Computed the
+  same admission math at margin=0GiB (raw 13.67GiB ceiling): the giant candidate's own 9.92GiB
+  estimate plus even the *smallest* waiting candidate (5.9GiB) already sums to 15.82GiB, over
+  the full raw budget with no margin subtracted at all. This exact batch — four very long
+  recordings whose combined needs can't fit two-at-a-time under any reasonable margin size —
+  was always going to serialize to one candidate at a time; the margin only changed whether the
+  giant candidate's own reservation got needlessly clamped, not whether concurrency was
+  possible. Confirmed the margin still cost something real, though: at the previous 3GiB margin
+  (10.67GiB ceiling) the giant candidate would have fit unclamped with ~0.75GiB genuinely spare;
+  at 5GiB, zero.
+- **Cut back to 1GiB** (`DIARIZE_RSS_SPIKE_MARGIN_BYTES`, `citypods/diarize.py`), not removed
+  outright. The 5GiB sizing defended against RSS overshoot correlated with the "Where node" bug
+  repeatedly firing within one process — a mechanism the truncation fix above now prevents at
+  the source for the exact input class that caused every one of those five incidents. With the
+  degenerate-kernel-execution driver of that overshoot mostly closed off, the margin's remaining
+  job is ordinary platform/model variance, which the RSS formula's own proven conservatism
+  (overestimates real measured usage by up to +40%, §A.4 above) already covers most of — 1GiB is
+  a modest cushion for the rest, not zero, but far less likely to needlessly clamp a single
+  large, otherwise-legitimate candidate the way 5GiB did.
+- **Adaptive threads for a memory-dominant candidate — deliberately not #1496's design.**
+  Asked directly to add this: when admitting a candidate whose own predicted need exceeds 65% of
+  the total memory ceiling, `_DiarizeAdmission.claim()` now grants it `_DIARIZE_SOLO_THREADS`
+  (2) instead of the pool's default 1 — the same single-job latency optimum already measured
+  (this addendum's own opening section) — because a candidate that dominant structurally leaves
+  little or no room for other work to run concurrently, so the CPU those other configured
+  workers would have used sits idle behind it rather than being competed for. This is
+  *deliberately* not the per-worker adaptive scheme #1496 shipped and #1507 had to revert: that
+  design let every worker independently decide "am I running alone" from its own local view and
+  raced two workers into both bumping at once, oversubscribing the runner's own agent past what
+  it could service. This one is decided once, centrally, inside `claim()`'s own lock, as a pure
+  function of one candidate's need against the fixed budget — no worker ever reacts to another's
+  live state — and a new `_committed_threads` counter (incremented/decremented under the same
+  lock, released in `_run_one`'s `finally` alongside the memory reservation) is a hard, real-time
+  ceiling checked *at the moment of granting*: a bump is only given when it is proven, right
+  then, to keep the pool's total committed thread count at or under the runner's real vCPU count
+  (`os.cpu_count()`, not the configured `workers`, which may be set higher) — never assumed safe
+  from a static worst-case argument the way the reverted design implicitly was.
+- **`MemoryReservation.budget_bytes`** (`citypods/resources.py`) is a new read-only property
+  exposing the fixed ceiling itself, needed by the dominance check above and not previously
+  exposed (only `reserved_bytes`, how much is currently committed, existed).
+
+---
+
+### A.5 ProviderTranscriptDiarizeStage retired, 2026-09-08 — its label format never once matched
+
+**What it was.** `ProviderTranscriptDiarizeStage` (stage name `"diarize"`, PT-PR6, predates R7)
+derived speaker turns for free from a provider-supplied caption that already carried inline
+`NAME: spoken text` labels — cheap text parsing, no audio, no model. It ran in every
+`default_stages()`/`enrich_stages()` pass alongside R7's `native_diarize`, under the shared
+`"diarize"` lane.
+
+**Investigated after a routine question about what `diarize: 0 ran, 2001 reused, 0 queued,
+0 errors (0s)` in a production log meant.** That line turns out to answer a different question
+than it first suggested: a citywide survey of every city/source group with a provider-aligned
+transcript on record — Addison, 18 separate Austin boards, Dallas, Denton, Travis County; every
+provider currently integrated — found **zero** episodes, anywhere, with `speakers.source ==
+"provider"`. The stage had only ever been evaluated on 13 episodes total (all in Denton), and
+every one came back `diarize_status: "no-speaker-labels"`.
+
+**Root cause, confirmed by reading the raw provider-aligned VTT text directly, not inferred.**
+`_SPEAKER_PREFIX_RE` required a colon-delimited prefix (`^([A-Z][A-Za-z0-9 .,'&/-]{1,80}?):\s+
+(.+)$`). No caption vendor in this project's provider mix ever emits that shape. What real
+captions contain instead, confirmed per-vendor:
+
+- **Plain undifferentiated text** (Austin, Dallas, Addison — the majority): raw ALL-CAPS
+  speech-to-text, zero speaker markers of any kind.
+- **A bare `>>` chevron** (Denton, and heavily — Travis County: 822 chevron lines in one sampled
+  episode alone): the standard CART/live-captioning speaker-*change* marker, carrying no identity
+  — a name appearing nearby is ordinary spoken prose ("MY NAME IS AMANDA WOZNIAK"), never
+  structured metadata.
+
+`no-speaker-labels` was the *correct* output every time — the regex never malfunctioned, its
+precondition just never held against any real data source this project ingests. A "filter valid
+vs. invalid labels" fix at the `reused` check (`citypods/stages.py`, previously line ~7034) was
+considered and rejected: there was never any successfully-extracted data flowing through that
+path to filter, on any city, ever.
+
+**Retired outright**, not patched — `ProviderTranscriptDiarizeStage`, `PROVIDER_DIARIZE_PIPELINE_
+VERSION`, `_provider_diarize_spec_hash`/`_provider_diarize_object_key`, `_SPEAKER_PREFIX_RE`, and
+`_speaker_turns_from_cues` are all removed from `citypods/stages.py`; the stage is dropped from
+`default_stages()`/`enrich_stages()`; `LANE_STAGES["diarize"]` and `records._LANE_OWNED_BLOCKS`/
+`_LANE_OWNED_STAGE_STATUS["diarize"]` now cover only `native_diarize`. `/admin/status`'s
+provider-transcript-rollout panel drops its diarize sub-section (align status, an unrelated
+sibling feature reusing the same `provider_transcript` record, is untouched). The
+`"provider-transcript-diarize"` work class stays recognized in `citypods/ops/workqueue.py`'s
+`WORK_CLASSES` (so any pre-retirement manifest entries keep reaping normally) but is no longer
+emitted for new episodes.
+
+**Migration for any stale `speakers_source == "provider"` episode.** `NativeDiarizeStage.
+_collect_candidates` used to permanently skip (`stats.reused += 1`) any episode whose
+`speakers_source == "provider"` — with the stage that set that field retired, that check now
+instead clears every stale field (`speakers_key`, `_url`, `_spec_hash`, `_format`, `_synced`,
+`_confidence`, `_pipeline_version`, `_source`) so the episode falls through into a real native
+diarization pass exactly as if it had never been touched — not silently treated as done forever.
+
+**Ordering bug found and fixed before this shipped: the clearing must run before the
+`pilot_selected` gate, not after.** As first written, the clearing sat *after* the
+`pilot_selected(...)` check, which `continue`s past the rest of the loop body for any episode
+whose body isn't in the R7 pilot (today: only Denton City Council, `711` of `2164` episodes —
+everything else, `1453` episodes, never reaches the clearing at all). A non-pilot body's stale
+provider artifact would therefore never get cleared by anyone: native diarization is never going
+to touch a non-pilot body either, so nothing else in the pipeline resets the field. Moved the
+clearing above the `pilot_selected` check so it is unconditional — whether the now-clean episode
+goes on to become a real diarize candidate is still entirely up to `pilot_selected` afterward.
+
+**How many episodes actually need this migration is genuinely unresolved, not zero.** A direct
+census of live Denton state (2,164 records; cross-checked three ways — a raw field scan, the
+production `pull_state()` path, and a full replay of the retired stage's exact reused-check logic
+against that data) finds zero episodes with `speakers_source == "provider"` today, and only 13
+records ever had a `provider_transcript.known_good` entry at all (all `no-speaker-labels`). But
+two real production runs (#64 and #67) each logged `diarize: 0 ran, ~2000 reused` for this exact
+stage shortly before retirement — a figure the retired stage's own code cannot produce against
+that same live data no matter how it's replayed (the reused check requires `known_good` present,
+capping it at 13, not ~2000). That gap was investigated at length and not resolved. It doesn't
+change the retirement's actual evidentiary basis (reading raw provider-aligned caption text
+directly, across many cities, and finding no vendor ever emits a colon-prefixed label — untouched
+by this counter mystery), but it means "no live episode is affected" was never a safe claim to
+rely on, which is the whole reason the migration exists as a real code path rather than being
+dropped as unnecessary once the live census came back at zero.
+
+**A genuinely different, and likely harder, upstream issue was found along the way and is not
+part of this retirement**: the underlying `nemo_en_titanet_small.onnx`/`_large.onnx` export has a
+hard 122.88s embedding-extraction ceiling (root-caused and truncation-fixed in PR #1593/#1594,
+above) that traces to NVIDIA NeMo's own export path, not sherpa-onnx's application code — reported
+upstream at k2-fsa/sherpa-onnx#2462 with the exact root cause added, comment drafted but not
+posted pending the user's go-ahead per this project's publish-to-external-repo convention.
 
 ---
 

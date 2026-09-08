@@ -174,8 +174,8 @@ def _materialize_set(
     whether this call is a transcript-producing stage (any value in
     ``workqueue.DURATION_AWARE_WORK_CLASSES``) so the ``long_first`` comparator can tell it apart
     from a non-transcript stage's call. Defaults to ``"audio"``: every caller except
-    ``TranscriptStage`` / ``ProviderTranscriptDiarizeStage`` processes audio-adjacent work that
-    duration-based external-GPU prioritization should never reorder."""
+    ``TranscriptStage`` processes audio-adjacent work that duration-based external-GPU
+    prioritization should never reorder."""
     out: list[Episode] = []
     ranked: list[tuple[Episode, str]] = []
     visible = max_per_body if feed_visible_per_body is None else feed_visible_per_body
@@ -804,12 +804,6 @@ def stage_input_fingerprint(
             "timeline": timeline_digest(ep.timeline, ep.sources) if ep.timeline else "",
             "recipe": TRANSCRIPT_PIPELINE_VERSION,
             "word_validation": TIMED_WORDS_VALIDATION_VERSION,
-        }
-    elif name == "diarize":
-        payload = {
-            **common,
-            "transcript": ep.transcript_key or ep.transcript_hosted_url,
-            "recipe": PROVIDER_DIARIZE_PIPELINE_VERSION,
         }
     elif name == "native_diarize":
         config = speaker_config or {}
@@ -2703,6 +2697,11 @@ class _DiarizeCandidate:
     # hands out a candidate it could *not* currently reserve and `_run_one`'s blocking
     # `reserve()` call is still what makes the worker wait for it.
     memory_reserved: bool = False
+    # Set by `_DiarizeAdmission.claim()` -- the default (1 when several workers run at once) or
+    # `_DIARIZE_SOLO_THREADS` (2) when this one candidate's own memory need is large enough that
+    # it is effectively running with the pool's spare CPU otherwise sitting idle behind it (see
+    # `claim()`'s own comment). `_run_one` reads this instead of a pool-wide constant.
+    threads: int = 1
 
 
 class _DiarizeAdmission:
@@ -2734,6 +2733,25 @@ class _DiarizeAdmission:
 
     Estimates are re-read from the runtime log on every claim, so measured samples from items
     that already finished this run immediately sharpen later admission decisions.
+
+    **Adaptive threads for a memory-dominant candidate (2026-09-07).** Observed in production
+    (denton-tx): a candidate needing most of the memory budget by itself (the 15.09h outlier at
+    ~9.9GiB against an ~8.7-13.7GiB ceiling, depending on the configured spike margin) leaves the
+    *other* configured workers with nothing they can concurrently fit -- they sit blocked in
+    `reserve()`, their CPU capacity going entirely unused, while the one running candidate uses
+    only its single thread. `claim()` now gives such a candidate `_DIARIZE_SOLO_THREADS` (2)
+    instead of 1 -- the same single-job latency optimum §A.4 already measured -- since the CPU
+    those other workers would have used is otherwise wasted, not competed for. This is
+    deliberately NOT the per-worker adaptive scheme #1496 shipped and #1507 had to revert: that
+    design let *every* worker independently decide "am I running alone" and could race two
+    workers into both bumping at once, oversubscribing the runner's own agent past what it could
+    service (review/31 §A.4). This one is decided once, centrally, under `claim()`'s own lock,
+    as a pure function of one candidate's own memory need against the fixed budget -- no worker
+    ever reacts to another's live state -- and `_committed_threads` (tracked under the same lock,
+    released in lockstep with the memory reservation) is a hard, real-time ceiling: a bump is
+    granted only when it is *proven*, at the moment of granting, to keep the pool's total
+    committed thread count at or under the runner's real vCPU count, never assumed safe from a
+    static worst case.
     """
 
     def __init__(
@@ -2743,6 +2761,8 @@ class _DiarizeAdmission:
         ctx: StageContext,
         runtime_log: DiarizeRuntimeLog,
         recipe: str,
+        default_threads: int = 1,
+        max_total_threads: int | None = None,
     ):
         # Longest first: claim() can then take the first candidate that fits.
         self._pending = sorted(candidates, key=lambda item: item.recording_seconds, reverse=True)
@@ -2751,6 +2771,12 @@ class _DiarizeAdmission:
         self._recipe = recipe
         self._deferred: list[tuple[_DiarizeCandidate, str]] = []
         self._lock = threading.Lock()
+        self._default_threads = max(1, default_threads)
+        # The real vCPU count, not the configured `workers` (which may be set higher) -- CPU
+        # oversubscription is a hardware constraint, not a config one, and that mismatch is
+        # exactly what #1496/#1507 got wrong.
+        self._max_total_threads = max(1, max_total_threads or os.cpu_count() or 4)
+        self._committed_threads = 0
 
     @property
     def deferred(self) -> list[tuple[_DiarizeCandidate, str]]:
@@ -2778,8 +2804,11 @@ class _DiarizeAdmission:
                     continue
                 if reservation is None:
                     # No memory gate configured (`memory_budget_mb: 0`) -- time budget alone
-                    # decides, exactly as before this candidate ever considered memory.
-                    return self._pending.pop(index)
+                    # decides, exactly as before this candidate ever considered memory, and
+                    # there is no budget to measure "dominant" against.
+                    claimed = self._pending.pop(index)
+                    claimed.threads = self._default_threads
+                    return claimed
                 if fallback_index is None:
                     # Longest time-fitting candidate seen so far: the forward-progress fallback
                     # if nothing pending fits the memory that's free right now.
@@ -2788,13 +2817,17 @@ class _DiarizeAdmission:
                 if reservation.try_reserve(need, label=candidate.uid):
                     claimed = self._pending.pop(index)
                     claimed.memory_reserved = True
+                    claimed.threads = self._choose_threads_locked(reservation, need)
                     return claimed
             if fallback_index is not None:
                 # Every time-fitting candidate was too big for the memory free right now.
                 # Hand out the longest one anyway (unreserved) so its worker blocks in
                 # `reserve()` -- there is genuinely no smaller work available to run instead,
                 # and blocking is what lets it start the moment another job frees enough.
-                return self._pending.pop(fallback_index)
+                claimed = self._pending.pop(fallback_index)
+                need = estimate_diarize_rss_bytes(claimed.recording_seconds)
+                claimed.threads = self._choose_threads_locked(reservation, need)
+                return claimed
             # Nothing fits the *time* budget at all, and the remaining budget only shrinks from
             # here, so nothing ever will: defer the whole tail now rather than re-checking it
             # per freed worker.
@@ -2804,6 +2837,36 @@ class _DiarizeAdmission:
                 flush=True,
             )
             return self._drain_locked("runtime-budget")
+
+    def _choose_threads_locked(self, reservation: MemoryReservation, need: int) -> int:
+        """Called only from inside `claim()`'s own lock -- see that method and this class's
+        docstring for the full reasoning. `need > 65%` of the total budget is the signal that
+        this candidate is memory-dominant enough that little or no *other* concurrent work can
+        fit alongside it, so the CPU those other workers would have used is otherwise idle
+        behind it; `_committed_threads` is the hard, live check that granting the bump still
+        keeps the pool's total at or under the real vCPU count, checked at the moment of
+        granting, never assumed from a static worst case.
+
+        Every candidate that reaches this method -- bumped or not -- adds its own `.threads` to
+        `_committed_threads` before returning: the ceiling check below is only meaningful if the
+        running total it compares against already reflects *every* concurrently-claimed
+        candidate's contribution, not just previously-bumped ones. An unconditional increment
+        here (rather than only inside the "bumped" branch) is what makes that true.
+        """
+        budget = reservation.budget_bytes
+        threads = self._default_threads
+        if budget > 0 and need > 0.65 * budget:
+            bumped = _DIARIZE_SOLO_THREADS
+            if self._committed_threads + bumped <= self._max_total_threads:
+                threads = bumped
+        self._committed_threads += threads
+        return threads
+
+    def release_threads(self, n: int) -> None:
+        """Give back a candidate's thread commitment once it finishes or errors -- called from
+        `_run_one`'s `finally`, in lockstep with the memory reservation's own `release()`."""
+        with self._lock:
+            self._committed_threads = max(0, self._committed_threads - n)
 
     def close(self, reason: str) -> None:
         """Stop admitting new work (a backstop timeout); defer whatever is left."""
@@ -2870,9 +2933,21 @@ def _diarize_executor(workers: int):
     `TimeoutError` -- on a single-vCPU runner (or `speakers.workers: 1`) one hung inference would
     hold the job until Actions sends SIGTERM, which is precisely the failure the backstop exists
     to bound. Tests that need the call in-process monkeypatch this function directly.
+
+    `max_tasks_per_child=1`: without it, `ProcessPoolExecutor` reuses a worker process across
+    every candidate it's ever handed, for the pool's whole lifetime. `run_diarize_job`'s
+    peak-RSS log line (review/31 §A.4 addendum) needs to mean "this candidate's own peak," not
+    "the highest peak any candidate this worker has ever processed reached" -- `ru_maxrss`/
+    `VmHWM` are both monotonic for the life of a process, so without a fresh process per
+    candidate a small job scheduled after a huge one would silently inherit and report the
+    huge one's number. The extra `spawn` (re-import citypods + sherpa_onnx + numpy) this costs
+    per candidate is on the order of seconds against diarize runtimes measured in minutes to
+    hours -- immaterial.
     """
     return ProcessPoolExecutor(
-        max_workers=max(1, workers), mp_context=multiprocessing.get_context("spawn")
+        max_workers=max(1, workers),
+        mp_context=multiprocessing.get_context("spawn"),
+        max_tasks_per_child=1,
     )
 
 
@@ -4273,8 +4348,25 @@ MINUTES_ROSTER_PARSER_VERSION = "2"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
-PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
-DIARIZE_PIPELINE_VERSION = "1"
+# Bumped "1"->"2": citypods/diarize.py's DEFAULT_WINDOW_SHIFT_RATIO changed sherpa-onnx's
+# pyannote segmentation windowing (0.1 -> 0.3), which changes the actual computation, not just
+# bookkeeping -- artifacts diarized under the old default must be re-diarized, not reused.
+#
+# Bumped "2"->"3", 2026-09-07: `_attach_embeddings` gained the same onnxruntime error-level-
+# diagnostic detection `process()` already had -- confirmed live in production (this exact gap,
+# on real Denton meetings, before this fix) as five separate episodes each silently accepting a
+# corrupted embedding for at least one turn and reporting a normal `speakers_synced=True`
+# completion. `process()`'s own check never covers this call, and the segmentation/clustering
+# each of those five episodes produced is unaffected (proven, not assumed: `process()`'s
+# existing check would have raised and marked them `speakers_error` had the error occurred
+# there instead) -- only the corrupted turn(s)' embeddings are at risk, feeding the separate R7
+# identity layer. There is no way to know which *other*, already-`speakers_synced=True`
+# episodes silently hit this same gap in earlier runs -- the failure mode is silent by
+# definition -- so a version bump (not a targeted reprocess of just the five uids caught live
+# here) is what actually guarantees every historically-affected episode gets a chance to
+# either succeed cleanly or now correctly fail loud, at the cost of also re-diarizing episodes
+# that were already fine.
+DIARIZE_PIPELINE_VERSION = "3"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
 CHAPTER_AGENDA_PIPELINE_VERSION = "1"
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
@@ -4521,28 +4613,6 @@ def _parse_swagit_coarse_cues(ep: Episode, content: bytes) -> list[dict]:
     # A single usable block is no better than full alignment: it provides no meaningful search
     # partition, so deliberately use the existing safe fallback.
     return cues if len(cues) >= 2 else []
-
-
-def _provider_diarize_spec_hash(ep: Episode, artifact: dict) -> str:
-    spec = {
-        "v": PROVIDER_DIARIZE_PIPELINE_VERSION,
-        "transcript": ep.transcript_spec_hash,
-        "provider_align": artifact.get("align_spec_hash"),
-        "minutes_roster": sorted(
-            (
-                {"name": item.get("name"), "status": item.get("status")}
-                for item in ep.minutes_roster
-                if isinstance(item, dict) and item.get("name")
-            ),
-            key=lambda item: (str(item["name"]).casefold(), str(item.get("status") or "")),
-        ),
-    }
-    blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
-    return hashlib.sha1(blob.encode()).hexdigest()[:12]
-
-
-def _provider_diarize_object_key(src_key: str, uid: str, spec: str) -> str:
-    return f"transcripts/{src_key}/{uid}-provider-diarize-{spec}.speakers.json"
 
 
 def _provider_transcript_history(history: object, *, limit: int = 5) -> list[dict]:
@@ -4920,35 +4990,6 @@ def _provider_cues_to_vtt(cues: list[dict]) -> bytes:
         lines.extend(str(cue.get("text") or "").splitlines() or [""])
         lines.append("")
     return ("\n".join(lines)).encode("utf-8")
-
-
-_SPEAKER_PREFIX_RE = re.compile(r"^\s*([A-Z][A-Za-z0-9 .,'&/-]{1,80}?):\s+(.+)$")
-
-
-def _speaker_turns_from_cues(cues: list[dict]) -> tuple[list[dict], float | None]:
-    turns: list[dict] = []
-    for cue in cues:
-        text = str(cue.get("text") or "").strip()
-        if not text:
-            continue
-        match = _SPEAKER_PREFIX_RE.match(text.replace("\n", " "))
-        if not match:
-            continue
-        speaker = re.sub(r"\s+", " ", match.group(1)).strip()
-        spoken = match.group(2).strip()
-        if not speaker or not spoken:
-            continue
-        turns.append(
-            {
-                "speaker": speaker,
-                "start": round(float(cue["start"]), 3),
-                "end": round(float(cue["end"]), 3),
-                "text": spoken,
-            }
-        )
-    if not cues:
-        return [], None
-    return turns, max(0.0, min(1.0, len(turns) / len(cues)))
 
 
 def _confidence_rank(value: object) -> float:
@@ -7034,129 +7075,6 @@ class TranscriptStage:
         return stats
 
 
-class ProviderTranscriptDiarizeStage:
-    """Derive speaker turns from selected provider-aligned transcripts.
-
-    PT-PR6 keeps this deliberately conservative: provider transcripts that already encode
-    speaker labels (`SPEAKER: words`) produce a content-addressed `speakers.json`; transcripts
-    without usable speaker labels record a speakers error but keep serving the successful
-    transcript text.
-    """
-
-    name = "diarize"
-    version = PROVIDER_DIARIZE_PIPELINE_VERSION
-
-    def process(
-        self, provider, city: City, episodes: list[Episode], ctx: StageContext
-    ) -> StageStats:
-        from citypods.records import source_key as _src_key
-
-        stats = StageStats(self.name)
-        if ctx.dry_run or ctx.storage is None:
-            return stats
-
-        src_key = _src_key(city)
-        for ep in _materialize_set(
-            episodes,
-            city.full_artifact_episodes,
-            feed_visible_per_body=city.max_episodes,
-            policy=ctx.backlog_policy,
-            city_slug=city.city_entity or city.slug,
-            work_class="provider-transcript-diarize",
-        ):
-            label = ep.uid or ep.guid
-            registry = ep.provider_transcript or {}
-            known_good = registry.get("known_good") if isinstance(registry, dict) else None
-            if not (
-                isinstance(known_good, dict)
-                and ep.transcript_key
-                and ep.transcript_synced
-                and "-provider-align-" in ep.transcript_key
-            ):
-                continue
-            spec = _provider_diarize_spec_hash(ep, known_good)
-            key = _provider_diarize_object_key(src_key, label, spec)
-            if (
-                ep.speakers_key == key
-                and ep.speakers_synced
-                and ctx.storage.exists(ep.speakers_key)
-            ):
-                ep.speakers_url = ctx.storage.public_url(key)
-                stats.reused += 1
-                continue
-            if ctx.stop is not None and ctx.stop():
-                stats.defer("stop-signal")
-                continue
-
-            content = _read_storage_bytes(ctx.storage, ep.transcript_key)
-            if content is None:
-                ep.speakers_error = "missing-provider-aligned-transcript"
-                stats.errors.append(f"{label}: missing provider-aligned transcript")
-                continue
-            try:
-                cues = _parse_timed_transcript(content, ep.transcript_format or "vtt")
-                turns, confidence = _speaker_turns_from_cues(cues)
-            except Exception as exc:  # noqa: BLE001
-                ep.speakers_error = f"parse-error: {exc}"
-                stats.errors.append(f"{label}: speaker parse: {exc}")
-                continue
-            if not turns:
-                ep.speakers_key = None
-                ep.speakers_url = None
-                ep.speakers_spec_hash = spec
-                ep.speakers_format = "json"
-                ep.speakers_synced = False
-                ep.speakers_confidence = confidence
-                ep.speakers_pipeline_version = PROVIDER_DIARIZE_PIPELINE_VERSION
-                ep.speakers_error = "no-speaker-labels"
-                known_good = {**known_good, "diarize_status": "no-speaker-labels"}
-                registry = dict(ep.provider_transcript or {})
-                registry["known_good"] = known_good
-                ep.provider_transcript = registry
-                stats.defer("no-speaker-labels")
-                continue
-
-            payload = {
-                "schema": "1",
-                "basis": "served",
-                "source": "provider-transcript",
-                "confidence": confidence,
-                "turns": turns,
-                # Minutes rosters are candidate vocabulary for future diarization/identity
-                # assignment. They never rewrite provider speaker labels by themselves.
-                "candidate_members": [
-                    member.get("name")
-                    for member in ep.minutes_roster
-                    if isinstance(member, dict) and member.get("name")
-                ],
-            }
-            with tempfile.TemporaryDirectory() as t:
-                dest = Path(t) / "speakers.json"
-                dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
-                url = ctx.storage.put_file(key, dest, "application/json")
-
-            ep.speakers_key = key
-            ep.speakers_url = url
-            ep.speakers_spec_hash = spec
-            ep.speakers_format = "json"
-            ep.speakers_synced = True
-            ep.speakers_confidence = confidence
-            ep.speakers_pipeline_version = PROVIDER_DIARIZE_PIPELINE_VERSION
-            ep.speakers_error = None
-            ep.speakers_source = "provider"
-            known_good = {
-                **known_good,
-                "diarize_spec_hash": spec,
-                "diarize_confidence": confidence,
-                "diarize_status": "known_good",
-            }
-            registry = dict(ep.provider_transcript or {})
-            registry["known_good"] = known_good
-            ep.provider_transcript = registry
-            stats.ran += 1
-        return stats
-
-
 def _diarize_spec_hash(ep: Episode, model: str, embedding_model: str) -> str:
     spec = {
         "v": DIARIZE_PIPELINE_VERSION,
@@ -7263,6 +7181,30 @@ class NativeDiarizeStage:
             work_class="transcript-diarize",
         ):
             uid = ep.uid or ep.guid
+            if ep.speakers_source == "provider":
+                # ProviderTranscriptDiarizeStage (the "diarize" stage) is retired: a citywide
+                # survey (review/31 §A.5) found the caption-provider colon-prefix format it
+                # depended on (`NAME: text`) never once matched real data across every provider
+                # currently integrated -- captions come back either fully unmarked or with a bare
+                # `>>` speaker-change chevron, never a named label. Every one of its outputs is
+                # unvalidated guesswork by construction (any `Word:`-shaped line could match), so
+                # an episode still carrying its stale `speakers_source="provider"` artifact must
+                # not keep being treated as done -- clear it here, before the pilot_selected gate
+                # below, not after: a non-pilot body's episode hits that gate's own `continue` and
+                # would otherwise never reach this clearing at all, leaving a retired, unvalidated
+                # artifact exposed indefinitely for every body outside the R7 pilot (native
+                # diarization is never going to touch it either, so nothing else would ever clear
+                # it). Clearing here is unconditional; whether the episode goes on to become a
+                # real diarize candidate is still entirely up to the pilot_selected check below.
+                ep.speakers_key = None
+                ep.speakers_url = None
+                ep.speakers_spec_hash = None
+                ep.speakers_format = None
+                ep.speakers_synced = False
+                ep.speakers_confidence = None
+                ep.speakers_pipeline_version = None
+                ep.speakers_error = None
+                ep.speakers_source = None
             if not pilot_selected(config, canonical_city_slug, ep.body):
                 # Clear stale no-output markers from the old exact-body matcher. A later pass will
                 # see newly selected bodies immediately, while valid selected artifacts reuse.
@@ -7270,9 +7212,6 @@ class NativeDiarizeStage:
                 if isinstance(marker, dict) and not marker.get("output"):
                     ep.stage_completion.pop(self.name, None)
                 stats.quality("pilot-not-selected")
-                continue
-            if ep.speakers_source == "provider" and ep.speakers_synced:
-                stats.reused += 1
                 continue
             if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
                 stats.defer("missing-timed-words", sample=uid)
@@ -7329,9 +7268,6 @@ class NativeDiarizeStage:
         from citypods.diarize import prepare_models
 
         workers = _diarize_worker_count(ctx)
-        admission = _DiarizeAdmission(
-            candidates, ctx=ctx, runtime_log=runtime_log, recipe=runtime_recipe
-        )
         # One thread per worker slot, each claiming and then blocking on its own subprocess.
         # Threads (not a bare future-juggling loop) so every in-flight item gets its own
         # PROGRESS entry -- that registry is keyed by thread, and the heartbeat's "active work"
@@ -7339,10 +7275,20 @@ class NativeDiarizeStage:
         # Each worker is single-threaded when several run at once: measured across three GH
         # Actions CPUs, N single-threaded processes beat every other split on aggregate
         # throughput, including the same 2-thread single-job optimum run N-wide (review/31 §A.4).
-        threads_per_worker = 1 if workers > 1 else _DIARIZE_SOLO_THREADS
+        # This is the *default* -- `_DiarizeAdmission.claim()` can still grant an individual
+        # memory-dominant candidate `_DIARIZE_SOLO_THREADS` instead, bounded by that class's own
+        # real-time vCPU ceiling (its docstring has the full reasoning).
+        default_threads = 1 if workers > 1 else _DIARIZE_SOLO_THREADS
+        admission = _DiarizeAdmission(
+            candidates,
+            ctx=ctx,
+            runtime_log=runtime_log,
+            recipe=runtime_recipe,
+            default_threads=default_threads,
+        )
         print(
             f"[enrich] diarize pool: {len(candidates)} candidate(s), workers={workers} "
-            f"threads_per_worker={threads_per_worker} recipe={runtime_recipe}",
+            f"default_threads_per_worker={default_threads} recipe={runtime_recipe}",
             flush=True,
         )
         # Warm the model cache once in the parent; otherwise every spawned worker misses the
@@ -7373,7 +7319,6 @@ class NativeDiarizeStage:
                             "model": model,
                             "embedding_model": embedding_model,
                             "canonical_city_slug": canonical_city_slug,
-                            "threads_per_worker": threads_per_worker,
                         },
                         daemon=True,
                     )
@@ -7396,7 +7341,6 @@ class NativeDiarizeStage:
                     model=model,
                     embedding_model=embedding_model,
                     canonical_city_slug=canonical_city_slug,
-                    threads_per_worker=threads_per_worker,
                 )
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
@@ -7432,7 +7376,6 @@ class NativeDiarizeStage:
         model: str,
         embedding_model: str,
         canonical_city_slug: str,
-        threads_per_worker: int,
     ) -> None:
         from citypods import diarize as diarize_mod
 
@@ -7448,6 +7391,7 @@ class NativeDiarizeStage:
         # currently fit, because nothing pending did) still needs to block for it.
         if not candidate.memory_reserved and reservation is not None:
             if not reservation.reserve(reserved_bytes, label=uid, stop=ctx.stop):
+                admission.release_threads(candidate.threads)
                 with finalize_lock:
                     stats.defer("memory-reservation", sample=uid)
                 return
@@ -7462,6 +7406,7 @@ class NativeDiarizeStage:
         if not fits:
             if reservation is not None:
                 reservation.release(reserved_bytes)
+            admission.release_threads(candidate.threads)
             with finalize_lock:
                 stats.defer("runtime-budget", sample=uid)
             print(
@@ -7503,7 +7448,8 @@ class NativeDiarizeStage:
                     str(audio_path),
                     model=model,
                     embedding_model=embedding_model,
-                    num_threads=threads_per_worker,
+                    num_threads=candidate.threads,
+                    log_label=uid,
                 )
                 # The audio temp file must outlive the call, so the wait stays inside the
                 # download context.
@@ -7573,6 +7519,7 @@ class NativeDiarizeStage:
         finally:
             if reservation is not None:
                 reservation.release(reserved_bytes)
+            admission.release_threads(candidate.threads)
 
     def _finalize(
         self,
@@ -8892,7 +8839,6 @@ def default_stages() -> list[EnrichmentStage]:
         LinksStage(),
         AgendaTextStage(),
         MinutesTextStage(),
-        ProviderTranscriptDiarizeStage(),
         TagsStage(),
     ]
 
@@ -8925,7 +8871,6 @@ def enrich_stages() -> list[EnrichmentStage]:
         LinksStage(),
         AgendaTextStage(),
         MinutesTextStage(),
-        ProviderTranscriptDiarizeStage(),
         TagsStage(),
     ]
 
@@ -8963,7 +8908,7 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     ),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
-    "diarize": frozenset({"diarize", "native_diarize"}),
+    "diarize": frozenset({"native_diarize"}),
     "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
     "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),

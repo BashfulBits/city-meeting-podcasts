@@ -453,6 +453,165 @@ def test_diarize_admission_falls_back_to_longest_time_fit_when_nothing_fits_memo
     assert claimed.memory_reserved is False
 
 
+def test_diarize_admission_gives_a_memory_dominant_candidate_two_threads(tmp_path):
+    """A candidate needing most of the memory budget by itself leaves the *other* configured
+    workers with nothing they can concurrently fit -- their CPU capacity sits unused behind it.
+    review/31 §A.4's adaptive-threads addendum: give such a candidate 2 threads instead of the
+    pool's default 1, since that CPU would otherwise go to waste, not get competed for."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 10 * 1024**3  # 10GiB
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        # Plenty of runway: an 82800s (23h) candidate's seeded time estimate alone would exceed
+        # a short deadline, and this test is purely about the memory-dominance decision, not
+        # the (already-covered-elsewhere) time-budget check.
+        diarize_start_deadline=time.monotonic() + 200_000,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    # A recording long enough that its own predicted peak (350MB + 650MB/hr) alone clears 65%
+    # of the 10GiB budget (6.5GiB) -- estimate_diarize_rss_bytes(82800s) ~= 15258MB ~= 14.9GiB
+    # is deliberately far past it, not right at the boundary, to keep this test robust to the
+    # formula's own exact constants changing later.
+    candidates = [_bare_candidate("dominant", 82800.0)]
+    admission = _DiarizeAdmission(
+        candidates, ctx=ctx, runtime_log=log, recipe="r", default_threads=1
+    )
+
+    claimed = admission.claim()
+
+    assert claimed.uid == "dominant"
+    assert claimed.threads == 2
+
+
+def test_diarize_admission_does_not_bump_a_modest_candidate(tmp_path):
+    """A candidate needing well under 65% of the budget is not memory-dominant -- nothing about
+    it implies the rest of the pool will sit idle, so it keeps the pool's ordinary default."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 10 * 1024**3  # 10GiB
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 3600,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    candidates = [_bare_candidate("modest", 300.0)]  # ~404MiB predicted peak -- nowhere near 65%
+    admission = _DiarizeAdmission(
+        candidates, ctx=ctx, runtime_log=log, recipe="r", default_threads=1
+    )
+
+    claimed = admission.claim()
+
+    assert claimed.uid == "modest"
+    assert claimed.threads == 1
+
+
+def test_diarize_admission_never_bumps_past_the_real_time_vcpu_ceiling(tmp_path):
+    """The bump is granted only when *proven*, against the pool's own live committed-thread
+    count, to keep the total at or under the real vCPU ceiling -- never assumed safe from a
+    static worst case. Two memory-dominant candidates (each individually well over 65%) claimed
+    back to back must not both be granted 2 threads if doing so would exceed a deliberately
+    tiny ceiling -- the second still gets the pool's ordinary default instead."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 10 * 1024**3
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 200_000,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    candidates = [_bare_candidate("first", 82800.0), _bare_candidate("second", 82800.0)]
+    # A ceiling of 2: the first dominant candidate already uses it up entirely.
+    admission = _DiarizeAdmission(
+        candidates,
+        ctx=ctx,
+        runtime_log=log,
+        recipe="r",
+        default_threads=1,
+        max_total_threads=2,
+    )
+
+    first = admission.claim()
+    assert first.threads == 2  # the ceiling (2) accommodates exactly one bump
+
+    # Second candidate can't fit memory-wise yet anyway (first hasn't released), so it takes the
+    # fallback (unreserved, blocking) path -- still must not be double-granted a bump that would
+    # push the live total to 4 against a ceiling of 2.
+    second = admission.claim()
+    assert second.threads == 1
+
+
+def test_diarize_admission_release_threads_frees_room_for_the_next_bump(tmp_path):
+    """`release_threads` (called from `_run_one`'s `finally`, mirroring the memory reservation's
+    own lifecycle) must actually free the committed-thread accounting, not just exist -- a
+    second memory-dominant candidate claimed after the first releases should get bumped too."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 10 * 1024**3
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 200_000,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    admission = _DiarizeAdmission(
+        [_bare_candidate("first", 82800.0)],
+        ctx=ctx,
+        runtime_log=log,
+        recipe="r",
+        default_threads=1,
+        max_total_threads=2,
+    )
+    first = admission.claim()
+    assert first.threads == 2
+    reservation.release(_estimate_diarize_rss_bytes(first.recording_seconds))
+    admission.release_threads(first.threads)
+
+    admission2 = _DiarizeAdmission(
+        [_bare_candidate("second", 82800.0)],
+        ctx=ctx,
+        runtime_log=log,
+        recipe="r",
+        default_threads=1,
+        max_total_threads=2,
+    )
+    second = admission2.claim()
+    assert second.threads == 2  # room again now that the first candidate's slot was released
+
+
+def _estimate_diarize_rss_bytes(recording_seconds: float) -> int:
+    from citypods.diarize import estimate_diarize_rss_bytes
+
+    return estimate_diarize_rss_bytes(recording_seconds)
+
+
 def test_diarize_admission_defers_the_tail_when_nothing_fits(tmp_path):
     from citypods.stages import _DiarizeAdmission
 
@@ -559,6 +718,44 @@ def test_diarize_pool_runs_every_candidate_across_concurrent_workers(tmp_path, m
     assert len(evidence["episodes"]) == 6
 
 
+def test_diarize_submit_passes_the_episode_uid_as_log_label(tmp_path, monkeypatch):
+    """`run_diarize_job`'s peak-RSS log line is only useful for diagnosing a specific candidate
+    if it's actually labeled with that candidate's own uid (review/31 §A.4 addendum) -- this pins
+    that `_run_one` threads it through the submit call rather than leaving the default empty
+    label, which would make every job's peak-RSS line indistinguishable from every other's."""
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
+    from citypods.diarize import DiarizeArtifacts
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ctx.speaker_turn_evidence_path = tmp_path / "evidence.json"
+    ep = _diarize_episode(ctx, tmp_path, "ep-label-check", seconds=60.0)
+
+    seen_labels: list[str] = []
+
+    def _fake_job(audio_path, **kwargs):
+        seen_labels.append(kwargs.get("log_label"))
+        return DiarizeArtifacts(
+            turns=[{"start": 0.0, "end": 1.0, "cluster": "0", "overlap": False}],
+            clusters=[{"cluster": "0", "turn_count": 1}],
+            engine="sherpa-onnx",
+            model="test-model",
+        )
+
+    monkeypatch.setattr(diarize_mod, "run_diarize_job", _fake_job)
+    monkeypatch.setattr(
+        stages_mod, "_diarize_executor", lambda workers: stages_mod._InlineExecutor()
+    )
+    _stub_diarize_io(monkeypatch, tmp_path)
+
+    stats = NativeDiarizeStage().process(FakeProvider(), city, [ep], ctx)
+
+    assert stats.ran == 1
+    assert seen_labels == [str(ep.uid or ep.guid)]
+
+
 def test_diarize_pool_defers_when_the_memory_budget_cannot_admit(tmp_path, monkeypatch):
     """Memory is a second, independent admission constraint: a worker that cannot reserve its
     predicted peak RSS defers rather than running and risking an OOM kill (review/31 §A.4)."""
@@ -635,6 +832,91 @@ def test_diarize_candidates_do_not_retain_timed_words_for_the_whole_backlog(tmp_
     assert stages_mod._DiarizeCandidate.__doc__  # documents why, so it is not "simplified" back
 
 
+def test_diarize_collect_candidates_reclaims_a_stale_provider_sourced_episode(tmp_path):
+    """ProviderTranscriptDiarizeStage is retired (review/31 §A.5): a citywide survey found its
+    colon-prefix assumption never matched a single real caption provider, so every
+    `speakers_source == "provider"` artifact still on record is unvalidated guesswork, not a
+    real diarization. An episode carrying one must not be treated as permanently done -- it has
+    to fall through to genuine native diarization, the same as an episode never touched."""
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ep = _diarize_episode(ctx, tmp_path, "stale-provider", seconds=60.0)
+    ep.speakers_key = "transcripts/src/stale-provider-diarize-abc123.speakers.json"
+    ep.speakers_url = "https://cdn/transcripts/src/stale-provider-diarize-abc123.speakers.json"
+    ep.speakers_spec_hash = "abc123"
+    ep.speakers_format = "json"
+    ep.speakers_synced = True
+    ep.speakers_confidence = 0.5
+    ep.speakers_pipeline_version = "1"
+    ep.speakers_source = "provider"
+
+    stage = NativeDiarizeStage()
+    stats = StageStats(stage.name)
+    candidates = stage._collect_candidates(
+        city,
+        [ep],
+        ctx,
+        stats,
+        config=ctx.speaker_config,
+        model="m",
+        embedding_model="e",
+        canonical_city_slug="denton-tx",
+    )
+
+    # Not silently counted as already-done ...
+    assert stats.reused == 0
+    # ... every stale provider field is cleared ...
+    assert ep.speakers_key is None
+    assert ep.speakers_url is None
+    assert ep.speakers_spec_hash is None
+    assert ep.speakers_format is None
+    assert ep.speakers_synced is False
+    assert ep.speakers_confidence is None
+    assert ep.speakers_pipeline_version is None
+    assert ep.speakers_source is None
+    # ... and it proceeds into the real native-diarize candidate pool.
+    assert len(candidates) == 1
+    assert candidates[0].uid == str(ep.uid or ep.guid)
+
+
+def test_diarize_collect_candidates_clears_stale_provider_fields_even_outside_the_pilot(tmp_path):
+    """The clearing above must not depend on `pilot_selected` passing. A non-pilot body's
+    episode hits that gate's own `continue` -- if clearing sat after the gate (as it originally
+    shipped), it would never run for any body outside the R7 pilot, leaving a retired,
+    unvalidated artifact exposed indefinitely for every one of them (native diarization is never
+    going to touch a non-pilot body either, so nothing else would ever clear it)."""
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ep = _diarize_episode(ctx, tmp_path, "stale-provider-non-pilot", seconds=60.0)
+    ep.body = "Board of Ethics"  # not in _pilot_speaker_config's pilot_bodies
+    ep.speakers_key = "transcripts/src/stale-provider-non-pilot-diarize-abc123.speakers.json"
+    ep.speakers_synced = True
+    ep.speakers_source = "provider"
+
+    stage = NativeDiarizeStage()
+    stats = StageStats(stage.name)
+    candidates = stage._collect_candidates(
+        city,
+        [ep],
+        ctx,
+        stats,
+        config=ctx.speaker_config,
+        model="m",
+        embedding_model="e",
+        canonical_city_slug="denton-tx",
+    )
+
+    # Cleared regardless of pilot selection ...
+    assert ep.speakers_key is None
+    assert ep.speakers_synced is False
+    assert ep.speakers_source is None
+    # ... but a non-pilot body still correctly does not become a diarize candidate.
+    assert candidates == []
+    assert stats.quality_counts.get("pilot-not-selected") == 1
+
+
 def test_diarize_backstop_defers_the_item_and_stops_admitting(tmp_path, monkeypatch):
     """An item still running at the backstop is abandoned and admission closes, so one estimate
     miss cannot hold the whole job past its runner timeout (review/31 §A.4)."""
@@ -671,6 +953,41 @@ def test_diarize_backstop_defers_the_item_and_stops_admitting(tmp_path, monkeypa
     assert stats.defer_reasons.get("diarize-backstop") == 1
     assert stats.defer_reasons.get("backstop") == 1
     assert all(not ep.speakers_synced for ep in episodes)
+
+
+def test_native_diarize_reports_error_not_success_when_run_diarize_job_raises(
+    tmp_path, monkeypatch
+):
+    """`run_diarize_job` raising -- e.g. `citypods.diarize.diarize()`'s own onnxruntime
+    error-level-log detection (review/31 §A.1b) -- must route through the same per-item
+    exception handling as any other diarize failure: `speakers_error`, never a silently-accepted
+    `speakers_synced`."""
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ep = _diarize_episode(ctx, tmp_path, "pilot", seconds=120.0)
+
+    def _fake_job(audio_path, **_kwargs):
+        raise RuntimeError(
+            "onnxruntime reported 1 error-level diagnostic(s) during diarize() for "
+            "'audio.m4a': [E:onnxruntime:, sequential_executor.cc:620 ExecuteKernel] ..."
+        )
+
+    monkeypatch.setattr(
+        stages_mod, "_diarize_executor", lambda workers: stages_mod._InlineExecutor()
+    )
+    monkeypatch.setattr(diarize_mod, "run_diarize_job", _fake_job)
+    _stub_diarize_io(monkeypatch, tmp_path)
+
+    stats = NativeDiarizeStage().process(FakeProvider(), city, [ep], ctx)
+
+    assert stats.ran == 0
+    assert ep.speakers_synced is not True
+    assert ep.speakers_error is not None
+    assert "onnxruntime reported" in ep.speakers_error
 
 
 def test_native_diarize_process_tracks_progress_and_logs_lifecycle(tmp_path, monkeypatch, capsys):
@@ -919,7 +1236,6 @@ def test_run_stages_returns_stats_per_stage(tmp_path):
         "links",
         "agenda_text",
         "minutes_text",
-        "diarize",
         "tags",
     ]
     assert [s.name for s in stats] == expected
@@ -1084,17 +1400,15 @@ def test_default_lane_none_runs_every_stage(tmp_path):
         "links",
         "agenda_text",
         "minutes_text",
-        "diarize",
         "tags",
     ]
 
 
-def test_production_stage_composition_extracts_minutes_before_diarization():
+def test_production_stage_composition_extracts_minutes_before_tags():
     assert [stage.name for stage in render_stages()] == ["links"]
     names = [stage.name for stage in enrich_stages()]
     assert names.index("links") < names.index("agenda_text") < names.index("minutes_text")
-    assert names.index("minutes_text") < names.index("diarize")
-    assert names.index("diarize") < names.index("tags")
+    assert names.index("minutes_text") < names.index("tags")
 
 
 def test_links_stage_defaults_canonical_video_and_is_idempotent(tmp_path):
@@ -2047,7 +2361,11 @@ def test_native_diarize_defers_an_episode_with_no_served_duration(tmp_path):
 def test_single_worker_still_gets_a_real_process_pool():
     """The backstop is `future.result(timeout=...)`, which an inline executor makes unreachable by
     resolving its Future before returning. Every diarize test replaces this factory, so nothing
-    else pins the production contract: one worker must still be a real, spawn-context pool."""
+    else pins the production contract: one worker must still be a real, spawn-context pool, with
+    a fresh process per candidate (`max_tasks_per_child=1`) so `run_diarize_job`'s peak-RSS log
+    line means "this candidate's own peak," not "the highest peak any candidate this worker has
+    ever processed reached" (`ru_maxrss`/`VmHWM` are both monotonic for a process's lifetime;
+    review/31 §A.4 addendum)."""
     from concurrent.futures import ProcessPoolExecutor
 
     import citypods.stages as stages_mod
@@ -2057,5 +2375,6 @@ def test_single_worker_still_gets_a_real_process_pool():
         try:
             assert isinstance(executor, ProcessPoolExecutor)
             assert executor._mp_context.get_start_method() == "spawn"
+            assert executor._max_tasks_per_child == 1
         finally:
             executor.shutdown(wait=False, cancel_futures=True)

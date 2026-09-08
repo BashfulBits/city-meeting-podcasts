@@ -7,6 +7,8 @@ from citypods.resources import (
     NativeWorkGate,
     ResourceAdmission,
     ResourceSnapshot,
+    process_peak_rss_bytes,
+    process_rss_bytes,
 )
 
 
@@ -20,6 +22,20 @@ def _snap(mem_available: int, load1: float) -> ResourceSnapshot:
         cpus=2,
         thread_count=3,
     )
+
+
+def test_process_peak_rss_bytes_is_never_smaller_than_current_rss():
+    """No `/proc` on macOS (this dev environment), so this exercises the real `ru_maxrss`
+    fallback shared with `process_rss_bytes` there -- but on Linux the two read genuinely
+    different counters (`VmHWM` peak vs. `VmRSS` current), so the real invariant this pins is
+    the one that must hold on *either* platform: a process's peak can never be less than its
+    current reading, taken back-to-back on this real, live process."""
+    current = process_rss_bytes()
+    peak = process_peak_rss_bytes()
+    assert peak is not None
+    assert peak > 0
+    if current is not None:
+        assert peak >= current
 
 
 def test_resource_admission_waits_until_memory_and_load_have_headroom():
@@ -307,6 +323,16 @@ def test_memory_reservation_admits_within_budget():
     assert r.reserve(60, label="a") is True
     assert r.reserve(40, label="b") is True  # 60+40=100 fits exactly
     assert r.reserved_bytes == 100
+
+
+def test_memory_reservation_exposes_its_fixed_budget():
+    """A caller deciding whether one candidate's own need *dominates* the whole pool (review/31
+    §A.4's adaptive-threads addendum) needs the fixed ceiling itself, not just how much is
+    currently reserved -- and it must never change after construction."""
+    r = MemoryReservation(budget_bytes=12345, poll_seconds=0.01)
+    assert r.budget_bytes == 12345
+    r.reserve(100, label="a")
+    assert r.budget_bytes == 12345
 
 
 def test_memory_reservation_blocks_until_release():

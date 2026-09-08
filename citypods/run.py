@@ -1701,7 +1701,7 @@ def _run_enrich_global_queue(
     ]
     # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
     # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
-    post_transcript = {"transcript", "diarize", "native_diarize", "speaker_identity", "tags"}
+    post_transcript = {"transcript", "native_diarize", "speaker_identity", "tags"}
     audio_stages = [
         s
         for s in pipeline.stages
@@ -1901,9 +1901,8 @@ def _run_enrich_global_queue(
                 if episode_needs_chapter_agenda(ep) or episode_needs_chapter_locator(ep)
             ]
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
-    # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). Neither
-    # ProviderTranscriptDiarizeStage (works purely off an already-aligned transcript's text) nor
-    # TagsStage (works purely off agenda/transcript text) reads it. Gating this on
+    # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). TagsStage
+    # (works purely off agenda/transcript text) does not read it. Gating this on
     # `transcript_stages` rather than on membership of "transcript" specifically meant every
     # `tag`-lane run paid the full per-episode ffprobe/heal pass (a storage round trip via
     # probe_hosted_audio_duration_seconds) across the *entire* backlog before it could even build
@@ -2265,8 +2264,8 @@ def _run_enrich_global_queue(
 
             # Tagging has no audio dependency (it only reads agenda/transcript text), so an
             # episode that never gets hosted audio still needs its own, narrower pass — running
-            # the full transcript_stages list on it would wrongly let TranscriptStage/
-            # ProviderTranscriptDiarizeStage (which DO require hosted audio) execute too.
+            # the full transcript_stages list on it would wrongly let TranscriptStage (which DOES
+            # require hosted audio) execute too.
             tags_only_stages = [s for s in transcript_stages if s.name == "tags"]
             if tags_only_stages:
                 tx_tags_only = [
@@ -3056,13 +3055,24 @@ def _build_impl(
     # measured), and the runner is OOM-killed as a whole, so concurrency has to be bounded by
     # predicted memory as well as by vCPU count. 0/blank disables it (a one-worker run has
     # nothing to contend with).
+    #
+    # `diarize_memory_ceiling_bytes` reduces the configured budget once by
+    # `DIARIZE_RSS_SPIKE_MARGIN_BYTES` before it ever reaches `MemoryReservation` -- a fixed
+    # amount of headroom the steady-state linear model can't see coming (a transient allocation
+    # spike from an onnxruntime kernel failure, sized from real production evidence; see that
+    # constant's own comment), kept spare regardless of how full the steady-state accounting
+    # says the budget already is. Subtracted once from the *ceiling*, not once per worker: the
+    # trigger is data-dependent and rare, not a certainty every concurrent worker hits at once.
+    from citypods.diarize import diarize_memory_ceiling_bytes
+
     _diarize_memory_budget_mb = float((speakers_config or {}).get("memory_budget_mb", 0) or 0)
+    _diarize_ceiling_bytes = diarize_memory_ceiling_bytes(_diarize_memory_budget_mb)
     _diarize_memory_reservation: MemoryReservation | None = (
         MemoryReservation(
-            budget_bytes=int(_diarize_memory_budget_mb * 1024 * 1024),
+            budget_bytes=_diarize_ceiling_bytes,
             log=lambda msg: print(msg, flush=True),
         )
-        if not dry_run and _diarize_memory_budget_mb > 0
+        if not dry_run and _diarize_ceiling_bytes > 0
         else None
     )
     transcript_quality_routes = load_quality_routes(

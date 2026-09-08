@@ -608,7 +608,6 @@ class TestStageOrdering:
             "links",
             "agenda_text",
             "minutes_text",
-            "diarize",
             "tags",
         ]
 
@@ -623,7 +622,6 @@ class TestStageOrdering:
             "links",
             "agenda_text",
             "minutes_text",
-            "diarize",
             "tags",
         ]
 

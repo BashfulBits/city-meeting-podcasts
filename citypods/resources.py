@@ -78,6 +78,37 @@ def process_rss_bytes() -> int | None:
         return None
 
 
+def process_peak_rss_bytes() -> int | None:
+    """Peak (not current) RSS this process has ever reached.
+
+    `process_rss_bytes()` above deliberately reads *current* `VmRSS` on Linux -- the right
+    signal for "is this process healthy right now." A transient allocation spike that gets
+    freed before the next sample would never show up there. This reads `VmHWM` ("high water
+    mark") instead, Linux's own peak-RSS counter, so a spike is visible even after it's gone --
+    e.g. diagnosing whether one diarize job's own peak allocation (not its settled-down
+    afterward) came close to a runner's OOM ceiling (review/31 §A.4). `resource.getrusage(...).
+    ru_maxrss` is already peak on both platforms, so the macOS/no-`/proc` fallback needs no
+    separate peak-vs-current distinction -- only the Linux primary path does.
+    """
+    status = Path("/proc/self/status")
+    if status.exists():
+        try:
+            for line in status.read_text().splitlines():
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) * 1024
+        except (OSError, ValueError, IndexError):
+            pass
+    try:
+        import resource
+
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        if hasattr(os, "uname") and os.uname().sysname == "Darwin":
+            return int(rss)
+        return int(rss) * 1024
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def current_snapshot(root: Path | None = None) -> ResourceSnapshot:
     mem_total, mem_available = proc_meminfo_bytes()
     load1: float | None = None
@@ -512,6 +543,13 @@ class MemoryReservation:
     def reserved_bytes(self) -> int:
         with self._cond:
             return self._reserved
+
+    @property
+    def budget_bytes(self) -> int:
+        """The fixed ceiling itself -- read-only, never changes after construction. A caller
+        deciding whether *one* candidate's own need dominates the whole pool (review/31 §A.4's
+        adaptive-threads addendum) needs this, not just how much is currently reserved."""
+        return self._budget
 
     @property
     def total_wait_seconds(self) -> float:
