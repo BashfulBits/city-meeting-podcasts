@@ -50,6 +50,10 @@ WORK_CLASSES = (
     "transcript-asr-comparison",
     "transcript-align",
     "provider-transcript-align",
+    # ProviderTranscriptDiarizeStage is retired (review/31 §A.5) and no longer emits new items of
+    # this class -- kept recognized (not moved to RESERVED_WORK_CLASSES, which is for classes not
+    # yet emitted) so any pre-retirement manifest entries still fall under REAPABLE_WORK_CLASSES
+    # and reap normally instead of being orphaned.
     "provider-transcript-diarize",
 )
 # Reserved — recognized but not emitted yet (reserve-now, no migration later).
@@ -546,21 +550,12 @@ def _episode_work_items(
                     **base,
                 )
             )
-        speakers = rec.get("speakers") or {}
-        active_provider_align = (
-            provider is not None
-            and transcript.get("key")
-            and "-provider-align-" in str(transcript.get("key"))
-            and transcript.get("spec_hash") == provider.get("align_spec_hash")
-        )
-        if active_provider_align:
-            state = (
-                "done"
-                if speakers.get("key")
-                and speakers.get("spec_hash") == provider.get("diarize_spec_hash")
-                else "queued"
-            )
-            items.append(WorkItem(work_class="provider-transcript-diarize", state=state, **base))
+        # ProviderTranscriptDiarizeStage is retired (review/31 §A.5): a citywide survey found its
+        # colon-prefix assumption never matched a single real caption provider, so it never
+        # produced a usable label. No new "provider-transcript-diarize" work items are emitted --
+        # emitting them here would only grow a permanently-"queued" backlog count for a stage that
+        # no longer runs. The work class stays in WORK_CLASSES/REAPABLE_WORK_CLASSES so any
+        # pre-retirement manifest entries still reap normally.
     return items
 
 
