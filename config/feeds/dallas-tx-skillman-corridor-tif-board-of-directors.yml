@@ -4,6 +4,8 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "*Skillman Corridor TIF District Board of Directors Meeting"
+  body_any:
+    - "Reinvestment Zone * 14 * Skillman Corridor"
 podcast_title: "Dallas: Skillman Corridor TIF District Board of Directors"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

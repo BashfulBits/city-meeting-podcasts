@@ -1,0 +1,15 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Arlington Tomorrow Foundation - Board of Directors is a distinct foundation board with 3 observed meetings between March and April 2020, meeting the criteria for a new feed.
+slug: arlington-tx-arlington-tomorrow-foundation
+city: arlington-tx
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body: Arlington Tomorrow Foundation - Board of Directors
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2020-04-28 (2324 days ago)
+podcast_title: 'Arlington: Arlington Tomorrow Foundation - Board of Directors'
+podcast_author: City of Arlington, TX
+podcast_email: ''
+podcast_description: Meetings of the Arlington Tomorrow Foundation Board of Directors.

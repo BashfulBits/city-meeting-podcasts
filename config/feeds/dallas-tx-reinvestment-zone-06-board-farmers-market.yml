@@ -1,0 +1,15 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Reinvestment Zone 06 Board Farmers Market has 4 observed meetings spanning across multiple years from 2019 to 2022, meeting the recurring threshold of at least three meetings.
+slug: dallas-tx-reinvestment-zone-06-board-farmers-market
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Reinvestment Zone 06 Board Farmers Market
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2022-02-28 (1653 days ago)
+podcast_title: 'Dallas: Reinvestment Zone 06 Board Farmers Market'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Reinvestment Zone 06 Board Farmers Market.

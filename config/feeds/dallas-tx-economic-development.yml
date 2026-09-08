@@ -9,6 +9,8 @@ source:
       body: "Reinvestment Zone 5 City Center"
     - provider_guid: "205545"
       body: "Small Business Resource Virtual Town Hall Meeting"
+    - provider_guid: "203327"
+      body: "Dallas Development Fund"
 podcast_title: "Dallas: Economic Development"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""
